@@ -189,7 +189,19 @@ class AegisServer(FastMCP):
             logger.debug(f"[workflow_start] Created uuid: {uuid}")
             context = WorkflowContext(cwd=os.getcwd(), max_retries=max_retries)
             self._contexts[uuid] = context
-            coroutine = workflow_func(context)
+
+            async def wrapped_workflow():
+                try:
+                    await workflow_func(context)
+                except Exception as e:
+                    error_msg = (
+                        f"[ERROR] Workflow ended with error: {e}\n\n"
+                        "The workflow has failed. Contact the developer if this persists."
+                    )
+                    context.out_queue.put_nowait(error_msg)
+                    logger.debug(f"[workflow] Uncaught exception: {e}")
+
+            coroutine = wrapped_workflow()
             task = create_task(coroutine)
             self._tasks[uuid] = task
             context._task = task
@@ -238,7 +250,7 @@ class AegisServer(FastMCP):
             if task and task.done():
                 if task.exception() is not None:
                     logger.debug(f"[workflow_step] Task failed with exception")
-                    return f"Workflow failed: {task.exception()}"
+                    return "Workflow ended with error. See above for details."
 
                 logger.debug(f"[workflow_step] Task is done, returning completed")
                 return "Workflow completed."

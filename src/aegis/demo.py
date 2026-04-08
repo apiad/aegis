@@ -133,5 +133,12 @@ async def note(ctx: WorkflowContext):
     await ctx.step("Max retries exceeded. Note was not created. STOP NOW.")
 
 
+@server.workflow()
+async def fail_workflow(ctx: WorkflowContext):
+    """A workflow that always fails for testing error handling."""
+    await ctx.step("This workflow will fail intentionally...")
+    raise ValueError("Intentional test failure")
+
+
 def main():
     server.run(transport="http", host="127.0.0.1", port=4243)
