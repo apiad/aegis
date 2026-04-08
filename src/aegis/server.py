@@ -1,13 +1,20 @@
 import functools
 import json
 import logging
+import os
 from textwrap import dedent
 from uuid import uuid4
 from fastmcp import FastMCP, Context
 from typing import Any, Callable, Coroutine
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from asyncio import Queue, create_task, sleep
 from asyncio.tasks import Task
+
+
+class MaxRetriesExceededError(Exception):
+    """Raised when workflow step exceeds maximum retry attempts."""
+
+    pass
 
 
 logger = logging.getLogger("aegis")
@@ -16,47 +23,85 @@ logger = logging.getLogger("aegis")
 class WorkflowContext:
     """Context for workflow execution, allowing state management across steps."""
 
-    def __init__(self) -> None:
+    def __init__(self, cwd: str = ".", max_retries: int = 3) -> None:
         self.in_queue: Queue[Any] = Queue()
         self.out_queue: Queue[Any] = Queue()
         self._task: Task | None = None
         self._result: Any = None
+        self.cwd = cwd
+        self.retry_count: int = 0
+        self.max_retries: int = max_retries
+        self._last_instruction: str = ""
+        self._last_response_type: type | None = None
+
+    def reset_retry(self) -> None:
+        self.retry_count = 0
 
     async def step[T: BaseModel](
         self, instruction: str, response_type: type[T] | None = None
     ) -> T | None:
         """Yield an instruction to the user and wait for them to call `workflow_step()`."""
-        logger.debug(f"[step] Putting instruction in out_queue")
-        full_instruction = dedent(instruction)
+        base_instruction = dedent(instruction)
 
         if response_type is not None:
             schema = response_type.model_json_schema()
             schema_str = json.dumps(schema, indent=2)
-            full_instruction += (
+            base_instruction += (
                 f"\n\nProvide your response as a JSON-stringified object matching this schema:\n"
                 f"```json\n{schema_str}\n```\n"
                 f"Then call tool `workflow_step(response='<your JSON string>')`."
             )
         else:
-            full_instruction += (
-                f"\n\nCall tool `workflow_step()` with NO arguments when done. No arguments needed in this step."
-            )
+            base_instruction += f"\n\nCall tool `workflow_step()` with NO arguments when done. No arguments needed in this step."
 
-        self.out_queue.put_nowait(full_instruction)
-        logger.debug(f"[step] Waiting for response from in_queue")
-        response = await self.in_queue.get()
-        logger.debug(f"[step] Got response: {response}")
+        while True:
+            self.out_queue.put_nowait(base_instruction)
+            logger.debug(f"[step] Waiting for response from in_queue")
+            response = await self.in_queue.get()
+            logger.debug(f"[step] Got response: {response}")
 
-        if response_type is not None and response is not None:
-            return TypeAdapter(response_type).validate_json(response)
+            error_msg: str | None = None
+            parsed_response: Any = None
 
-        return response
+            if response_type is None:
+                if response is not None:
+                    error_msg = f"Expected no data (step expects no response), but received data. Please call `workflow_step()` with no arguments."
+            else:
+                if response is None:
+                    error_msg = f"Expected JSON data matching schema, but received nothing. Provide valid JSON."
+                else:
+                    try:
+                        parsed_response = TypeAdapter(response_type).validate_json(
+                            response
+                        )
+                    except ValidationError as e:
+                        error_msg = f"Validation failed: {e}"
+
+            if error_msg:
+                self.retry_count += 1
+                if self.retry_count >= self.max_retries:
+                    raise MaxRetriesExceededError(
+                        f"Step failed after {self.retry_count} retries: {error_msg}"
+                    )
+                retries_left = self.max_retries - self.retry_count
+                full_instruction = (
+                    f"[ERROR] {error_msg}\n\n"
+                    f"[RETRY] You have {retries_left} retries remaining.\n\n"
+                    f"[INSTRUCTION]\n{base_instruction}\n\n"
+                    f"Call workflow_step(...) again with correct data."
+                )
+                self.out_queue.put_nowait(full_instruction)
+                response = await self.in_queue.get()
+                continue
+
+            self.reset_retry()
+            return parsed_response
 
 
 class AegisServer(FastMCP):
     def __init__(self, name: str = "Aegis", *args, **kwargs):
         super().__init__(name, *args, **kwargs)
-        self._workflows: dict[str, Callable] = {}
+        self._workflows: dict[str, tuple[Callable, int]] = {}
         self._tasks: dict[str, Task] = {}
         self._contexts: dict[str, WorkflowContext] = {}
 
@@ -64,14 +109,16 @@ class AegisServer(FastMCP):
         async def workflow_start(ctx: Context, name: str) -> str:
             """Start a workflow by name."""
             logger.debug(f"[workflow_start] Starting workflow: {name}")
-            workflow_func = self._workflows.get(name)
+            workflow_data = self._workflows.get(name)
 
-            if not workflow_func:
+            if not workflow_data:
                 return f"No workflow found with name '{name}'."
+
+            workflow_func, max_retries = workflow_data
 
             uuid = str(uuid4())
             logger.debug(f"[workflow_start] Created uuid: {uuid}")
-            context = WorkflowContext()
+            context = WorkflowContext(cwd=os.getcwd(), max_retries=max_retries)
             self._contexts[uuid] = context
             coroutine = workflow_func(context)
             task = create_task(coroutine)
@@ -84,7 +131,9 @@ class AegisServer(FastMCP):
 
             logger.debug(f"[workflow_start] Waiting for instruction from out_queue")
             instruction = await context.out_queue.get()
-            logger.debug(f"[workflow_start] Got instruction: {instruction[:50] if instruction else None}...")
+            logger.debug(
+                f"[workflow_start] Got instruction: {instruction[:50] if instruction else None}..."
+            )
 
             return instruction + "\n\nCall tool `workflow_step()` when done."
 
@@ -113,15 +162,23 @@ class AegisServer(FastMCP):
             await sleep(0)  # Yield to let the task run
 
             task = self._tasks.get(uuid)
-            logger.debug(f"[workflow_step] Task done: {task.done() if task else 'no task'}")
+            logger.debug(
+                f"[workflow_step] Task done: {task.done() if task else 'no task'}"
+            )
 
             if task and task.done():
+                if task.exception() is not None:
+                    logger.debug(f"[workflow_step] Task failed with exception")
+                    return f"Workflow failed: {task.exception()}"
+
                 logger.debug(f"[workflow_step] Task is done, returning completed")
                 return "Workflow completed."
 
             logger.debug(f"[workflow_step] Waiting for instruction from out_queue")
             instruction = await context.out_queue.get()
-            logger.debug(f"[workflow_step] Got instruction: {instruction[:50] if instruction else None}...")
+            logger.debug(
+                f"[workflow_step] Got instruction: {instruction[:50] if instruction else None}..."
+            )
 
             return instruction
 
@@ -130,7 +187,7 @@ class AegisServer(FastMCP):
         self._tasks.pop(uuid, None)
         self._contexts.pop(uuid, None)
 
-    def workflow(self, name: str | None = None):
+    def workflow(self, name: str | None = None, max_retries: int = 3):
         """
         Decorator to define a workflow as an async generator.
 
@@ -149,7 +206,7 @@ class AegisServer(FastMCP):
 
         def decorator(func: Callable[[WorkflowContext], Coroutine]):
             workflow_name = name or func.__name__
-            self._workflows[workflow_name] = func
+            self._workflows[workflow_name] = (func, max_retries)
 
             @self.prompt(name=func.__name__, description=func.__doc__)
             async def wrapper() -> Any:
