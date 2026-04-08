@@ -5,7 +5,7 @@ import os
 from textwrap import dedent
 from uuid import uuid4
 from fastmcp import FastMCP, Context
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Generic, TypeVar
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from asyncio import Queue, create_task, sleep
 from asyncio.tasks import Task
@@ -13,8 +13,67 @@ from asyncio.tasks import Task
 
 class MaxRetriesExceededError(Exception):
     """Raised when workflow step exceeds maximum retry attempts."""
-
     pass
+
+
+T = TypeVar("T")
+
+
+class Attempt(Generic[T]):
+    """Async context manager + async iterator for retry on specific exceptions."""
+
+    def __init__(
+        self,
+        ctx: "WorkflowContext",
+        instruction: str,
+        response_type: type[T],
+        on_errors: tuple[type[Exception], ...],
+        max_attempts: int,
+    ):
+        self.ctx = ctx
+        self.instruction = instruction
+        self.response_type = response_type
+        self.on_errors = on_errors
+        self.max_attempts = max_attempts
+        self._attempt = 0
+        self._data: T | None = None
+
+    async def __aenter__(self) -> "Attempt[T]":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None and not any(issubclass(exc_type, e) for e in self.on_errors):
+            return False
+        if self._attempt >= self.max_attempts:
+            return False
+        return True
+
+    def __aiter__(self) -> "Attempt[T]":
+        return self
+
+    async def __anext__(self) -> T:
+        if self._attempt >= self.max_attempts:
+            raise StopAsyncIteration
+
+        try:
+            if self._data is None:
+                self._data = await self.ctx.step(self.instruction, self.response_type)
+            return self._data
+
+        except self.on_errors as e:
+            self._attempt += 1
+            if self._attempt >= self.max_attempts:
+                raise StopAsyncIteration
+
+            error_instruction = (
+                f"[ERROR] {e}\n\n"
+                f"You have {self.max_attempts - self._attempt} retries remaining.\n\n"
+                f"{self.instruction}\n\n"
+                "Fix the issue and provide new values."
+            )
+            self._data = await self.ctx.step(error_instruction, self.response_type)
+            self.ctx.reset_retry()
+            return await self.__anext__()
 
 
 logger = logging.getLogger("aegis")
@@ -36,6 +95,16 @@ class WorkflowContext:
 
     def reset_retry(self) -> None:
         self.retry_count = 0
+
+    def attempt[T: BaseModel](
+        self,
+        instruction: str,
+        response_type: type[T],
+        on_errors: tuple[type[Exception], ...] = (Exception,),
+        max_attempts: int = 3,
+    ) -> Attempt[T]:
+        """Create an attempt context for retry on specific exceptions."""
+        return Attempt(self, instruction, response_type, on_errors, max_attempts)
 
     async def step[T: BaseModel](
         self, instruction: str, response_type: type[T] | None = None

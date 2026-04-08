@@ -111,7 +111,7 @@ async def note(ctx: WorkflowContext):
         f"that might be related. Determine which notes to link using obsidian [[links]]."
     )
 
-    result = await ctx.step(
+    async with ctx.attempt(
         "Now compose the final note content. Include:\n"
         "- title: A clear, descriptive title\n"
         "- folder: The target folder (must exist, e.g., 'notes/', 'docs/')\n"
@@ -121,27 +121,14 @@ async def note(ctx: WorkflowContext):
         "- related: List of [[obsidian links]] to related notes\n"
         "\nValidation: folder must exist, filename must not already exist.\n\n"
         "DO NOT WRITE THE NOTE TO DISK, just compose the above information as a message.",
-        response_type=NoteData,
-    )
-
-    for attempt in range(3):
-        if result is None:
-            await ctx.step("Note creation was cancelled. STOP NOW.")
-            return
-
-        try:
+        response_type=NoteData
+    ) as attempt:
+        async for result in attempt:
             path = result.save(ctx.cwd)
             await ctx.step(
                 f"Note created successfully at: {path}\n\nShow this path to the user."
             )
             return
-        except ValueError as e:
-            error_msg = str(e)
-            result = await ctx.step(
-                f"Validation error: {error_msg}\n\nPlease provide different values as JSON.",
-                response_type=NoteData,
-            )
-            continue
 
     await ctx.step("Max retries exceeded. Note was not created. STOP NOW.")
 
