@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aegis = "aegis.server:main"
+aegis = "aegis.demo:main"
 
 [build-system]
 requires = ["hatchling"]
