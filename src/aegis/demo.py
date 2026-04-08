@@ -17,7 +17,7 @@ def init() -> str:
 
 @server.workflow()
 async def onboard(ctx: WorkflowContext):
-    """Start the onboarding workflow."""
+    """Explore the project and onboard the user."""
 
     await ctx.step(
         "You are onboarding into a new project. Your task is to explore the codebase and identify "

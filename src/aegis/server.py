@@ -151,7 +151,7 @@ class AegisServer(FastMCP):
             workflow_name = name or func.__name__
             self._workflows[workflow_name] = func
 
-            @self.prompt(name=func.__name__)
+            @self.prompt(name=func.__name__, description=func.__doc__)
             async def wrapper() -> Any:
                 return f'We are preparing to run workflow `{workflow_name}`.\nCall Aegis tool `workflow_start(name="{workflow_name}")` to start this workflow.'
 
