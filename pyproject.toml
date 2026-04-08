@@ -1,0 +1,22 @@
+[project]
+name = "aegis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Alejandro Piad", email = "apiad@apiad.net" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=3.2.0",
+    "pydantic>=2.12.5",
+    "rich>=14.3.3",
+    "typer>=0.24.1",
+]
+
+[project.scripts]
+aegis = "aegis.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
