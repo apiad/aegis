@@ -1,4 +1,3 @@
-import functools
 import json
 import logging
 import os
@@ -13,6 +12,7 @@ from asyncio.tasks import Task
 
 class MaxRetriesExceededError(Exception):
     """Raised when workflow step exceeds maximum retry attempts."""
+
     pass
 
 
@@ -42,7 +42,9 @@ class Attempt(Generic[T]):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
-        if exc_type is not None and not any(issubclass(exc_type, e) for e in self.on_errors):
+        if exc_type is not None and not any(
+            issubclass(exc_type, e) for e in self.on_errors
+        ):
             return False
         if self._attempt >= self.max_attempts:
             return False
@@ -58,6 +60,8 @@ class Attempt(Generic[T]):
         try:
             if self._data is None:
                 self._data = await self.ctx.step(self.instruction, self.response_type)
+            if self._data is None:
+                raise StopAsyncIteration
             return self._data
 
         except self.on_errors as e:
@@ -121,11 +125,11 @@ class WorkflowContext:
                 f"Then call tool `workflow_step(response='<your JSON string>')`."
             )
         else:
-            base_instruction += f"\n\nCall tool `workflow_step()` with NO arguments when done. No arguments needed in this step."
+            base_instruction += "\n\nCall tool `workflow_step()` with NO arguments when done. No arguments needed in this step."
 
         while True:
             self.out_queue.put_nowait(base_instruction)
-            logger.debug(f"[step] Waiting for response from in_queue")
+            logger.debug("[step] Waiting for response from in_queue")
             response = await self.in_queue.get()
             logger.debug(f"[step] Got response: {response}")
 
@@ -134,10 +138,10 @@ class WorkflowContext:
 
             if response_type is None:
                 if response is not None:
-                    error_msg = f"Expected no data (step expects no response), but received data. Please call `workflow_step()` with no arguments."
+                    error_msg = "Expected no data (step expects no response), but received data. Please call `workflow_step()` with no arguments."
             else:
                 if response is None:
-                    error_msg = f"Expected JSON data matching schema, but received nothing. Provide valid JSON."
+                    error_msg = "Expected JSON data matching schema, but received nothing. Provide valid JSON."
                 else:
                     try:
                         parsed_response = TypeAdapter(response_type).validate_json(
@@ -210,7 +214,7 @@ class AegisServer(FastMCP):
 
             await ctx.set_state("active_workflow", uuid)
 
-            logger.debug(f"[workflow_start] Waiting for instruction from out_queue")
+            logger.debug("[workflow_start] Waiting for instruction from out_queue")
             instruction = await context.out_queue.get()
             logger.debug(
                 f"[workflow_start] Got instruction: {instruction[:50] if instruction else None}..."
@@ -231,13 +235,13 @@ class AegisServer(FastMCP):
 
             if data is not None:
                 if isinstance(data, str):
-                    logger.debug(f"[workflow_step] Putting string in in_queue")
+                    logger.debug("[workflow_step] Putting string in in_queue")
                     context.in_queue.put_nowait(data)
                 else:
-                    logger.debug(f"[workflow_step] Putting JSON in in_queue")
+                    logger.debug("[workflow_step] Putting JSON in in_queue")
                     context.in_queue.put_nowait(json.dumps(data))
             else:
-                logger.debug(f"[workflow_step] Putting None in in_queue")
+                logger.debug("[workflow_step] Putting None in in_queue")
                 context.in_queue.put_nowait(None)
 
             await sleep(0)  # Yield to let the task run
@@ -249,13 +253,13 @@ class AegisServer(FastMCP):
 
             if task and task.done():
                 if task.exception() is not None:
-                    logger.debug(f"[workflow_step] Task failed with exception")
+                    logger.debug("[workflow_step] Task failed with exception")
                     return "Workflow ended with error. See above for details."
 
-                logger.debug(f"[workflow_step] Task is done, returning completed")
+                logger.debug("[workflow_step] Task is done, returning completed")
                 return "Workflow completed."
 
-            logger.debug(f"[workflow_step] Waiting for instruction from out_queue")
+            logger.debug("[workflow_step] Waiting for instruction from out_queue")
             instruction = await context.out_queue.get()
             logger.debug(
                 f"[workflow_step] Got instruction: {instruction[:50] if instruction else None}..."
@@ -285,11 +289,23 @@ class AegisServer(FastMCP):
         Read `ContextWorkflow` documentation for details on how to yield instructions and receive responses from the user.
         """
 
-        def decorator(func: Callable[[WorkflowContext], Coroutine]):
-            workflow_name = name or func.__name__
+        def decorator(
+            func: Callable[[WorkflowContext], Coroutine[Any, Any, Any]],
+        ) -> Any:
+            func_name: str | None = getattr(func, "__name__", None)
+            if name is not None:
+                workflow_name = name
+            elif func_name is not None:
+                workflow_name = func_name
+            else:
+                raise ValueError(
+                    "Workflow function must have a name or provide one via the 'name' parameter"
+                )
             self._workflows[workflow_name] = (func, max_retries)
 
-            @self.prompt(name=func.__name__, description=func.__doc__)
+            description: str | None = func.__doc__ if func.__doc__ is not None else None
+
+            @self.prompt(name=workflow_name, description=description)
             async def wrapper() -> Any:
                 return f'We are preparing to run workflow `{workflow_name}`.\nCall Aegis tool `workflow_start(name="{workflow_name}")` to start this workflow.'
 

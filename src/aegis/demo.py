@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from datetime import date
 from pathlib import Path
 from textwrap import dedent
@@ -60,7 +59,7 @@ related: {json.dumps(self.related)}
 
 ## Related Notes
 
-{''.join(f'- [[{link}]]\n' for link in self.related) if self.related else 'No related notes.'}
+{"".join(f"- [[{link}]]\n" for link in self.related) if self.related else "No related notes."}
 """
 
         target_file.write_text(frontmatter)
@@ -107,8 +106,8 @@ async def note(ctx: WorkflowContext):
     )
 
     await ctx.step(
-        f"Based on the desired note content, search the project folder for existing notes "
-        f"that might be related. Determine which notes to link using obsidian [[links]]."
+        "Based on the desired note content, search the project folder for existing notes "
+        "that might be related. Determine which notes to link using obsidian [[links]]."
     )
 
     async with ctx.attempt(
@@ -121,7 +120,7 @@ async def note(ctx: WorkflowContext):
         "- related: List of [[obsidian links]] to related notes\n"
         "\nValidation: folder must exist, filename must not already exist.\n\n"
         "DO NOT WRITE THE NOTE TO DISK, just compose the above information as a message.",
-        response_type=NoteData
+        response_type=NoteData,
     ) as attempt:
         async for result in attempt:
             path = result.save(ctx.cwd)
