@@ -1,9 +1,11 @@
 """Shared test fixtures and configuration."""
 
 import pytest
-from typing import Any
+import json
+from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 from asyncio import Queue
+from fastmcp import Client
 
 
 class MockQueue:
@@ -21,6 +23,18 @@ class MockQueue:
         value = self._all_values[self._current_index]
         self._current_index += 1
         return value
+
+    def get_nowait(self) -> Any:
+        """Get the next value from the queue without waiting."""
+        if self._current_index >= len(self._all_values):
+            raise Exception("Queue is empty")
+        value = self._all_values[self._current_index]
+        self._current_index += 1
+        return value
+
+    def empty(self) -> bool:
+        """Return True if the queue is empty."""
+        return self._current_index >= len(self._all_values)
 
     def put_nowait(self, value: Any) -> None:
         """Capture values put into the queue."""
@@ -59,6 +73,44 @@ class MockContext:
     def get_calls(self) -> list[tuple[str, dict]]:
         """Get all method calls made to this context."""
         return self._calls
+
+
+class WorkflowRunner:
+    """Helper to advance a workflow in tests."""
+
+    def __init__(self, client: Client, initial_result: str):
+        self.client = client
+        self.last_result = initial_result
+
+    async def step(self, data: Any = None) -> str:
+        """Advance the workflow with the given data."""
+        result = await self.client.call_tool("workflow_step", {"data": data})
+        self.last_result = result.data
+        return self.last_result
+
+    async def run_to_end(self, responses: list[Any]) -> AsyncIterator[str]:
+        """Run the workflow to the end with a list of responses."""
+        yield self.last_result
+        for response in responses:
+            yield await self.step(response)
+
+
+class AegisClient(Client):
+    """Custom MCP Client with workflow helpers."""
+
+    async def start_workflow(self, name: str, cwd: str | None = None) -> WorkflowRunner:
+        """Start a workflow and return a runner."""
+        args = {"name": name}
+        if cwd:
+            args["cwd"] = cwd
+        result = await self.call_tool("workflow_start", args)
+        return WorkflowRunner(self, result.data)
+
+    async def run_workflow(self, name: str, steps: list[Any], cwd: str | None = None) -> AsyncIterator[str]:
+        """Start and run a workflow to completion."""
+        runner = await self.start_workflow(name, cwd)
+        async for result in runner.run_to_end(steps):
+            yield result
 
 
 @pytest.fixture
@@ -112,6 +164,3 @@ def invalid_json():
 def mock_context():
     """Create a mock FastMCP Context."""
     return MockContext()
-
-
-from typing import Any
