@@ -33,12 +33,13 @@ def server():
     @srv.workflow()
     async def data_workflow(ctx: WorkflowContext):
         """A workflow that expects structured data."""
-        result = await ctx.step(
+        async with ctx.attempt(
             "Provide a name and value as JSON",
             response_type=DataModel,
-        )
-        if result:
-            await ctx.step(f"Got: {result.name} = {result.value}")
+        ) as attempt:
+            async for result in attempt:
+                await ctx.step(f"Got: {result.name} = {result.value}")
+                return
 
     @srv.workflow()
     async def failing_workflow(ctx: WorkflowContext):

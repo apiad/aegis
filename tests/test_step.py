@@ -10,7 +10,7 @@ Tests the validation retry loop behavior of the step method:
 
 import pytest
 from unittest.mock import patch, MagicMock
-from aegis.server import WorkflowContext, MaxRetriesExceededError
+from aegis.server import WorkflowContext
 
 
 class TestStepWithResponseType:
