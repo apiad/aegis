@@ -1,9 +1,11 @@
 import json
 import logging
+import subprocess
 from datetime import date
 from pathlib import Path
 from textwrap import dedent
-from pydantic import BaseModel
+from typing import Literal
+from pydantic import BaseModel, Field
 
 from aegis import AegisServer, WorkflowContext
 
@@ -64,6 +66,63 @@ related: {json.dumps(self.related)}
 
         target_file.write_text(frontmatter)
         return str(target_file)
+
+
+class FileChange(BaseModel):
+    path: str
+    status: str  # M, A, D, R
+    diff: str | None = None
+
+
+class CommitProposal(BaseModel):
+    type: Literal["feat","fix","docs","style","refactor","test","chore","perf","ci","build","revert"]
+    scope: str | None = None
+    description: str = Field(..., min_length=10)
+    files: list[str] = Field(..., min_length=1)
+
+
+class CommitPlan(BaseModel):
+    clusters: list[CommitProposal]
+
+
+def run_git(cwd: str, *args: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr}")
+    return result
+
+
+def get_git_status(cwd: str) -> list[FileChange]:
+    result = run_git(cwd, "status", "--porcelain")
+    changes: list[FileChange] = []
+    for line in result.stdout.strip().split("\n"):
+        if not line:
+            continue
+        status_code: str = line[:2]
+        filepath = line[3:] if len(line) > 3 else line[2:]
+        status_map = {
+            "M ": "modified",
+            "M?": "untracked",
+            "A ": "added",
+            "D ": "deleted",
+            "R ": "renamed",
+            "??": "untracked",
+        }
+        changes.append(FileChange(
+            path=filepath,
+            status=status_map.get(status_code, status_code.strip()),
+        ))
+    return changes
+
+
+def git_add_commit(cwd: str, files: list[str], message: str) -> None:
+    run_git(cwd, "add", *files)
+    run_git(cwd, "commit", "-m", message)
 
 
 @server.prompt()
@@ -133,10 +192,58 @@ async def note(ctx: WorkflowContext):
 
 
 @server.workflow()
-async def fail_workflow(ctx: WorkflowContext):
+async def fail(ctx: WorkflowContext):
     """A workflow that always fails for testing error handling."""
     await ctx.step("This workflow will fail intentionally...")
     raise ValueError("Intentional test failure")
+
+
+@server.workflow()
+async def commit(ctx: WorkflowContext):
+    """Orchestrate git commits from working tree changes."""
+    changes = get_git_status(ctx.cwd)
+    if not changes:
+        await ctx.step("Working tree is clean. Nothing to commit.")
+        return
+
+    async with ctx.attempt(
+        "Analyze the following changes and propose commits:\n"
+        + "\n".join(f"- {c.path} ({c.status})" for c in changes)
+        + "\n\nGroup these files into meaningful commits using "
+        "conventional commits format. Inform and get user consent before next step, iterate with user until consent.",
+        response_type=CommitPlan,
+
+    ) as attemps:
+        async for plan in attemps:
+            changes_paths = {c.path for c in changes}
+            proposed_paths: set[str] = set()
+
+            for proposal in plan.clusters:
+                proposed_paths.update(proposal.files)
+
+            missing = changes_paths - proposed_paths
+            if missing:
+                raise ValueError(
+                    f"Validation failed: The following files are missing from all proposals: {missing}"
+                )
+
+            for proposal in plan.clusters:
+                try:
+                    git_add_commit(
+                        ctx.cwd,
+                        proposal.files,
+                        f"{proposal.type}{'(' + proposal.scope + ')' if proposal.scope else ''}: {proposal.description}",
+                    )
+                except Exception as e:
+                    logger.warning(f"Commit failed for {proposal.files}: {e}")
+                    continue
+
+    changes = get_git_status(ctx.cwd)
+
+    if not changes:
+        await ctx.step("Inform the user all commits where done.")
+    else:
+        await ctx.step("Inform the user some files couldn't be commited. Suggest to rerun workflow.")
 
 
 def main():
