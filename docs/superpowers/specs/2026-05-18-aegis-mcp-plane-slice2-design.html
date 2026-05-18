@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis MCP Plane — Slice 2 (list_sessions / list_agents / handoff)" status=approved date=2026-05-18 source="follows slice-1; 0.2.0-bound" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis MCP Plane — Slice 2 — Design</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;
+    --g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:14px 0 6px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec · Aegis · Phase 3 slice 2</div>
+    <h1>MCP Plane — Slice 2: list_sessions / list_agents / handoff</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>0.2.0-bound · follows slice-1</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a><a href="#decisions">Locked decisions</a>
+    <a href="#bridge">AppBridge</a><a href="#tools">Tools</a>
+    <a href="#handoff">Handoff flow</a><a href="#identity">Caller identity</a>
+    <a href="#wiring">Wiring</a><a href="#errors">Error handling</a>
+    <a href="#testing">Verification</a><a href="#nongoals">Non-goals</a>
+    <a href="#seq">Sequencing</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Give an agent inside aegis the tools to know its team and pass work to
+      it: discover the other live sessions and the spawnable agent profiles,
+      and hand a packaged context to another live session (fire-and-forget).
+      This is the vision's inter-agent MCP (live <em>context-transfer</em>
+      handoff) — distinct from the blocking subagent spawn (delegate),
+      deferred to slice 3.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Scope</strong>: an <code>AppBridge</code> enabler +
+        <code>aegis_list_sessions</code> + <code>aegis_list_agents</code> +
+        <code>aegis_handoff</code>. <code>aegis_delegate</code> (spawn+block)
+        is slice 3.</li>
+      <li><strong>Handoff is fire-and-forget</strong>: caller composes the
+        context payload; aegis injects it into the target session as a tagged
+        user turn; the call returns immediately. No waiting for a reply
+        (blocking = delegate).</li>
+      <li><strong>Target busy → clear reject</strong>: if the target pane is
+        mid-turn, the tool returns a "target busy, retry" message; no
+        queuing, no interleaving.</li>
+      <li><strong>Caller identity is self-reported</strong>: the per-pane
+        priming tells the agent its own handle; <code>aegis_handoff</code>
+        takes <code>from_handle</code>. Self-handoff / unknown target are
+        validated and rejected.</li>
+      <li><strong>AppBridge protocol</strong>: the server never imports
+        Textual; <code>AegisApp</code> implements the bridge; tools are async
+        and run on the app's loop (safe widget access).</li>
+    </ol>
+  </section>
+
+  <section id="bridge">
+    <h2>AppBridge — <code>src/aegis/mcp/bridge.py</code> (new)</h2>
+<pre><code>@dataclass(frozen=True)
+class SessionInfo:
+    handle: str
+    agent_slug: str
+    state: str        # AgentState.value: "ready"|"working"|"error"
+    active: bool       # is this the focused tab
+    unseen: bool
+
+class AppBridge(Protocol):
+    def list_sessions(self) -&gt; list[SessionInfo]: ...
+    def list_agents(self) -&gt; list[str]: ...
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str: ...</code></pre>
+    <p>A pure interface. The server depends only on this; the app supplies a
+      concrete implementation. <code>SessionInfo</code> is the read model the
+      list tool serialises.</p>
+  </section>
+
+  <section id="tools">
+    <h2>Tools — <code>src/aegis/mcp/server.py</code> (extend)</h2>
+    <p><code>build_server(bridge: AppBridge) -&gt; FastMCP</code> — slice-1's
+      signature gains the bridge. All tools <strong>async</strong> (run on the
+      app loop):</p>
+    <ul>
+      <li><strong><code>aegis_meta() -&gt; str</code></strong> — briefing
+        (still static) extended to: document
+        <code>aegis_list_sessions</code> / <code>aegis_list_agents</code> /
+        <code>aegis_handoff</code>; state that the agent's own handle is in
+        its system prompt and must be passed as <code>from_handle</code>;
+        explain handoff is a one-way context transfer to a live peer.</li>
+      <li><strong><code>aegis_list_sessions() -&gt; list[dict]</code></strong>
+        — <code>[bridge.list_sessions()]</code> serialised:
+        <code>handle, agent_slug, state, active, unseen</code> per live tab.
+        Lets an agent see who it can hand off to and whether they're idle.</li>
+      <li><strong><code>aegis_list_agents() -&gt; list[str]</code></strong> —
+        the configured agent-profile slugs (what could be spawned later).
+        Listing only; spawning is slice 3.</li>
+      <li><strong><code>aegis_handoff(from_handle: str, target_handle: str,
+        context: str) -&gt; str</code></strong> — awaits
+        <code>bridge.handoff(...)</code>; returns its string result
+        (delivered / rejected reason).</li>
+    </ul>
+  </section>
+
+  <section id="handoff">
+    <h2>Handoff flow</h2>
+    <ol>
+      <li>Agent A (knows its handle from the system prompt) calls
+        <code>aegis_handoff(from_handle="A", target_handle="B",
+        context="…summary…")</code>.</li>
+      <li>The tool awaits <code>bridge.handoff</code> →
+        <code>AegisApp.handoff</code>: resolve target pane by handle among
+        <code>self._panes</code>.
+        <ul>
+          <li><code>target_handle == from_handle</code> → return
+            <code>"handoff rejected: cannot hand off to yourself"</code>.</li>
+          <li>no pane with <code>target_handle</code> → return
+            <code>"handoff rejected: no session 'B' (use
+            aegis_list_sessions)"</code>.</li>
+          <li>target <code>pane.state is AgentState.working</code> → return
+            <code>"handoff rejected: 'B' is busy, retry shortly"</code>.</li>
+        </ul></li>
+      <li>Otherwise <code>await target.deliver_handoff(from_handle,
+        context)</code> and return <code>"delivered to B"</code>.</li>
+    </ol>
+    <h3>ConversationPane.deliver_handoff(from_handle, context)</h3>
+    <p>Reuses the normal submission path. Factor the body of
+      <code>on_input_submitted</code> (write user line → set working →
+      <code>start_turn</code> → <code>run_worker(_run_turn(text))</code>) into
+      a private <code>_submit(text)</code>; <code>on_input_submitted</code>
+      and <code>deliver_handoff</code> both call it. The handoff's injected
+      line is rendered with the user style but prefixed
+      <code>[handoff from &lt;from_handle&gt;]</code> so the receiving agent
+      (and the human watching that tab) sees it is an inter-agent transfer,
+      then the context. The target's turn runs normally; A does not wait.</p>
+  </section>
+
+  <section id="identity">
+    <h2>Caller identity (self-report)</h2>
+    <p>The MCP server is shared; a tool call carries no intrinsic pane
+      identity. aegis bakes the handle into the per-pane system prompt:
+      <code>PRIMING</code> becomes a template with a <code>{handle}</code>
+      slot; <code>build_argv(agent, cwd, mcp_url, handle)</code> formats it
+      (the same additive thread slice-1 used for <code>mcp_url</code>). The
+      agent reads its handle from its system prompt and passes it as
+      <code>from_handle</code>. Trust-based — acceptable for single-user
+      personal infra; the validation (self/unknown/busy) bounds the blast
+      radius. Enforced per-pane identity is a future hardening (recorded,
+      not this slice).</p>
+  </section>
+
+  <section id="wiring">
+    <h2>Wiring (delta to slice-1)</h2>
+    <ul>
+      <li><code>build_server(bridge)</code> — slice-1's no-arg
+        <code>build_server()</code> gains the bridge param.</li>
+      <li><code>AegisMCP(bridge)</code> — slice-1's runtime gains a bridge it
+        forwards to <code>build_server</code>.</li>
+      <li><code>AegisApp</code> <strong>implements <code>AppBridge</code></strong>
+        (<code>list_sessions</code>/<code>list_agents</code>/<code>handoff</code>
+        methods on the app) and <strong>binds itself</strong> as the bridge
+        before <code>mcp.start()</code> in <code>on_mount</code>
+        (e.g. <code>self._mcp.bind(self)</code>, or it constructs
+        <code>AegisMCP(self)</code> there). Tests still inject
+        <code>FakeMCP</code> (no bridge needed); server-tool tests use a
+        <code>FakeBridge</code>.</li>
+      <li><code>make_session(profile, mcp_url, handle)</code> →
+        <code>session(agent, cwd, mcp_url, handle)</code> →
+        <code>build_argv(..., handle)</code>; <code>_spawn</code> passes
+        <code>handle</code> (it already generates it).</li>
+      <li><code>ConversationPane</code>: extract <code>_submit(text)</code>;
+        add <code>async deliver_handoff(from_handle, context)</code>.</li>
+    </ul>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <ul>
+      <li>All handoff failure modes return a <strong>plain string</strong>
+        the calling agent can act on (reject reasons above) — not exceptions
+        across the MCP boundary.</li>
+      <li><code>list_sessions</code>/<code>list_agents</code> never fail: empty
+        list if (impossibly) no panes; they are pure reads of app state.</li>
+      <li>A handoff whose target errors mid-delivery: <code>deliver_handoff</code>
+        only enqueues the turn (same as a user submit) — any harness error
+        surfaces in the <em>target</em> pane's transcript, not the caller's
+        tool result (which already returned "delivered").</li>
+      <li>Tools run on the app loop; they must not block it — they only read
+        small state or call an async pane method that itself spawns a worker
+        (non-blocking), so a tool call returns promptly.</li>
+      <li>Bridge unbound (defensive): if <code>AegisMCP</code> somehow starts
+        without a bound bridge, tools return
+        <code>"aegis bridge unavailable"</code> rather than crash. The wiring
+        guarantees binding before start; this is belt-and-suspenders.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Verification</h2>
+    <ul>
+      <li><strong>unit (FakeBridge)</strong> — <code>aegis_list_sessions</code>
+        serialises SessionInfo fields; <code>aegis_list_agents</code> returns
+        the slugs; <code>aegis_handoff</code> returns the delivered string,
+        and the three reject strings for self / unknown / busy.</li>
+      <li><strong>unit</strong> — <code>aegis_meta()</code> briefing now
+        names the three new tools and the "handle is in your system prompt"
+        instruction; <code>PRIMING.format(handle=...)</code> embeds the
+        handle; <code>build_argv(..., handle)</code> system-prompt arg
+        contains it.</li>
+      <li><strong>pilot (real AppBridge)</strong> — an <code>AegisApp</code>
+        with two panes: <code>app.list_sessions()</code> reflects both
+        handles/states/active; <code>await app.handoff(a, b, "ctx")</code>
+        injects <code>[handoff from a]</code> into pane b's transcript and
+        sets b working; self/unknown/busy each return the right reject and do
+        <em>not</em> modify any pane.</li>
+      <li><strong>pilot</strong> — <code>deliver_handoff</code> and
+        <code>on_input_submitted</code> share <code>_submit</code> (a normal
+        user message and a handoff both produce a working turn; existing
+        submit tests still pass).</li>
+      <li><strong>live extension</strong> (slow, skips w/o claude) — an agent
+        is told to call <code>aegis_list_sessions</code>; assert the stream
+        shows the tool call and its own handle in the result. (Two-agent
+        live handoff is exercised by the pilot, not the slow live test.)</li>
+      <li>Hermetic suite green; <code>FakeMCP</code> path unchanged. Test
+        work written/validated inline.</li>
+    </ul>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li><code>aegis_delegate</code> — spawn a subagent into a new session
+        and block on its result (slice 3).</li>
+      <li>Blocking / round-trip handoff; awaiting the target's reply.</li>
+      <li>Queuing handoffs to a busy target (reject now; queue is a later
+        refinement).</li>
+      <li>Enforced per-pane MCP identity (self-report this slice).</li>
+      <li>Cross-instance / multi-host; observing another agent's stream.</li>
+    </ul>
+    <details>
+      <summary>Deferred / next</summary>
+      <p>Slice 3: <code>aegis_delegate</code> (spawn-into-session + block +
+        result capture). Later: enforced identity, busy-queue, "ask" (a
+        bounded blocking question to a peer distinct from full delegate),
+        observe/attach.</p>
+    </details>
+  </section>
+
+  <section id="seq">
+    <h2>Sequencing</h2>
+    <p>Spec + plan now. <strong>Implement only after slice-1 is merged on
+      <code>main</code></strong> — slice-2 modifies slice-1's
+      <code>build_server()</code> / <code>AegisMCP</code> / the
+      <code>build_argv</code> signature, which must exist first. Slice-1 is
+      chained behind the in-flight v0.1.0 release job; this is the next
+      <code>0.2.0</code>-bound feature after it. CHANGELOG
+      <code>[Unreleased]</code> gets a slice-2 line when implemented.</p>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis MCP slice-2 spec</footer>
+
+</div>
+</body>
+</html>
