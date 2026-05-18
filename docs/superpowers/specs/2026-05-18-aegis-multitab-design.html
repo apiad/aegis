@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Multi-Tab (Phase 2)" status=approved date=2026-05-18 source="builds on 2026-05-18-aegis-tui-design + 2026-05-18-aegis-status-metrics-design" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Multi-Tab (Phase 2) — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec · Aegis Phase 2</div>
+    <h1>Aegis Multi-Tab — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>Builds on: aegis-tui-design + aegis-status-metrics-design</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#naming">Naming</a>
+    <a href="#display">Tab &amp; status display</a>
+    <a href="#components">Components</a>
+    <a href="#flow">Data flow &amp; signalling</a>
+    <a href="#keymap">Keymap</a>
+    <a href="#lifecycle">Lifecycle</a>
+    <a href="#errors">Error handling</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Run many independent live agent conversations in one TUI: a one-line
+      tab bar listing every tab with its state dot and a uniquely generated
+      handle, a single visible conversation pane that switches instantly,
+      per-tab agent profiles, and cross-tab signalling (state dot + sticky
+      attention mark + bell) so a tab that finishes while you are elsewhere
+      is obvious at a glance.</p>
+    <p>This is the vision's <strong>Phase 2</strong> (multi-tab TUI +
+      cross-tab signalling). Handoff, the MCP plane, and queues remain later
+      phases and are out of scope.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Per-tab agent profile.</strong> Each tab is an independent
+        <code>HarnessSession</code> that may use a different config agent
+        profile.</li>
+      <li><strong>Tab creation.</strong> <code>Ctrl+T</code> spawns a tab on
+        <code>default_agent</code> instantly; <code>Ctrl+N</code> opens an
+        agent-profile picker modal.</li>
+      <li><strong>Layout.</strong> One-line tab bar (all tabs, with dots) on
+        top; one active conversation pane below (transcript + status +
+        input); switching swaps the pane (no split-screen).</li>
+      <li><strong>Cross-tab signalling.</strong> Background tab finish/error →
+        its dot reflects <code>AgentState</code> + a sticky <code>*</code>
+        attention mark stays until the tab is focused + one terminal bell.</li>
+      <li><strong>Unique generated handle.</strong>
+        <code>&lt;adjective&gt;-&lt;turing-laureate&gt;</code> (e.g.
+        <code>lucid-knuth</code>); the agent profile slug shows next to it in
+        a distinct accent color.</li>
+      <li><strong>Architectural refactor.</strong> Extract a per-conversation
+        <code>ConversationPane</code> unit; <code>AegisApp</code> becomes a
+        shell managing N panes.</li>
+    </ol>
+  </section>
+
+  <section id="naming">
+    <h2>Naming resolved (vision open question, this layer)</h2>
+    <p>User-facing = <strong>tab</strong>. Internal unit =
+      <code>ConversationPane</code>. Live process = <strong>session</strong>
+      (<code>HarnessSession</code>). <strong>Agent</strong> = a config profile
+      (slug like <code>default</code>/<code>fast</code>/<code>opus</code>).
+      <strong>Handle</strong> = the generated per-tab identity
+      (<code>lucid-knuth</code>).</p>
+  </section>
+
+  <section id="display">
+    <h2>Tab bar &amp; status bar display</h2>
+    <p>Tab bar is a single line; it cannot stack, so the slug sits
+      <em>next to</em> the handle in an accent color:</p>
+<pre><code>[●1 lucid-knuth ·default·] [●2 wry-hopper ·fast·]* [●3 brisk-dijkstra ·opus·]
+  active highlighted          ↑ sticky * = finished while unfocused</code></pre>
+    <ul>
+      <li><code>●</code> is <code>AgentState.dot</code> (green ready / orange
+        working / red error).</li>
+      <li>Handle normal weight; profile slug in one CSS-driven accent color,
+        consistent between tab bar and status bar so the eye links them.</li>
+      <li>Active tab highlighted (reverse/bold). <code>*</code> appended when
+        <code>pane.unseen</code>; cleared when the tab is focused.</li>
+    </ul>
+    <p>Status bar (active pane, has room):</p>
+<pre><code>lucid-knuth  ·default·  opus · auto    ✻ working…    ↑1.2k ↓340 · ⚒ 7 · 12s / 4m03s</code></pre>
+    <p>Handle, accent slug, then the existing <code>model · permission</code>
+      identity, state label, and the metrics suffix (unchanged from the
+      metrics increment).</p>
+  </section>
+
+  <section id="components">
+    <h2>Components</h2>
+    <table>
+      <thead><tr><th>Unit</th><th>Responsibility</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td><code>tui/names.py</code></td>
+          <td><code>generate_name(taken, rng) → &lt;adj&gt;-&lt;laureate&gt;</code>;
+            regenerates on collision with <code>taken</code>. Pure, seedable.
+            Constants <code>ADJECTIVES</code>, <code>LAUREATES</code>.</td>
+          <td>—</td></tr>
+        <tr><td><code>tui/pane.py</code> — <code>ConversationPane</code></td>
+          <td>One conversation. Owns <code>session</code>, <code>agent</code>,
+            <code>agent_slug</code>, <code>handle</code>,
+            <code>SessionMetrics</code>, <code>state</code>,
+            <code>unseen</code>. Composes child RichLog + StatusBar + Input.
+            Hosts the <code>_run_turn</code> worker, <code>interrupt()</code>,
+            <code>close()</code>, <code>_finish</code>. Posts
+            <code>PaneStateChanged</code> on every transition.</td>
+          <td><code>drivers.base</code>, <code>events</code>,
+            <code>render</code>, <code>metrics</code>, <code>state</code>,
+            <code>widgets</code></td></tr>
+        <tr><td><code>tui/widgets.py</code> — <code>TabBar</code></td>
+          <td>Evolved from <code>TabStrip</code>.
+            <code>set_tabs(items)</code> (index, handle, slug,
+            <code>AgentState</code>, unseen, active); renders the one-line bar
+            with dots, accent slug, highlight, <code>*</code>. Display-only.
+            <code>StatusBar</code> gains the handle + accent-slug segment.</td>
+          <td><code>state</code></td></tr>
+        <tr><td><code>tui/picker.py</code> — <code>AgentPicker</code></td>
+          <td><code>ModalScreen</code> listing agent-profile names from the
+            config map; Enter → chosen slug, Esc → cancel.</td>
+          <td><code>config</code></td></tr>
+        <tr><td><code>tui/app.py</code> — <code>AegisApp</code></td>
+          <td>Shell: <code>panes</code> list + active index, a
+            <code>ContentSwitcher</code> holding the panes, the
+            <code>TabBar</code>, global keymap, agent picker, cross-tab
+            signalling, one shared 1s metrics tick for the active pane. Takes
+            the config (<code>agents</code>, <code>default_agent</code>) + a
+            session factory.</td>
+          <td>all above, <code>config</code></td></tr>
+        <tr><td><code>cli.py</code></td>
+          <td>Build <code>make_session(agent) → HarnessSession</code> from the
+            resolved driver; pass <code>agents</code>,
+            <code>default_agent</code>, factory to <code>AegisApp</code>.</td>
+          <td><code>drivers</code>, <code>config</code>, <code>tui</code></td></tr>
+      </tbody>
+    </table>
+    <p><code>ConversationPane</code> is the unit the old mono-<code>AegisApp</code>
+      becomes: the existing
+      <code>_run_turn</code>/<code>_finish</code>/<code>interrupt</code>/metrics/state
+      logic moves there essentially unchanged, parameterised by the pane's own
+      session/agent/handle.</p>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow &amp; cross-tab signalling</h2>
+    <ol>
+      <li>App starts with one tab: <code>handle = generate_name(set())</code>,
+        session via the factory for <code>default_agent</code>,
+        <code>ConversationPane</code> mounted in the
+        <code>ContentSwitcher</code>, <code>pane.start()</code>, active
+        index 0.</li>
+      <li>Each pane's <code>_run_turn</code> worker streams events exactly as
+        today (render, metrics, state) but scoped to that pane's widgets.</li>
+      <li>On every state transition a pane posts
+        <code>PaneStateChanged(pane)</code> bubbling to
+        <code>AegisApp.on_pane_state_changed</code>, which rebuilds the
+        <code>TabBar</code>; and if the change is a <strong>turn
+        finish/error from a non-active pane</strong> → set
+        <code>pane.unseen = True</code> and <code>self.bell()</code> once;
+        active-pane finish → <code>self.bell()</code> (turn-finish ping, as
+        today), no <code>*</code>.</li>
+      <li>Switch (<code>Ctrl+1..9</code>, <code>Ctrl+Tab</code>,
+        <code>Ctrl+→/←</code>): set <code>ContentSwitcher.current</code>,
+        <code>target.unseen = False</code>, focus its <code>Input</code>,
+        rebuild <code>TabBar</code>.</li>
+      <li>One app-level <code>set_interval(1.0, self._tick)</code> refreshes
+        only the active pane's <code>StatusBar</code> metrics. Background
+        panes' <code>SessionMetrics</code> still accumulate from their own
+        events; their clock is <code>now</code>-computed so it is correct
+        whenever the tab is next viewed.</li>
+    </ol>
+  </section>
+
+  <section id="keymap">
+    <h2>Keymap (global, <code>AegisApp.BINDINGS</code>, priority)</h2>
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><code>Ctrl+T</code></td><td>New tab, <code>default_agent</code>, instant</td></tr>
+        <tr><td><code>Ctrl+N</code></td><td>Open <code>AgentPicker</code>; selection spawns a tab with that profile</td></tr>
+        <tr><td><code>Ctrl+W</code></td><td>Close active tab (terminate its session); if it was the last tab, quit</td></tr>
+        <tr><td><code>Ctrl+1</code>..<code>Ctrl+9</code></td><td>Jump to tab N (no-op if absent)</td></tr>
+        <tr><td><code>Ctrl+Tab</code> / <code>Ctrl+Right</code></td><td>Next tab (wraps)</td></tr>
+        <tr><td><code>Ctrl+Left</code></td><td>Previous tab (wraps)</td></tr>
+        <tr><td><code>Escape</code></td><td>Interrupt the active pane's in-flight turn</td></tr>
+        <tr><td><code>Ctrl+Q</code></td><td>Quit: close all sessions, exit</td></tr>
+      </tbody>
+    </table>
+    <p><code>Enter</code> (submit) stays on each pane's <code>Input</code>.
+      <code>Escape</code>/interrupt acts only on the active pane.</p>
+  </section>
+
+  <section id="lifecycle">
+    <h2>Lifecycle</h2>
+    <ul>
+      <li><strong>Spawn:</strong> <code>generate_name</code> against the set
+        of live handles → factory builds the session →
+        <code>ConversationPane</code> mounted → <code>await pane.start()</code>
+        → activated.</li>
+      <li><strong>Background:</strong> panes stay mounted in the
+        <code>ContentSwitcher</code>; their workers keep running while hidden;
+        events accumulate into their own <code>RichLog</code> and
+        <code>SessionMetrics</code>.</li>
+      <li><strong>Close (<code>Ctrl+W</code>):</strong>
+        <code>await pane.close()</code> (terminate that session), unmount,
+        drop from <code>panes</code>, activate the nearest neighbor; closing
+        the last tab calls <code>action_quit</code>.</li>
+      <li><strong>Quit (<code>Ctrl+Q</code>):</strong> close every pane's
+        session, then <code>exit()</code>.</li>
+    </ul>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <ul>
+      <li>Per-pane harness exit / exception: handled exactly as today but
+        scoped to that pane (red <code>⚠</code> note in <em>its</em>
+        transcript, its dot → red, its <code>unseen</code> set if it is not
+        the active pane, one bell). Other tabs unaffected.</li>
+      <li>Session spawn failure on a new tab: the new pane mounts, shows
+        <code>⚠ harness error</code>, dot red — no app crash; close with
+        <code>Ctrl+W</code>.</li>
+      <li>Agent picker cancel/empty is a no-op; an invalid slug cannot be
+        chosen (list built from the config map).</li>
+      <li><code>generate_name</code> exhaustion (implausible — thousands of
+        combos): fall back to a numeric suffix. Defensive only.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <ul>
+      <li><strong><code>names.generate_name</code>:</strong> seeded RNG →
+        deterministic; format <code>^[a-z]+-[a-z]+$</code>; never returns a
+        member of <code>taken</code> (collision path exercised);
+        numeric-suffix fallback when the space is artificially exhausted.</li>
+      <li><strong><code>ConversationPane</code></strong> (pilot,
+        <code>FakeSession</code>): submit → send + render + metrics + state;
+        interrupt; <code>close()</code> calls <code>session.close</code>;
+        posts <code>PaneStateChanged</code> on finish; distinct
+        <code>handle</code>/<code>agent_slug</code>.</li>
+      <li><strong><code>AegisApp</code> shell</strong> (pilot, injected fake
+        session factory): starts with one tab; <code>Ctrl+T</code> adds a tab
+        with a unique handle; switching clears <code>unseen</code>; a
+        background pane finishing sets that pane's <code>unseen</code> and
+        fires exactly one bell; <code>Ctrl+W</code> closes (last → exits);
+        <code>Ctrl+N</code> picker selection spawns that profile;
+        <code>TabBar</code> text contains each handle, accent slug, dot, and
+        <code>*</code> only when unseen.</li>
+    </ul>
+    <details>
+      <summary>Refactor &amp; test-migration note</summary>
+      <p>Existing single-tab pilot tests are rewritten against the new shape
+        (<code>ConversationPane</code> for conversation behavior;
+        <code>AegisApp</code> for shell behavior). The refactor preserves
+        behavior; the suite stays green at every commit. Test work is
+        written/validated inline (not delegated). The live <code>claude</code>
+        driver test is unchanged (driver-level).</p>
+    </details>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>Split-screen / tiling, drag-reorder tabs.</li>
+      <li>Scrollback or metrics persistence across <code>aegis</code> restarts.</li>
+      <li>Manual tab renaming, configurable keymap.</li>
+      <li>The MCP plane / live-handoff / sequential-handoff / task queues /
+        distribution (all later vision phases).</li>
+    </ul>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis Phase 2 spec</footer>
+
+</div>
+</body>
+</html>
