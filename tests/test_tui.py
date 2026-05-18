@@ -1,6 +1,6 @@
 import pytest
 from aegis.config import Agent
-from aegis.events import AssistantText, Result, ToolResult, ToolUse
+from aegis.events import AssistantText, Result
 from aegis.tui.app import AegisApp
 from aegis.tui.pane import ConversationPane
 from aegis.tui.state import AgentState

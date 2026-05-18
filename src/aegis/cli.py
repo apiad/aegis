@@ -46,8 +46,8 @@ def run(
             f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
         raise typer.Exit(1)
 
-    def make_session(agent):
-        return get_driver(agent.harness).session(agent, cwd)
+    def make_session(profile):
+        return get_driver(profile.harness).session(profile, cwd)
 
     AegisApp(agents, name, make_session).run()
 

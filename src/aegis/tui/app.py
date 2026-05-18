@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import ContentSwitcher, Input
+from textual.widgets import ContentSwitcher
 
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
