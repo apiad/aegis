@@ -35,6 +35,8 @@ class ToolResult:
 class Result:
     duration_ms: int | None
     is_error: bool
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 @dataclass
@@ -90,9 +92,14 @@ def parse(line: str) -> Event:
         return SystemInit(session_id=obj.get("session_id"))
 
     if etype == "result":
+        usage = obj.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
         return Result(
             duration_ms=obj.get("duration_ms"),
             is_error=bool(obj.get("is_error", False)),
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
         )
 
     if etype == "assistant":

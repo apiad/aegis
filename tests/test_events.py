@@ -78,3 +78,21 @@ def test_real_fixture_lines_all_parse(fixture):
     events = [parse(l) for l in lines]
     assert any(isinstance(e, Result) for e in events)
     assert any(isinstance(e, (AssistantText, ToolUse)) for e in events)
+
+
+def test_parse_result_with_usage_tokens():
+    ev = parse(json.dumps({
+        "type": "result", "subtype": "success",
+        "duration_ms": 700, "is_error": False,
+        "usage": {"input_tokens": 1200, "output_tokens": 340},
+    }))
+    assert isinstance(ev, Result)
+    assert ev.input_tokens == 1200
+    assert ev.output_tokens == 340
+
+
+def test_parse_result_without_usage_tokens_are_none():
+    ev = parse(json.dumps({"type": "result", "subtype": "success",
+                            "duration_ms": 1, "is_error": False}))
+    assert ev.input_tokens is None
+    assert ev.output_tokens is None
