@@ -122,9 +122,14 @@ single-terminal case).
 | Key | Action |
 |---|---|
 | `Enter` | Send the input (if non-empty and state is `ready`) |
-| `Ctrl+C` | Interrupt the in-flight turn: cancel the worker, append a dim `^C` note to the transcript, state → `ready`, re-enable input. Best-effort (same posture as Phase-1). |
+| `Escape` | Interrupt the in-flight turn: cancel the worker, append a dim `^C` note to the transcript, state → `ready`, re-enable input. Best-effort (same posture as Phase-1). |
 | `Ctrl+Q` | Quit (closes the session, exits cleanly) |
 | `PageUp` / `PageDown`, mouse wheel | Scroll the transcript (free from `RichLog`) |
+
+> Deviation from the original lock: interrupt is `Escape`, not `Ctrl+C`.
+> Textual 8.x reserves `ctrl+c` (system `help_quit`; becomes copy when an
+> Input is focused); rebinding it is brittle, so `Escape` (universal cancel)
+> is used instead.
 
 Thinking renders collapsed as `✻ Thinking…` — no expand toggle in v1.
 

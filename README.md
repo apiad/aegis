@@ -7,11 +7,13 @@ Claude Code via its `stream-json` protocol and re-renders output cleanly.
 
     uv pip install -e .
     aegis init          # writes .aegis.py
-    aegis               # interactive session with the default agent
+    aegis               # full-screen TUI with the default agent
     aegis --agent fast  # pick a named agent profile
 
-Type your first message at the `aegis>` prompt. `exit` / `quit` / Ctrl-D ends
-the session.
+Type in the input box and press Enter. `Escape` interrupts the current turn;
+`Ctrl+Q` quits. The transcript scrolls with PageUp/PageDown or the mouse.
+A terminal bell rings when a turn finishes; the tab dot is green (idle),
+orange (working), or red (error).
 
 ## Config (.aegis.py)
 
@@ -40,5 +42,6 @@ points you at `aegis init`.
 
 ## Status
 
-Phase 1 of the vision in `docs/superpowers/specs/`. The earlier
-workflow-engine prototype is preserved, unbuilt, under `legacy/`.
+Phase 1 + the Phase-1.5 full-screen Textual TUI. Specs in
+`docs/superpowers/specs/`. The earlier workflow-engine prototype is preserved,
+unbuilt, under `legacy/`.

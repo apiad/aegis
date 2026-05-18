@@ -14,8 +14,8 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/config.py` - Agent profile + .aegis.py loader
 - `src/aegis/drivers/` - HarnessDriver seam; ClaudeDriver in claude.py
 - `src/aegis/events.py` - stream-json parser (typed events)
-- `src/aegis/render.py` - rich renderer
-- `src/aegis/repl.py` - async REPL loop
+- `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
+- `src/aegis/tui/` - Textual full-screen app (app.py), widgets, AgentState
 - `legacy/` - sidelined workflow-engine prototype (not built, not tested)
 
 ## Tests
@@ -33,6 +33,9 @@ Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 - `claude -p` with `--output-format stream-json` also requires `--verbose` and
   `--input-format stream-json --replay-user-messages` — see
   `drivers/claude.py:build_argv`.
+- The TUI is Textual 8.x. Interrupt is `Escape` (Textual reserves `ctrl+c`).
+  The line REPL was removed in Phase 1.5; there is no `--plain` mode, so the
+  TUI requires a TTY. Live/driver tests do not go through the App.
 
 ## Python
 
