@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis Multi-Tab (Phase 2)" status=approved date=2026-05-18 source="docs/superpowers/specs/2026-05-18-aegis-multitab-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Multi-Tab (Phase 2) — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--oat:#E3DACC;
+    --olive:#788C5D;--rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;
+    --g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:16px 0 8px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis Phase 2</div>
+    <h1>Aegis Multi-Tab — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-18</span>
+      <span>Spec: 2026-05-18-aegis-multitab-design.html</span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — use <code>superpowers:subagent-driven-development</code>
+      (recommended) or <code>superpowers:executing-plans</code>, task by task.
+      Each task keeps <code>uv run pytest -q -k "not live"</code> green at its
+      commit. Commit straight to <code>main</code> (authorized for aegis).</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#files">File structure</a>
+    <a href="#t1">T1 names</a>
+    <a href="#t2">T2 extract pane</a>
+    <a href="#t3">T3 TabBar</a>
+    <a href="#t4">T4 multi-pane shell</a>
+    <a href="#t5">T5 AgentPicker</a>
+    <a href="#t6">T6 docs</a>
+    <a href="#review">Self-review</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal &amp; architecture</h2>
+    <p><strong>Goal:</strong> N independent live agent conversations in one
+      TUI — one-line tab bar with state dots + generated handles, instant
+      pane switching, per-tab agent profiles, cross-tab signalling (dot +
+      sticky <code>*</code> + bell).</p>
+    <p><strong>Architecture:</strong> Extract the mono-<code>AegisApp</code>
+      into a per-conversation <code>ConversationPane</code> Widget;
+      <code>AegisApp</code> becomes a shell owning a
+      <code>ContentSwitcher</code> of panes, a multi-entry <code>TabBar</code>,
+      the global keymap, an <code>AgentPicker</code> modal, cross-tab
+      signalling, and one shared metrics tick for the active pane.</p>
+    <p><strong>Tech:</strong> Python 3.13, Textual 8.2.6, pytest pilot.
+      Refactor is behavior-preserving and green at every commit (new shape
+      lands with rewritten tests in T2).</p>
+  </section>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/tui/names.py</code></td><td>New. <code>generate_name</code> + word lists.</td></tr>
+        <tr><td><code>src/aegis/tui/pane.py</code></td><td>New. <code>ConversationPane</code> + <code>PaneStateChanged</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code></td><td>Slimmed to a shell (T2 single-pane, T4 multi).</td></tr>
+        <tr><td><code>src/aegis/tui/widgets.py</code></td><td><code>TabStrip</code>→<code>TabBar</code>; <code>StatusBar</code> handle+slug.</td></tr>
+        <tr><td><code>src/aegis/tui/picker.py</code></td><td>New. <code>AgentPicker(ModalScreen)</code>.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td>Pass <code>agents</code>, <code>default_agent</code>, session factory.</td></tr>
+        <tr><td><code>tests/test_names.py</code></td><td>New.</td></tr>
+        <tr><td><code>tests/test_tui.py</code></td><td>Rewritten for pane/shell split (T2), extended (T3–T5).</td></tr>
+        <tr><td>README.md / AGENTS.md</td><td>Multi-tab usage (T6).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="t1">
+    <h2>Task 1 — <code>names.py</code></h2>
+    <div class="step">Step 1 — failing test <code>tests/test_names.py</code></div>
+<pre><code>import random
+import re
+from aegis.tui.names import generate_name, ADJECTIVES, LAUREATES
+
+
+def test_format_and_membership():
+    n = generate_name(set(), random.Random(0))
+    adj, last = n.split("-")
+    assert adj in ADJECTIVES and last in LAUREATES
+    assert re.fullmatch(r"[a-z]+-[a-z]+", n)
+
+
+def test_seeded_deterministic():
+    assert generate_name(set(), random.Random(7)) == \
+           generate_name(set(), random.Random(7))
+
+
+def test_never_returns_taken():
+    taken = {f"{a}-{l}" for a in ADJECTIVES for l in LAUREATES} - {"lucid-knuth"}
+    # only lucid-knuth free
+    assert generate_name(taken, random.Random(1)) == "lucid-knuth"
+
+
+def test_numeric_suffix_fallback(monkeypatch):
+    monkeypatch.setattr("aegis.tui.names.ADJECTIVES", ["only"])
+    monkeypatch.setattr("aegis.tui.names.LAUREATES", ["one"])
+    n = generate_name({"only-one"}, random.Random(0))
+    assert n == "only-one-2"</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <p><code>uv run pytest tests/test_names.py -q</code> → ImportError.</p>
+    <div class="step">Step 3 — implement <code>src/aegis/tui/names.py</code></div>
+<pre><code>from __future__ import annotations
+
+import random
+
+ADJECTIVES = [
+    "lucid","wry","brisk","calm","keen","sly","bold","witty","spry","sage",
+    "deft","apt","nimble","quiet","amber","cobalt","fluent","hardy","jolly",
+    "lithe","mellow","placid","quirky","rustic","stoic","terse","vivid",
+    "zesty","arch","brave","civic","dapper","eager","frank","gilded","humble",
+    "jaunty","kindly","limber","sunny",
+]
+LAUREATES = [
+    "knuth","hopper","dijkstra","lamport","hamming","liskov","cerf","kahn",
+    "diffie","hellman","rivest","shamir","adleman","karp","cook","tarjan",
+    "pearl","yao","milner","backus","mccarthy","minsky","wirth","floyd",
+    "hoare","thompson","ritchie","codd","engelbart","sutherland","kay",
+    "perlis","newell","rabin","scott","blum","valiant","goldwasser","micali",
+    "naur",
+]
+
+
+def generate_name(taken: set[str], rng: random.Random | None = None) -> str:
+    r = rng or random
+    for _ in range(1000):
+        name = f"{r.choice(ADJECTIVES)}-{r.choice(LAUREATES)}"
+        if name not in taken:
+            return name
+    base = f"{r.choice(ADJECTIVES)}-{r.choice(LAUREATES)}"
+    i = 2
+    while f"{base}-{i}" in taken:
+        i += 1
+    return f"{base}-{i}"</code></pre>
+    <p>Note: the numeric-suffix test stubs the lists to a 1×1 space so the
+      1000-try loop exhausts deterministically; the loop body still references
+      the module globals via <code>aegis.tui.names.ADJECTIVES</code> so
+      monkeypatch takes effect.</p>
+    <div class="step">Step 4 — run, expect pass; full fast suite green</div>
+    <p><code>uv run pytest tests/test_names.py -q</code> → 4 passed;
+      <code>uv run pytest -q -k "not live"</code> → all pass (additive).</p>
+    <div class="step">Step 5 — commit</div>
+<pre><code>git add src/aegis/tui/names.py tests/test_names.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): generated tab handles (adjective-laureate)"</code></pre>
+  </section>
+
+  <section id="t2">
+    <h2>Task 2 — Extract <code>ConversationPane</code>; shell hosts one pane</h2>
+    <p>Behavior-preserving refactor. The current <code>AegisApp</code> logic
+      moves into <code>ConversationPane</code>; <code>AegisApp</code> becomes
+      a shell that mounts exactly one pane inside a <code>ContentSwitcher</code>
+      with a <code>TabBar</code>. <code>cli.py</code> switches to a session
+      factory. <code>tests/test_tui.py</code> is rewritten for the new shape;
+      the suite is green at this commit.</p>
+
+    <div class="step">Step 1 — create <code>src/aegis/tui/pane.py</code></div>
+<pre><code>from __future__ import annotations
+
+import time
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.containers import Vertical
+from textual.message import Message
+from textual.widget import Widget
+from textual.widgets import Input, RichLog
+
+from aegis.config import Agent
+from aegis.drivers.base import HarnessSession
+from aegis.events import Result, ToolResult, ToolUse
+from aegis.render import render_event
+from aegis.tui.metrics import SessionMetrics
+from aegis.tui.state import AgentState
+from aegis.tui.widgets import StatusBar
+
+
+class PaneStateChanged(Message):
+    def __init__(self, pane: "ConversationPane", finished: bool) -> None:
+        self.pane = pane
+        self.finished = finished
+        super().__init__()
+
+
+class ConversationPane(Widget):
+    DEFAULT_CSS = """
+    ConversationPane { layout: vertical; height: 1fr; }
+    ConversationPane RichLog { height: 1fr; }
+    ConversationPane StatusBar { height: 1; background: $panel; }
+    ConversationPane Input { height: 3; }
+    """
+
+    def __init__(self, session: HarnessSession, agent: Agent,
+                 agent_slug: str, handle: str) -> None:
+        super().__init__(id=f"pane-{handle}")
+        self._session = session
+        self._agent = agent
+        self.agent_slug = agent_slug
+        self.handle = handle
+        self.state = AgentState.ready
+        self.unseen = False
+        self._metrics = SessionMetrics(self._now())
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield RichLog(markup=False, wrap=True, auto_scroll=True)
+            yield StatusBar(self.handle, self.agent_slug,
+                            self._agent.model, self._agent.permission.value)
+            yield Input(placeholder="type a message…")
+
+    async def on_mount(self) -> None:
+        await self._session.start()
+        self._set_state(AgentState.ready, finished=False)
+        self.refresh_metrics()
+
+    # --- helpers ---
+    def _now(self) -> float:
+        return time.monotonic()
+
+    def refresh_metrics(self) -> None:
+        self.query_one(StatusBar).set_metrics(
+            self._metrics.render(self._now()))
+
+    def _set_state(self, state: AgentState, *, finished: bool) -> None:
+        self.state = state
+        self.query_one(StatusBar).set_state(state)
+        self.post_message(PaneStateChanged(self, finished))
+
+    def _write(self, renderable) -> None:
+        self.query_one(RichLog).write(renderable)
+
+    def _transcript_has(self, needle: str) -> bool:
+        for line in self.query_one(RichLog).lines:
+            txt = line.text if hasattr(line, "text") else str(line)
+            if needle in txt:
+                return True
+        return False
+
+    # --- focus / activation ---
+    def focus_input(self) -> None:
+        self.query_one(Input).focus()
+
+    # --- turn lifecycle ---
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        text = event.value.strip()
+        if not text or self.state is AgentState.working:
+            return
+        inp = self.query_one(Input)
+        inp.value = ""
+        inp.disabled = True
+        self._write(Text.assemble(("› ", "bold"), text))
+        self._set_state(AgentState.working, finished=False)
+        self._metrics.start_turn(self._now())
+        self.run_worker(self._run_turn(text), group="turn", exclusive=True)
+
+    async def _run_turn(self, text: str) -> None:
+        saw_result = False
+        try:
+            await self._session.send(text)
+            async for ev in self._session.events():
+                renderable = render_event(ev)
+                if renderable is not None:
+                    self._write(renderable)
+                if isinstance(ev, ToolUse):
+                    self._metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self._metrics.record_tool_error()
+                if isinstance(ev, Result):
+                    self._metrics.end_turn(ev, self._now())
+                    saw_result = True
+                    self._finish(error=ev.is_error)
+                self.refresh_metrics()
+        except Exception:  # noqa: BLE001
+            self._write(Text("⚠ harness error", style="red"))
+            if not saw_result:
+                self._finish(error=True)
+            return
+        if not saw_result:
+            self._write(Text("⚠ harness exited", style="red"))
+            self._finish(error=True)
+
+    def _finish(self, *, error: bool) -> None:
+        self._set_state(AgentState.error if error else AgentState.ready,
+                        finished=True)
+        inp = self.query_one(Input)
+        inp.disabled = False
+        inp.focus()
+
+    def interrupt(self) -> None:
+        if self.state is not AgentState.working:
+            return
+        self.workers.cancel_group(self, "turn")
+        self._metrics.cancel_turn(self._now())
+        self._write(Text("^C — interrupted", style="dim"))
+        self._set_state(AgentState.ready, finished=False)
+        self.refresh_metrics()
+        inp = self.query_one(Input)
+        inp.disabled = False
+        inp.focus()
+
+    async def close(self) -> None:
+        self.workers.cancel_group(self, "turn")
+        await self._session.close()</code></pre>
+    <p>The bell is intentionally <em>not</em> rung here — the shell owns
+      bell/signalling policy (T4) so it can distinguish active vs background
+      panes. In T2 the shell rings on every <code>finished</code> message
+      (one pane → identical to today's behavior).</p>
+
+    <div class="step">Step 2 — extend <code>StatusBar</code> for handle+slug</div>
+    <p>Replace <code>StatusBar.__init__</code> and <code>_refresh</code> in
+      <code>src/aegis/tui/widgets.py</code>:</p>
+<pre><code>    def __init__(self, handle: str, agent_slug: str,
+                 model: str, permission: str) -> None:
+        super().__init__(markup=True)
+        self._identity = (
+            f"{handle}  [#788C5D]·{agent_slug}·[/#788C5D]  "
+            f"{model} · {permission}")
+        self._state = AgentState.ready
+        self._metrics = ""</code></pre>
+    <p><code>on_mount</code>, <code>set_state</code>, <code>set_metrics</code>,
+      <code>_refresh</code> stay as they are (they already compose
+      <code>self._identity</code> + label + metrics). The accent color
+      <code>#788C5D</code> is the olive token, matching the tab bar slug
+      color from T3.</p>
+
+    <div class="step">Step 3 — slim <code>app.py</code> to a one-pane shell</div>
+    <p>Replace the entire body of <code>src/aegis/tui/app.py</code> with:</p>
+<pre><code>from __future__ import annotations
+
+from collections.abc import Callable
+
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import ContentSwitcher
+from textual.widgets import Input
+
+from aegis.config import Agent
+from aegis.drivers.base import HarnessSession
+from aegis.tui.names import generate_name
+from aegis.tui.pane import ConversationPane, PaneStateChanged
+from aegis.tui.widgets import TabBar
+
+SessionFactory = Callable[[Agent], HarnessSession]
+
+
+class AegisApp(App):
+    CSS = """
+    TabBar { height: 1; background: $panel; }
+    ContentSwitcher { height: 1fr; }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+q", "quit", "Quit", priority=True),
+        Binding("escape", "interrupt", "Interrupt", priority=True),
+    ]
+
+    def __init__(self, agents: dict[str, Agent], default_agent: str,
+                 make_session: SessionFactory) -> None:
+        super().__init__()
+        self._agents = agents
+        self._default_agent = default_agent
+        self._make_session = make_session
+        self._panes: list[ConversationPane] = []
+
+    def compose(self) -> ComposeResult:
+        yield TabBar()
+        yield ContentSwitcher()
+
+    async def on_mount(self) -> None:
+        await self._spawn(self._default_agent)
+        self.set_interval(1.0, self._tick)
+
+    # --- pane management ---
+    @property
+    def _active(self) -> ConversationPane | None:
+        cs = self.query_one(ContentSwitcher)
+        if cs.current is None:
+            return None
+        return self.query_one(f"#{cs.current}", ConversationPane)
+
+    async def _spawn(self, slug: str) -> None:
+        agent = self._agents[slug]
+        handle = generate_name({p.handle for p in self._panes})
+        pane = ConversationPane(self._make_session(agent), agent,
+                                slug, handle)
+        self._panes.append(pane)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(pane)
+        cs.current = pane.id
+        self._refresh_tabbar()
+        pane.focus_input()
+
+    def _refresh_tabbar(self) -> None:
+        cs = self.query_one(ContentSwitcher)
+        items = [
+            (i + 1, p.handle, p.agent_slug, p.state, p.unseen,
+             p.id == cs.current)
+            for i, p in enumerate(self._panes)
+        ]
+        self.query_one(TabBar).set_tabs(items)
+
+    def _tick(self) -> None:
+        active = self._active
+        if active is not None:
+            active.refresh_metrics()
+
+    # --- messages ---
+    def on_pane_state_changed(self, message: PaneStateChanged) -> None:
+        if message.finished:
+            self.bell()
+        self._refresh_tabbar()
+
+    # --- actions ---
+    def action_interrupt(self) -> None:
+        active = self._active
+        if active is not None:
+            active.interrupt()
+
+    async def action_quit(self) -> None:
+        for pane in self._panes:
+            await pane.close()
+        self.exit()</code></pre>
+
+    <div class="step">Step 4 — add a minimal <code>TabBar</code> shim</div>
+    <p>T3 builds the real renderer; for T2 add a working stub to
+      <code>widgets.py</code> (keeps the suite green now, replaced in T3):</p>
+<pre><code>class TabBar(Static):
+    """One-line tab bar. Real rendering lands in T3."""
+
+    def __init__(self) -> None:
+        super().__init__(markup=True)
+        self._items: list = []
+
+    def set_tabs(self, items: list) -> None:
+        self._items = items
+        self._refresh()
+
+    def _refresh(self) -> None:
+        parts = []
+        for idx, handle, slug, state, unseen, active in self._items:
+            mark = "*" if unseen else ""
+            label = f"{state.dot} {idx} {handle}{mark}"
+            parts.append(f"[reverse]{label}[/reverse]" if active else label)
+        self.update("  ".join(parts))</code></pre>
+    <p>Keep the old <code>TabStrip</code> class deleted (nothing imports it
+      after this task). Remove the <code>TabStrip</code> import wherever
+      present.</p>
+
+    <div class="step">Step 5 — rewire <code>cli.py</code></div>
+    <p>Replace the tail of the <code>run</code> callback
+      (<code>profile = agents[name]</code> onward) with:</p>
+<pre><code>    if name not in agents:
+        _console.print(
+            f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
+        raise typer.Exit(1)
+
+    def make_session(agent):
+        return get_driver(agent.harness).session(agent, cwd)
+
+    AegisApp(agents, default_agent, make_session).run()</code></pre>
+    <p>(<code>name</code> is still validated; the explicit
+      <code>--agent</code> just changes which slug tab 0 uses — pass
+      <code>name</code> as the effective default:) replace
+      <code>self._default_agent</code> usage by constructing with
+      <code>default_agent=name</code> i.e. call
+      <code>AegisApp(agents, name, make_session)</code>.</p>
+
+    <div class="step">Step 6 — rewrite <code>tests/test_tui.py</code></div>
+    <p>The old tests constructed <code>AegisApp(session, agent, name)</code>.
+      New shape: a fake factory + pane/shell assertions. Replace the whole
+      file:</p>
+<pre><code>import pytest
+from aegis.config import Agent
+from aegis.events import AssistantText, Result, ToolResult, ToolUse
+from aegis.tui.app import AegisApp
+from aegis.tui.pane import ConversationPane
+from aegis.tui.state import AgentState
+from aegis.tui.widgets import StatusBar, TabBar
+from textual.widgets import Input, RichLog
+
+
+def _agent():
+    return Agent(harness="claude-code", model="opus",
+                 effort="high", permission="auto")
+
+
+class FakeSession:
+    def __init__(self, script=None):
+        self.sent = []
+        self.started = self.closed = False
+        self._script = script or (
+            lambda t: [AssistantText(f"echo: {t}"),
+                       Result(duration_ms=10, is_error=False)])
+
+    async def start(self): self.started = True
+    async def send(self, text): self.sent.append(text)
+    async def events(self):
+        for ev in self._script(self.sent[-1]):
+            yield ev
+    async def close(self): self.closed = True
+
+
+def _factory(*sessions):
+    it = iter(sessions or (FakeSession(),))
+    made = []
+    def make(agent):
+        try:
+            s = next(it)
+        except StopIteration:
+            s = FakeSession()
+        made.append(s)
+        return s
+    make.made = made
+    return make
+
+
+def _app(factory=None):
+    f = factory or _factory()
+    return AegisApp({"default": _agent()}, "default", f)
+
+
+@pytest.mark.asyncio
+async def test_starts_with_one_pane_and_widgets():
+    app = _app()
+    async with app.run_test():
+        assert len(app._panes) == 1
+        pane = app._panes[0]
+        assert isinstance(pane, ConversationPane)
+        assert pane.query_one(RichLog) and pane.query_one(StatusBar)
+        assert pane.query_one(Input)
+        assert app.query_one(TabBar)
+        assert pane.state is AgentState.ready
+
+
+@pytest.mark.asyncio
+async def test_submit_sends_renders_and_bells():
+    app = _app()
+    bells = []
+    async with app.run_test() as pilot:
+        app.bell = lambda: bells.append(1)
+        pane = app._panes[0]
+        pane.query_one(Input).value = "hello"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._session.sent == ["hello"]
+        assert pane._transcript_has("echo: hello")
+        assert pane.state is AgentState.ready
+        assert bells == [1]
+
+
+@pytest.mark.asyncio
+async def test_quit_closes_session_and_exits():
+    f = _factory()
+    app = AegisApp({"default": _agent()}, "default", f)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+q")
+    assert app.is_running is False
+    assert f.made[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_interrupt_only_active_pane():
+    def hang(_t):
+        return [AssistantText("working")]  # no Result -> stays working
+    app = _app(_factory(FakeSession(hang)))
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "go"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert pane.state is AgentState.working
+        await pilot.press("escape")
+        await pilot.pause()
+        assert pane.state is AgentState.ready
+        assert pane._transcript_has("interrupted")</code></pre>
+    <div class="step">Step 7 — run &amp; commit</div>
+    <p><code>uv run pytest -q -k "not live"</code> → all pass (config,
+      events, driver, render_event, tui_state, metrics, names, tui).
+      <code>test_cli.py</code> still passes (ConfigError path unchanged; the
+      success path now builds a factory but tests never reach
+      <code>.run()</code>).</p>
+<pre><code>git add src/aegis/tui/pane.py src/aegis/tui/app.py src/aegis/tui/widgets.py \
+  src/aegis/cli.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "refactor(tui): extract ConversationPane; AegisApp is a one-pane shell"</code></pre>
+  </section>
+
+  <section id="t3">
+    <h2>Task 3 — Real <code>TabBar</code> rendering</h2>
+    <div class="step">Step 1 — failing test (append to <code>tests/test_tui.py</code>)</div>
+<pre><code>@pytest.mark.asyncio
+async def test_tabbar_shows_handle_slug_dot():
+    app = _app()
+    async with app.run_test():
+        bar = str(app.query_one(TabBar).content)
+        pane = app._panes[0]
+        assert pane.handle in bar
+        assert "default" in bar          # slug
+        assert "1" in bar                # index
+        assert "*" not in bar            # active pane, not unseen</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <p>The T2 shim renders <code>state.dot idx handle</code> but not the slug;
+      assert on <code>"default"</code> in the bar fails.</p>
+    <div class="step">Step 3 — replace the <code>TabBar</code> stub in
+      <code>widgets.py</code> with the real renderer</div>
+<pre><code>class TabBar(Static):
+    """One-line tab bar: [dot idx handle ·slug·]… active reversed, * unseen."""
+
+    def __init__(self) -> None:
+        super().__init__(markup=True)
+        self._items: list = []
+
+    def set_tabs(self, items: list) -> None:
+        self._items = items
+        self._refresh()
+
+    def _refresh(self) -> None:
+        cells = []
+        for idx, handle, slug, state, unseen, active in self._items:
+            mark = "[bold]*[/bold]" if unseen else ""
+            label = (f"{state.dot} {idx} {handle} "
+                     f"[#788C5D]·{slug}·[/#788C5D]{mark}")
+            cells.append(f"[reverse] {label} [/reverse]"
+                         if active else f" {label} ")
+        self.update("".join(cells) or "no tabs")</code></pre>
+    <div class="step">Step 4 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add src/aegis/tui/widgets.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): real multi-entry TabBar (dot, handle, accent slug, *)"</code></pre>
+  </section>
+
+  <section id="t4">
+    <h2>Task 4 — Multi-pane shell: spawn / switch / close / signalling</h2>
+    <div class="step">Step 1 — failing tests (append to <code>tests/test_tui.py</code>)</div>
+<pre><code>@pytest.mark.asyncio
+async def test_ctrl_t_adds_unique_tab():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert len(app._panes) == 2
+        assert app._panes[0].handle != app._panes[1].handle
+        assert app._active is app._panes[1]   # new tab activated
+
+
+@pytest.mark.asyncio
+async def test_background_finish_sets_unseen_and_one_bell():
+    # tab 0 will finish in the background after we switch to tab 1
+    slow = FakeSession(lambda t: [AssistantText("bg done"),
+                                  Result(duration_ms=1, is_error=False)])
+    app = _app(_factory(slow, FakeSession()))
+    bells = []
+    async with app.run_test() as pilot:
+        app.bell = lambda: bells.append(1)
+        await pilot.press("ctrl+t")          # tab 1 active
+        await pilot.pause()
+        p0 = app._panes[0]
+        # drive tab 0's turn while it is in the background
+        p0.query_one(Input).value = "hi"
+        await p0.query_one(Input).action_submit()
+        await pilot.pause()
+        await pilot.pause()
+        assert p0.unseen is True
+        assert bells == [1]
+        await pilot.press("ctrl+1")          # focus tab 0
+        await pilot.pause()
+        assert p0.unseen is False
+
+
+@pytest.mark.asyncio
+async def test_ctrl_w_closes_last_tab_exits():
+    f = _factory()
+    app = AegisApp({"default": _agent()}, "default", f)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+w")
+    assert app.is_running is False
+    assert f.made[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_switch_keys_cycle():
+    app = _app(_factory(FakeSession(), FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert app._active is app._panes[2]
+        await pilot.press("ctrl+1")
+        await pilot.pause()
+        assert app._active is app._panes[0]
+        await pilot.press("ctrl+right")
+        await pilot.pause()
+        assert app._active is app._panes[1]</code></pre>
+    <div class="step">Step 2 — run, expect fail (no Ctrl+T/W/switch yet)</div>
+    <div class="step">Step 3 — extend <code>AegisApp</code></div>
+    <p>Add to <code>BINDINGS</code>:</p>
+<pre><code>        Binding("ctrl+t", "new_tab", "New tab", priority=True),
+        Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
+        Binding("ctrl+w", "close_tab", "Close tab", priority=True),
+        Binding("ctrl+tab", "next_tab", "Next", priority=True),
+        Binding("ctrl+right", "next_tab", "Next", priority=True),
+        Binding("ctrl+left", "prev_tab", "Prev", priority=True),
+        *[Binding(f"ctrl+{n}", f"goto({n})", f"Tab {n}", priority=True)
+          for n in range(1, 10)],</code></pre>
+    <p>Add actions / helpers:</p>
+<pre><code>    def _activate(self, idx: int) -> None:
+        if not (0 &lt;= idx &lt; len(self._panes)):
+            return
+        pane = self._panes[idx]
+        self.query_one(ContentSwitcher).current = pane.id
+        pane.unseen = False
+        pane.focus_input()
+        self._refresh_tabbar()
+
+    async def action_new_tab(self) -> None:
+        await self._spawn(self._default_agent)
+
+    def action_goto(self, n: int) -> None:
+        self._activate(n - 1)
+
+    def action_next_tab(self) -> None:
+        if self._panes:
+            cur = self._panes.index(self._active)
+            self._activate((cur + 1) % len(self._panes))
+
+    def action_prev_tab(self) -> None:
+        if self._panes:
+            cur = self._panes.index(self._active)
+            self._activate((cur - 1) % len(self._panes))
+
+    async def action_close_tab(self) -> None:
+        active = self._active
+        if active is None:
+            return
+        idx = self._panes.index(active)
+        await active.close()
+        await active.remove()
+        self._panes.pop(idx)
+        if not self._panes:
+            self.exit()
+            return
+        self._activate(min(idx, len(self._panes) - 1))</code></pre>
+    <p>Update <code>on_pane_state_changed</code> for the active-vs-background
+      rule:</p>
+<pre><code>    def on_pane_state_changed(self, message: PaneStateChanged) -> None:
+        if message.finished:
+            if message.pane is not self._active:
+                message.pane.unseen = True
+            self.bell()
+        self._refresh_tabbar()</code></pre>
+    <p>(Active-pane finish still bells, as today; background finish also sets
+      <code>unseen</code>. One bell per finish — the message fires once per
+      <code>_finish</code> thanks to the existing double-finish guard.)</p>
+    <div class="step">Step 4 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add src/aegis/tui/app.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): multi-pane shell — spawn/switch/close + cross-tab signalling"</code></pre>
+  </section>
+
+  <section id="t5">
+    <h2>Task 5 — <code>AgentPicker</code> modal (Ctrl+N)</h2>
+    <div class="step">Step 1 — failing test (append)</div>
+<pre><code>@pytest.mark.asyncio
+async def test_ctrl_n_picker_spawns_chosen_profile():
+    agents = {"default": _agent(),
+              "fast": Agent(harness="claude-code", model="sonnet",
+                            effort="low", permission="read")}
+    app = AegisApp(agents, "default", _factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        await pilot.press("down")     # move to "fast"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert len(app._panes) == 2
+        assert app._panes[1].agent_slug == "fast"</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — create <code>src/aegis/tui/picker.py</code></div>
+<pre><code>from __future__ import annotations
+
+from textual.app import ComposeResult
+from textual.containers import Center, Middle
+from textual.screen import ModalScreen
+from textual.widgets import OptionList
+from textual.widgets.option_list import Option
+
+
+class AgentPicker(ModalScreen[str | None]):
+    DEFAULT_CSS = """
+    AgentPicker { align: center middle; }
+    AgentPicker OptionList { width: 40; max-height: 16;
+        border: round $panel; background: $surface; }
+    """
+
+    def __init__(self, slugs: list[str]) -> None:
+        super().__init__()
+        self._slugs = slugs
+
+    def compose(self) -> ComposeResult:
+        with Middle():
+            with Center():
+                yield OptionList(*[Option(s, id=s) for s in self._slugs])
+
+    def on_mount(self) -> None:
+        self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(
+            self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)</code></pre>
+    <div class="step">Step 4 — wire <code>action_pick_agent</code> in <code>app.py</code></div>
+<pre><code>    async def action_pick_agent(self) -> None:
+        from aegis.tui.picker import AgentPicker
+
+        slug = await self.push_screen_wait(
+            AgentPicker(sorted(self._agents)))
+        if slug:
+            await self._spawn(slug)</code></pre>
+    <p>(<code>push_screen_wait</code> suspends until the modal dismisses;
+      <code>None</code> = cancelled → no tab.)</p>
+    <div class="step">Step 5 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add src/aegis/tui/picker.py src/aegis/tui/app.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): AgentPicker modal — Ctrl+N spawns a chosen profile"</code></pre>
+  </section>
+
+  <section id="t6">
+    <h2>Task 6 — Docs + manual smoke</h2>
+    <div class="step">Step 1 — README.md quick-start block</div>
+    <p>Replace the keys paragraph with: <code>Ctrl+T</code> new tab ·
+      <code>Ctrl+N</code> pick agent · <code>Ctrl+W</code> close ·
+      <code>Ctrl+1..9</code> / <code>Ctrl+Tab</code> switch ·
+      <code>Esc</code> interrupt · <code>Ctrl+Q</code> quit. Each tab is an
+      independent agent with a generated handle; a background tab that
+      finishes shows a <code>*</code> and rings the bell.</p>
+    <div class="step">Step 2 — AGENTS.md layout list</div>
+    <p>Add <code>tui/pane.py</code> (ConversationPane), <code>tui/names.py</code>,
+      <code>tui/picker.py</code>; note <code>TabStrip</code>→<code>TabBar</code>;
+      note the spec/plan are now HTML under <code>docs/superpowers/</code>.</p>
+    <div class="step">Step 3 — manual smoke (human-run, needs a TTY)</div>
+    <p><code>aegis init &amp;&amp; aegis</code> → tab bar shows one tab with a
+      generated handle + green dot; <code>Ctrl+T</code> adds a second
+      (different handle); type in one, switch away, confirm <code>*</code> +
+      bell on finish; <code>Ctrl+N</code> picker; <code>Ctrl+W</code> closes,
+      last close exits.</p>
+    <div class="step">Step 4 — commit</div>
+<pre><code>git add README.md AGENTS.md
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "docs: multi-tab usage in README/AGENTS"</code></pre>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage</summary>
+      <ul>
+        <li>Per-tab agent profile → T2 pane owns its <code>agent</code>; T5 picker.</li>
+        <li>Ctrl+T instant / Ctrl+N picker → T4 / T5.</li>
+        <li>One-line tab bar + single switching pane → T3 TabBar + T2/T4 ContentSwitcher.</li>
+        <li>Cross-tab signalling (dot + sticky <code>*</code> + one bell) → T4 <code>on_pane_state_changed</code> + <code>_activate</code> clears unseen.</li>
+        <li>Generated handle + accent slug → T1 names; T2/T3 StatusBar &amp; TabBar.</li>
+        <li>ConversationPane refactor → T2.</li>
+        <li>Keymap (Ctrl+W close→last quits, Ctrl+1..9, Ctrl+Tab/←→, Esc active-only, Ctrl+Q closes all) → T4.</li>
+        <li>Lifecycle (background workers keep running; close terminates session) → T2 <code>close()</code>, T4 <code>action_close_tab</code>.</li>
+        <li>Error handling per-pane; shared tick refreshes active pane → T2 <code>_run_turn</code>, T2/T4 <code>_tick</code>.</li>
+        <li>Tests: names unit, pane+shell pilots, signalling, picker → T1–T5; live driver test untouched.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder &amp; type-consistency scan</summary>
+      <p>No TBD/placeholder steps; every code step is complete.
+        <code>ConversationPane(session, agent, agent_slug, handle)</code>,
+        <code>PaneStateChanged(pane, finished)</code>,
+        <code>AegisApp(agents, default_agent, make_session)</code>,
+        <code>StatusBar(handle, agent_slug, model, permission)</code>,
+        <code>TabBar.set_tabs(items)</code> with the 6-tuple
+        <code>(idx, handle, slug, state, unseen, active)</code>,
+        <code>generate_name(taken, rng)</code> — consistent across T1–T6 and
+        the tests. <code>_active</code>, <code>_spawn</code>,
+        <code>_activate</code>, <code>_refresh_tabbar</code> names stable.</p>
+    </details>
+    <details>
+      <summary>Risk notes</summary>
+      <ul>
+        <li>T2 is the large atomic refactor; it is one commit because a
+          partial split leaves the suite red. Steps are still bite-sized.</li>
+        <li>Textual <code>push_screen_wait</code> + pilot key-driving of the
+          modal (T5) is the least-certain interaction; if the pilot can't
+          drive <code>OptionList</code>, the test may dismiss via
+          <code>app.push_screen</code> + direct <code>dismiss</code> — adjust
+          the test harness only, not the picker behavior, and report.</li>
+        <li>Per-pane worker isolation relies on <code>run_worker</code>
+          node-scoping (node = the pane) so <code>cancel_group(self,"turn")</code>
+          never crosses panes — verified by the interrupt + background tests.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis Phase 2 plan</footer>
+
+</div>
+</body>
+</html>
