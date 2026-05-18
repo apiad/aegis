@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import socket
 
+from aegis.mcp.bridge import AppBridge, SessionInfo
 from aegis.mcp.server import build_server
 
 
@@ -15,12 +16,28 @@ def _free_port() -> int:
     return port
 
 
+class _NullBridge:
+    """Defensive fallback if AegisMCP.start() runs without bind().
+    Tools return empty/unavailable rather than crashing."""
+
+    def list_sessions(self) -> list[SessionInfo]:
+        return []
+
+    def list_agents(self) -> list[str]:
+        return []
+
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -> str:
+        return "aegis bridge unavailable"
+
+
 class AegisMCP:
     """The shared aegis MCP plane: one FastMCP server over HTTP,
     co-resident in the app's asyncio loop."""
 
     def __init__(self) -> None:
-        self._server = build_server()
+        self._bridge: AppBridge | None = None
+        self._server = None
         self.host = "127.0.0.1"
         self.port = _free_port()
         self._task: asyncio.Task | None = None
@@ -29,9 +46,14 @@ class AegisMCP:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/mcp/"
 
+    def bind(self, bridge: AppBridge) -> None:
+        self._bridge = bridge
+
     async def start(self) -> None:
         if self._task is not None:
             return
+        bridge = self._bridge if self._bridge is not None else _NullBridge()
+        self._server = build_server(bridge)
         self._task = asyncio.create_task(
             self._server.run_http_async(
                 host=self.host, port=self.port, show_banner=False))

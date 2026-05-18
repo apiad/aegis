@@ -35,6 +35,10 @@ class FakeMCP:
     def __init__(self):
         self.started = False
         self.stopped = False
+        self.bound = None
+
+    def bind(self, bridge):
+        self.bound = bridge
 
     async def start(self):
         self.started = True

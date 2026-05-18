@@ -47,6 +47,7 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        self._mcp.bind(self)
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
 
