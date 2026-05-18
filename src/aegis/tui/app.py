@@ -24,6 +24,14 @@ class AegisApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("escape", "interrupt", "Interrupt", priority=True),
+        Binding("ctrl+t", "new_tab", "New tab", priority=True),
+        Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
+        Binding("ctrl+w", "close_tab", "Close tab", priority=True),
+        Binding("ctrl+tab", "next_tab", "Next", priority=True),
+        Binding("ctrl+right", "next_tab", "Next", priority=True),
+        Binding("ctrl+left", "prev_tab", "Prev", priority=True),
+        *[Binding(f"ctrl+{n}", f"goto({n})", f"Tab {n}", priority=True)
+          for n in range(1, 10)],
     ]
 
     def __init__(self, agents: dict[str, Agent], default_agent: str,
@@ -75,8 +83,53 @@ class AegisApp(App):
         if active is not None:
             active.refresh_metrics()
 
+    def _activate(self, idx: int) -> None:
+        if not (0 <= idx < len(self._panes)):
+            return
+        pane = self._panes[idx]
+        self.query_one(ContentSwitcher).current = pane.id
+        pane.unseen = False
+        pane.focus_input()
+        self._refresh_tabbar()
+
+    async def action_new_tab(self) -> None:
+        await self._spawn(self._default_agent)
+
+    def action_goto(self, n: int) -> None:
+        self._activate(n - 1)
+
+    def action_next_tab(self) -> None:
+        if self._panes:
+            cur = self._panes.index(self._active)
+            self._activate((cur + 1) % len(self._panes))
+
+    def action_prev_tab(self) -> None:
+        if self._panes:
+            cur = self._panes.index(self._active)
+            self._activate((cur - 1) % len(self._panes))
+
+    async def action_close_tab(self) -> None:
+        active = self._active
+        if active is None:
+            return
+        idx = self._panes.index(active)
+        await active.close()
+        await active.remove()
+        self._panes.pop(idx)
+        if not self._panes:
+            self.exit()
+            return
+        self._activate(min(idx, len(self._panes) - 1))
+
+    async def action_pick_agent(self) -> None:
+        # AgentPicker is wired in Task 5; no-op placeholder so the
+        # binding exists without crashing if pressed.
+        return
+
     def on_pane_state_changed(self, message: PaneStateChanged) -> None:
         if message.finished:
+            if message.pane is not self._active:
+                message.pane.unseen = True
             self.bell()
         self._refresh_tabbar()
 

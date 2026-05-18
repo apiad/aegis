@@ -129,3 +129,105 @@ async def test_tabbar_shows_handle_slug_dot():
         assert "default" in bar          # slug
         assert "1" in bar                # index
         assert "*" not in bar            # active pane, not unseen
+
+
+# --- Task 4: multi-tab tests ---
+
+@pytest.mark.asyncio
+async def test_ctrl_t_adds_unique_tab():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert len(app._panes) == 2
+        assert app._panes[0].handle != app._panes[1].handle
+        assert app._active is app._panes[1]
+
+
+@pytest.mark.asyncio
+async def test_background_finish_sets_unseen_and_one_bell():
+    slow = FakeSession(lambda t: [AssistantText("bg done"),
+                                  Result(duration_ms=1, is_error=False)])
+    app = _app(_factory(slow, FakeSession()))
+    bells = []
+    async with app.run_test() as pilot:
+        app.bell = lambda: bells.append(1)
+        await pilot.press("ctrl+t")          # tab 1 active
+        await pilot.pause()
+        p0 = app._panes[0]
+        from textual.widgets import Input
+        p0.query_one(Input).value = "hi"
+        await p0.query_one(Input).action_submit()
+        await pilot.pause()
+        await pilot.pause()
+        assert p0.unseen is True
+        assert bells == [1]
+        await pilot.press("ctrl+1")
+        await pilot.pause()
+        assert p0.unseen is False
+
+
+@pytest.mark.asyncio
+async def test_ctrl_w_closes_last_tab_exits():
+    f = _factory()
+    app = AegisApp({"default": _agent()}, "default", f)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+w")
+    assert app.is_running is False
+    assert f.made[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_switch_keys_cycle():
+    app = _app(_factory(FakeSession(), FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert app._active is app._panes[2]
+        await pilot.press("ctrl+1")
+        await pilot.pause()
+        assert app._active is app._panes[0]
+        await pilot.press("ctrl+right")
+        await pilot.pause()
+        assert app._active is app._panes[1]
+
+
+@pytest.mark.asyncio
+async def test_metrics_tick_refreshes_active_pane():
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        from aegis.tui.widgets import StatusBar
+        app._tick()
+        after = str(pane.query_one(StatusBar).content)
+        # tick must have called refresh_metrics on the active pane;
+        # content is the rendered identity+state+metrics string
+        assert after  # non-empty
+        assert "·default·" in after
+
+
+@pytest.mark.asyncio
+async def test_error_then_resend_recovers_to_ready():
+    calls = {"n": 0}
+    def script(_t):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("first turn blows up")
+        return [AssistantText("recovered"),
+                Result(duration_ms=1, is_error=False)]
+    app = _app(_factory(FakeSession(script)))
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        from textual.widgets import Input
+        pane.query_one(Input).value = "first"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane.state is AgentState.error
+        pane.query_one(Input).value = "second"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._transcript_has("recovered")
+        assert pane.state is AgentState.ready
