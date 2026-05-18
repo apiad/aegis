@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-18
+
 ### Added
 - MCP plane (slice 1): a shared FastMCP HTTP server owned by aegis;
   spawned agents are injected strict + primed and get an `aegis_meta`
@@ -13,6 +15,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   `aegis_handoff` (fire-and-forget inter-agent context transfer);
   per-pane self-reported handle baked into the priming so each agent
   knows who it is and passes that as `from_handle`.
+
+### Fixed
+- Driver: large `tool_result` payloads (e.g. reading a SOUL.md-sized
+  file) no longer silent-hang a turn. `create_subprocess_exec` now
+  uses a 16 MiB `StreamReader` buffer (root cause: 64 KiB default was
+  too small for legitimate lines), and `_pump_stdout` has a
+  `try/finally` so the stream-closed sentinel always fires. Tool-result
+  display is capped at 100 chars. Regression tests cover both
+  guarantees.
 
 ## [0.1.0] - 2026-05-18
 

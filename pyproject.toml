@@ -1,6 +1,6 @@
 [project]
 name = "aegis"
-version = "0.1.0"
+version = "0.2.0"
 description = "A meta-harness for coding agents — drives Claude Code in a multi-agent terminal UI."
 readme = "README.md"
 authors = [
