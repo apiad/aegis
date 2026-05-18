@@ -47,21 +47,21 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._panes: list[ConversationPane] = []
-        self._colors: AegisColors = aegis_colors(INK)
+        self._palette: AegisColors = aegis_colors(INK)
 
     def compose(self) -> ComposeResult:
         yield TabBar()
         yield ContentSwitcher()
 
     @property
-    def colors(self) -> AegisColors:
-        return self._colors
+    def palette(self) -> AegisColors:
+        return self._palette
 
     async def on_mount(self) -> None:
         for theme in THEMES.values():
             self.register_theme(theme)
         self.theme = DEFAULT_THEME
-        self._colors = aegis_colors(self.current_theme)
+        self._palette = aegis_colors(self.current_theme)
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
@@ -70,9 +70,9 @@ class AegisApp(App):
         # (one theme, set once pre-panes). No-op until running.
         if not self.is_running:
             return
-        self._colors = aegis_colors(self.current_theme)
+        self._palette = aegis_colors(self.current_theme)
         for pane in self._panes:
-            pane.set_colors(self._colors)
+            pane.set_colors(self._palette)
         self._refresh_tabbar()
 
     @property

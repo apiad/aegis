@@ -317,5 +317,5 @@ async def test_app_boots_on_ink_theme():
     app = _app()
     async with app.run_test():
         assert app.theme == "aegis-ink"
-        assert isinstance(app.colors, AegisColors)
-        assert app.colors.accent == "#E0A872"
+        assert isinstance(app.palette, AegisColors)
+        assert app.palette.accent == "#E0A872"
