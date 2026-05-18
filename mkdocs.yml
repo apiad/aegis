@@ -1,0 +1,36 @@
+site_name: Aegis
+site_description: A meta-harness for coding agents.
+site_url: https://apiad.github.io/aegis/
+repo_url: https://github.com/apiad/aegis
+repo_name: apiad/aegis
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: black
+    accent: amber
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Usage: usage.md
+  - Configuration: configuration.md
+  - Architecture & Vision: architecture.md
+  - Roadmap: roadmap.md
