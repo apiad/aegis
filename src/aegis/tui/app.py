@@ -18,7 +18,7 @@ from aegis.tui.themes import (
 )
 from aegis.tui.widgets import TabBar
 
-SessionFactory = Callable[[Agent, str], HarnessSession]
+SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
 class AegisApp(App):
@@ -93,7 +93,7 @@ class AegisApp(App):
         agent = self._agents[slug]
         handle = generate_name({p.handle for p in self._panes})
         pane = ConversationPane(
-            self._make_session(agent, self._mcp.url), agent,
+            self._make_session(agent, self._mcp.url, handle), agent,
             slug, handle, self._palette)
         self._panes.append(pane)
         cs = self.query_one(ContentSwitcher)

@@ -7,12 +7,14 @@ from aegis.drivers.claude import ClaudeDriver
 
 
 MCP_URL = "http://127.0.0.1:9/mcp/"
+HANDLE = "lucid-knuth"
 
 
-def argv_for(permission, effort="high", model="opus", mcp_url=MCP_URL):
+def argv_for(permission, effort="high", model="opus", mcp_url=MCP_URL,
+             handle=HANDLE):
     agent = Agent(harness="claude-code", model=model,
                   effort=effort, permission=permission)
-    return ClaudeDriver().build_argv(agent, "/tmp/wd", mcp_url)
+    return ClaudeDriver().build_argv(agent, "/tmp/wd", mcp_url, handle)
 
 
 def test_registry_has_claude():
@@ -59,3 +61,11 @@ def test_build_argv_injects_strict_mcp_and_priming():
     j = argv.index("--append-system-prompt")
     assert "aegis_meta" in argv[j + 1]
     assert "-p" in argv
+
+
+def test_build_argv_bakes_handle_into_priming():
+    argv = argv_for("auto", handle="lucid-knuth")
+    j = argv.index("--append-system-prompt")
+    prompt = argv[j + 1]
+    assert "lucid-knuth" in prompt
+    assert "{handle}" not in prompt          # template was formatted

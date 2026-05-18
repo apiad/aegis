@@ -80,7 +80,7 @@ class ClaudeSession(HarnessSession):
 
 class ClaudeDriver(HarnessDriver):
     def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str) -> list[str]:
+                   mcp_url: str, handle: str) -> list[str]:
         return [
             "claude", "-p",
             "--input-format", "stream-json",
@@ -92,9 +92,10 @@ class ClaudeDriver(HarnessDriver):
             "--permission-mode", _PERMISSION_MODE[agent.permission],
             "--mcp-config", mcp_config_json(mcp_url),
             "--strict-mcp-config",
-            "--append-system-prompt", PRIMING,
+            "--append-system-prompt", PRIMING.format(handle=handle),
         ]
 
     def session(self, agent: Agent, cwd: str,
-                mcp_url: str) -> ClaudeSession:
-        return ClaudeSession(self.build_argv(agent, cwd, mcp_url), cwd)
+                mcp_url: str, handle: str) -> ClaudeSession:
+        return ClaudeSession(
+            self.build_argv(agent, cwd, mcp_url, handle), cwd)

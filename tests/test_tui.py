@@ -50,7 +50,7 @@ class FakeMCP:
 def _factory(*sessions):
     it = iter(sessions or (FakeSession(),))
     made = []
-    def make(agent, mcp_url):
+    def make(agent, mcp_url, handle):
         try:
             s = next(it)
         except StopIteration:

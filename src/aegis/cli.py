@@ -61,8 +61,9 @@ def run(
             f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
         raise typer.Exit(1)
 
-    def make_session(profile, mcp_url):
-        return get_driver(profile.harness).session(profile, cwd, mcp_url)
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, cwd, mcp_url, handle)
 
     AegisApp(agents, name, make_session, AegisMCP()).run()
 

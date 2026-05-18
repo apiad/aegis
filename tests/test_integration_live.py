@@ -13,7 +13,8 @@ pytestmark = pytest.mark.skipif(
 def test_live_claude_say_hi():
     agent = Agent(harness="claude-code", model="sonnet",
                   effort="low", permission="read")
-    sess = ClaudeDriver().session(agent, ".", "http://127.0.0.1:9/mcp/")
+    sess = ClaudeDriver().session(
+        agent, ".", "http://127.0.0.1:9/mcp/", "lucid-knuth")
 
     async def go():
         await sess.start()
