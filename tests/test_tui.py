@@ -341,3 +341,21 @@ async def test_pane_holds_palette_and_renders():
         await pilot.pause()
         await pilot.pause()
         assert pane._transcript_has("echo: hi")
+
+
+@pytest.mark.asyncio
+async def test_blank_line_between_turns():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "first"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        pane.query_one(Input).value = "second"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        lines = [l.text if hasattr(l, "text") else str(l)
+                 for l in pane.query_one(RichLog).lines]
+        joined = "\n".join(lines)
+        assert "\n\n› second" in joined
+        assert not joined.startswith("\n")

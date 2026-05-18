@@ -44,6 +44,7 @@ class ConversationPane(Widget):
         self.state = AgentState.ready
         self.unseen = False
         self._started = False
+        self._had_turn = False
         self._metrics = SessionMetrics()
 
     def set_palette(self, palette) -> None:
@@ -96,6 +97,9 @@ class ConversationPane(Widget):
         inp = self.query_one(Input)
         inp.value = ""
         inp.disabled = True
+        if self._had_turn:
+            self._write(Text(""))      # one blank row between turns
+        self._had_turn = True
         self._write(Text.assemble(("› ", self._palette.user), text))
         self._set_state(AgentState.working, finished=False)
         self._metrics.start_turn(self._now())
