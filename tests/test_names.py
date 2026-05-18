@@ -16,7 +16,7 @@ def test_seeded_deterministic():
 
 
 def test_never_returns_taken():
-    all_names = {f"{a}-{l}" for a in ADJECTIVES for l in LAUREATES}
+    all_names = {f"{a}-{last}" for a in ADJECTIVES for last in LAUREATES}
     free = "lucid-knuth"
     assert free in all_names
     taken = all_names - {free}
