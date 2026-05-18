@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis MCP Plane Slice 1" status=approved date=2026-05-18 source="docs/superpowers/specs/2026-05-18-aegis-mcp-plane-slice1-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis MCP Plane Slice 1 — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:16px 0 8px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  .warn{background:#F6E9D8;border:1px solid #E0B27A;border-radius:8px;
+    padding:12px 16px;margin:0 0 16px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis · Phase 3 slice 1</div>
+    <h1>MCP Plane Slice 1 — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-18</span>
+      <span>Spec: 2026-05-18-aegis-mcp-plane-slice1-design.html</span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — <code>superpowers:subagent-driven-development</code> or
+      <code>superpowers:executing-plans</code>. Commit straight to
+      <code>main</code> (authorized for aegis). Every task keeps
+      <code>uv run pytest -q -k "not live"</code> green at its commit;
+      <code>fastmcp</code> is already a declared dependency.</p>
+    <div class="warn"><strong>Sequencing gate.</strong> Do NOT start this
+      until the <code>v0.1.0</code> tag exists
+      (<code>git tag -l | grep v0.1.0</code> non-empty — the release job tags
+      current <code>main</code>). This is the first <code>0.2.0</code>-bound
+      feature; landing it before the tag would ship it inside v0.1.0.</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a><a href="#files">Files</a>
+    <a href="#t1">T1 server</a><a href="#t2">T2 runtime</a>
+    <a href="#t3">T3 injection wiring</a><a href="#t4">T4 acceptance+docs</a>
+    <a href="#review">Self-review</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal &amp; approach</h2>
+    <p><strong>Goal:</strong> one shared FastMCP HTTP server owned by the
+      aegis process; every spawned claude is injected (strict) + primed; an
+      <code>aegis_meta</code> tool proves the plane is on and callable.</p>
+    <p><strong>Approach:</strong> additive. New <code>aegis/mcp/</code>
+      package (server + runtime); driver/cli/app gain an
+      <code>mcp_url</code> thread; <code>AegisMCP</code> is
+      <strong>dependency-injected</strong> into <code>AegisApp</code> (real in
+      <code>cli.py</code>, a <code>FakeMCP</code> no-op in the ~25 pilot tests
+      so the hermetic suite stays fast). The definitive check is a slow live
+      <code>claude -p</code> acceptance test.</p>
+    <p><strong>Stack:</strong> Python 3.13, fastmcp 3.2.0
+      (<code>run_http_async</code>), Textual asyncio, pytest.</p>
+  </section>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/mcp/__init__.py</code></td><td>New. Exports <code>AegisMCP</code>, <code>build_server</code>, <code>PRIMING</code>, <code>mcp_config_json</code>.</td></tr>
+        <tr><td><code>src/aegis/mcp/server.py</code></td><td>New. <code>build_server()</code>, <code>aegis_meta</code> tool, <code>BRIEFING</code>, <code>PRIMING</code>, <code>mcp_config_json(url)</code>.</td></tr>
+        <tr><td><code>src/aegis/mcp/runtime.py</code></td><td>New. <code>AegisMCP</code> (port pick, <code>start</code>/<code>stop</code>/<code>url</code>).</td></tr>
+        <tr><td><code>src/aegis/drivers/base.py</code></td><td><code>build_argv</code>/<code>session</code> ABC gain <code>mcp_url</code>.</td></tr>
+        <tr><td><code>src/aegis/drivers/claude.py</code></td><td>Inject <code>--mcp-config</code> + <code>--strict-mcp-config</code> + <code>--append-system-prompt</code>.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td>Build real <code>AegisMCP</code>; <code>make_session(profile, mcp_url)</code>; pass mcp to <code>AegisApp</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code></td><td><code>__init__</code> takes <code>mcp</code>; <code>on_mount</code> starts it before spawn; <code>_spawn</code> passes <code>url</code>; <code>action_quit</code> stops it.</td></tr>
+        <tr><td><code>tests/test_mcp_server.py</code></td><td>New — briefing/tool unit.</td></tr>
+        <tr><td><code>tests/test_mcp_runtime.py</code></td><td>New — async start/stop/url.</td></tr>
+        <tr><td><code>tests/test_driver_argv.py</code></td><td>Updated for the new signature + injected flags.</td></tr>
+        <tr><td><code>tests/test_tui.py</code></td><td><code>FakeMCP</code> + helper update + lifecycle pilot.</td></tr>
+        <tr><td><code>tests/test_mcp_live.py</code></td><td>New — slow live acceptance (skips w/o <code>claude</code>).</td></tr>
+        <tr><td><code>AGENTS.md</code> / <code>CHANGELOG.md</code></td><td>MCP note + 0.2.0 entry (T4, inline).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="t1">
+    <h2>Task 1 — MCP server + briefing</h2>
+    <div class="step">Step 1 — failing test <code>tests/test_mcp_server.py</code></div>
+<pre><code>import json
+from aegis.mcp.server import (
+    build_server, BRIEFING, PRIMING, mcp_config_json, aegis_meta,
+)
+
+
+def test_briefing_has_orientation_phrases():
+    b = BRIEFING.lower()
+    for phrase in ("aegis", "meta-harness", "aegis_meta",
+                   "only mcp server"):
+        assert phrase in b, phrase
+    assert aegis_meta() == BRIEFING
+
+
+def test_priming_points_at_aegis_meta():
+    p = PRIMING.lower()
+    assert "aegis" in p and "aegis_meta" in p and "first" in p
+
+
+def test_mcp_config_json_shape():
+    cfg = json.loads(mcp_config_json("http://127.0.0.1:9/mcp/"))
+    s = cfg["mcpServers"]["aegis"]
+    assert s["type"] == "http"
+    assert s["url"] == "http://127.0.0.1:9/mcp/"
+
+
+def test_build_server_registers_only_aegis_meta():
+    srv = build_server()
+    import asyncio
+    tools = asyncio.run(srv.get_tools())
+    assert set(tools) == {"aegis_meta"}</code></pre>
+    <p>(<code>FastMCP.get_tools()</code> is async in fastmcp 3.x and returns a
+      name→tool mapping; if this API differs at impl time, adapt the
+      assertion to enumerate registered tools via the real API and report —
+      the intent is "exactly one tool named <code>aegis_meta</code>".)</p>
+    <div class="step">Step 2 — run, expect ImportError</div>
+    <p><code>uv run pytest tests/test_mcp_server.py -q</code></p>
+    <div class="step">Step 3 — <code>src/aegis/mcp/server.py</code></div>
+<pre><code>from __future__ import annotations
+
+import json
+
+from fastmcp import FastMCP
+
+BRIEFING = (
+    "You are running inside aegis — a meta-harness for coding agents. "
+    "aegis drives this Claude Code process via stream-json and re-renders "
+    "it in a multi-agent terminal UI; you are one agent inside it.\n\n"
+    "You are connected to the aegis MCP server. Because aegis runs with "
+    "strict MCP config, this is your ONLY MCP server — other MCP servers "
+    "from the user's config are not loaded in aegis sessions.\n\n"
+    "aegis tools available to you now:\n"
+    "  - aegis_meta() : this briefing.\n\n"
+    "More aegis tools (vault/file/web/workflow) are planned. Built-in "
+    "Claude tools (Read, Edit, Bash, WebFetch, …) are unchanged and "
+    "available. Call aegis_meta once at the start to orient, then proceed "
+    "with the user's request. When the user asks what you can do, "
+    "summarise this briefing."
+)
+
+PRIMING = (
+    "You are running inside aegis, a meta-harness. An MCP server named "
+    "'aegis' is attached and (strict config) is your only MCP server. "
+    "Call its aegis_meta tool first to learn this environment and the "
+    "aegis tools available to you, then proceed."
+)
+
+
+def aegis_meta() -> str:
+    """Orientation briefing: where you are and what aegis offers."""
+    return BRIEFING
+
+
+def build_server() -> FastMCP:
+    server = FastMCP("aegis")
+    server.tool(aegis_meta)
+    return server
+
+
+def mcp_config_json(url: str) -> str:
+    return json.dumps(
+        {"mcpServers": {"aegis": {"type": "http", "url": url}}})
+</code></pre>
+    <div class="step">Step 4 — <code>src/aegis/mcp/__init__.py</code></div>
+<pre><code>from aegis.mcp.runtime import AegisMCP
+from aegis.mcp.server import (
+    BRIEFING, PRIMING, aegis_meta, build_server, mcp_config_json,
+)
+
+__all__ = ["AegisMCP", "build_server", "aegis_meta", "BRIEFING",
+           "PRIMING", "mcp_config_json"]</code></pre>
+    <p>(This imports <code>runtime</code> which is created in T2. Until then
+      <code>__init__</code> will fail to import — that is expected; T1's test
+      imports <code>aegis.mcp.server</code> directly, not the package.
+      Verify in Step 5 that the direct-module test passes even though the
+      package re-export is temporarily broken; T2 completes it. If pytest
+      collection of <em>other</em> suites breaks because something imports
+      <code>aegis.mcp</code>, temporarily make <code>__init__.py</code> empty
+      and restore the re-export in T2 — note it in the commit.)</p>
+    <div class="step">Step 5 — run + full fast suite; commit</div>
+<pre><code>uv run pytest tests/test_mcp_server.py -q     # 4 passed
+uv run pytest -q -k "not live"                # all pass (additive)
+uv run ruff check src/aegis/mcp/server.py
+git add src/aegis/mcp/__init__.py src/aegis/mcp/server.py tests/test_mcp_server.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): aegis FastMCP server + aegis_meta briefing tool"</code></pre>
+  </section>
+
+  <section id="t2">
+    <h2>Task 2 — <code>AegisMCP</code> runtime</h2>
+    <div class="step">Step 1 — failing test <code>tests/test_mcp_runtime.py</code></div>
+<pre><code>import asyncio
+import socket
+import pytest
+from aegis.mcp.runtime import AegisMCP
+
+
+@pytest.mark.asyncio
+async def test_start_serves_then_stop_cleanly():
+    mcp = AegisMCP()
+    assert mcp.url.startswith("http://127.0.0.1:")
+    assert mcp.url.endswith("/mcp/")
+    await mcp.start()
+    host, port = "127.0.0.1", mcp.port
+    # the server accepts TCP after start()
+    with socket.create_connection((host, port), timeout=2):
+        pass
+    await mcp.stop()
+    await mcp.stop()                      # idempotent
+
+
+@pytest.mark.asyncio
+async def test_restart_works():
+    mcp = AegisMCP()
+    await mcp.start()
+    await mcp.stop()
+    await mcp.start()
+    with socket.create_connection(("127.0.0.1", mcp.port), timeout=2):
+        pass
+    await mcp.stop()</code></pre>
+    <div class="step">Step 2 — run, expect ImportError/fail</div>
+    <div class="step">Step 3 — <code>src/aegis/mcp/runtime.py</code></div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+import socket
+import contextlib
+
+from aegis.mcp.server import build_server
+
+
+def _free_port() -> int:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class AegisMCP:
+    """The shared aegis MCP plane: one FastMCP server over HTTP,
+    co-resident in the app's asyncio loop."""
+
+    def __init__(self) -> None:
+        self._server = build_server()
+        self.host = "127.0.0.1"
+        self.port = _free_port()
+        self._task: asyncio.Task | None = None
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.host}:{self.port}/mcp/"
+
+    async def start(self) -> None:
+        if self._task is not None:
+            return
+        self._task = asyncio.create_task(
+            self._server.run_http_async(host=self.host, port=self.port))
+        # wait until the port accepts (server ready) or time out
+        for _ in range(100):                       # ~5s max
+            try:
+                with socket.create_connection(
+                        (self.host, self.port), timeout=0.2):
+                    return
+            except OSError:
+                await asyncio.sleep(0.05)
+        await self.stop()
+        raise RuntimeError(
+            f"aegis MCP server did not start on {self.host}:{self.port}")
+
+    async def stop(self) -> None:
+        if self._task is None:
+            return
+        self._task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await self._task
+        self._task = None
+</code></pre>
+    <p>(If <code>run_http_async</code>'s kwargs differ in fastmcp 3.2.0 — e.g.
+      it needs <code>transport=</code> or a <code>path=</code> — adapt the
+      call to the real signature (probed: it exists and is async) and, if the
+      mount path is not <code>/mcp/</code>, fix the <code>url</code> property
+      to match what the server actually serves; the T4 live test is the
+      ultimate arbiter. Report any adaptation.)</p>
+    <div class="step">Step 4 — restore <code>__init__.py</code> re-export</div>
+    <p>Ensure <code>src/aegis/mcp/__init__.py</code> is the full re-export
+      from T1 Step 4 (now valid since <code>runtime</code> exists).</p>
+    <div class="step">Step 5 — run + full suite; commit</div>
+<pre><code>uv run pytest tests/test_mcp_runtime.py -q     # 2 passed
+uv run pytest -q -k "not live"                 # all pass
+uv run ruff check src/aegis/mcp/
+git add src/aegis/mcp/runtime.py src/aegis/mcp/__init__.py tests/test_mcp_runtime.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): AegisMCP — co-resident FastMCP HTTP runtime"</code></pre>
+  </section>
+
+  <section id="t3">
+    <h2>Task 3 — Injection wiring (driver + cli + app, DI'd MCP)</h2>
+    <p>Atomic: the <code>mcp_url</code> signature change touches the ABC,
+      ClaudeDriver, cli factory, and AegisApp — done together so the suite is
+      green at the single commit.</p>
+
+    <div class="step">Step 1 — failing tests</div>
+    <p>Update <code>tests/test_driver_argv.py</code>: every
+      <code>build_argv(agent, cwd)</code> / <code>session(agent, cwd)</code>
+      call gains a third arg <code>"http://127.0.0.1:9/mcp/"</code>; add:</p>
+<pre><code>def test_build_argv_injects_strict_mcp_and_priming():
+    from aegis.drivers.claude import ClaudeDriver
+    from aegis.config import Agent
+    a = Agent(harness="claude-code", model="opus",
+              effort="high", permission="auto")
+    argv = ClaudeDriver().build_argv(a, ".", "http://127.0.0.1:9/mcp/")
+    assert "--strict-mcp-config" in argv
+    i = argv.index("--mcp-config")
+    import json
+    cfg = json.loads(argv[i + 1])
+    assert cfg["mcpServers"]["aegis"]["url"] == "http://127.0.0.1:9/mcp/"
+    j = argv.index("--append-system-prompt")
+    assert "aegis_meta" in argv[j + 1]
+    # existing stream-json flags still present
+    assert "--strict-mcp-config" in argv and "-p" in argv</code></pre>
+    <p>In <code>tests/test_tui.py</code> add a <code>FakeMCP</code> and route
+      every <code>AegisApp(...)</code> construction through it. Add near the
+      top helpers:</p>
+<pre><code>class FakeMCP:
+    url = "http://127.0.0.1:0/mcp/"
+    started = stopped = False
+    async def start(self): self.started = True
+    async def stop(self): self.stopped = True
+
+# update the _app helper to inject it:
+def _app(factory=None, mcp=None):
+    f = factory or _factory()
+    return AegisApp({"default": _agent()}, "default", f, mcp or FakeMCP())</code></pre>
+    <p>Every direct <code>AegisApp({...}, "default", f)</code> in the file
+      gains a 4th arg <code>FakeMCP()</code> (there are a handful — update all;
+      grep <code>AegisApp(</code>). Add a lifecycle pilot:</p>
+<pre><code>@pytest.mark.asyncio
+async def test_app_starts_and_stops_mcp():
+    m = FakeMCP()
+    app = AegisApp({"default": _agent()}, "default", _factory(), m)
+    async with app.run_test() as pilot:
+        assert m.started is True
+        await pilot.press("ctrl+q")
+    assert m.stopped is True</code></pre>
+
+    <div class="step">Step 2 — run, expect fails (arity + missing flags + AegisApp 4th arg)</div>
+
+    <div class="step">Step 3 — <code>src/aegis/drivers/base.py</code></div>
+<pre><code>    @abc.abstractmethod
+    def build_argv(self, agent: Agent, cwd: str,
+                   mcp_url: str) -&gt; list[str]: ...
+
+    @abc.abstractmethod
+    def session(self, agent: Agent, cwd: str,
+                mcp_url: str) -&gt; HarnessSession: ...</code></pre>
+
+    <div class="step">Step 4 — <code>src/aegis/drivers/claude.py</code></div>
+    <p>Import the helpers; extend <code>build_argv</code>/<code>session</code>:</p>
+<pre><code>from aegis.mcp import PRIMING, mcp_config_json
+# ...
+    def build_argv(self, agent: Agent, cwd: str,
+                   mcp_url: str) -&gt; list[str]:
+        return [
+            "claude", "-p",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--replay-user-messages",
+            "--verbose",
+            "--model", agent.model,
+            "--effort", _EFFORT[agent.effort],
+            "--permission-mode", _PERMISSION_MODE[agent.permission],
+            "--mcp-config", mcp_config_json(mcp_url),
+            "--strict-mcp-config",
+            "--append-system-prompt", PRIMING,
+        ]
+
+    def session(self, agent: Agent, cwd: str,
+                mcp_url: str) -&gt; ClaudeSession:
+        return ClaudeSession(self.build_argv(agent, cwd, mcp_url), cwd)</code></pre>
+
+    <div class="step">Step 5 — <code>src/aegis/cli.py</code></div>
+    <p>Add import <code>from aegis.mcp import AegisMCP</code>. Replace the
+      factory + construction tail:</p>
+<pre><code>    def make_session(profile, mcp_url):
+        return get_driver(profile.harness).session(profile, cwd, mcp_url)
+
+    AegisApp(agents, name, make_session, AegisMCP()).run()</code></pre>
+
+    <div class="step">Step 6 — <code>src/aegis/tui/app.py</code></div>
+    <p><code>__init__</code> gains <code>mcp</code> (stored
+      <code>self._mcp</code>). <code>on_mount</code> starts it
+      <strong>before</strong> the first spawn. <code>_spawn</code> passes the
+      url into the factory. <code>action_quit</code> stops it after closing
+      panes.</p>
+<pre><code>    def __init__(self, agents, default_agent, make_session, mcp) -&gt; None:
+        super().__init__()
+        self._agents = agents
+        self._default_agent = default_agent
+        self._make_session = make_session
+        self._mcp = mcp
+        self._panes: list[ConversationPane] = []
+        self._palette = aegis_colors(INK)
+
+    async def on_mount(self) -&gt; None:
+        for theme in THEMES.values():
+            self.register_theme(theme)
+        self.theme = DEFAULT_THEME
+        self._palette = aegis_colors(self.current_theme)
+        self.query_one(TabBar).set_palette(self._palette)
+        await self._mcp.start()
+        await self._spawn(self._default_agent)
+        self.set_interval(1.0, self._tick)</code></pre>
+    <p>(Keep the existing <code>__init__</code> body's other lines as they
+      are; only add <code>self._mcp = mcp</code> and the <code>mcp</code>
+      parameter. Keep whatever the current <code>on_mount</code> does — the
+      only changes are the new param and the
+      <code>await self._mcp.start()</code> line placed immediately before
+      <code>await self._spawn(...)</code>. Reproduce the real current
+      <code>__init__</code>/<code>on_mount</code> bodies exactly; the block
+      above shows the shape, not a licence to drop existing lines.)</p>
+    <p>In <code>_spawn</code>, change the factory call to pass the url:</p>
+<pre><code>        pane = ConversationPane(
+            self._make_session(agent, self._mcp.url), agent,
+            slug, handle, self._palette)</code></pre>
+    <p>In <code>action_quit</code>, after closing all panes and before
+      <code>self.exit()</code>:</p>
+<pre><code>        await self._mcp.stop()</code></pre>
+
+    <div class="step">Step 7 — run + full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"      # all pass (driver argv, tui w/ FakeMCP, cli)
+uv run python -c "import aegis.cli, aegis.tui.app, aegis.mcp"
+uv run ruff check src/aegis
+git add src/aegis/drivers/base.py src/aegis/drivers/claude.py src/aegis/cli.py \
+  src/aegis/tui/app.py tests/test_driver_argv.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): inject strict aegis MCP + priming into spawned claude"</code></pre>
+  </section>
+
+  <section id="t4">
+    <h2>Task 4 — Live acceptance test + docs</h2>
+    <div class="step">Step 1 — <code>tests/test_mcp_live.py</code> (slow, skips w/o claude)</div>
+<pre><code>import asyncio
+import json
+import shutil
+import pytest
+from aegis.mcp import AegisMCP, mcp_config_json
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("claude") is None, reason="claude not on PATH")
+
+
+@pytest.mark.asyncio
+async def test_live_claude_calls_aegis_meta():
+    mcp = AegisMCP()
+    await mcp.start()
+    try:
+        argv = [
+            "claude", "-p",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--replay-user-messages", "--verbose",
+            "--permission-mode", "bypassPermissions",
+            "--strict-mcp-config",
+            "--mcp-config", mcp_config_json(mcp.url),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        msg = {"type": "user", "message": {"role": "user",
+               "content": "Call the aegis_meta tool, then tell me which "
+                          "MCP server you are on."}}
+        proc.stdin.write((json.dumps(msg) + "\n").encode())
+        await proc.stdin.drain()
+        out = await asyncio.wait_for(proc.stdout.read(), timeout=150)
+        text = out.decode("utf-8", "replace")
+        proc.kill()
+        # the aegis tool was invoked and the briefing came back
+        assert "aegis_meta" in text
+        assert "meta-harness" in text       # briefing content surfaced
+    finally:
+        await mcp.stop()</code></pre>
+    <p>Run it manually once to pin reality:
+      <code>uv run pytest tests/test_mcp_live.py -q</code>. If it fails on the
+      MCP url path (FastMCP serves a different mount than <code>/mcp/</code>)
+      or the mcp-config schema, fix <code>AegisMCP.url</code> /
+      <code>mcp_config_json</code> accordingly — <strong>this test is the
+      source of truth</strong> for those two contracts (spec said so).
+      Re-run T1/T3 unit tests after any such fix (they assert the same
+      shapes) and amend.</p>
+    <div class="step">Step 2 — AGENTS.md + CHANGELOG (inline)</div>
+    <p>AGENTS.md: under the <code>tui/</code> layout add
+      <code>src/aegis/mcp/</code> (FastMCP server + AegisMCP runtime;
+      injected strict into spawned claude with an <code>aegis_meta</code>
+      briefing) and a one-line note: <em>aegis sessions run
+      <code>--strict-mcp-config</code> — the user's other MCP servers are
+      not present inside aegis; built-in tools are unchanged.</em>
+      CHANGELOG.md: add at the top, above <code>## [0.1.0]</code>:</p>
+<pre><code>## [Unreleased]
+
+### Added
+- MCP plane (slice 1): a shared FastMCP HTTP server owned by aegis;
+  spawned agents are injected strict + primed and get an `aegis_meta`
+  orientation tool.</code></pre>
+    <div class="step">Step 3 — full suite + commit</div>
+<pre><code>uv run pytest -q -k "not live"     # all pass (live test excluded by marker)
+git add tests/test_mcp_live.py AGENTS.md CHANGELOG.md
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "test(mcp): live aegis_meta acceptance; docs: MCP plane note + CHANGELOG"</code></pre>
+    <p>Acceptance: the live test passes locally (real claude calls
+      <code>aegis_meta</code> through the strict aegis plane and the briefing
+      returns) — plus the manual TUI check: launch <code>aegis</code>, ask
+      "what MCP server are you on?", the agent calls <code>aegis_meta</code>
+      and reports aegis.</p>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage</summary>
+      <ul>
+        <li>Shared FastMCP HTTP server, pure native serving
+          (<code>run_http_async</code>) → T2.</li>
+        <li><code>aegis_meta</code> + briefing constant + PRIMING → T1.</li>
+        <li>Strict injection + <code>--mcp-config</code> JSON +
+          <code>--append-system-prompt</code> → T3 (driver), shape tested
+          T1/T3.</li>
+        <li>App owns one DI'd <code>AegisMCP</code>; start before first spawn;
+          url threaded via <code>make_session(profile, mcp_url)</code> →
+          <code>session(agent,cwd,mcp_url)</code> → <code>build_argv</code>;
+          stop on quit → T3.</li>
+        <li>Fail-fast if server doesn't start → T2 <code>start()</code> raises
+          on readiness timeout; surfaces at mount.</li>
+        <li>Verification: unit (briefing/argv), async runtime, live acceptance
+          (definitive on/callable + pins url/schema), pilot lifecycle, suite
+          green → T1–T4.</li>
+        <li>Strict consequence documented → T4 AGENTS note. Built-ins
+          untouched (no <code>--tools</code>) — confirmed, not in argv.</li>
+        <li>Sequencing gate (after v0.1.0 tag) → header warning + CHANGELOG
+          <code>[Unreleased]</code>.</li>
+        <li>Non-goals (no tool replacement, one tool, no auth, one plane,
+          no persistence) — none introduced.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder &amp; consistency</summary>
+      <p>No TBDs; full code per step. Signatures consistent:
+        <code>build_argv(agent,cwd,mcp_url)</code> /
+        <code>session(agent,cwd,mcp_url)</code> (base + claude + cli +
+        app/_spawn + tests); <code>make_session(profile, mcp_url)</code>;
+        <code>AegisApp(agents, default_agent, make_session, mcp)</code>
+        (cli + every test incl. the <code>_app</code> helper + FakeMCP);
+        <code>AegisMCP.url</code>/<code>.port</code>/<code>start</code>/
+        <code>stop</code>; <code>mcp_config_json(url)</code> /
+        <code>PRIMING</code> / <code>BRIEFING</code> / <code>aegis_meta</code>
+        (server + driver + tests). The two unverified external contracts
+        (FastMCP mount path, claude mcp-config http schema) are explicitly
+        deferred to the T4 live test as source of truth, with instruction to
+        back-fix T1/T3 unit shapes if reality differs.</p>
+    </details>
+    <details>
+      <summary>Risk notes</summary>
+      <ul>
+        <li>T1's <code>__init__.py</code> re-exports <code>runtime</code>
+          (created in T2) — handled: T1 test imports the module directly; the
+          empty-init fallback is documented if collection breaks.</li>
+        <li>~25 pilot tests construct <code>AegisApp</code>; without
+          <code>FakeMCP</code> they'd each spin a real HTTP server (slow,
+          port-noisy, flaky). T3 routes all through <code>FakeMCP</code> via
+          the <code>_app</code> helper + grep-and-update of direct
+          constructions — the suite stays hermetic and fast.</li>
+        <li><code>run_http_async</code> kwargs / mount path unverified beyond
+          "exists + async" — T2/T4 carry explicit adapt-and-report
+          instructions; the live test arbitrates.</li>
+        <li>Server fail-to-start raises at <code>on_mount</code> → clean
+          non-zero exit, not a half-mounted TUI (plane is load-bearing under
+          strict).</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis MCP slice-1 plan</footer>
+
+</div>
+</body>
+</html>
