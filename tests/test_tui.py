@@ -309,3 +309,13 @@ async def test_error_then_resend_recovers_to_ready():
         await pilot.pause()
         assert pane._transcript_has("recovered")
         assert pane.state is AgentState.ready
+
+
+@pytest.mark.asyncio
+async def test_app_boots_on_ink_theme():
+    from aegis.tui.themes import AegisColors
+    app = _app()
+    async with app.run_test():
+        assert app.theme == "aegis-ink"
+        assert isinstance(app.colors, AegisColors)
+        assert app.colors.accent == "#E0A872"

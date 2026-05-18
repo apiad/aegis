@@ -11,6 +11,9 @@ from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
+from aegis.tui.themes import (
+    THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
+)
 from aegis.tui.widgets import TabBar
 
 SessionFactory = Callable[[Agent], HarnessSession]
@@ -18,8 +21,10 @@ SessionFactory = Callable[[Agent], HarnessSession]
 
 class AegisApp(App):
     CSS = """
-    TabBar { height: 1; background: $panel; }
-    ContentSwitcher { height: 1fr; }
+    Screen { background: $background; }
+    TabBar { height: 1; background: $panel; color: $foreground;
+             padding: 0 1; }
+    ContentSwitcher { height: 1fr; background: $background; }
     """
 
     BINDINGS = [
@@ -42,14 +47,33 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._panes: list[ConversationPane] = []
+        self._colors: AegisColors = aegis_colors(INK)
 
     def compose(self) -> ComposeResult:
         yield TabBar()
         yield ContentSwitcher()
 
+    @property
+    def colors(self) -> AegisColors:
+        return self._colors
+
     async def on_mount(self) -> None:
+        for theme in THEMES.values():
+            self.register_theme(theme)
+        self.theme = DEFAULT_THEME
+        self._colors = aegis_colors(self.current_theme)
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
+
+    def watch_theme(self, theme_name: str | None) -> None:
+        # Recompute seam — exercised once a 2nd theme exists. Dormant now
+        # (one theme, set once pre-panes). No-op until running.
+        if not self.is_running:
+            return
+        self._colors = aegis_colors(self.current_theme)
+        for pane in self._panes:
+            pane.set_colors(self._colors)
+        self._refresh_tabbar()
 
     @property
     def _active(self) -> ConversationPane | None:
