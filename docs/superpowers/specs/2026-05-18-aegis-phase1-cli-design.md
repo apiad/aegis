@@ -162,13 +162,20 @@ repl drains queue ──▶ Renderer.render(event) ──▶ rich Console
 ## CLI surface
 
 ```
-aegis [PROMPT] [--agent NAME] [--cwd DIR]
+aegis [--agent NAME] [--cwd DIR]
 aegis init
 ```
 
-- `PROMPT` optional: if given, sent as the first turn, then the REPL continues.
 - `--agent` defaults to the config's `default_agent`.
 - `--cwd` sets the claude subprocess working directory (default: `.`).
+
+Deviation from original surface: the positional `PROMPT` (send a first turn
+non-interactively) was **dropped from v1**. A click group with subcommands
+plus an optional positional makes the `init` token ambiguous (it gets consumed
+as the prompt). Rather than fight click, the first turn is simply typed into
+the REPL. `run_repl` retains an `initial_prompt` parameter for tests/future
+use; the CLI just always passes `None`. This keeps `aegis` and `aegis init`
+unambiguous and matches the intended `init`-then-run flow exactly.
 
 (`--debug` raw-event echo is deferred out of v1 — see "Open items deferred".)
 
