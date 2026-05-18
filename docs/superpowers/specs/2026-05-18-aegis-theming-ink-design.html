@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Theming + Ink Default" status=approved date=2026-05-18 source="builds on 2026-05-18-aegis-multitab-design.html; mockups .playground/aegis-mockups/" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Theming + Ink Default — Design</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--oat:#E3DACC;
+    --olive:#788C5D;--rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;
+    --g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec · Aegis</div>
+    <h1>Theming + Ink Default — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>Builds on: aegis-multitab-design</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#engine">Theme engine</a>
+    <a href="#ink">Ink theme</a>
+    <a href="#wiring">Wiring</a>
+    <a href="#spacing">Spacing</a>
+    <a href="#errors">Edge cases</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Make the TUI prettier and themeable: ship a calm "Ink" default
+      (near-black, single warm accent, hairline rules instead of boxes,
+      generous padding, a blank-line gap between user and agent turns) on top
+      of a theme abstraction so additional themes are later drop-ins with no
+      rework. Reference mockups:
+      <code>.playground/aegis-mockups/{A,B,C}-*.html</code> (C = Ink, chosen).</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Textual-native themes.</strong> Each aegis theme is a
+        <code>textual.theme.Theme</code>, registered on the app; TCSS uses
+        theme variables; rich-renderable colors read semantic roles from the
+        active theme.</li>
+      <li><strong>Ink is the default and only theme now.</strong> The
+        registry/abstraction is built so a new theme is a drop-in
+        <code>Theme</code> object; no config key, no picker, no runtime switch
+        (those are non-goals).</li>
+      <li><strong>Colors threaded explicitly</strong> (pane → render / dot /
+        widgets), not a module global — keeps <code>render_event</code> and
+        <code>AgentState</code> pure-given-input and test-trivial.</li>
+      <li><strong>Turn spacing is content.</strong> The blank-line gap between
+        turns is real blank rows written to the transcript; panel padding and
+        hairline rules are TCSS.</li>
+    </ol>
+  </section>
+
+  <section id="engine">
+    <h2>Theme engine — new <code>src/aegis/tui/themes.py</code></h2>
+    <ul>
+      <li><strong><code>INK</code></strong>: a
+        <code>Theme(name="aegis-ink", dark=True, …)</code> with the C palette
+        — near-black <code>background</code>, slightly-lifted
+        <code>surface</code>/<code>panel</code>, parchment
+        <code>foreground</code>, one amber <code>accent</code>, muted
+        <code>success</code>/<code>warning</code>/<code>error</code>; plus
+        aegis keys in <code>variables</code>:
+        <code>aegis-muted</code>, <code>aegis-faint</code>,
+        <code>aegis-rule</code>.</li>
+      <li><strong><code>THEMES: dict[str, Theme] = {"ink": INK}</code></strong>
+        and <code>DEFAULT_THEME = "aegis-ink"</code> (the registered theme
+        name). Adding a theme later = add one <code>Theme</code> + one
+        registry entry; nothing else changes.</li>
+      <li><strong><code>AegisColors</code></strong> — a frozen dataclass with
+        exactly the semantic roles aegis's rich renderables need:
+        <code>ready</code>, <code>working</code>, <code>error</code>,
+        <code>accent</code>, <code>muted</code>, <code>ok</code>,
+        <code>err</code>, <code>user</code> (each a hex string).</li>
+      <li><strong><code>aegis_colors(theme: Theme) -> AegisColors</code></strong>
+        — the single place role→color is decided:
+        <code>ready=success</code>, <code>working=warning</code>,
+        <code>error=error</code>, <code>ok=success</code>,
+        <code>err=error</code>, <code>accent=accent</code> (user
+        <code>›</code> prefix and tool <code>⏺</code> glyph),
+        <code>user=accent</code>, <code>muted=variables["aegis-muted"]</code>
+        (thinking, <code>── done ──</code>, the <code>└</code> result gutter).
+        Reads <code>theme.success</code> etc. and
+        <code>theme.variables[...]</code>.</li>
+    </ul>
+  </section>
+
+  <section id="ink">
+    <h2>Ink theme values</h2>
+    <p>Concrete starting palette (from mockup C, tunable during
+      implementation without design re-approval — these are values, not
+      structure):</p>
+    <table>
+      <thead><tr><th>Theme field</th><th>Hex</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><code>background</code></td><td><code>#0e0e0d</code></td><td>app bg</td></tr>
+        <tr><td><code>surface</code></td><td><code>#141412</code></td><td>input / subtle fills</td></tr>
+        <tr><td><code>panel</code></td><td><code>#1a1a17</code></td><td>tab bar, status bar</td></tr>
+        <tr><td><code>foreground</code></td><td><code>#DCD9CF</code></td><td>body text</td></tr>
+        <tr><td><code>accent</code></td><td><code>#E0A872</code></td><td>amber: user <code>›</code>, tool <code>⏺</code>, active tab underline, cursor</td></tr>
+        <tr><td><code>success</code></td><td><code>#9DB07E</code></td><td>ready dot, tool <code>ok</code></td></tr>
+        <tr><td><code>warning</code></td><td><code>#E0A872</code></td><td>working dot, <code>✻ working…</code></td></tr>
+        <tr><td><code>error</code></td><td><code>#C56B5C</code></td><td>error dot, tool <code>error</code>, <code>⚠</code></td></tr>
+        <tr><td><code>variables.aegis-muted</code></td><td><code>#76736a</code></td><td>thinking, result gutter, <code>── done ──</code></td></tr>
+        <tr><td><code>variables.aegis-faint</code></td><td><code>#4a4843</code></td><td>thinking italic, deep-dim</td></tr>
+        <tr><td><code>variables.aegis-rule</code></td><td><code>#26241f</code></td><td>hairline rules (tabs / status borders)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="wiring">
+    <h2>Wiring</h2>
+    <ul>
+      <li><code>AegisApp.__init__</code>/<code>on_mount</code>: for each
+        <code>THEMES</code> value <code>self.register_theme(t)</code>; set
+        <code>self.theme = DEFAULT_THEME</code>. Expose
+        <code>self.colors: AegisColors = aegis_colors(self.current_theme)</code>.
+        Add <code>def watch_theme(self, _)</code> that recomputes
+        <code>self.colors</code> and re-pushes it to live panes — the
+        extensibility seam (correct now, exercised once a 2nd theme exists).</li>
+      <li><strong>TCSS</strong> (<code>app.py</code> CSS,
+        <code>ConversationPane.DEFAULT_CSS</code>, <code>widgets.py</code>
+        <code>TabBar.DEFAULT_CSS</code>): replace ad-hoc values with theme
+        vars — <code>$background $surface $panel $foreground $accent
+        $boost</code> and the Ink look: no panel boxes; <code>TabBar</code>
+        gets <code>border-bottom: hkey $panel</code>-style hairline (via the
+        <code>aegis-rule</code> color), <code>StatusBar</code> a top hairline;
+        <code>RichLog</code> gains <code>padding: 1 2</code>; <code>Input</code>
+        a calm <code>padding</code>; no rounded boxes (Ink = ruled, not
+        boxed).</li>
+      <li><code>state.py</code>: replace the <code>AgentState.dot</code>
+        property with <code>dot(self, colors: AegisColors) -&gt; str</code>
+        returning <code>f"[{colors.ready}]●[/]"</code> etc.; keep
+        <code>label</code> unchanged.</li>
+      <li><code>render.py</code>:
+        <code>render_event(ev, colors: AegisColors)</code> — replace the
+        literal <code>"cyan"/"green"/"red"/"dim"</code> styles with
+        <code>colors.accent / colors.ok / colors.err / colors.muted</code>.
+        <code>SystemInit/Unknown → None</code> unchanged.</li>
+      <li><code>ConversationPane</code>: receives the active
+        <code>AegisColors</code> from the app (constructor arg or set right
+        after mount); passes it to <code>render_event</code> and to
+        <code>StatusBar</code>/<code>_TabCell</code> dot rendering. The user
+        <code>›</code> prefix uses <code>colors.user</code>.</li>
+      <li><code>widgets.py</code>: <code>StatusBar</code> and
+        <code>_TabCell</code> take colors for the dot + accent slug;
+        <code>TabBar.set_tabs</code> tuple grows no fields — the app passes
+        colors to <code>TabBar</code> once (it owns the cells).</li>
+      <li><code>cli.py</code>: unchanged (the app already owns theme setup).</li>
+    </ul>
+  </section>
+
+  <section id="spacing">
+    <h2>Turn spacing</h2>
+    <p>In <code>ConversationPane</code>: before writing a new user
+      <code>›</code> line (except the very first turn), write one blank line
+      to the transcript; after the assistant block / <code>── done ──</code>
+      separator, the next user turn's leading blank line provides the gap (so
+      exactly one blank row between turns, none stray at top). Panel padding
+      (the "padding everywhere") is TCSS on <code>RichLog</code>/<code>Input</code>;
+      the calm Ink whitespace is the combination of both.</p>
+  </section>
+
+  <section id="errors">
+    <h2>Edge cases</h2>
+    <ul>
+      <li>A registered Textual theme name must be unique; <code>INK.name</code>
+        is <code>"aegis-ink"</code> (namespaced) to avoid clashing with
+        Textual's built-ins.</li>
+      <li><code>aegis_colors</code> reads <code>theme.variables</code> by key;
+        a missing aegis key falls back to <code>theme.foreground</code> (so a
+        future under-specified theme degrades, not crashes).</li>
+      <li><code>watch_theme</code> may fire before panes exist (initial set in
+        <code>on_mount</code>) — it must no-op safely when there are no
+        panes.</li>
+      <li>Colors are hex strings consumed by Rich markup
+        (<code>[#RRGGBB]…[/]</code>) and TCSS; both accept
+        <code>#RRGGBB</code>.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <ul>
+      <li><strong><code>themes.py</code></strong> (unit): <code>THEMES</code>
+        contains the default; <code>INK.name == "aegis-ink"</code>;
+        <code>aegis_colors(INK)</code> returns an <code>AegisColors</code>
+        with every role a non-empty <code>#</code>-hex; the fallback path
+        (synthetic theme missing an aegis variable) yields foreground, no
+        raise.</li>
+      <li><strong><code>state.dot(colors)</code></strong>: each state embeds
+        its Ink hex (<code>success</code>/<code>warning</code>/<code>error</code>);
+        <code>label</code> unchanged.</li>
+      <li><strong><code>render_event(ev, colors)</code></strong>: tool glyph
+        uses <code>accent</code> hex, ok/err use <code>ok</code>/<code>err</code>,
+        thinking/result use <code>muted</code>; markdown text still rendered;
+        <code>SystemInit/Unknown → None</code>.</li>
+      <li><strong>Pilot</strong>: app boots with
+        <code>app.theme == "aegis-ink"</code> and <code>app.colors</code> is
+        the Ink mapping; after a user turn the transcript contains a blank
+        line separating the user line from the agent reply; tab/status render
+        with Ink colors.</li>
+      <li>Existing pilots/units updated for the new
+        <code>dot(colors)</code> / <code>render_event(ev, colors)</code>
+        signatures (mechanical). The live <code>claude</code> driver test is
+        unchanged (driver-level).</li>
+      <li>Test work written/validated inline (not delegated).</li>
+    </ul>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>Config (<code>.aegis.py</code>) theme selection; a theme picker;
+        a runtime theme-switch key.</li>
+      <li>The A/B (Warm Parchment / Cool Slate) palettes — later drop-in
+        <code>Theme</code> objects using this same engine.</li>
+      <li>Light themes, per-tab themes, user-defined themes from config.</li>
+    </ul>
+    <details>
+      <summary>Why threaded colors, not a module global</summary>
+      <p>A module-level "current palette" set by the app would avoid signature
+        churn but reintroduces global mutable state that tests must set up and
+        reset and that prior reviews in this project flagged. Threading
+        <code>AegisColors</code> keeps <code>render_event</code> and
+        <code>AgentState.dot</code> pure functions of their inputs — the same
+        property that made them trivially unit-testable in earlier phases.</p>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis spec</footer>
+
+</div>
+</body>
+</html>
