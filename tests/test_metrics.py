@@ -1,116 +1,111 @@
-from aegis.events import Result
+from aegis.events import TokenUsage
 from aegis.tui.metrics import SessionMetrics
 
 
-def _r(inp=None, out=None):
-    return Result(duration_ms=0, is_error=False,
-                  input_tokens=inp, output_tokens=out)
+def _u(inp=0, cc=0, cr=0, out=0):
+    return TokenUsage(input=inp, cache_creation=cc, cache_read=cr, output=out)
 
 
-def test_tokens_accumulate_across_turns():
-    m = SessionMetrics(0.0)
-    m.start_turn(0.0)
-    m.end_turn(_r(100, 20), 1.0)
-    m.start_turn(2.0)
-    m.end_turn(_r(50, 5), 3.0)
-    assert m.in_tokens == 150
-    assert m.out_tokens == 25
+# --- token accounting -------------------------------------------------
+
+def test_commit_accumulates_true_input_and_cached_across_turns():
+    m = SessionMetrics()
+    m.commit(_u(inp=4, cc=10_000, cr=80_000, out=120), 1.0)
+    m.commit(_u(inp=2, cc=0, cr=90_000, out=30), 2.0)
+    # true input = input + cc + cr, summed across turns
+    assert m.c_in == (4 + 10_000 + 80_000) + (2 + 0 + 90_000)
+    assert m.c_out == 150
+    assert m.c_cached == 170_000
 
 
-def test_missing_tokens_contribute_zero():
-    m = SessionMetrics(0.0)
-    m.start_turn(0.0)
-    m.end_turn(_r(None, None), 1.0)
-    assert m.in_tokens == 0 and m.out_tokens == 0
+def test_commit_none_adds_no_tokens():
+    m = SessionMetrics()
+    m.commit(None, 1.0)
+    assert m.c_in == 0 and m.c_out == 0 and m.c_cached == 0
 
 
-def test_tool_counts_and_error_increments_both():
-    m = SessionMetrics(0.0)
+def test_observe_is_max_not_sum_then_commit_is_authoritative():
+    # The same step's usage repeats across assistant events; summing would
+    # treble-count. observe() takes the MAX (monotonic snapshot).
+    m = SessionMetrics()
+    rep = _u(inp=2, cc=37_801, cr=0, out=34)
+    m.observe(rep)
+    m.observe(rep)
+    m.observe(rep)                       # 3× identical, like the real stream
+    assert m.p_in == 37_803              # one step's true_input, not 3×
+    assert m._provisional is True
+    # render shows it provisionally with a leading ~
+    assert m.render(0.0).startswith("~↑")
+    # commit replaces provisional with the authoritative result total
+    m.commit(_u(inp=4, cc=38_993, cr=37_801, out=261), 1.0)
+    assert m.p_in == 0 and m._provisional is False
+    assert m.c_in == 4 + 38_993 + 37_801 and m.c_out == 261
+    assert not m.render(0.0).startswith("~")
+
+
+def test_render_true_input_and_cached_pct():
+    m = SessionMetrics()
+    m.commit(_u(inp=1000, cc=4000, cr=95_000, out=1200), 1.0)
+    s = m.render(0.0)
+    # true input 100000 → 100k; cached 95000/100000 → 95%
+    assert "↑100k (95% cached)" in s
+    assert "↓1.2k" in s
+
+
+def test_render_zero_before_any_turn():
+    s = SessionMetrics().render(0.0)
+    assert "↑0 (0% cached) ↓0" in s
+
+
+# --- tools ------------------------------------------------------------
+
+def test_tool_counts_and_error_increment_independently():
+    m = SessionMetrics()
     m.record_tool()
     m.record_tool()
     m.record_tool_error()
-    assert m.tool_calls == 2
-    assert m.tool_errors == 1
-
-
-def test_turn_seconds_in_flight_then_idle():
-    m = SessionMetrics(0.0)
-    m.start_turn(10.0)
-    assert m.turn_seconds(13.0) == 3.0
-    m.end_turn(_r(), 15.0)
-    assert m.turn_seconds(99.0) == 5.0
-
-
-def test_session_seconds_monotonic():
-    m = SessionMetrics(100.0)
-    assert m.session_seconds(160.0) == 60.0
-
-
-def test_cancel_turn_freezes_time_no_tokens():
-    m = SessionMetrics(0.0)
-    m.start_turn(10.0)
-    m.cancel_turn(14.0)
-    assert m.turn_seconds(999.0) == 4.0
-    assert m.in_tokens == 0 and m.out_tokens == 0
+    assert "⚒ 2 (1 err)" in m.render(0.0)
 
 
 def test_render_hides_errors_when_zero():
-    m = SessionMetrics(0.0)
+    m = SessionMetrics()
     m.record_tool()
     out = m.render(0.0)
-    assert "⚒ 1" in out
-    assert "err" not in out
+    assert "⚒ 1" in out and "err" not in out
 
 
-def test_render_shows_errors_when_nonzero():
-    m = SessionMetrics(0.0)
-    m.record_tool()
-    m.record_tool_error()
-    assert "⚒ 1 (1 err)" in m.render(0.0)
+# --- time -------------------------------------------------------------
+
+def test_turn_seconds_in_flight_then_idle():
+    m = SessionMetrics()
+    m.start_turn(10.0)
+    assert m.turn_seconds(13.0) == 3.0
+    m.commit(None, 15.0)
+    assert m.turn_seconds(99.0) == 5.0      # frozen at last turn
 
 
-def test_token_humanization_boundaries():
-    m = SessionMetrics(0.0)
-    m.start_turn(0.0)
-    m.end_turn(_r(999, 1000), 0.0)
-    s = m.render(0.0)
-    assert "↑999" in s
-    assert "↓1k" in s
-    m.start_turn(0.0)
-    m.end_turn(_r(235, 999_001), 0.0)
-    s = m.render(0.0)
-    assert "↑1.2k" in s
-    assert "↓1.0M" in s
+def test_cancel_turn_freezes_time_and_drops_provisional():
+    m = SessionMetrics()
+    m.start_turn(10.0)
+    m.observe(_u(inp=5000, cr=5000))
+    m.cancel_turn(14.0)
+    assert m.turn_seconds(99.0) == 4.0
+    assert m.p_in == 0 and m._provisional is False
+    assert m.c_in == 0                      # nothing committed
 
 
-def test_time_formatting():
-    m = SessionMetrics(0.0)
-    m.start_turn(0.0)
-    assert m.render(45.0).endswith("45s / 45s")
-    m2 = SessionMetrics(0.0)
-    m2.start_turn(0.0)
-    assert m2.render(243.0).endswith("4m03s / 4m03s")
-
-
-def test_render_before_first_turn_is_zero_seconds():
-    m = SessionMetrics(0.0)
-    assert "0s / 0s" in m.render(0.0)
-
-
-def test_session_unanchored_is_zero_until_begin():
+def test_session_clock_unanchored_then_begin():
     m = SessionMetrics()
     assert m.session_seconds(999.0) == 0.0
     m.begin_session(100.0)
-    assert m.session_seconds(105.0) == 5.0
+    m.begin_session(200.0)                  # idempotent
+    assert m.session_seconds(160.0) == 60.0
 
 
-def test_begin_session_is_idempotent():
-    m = SessionMetrics()
-    m.begin_session(10.0)
-    m.begin_session(50.0)
-    assert m.session_seconds(20.0) == 10.0
-
-
-def test_explicit_anchor_still_works():
-    m = SessionMetrics(0.0)
-    assert m.session_seconds(7.0) == 7.0
+def test_time_formatting_tail():
+    m = SessionMetrics(session_start=0.0)
+    m.start_turn(0.0)
+    assert m.render(45.0).endswith("45s / 45s")
+    m2 = SessionMetrics(session_start=0.0)
+    m2.start_turn(0.0)
+    assert m2.render(243.0).endswith("4m03s / 4m03s")

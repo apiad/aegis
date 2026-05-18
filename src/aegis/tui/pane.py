@@ -136,17 +136,23 @@ class ConversationPane(Widget):
                 elif isinstance(ev, ToolResult) and ev.is_error:
                     self._metrics.record_tool_error()
                 if isinstance(ev, Result):
-                    self._metrics.end_turn(ev, self._now())
+                    self._metrics.commit(ev.usage, self._now())
                     saw_result = True
                     self._finish(error=ev.is_error)
+                else:
+                    u = getattr(ev, "usage", None)
+                    if u is not None:
+                        self._metrics.observe(u)  # provisional, live
                 self.refresh_metrics()
         except Exception:  # noqa: BLE001
             self._write(Text("⚠ harness error", style=self._palette.err))
             if not saw_result:
+                self._metrics.commit(None, self._now())
                 self._finish(error=True)
             return
         if not saw_result:
             self._write(Text("⚠ harness exited", style=self._palette.err))
+            self._metrics.commit(None, self._now())
             self._finish(error=True)
 
     def _finish(self, *, error: bool) -> None:

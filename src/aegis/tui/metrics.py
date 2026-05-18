@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from aegis.events import Result
+from aegis.events import TokenUsage
 
 
 def _fmt_tokens(n: int) -> str:
@@ -26,12 +26,20 @@ def _fmt_time(seconds: float) -> str:
 @dataclass
 class SessionMetrics:
     session_start: float | None = None
-    in_tokens: int = 0
-    out_tokens: int = 0
     tool_calls: int = 0
     tool_errors: int = 0
     turn_start: float | None = None
     last_turn_seconds: float = 0.0
+    # committed — authoritative, summed from result.usage per finished turn
+    c_in: int = 0
+    c_out: int = 0
+    c_cached: int = 0
+    # provisional — current turn, monotonic MAX over streamed assistant
+    # usages (a step's usage repeats across events; summing double-counts).
+    p_in: int = 0
+    p_out: int = 0
+    p_cached: int = 0
+    _provisional: bool = False
 
     def start_turn(self, now: float) -> None:
         self.turn_start = now
@@ -42,17 +50,33 @@ class SessionMetrics:
     def record_tool_error(self) -> None:
         self.tool_errors += 1
 
-    def end_turn(self, result: Result, now: float) -> None:
-        self.in_tokens += result.input_tokens or 0
-        self.out_tokens += result.output_tokens or 0
+    def observe(self, u: TokenUsage) -> None:
+        """A streamed (non-authoritative) usage snapshot — provisional."""
+        self.p_in = max(self.p_in, u.true_input)
+        self.p_out = max(self.p_out, u.output)
+        self.p_cached = max(self.p_cached, u.cache_read)
+        self._provisional = True
+
+    def _end_time(self, now: float) -> None:
         if self.turn_start is not None:
             self.last_turn_seconds = now - self.turn_start
         self.turn_start = None
 
+    def commit(self, usage: TokenUsage | None, now: float) -> None:
+        """Turn end. `usage` (result.usage) is authoritative; provisional
+        is discarded. `None` (error/no-result) commits no tokens."""
+        if usage is not None:
+            self.c_in += usage.true_input
+            self.c_out += usage.output
+            self.c_cached += usage.cache_read
+        self.p_in = self.p_out = self.p_cached = 0
+        self._provisional = False
+        self._end_time(now)
+
     def cancel_turn(self, now: float) -> None:
-        if self.turn_start is not None:
-            self.last_turn_seconds = now - self.turn_start
-        self.turn_start = None
+        self.p_in = self.p_out = self.p_cached = 0
+        self._provisional = False
+        self._end_time(now)
 
     def turn_seconds(self, now: float) -> float:
         if self.turn_start is not None:
@@ -69,12 +93,17 @@ class SessionMetrics:
         return now - self.session_start
 
     def render(self, now: float) -> str:
+        in_t = self.c_in + self.p_in
+        out = self.c_out + self.p_out
+        cached = self.c_cached + self.p_cached
+        pct = round(100 * cached / in_t) if in_t else 0
+        mark = "~" if self._provisional else ""
         tool = f"⚒ {self.tool_calls}"
         if self.tool_errors:
             tool += f" ({self.tool_errors} err)"
         return (
-            f"↑{_fmt_tokens(self.in_tokens)} "
-            f"↓{_fmt_tokens(self.out_tokens)} · "
+            f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
+            f"↓{_fmt_tokens(out)} · "
             f"{tool} · "
             f"{_fmt_time(self.turn_seconds(now))} / "
             f"{_fmt_time(self.session_seconds(now))}"
