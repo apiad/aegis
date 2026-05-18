@@ -436,3 +436,35 @@ async def test_blank_rows_between_agent_steps():
         read_i = next(i for i, t in enumerate(lines) if "Read" in t)
         # at least one blank row separates the thinking step from the tool
         assert any(lines[j].strip() == "" for j in range(think_i + 1, read_i))
+
+
+@pytest.mark.asyncio
+async def test_step_spacing_glues_tool_pair_and_single_gap_after_done():
+    from aegis.events import AssistantThinking, ToolUse, ToolResult
+    script = lambda t: [
+        AssistantThinking("mm"), ToolUse(name="Read", summary="f.py"),
+        ToolResult(text="ok", is_error=False), AssistantText("answer"),
+        Result(duration_ms=1, is_error=False),
+    ]
+    app = _app(_factory(FakeSession(script), FakeSession()))
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "first"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        pane.query_one(Input).value = "second"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        lines = [l.text if hasattr(l, "text") else str(l)
+                 for l in pane.query_one(RichLog).lines]
+        tool_i = next(i for i, t in enumerate(lines) if "Read" in t)
+        res_i = next(i for i, t in enumerate(lines) if t.strip().startswith("└"))
+        done_i = next(i for i, t in enumerate(lines) if "done in" in t)
+        u2_i = next(i for i, t in enumerate(lines) if t.startswith("› second"))
+        # 1: tool_use is immediately followed by its result (no blank between)
+        assert res_i == tool_i + 1, lines[tool_i:res_i + 1]
+        # 2: a blank row follows the tool result
+        assert lines[res_i + 1].strip() == ""
+        # 3: exactly ONE blank between ── done ── and the next user line
+        gap = [lines[j].strip() for j in range(done_i + 1, u2_i)]
+        assert gap == [""], gap

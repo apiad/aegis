@@ -131,7 +131,11 @@ class ConversationPane(Widget):
                 renderable = render_event(ev, self._palette)
                 if renderable is not None:
                     self._write(renderable)
-                    self._write(Text(""))   # air around each agent step
+                    # Air after a *completed* step — but keep a tool call
+                    # glued to its result, and don't trail the ── done ──
+                    # line (the next turn's leading blank separates it).
+                    if not isinstance(ev, (ToolUse, Result)):
+                        self._write(Text(""))
                 if isinstance(ev, ToolUse):
                     self._metrics.record_tool()
                 elif isinstance(ev, ToolResult) and ev.is_error:
