@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 import typer
@@ -11,6 +12,16 @@ from aegis.tui import AegisApp
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        try:
+            v = _pkg_version("aegis")
+        except PackageNotFoundError:        # not installed (rare in dev)
+            v = "0.0.0+unknown"
+        typer.echo(f"aegis {v}")
+        raise typer.Exit()
 
 
 @app.command()
@@ -27,6 +38,9 @@ def init() -> None:
 @app.callback(invoke_without_command=True)
 def run(
     ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", callback=_version_callback, is_eager=True,
+        help="Show version and exit."),
     agent: str = typer.Option(None, "--agent", "-a",
                               help="Named agent profile to use."),
     cwd: str = typer.Option(".", "--cwd",

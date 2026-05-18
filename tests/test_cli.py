@@ -26,3 +26,11 @@ def test_run_without_config_points_to_init(tmp_path, monkeypatch):
     result = runner.invoke(app, [])
     assert result.exit_code != 0
     assert "aegis init" in result.output
+
+
+def test_version_flag_prints_and_exits(tmp_path, monkeypatch):
+    # must work with NO .aegis.py and without launching the TUI
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "aegis 0.1.0"

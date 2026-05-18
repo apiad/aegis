@@ -1,10 +1,17 @@
 [project]
 name = "aegis"
 version = "0.1.0"
-description = "Add your description here"
+description = "A meta-harness for coding agents — drives Claude Code in a multi-agent terminal UI."
 readme = "README.md"
 authors = [
     { name = "Alejandro Piad", email = "apiad@apiad.net" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Topic :: Software Development",
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -51,3 +58,4 @@ dev = [
     "pytest-cov>=4.1.0",
     "mcp>=1.0.0",
 ]
+docs = ["mkdocs-material>=9.5"]
