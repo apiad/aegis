@@ -162,14 +162,15 @@ repl drains queue ──▶ Renderer.render(event) ──▶ rich Console
 ## CLI surface
 
 ```
-aegis [PROMPT] [--agent NAME] [--cwd DIR] [--debug]
+aegis [PROMPT] [--agent NAME] [--cwd DIR]
 aegis init
 ```
 
 - `PROMPT` optional: if given, sent as the first turn, then the REPL continues.
 - `--agent` defaults to the config's `default_agent`.
 - `--cwd` sets the claude subprocess working directory (default: `.`).
-- `--debug` echoes raw stream-json events to stderr.
+
+(`--debug` raw-event echo is deferred out of v1 — see "Open items deferred".)
 
 ## Concurrency model
 
@@ -231,6 +232,7 @@ distribution / Telegram; subscription pooling. The `HarnessDriver` base and
 
 ## Open items deferred (not blocking v1)
 
+- `--debug` raw stream-json echo to stderr (debug observability).
 - Interactive `aegis init` (prompted Q&A).
 - `auto` permission fallback semantics for harnesses lacking a native mode.
 - Whether the REPL eventually needs `prompt_toolkit` (history, editing) — v1
