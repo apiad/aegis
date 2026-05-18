@@ -260,8 +260,11 @@
         thinking/result use <code>muted</code>; markdown text still rendered;
         <code>SystemInit/Unknown → None</code>.</li>
       <li><strong>Pilot</strong>: app boots with
-        <code>app.theme == "aegis-ink"</code> and <code>app.colors</code> is
-        the Ink mapping; after a user turn the transcript contains a blank
+        <code>app.theme == "aegis-ink"</code> and <code>app.palette</code> is
+        the Ink mapping (the app attribute is <code>palette</code>, not
+        <code>colors</code>, to avoid shadowing Textual's
+        <code>App.colors</code>); after a user turn the transcript contains a
+        blank
         line separating the user line from the agent reply; tab/status render
         with Ink colors.</li>
       <li>Existing pilots/units updated for the new

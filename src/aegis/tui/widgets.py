@@ -72,6 +72,9 @@ class StatusBar(Static):
     def __init__(self, handle: str, agent_slug: str,
                  model: str, permission: str, colors) -> None:
         super().__init__(markup=True)
+        # Palette is captured once here. Runtime re-theming is a non-goal
+        # (single theme); a future switch would need a set_palette that
+        # rebuilds _identity (cf. pane/TabBar which do have set_palette).
         self._identity = (
             f"{handle}  [{colors.accent}]·{agent_slug}·[/]  "
             f"{model} · {permission}")
