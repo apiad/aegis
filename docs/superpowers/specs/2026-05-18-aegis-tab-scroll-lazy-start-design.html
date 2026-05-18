@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Tab-Scroll + Lazy Session Start" status=approved date=2026-05-18 source="builds on 2026-05-18-aegis-multitab-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Tab-Scroll + Lazy Session Start — Design</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--oat:#E3DACC;
+    --olive:#788C5D;--rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;
+    --g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec · Aegis</div>
+    <h1>Tab-Scroll + Lazy Session Start — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>Builds on: aegis-multitab-design</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#scroll">Tab scroll</a>
+    <a href="#lazy">Lazy start</a>
+    <a href="#clock">Session clock</a>
+    <a href="#errors">Error handling</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Two independent refinements to the multi-tab TUI: (1) the tab bar
+      scrolls sideways so the focused tab is always visible when there are
+      more tabs than fit one line; (2) a tab's harness subprocess is not
+      started until the user's first message in that tab.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Minimal scroll.</strong> On tab switch, scroll only as far
+        as needed to bring the active tab fully into view at the nearest
+        edge; on-screen tabs do not jump.</li>
+      <li><strong>Lazy start.</strong> No <code>session.start()</code> at tab
+        spawn; the subprocess spawns on the first
+        <code>on_input_submitted</code> in that pane.</li>
+      <li><strong>Session clock from first message.</strong> The status-line
+        "session" timer counts from first message (subprocess spawn), not
+        from tab open. An opened-but-unused tab shows <code>0s</code>.</li>
+      <li><strong>No new visible state.</strong> A pre-message pane shows the
+        normal green <code>ready</code> dot (no distinct "not started"
+        indicator) — it is ready for input.</li>
+    </ol>
+  </section>
+
+  <section id="scroll">
+    <h2>Tab scroll — <code>src/aegis/tui/widgets.py</code></h2>
+    <p><code>TabBar</code> changes from a single <code>Static</code> (one
+      joined markup string) to a <code>HorizontalScroll</code> container
+      holding one private <code>_TabCell(Static)</code> per tab.</p>
+    <ul>
+      <li>CSS: <code>height: 1; overflow-x: auto; overflow-y: hidden;
+        scrollbar-size: 0 0;</code> (scrollable, scrollbar hidden, single
+        row).</li>
+      <li><code>_TabCell</code> renders the existing label markup unchanged:
+        <code>{state.dot} {idx} {handle} [#788C5D]·{slug}·[/#788C5D]</code>,
+        a bold <code>*</code> when unseen, wrapped in <code>[reverse]</code>
+        when active.</li>
+      <li><code>set_tabs(items)</code> keeps the <strong>same 6-tuple
+        contract</strong> <code>(idx, handle, slug, state, unseen,
+        active)</code> — <code>AegisApp._refresh_tabbar</code> is unchanged.
+        Internally it removes all children and mounts fresh
+        <code>_TabCell</code>s (tab count is a handful; reconciliation
+        diffing is needless complexity — YAGNI), tracking the active cell.</li>
+      <li>After (re)mount, call
+        <code>active_cell.scroll_visible(animate=False)</code> — Textual's
+        native "scroll just enough to make it visible" gives the locked
+        minimal behavior with no manual width math. <code>animate=False</code>
+        keeps switching snappy and tests deterministic.</li>
+      <li>Empty list → render a single placeholder cell <code>no tabs</code>
+        (parity with prior behavior).</li>
+    </ul>
+  </section>
+
+  <section id="lazy">
+    <h2>Lazy start — <code>src/aegis/tui/pane.py</code></h2>
+    <p>Add <code>self._started = False</code>.</p>
+    <ul>
+      <li><code>on_mount</code>: no longer <code>await
+        self._session.start()</code>. It sets <code>ready</code> (green, no
+        subprocess) and calls <code>refresh_metrics()</code> (renders zeros —
+        see Session clock).</li>
+      <li><code>on_input_submitted</code>: before the existing empty/working
+        guards' send path, if <code>not self._started</code>: <code>await
+        self._session.start()</code>, <code>self._started = True</code>,
+        <code>self._metrics.begin_session(self._now())</code>. Then the
+        existing turn flow (write user line, state working, start_turn,
+        run_worker) proceeds unchanged.</li>
+      <li><code>close()</code>: still
+        <code>self.workers.cancel_group(self, "turn")</code> (harmless if no
+        worker), but only <code>await self._session.close()</code> when
+        <code>self._started</code> — never spawn-then-close an unused
+        subprocess.</li>
+      <li><code>interrupt()</code> is unaffected: it early-returns unless
+        state is <code>working</code>, which is impossible before start.</li>
+    </ul>
+  </section>
+
+  <section id="clock">
+    <h2>Session clock — <code>src/aegis/tui/metrics.py</code></h2>
+    <p><code>SessionMetrics.session_start</code> becomes
+      <code>float | None</code> (was set at construction).</p>
+    <ul>
+      <li>Constructor sets <code>session_start = None</code> (signature stays
+        the same; the <code>now</code> arg becomes ignored/optional — keep it
+        accepted for call-site compatibility but do not anchor on it).</li>
+      <li>New <code>begin_session(now: float)</code> sets
+        <code>session_start = now</code> (idempotent: only sets if currently
+        <code>None</code>).</li>
+      <li><code>session_seconds(now)</code> returns <code>0.0</code> when
+        <code>session_start is None</code>, else <code>now -
+        session_start</code>.</li>
+      <li>Turn metrics (tokens, tools, turn time) are unaffected; pre-message
+        the rendered line reads
+        <code>↑0 ↓0 · ⚒ 0 · 0s / 0s</code>.</li>
+    </ul>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <ul>
+      <li>First-message <code>session.start()</code> failure: the existing
+        <code>_run_turn</code> try/except still covers
+        <code>send</code>/<code>events</code>; wrap the lazy
+        <code>start()</code> so a spawn failure surfaces as the standard red
+        <code>⚠ harness error</code> note + <code>error</code> dot (not an
+        app crash) and the pane remains closable. <code>_started</code> is
+        set <em>after</em> a successful <code>start()</code> so a failed
+        start can be retried by sending again.</li>
+      <li><code>scroll_visible</code> before the cell is laid out: call it
+        after mount completes (post-mount), so geometry is known; if the
+        container has zero width yet, Textual no-ops safely and a later
+        refresh re-scrolls.</li>
+      <li>Closing the very last unused tab still exits the app
+        (<code>action_close_tab</code> path unchanged); <code>close()</code>
+        simply skips <code>session.close()</code>.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <ul>
+      <li><strong>Lazy start</strong> (pane pilot, <code>FakeSession</code>):
+        after mount, <code>session.started is False</code>; first submit →
+        <code>started is True</code> and <code>session.start</code> called
+        exactly once; a second message does not re-start; <code>close()</code>
+        on an unstarted pane does <em>not</em> call
+        <code>session.close</code>; on a started pane it does.</li>
+      <li><strong>Session clock</strong> (unit + pilot): fresh
+        <code>SessionMetrics</code> → <code>session_seconds(t)</code> is
+        <code>0.0</code>; after <code>begin_session(t0)</code> →
+        <code>session_seconds(t0+5)==5.0</code>; pre-message StatusBar shows
+        <code>0s / 0s</code>; <code>begin_session</code> is idempotent.</li>
+      <li><strong>Tab scroll</strong> (shell pilot): open enough tabs to
+        overflow a narrow test console; switching to the last tab leaves the
+        active <code>_TabCell</code> within the scroll viewport (assert via
+        the container's scroll offset / region containment) and still
+        rendered with its handle; switching back brings the first tab into
+        view.</li>
+      <li><strong>Regression:</strong> the existing shell/pane pilots stay
+        green (<code>set_tabs</code> contract unchanged). The T3-era
+        assertion that read <code>str(TabBar.content)</code> is updated to
+        read the combined text of the <code>_TabCell</code> children.</li>
+      <li>Test work written/validated inline (not delegated); the live
+        <code>claude</code> driver test is unchanged (driver-level).</li>
+    </ul>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>Animated scrolling; visible scrollbar.</li>
+      <li>Click-to-select or drag-reorder tabs.</li>
+      <li>A distinct "not started" tab indicator.</li>
+      <li>Pre-warming / pooling subprocesses; changing the driver protocol.</li>
+    </ul>
+    <details>
+      <summary>Deferred consideration</summary>
+      <p>Centered-active-tab scrolling and click-to-focus tabs are natural
+        follow-ups once tabs are individually addressable widgets (this
+        change makes them so) — explicitly out of scope here.</p>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis spec</footer>
+
+</div>
+</body>
+</html>
