@@ -9,8 +9,10 @@ from textual.widgets import ContentSwitcher
 
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
+from aegis.mcp.bridge import SessionInfo
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
+from aegis.tui.state import AgentState
 from aegis.tui.themes import (
     THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
 )
@@ -182,3 +184,31 @@ class AegisApp(App):
             await pane.close()
         await self._mcp.stop()
         self.exit()
+
+    # --- AppBridge --------------------------------------------------------
+    def list_sessions(self) -> list[SessionInfo]:
+        active = self._active
+        return [
+            SessionInfo(handle=p.handle, agent_slug=p.agent_slug,
+                        state=p.state.value, active=(p is active),
+                        unseen=p.unseen)
+            for p in self._panes
+        ]
+
+    def list_agents(self) -> list[str]:
+        return sorted(self._agents)
+
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -> str:
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        target = next((p for p in self._panes
+                       if p.handle == target_handle), None)
+        if target is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        if target.state is AgentState.working:
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        await target.deliver_handoff(from_handle, context)
+        return f"delivered to {target_handle}"

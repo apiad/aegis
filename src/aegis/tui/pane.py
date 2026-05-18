@@ -107,6 +107,12 @@ class ConversationPane(Widget):
             return
         inp = self.query_one(Input)
         inp.value = ""
+        self._submit(text)
+
+    def _submit(self, text: str) -> None:
+        """Common submission path: write user line, set working,
+        start a worker. Used by on_input_submitted and deliver_handoff."""
+        inp = self.query_one(Input)
         inp.disabled = True
         if self._had_turn:
             self._write(Text(""))      # one blank row between turns
@@ -118,6 +124,14 @@ class ConversationPane(Widget):
         self._set_state(AgentState.working, finished=False)
         self._metrics.start_turn(self._now())
         self.run_worker(self._run_turn(text), group="turn", exclusive=True)
+
+    async def deliver_handoff(self, from_handle: str,
+                              context: str) -> None:
+        """Inject a tagged user turn from a peer agent. Reuses the
+        normal submission path so the receiving harness sees it as a
+        user message (prefixed so a human or the agent itself can tell
+        it came from a peer)."""
+        self._submit(f"[handoff from {from_handle}] {context}")
 
     async def _run_turn(self, text: str) -> None:
         saw_result = False

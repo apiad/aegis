@@ -469,6 +469,55 @@ async def test_blank_rows_between_agent_steps():
 
 
 @pytest.mark.asyncio
+async def test_appbridge_list_and_handoff():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")          # 2 panes
+        await pilot.pause()
+        sessions = app.list_sessions()
+        assert {s.handle for s in sessions} == {
+            p.handle for p in app._panes}
+        assert any(s.active for s in sessions)
+        a, b = app._panes[0].handle, app._panes[1].handle
+        # self / unknown rejects
+        assert "yourself" in await app.handoff(a, a, "x")
+        assert "no session" in await app.handoff(a, "ghost", "x")
+        # deliver into b
+        msg = await app.handoff(a, b, "please continue the spec")
+        assert msg == f"delivered to {b}"
+        await pilot.pause(); await pilot.pause()
+        assert app._panes[1]._transcript_has(f"[handoff from {a}]")
+        assert app._panes[1]._transcript_has("please continue the spec")
+
+
+@pytest.mark.asyncio
+async def test_handoff_rejects_busy_target():
+    import asyncio
+
+    class Hang:
+        def __init__(self):
+            self.sent = []
+            self.started = self.closed = False
+        async def start(self): self.started = True
+        async def send(self, t): self.sent.append(t)
+        async def events(self):
+            await asyncio.Event().wait()
+            yield None  # pragma: no cover
+        async def close(self): self.closed = True
+
+    app = _app(_factory(FakeSession(), Hang()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t"); await pilot.pause()
+        b = app._panes[1]
+        b.query_one(Input).value = "go"
+        await b.query_one(Input).action_submit()
+        await pilot.pause()
+        assert b.state is AgentState.working
+        a = app._panes[0].handle
+        assert "busy" in await app.handoff(a, b.handle, "x")
+
+
+@pytest.mark.asyncio
 async def test_step_spacing_glues_tool_pair_and_single_gap_after_done():
     from aegis.events import AssistantThinking, ToolUse, ToolResult
     script = lambda t: [
