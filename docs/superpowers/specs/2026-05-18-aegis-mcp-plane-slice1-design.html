@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis MCP Plane — Slice 1 (shared FastMCP HTTP server + meta tool)" status=approved date=2026-05-18 source="Phase 3 first slice; post-v0.1.0 (0.2.0-bound)" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis MCP Plane — Slice 1 — Design</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;
+    --g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:14px 0 6px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec · Aegis · Phase 3 slice 1</div>
+    <h1>MCP Plane — Slice 1: shared FastMCP HTTP server + meta tool</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>0.2.0-bound (implement after v0.1.0 tag)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a><a href="#decisions">Locked decisions</a>
+    <a href="#server">MCP server</a><a href="#runtime">Runtime</a>
+    <a href="#inject">Injection</a><a href="#flow">Data flow / lifecycle</a>
+    <a href="#errors">Error handling</a><a href="#testing">Verification</a>
+    <a href="#feasibility">Tool-replacement feasibility</a>
+    <a href="#nongoals">Non-goals</a><a href="#seq">Sequencing</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>The first concrete piece of the vision's MCP plane: a single long-lived
+      <strong>FastMCP</strong> server, owned by the aegis process, that every
+      spawned Claude Code connects to. Prove the plane is live and callable by
+      exposing one tool, <code>aegis_meta</code>, that briefs the agent on
+      where it is and what aegis offers. Success = an agent in the TUI calls
+      <code>aegis_meta</code> and reports it is on the aegis server.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Shared HTTP plane now</strong> — one FastMCP server,
+        co-resident in the <code>AegisApp</code> asyncio process; all panes'
+        <code>claude</code> subprocesses connect to it (not stdio-per-agent).</li>
+      <li><strong>Pure FastMCP, native serving</strong> — use FastMCP's own
+        <code>run_http_async(host, port)</code> (streamable-http). No
+        <code>http_app()</code> wrapped in FastAPI/uvicorn, no custom ASGI
+        mounting. FastMCP owns the server.</li>
+      <li><strong>Strict injection</strong> — spawned claude gets
+        <code>--mcp-config</code> (aegis only) + <code>--strict-mcp-config</code>;
+        the agent's other MCP servers do not load in aegis sessions
+        (deliberate; the direction toward full tool control).</li>
+      <li><strong>Auto-prime</strong> — <code>--append-system-prompt</code>
+        tells the agent it is inside aegis and to call <code>aegis_meta</code>
+        first.</li>
+      <li><strong>Additive</strong> — built-in tools (Read/Edit/Bash/WebFetch…)
+        are untouched this slice. Wholesale replacement is a later phase
+        (see Feasibility).</li>
+    </ol>
+  </section>
+
+  <section id="server">
+    <h2>MCP server — <code>src/aegis/mcp/server.py</code></h2>
+    <p><code>build_server() -&gt; FastMCP</code> returns a
+      <code>FastMCP("aegis")</code> with exactly one tool:</p>
+    <ul>
+      <li><strong><code>aegis_meta() -&gt; str</code></strong> — returns a
+        plain-text orientation briefing: (a) what aegis is (a meta-harness
+        driving Claude Code; you are running <em>inside</em> it); (b) you are
+        connected to the aegis MCP server, which (with strict config) is your
+        only MCP server; (c) the aegis tools currently available — for
+        slice 1, just <code>aegis_meta</code> itself, with a note that more
+        (custom file/web/workflow tools) are coming; (d) guidance: call this
+        once at the start to orient. The briefing body is a module-level
+        constant so it is unit-testable without standing up a server.</li>
+    </ul>
+    <p>Reuses the FastMCP <code>@tool()</code> registration pattern from
+      <code>legacy/server.py</code> (the vision flagged this as the directly
+      reusable scaffolding); <code>fastmcp</code> is already a declared
+      dependency.</p>
+  </section>
+
+  <section id="runtime">
+    <h2>Runtime — <code>src/aegis/mcp/runtime.py</code></h2>
+    <p><code>AegisMCP</code> owns the server lifecycle, co-resident in the
+      app's asyncio loop:</p>
+    <ul>
+      <li><strong><code>__init__</code></strong>: builds the FastMCP server
+        (<code>build_server()</code>); picks a free port by binding a
+        transient <code>socket</code> to <code>127.0.0.1:0</code>, reading the
+        assigned port, closing it (accepted benign TOCTOU on localhost).
+        Stores <code>host="127.0.0.1"</code>, <code>port</code>.</li>
+      <li><strong><code>url</code></strong> property →
+        <code>http://127.0.0.1:&lt;port&gt;/mcp/</code> (FastMCP
+        streamable-http mount path; the exact trailing-path is pinned by the
+        live acceptance test in the plan — the test is the source of truth if
+        FastMCP's default differs).</li>
+      <li><strong><code>start()</code></strong>: launches
+        <code>server.run_http_async(host=host, port=port)</code> as an
+        <code>asyncio</code> task (stored handle); awaits readiness by polling
+        a TCP connect to <code>(host, port)</code> until it accepts or a short
+        timeout elapses (so a session never spawns before the plane is up).</li>
+      <li><strong><code>stop()</code></strong>: cancels the task and awaits it
+        (swallowing <code>CancelledError</code>); idempotent.</li>
+    </ul>
+  </section>
+
+  <section id="inject">
+    <h2>Injection — <code>drivers/claude.py</code> + <code>cli.py</code></h2>
+    <p><code>ClaudeDriver.build_argv(agent, cwd, mcp_url)</code> gains a
+      <code>mcp_url</code> parameter and appends, after the existing flags:</p>
+<pre><code>--mcp-config  {"mcpServers":{"aegis":{"type":"http","url":"&lt;mcp_url&gt;"}}}
+--strict-mcp-config
+--append-system-prompt  &lt;PRIMING&gt;</code></pre>
+    <p>The <code>--mcp-config</code> value is a compact JSON <em>string</em>
+      (claude accepts JSON strings as well as file paths). <code>PRIMING</code>
+      is a module constant:</p>
+    <p><em>“You are running inside <strong>aegis</strong>, a meta-harness. An
+      MCP server named <code>aegis</code> is attached and is your only MCP
+      server. Call its <code>aegis_meta</code> tool first to learn this
+      environment and the aegis tools available to you, then proceed.”</em></p>
+    <p><code>ClaudeDriver.session(agent, cwd, mcp_url)</code> threads it to
+      <code>build_argv</code>. The <code>make_session</code> closure in
+      <code>cli.py</code> already captures app state; it captures the running
+      <code>AegisMCP.url</code> and forwards it. <code>AegisApp</code> owns the
+      single <code>AegisMCP</code> and passes its <code>url</code> into the
+      session factory it builds.</p>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow &amp; lifecycle</h2>
+    <ol>
+      <li><code>AegisApp.on_mount</code>: construct <code>AegisMCP()</code>,
+        <code>await mcp.start()</code> (server up + ready) <em>before</em> the
+        first pane spawns; store <code>self._mcp</code>; the session factory
+        closes over <code>self._mcp.url</code>.</li>
+      <li>Each tab spawns <code>claude</code> with the strict aegis mcp-config
+        + priming. The agent (per the appended system prompt) calls
+        <code>aegis_meta</code>; the call hits the shared server; the briefing
+        returns and renders in that pane's transcript as a tool call/result.</li>
+      <li>All panes share the one server (the plane). Adding tabs adds
+        clients, not servers.</li>
+      <li><code>action_quit</code>: close all panes' sessions, then
+        <code>await self._mcp.stop()</code>, then exit.</li>
+    </ol>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <ul>
+      <li><strong>Server fails to start</strong> (port race, FastMCP error):
+        <code>start()</code> readiness-poll times out → raise a clear error at
+        mount; <code>AegisApp</code> surfaces it as a startup failure and
+        exits non-zero (no half-initialised TUI). The plane is load-bearing
+        under strict config — failing fast is correct.</li>
+      <li><strong>Agent can't reach the server</strong> mid-session: that is a
+        normal harness/tool error inside <code>claude</code> — surfaces in the
+        transcript like any tool failure; the pane stays interactive.</li>
+      <li><strong><code>stop()</code> when never started / double stop</strong>:
+        idempotent no-op.</li>
+      <li><strong>Strict-config consequence</strong>: the agent's pre-existing
+        MCP servers are absent in aegis sessions. Documented in AGENTS.md and
+        the briefing so it is not a silent surprise.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Verification</h2>
+    <ul>
+      <li><strong>unit</strong> — the briefing constant contains the key
+        orientation phrases (“aegis”, “meta-harness”, “aegis_meta”, “only MCP
+        server”); <code>aegis_meta()</code> returns it.</li>
+      <li><strong>unit</strong> — <code>build_argv(agent, cwd, mcp_url)</code>
+        includes <code>--mcp-config</code> with a JSON containing the url
+        under <code>mcpServers.aegis</code>, <code>--strict-mcp-config</code>,
+        and <code>--append-system-prompt</code> with the priming; the existing
+        stream-json flags are unchanged.</li>
+      <li><strong>async runtime</strong> — <code>AegisMCP.start()</code> binds
+        a port and a TCP connect to <code>url</code>'s host:port succeeds;
+        <code>stop()</code> cancels with no leaked task / no
+        <code>CancelledError</code> escaping; <code>start→stop→start</code>
+        works.</li>
+      <li><strong>acceptance / live</strong> (slow, skipped without
+        <code>claude</code> on PATH) — start a real <code>AegisMCP</code>, run
+        <code>claude -p --input-format stream-json --output-format
+        stream-json --verbose --strict-mcp-config --mcp-config &lt;aegis&gt;</code>
+        with the message “call the aegis_meta tool and tell me what server you
+        are on”; assert the streamed events contain a <code>tool_use</code>
+        for the aegis tool <strong>and</strong> the briefing text in the
+        result. This is the definitive “the plane is on and callable” proof
+        and pins the real mcp-config schema / url path.</li>
+      <li><strong>pilot</strong> — with a fake session, an
+        <code>AegisApp</code> mounts with <code>self._mcp</code> started and
+        <code>url</code> reachable; quitting stops it. (Does not require a real
+        claude.)</li>
+      <li>Full hermetic suite (<code>uv run pytest -q -k "not live"</code>)
+        stays green; the live driver test is unchanged. Test work
+        written/validated inline.</li>
+    </ul>
+  </section>
+
+  <section id="feasibility">
+    <h2>Tool-replacement feasibility (recorded, not in scope)</h2>
+    <p>The end-goal of replacing the inner harness tools is mechanically
+      supported by <code>claude</code>:
+      <code>--tools ""</code> disables all built-ins,
+      <code>--tools "Bash,Read"</code> selects a subset,
+      <code>--disallowedTools</code> removes specific ones, and
+      <code>--strict-mcp-config</code> (already used here) makes aegis the
+      sole MCP source. So aegis can present its own Read/Write/WebFetch/etc.
+      and disable Claude's. The hard part is <em>reimplementing</em> those
+      tools faithfully; naively disabling <code>Read/Edit/Bash</code> cripples
+      a coding agent. Recommended trajectory: additive now → later,
+      per-agent-permission profiles selectively shadow specific built-ins with
+      aegis equivalents. A dedicated future spec, not this slice.</p>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>Disabling/replacing any built-in tool (<code>--tools</code> /
+        <code>--disallowedTools</code> untouched).</li>
+      <li>More than the one <code>aegis_meta</code> tool; resources, prompts,
+        workflows, skills plane.</li>
+      <li>Auth / TLS (localhost-only bind; no token).</li>
+      <li>Per-agent or per-tab distinct servers (one shared plane).</li>
+      <li>Persisting the server across <code>aegis</code> restarts; multi-host.</li>
+    </ul>
+    <details>
+      <summary>Deferred / next slices</summary>
+      <p>Real aegis tools (vault query, notify, git), an MCP <em>resource</em>
+        for the briefing, the skills/workflow plane, selective built-in
+        shadowing per permission profile, and (much later) the distributed
+        multi-instance plane.</p>
+    </details>
+  </section>
+
+  <section id="seq">
+    <h2>Sequencing</h2>
+    <p>Spec + plan authored now. <strong>Implementation must land after the
+      <code>v0.1.0</code> tag</strong> (the in-flight release job tags current
+      <code>main</code> ~15:09); new MCP source before the tag would ship
+      inside v0.1.0, which is meant to be the current state. This is the first
+      <code>0.2.0</code>-bound feature. CHANGELOG gets an
+      <code>## [Unreleased]</code> / <code>0.2.0</code> entry when implemented.</p>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis MCP slice-1 spec</footer>
+
+</div>
+</body>
+</html>
