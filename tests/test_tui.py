@@ -155,7 +155,6 @@ async def test_background_finish_sets_unseen_and_one_bell():
         await pilot.press("ctrl+t")          # tab 1 active
         await pilot.pause()
         p0 = app._panes[0]
-        from textual.widgets import Input
         p0.query_one(Input).value = "hi"
         await p0.query_one(Input).action_submit()
         await pilot.pause()
@@ -199,12 +198,14 @@ async def test_metrics_tick_refreshes_active_pane():
     async with app.run_test():
         pane = app._panes[0]
         from aegis.tui.widgets import StatusBar
+        sb = pane.query_one(StatusBar)
+        # blank the rendered content, then tick must repaint the metrics
+        sb.update("")
+        assert "↑" not in str(sb.content)
         app._tick()
-        after = str(pane.query_one(StatusBar).content)
-        # tick must have called refresh_metrics on the active pane;
-        # content is the rendered identity+state+metrics string
-        assert after  # non-empty
-        assert "·default·" in after
+        after = str(sb.content)
+        assert "↑" in after and "/" in after   # SessionMetrics.render ran
+        assert "·default·" in after            # identity still present
 
 
 @pytest.mark.asyncio

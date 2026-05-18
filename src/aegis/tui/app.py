@@ -99,14 +99,18 @@ class AegisApp(App):
         self._activate(n - 1)
 
     def action_next_tab(self) -> None:
-        if self._panes:
-            cur = self._panes.index(self._active)
-            self._activate((cur + 1) % len(self._panes))
+        active = self._active
+        if not self._panes or active is None:
+            return
+        cur = self._panes.index(active)
+        self._activate((cur + 1) % len(self._panes))
 
     def action_prev_tab(self) -> None:
-        if self._panes:
-            cur = self._panes.index(self._active)
-            self._activate((cur - 1) % len(self._panes))
+        active = self._active
+        if not self._panes or active is None:
+            return
+        cur = self._panes.index(active)
+        self._activate((cur - 1) % len(self._panes))
 
     async def action_close_tab(self) -> None:
         active = self._active
