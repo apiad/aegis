@@ -127,12 +127,30 @@ async def test_interrupt_only_active_pane():
 async def test_tabbar_shows_handle_slug_dot():
     app = _app()
     async with app.run_test():
-        bar = str(app.query_one(TabBar).content)
+        bar = app.query_one(TabBar).bar_text()
         pane = app._panes[0]
         assert pane.handle in bar
         assert "default" in bar          # slug
         assert "1" in bar                # index
         assert "*" not in bar            # active pane, not unseen
+
+
+@pytest.mark.asyncio
+async def test_tabbar_scrolls_active_into_view():
+    app = AegisApp({"default": _agent()}, "default",
+                   _factory(*[FakeSession() for _ in range(8)]))
+    async with app.run_test(size=(40, 10)) as pilot:
+        bar = app.query_one(TabBar)
+        for _ in range(7):               # 8 tabs total, overflow 40 cols
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+        assert app._active is app._panes[7]
+        await pilot.pause()
+        assert bar.scroll_x > 0          # scrolled right to show last tab
+        await pilot.press("ctrl+1")      # back to first
+        await pilot.pause()
+        await pilot.pause()
+        assert bar.scroll_x == 0         # scrolled back to start
 
 
 # --- Task 4: multi-tab tests ---

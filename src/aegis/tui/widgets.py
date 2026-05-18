@@ -1,30 +1,56 @@
 from __future__ import annotations
 
+from textual.containers import HorizontalScroll
 from textual.widgets import Static
 
 from aegis.tui.state import AgentState
 
 
-class TabBar(Static):
-    """One-line tab bar: [dot idx handle ·slug·]… active reversed, * unseen."""
+class _TabCell(Static):
+    """One tab in the bar; width sizes to its content so the row overflows."""
+
+    def render_tab(self, idx, handle, slug, state, unseen, active) -> None:
+        mark = "[bold]*[/bold]" if unseen else ""
+        label = (f"{state.dot} {idx} {handle} "
+                 f"[#788C5D]·{slug}·[/#788C5D]{mark}")
+        self.update(f"[reverse] {label} [/reverse]" if active
+                    else f" {label} ")
+
+
+class TabBar(HorizontalScroll):
+    """Sideways-scrolling tab bar; the active tab is kept in view."""
+
+    DEFAULT_CSS = """
+    TabBar { height: 1; overflow-x: auto; overflow-y: hidden;
+             scrollbar-size: 0 0; }
+    TabBar > _TabCell { width: auto; height: 1; }
+    """
 
     def __init__(self) -> None:
-        super().__init__(markup=True)
-        self._items: list = []
+        super().__init__()
+        self._cells: list[_TabCell] = []
 
     def set_tabs(self, items: list) -> None:
-        self._items = items
-        self._refresh()
+        if not items:
+            items = [(0, "no tabs", "", AgentState.ready, False, False)]
+        while len(self._cells) < len(items):
+            cell = _TabCell(markup=True)
+            self._cells.append(cell)
+            self.mount(cell)
+        while len(self._cells) > len(items):
+            self._cells.pop().remove()
+        active_cell = None
+        for cell, item in zip(self._cells, items):
+            cell.render_tab(*item)
+            if item[5]:  # active flag
+                active_cell = cell
+        if active_cell is not None:
+            self.call_after_refresh(
+                lambda c=active_cell: c.scroll_visible(animate=False))
 
-    def _refresh(self) -> None:
-        cells = []
-        for idx, handle, slug, state, unseen, active in self._items:
-            mark = "[bold]*[/bold]" if unseen else ""
-            label = (f"{state.dot} {idx} {handle} "
-                     f"[#788C5D]·{slug}·[/#788C5D]{mark}")
-            cells.append(f"[reverse] {label} [/reverse]"
-                         if active else f" {label} ")
-        self.update("".join(cells) or "no tabs")
+    def bar_text(self) -> str:
+        """Combined rendered text of all tab cells (for tests/inspection)."""
+        return " ".join(str(c.content) for c in self._cells)
 
 
 class StatusBar(Static):
