@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis v0.1.0 Release" status=approved date=2026-05-18 source="docs/superpowers/specs/2026-05-18-aegis-v0.1-release-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis v0.1.0 Release — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:16px 0 8px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis</div>
+    <h1>Aegis v0.1.0 Release — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-18</span>
+      <span>Spec: 2026-05-18-aegis-v0.1-release-design.html</span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — <code>superpowers:subagent-driven-development</code> or
+      <code>superpowers:executing-plans</code>. Commit straight to
+      <code>main</code> (authorized for aegis). T1 keeps
+      <code>uv run pytest -q -k "not live"</code> green; T2–T4 are
+      content/CI artifacts gated by <code>mkdocs build --strict</code> and
+      YAML validity; T5–T6 are operational (push → CI → Pages → tag/release)
+      and run by the controller, not delegated.</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a><a href="#files">Files</a>
+    <a href="#t1">T1 license/version/changelog</a>
+    <a href="#t2">T2 README</a><a href="#t3">T3 MkDocs</a>
+    <a href="#t4">T4 CI</a><a href="#t5">T5 ship docs</a>
+    <a href="#t6">T6 tag+release</a><a href="#review">Self-review</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal &amp; approach</h2>
+    <p><strong>Goal:</strong> first proper tagged release — MIT license, a
+      shiny README, a Material MkDocs site auto-deployed to GitHub Pages, a
+      green test-CI badge, <code>aegis --version</code>, a CHANGELOG, the
+      <code>v0.1.0</code> tag and a GitHub Release.</p>
+    <p><strong>Approach:</strong> one code change (<code>--version</code>,
+      TDD); the rest are artifacts verified by
+      <code>mkdocs build --strict</code> + first green Actions run. Strict
+      ordering: polish &amp; docs &amp; CI land on <code>main</code> →
+      <code>docs.yml</code> publishes <code>gh-pages</code> → enable Pages →
+      tag &amp; release last.</p>
+    <p><strong>Stack:</strong> Python 3.13, typer, uv (PEP 735
+      <code>[dependency-groups]</code>), mkdocs-material, GitHub Actions,
+      <code>gh</code> CLI.</p>
+  </section>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>LICENSE</code></td><td>New — MIT.</td></tr>
+        <tr><td><code>pyproject.toml</code></td><td>license + classifiers + real description + <code>docs</code> dependency-group.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td><code>--version</code> eager flag.</td></tr>
+        <tr><td><code>tests/test_cli.py</code></td><td>+ version-flag test.</td></tr>
+        <tr><td><code>CHANGELOG.md</code></td><td>New — 0.1.0.</td></tr>
+        <tr><td><code>README.md</code></td><td>Rewritten (shiny).</td></tr>
+        <tr><td><code>mkdocs.yml</code></td><td>New — Material, excludes <code>superpowers/</code>.</td></tr>
+        <tr><td><code>docs/{index,install,usage,configuration,architecture,roadmap}.md</code></td><td>New site pages (siblings of the excluded <code>docs/superpowers/</code>).</td></tr>
+        <tr><td><code>.github/workflows/ci.yml</code></td><td>New — tests.</td></tr>
+        <tr><td><code>.github/workflows/docs.yml</code></td><td>New — mkdocs gh-deploy.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="t1">
+    <h2>Task 1 — License, pyproject polish, <code>--version</code>, CHANGELOG</h2>
+
+    <div class="step">Step 1 — failing test (append to <code>tests/test_cli.py</code>)</div>
+<pre><code>def test_version_flag_prints_and_exits(tmp_path, monkeypatch):
+    # must work with NO .aegis.py and without launching the TUI
+    monkeypatch.chdir(tmp_path)
+    from typer.testing import CliRunner
+    from aegis.cli import app
+    result = CliRunner().invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "aegis 0.1.0"</code></pre>
+    <p>(If <code>tests/test_cli.py</code> already imports <code>CliRunner</code>/
+      <code>app</code> at module scope, reuse those instead of the local
+      import.)</p>
+
+    <div class="step">Step 2 — run, expect fail</div>
+    <p><code>uv run pytest tests/test_cli.py::test_version_flag_prints_and_exits -q</code>
+      → FAIL (no <code>--version</code>; currently errors on missing config).</p>
+
+    <div class="step">Step 3 — add the eager flag to <code>src/aegis/cli.py</code></div>
+    <p>Add imports near the top:</p>
+<pre><code>from importlib.metadata import PackageNotFoundError, version as _pkg_version</code></pre>
+    <p>Add this callback above <code>@app.callback(...)</code>:</p>
+<pre><code>def _version_callback(value: bool) -> None:
+    if value:
+        try:
+            v = _pkg_version("aegis")
+        except PackageNotFoundError:        # not installed (rare in dev)
+            v = "0.0.0+unknown"
+        typer.echo(f"aegis {v}")
+        raise typer.Exit()</code></pre>
+    <p>Add a <code>version</code> option as the FIRST param of <code>run</code>
+      (eager → fires before <code>ctx</code> handling and config load):</p>
+<pre><code>@app.callback(invoke_without_command=True)
+def run(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", callback=_version_callback, is_eager=True,
+        help="Show version and exit."),
+    agent: str = typer.Option(None, "--agent", "-a",
+                              help="Named agent profile to use."),
+    cwd: str = typer.Option(".", "--cwd",
+                            help="Working dir for the harness subprocess."),
+) -> None:</code></pre>
+    <p>Body unchanged. <code>is_eager=True</code> guarantees the callback runs
+      and <code>Exit()</code>s before <code>load_config()</code>, so
+      <code>--version</code> works with no <code>.aegis.py</code>.</p>
+
+    <div class="step">Step 4 — run, expect pass</div>
+    <p><code>uv run pytest tests/test_cli.py -q</code> → all pass (the new test
+      + existing init/no-config tests unaffected).</p>
+
+    <div class="step">Step 5 — <code>LICENSE</code> (new file, exact text)</div>
+<pre><code>MIT License
+
+Copyright (c) 2026 Alejandro Piad Morffis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</code></pre>
+
+    <div class="step">Step 6 — pyproject.toml polish</div>
+    <p>In <code>[project]</code>: replace
+      <code>description = "Add your description here"</code> with
+      <code>description = "A meta-harness for coding agents — drives Claude
+      Code in a multi-agent terminal UI."</code>; add immediately after the
+      <code>authors</code> array:</p>
+<pre><code>license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Topic :: Software Development",
+]</code></pre>
+    <p>In the existing <code>[dependency-groups]</code> table add:</p>
+<pre><code>docs = ["mkdocs-material>=9.5"]</code></pre>
+    <p>Then <code>uv lock</code> (refresh the lockfile for the new group);
+      <code>uv run pytest -q -k "not live"</code> stays green (no runtime dep
+      change).</p>
+
+    <div class="step">Step 7 — <code>CHANGELOG.md</code> (new)</div>
+<pre><code>/ # Changelog
+
+All notable changes to Aegis are documented here.
+The format follows Keep a Changelog; this project uses SemVer (0.x).
+
+## [0.1.0] - 2026-05-18
+
+First tagged release — a usable, personal-infrastructure-grade meta-harness.
+
+### Added
+- CLI driver: runs Claude Code via `claude -p` stream-json (bidirectional,
+  no log scraping); agent profiles from a Python `.aegis.py`.
+- Full-screen Textual TUI replacing the line REPL.
+- Multi-tab: N independent agent sessions, a sideways-scrolling tab bar,
+  per-tab agent profiles, an `AgentPicker` modal, generated handles
+  (`adjective-laureate`), cross-tab signalling (state dot + sticky `*` +
+  bell).
+- Theme engine (Textual-native) with the default **Ink** theme; themes are
+  drop-in.
+- Live status-line metrics: true input (incl. cache) with cached %, output,
+  tool calls, turn / session time; provisional while streaming, exact at
+  turn end.
+- Lazy session start (harness spawns on first message, not tab open).
+- `aegis --version`.
+
+### Notes
+- Not general-public-ready; runs from source via `uv`, drives a local
+  `claude` CLI. The earlier FastMCP workflow-engine prototype is preserved
+  under `legacy/`, unbuilt.</code></pre>
+    <p>(The leading <code>/ </code> above marks the file start in this plan
+      only — the file's first line is <code># Changelog</code>.)</p>
+
+    <div class="step">Step 8 — commit</div>
+<pre><code>git add LICENSE pyproject.toml uv.lock CHANGELOG.md src/aegis/cli.py tests/test_cli.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "chore(release): MIT license, pyproject metadata, aegis --version, CHANGELOG 0.1.0"</code></pre>
+  </section>
+
+  <section id="t2">
+    <h2>Task 2 — Shiny README</h2>
+    <div class="step">Step 1 — replace <code>README.md</code> entirely</div>
+    <p>Write exactly this (badges use shields.io static endpoints; CI badge
+      points at the <code>ci.yml</code> workflow created in T4):</p>
+<pre><code># Aegis
+
+&gt; A meta-harness for coding agents — drives Claude Code in a multi-agent
+&gt; terminal UI.
+
+[![CI](https://github.com/apiad/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/apiad/aegis/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-blue)](https://apiad.github.io/aegis/)
+[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+Aegis sits **above** the harness. It drives `claude -p` over its
+`stream-json` protocol (no log scraping), parses the event stream, and
+re-renders it in a calm full-screen TUI where many agents run side by side.
+
+```
+┌ aegis ───────────────────────────────────────────────┐
+│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·fast· *      │
+│                                                       │
+│ › explain the retry logic                             │
+│                                                       │
+│ ✻ Thinking…                                           │
+│ ⏺ Read(worker.py)                                     │
+│   └ ok                                                 │
+│ The retry path lives in _run_turn …                   │
+│                                                       │
+│ lucid-knuth ·opus· opus·full   ↑128k (94% cached) ↓1k │
+│ ───────────────────────────────────────────────────── │
+│ › ask something…                                      │
+└───────────────────────────────────────────────────────┘
+```
+
+## Quickstart
+
+```bash
+uv pip install -e .
+aegis init      # writes .aegis.py
+aegis           # full-screen TUI
+```
+
+Requires Python 3.13, [uv](https://docs.astral.sh/uv/), and a working
+`claude` CLI on PATH.
+
+## Keys
+
+| Key | Action |
+|---|---|
+| `Enter` | Send |
+| `Ctrl+T` / `Ctrl+N` | New tab / new tab (pick agent) |
+| `Ctrl+W` | Close tab (last → quit) |
+| `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
+| `Escape` | Interrupt the active turn |
+| `Ctrl+Q` | Quit |
+
+Each tab is an independent agent with a generated handle; a backgrounded
+tab that finishes shows a `*` and rings the bell.
+
+## Configuration
+
+`.aegis.py` is Python:
+
+```python
+from aegis import Agent
+
+agents = {
+    "default": Agent(harness="claude-code", model="opus",
+                      effort="high", permission="auto"),
+}
+default_agent = "default"
+```
+
+`permission`: `read` | `write` | `full` | `auto`.
+
+## Docs &amp; status
+
+Full docs: **https://apiad.github.io/aegis/**
+
+Phase 1 (CLI) → 1.5 (TUI + metrics) → 2 (multi-tab) → theming/Ink shipped.
+Next: the MCP plane. Personal-infrastructure-grade, not general-public-ready;
+the original FastMCP prototype is preserved (unbuilt) under `legacy/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).</code></pre>
+    <div class="step">Step 2 — commit</div>
+<pre><code>git add README.md
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "docs(release): shiny README (hero, badges, quickstart, keys, config)"</code></pre>
+  </section>
+
+  <section id="t3">
+    <h2>Task 3 — MkDocs Material site</h2>
+    <div class="step">Step 1 — <code>mkdocs.yml</code> (repo root, new)</div>
+<pre><code>site_name: Aegis
+site_description: A meta-harness for coding agents.
+site_url: https://apiad.github.io/aegis/
+repo_url: https://github.com/apiad/aegis
+repo_name: apiad/aegis
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: black
+    accent: amber
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Usage: usage.md
+  - Configuration: configuration.md
+  - Architecture &amp; Vision: architecture.md
+  - Roadmap: roadmap.md</code></pre>
+
+    <div class="step">Step 2 — the six pages under <code>docs/</code></div>
+    <p>Create each (siblings of the excluded <code>docs/superpowers/</code>).
+      Content is concrete below; keep it tight, reuse README/AGENTS.</p>
+
+    <h3>docs/index.md</h3>
+<pre><code># Aegis
+
+A meta-harness for coding agents. Aegis sits **above** the harness — it
+drives `claude -p` over `stream-json`, parses the event stream, and
+re-renders it in a calm full-screen TUI where many agents run side by side.
+
+- **Multi-tab**: N independent agent sessions, per-tab profiles, generated
+  handles, cross-tab signalling.
+- **Themed**: Textual-native theme engine, calm **Ink** default.
+- **Honest metrics**: true input (incl. cache) + cached %, output, tools,
+  turn / session time.
+
+See **[Install](install.md)** to get going, or the
+**[Architecture &amp; Vision](architecture.md)**.</code></pre>
+
+    <h3>docs/install.md</h3>
+<pre><code># Install
+
+## Prerequisites
+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/)
+- A working `claude` CLI on `PATH` (Claude Code), logged in.
+
+## Install &amp; run
+
+```bash
+git clone https://github.com/apiad/aegis
+cd aegis
+uv pip install -e .
+aegis init     # writes .aegis.py in the current directory
+aegis
+```
+
+`aegis --version` prints the version. With no `.aegis.py` in the current
+directory or `~`, `aegis` refuses to run and points you at `aegis init`.</code></pre>
+
+    <h3>docs/usage.md</h3>
+<pre><code># Usage
+
+`aegis` opens a full-screen TUI. Type in the input box and press `Enter`.
+
+## Keys
+
+| Key | Action |
+|---|---|
+| `Enter` | Send |
+| `Ctrl+T` | New tab (default agent) |
+| `Ctrl+N` | New tab — pick an agent profile |
+| `Ctrl+W` | Close tab (closing the last quits) |
+| `Ctrl+1`..`Ctrl+9` | Jump to tab N |
+| `Ctrl+Tab` / `Ctrl+→` / `Ctrl+←` | Next / prev tab |
+| `Escape` | Interrupt the active turn |
+| `Ctrl+Q` | Quit |
+
+## Tabs
+
+Each tab is an independent agent session with a generated handle
+(`adjective-laureate`, e.g. `lucid-knuth`) and a state dot: green idle,
+amber working, red error. A backgrounded tab that finishes shows a sticky
+`*` and rings the terminal bell until you switch to it. The tab bar scrolls
+sideways to keep the active tab in view.
+
+## Status line &amp; metrics
+
+`handle ·profile· model · permission   state   ↑<input> (<n>% cached)
+↓<output> · ⚒ <tools> · <turn> / <session>`
+
+`↑` is the **true** input the model ingests — uncached input **plus** cache
+creation **plus** cache read (often &gt;90% cached). Figures are provisional
+(`~`) while a turn streams and exact at turn end.
+
+## Themes
+
+The default **Ink** theme is calm near-black with one amber accent. Themes
+are a Textual-native registry; more are drop-in additions.</code></pre>
+
+    <h3>docs/configuration.md</h3>
+<pre><code># Configuration
+
+Config lives in `.aegis.py` (current directory, then `~/.aegis.py`). It is
+**Python**, executed to read two names: `agents` and `default_agent`.
+
+```python
+from aegis import Agent
+
+agents = {
+    "default": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto"),
+    "fast":    Agent(harness="claude-code", model="sonnet",
+                     effort="low", permission="read"),
+}
+default_agent = "default"
+```
+
+| Field | Values |
+|---|---|
+| `harness` | `claude-code` (only driver today) |
+| `model` | passthrough alias (`opus`, `sonnet`, …) |
+| `effort` | `low` \| `medium` \| `high` \| `max` |
+| `permission` | `read` \| `write` \| `full` \| `auto` |
+
+`aegis init` writes a starter `.aegis.py`. `Ctrl+N` in the TUI spawns a tab
+for any configured profile.</code></pre>
+
+    <h3>docs/architecture.md</h3>
+<pre><code># Architecture &amp; Vision
+
+Aegis is a **meta-harness**: it does not call model APIs: it drives an
+existing coding-agent harness (Claude Code) as a subprocess and adds a
+control plane above it.
+
+## Layering
+
+- **Driver** (`drivers/`) — spawns `claude -p` with
+  `--input-format/--output-format stream-json`, sends user messages, yields
+  typed events. The seam for future harnesses.
+- **Events / render** — a typed parser (`events.py`) and a pure
+  `render_event` mapping events → Rich renderables.
+- **ConversationPane** — one live conversation: session, transcript,
+  metrics, state.
+- **AegisApp** — the shell: N panes in a `ContentSwitcher`, the tab bar,
+  the agent picker, cross-tab signalling, the theme.
+
+## Vision (abridged)
+
+Aegis is the layer above the harness — multiplexing, routing, and mediating
+between concrete agents. The roadmap runs from a single-tab CLI to a
+multi-agent mesh; see **[Roadmap](roadmap.md)**. Full design history is kept
+internally with the project.</code></pre>
+
+    <h3>docs/roadmap.md</h3>
+<pre><code># Roadmap
+
+Shipped (v0.1.0):
+
+1. **Phase 1** — CLI driving Claude Code via stream-json.
+2. **Phase 1.5** — full-screen Textual TUI + live metrics.
+3. **Phase 2** — multi-tab + cross-tab signalling.
+4. **Polish** — generated handles, theme engine + Ink, lazy start,
+   sideways tab scroll, honest cache-aware token metrics.
+
+Next:
+
+- **Phase 3** — the MCP plane: tools/skills/workflows exposed to every
+  driven harness.
+- **Phase 4+** — inter-agent handoff, task queues, distribution
+  (laptop ↔ VPS), additional harness drivers.
+
+Aegis is personal-infrastructure-grade and evolves fast; expect change
+before a 1.0.</code></pre>
+
+    <div class="step">Step 3 — verify the build (the gate)</div>
+<pre><code>uv run --group docs mkdocs build --strict</code></pre>
+    <p>Expected: build succeeds with <strong>zero</strong> warnings (strict
+      fails on any). Then confirm the exclusion held:</p>
+<pre><code>test ! -e site/superpowers && echo "EXCLUDED OK" || (echo "LEAK"; exit 1)
+grep -rl superpowers site/ &amp;&amp; echo "LEAK" || echo "clean"</code></pre>
+    <p>Expected: <code>EXCLUDED OK</code> and <code>clean</code>. Then remove
+      the throwaway build dir: <code>rm -rf site</code> (it is not committed;
+      add <code>site/</code> to <code>.gitignore</code> if not already
+      ignored).</p>
+
+    <div class="step">Step 4 — commit</div>
+<pre><code>echo "site/" &gt;&gt; .gitignore   # only if 'site/' not already present
+git add mkdocs.yml docs/index.md docs/install.md docs/usage.md \
+  docs/configuration.md docs/architecture.md docs/roadmap.md .gitignore
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "docs(release): MkDocs Material site (superpowers/ excluded)"</code></pre>
+  </section>
+
+  <section id="t4">
+    <h2>Task 4 — CI workflows</h2>
+    <div class="step">Step 1 — <code>.github/workflows/ci.yml</code> (new)</div>
+<pre><code>name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - run: uv run pytest -q -k "not live"</code></pre>
+
+    <div class="step">Step 2 — <code>.github/workflows/docs.yml</code> (new)</div>
+<pre><code>name: docs
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked --group docs
+      - run: uv run mkdocs gh-deploy --force --no-history</code></pre>
+    <p><code>fetch-depth: 0</code> is required by <code>gh-deploy</code>;
+      <code>contents: write</code> lets it push <code>gh-pages</code>;
+      <code>--no-history</code> keeps that branch a single commit.</p>
+
+    <div class="step">Step 3 — local sanity</div>
+    <p>Both files are YAML; verify parseable:</p>
+<pre><code>uv run python -c "import yaml,glob;[yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')];print('yaml ok')"</code></pre>
+    <p>(<code>pyyaml</code> is available transitively; if not,
+      <code>python -c "import yaml"</code> failing → use
+      <code>uv run --with pyyaml python -c ...</code>.) Full suite still green:
+      <code>uv run pytest -q -k "not live"</code>.</p>
+
+    <div class="step">Step 4 — commit</div>
+<pre><code>git add .github/workflows/ci.yml .github/workflows/docs.yml
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "ci(release): test workflow + mkdocs gh-deploy on main"</code></pre>
+  </section>
+
+  <section id="t5">
+    <h2>Task 5 — Ship docs (operational; controller-run)</h2>
+    <p>Not delegated — these touch the live remote and GitHub settings.</p>
+    <div class="step">Step 1 — push <code>main</code></div>
+<pre><code>git push origin main</code></pre>
+    <div class="step">Step 2 — watch the workflows</div>
+<pre><code>gh run list --branch main --limit 5
+gh run watch $(gh run list --workflow docs.yml -L1 --json databaseId -q '.[0].databaseId')</code></pre>
+    <p>Expected: <code>ci</code> green; <code>docs</code> green and a
+      <code>gh-pages</code> branch now exists
+      (<code>git ls-remote --heads origin gh-pages</code> non-empty).</p>
+    <div class="step">Step 3 — enable GitHub Pages (one-time)</div>
+<pre><code>gh api -X POST repos/apiad/aegis/pages \
+  -f 'source[branch]=gh-pages' -f 'source[path]=/' \
+  || gh api -X PUT repos/apiad/aegis/pages \
+       -f 'source[branch]=gh-pages' -f 'source[path]=/'</code></pre>
+    <p>(POST creates the Pages site; if it already exists POST returns 409 →
+      the <code>PUT</code> updates the source. Either way the source becomes
+      the <code>gh-pages</code> branch root.)</p>
+    <div class="step">Step 4 — confirm live</div>
+<pre><code>gh api repos/apiad/aegis/pages -q .html_url
+curl -sSI https://apiad.github.io/aegis/ | head -1   # expect HTTP 200 (after a short build)</code></pre>
+    <p>If 404, wait for the Pages build (<code>gh api
+      repos/apiad/aegis/pages/builds/latest -q .status</code> → <code>built</code>)
+      and retry. Acceptance: the docs URL serves the site and the README CI
+      badge is green.</p>
+  </section>
+
+  <section id="t6">
+    <h2>Task 6 — Tag &amp; GitHub Release (operational; controller-run, last)</h2>
+    <div class="step">Step 1 — annotated tag on the shipped HEAD</div>
+<pre><code>git fetch origin &amp;&amp; git checkout main &amp;&amp; git pull --ff-only
+git tag -a v0.1.0 -m "aegis v0.1.0 — first tagged release"
+git push origin v0.1.0</code></pre>
+    <div class="step">Step 2 — release notes from the CHANGELOG 0.1.0 section</div>
+<pre><code>python3 - &lt;&lt;'PY' &gt; /tmp/aegis-v0.1.0-notes.md
+import re, pathlib
+t = pathlib.Path("CHANGELOG.md").read_text()
+m = re.search(r"## \[0\.1\.0\].*?(?=\n## |\Z)", t, re.S)
+notes = m.group(0).strip() if m else "aegis v0.1.0"
+print(notes + "\n\nDocs: https://apiad.github.io/aegis/")
+PY</code></pre>
+    <div class="step">Step 3 — create the GitHub Release</div>
+<pre><code>gh release create v0.1.0 --title "aegis v0.1.0" \
+  --notes-file /tmp/aegis-v0.1.0-notes.md
+gh release view v0.1.0 --web   # optional: open to eyeball</code></pre>
+    <p>Acceptance: <code>gh release view v0.1.0</code> shows the release with
+      the changelog body; the tag is on the docs-live <code>main</code>.</p>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage</summary>
+      <ul>
+        <li>Version stays 0.1.0; <code>aegis --version</code> eager, pre-config → T1 (TDD).</li>
+        <li>CHANGELOG 0.1.0 → T1. LICENSE MIT + pyproject table-form license + classifiers + real description + docs group → T1.</li>
+        <li>Shiny README (hero/badges/ASCII/quickstart/keys/config/status/license, no image-gen) → T2.</li>
+        <li>MkDocs Material, <code>docs_dir: docs</code> + <code>exclude_docs: superpowers/</code>, six pages, nav, repo links → T3; build gated by <code>--strict</code> + exclusion check.</li>
+        <li>CI: <code>ci.yml</code> tests (badge source) + <code>docs.yml</code> <code>mkdocs gh-deploy</code> on main → T4.</li>
+        <li>Order: polish/docs/CI → push → gh-pages → enable Pages via <code>gh api</code> → confirm live → tag+release last → T5, T6.</li>
+        <li>Verification: version test, strict build + no-<code>superpowers</code> assertion, suite green T1–T4, first-green-Actions + reachable Pages as acceptance → throughout + T5/T6.</li>
+        <li>Non-goals (PyPI, API ref, autorelease, images, moving superpowers) — none introduced.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder &amp; consistency scan</summary>
+      <p>No TBDs; every file's full content is given. The CHANGELOG block's
+        leading <code>/ </code> is explicitly called out as a plan marker, not
+        file content. <code>ci.yml</code> badge path
+        (<code>actions/workflows/ci.yml/badge.svg</code>) matches the workflow
+        <code>name: ci</code>/filename used in T2's README and created in T4 —
+        consistent. <code>uv sync --locked</code> requires the lockfile to
+        include the (runtime-unchanged) metadata + docs group from T1 Step 6's
+        <code>uv lock</code> — ordering correct (T1 before T4/CI). Repo is
+        <code>apiad/aegis</code>; Pages URL <code>apiad.github.io/aegis</code>
+        used consistently in README, mkdocs <code>site_url</code>, T5.</p>
+    </details>
+    <details>
+      <summary>Risk notes</summary>
+      <ul>
+        <li>First <code>docs.yml</code> run creates <code>gh-pages</code>;
+          Pages can't be enabled until the branch exists — sequencing in T5
+          (push → workflow → <code>gh api</code>) handles this; the
+          <code>POST</code>→<code>PUT</code> fallback covers "Pages already
+          configured".</li>
+        <li><code>uv sync --locked</code> in CI will fail if
+          <code>uv.lock</code> wasn't refreshed after the dependency-group
+          add — T1 Step 6 runs <code>uv lock</code> and commits
+          <code>uv.lock</code>.</li>
+        <li><code>mkdocs build --strict</code> turns broken internal links /
+          the <code>superpowers/</code> leak into a hard failure — the gate,
+          not a manual eyeball.</li>
+        <li><code>aegis --version</code> must not import/launch the TUI:
+          <code>is_eager=True</code> + <code>Exit()</code> in the callback
+          guarantees it short-circuits before <code>load_config()</code>;
+          the T1 test runs in an empty dir to prove it.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis release plan</footer>
+
+</div>
+</body>
+</html>
