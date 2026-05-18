@@ -27,10 +27,15 @@ class PaneStateChanged(Message):
 
 class ConversationPane(Widget):
     DEFAULT_CSS = """
-    ConversationPane { layout: vertical; height: 1fr; }
-    ConversationPane RichLog { height: 1fr; }
-    ConversationPane StatusBar { height: 1; background: $panel; }
-    ConversationPane Input { height: 3; }
+    ConversationPane { layout: vertical; height: 1fr;
+                       background: $background; }
+    ConversationPane RichLog { height: 1fr; background: $background;
+                               padding: 1 4; scrollbar-size: 0 0; }
+    ConversationPane StatusBar { height: 1; background: $panel;
+                                 color: $foreground; padding: 0 2; }
+    ConversationPane Input { height: 3; background: $surface;
+                             color: $foreground; padding: 0 2;
+                             border: none; }
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,

@@ -359,3 +359,16 @@ async def test_blank_line_between_turns():
         joined = "\n".join(lines)
         assert "\n\n› second" in joined
         assert not joined.startswith("\n")
+
+
+@pytest.mark.asyncio
+async def test_ink_layout_has_breathing_padding():
+    # Regression: the Ink look requires real padding (spec §Wiring). It
+    # shipped cramped because ConversationPane.DEFAULT_CSS had none.
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        log_pad = pane.query_one(RichLog).styles.padding
+        inp_pad = pane.query_one(Input).styles.padding
+        assert log_pad.top >= 1 and log_pad.right >= 2, log_pad
+        assert inp_pad.right >= 1, inp_pad

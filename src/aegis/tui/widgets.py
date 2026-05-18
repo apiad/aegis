@@ -24,8 +24,8 @@ class TabBar(HorizontalScroll):
 
     DEFAULT_CSS = """
     TabBar { height: 1; overflow-x: auto; overflow-y: hidden;
-             scrollbar-size: 0 0; }
-    TabBar > _TabCell { width: auto; height: 1; }
+             scrollbar-size: 0 0; padding: 0 1; }
+    TabBar > _TabCell { width: auto; height: 1; margin: 0 1; }
     """
 
     def __init__(self) -> None:
