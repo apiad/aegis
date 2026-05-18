@@ -6,7 +6,7 @@ from aegis.tui.state import AgentState
 
 
 class TabBar(Static):
-    """One-line tab bar. Real rendering lands in a later task."""
+    """One-line tab bar: [dot idx handle ·slug·]… active reversed, * unseen."""
 
     def __init__(self) -> None:
         super().__init__(markup=True)
@@ -17,12 +17,14 @@ class TabBar(Static):
         self._refresh()
 
     def _refresh(self) -> None:
-        parts = []
+        cells = []
         for idx, handle, slug, state, unseen, active in self._items:
-            mark = "*" if unseen else ""
-            label = f"{state.dot} {idx} {handle}{mark}"
-            parts.append(f"[reverse]{label}[/reverse]" if active else label)
-        self.update("  ".join(parts))
+            mark = "[bold]*[/bold]" if unseen else ""
+            label = (f"{state.dot} {idx} {handle} "
+                     f"[#788C5D]·{slug}·[/#788C5D]{mark}")
+            cells.append(f"[reverse] {label} [/reverse]"
+                         if active else f" {label} ")
+        self.update("".join(cells) or "no tabs")
 
 
 class StatusBar(Static):

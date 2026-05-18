@@ -117,3 +117,15 @@ async def test_interrupt_only_active_pane():
         await pilot.pause()
         assert pane.state is AgentState.ready
         assert pane._transcript_has("interrupted")
+
+
+@pytest.mark.asyncio
+async def test_tabbar_shows_handle_slug_dot():
+    app = _app()
+    async with app.run_test():
+        bar = str(app.query_one(TabBar).content)
+        pane = app._panes[0]
+        assert pane.handle in bar
+        assert "default" in bar          # slug
+        assert "1" in bar                # index
+        assert "*" not in bar            # active pane, not unseen
