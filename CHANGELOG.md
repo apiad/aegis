@@ -3,6 +3,13 @@
 All notable changes to Aegis are documented here.
 The format follows Keep a Changelog; this project uses SemVer (0.x).
 
+## [Unreleased]
+
+### Added
+- MCP plane (slice 1): a shared FastMCP HTTP server owned by aegis;
+  spawned agents are injected strict + primed and get an `aegis_meta`
+  orientation tool.
+
 ## [0.1.0] - 2026-05-18
 
 First tagged release — a usable, personal-infrastructure-grade meta-harness.
