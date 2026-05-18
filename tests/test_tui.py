@@ -208,6 +208,38 @@ async def test_metrics_tick_refreshes_active_pane():
         assert "·default·" in after            # identity still present
 
 
+# --- Task 5: AgentPicker modal tests ---
+
+@pytest.mark.asyncio
+async def test_ctrl_n_picker_spawns_chosen_profile():
+    agents = {"default": _agent(),
+              "fast": Agent(harness="claude-code", model="sonnet",
+                            effort="low", permission="read")}
+    app = AegisApp(agents, "default", _factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        await pilot.press("down")     # move to "fast" (sorted: default, fast)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert len(app._panes) == 2
+        assert app._panes[1].agent_slug == "fast"
+
+
+@pytest.mark.asyncio
+async def test_ctrl_n_picker_cancel_no_new_pane():
+    agents = {"default": _agent(),
+              "fast": Agent(harness="claude-code", model="sonnet",
+                            effort="low", permission="read")}
+    app = AegisApp(agents, "default", _factory(FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app._panes) == 1
+
+
 @pytest.mark.asyncio
 async def test_error_then_resend_recovers_to_ready():
     calls = {"n": 0}

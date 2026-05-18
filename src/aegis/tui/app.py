@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import ContentSwitcher
@@ -125,10 +126,14 @@ class AegisApp(App):
             return
         self._activate(min(idx, len(self._panes) - 1))
 
+    @work
     async def action_pick_agent(self) -> None:
-        # AgentPicker is wired in Task 5; no-op placeholder so the
-        # binding exists without crashing if pressed.
-        return
+        from aegis.tui.picker import AgentPicker
+
+        slug = await self.push_screen_wait(
+            AgentPicker(sorted(self._agents)))
+        if slug:
+            await self._spawn(slug)
 
     def on_pane_state_changed(self, message: PaneStateChanged) -> None:
         if message.finished:
