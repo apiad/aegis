@@ -100,6 +100,10 @@ Single `AgentState` enum drives two renderings that cannot disagree:
 | `working` | 🟠 orange | `✻ working…` | turn in flight |
 | `error` | 🔴 red | `⚠ <message>` | harness exited / turn errored |
 
+> Implementation note: the status-bar error label is the generic `⚠ error`;
+> the specific failure message (`⚠ harness error` / `⚠ harness exited`)
+> appears in the transcript, not the status bar. Intentional simplification.
+
 - `error` clears to `working` on the next successful send (resend attempt),
   then to `ready`/`error` per outcome.
 - A `Result` with `is_error=True` → `error` (red) + bell. A clean `Result` →

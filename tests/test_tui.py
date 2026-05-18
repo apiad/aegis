@@ -145,3 +145,45 @@ async def test_status_metrics_render_and_tick():
         app._tick()
         sb_text2 = str(app.query_one(StatusBar).content)
         assert "2m05s" in sb_text2
+
+
+class ErrorThenOkSession:
+    """First turn errors (no Result), second turn succeeds."""
+
+    def __init__(self):
+        self.sent = []
+        self.started = self.closed = False
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, text):
+        self.sent.append(text)
+
+    async def events(self):
+        if len(self.sent) == 1:
+            raise RuntimeError("first turn blows up")
+        yield AssistantText("recovered")
+        yield Result(duration_ms=1, is_error=False)
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_error_then_resend_recovers_to_ready():
+    app = AegisApp(ErrorThenOkSession(), _agent(), "default")
+    async with app.run_test() as pilot:
+        inp = app.query_one(Input)
+        inp.value = "first"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert app.state is AgentState.error
+        inp = app.query_one(Input)
+        inp.value = "second"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert app._transcript_has("recovered")
+        assert app.state is AgentState.ready
