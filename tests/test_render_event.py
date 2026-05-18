@@ -3,7 +3,7 @@ from aegis.events import (
     AssistantText, AssistantThinking, ToolUse, ToolResult,
     Result, SystemInit, Unknown,
 )
-from aegis.render import render_event
+from aegis.render import render_event, render_user_line
 from aegis.tui.themes import aegis_colors, INK
 
 C = aegis_colors(INK)
@@ -50,3 +50,17 @@ def test_result_separator():
 def test_systeminit_and_unknown_are_none():
     assert render_event(SystemInit(session_id="x"), C) is None
     assert render_event(Unknown(raw="{}"), C) is None
+
+
+def test_render_user_line_has_accent_prefix_and_bg():
+    line = render_user_line("hello", C, width=40)
+    plain = line.plain
+    assert plain.startswith("› hello")
+    assert len(plain) == 40                      # padded to full width band
+    # the line's base style carries the lighter user background
+    assert C.user_bg.lstrip("#").lower() in str(line.style).lower()
+
+
+def test_render_user_line_no_width_not_padded():
+    line = render_user_line("hi", C)
+    assert line.plain == "› hi"                   # no width → no pad

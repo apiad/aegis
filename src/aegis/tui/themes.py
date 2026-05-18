@@ -20,6 +20,7 @@ INK = Theme(
         "aegis-muted": "#76736a",
         "aegis-faint": "#4a4843",
         "aegis-rule": "#26241f",
+        "aegis-userbg": "#24241f",
     },
 )
 
@@ -37,6 +38,7 @@ class AegisColors:
     ok: str
     err: str
     user: str
+    user_bg: str
 
 
 def aegis_colors(theme: Theme) -> AegisColors:
@@ -55,4 +57,5 @@ def aegis_colors(theme: Theme) -> AegisColors:
         ok=theme.success or fg,
         err=theme.error or fg,
         user=theme.accent or fg,
+        user_bg=var("aegis-userbg"),
     )

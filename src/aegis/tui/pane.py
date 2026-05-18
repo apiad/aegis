@@ -12,7 +12,7 @@ from textual.widgets import Input, RichLog
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
 from aegis.events import Result, ToolResult, ToolUse
-from aegis.render import render_event
+from aegis.render import render_event, render_user_line
 from aegis.tui.metrics import SessionMetrics
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar
@@ -106,7 +106,10 @@ class ConversationPane(Widget):
         if self._had_turn:
             self._write(Text(""))      # one blank row between turns
         self._had_turn = True
-        self._write(Text.assemble(("› ", self._palette.user), text))
+        log = self.query_one(RichLog)
+        width = log.size.width or 80
+        self._write(render_user_line(text, self._palette, width))
+        self._write(Text(""))         # space between user and agent
         self._set_state(AgentState.working, finished=False)
         self._metrics.start_turn(self._now())
         self.run_worker(self._run_turn(text), group="turn", exclusive=True)

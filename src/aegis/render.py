@@ -33,3 +33,17 @@ def render_event(ev: Event, colors) -> RenderableType | None:
     if isinstance(ev, (SystemInit, Unknown)):
         return None
     return None
+
+
+def render_user_line(text: str, colors, width: int | None = None) -> Text:
+    """The user's message line: accent `›` prefix on a lighter band.
+
+    The whole line carries `colors.user_bg`; padded to `width` (when known)
+    so the tint reads as a full-width band, not just behind the glyphs.
+    """
+    line = Text(style=f"{colors.user} on {colors.user_bg}")
+    line.append("› ", style=f"bold {colors.user} on {colors.user_bg}")
+    line.append(text, style=f"{colors.user} on {colors.user_bg}")
+    if width and width > line.cell_len:
+        line.pad_right(width - line.cell_len)
+    return line

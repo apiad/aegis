@@ -392,3 +392,20 @@ async def test_input_border_stable_across_focus_blur():
             f"focus={focused_border} blur={blurred_border}")
         # and it's actually borderless (no row-eating geometry)
         assert focused_border[0] in ("", "none"), focused_border
+
+
+@pytest.mark.asyncio
+async def test_blank_row_between_user_and_agent():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "ping"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        lines = [l.text if hasattr(l, "text") else str(l)
+                 for l in pane.query_one(RichLog).lines]
+        # find the user line and the agent echo; a blank row must separate
+        ui = next(i for i, t in enumerate(lines) if t.startswith("› ping"))
+        ai = next(i for i, t in enumerate(lines) if "echo: ping" in t)
+        assert ai > ui
+        assert any(lines[j].strip() == "" for j in range(ui + 1, ai))
