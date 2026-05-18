@@ -70,10 +70,10 @@ class StatusBar(Static):
     """`<agent> · <model> · <permission>`, state label, then metrics."""
 
     def __init__(self, handle: str, agent_slug: str,
-                 model: str, permission: str) -> None:
+                 model: str, permission: str, colors) -> None:
         super().__init__(markup=True)
         self._identity = (
-            f"{handle}  [#788C5D]·{agent_slug}·[/#788C5D]  "
+            f"{handle}  [{colors.accent}]·{agent_slug}·[/]  "
             f"{model} · {permission}")
         self._state = AgentState.ready
         self._metrics = ""

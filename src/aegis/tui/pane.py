@@ -34,22 +34,27 @@ class ConversationPane(Widget):
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,
-                 agent_slug: str, handle: str) -> None:
+                 agent_slug: str, handle: str, palette) -> None:
         super().__init__(id=f"pane-{handle}")
         self._session = session
         self._agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
+        self._palette = palette
         self.state = AgentState.ready
         self.unseen = False
         self._started = False
         self._metrics = SessionMetrics()
 
+    def set_palette(self, palette) -> None:
+        self._palette = palette
+
     def compose(self) -> ComposeResult:
         with Vertical():
             yield RichLog(markup=False, wrap=True, auto_scroll=True)
             yield StatusBar(self.handle, self.agent_slug,
-                            self._agent.model, self._agent.permission.value)
+                            self._agent.model,
+                            self._agent.permission.value, self._palette)
             yield Input(placeholder="type a message…")
 
     async def on_mount(self) -> None:
@@ -91,7 +96,7 @@ class ConversationPane(Widget):
         inp = self.query_one(Input)
         inp.value = ""
         inp.disabled = True
-        self._write(Text.assemble(("› ", "bold"), text))
+        self._write(Text.assemble(("› ", self._palette.user), text))
         self._set_state(AgentState.working, finished=False)
         self._metrics.start_turn(self._now())
         self.run_worker(self._run_turn(text), group="turn", exclusive=True)
@@ -105,7 +110,7 @@ class ConversationPane(Widget):
                 self._metrics.begin_session(self._now())
             await self._session.send(text)
             async for ev in self._session.events():
-                renderable = render_event(ev)
+                renderable = render_event(ev, self._palette)
                 if renderable is not None:
                     self._write(renderable)
                 if isinstance(ev, ToolUse):

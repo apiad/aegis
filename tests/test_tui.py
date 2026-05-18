@@ -328,3 +328,16 @@ async def test_tabbar_uses_theme_accent_for_slug():
         bar = app.query_one(TabBar).bar_text()
         assert app.palette.accent in bar
         assert app._panes[0].handle in bar
+
+
+@pytest.mark.asyncio
+async def test_pane_holds_palette_and_renders():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        assert pane._palette is app.palette
+        pane.query_one(Input).value = "hi"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._transcript_has("echo: hi")

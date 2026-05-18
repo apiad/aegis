@@ -88,7 +88,7 @@ class AegisApp(App):
         agent = self._agents[slug]
         handle = generate_name({p.handle for p in self._panes})
         pane = ConversationPane(self._make_session(agent), agent,
-                                slug, handle)
+                                slug, handle, self._palette)
         self._panes.append(pane)
         cs = self.query_one(ContentSwitcher)
         await cs.mount(pane)
