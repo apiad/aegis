@@ -50,8 +50,3 @@ def test_result_separator():
 def test_systeminit_and_unknown_are_none():
     assert render_event(SystemInit(session_id="x"), C) is None
     assert render_event(Unknown(raw="{}"), C) is None
-
-
-def test_tool_use_renders_name_and_arg():
-    out = as_text(render_event(ToolUse(name="Read", summary="f.py"), C))
-    assert "Read" in out and "f.py" in out

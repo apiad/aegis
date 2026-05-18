@@ -123,12 +123,12 @@ class ConversationPane(Widget):
                     self._finish(error=ev.is_error)
                 self.refresh_metrics()
         except Exception:  # noqa: BLE001
-            self._write(Text("⚠ harness error", style="red"))
+            self._write(Text("⚠ harness error", style=self._palette.err))
             if not saw_result:
                 self._finish(error=True)
             return
         if not saw_result:
-            self._write(Text("⚠ harness exited", style="red"))
+            self._write(Text("⚠ harness exited", style=self._palette.err))
             self._finish(error=True)
 
     def _finish(self, *, error: bool) -> None:
@@ -143,7 +143,7 @@ class ConversationPane(Widget):
             return
         self.workers.cancel_group(self, "turn")
         self._metrics.cancel_turn(self._now())
-        self._write(Text("^C — interrupted", style="dim"))
+        self._write(Text("^C — interrupted", style=self._palette.muted))
         self._set_state(AgentState.ready, finished=False)
         self.refresh_metrics()
         inp = self.query_one(Input)
