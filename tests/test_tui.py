@@ -414,3 +414,25 @@ async def test_blank_row_between_user_and_agent():
         ai = next(i for i, t in enumerate(lines) if "echo: ping" in t)
         assert ai > ui
         assert any(lines[j].strip() == "" for j in range(ui + 1, ai))
+
+
+@pytest.mark.asyncio
+async def test_blank_rows_between_agent_steps():
+    from aegis.events import AssistantThinking, ToolUse, ToolResult
+    script = lambda t: [
+        AssistantThinking("mm"), ToolUse(name="Read", summary="f.py"),
+        ToolResult(text="ok", is_error=False), AssistantText("done"),
+        Result(duration_ms=1, is_error=False),
+    ]
+    app = _app(_factory(FakeSession(script)))
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "go"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        lines = [l.text if hasattr(l, "text") else str(l)
+                 for l in pane.query_one(RichLog).lines]
+        think_i = next(i for i, t in enumerate(lines) if "Thinking" in t)
+        read_i = next(i for i, t in enumerate(lines) if "Read" in t)
+        # at least one blank row separates the thinking step from the tool
+        assert any(lines[j].strip() == "" for j in range(think_i + 1, read_i))
