@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis MCP Plane Slice 2" status=approved date=2026-05-18 source="docs/superpowers/specs/2026-05-18-aegis-mcp-plane-slice2-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis MCP Plane Slice 2 — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:16px 0 8px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  .warn{background:#F6E9D8;border:1px solid #E0B27A;border-radius:8px;
+    padding:12px 16px;margin:0 0 16px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis · Phase 3 slice 2</div>
+    <h1>MCP Plane Slice 2 — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-18</span>
+      <span>Spec: 2026-05-18-aegis-mcp-plane-slice2-design.html</span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — <code>superpowers:subagent-driven-development</code> or
+      <code>superpowers:executing-plans</code>. Commit to <code>main</code>
+      (authorized for aegis). Every task keeps
+      <code>uv run pytest -q -k "not live"</code> green.</p>
+    <div class="warn"><strong>Sequencing + reconcile gate.</strong> Do NOT
+      start until <strong>slice-1 is merged on <code>main</code></strong>
+      (<code>git log --oneline | grep -i "feat(mcp)"</code> shows the slice-1
+      commits; <code>src/aegis/mcp/server.py</code> &amp;
+      <code>runtime.py</code> exist). <strong>First action:</strong> read the
+      <em>actual merged</em> slice-1 code
+      (<code>src/aegis/mcp/server.py</code>, <code>runtime.py</code>,
+      <code>drivers/claude.py</code>, <code>tui/app.py</code>) and reconcile
+      this plan's assumed signatures against reality. Slice-1's own plan
+      carried adapt-and-report clauses, so minor drift is possible — if a
+      slice-1 signature differs from what this plan assumes, adapt the
+      integration and note it; the <em>intent</em> per the slice-2 spec is
+      authoritative, the exact slice-1 line shapes are not.</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#assumed">Slice-1 contract assumed</a><a href="#files">Files</a>
+    <a href="#t1">T1 bridge</a><a href="#t2">T2 server+wiring</a>
+    <a href="#t3">T3 AppBridge impl</a><a href="#t4">T4 identity</a>
+    <a href="#t5">T5 live+docs</a><a href="#review">Self-review</a>
+  </nav>
+
+  <section id="assumed">
+    <h2>Slice-1 contract this plan builds on</h2>
+    <p>Per the slice-1 spec/plan (reconcile against merged code first):</p>
+    <ul>
+      <li><code>src/aegis/mcp/server.py</code>: <code>build_server() -&gt;
+        FastMCP</code>, <code>aegis_meta()</code>, constants
+        <code>BRIEFING</code>, <code>PRIMING</code>,
+        <code>mcp_config_json(url)</code>.</li>
+      <li><code>src/aegis/mcp/runtime.py</code>: <code>AegisMCP</code> with
+        <code>start()/stop()/url</code>; builds the server (slice-1 builds it
+        in <code>__init__</code>).</li>
+      <li><code>drivers/base.py</code>+<code>claude.py</code>:
+        <code>build_argv(agent, cwd, mcp_url)</code>,
+        <code>session(agent, cwd, mcp_url)</code>.</li>
+      <li><code>cli.py</code>: <code>make_session(profile, mcp_url)</code>;
+        <code>AegisApp(agents, name, make_session, AegisMCP())</code>.</li>
+      <li><code>tui/app.py</code>: <code>AegisApp.__init__(..., mcp)</code>
+        stores <code>self._mcp</code>; <code>on_mount</code>
+        <code>await self._mcp.start()</code> before first
+        <code>_spawn</code>; <code>_spawn(slug)</code> generates
+        <code>handle</code> and calls
+        <code>self._make_session(agent, self._mcp.url)</code>;
+        <code>action_quit</code> <code>await self._mcp.stop()</code>.</li>
+      <li><code>tests/test_tui.py</code>: a <code>FakeMCP</code> (start/stop
+        no-ops, dummy <code>url</code>) injected via the <code>_app</code>
+        helper.</li>
+    </ul>
+  </section>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/mcp/bridge.py</code></td><td>New — <code>SessionInfo</code> + <code>AppBridge</code> Protocol.</td></tr>
+        <tr><td><code>src/aegis/mcp/server.py</code></td><td><code>build_server(bridge)</code>; +3 async tools; extended <code>BRIEFING</code>; <code>PRIMING</code> → <code>{handle}</code> template.</td></tr>
+        <tr><td><code>src/aegis/mcp/runtime.py</code></td><td>Build server lazily in <code>start()</code>; <code>bind(bridge)</code>.</td></tr>
+        <tr><td><code>src/aegis/mcp/__init__.py</code></td><td>Re-export <code>SessionInfo</code>, <code>AppBridge</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code></td><td>Implement <code>AppBridge</code>; bind self; pass <code>handle</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/pane.py</code></td><td>Extract <code>_submit</code>; add <code>deliver_handoff</code>.</td></tr>
+        <tr><td><code>src/aegis/drivers/base.py</code> / <code>claude.py</code></td><td><code>build_argv</code>/<code>session</code> gain <code>handle</code>; PRIMING formatted.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td><code>make_session(profile, mcp_url, handle)</code>.</td></tr>
+        <tr><td><code>tests/test_mcp_bridge.py</code></td><td>New — SessionInfo / Protocol.</td></tr>
+        <tr><td><code>tests/test_mcp_server.py</code></td><td>Extended — FakeBridge tool tests.</td></tr>
+        <tr><td><code>tests/test_tui.py</code></td><td><code>FakeMCP.bind</code>; AppBridge + deliver_handoff pilots.</td></tr>
+        <tr><td><code>tests/test_mcp_live.py</code></td><td>+ list_sessions live extension.</td></tr>
+        <tr><td><code>AGENTS.md</code> / <code>CHANGELOG.md</code></td><td>slice-2 note (T5, inline).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="t1">
+    <h2>Task 1 — AppBridge contract</h2>
+    <div class="step">Step 1 — failing test <code>tests/test_mcp_bridge.py</code></div>
+<pre><code>from aegis.mcp.bridge import SessionInfo, AppBridge
+
+
+def test_sessioninfo_fields():
+    s = SessionInfo(handle="lucid-knuth", agent_slug="default",
+                    state="ready", active=True, unseen=False)
+    assert (s.handle, s.agent_slug, s.state, s.active, s.unseen) == \
+        ("lucid-knuth", "default", "ready", True, False)
+
+
+def test_appbridge_is_runtime_checkable_protocol():
+    class Impl:
+        def list_sessions(self): return []
+        def list_agents(self): return []
+        async def handoff(self, a, b, c): return "ok"
+    assert isinstance(Impl(), AppBridge)
+    assert not isinstance(object(), AppBridge)</code></pre>
+    <div class="step">Step 2 — run, expect ImportError</div>
+    <div class="step">Step 3 — <code>src/aegis/mcp/bridge.py</code></div>
+<pre><code>from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class SessionInfo:
+    handle: str
+    agent_slug: str
+    state: str          # AgentState.value
+    active: bool
+    unseen: bool
+
+
+@runtime_checkable
+class AppBridge(Protocol):
+    def list_sessions(self) -&gt; list[SessionInfo]: ...
+    def list_agents(self) -&gt; list[str]: ...
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str: ...</code></pre>
+    <p>Add to <code>src/aegis/mcp/__init__.py</code> re-exports:
+      <code>SessionInfo</code>, <code>AppBridge</code> (keep slice-1's
+      existing exports).</p>
+    <div class="step">Step 4 — run + full suite; commit</div>
+<pre><code>uv run pytest tests/test_mcp_bridge.py -q   # 2 passed
+uv run pytest -q -k "not live"              # all pass (additive)
+uv run ruff check src/aegis/mcp/bridge.py
+git add src/aegis/mcp/bridge.py src/aegis/mcp/__init__.py tests/test_mcp_bridge.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): AppBridge protocol + SessionInfo"</code></pre>
+  </section>
+
+  <section id="t2">
+    <h2>Task 2 — Server tools + bridge wiring</h2>
+    <p>Atomic: <code>build_server()</code> → <code>build_server(bridge)</code>
+      breaks <code>AegisMCP</code>; reconcile runtime + binding together.</p>
+
+    <div class="step">Step 1 — failing tests, extend <code>tests/test_mcp_server.py</code></div>
+<pre><code>import pytest
+from aegis.mcp.server import build_server, BRIEFING, PRIMING
+
+
+class FakeBridge:
+    def __init__(self):
+        self._sessions = [
+            {"handle": "lucid-knuth", "agent_slug": "default",
+             "state": "ready", "active": True, "unseen": False}]
+        self.delivered = None
+    def list_sessions(self):
+        from aegis.mcp.bridge import SessionInfo
+        return [SessionInfo(**s) for s in self._sessions]
+    def list_agents(self):
+        return ["default", "fast"]
+    async def handoff(self, a, b, c):
+        if a == b:
+            return "handoff rejected: cannot hand off to yourself"
+        if b != "lucid-knuth":
+            return f"handoff rejected: no session {b!r} (use aegis_list_sessions)"
+        self.delivered = (a, b, c)
+        return f"delivered to {b}"
+
+
+async def _call(server, name, **kw):
+    tool = (await server.get_tools())[name]
+    return await tool.run(kw)
+
+
+@pytest.mark.asyncio
+async def test_list_tools_serialise():
+    br = FakeBridge()
+    srv = build_server(br)
+    sess = await _call(srv, "aegis_list_sessions")
+    assert sess[0]["handle"] == "lucid-knuth" and sess[0]["state"] == "ready"
+    agents = await _call(srv, "aegis_list_agents")
+    assert agents == ["default", "fast"]
+
+
+@pytest.mark.asyncio
+async def test_handoff_paths():
+    br = FakeBridge()
+    srv = build_server(br)
+    assert "delivered to lucid-knuth" in await _call(
+        srv, "aegis_handoff", from_handle="wry-hopper",
+        target_handle="lucid-knuth", context="ctx")
+    assert br.delivered == ("wry-hopper", "lucid-knuth", "ctx")
+    assert "yourself" in await _call(
+        srv, "aegis_handoff", from_handle="x", target_handle="x",
+        context="c")
+    assert "no session" in await _call(
+        srv, "aegis_handoff", from_handle="x", target_handle="ghost",
+        context="c")
+
+
+def test_meta_and_priming_updated():
+    b = BRIEFING.lower()
+    for t in ("aegis_list_sessions", "aegis_list_agents",
+              "aegis_handoff"):
+        assert t in b
+    assert "{handle}" in PRIMING
+    assert "aegis_meta" in PRIMING and "your aegis handle" in \
+        PRIMING.lower()</code></pre>
+    <p>(If fastmcp's tool-invocation API differs from
+      <code>(await server.get_tools())[name].run(kwargs)</code>, adapt
+      <code>_call</code> to the real fastmcp 3.2.0 in-process call API and
+      report — intent: invoke a registered tool by name with kwargs and get
+      its return value.)</p>
+
+    <div class="step">Step 2 — run, expect fail (build_server arity, missing tools, PRIMING not a template)</div>
+
+    <div class="step">Step 3 — <code>src/aegis/mcp/server.py</code></div>
+    <p>Make <code>PRIMING</code> a template and extend
+      <code>BRIEFING</code>; add the three async tools; the existing
+      <code>aegis_meta</code> stays:</p>
+<pre><code>PRIMING = (
+    "You are running inside aegis, a meta-harness. An MCP server named "
+    "'aegis' is attached and (strict config) is your only MCP server. "
+    "Your aegis handle is '{handle}'. Call its aegis_meta tool first to "
+    "learn this environment and the aegis tools available to you, then "
+    "proceed. When handing off, pass your handle '{handle}' as "
+    "from_handle."
+)
+
+# BRIEFING: keep slice-1 text, then append a tools section naming
+# aegis_list_sessions / aegis_list_agents / aegis_handoff, stating the
+# agent's own handle is in its system prompt and is passed as from_handle,
+# and that handoff is a one-way context transfer to a live peer.
+
+def build_server(bridge):
+    server = FastMCP("aegis")
+    server.tool(aegis_meta)
+
+    @server.tool
+    async def aegis_list_sessions() -&gt; list[dict]:
+        """Live aegis sessions (peers you can hand off to)."""
+        return [s.__dict__ for s in bridge.list_sessions()]
+
+    @server.tool
+    async def aegis_list_agents() -&gt; list[str]:
+        """Configured agent profiles that can be spawned."""
+        return list(bridge.list_agents())
+
+    @server.tool
+    async def aegis_handoff(from_handle: str, target_handle: str,
+                            context: str) -&gt; str:
+        """One-way context transfer to a live peer session.
+        from_handle is your own aegis handle (see your system prompt)."""
+        return await bridge.handoff(from_handle, target_handle, context)
+
+    return server</code></pre>
+    <p>(<code>SessionInfo</code> is a frozen dataclass;
+      <code>s.__dict__</code> works for <code>@dataclass</code>. If
+      <code>frozen=True</code> blocks <code>__dict__</code> on the runtime,
+      use <code>dataclasses.asdict(s)</code> — import
+      <code>dataclasses</code>; pick whichever the test proves and report.)</p>
+
+    <div class="step">Step 4 — <code>src/aegis/mcp/runtime.py</code>: build at start + bind</div>
+    <p>Slice-1 builds the server in <code>__init__</code>; defer it so the
+      bridge is bound first. Modify <code>AegisMCP</code>:</p>
+<pre><code>    def __init__(self) -&gt; None:
+        self._bridge = None
+        self._server = None
+        self.host = "127.0.0.1"
+        self.port = _free_port()
+        self._task = None
+
+    def bind(self, bridge) -&gt; None:
+        self._bridge = bridge
+
+    async def start(self) -&gt; None:
+        if self._task is not None:
+            return
+        if self._bridge is None:
+            raise RuntimeError("AegisMCP.start() before bind(bridge)")
+        self._server = build_server(self._bridge)
+        # ... slice-1's run_http_async task + readiness poll, unchanged</code></pre>
+    <p>(Preserve slice-1's exact <code>_free_port</code>, readiness-poll, and
+      <code>stop()</code> bodies; only the server-build move + <code>bind</code>
+      + the guard are new. <code>url</code> property unchanged.)</p>
+
+    <div class="step">Step 5 — <code>src/aegis/tui/app.py</code>: bind self</div>
+    <p>In <code>AegisApp.__init__</code>, right after
+      <code>self._mcp = mcp</code>, add <code>self._mcp.bind(self)</code>.
+      (<code>AegisApp</code> implements <code>AppBridge</code> in T3; binding
+      now is safe — nothing calls the bridge until a tool runs, which only
+      happens via a live claude, not in hermetic tests.)</p>
+    <p>In <code>tests/test_tui.py</code>'s <code>FakeMCP</code>, add a no-op
+      <code>def bind(self, bridge): pass</code>.</p>
+
+    <div class="step">Step 6 — run + full suite; commit</div>
+<pre><code>uv run pytest tests/test_mcp_server.py tests/test_tui.py -q
+uv run pytest -q -k "not live"
+uv run ruff check src/aegis/mcp src/aegis/tui/app.py
+git add src/aegis/mcp/server.py src/aegis/mcp/runtime.py src/aegis/tui/app.py tests/test_mcp_server.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): list_sessions/list_agents/handoff tools + bridge wiring"</code></pre>
+  </section>
+
+  <section id="t3">
+    <h2>Task 3 — AppBridge impl + handoff delivery</h2>
+    <div class="step">Step 1 — failing pilots, append to <code>tests/test_tui.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_appbridge_list_and_handoff():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")          # 2 panes
+        await pilot.pause()
+        sessions = app.list_sessions()
+        assert {s.handle for s in sessions} == {
+            p.handle for p in app._panes}
+        assert any(s.active for s in sessions)
+        a, b = app._panes[0].handle, app._panes[1].handle
+        # self / unknown / busy rejects
+        assert "yourself" in await app.handoff(a, a, "x")
+        assert "no session" in await app.handoff(a, "ghost", "x")
+        # deliver into b
+        msg = await app.handoff(a, b, "please continue the spec")
+        assert f"delivered to {b}" == msg
+        await pilot.pause(); await pilot.pause()
+        assert app._panes[1]._transcript_has(f"[handoff from {a}]")
+        assert app._panes[1]._transcript_has("please continue the spec")
+
+
+@pytest.mark.asyncio
+async def test_handoff_rejects_busy_target():
+    import asyncio
+
+    class Hang:
+        def __init__(self): self.sent=[]; self.started=self.closed=False
+        async def start(self): self.started=True
+        async def send(self, t): self.sent.append(t)
+        async def events(self):
+            await asyncio.Event().wait()
+            yield None  # pragma: no cover
+        async def close(self): self.closed=True
+
+    app = _app(_factory(FakeSession(), Hang()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t"); await pilot.pause()
+        b = app._panes[1]
+        b.query_one(Input).value = "go"
+        await b.query_one(Input).action_submit()
+        await pilot.pause()
+        assert b.state is AgentState.working
+        a = app._panes[0].handle
+        assert "busy" in await app.handoff(a, b.handle, "x")</code></pre>
+    <div class="step">Step 2 — run, expect fail (no app.list_sessions/handoff; no deliver_handoff)</div>
+    <div class="step">Step 3 — <code>src/aegis/tui/pane.py</code>: extract <code>_submit</code></div>
+    <p>Factor the body of <code>on_input_submitted</code> after the
+      guard/clear into <code>_submit(self, text: str)</code> (write user line
+      → set working → <code>start_turn</code> →
+      <code>run_worker(self._run_turn(text), group="turn",
+      exclusive=True)</code>). <code>on_input_submitted</code> keeps the
+      event guard, clears the input, then <code>self._submit(text)</code>.
+      Add:</p>
+<pre><code>    async def deliver_handoff(self, from_handle: str,
+                              context: str) -&gt; None:
+        # rendered like a user turn but tagged as an inter-agent transfer
+        self._submit(f"[handoff from {from_handle}] {context}")</code></pre>
+    <p>(<code>deliver_handoff</code> is <code>async</code> for interface
+      symmetry though <code>_submit</code> is sync — the worker it starts is
+      async; keep it awaitable so the bridge can <code>await</code> it.)</p>
+    <div class="step">Step 4 — <code>src/aegis/tui/app.py</code>: implement AppBridge</div>
+<pre><code>    # --- AppBridge ---
+    def list_sessions(self):
+        from aegis.mcp.bridge import SessionInfo
+        active = self._active
+        return [
+            SessionInfo(handle=p.handle, agent_slug=p.agent_slug,
+                        state=p.state.value, active=(p is active),
+                        unseen=p.unseen)
+            for p in self._panes
+        ]
+
+    def list_agents(self):
+        return sorted(self._agents)
+
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str:
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        target = next((p for p in self._panes
+                       if p.handle == target_handle), None)
+        if target is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        if target.state is AgentState.working:
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        await target.deliver_handoff(from_handle, context)
+        return f"delivered to {target_handle}"</code></pre>
+    <p>(<code>self._active</code> already exists from the multi-tab work;
+      <code>p.state</code> is an <code>AgentState</code> — use
+      <code>.value</code> for the string. <code>AgentState</code> is already
+      imported in app.py.)</p>
+    <div class="step">Step 5 — run + full suite; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+uv run ruff check src/aegis/tui/app.py src/aegis/tui/pane.py
+git add src/aegis/tui/app.py src/aegis/tui/pane.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): AegisApp implements AppBridge; pane handoff delivery"</code></pre>
+  </section>
+
+  <section id="t4">
+    <h2>Task 4 — Self-reported handle (priming thread)</h2>
+    <div class="step">Step 1 — failing test, extend <code>tests/test_driver_argv.py</code></div>
+<pre><code>def test_build_argv_bakes_handle_into_priming():
+    from aegis.drivers.claude import ClaudeDriver
+    from aegis.config import Agent
+    a = Agent(harness="claude-code", model="opus",
+              effort="high", permission="auto")
+    argv = ClaudeDriver().build_argv(
+        a, ".", "http://127.0.0.1:9/mcp/", "lucid-knuth")
+    j = argv.index("--append-system-prompt")
+    prompt = argv[j + 1]
+    assert "lucid-knuth" in prompt
+    assert "{handle}" not in prompt          # template was formatted</code></pre>
+    <div class="step">Step 2 — run, expect fail (build_argv has no handle param)</div>
+    <div class="step">Step 3 — thread <code>handle</code></div>
+    <ul>
+      <li><code>drivers/base.py</code>: <code>build_argv(self, agent, cwd,
+        mcp_url, handle) -&gt; list[str]</code>; <code>session(self, agent,
+        cwd, mcp_url, handle)</code>.</li>
+      <li><code>drivers/claude.py</code>: add <code>handle: str</code> params;
+        the <code>--append-system-prompt</code> value becomes
+        <code>PRIMING.format(handle=handle)</code>;
+        <code>session</code> passes it to <code>build_argv</code>.</li>
+      <li><code>cli.py</code>: <code>def make_session(profile, mcp_url,
+        handle): return get_driver(profile.harness).session(profile, cwd,
+        mcp_url, handle)</code>.</li>
+      <li><code>tui/app.py</code> <code>_spawn</code>: it already computes
+        <code>handle</code>; change the factory call to
+        <code>self._make_session(agent, self._mcp.url, handle)</code>.</li>
+    </ul>
+    <p>Update any other <code>build_argv(... )</code>/<code>session(...)</code>
+      call in <code>tests/test_driver_argv.py</code> to pass a handle arg
+      (grep the file).</p>
+    <div class="step">Step 4 — run + full suite; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+uv run python -c "import aegis.cli, aegis.tui.app, aegis.mcp"
+uv run ruff check src/aegis
+git add src/aegis/drivers/base.py src/aegis/drivers/claude.py src/aegis/cli.py src/aegis/tui/app.py tests/test_driver_argv.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(mcp): self-reported handle baked into per-pane priming"</code></pre>
+  </section>
+
+  <section id="t5">
+    <h2>Task 5 — Live extension + docs</h2>
+    <div class="step">Step 1 — extend <code>tests/test_mcp_live.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_live_agent_lists_sessions():
+    # one-pane bridge stub: the agent should be able to call
+    # aegis_list_sessions and get a result (its own handle).
+    from aegis.mcp import AegisMCP, mcp_config_json
+    import asyncio, json
+
+    class OneSession:
+        def list_sessions(self):
+            from aegis.mcp.bridge import SessionInfo
+            return [SessionInfo("lucid-knuth", "default",
+                                "ready", True, False)]
+        def list_agents(self): return ["default"]
+        async def handoff(self, a, b, c): return "delivered to " + b
+
+    mcp = AegisMCP()
+    mcp.bind(OneSession())
+    await mcp.start()
+    try:
+        argv = ["claude", "-p", "--input-format", "stream-json",
+                "--output-format", "stream-json", "--replay-user-messages",
+                "--verbose", "--permission-mode", "bypassPermissions",
+                "--strict-mcp-config", "--mcp-config",
+                mcp_config_json(mcp.url)]
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+        proc.stdin.write((json.dumps({"type": "user", "message":
+            {"role": "user", "content":
+             "Call aegis_list_sessions and report the handles."}})
+            + "\n").encode())
+        await proc.stdin.drain()
+        out = (await asyncio.wait_for(
+            proc.stdout.read(), timeout=150)).decode("utf-8", "replace")
+        proc.kill()
+        assert "aegis_list_sessions" in out
+        assert "lucid-knuth" in out
+    finally:
+        await mcp.stop()</code></pre>
+    <p>The file already has the <code>skipif(no claude)</code> marker from
+      slice-1. Run once manually to pin reality:
+      <code>uv run pytest tests/test_mcp_live.py -q</code>.</p>
+    <div class="step">Step 2 — AGENTS.md + CHANGELOG (inline)</div>
+    <p>AGENTS.md <code>src/aegis/mcp/</code> line: add
+      <code>bridge.py</code> (AppBridge/SessionInfo) and note the three new
+      tools + that an agent's handle is in its system prompt. CHANGELOG
+      <code>## [Unreleased]</code> → add:</p>
+<pre><code>- MCP plane (slice 2): aegis_list_sessions / aegis_list_agents /
+  aegis_handoff (fire-and-forget inter-agent context transfer);
+  per-pane self-reported handle.</code></pre>
+    <div class="step">Step 3 — full suite + commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add tests/test_mcp_live.py AGENTS.md CHANGELOG.md
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "test(mcp): live list_sessions; docs: slice-2 note + CHANGELOG"</code></pre>
+    <p>Acceptance: live test passes (an agent calls
+      <code>aegis_list_sessions</code> through the strict plane and sees a
+      handle) + manual TUI: open two tabs, tell agent A "hand off
+      &lt;summary&gt; to &lt;B's handle&gt;"; A calls
+      <code>aegis_handoff</code>; B's tab shows the
+      <code>[handoff from A]</code> turn and acts on it.</p>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage</summary>
+      <ul>
+        <li>AppBridge Protocol + SessionInfo → T1.</li>
+        <li><code>aegis_list_sessions/list_agents/handoff</code> async tools
+          + extended briefing + PRIMING template → T2 (FakeBridge-tested).</li>
+        <li>Server takes bridge; runtime builds-at-start + <code>bind</code>;
+          app binds self pre-start; FakeMCP.bind → T2.</li>
+        <li>AppBridge impl on AegisApp (list/handoff incl. self/unknown/busy
+          rejects); pane <code>_submit</code> extraction +
+          <code>deliver_handoff</code> tagged turn → T3 (pilots, incl. busy).</li>
+        <li>Self-reported handle via PRIMING <code>{handle}</code> threaded
+          <code>build_argv/session/make_session/_spawn</code> → T4.</li>
+        <li>Fire-and-forget (caller returns "delivered", no wait); reject
+          strings as plain strings not exceptions → T3 impl + T2 tool tests.</li>
+        <li>Verification: bridge unit, FakeBridge tool unit, real-bridge +
+          deliver + busy pilots, live list_sessions, suite green → T1–T5.</li>
+        <li>Non-goals (no delegate, no blocking, no queue, self-report only)
+          — none introduced.</li>
+        <li>Sequencing/reconcile gate (after slice-1 merged; read real code
+          first) → header warning.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder &amp; consistency</summary>
+      <p>No TBDs; full code per step. Signatures consistent:
+        <code>AppBridge.list_sessions()-&gt;list[SessionInfo]</code>,
+        <code>list_agents()-&gt;list[str]</code>,
+        <code>async handoff(from_handle,target_handle,context)-&gt;str</code>
+        (bridge, server tools, AegisApp impl, FakeBridge, pilots all match);
+        <code>SessionInfo(handle,agent_slug,state,active,unseen)</code>
+        everywhere; reject strings ("yourself" / "no session" / "busy")
+        identical in FakeBridge, AegisApp.handoff, and the assertions;
+        <code>build_argv(agent,cwd,mcp_url,handle)</code> /
+        <code>session(...,handle)</code> / <code>make_session(profile,
+        mcp_url,handle)</code> / <code>_spawn</code> call — consistent T4;
+        <code>PRIMING</code> uses <code>{handle}</code> in T2 and is
+        <code>.format(handle=)</code>'d in T4 (cross-task consistent).
+        Two external-API unknowns (fastmcp in-process tool call;
+        SessionInfo serialisation) carry explicit adapt-and-report clauses.</p>
+    </details>
+    <details>
+      <summary>Risk notes</summary>
+      <ul>
+        <li><strong>Built on in-flight slice-1.</strong> The header mandates
+          reading merged slice-1 code first and reconciling; intent is
+          authoritative, exact slice-1 line shapes are not. If slice-1's
+          <code>AegisMCP</code> already builds the server differently, adapt
+          the build-at-start/bind change to fit and report.</li>
+        <li><code>build_server(bridge)</code> is a required-arg change — T2
+          fixes runtime + app binding in the same commit so the suite never
+          goes red.</li>
+        <li>Server tools run on the app loop (slice-1 invariant);
+          <code>handoff</code> awaits a pane method that starts a worker
+          (non-blocking) — tool returns promptly. Pilots assert delivery
+          without a real claude.</li>
+        <li>If fastmcp's tool-call/serialisation API differs from the test
+          harness's assumptions, the adapt-and-report clauses + the slice-1
+          live test (proven plane) bound the risk.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis MCP slice-2 plan</footer>
+
+</div>
+</body>
+</html>
