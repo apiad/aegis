@@ -1,61 +1,44 @@
 # Aegis
 
-A workflow orchestration server built on FastMCP (Fast Model Context Protocol) that enables multi-step workflows with human-in-the-loop interaction.
+Meta-harness for coding agents. Phase 1: an interactive `aegis` CLI that drives
+Claude Code via its `stream-json` protocol and re-renders output cleanly.
 
-## Overview
+## Quick start
 
-Aegis provides a framework for defining and executing multi-step workflows. It uses async queues to yield instructions to users and wait for responses, making it ideal for interactive AI-assisted workflows.
+    uv pip install -e .
+    aegis init          # writes .aegis.py
+    aegis               # interactive session with the default agent
+    aegis --agent fast  # pick a named agent profile
 
-## Features
+Type your first message at the `aegis>` prompt. `exit` / `quit` / Ctrl-D ends
+the session.
 
-- **WorkflowContext.step()** - Yields instructions and waits for user response via `workflow_step()`
-- **@server.workflow()** decorator - Defines async generator workflows
-- **@server.prompt()** - Creates MCP prompts for workflow initiation
-- **State management** - UUID-based tracking across workflow steps
+## Config (.aegis.py)
 
-## Project Structure
-
-```
-aegis/
-├── src/aegis/
-│   ├── __init__.py     # Exports AegisServer, WorkflowContext
-│   ├── server.py       # Core server implementation
-│   └── demo.py         # Example usage
-├── pyproject.toml      # Project configuration
-└── README.md           # This file
-```
-
-## Installation
-
-```bash
-pip install -e .
-```
-
-## Running
-
-```bash
-aegis
-```
-
-This runs the demo server on `127.0.0.1:4243`.
-
-## Example Usage
+Config is always Python. `aegis init` scaffolds an `agents` dict of
+`Agent(harness, model, effort, permission)` plus `default_agent`:
 
 ```python
-from aegis import AegisServer, WorkflowContext
+from aegis import Agent
 
-server = AegisServer()
-
-@server.workflow()
-async def my_workflow(ctx: WorkflowContext):
-    """Describe your workflow."""
-    await ctx.step("First instruction...")
-    await ctx.step("Second instruction...")
-    await ctx.step("Final step...")
-
-server.run(transport="http", host="127.0.0.1", port=4243)
+agents = {
+    "default": Agent(
+        harness="claude-code",
+        model="opus",
+        effort="high",       # low | medium | high | max
+        permission="auto",   # read | write | full | auto
+    ),
+}
+default_agent = "default"
 ```
+
+Permission levels: `read` (no mutations / plan mode), `write` (edits, no
+shell), `full` (edits + shell), `auto` (harness-native smart mode).
+
+With no `.aegis.py` in the current dir or `~`, `aegis` refuses to run and
+points you at `aegis init`.
 
 ## Status
 
-Version 0.1.0 - Early development stage with a working prototype demonstrating workflow orchestration.
+Phase 1 of the vision in `docs/superpowers/specs/`. The earlier
+workflow-engine prototype is preserved, unbuilt, under `legacy/`.
