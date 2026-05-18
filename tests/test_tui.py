@@ -319,3 +319,12 @@ async def test_app_boots_on_ink_theme():
         assert app.theme == "aegis-ink"
         assert isinstance(app.palette, AegisColors)
         assert app.palette.accent == "#E0A872"
+
+
+@pytest.mark.asyncio
+async def test_tabbar_uses_theme_accent_for_slug():
+    app = _app()
+    async with app.run_test():
+        bar = app.query_one(TabBar).bar_text()
+        assert app.palette.accent in bar
+        assert app._panes[0].handle in bar

@@ -62,6 +62,7 @@ class AegisApp(App):
             self.register_theme(theme)
         self.theme = DEFAULT_THEME
         self._palette = aegis_colors(self.current_theme)
+        self.query_one(TabBar).set_palette(self._palette)
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
@@ -72,7 +73,8 @@ class AegisApp(App):
             return
         self._palette = aegis_colors(self.current_theme)
         for pane in self._panes:
-            pane.set_colors(self._palette)
+            pane.set_palette(self._palette)
+        self.query_one(TabBar).set_palette(self._palette)
         self._refresh_tabbar()
 
     @property

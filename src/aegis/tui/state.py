@@ -8,13 +8,12 @@ class AgentState(Enum):
     working = "working"
     error = "error"
 
-    @property
-    def dot(self) -> str:
-        # Rich markup; rendered by Static widgets with markup enabled.
+    def dot(self, colors) -> str:
+        # Rich markup; color comes from the active theme's AegisColors.
         return {
-            AgentState.ready: "[green]●[/green]",
-            AgentState.working: "[orange1]●[/orange1]",
-            AgentState.error: "[red]●[/red]",
+            AgentState.ready: f"[{colors.ready}]●[/]",
+            AgentState.working: f"[{colors.working}]●[/]",
+            AgentState.error: f"[{colors.error}]●[/]",
         }[self]
 
     @property

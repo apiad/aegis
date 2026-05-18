@@ -4,15 +4,17 @@ from textual.containers import HorizontalScroll
 from textual.widgets import Static
 
 from aegis.tui.state import AgentState
+from aegis.tui.themes import aegis_colors, INK
 
 
 class _TabCell(Static):
     """One tab in the bar; width sizes to its content so the row overflows."""
 
-    def render_tab(self, idx, handle, slug, state, unseen, active) -> None:
+    def render_tab(self, idx, handle, slug, state, unseen, active,
+                   colors) -> None:
         mark = "[bold]*[/bold]" if unseen else ""
-        label = (f"{state.dot} {idx} {handle} "
-                 f"[#788C5D]·{slug}·[/#788C5D]{mark}")
+        label = (f"{state.dot(colors)} {idx} {handle} "
+                 f"[{colors.accent}]·{slug}·[/]{mark}")
         self.update(f"[reverse] {label} [/reverse]" if active
                     else f" {label} ")
 
@@ -29,20 +31,31 @@ class TabBar(HorizontalScroll):
     def __init__(self) -> None:
         super().__init__()
         self._cells: list[_TabCell] = []
+        self._palette = aegis_colors(INK)
+        self._items: list = []
+
+    def set_palette(self, palette) -> None:
+        self._palette = palette
+        if self._cells:
+            self._refresh_cells()
 
     def set_tabs(self, items: list) -> None:
         if not items:
             items = [(0, "no tabs", "", AgentState.ready, False, False)]
+        self._items = items
         while len(self._cells) < len(items):
             cell = _TabCell(markup=True)
             self._cells.append(cell)
             self.mount(cell)
         while len(self._cells) > len(items):
             self._cells.pop().remove()
+        self._refresh_cells()
+
+    def _refresh_cells(self) -> None:
         active_cell = None
-        for cell, item in zip(self._cells, items):
-            cell.render_tab(*item)
-            if item[5]:  # active flag
+        for cell, item in zip(self._cells, self._items):
+            cell.render_tab(*item, self._palette)
+            if item[5]:
                 active_cell = cell
         if active_cell is not None:
             self.call_after_refresh(

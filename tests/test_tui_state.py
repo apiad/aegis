@@ -5,12 +5,13 @@ def test_three_states_exist():
     assert {s.name for s in AgentState} == {"ready", "working", "error"}
 
 
-def test_dot_colors_are_distinct():
-    dots = {s: s.dot for s in AgentState}
-    assert "green" in dots[AgentState.ready]
-    assert "yellow" in dots[AgentState.working] or "orange" in dots[AgentState.working]
-    assert "red" in dots[AgentState.error]
-    assert "●" in dots[AgentState.ready]
+def test_dot_uses_supplied_colors():
+    from aegis.tui.themes import aegis_colors, INK
+    c = aegis_colors(INK)
+    assert c.ready in AgentState.ready.dot(c)
+    assert c.working in AgentState.working.dot(c)
+    assert c.error in AgentState.error.dot(c)
+    assert "●" in AgentState.ready.dot(c)
 
 
 def test_labels():
