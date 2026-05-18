@@ -16,8 +16,13 @@ def test_seeded_deterministic():
 
 
 def test_never_returns_taken():
-    taken = {f"{a}-{l}" for a in ADJECTIVES for l in LAUREATES} - {"lucid-knuth"}
-    assert generate_name(taken, random.Random(1)) == "lucid-knuth"
+    all_names = {f"{a}-{l}" for a in ADJECTIVES for l in LAUREATES}
+    free = "lucid-knuth"
+    assert free in all_names
+    taken = all_names - {free}
+    result = generate_name(taken, random.Random(1))
+    assert result == free
+    assert result not in taken
 
 
 def test_numeric_suffix_fallback(monkeypatch):
