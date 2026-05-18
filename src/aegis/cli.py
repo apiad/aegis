@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import typer
@@ -8,7 +7,7 @@ from rich.console import Console
 
 from aegis.config import ConfigError, load_config, write_init_scaffold
 from aegis.drivers import get_driver
-from aegis.repl import run_repl
+from aegis.tui import AegisApp
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
@@ -50,7 +49,7 @@ def run(
     profile = agents[name]
     driver = get_driver(profile.harness)
     session = driver.session(profile, cwd)
-    asyncio.run(run_repl(session, _console))
+    AegisApp(session, profile, name).run()
 
 
 def main() -> None:
