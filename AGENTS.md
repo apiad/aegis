@@ -21,13 +21,20 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   modal (picker.py), Theme registry + AegisColors role map (themes.py;
   `aegis-ink` default)
 - `src/aegis/mcp/` - FastMCP server (`server.py`: BRIEFING/PRIMING,
-  `aegis_meta` tool, `mcp_config_json`) + `AegisMCP` runtime
-  (`runtime.py`: co-resident HTTP server, port pick, start/stop). The
-  app owns one shared instance, started before the first spawn and
-  injected strict (`--mcp-config` + `--strict-mcp-config`) into every
-  spawned claude alongside a primer system-prompt. aegis sessions run
-  `--strict-mcp-config`: the user's other MCP servers are not present
-  inside aegis; built-in claude tools (Read/Edit/Bash/…) are unchanged.
+  `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
+  `aegis_list_agents`, `aegis_handoff`; `mcp_config_json`) +
+  `AppBridge`/`SessionInfo` (`bridge.py`: pure Protocol the server
+  consumes; `AegisApp` implements it) + `AegisMCP` runtime
+  (`runtime.py`: co-resident HTTP server, port pick, start/stop,
+  `bind(bridge)`). The app owns one shared instance, binds itself,
+  starts it before the first spawn, and injects strict
+  (`--mcp-config` + `--strict-mcp-config`) into every spawned claude
+  alongside a primer system-prompt that bakes the pane's handle
+  (`PRIMING.format(handle=…)`). Each agent reads its own handle from
+  its system prompt and passes it as `from_handle` to
+  `aegis_handoff`. aegis sessions run `--strict-mcp-config`: the
+  user's other MCP servers are not present inside aegis; built-in
+  claude tools (Read/Edit/Bash/…) are unchanged.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's

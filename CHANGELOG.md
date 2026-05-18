@@ -9,6 +9,10 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 - MCP plane (slice 1): a shared FastMCP HTTP server owned by aegis;
   spawned agents are injected strict + primed and get an `aegis_meta`
   orientation tool.
+- MCP plane (slice 2): `aegis_list_sessions` / `aegis_list_agents` /
+  `aegis_handoff` (fire-and-forget inter-agent context transfer);
+  per-pane self-reported handle baked into the priming so each agent
+  knows who it is and passes that as `from_handle`.
 
 ## [0.1.0] - 2026-05-18
 
