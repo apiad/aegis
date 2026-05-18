@@ -1,56 +1,83 @@
 # Aegis
 
-Meta-harness for coding agents. Phase 1: an interactive `aegis` CLI that drives
-Claude Code via its `stream-json` protocol and re-renders output cleanly.
+> A meta-harness for coding agents — drives Claude Code in a multi-agent
+> terminal UI.
 
-## Quick start
+[![CI](https://github.com/apiad/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/apiad/aegis/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-blue)](https://apiad.github.io/aegis/)
+[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-    uv pip install -e .
-    aegis init          # writes .aegis.py
-    aegis               # full-screen TUI with the default agent
-    aegis --agent fast  # pick a named agent profile
+Aegis sits **above** the harness. It drives `claude -p` over its
+`stream-json` protocol (no log scraping), parses the event stream, and
+re-renders it in a calm full-screen TUI where many agents run side by side.
 
-Type in the input box and press Enter. Each tab is an independent agent with
-a generated handle (e.g. `lucid-knuth`); its dot is green (idle), orange
-(working), or red (error).
+```
+┌ aegis ───────────────────────────────────────────────┐
+│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·fast· *      │
+│                                                       │
+│ › explain the retry logic                             │
+│                                                       │
+│ ✻ Thinking…                                           │
+│ ⏺ Read(worker.py)                                     │
+│   └ ok                                                 │
+│ The retry path lives in _run_turn …                   │
+│                                                       │
+│ lucid-knuth ·opus· opus·full   ↑128k (94% cached) ↓1k │
+│ ───────────────────────────────────────────────────── │
+│ › ask something…                                      │
+└───────────────────────────────────────────────────────┘
+```
 
-Keys: `Ctrl+T` new tab · `Ctrl+N` new tab (pick a profile) · `Ctrl+W` close
-tab (closing the last quits) · `Ctrl+1`…`Ctrl+9` jump to tab · `Ctrl+Tab` /
-`Ctrl+→` next · `Ctrl+←` prev · `Escape` interrupt the active turn · `Ctrl+Q`
-quit. A background tab that finishes shows a `*` and rings the bell until you
-switch to it.
+## Quickstart
 
-The UI uses the built-in **Ink** theme — a calm near-black palette with a
-single amber accent and one blank row between turns. Themes are a
-Textual-native registry; more are drop-in additions (no config knob yet).
+```bash
+uv pip install -e .
+aegis init      # writes .aegis.py
+aegis           # full-screen TUI
+```
 
-## Config (.aegis.py)
+Requires Python 3.13, [uv](https://docs.astral.sh/uv/), and a working
+`claude` CLI on PATH.
 
-Config is always Python. `aegis init` scaffolds an `agents` dict of
-`Agent(harness, model, effort, permission)` plus `default_agent`:
+## Keys
+
+| Key | Action |
+|---|---|
+| `Enter` | Send |
+| `Ctrl+T` / `Ctrl+N` | New tab / new tab (pick agent) |
+| `Ctrl+W` | Close tab (last → quit) |
+| `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
+| `Escape` | Interrupt the active turn |
+| `Ctrl+Q` | Quit |
+
+Each tab is an independent agent with a generated handle; a backgrounded
+tab that finishes shows a `*` and rings the bell.
+
+## Configuration
+
+`.aegis.py` is Python:
 
 ```python
 from aegis import Agent
 
 agents = {
-    "default": Agent(
-        harness="claude-code",
-        model="opus",
-        effort="high",       # low | medium | high | max
-        permission="auto",   # read | write | full | auto
-    ),
+    "default": Agent(harness="claude-code", model="opus",
+                      effort="high", permission="auto"),
 }
 default_agent = "default"
 ```
 
-Permission levels: `read` (no mutations / plan mode), `write` (edits, no
-shell), `full` (edits + shell), `auto` (harness-native smart mode).
+`permission`: `read` | `write` | `full` | `auto`.
 
-With no `.aegis.py` in the current dir or `~`, `aegis` refuses to run and
-points you at `aegis init`.
+## Docs & status
 
-## Status
+Full docs: **https://apiad.github.io/aegis/**
 
-Phase 1 + the Phase-1.5 full-screen Textual TUI. Specs in
-`docs/superpowers/specs/`. The earlier workflow-engine prototype is preserved,
-unbuilt, under `legacy/`.
+Phase 1 (CLI) → 1.5 (TUI + metrics) → 2 (multi-tab) → theming/Ink shipped.
+Next: the MCP plane. Personal-infrastructure-grade, not general-public-ready;
+the original FastMCP prototype is preserved (unbuilt) under `legacy/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
