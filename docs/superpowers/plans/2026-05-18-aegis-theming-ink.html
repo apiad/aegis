@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis Theming + Ink Default" status=approved date=2026-05-18 source="docs/superpowers/specs/2026-05-18-aegis-theming-ink-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Theming + Ink Default — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em;background:#E7EEDF;color:var(--olive)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis</div>
+    <h1>Theming + Ink Default — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge">approved</span>
+      <span>2026-05-18</span>
+      <span>Spec: 2026-05-18-aegis-theming-ink-design.html</span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — <code>superpowers:subagent-driven-development</code>
+      (recommended) or <code>superpowers:executing-plans</code>, task by task.
+      Each task keeps <code>uv run pytest -q -k "not live"</code> green at its
+      commit. Commit straight to <code>main</code> (authorized for aegis).</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a><a href="#files">Files</a><a href="#t1">T1 themes</a>
+    <a href="#t2">T2 app wiring</a><a href="#t3">T3 dot(colors)</a>
+    <a href="#t4">T4 render+pane</a><a href="#t5">T5 spacing</a>
+    <a href="#t6">T6 docs</a><a href="#review">Self-review</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal &amp; architecture</h2>
+    <p><strong>Goal:</strong> ship the Ink default look on a Textual-native
+      theme engine so more themes are later drop-ins.</p>
+    <p><strong>Architecture:</strong> new <code>themes.py</code> (Theme objects
+      + registry + <code>aegis_colors</code> role map); <code>AegisApp</code>
+      registers/sets the theme, exposes <code>self.colors</code>, TCSS moves to
+      theme vars; <code>state.dot</code> / <code>render_event</code> /
+      <code>StatusBar</code> take <code>AegisColors</code>;
+      <code>ConversationPane</code> is the colors hub and adds blank-line turn
+      spacing.</p>
+    <p><strong>Tech:</strong> Python 3.13, Textual 8.2.6, pytest pilot.
+      Behaviour preserved except the intentional visual change.</p>
+  </section>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/tui/themes.py</code></td><td>New: <code>INK</code>, <code>THEMES</code>, <code>DEFAULT_THEME</code>, <code>AegisColors</code>, <code>aegis_colors</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code></td><td>Register/set theme; <code>self.colors</code>; <code>watch_theme</code>; Ink TCSS; pass colors to panes/TabBar.</td></tr>
+        <tr><td><code>src/aegis/tui/state.py</code></td><td><code>dot</code> property → <code>dot(colors)</code> method.</td></tr>
+        <tr><td><code>src/aegis/tui/render.py</code></td><td><code>render_event(ev, colors)</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/widgets.py</code></td><td><code>_TabCell</code>/<code>TabBar</code> colors; <code>StatusBar(handle, slug, model, perm, colors)</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/pane.py</code></td><td>Take <code>colors</code>; thread to render/StatusBar; blank-line turn gap.</td></tr>
+        <tr><td><code>tests/test_themes.py</code></td><td>New.</td></tr>
+        <tr><td><code>tests/test_tui_state.py / test_render_event.py / test_tui.py</code></td><td>Updated for new signatures + spacing.</td></tr>
+        <tr><td>README.md / AGENTS.md</td><td>Theme note (T6, inline/mechanical).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="t1">
+    <h2>Task 1 — <code>themes.py</code></h2>
+    <div class="step">Step 1 — failing test <code>tests/test_themes.py</code></div>
+<pre><code>from textual.theme import Theme
+from aegis.tui.themes import (
+    INK, THEMES, DEFAULT_THEME, AegisColors, aegis_colors,
+)
+
+
+def test_registry_has_default():
+    assert THEMES["ink"] is INK
+    assert INK.name == DEFAULT_THEME == "aegis-ink"
+
+
+def test_aegis_colors_maps_all_roles():
+    c = aegis_colors(INK)
+    assert isinstance(c, AegisColors)
+    for v in (c.ready, c.working, c.error, c.accent,
+              c.muted, c.ok, c.err, c.user):
+        assert isinstance(v, str) and v.startswith("#")
+    assert c.ready == INK.success
+    assert c.working == INK.warning
+    assert c.error == INK.error
+    assert c.accent == INK.accent
+    assert c.muted == "#76736a"
+
+
+def test_missing_variable_falls_back_to_foreground():
+    bare = Theme(name="bare", primary="#111111", foreground="#abcdef")
+    c = aegis_colors(bare)
+    assert c.muted == "#abcdef"        # no aegis-muted var -> foreground</code></pre>
+    <div class="step">Step 2 — run, expect ImportError</div>
+    <p><code>uv run pytest tests/test_themes.py -q</code></p>
+    <div class="step">Step 3 — implement <code>src/aegis/tui/themes.py</code></div>
+<pre><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+from textual.theme import Theme
+
+INK = Theme(
+    name="aegis-ink",
+    dark=True,
+    background="#0e0e0d",
+    surface="#141412",
+    panel="#1a1a17",
+    foreground="#DCD9CF",
+    primary="#E0A872",
+    accent="#E0A872",
+    success="#9DB07E",
+    warning="#E0A872",
+    error="#C56B5C",
+    variables={
+        "aegis-muted": "#76736a",
+        "aegis-faint": "#4a4843",
+        "aegis-rule": "#26241f",
+    },
+)
+
+THEMES: dict[str, Theme] = {"ink": INK}
+DEFAULT_THEME = "aegis-ink"
+
+
+@dataclass(frozen=True)
+class AegisColors:
+    ready: str
+    working: str
+    error: str
+    accent: str
+    muted: str
+    ok: str
+    err: str
+    user: str
+
+
+def aegis_colors(theme: Theme) -> AegisColors:
+    fg = theme.foreground or "#DCD9CF"
+    variables = theme.variables or {}
+
+    def var(key: str) -> str:
+        return variables.get(key) or fg
+
+    return AegisColors(
+        ready=theme.success or fg,
+        working=theme.warning or fg,
+        error=theme.error or fg,
+        accent=theme.accent or fg,
+        muted=var("aegis-muted"),
+        ok=theme.success or fg,
+        err=theme.error or fg,
+        user=theme.accent or fg,
+    )
+</code></pre>
+    <div class="step">Step 4 — run; full fast suite green; commit</div>
+<pre><code>uv run pytest tests/test_themes.py -q          # 3 passed
+uv run pytest -q -k "not live"                 # all pass (additive)
+git add src/aegis/tui/themes.py tests/test_themes.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): theme engine — Ink Theme + AegisColors role map"</code></pre>
+  </section>
+
+  <section id="t2">
+    <h2>Task 2 — App theme wiring + Ink TCSS</h2>
+    <p>Register/set the theme, expose <code>self.colors</code>, add the
+      <code>watch_theme</code> recompute seam, and move all TCSS onto theme
+      vars with the Ink look (no boxes; panel/background contrast +
+      padding for separation; calm whitespace).</p>
+    <div class="step">Step 1 — failing pilot test (append to <code>tests/test_tui.py</code>)</div>
+<pre><code>@pytest.mark.asyncio
+async def test_app_boots_on_ink_theme():
+    from aegis.tui.themes import AegisColors
+    app = _app()
+    async with app.run_test():
+        assert app.theme == "aegis-ink"
+        assert isinstance(app.colors, AegisColors)
+        assert app.colors.accent == "#E0A872"</code></pre>
+    <div class="step">Step 2 — run, expect fail (<code>app.colors</code> missing / theme unset)</div>
+    <div class="step">Step 3 — edit <code>src/aegis/tui/app.py</code></div>
+    <p>Add imports near the others:</p>
+<pre><code>from aegis.tui.themes import (
+    THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
+)</code></pre>
+    <p>Replace the <code>CSS = """ … """</code> block with the Ink TCSS:</p>
+<pre><code>    CSS = """
+    Screen { background: $background; }
+    TabBar { height: 1; background: $panel; color: $foreground;
+             padding: 0 1; }
+    ContentSwitcher { height: 1fr; background: $background; }
+    """</code></pre>
+    <p>In <code>__init__</code>, add a safe default before any mount so the
+      attribute always exists:</p>
+<pre><code>        self._panes: list[ConversationPane] = []
+        self.colors: AegisColors = aegis_colors(INK)</code></pre>
+    <p>Replace <code>on_mount</code> with (register + set theme + real colors,
+      then existing spawn/tick):</p>
+<pre><code>    async def on_mount(self) -> None:
+        for theme in THEMES.values():
+            self.register_theme(theme)
+        self.theme = DEFAULT_THEME
+        self.colors = aegis_colors(self.current_theme)
+        await self._spawn(self._default_agent)
+        self.set_interval(1.0, self._tick)
+
+    def watch_theme(self, theme_name: str | None) -> None:
+        # Recompute seam — exercised once a 2nd theme exists. No-op until
+        # the app is running and widgets are present.
+        if not self.is_running:
+            return
+        self.colors = aegis_colors(self.current_theme)
+        for pane in self._panes:
+            pane.set_colors(self.colors)
+        self._refresh_tabbar()</code></pre>
+    <p>Note: <code>pane.set_colors</code> lands in T4; until then T4 has not
+      shipped, but <code>watch_theme</code> only runs on a theme <em>change</em>
+      and the theme never changes in T2/T3 (only one theme, set once in
+      <code>on_mount</code> before panes). It is dormant until T4 completes the
+      contract; the guard makes it safe. Do not call it manually.</p>
+    <div class="step">Step 4 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"     # all pass (TCSS cosmetic; new test green)
+uv run ruff check src/aegis/tui/app.py
+git add src/aegis/tui/app.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): register Ink theme, expose app.colors, Ink TCSS"</code></pre>
+  </section>
+
+  <section id="t3">
+    <h2>Task 3 — <code>AgentState.dot(colors)</code> + TabBar colors</h2>
+    <div class="step">Step 1 — failing tests</div>
+    <p>Replace <code>tests/test_tui_state.py</code>'s dot test body with:</p>
+<pre><code>def test_dot_uses_supplied_colors():
+    from aegis.tui.themes import aegis_colors, INK
+    c = aegis_colors(INK)
+    assert c.ready in AgentState.ready.dot(c)
+    assert c.working in AgentState.working.dot(c)
+    assert c.error in AgentState.error.dot(c)
+    assert "●" in AgentState.ready.dot(c)
+
+
+def test_labels():
+    assert AgentState.ready.label == "idle"
+    assert "working" in AgentState.working.label
+    assert AgentState.error.label.startswith("⚠")</code></pre>
+    <p>(Delete the old <code>test_dot_colors_are_distinct</code>; keep any
+      other tests in the file unchanged.)</p>
+    <p>Append to <code>tests/test_tui.py</code>:</p>
+<pre><code>@pytest.mark.asyncio
+async def test_tabbar_uses_theme_accent_for_slug():
+    app = _app()
+    async with app.run_test():
+        bar = app.query_one(TabBar).bar_text()
+        assert "#E0A872" in bar or app.colors.accent in bar
+        assert app._panes[0].handle in bar</code></pre>
+    <div class="step">Step 2 — run, expect fail (<code>dot</code> is a property; no colors)</div>
+    <div class="step">Step 3 — <code>src/aegis/tui/state.py</code>: property → method</div>
+<pre><code>    def dot(self, colors) -&gt; str:
+        # Rich markup; color comes from the active theme's AegisColors.
+        return {
+            AgentState.ready: f"[{colors.ready}]●[/]",
+            AgentState.working: f"[{colors.working}]●[/]",
+            AgentState.error: f"[{colors.error}]●[/]",
+        }[self]</code></pre>
+    <p>(Remove the <code>@property</code> decorator and the old hardcoded
+      mapping; keep <code>label</code> exactly as-is.)</p>
+    <div class="step">Step 4 — <code>src/aegis/tui/widgets.py</code>: thread colors</div>
+    <p><code>_TabCell.render_tab</code> gains a <code>colors</code> arg used for
+      the dot and the accent slug; <code>TabBar</code> stores colors set by
+      the app and uses them in <code>set_tabs</code>:</p>
+<pre><code>class _TabCell(Static):
+    """One tab in the bar; width sizes to its content so the row overflows."""
+
+    def render_tab(self, idx, handle, slug, state, unseen, active,
+                   colors) -&gt; None:
+        mark = "[bold]*[/bold]" if unseen else ""
+        label = (f"{state.dot(colors)} {idx} {handle} "
+                 f"[{colors.accent}]·{slug}·[/]{mark}")
+        self.update(f"[reverse] {label} [/reverse]" if active
+                    else f" {label} ")</code></pre>
+    <p>In <code>TabBar</code>: add <code>self._colors = aegis_colors(INK)</code>
+      in <code>__init__</code> (import <code>from aegis.tui.themes import
+      aegis_colors, INK</code> at the top of widgets.py), a setter, and pass
+      colors through:</p>
+<pre><code>    def set_colors(self, colors) -&gt; None:
+        self._colors = colors
+        if self._cells:
+            self._refresh_cells()
+
+    def set_tabs(self, items: list) -&gt; None:
+        if not items:
+            items = [(0, "no tabs", "", AgentState.ready, False, False)]
+        self._items = items
+        while len(self._cells) &lt; len(items):
+            cell = _TabCell(markup=True)
+            self._cells.append(cell)
+            self.mount(cell)
+        while len(self._cells) &gt; len(items):
+            self._cells.pop().remove()
+        self._refresh_cells()
+
+    def _refresh_cells(self) -&gt; None:
+        active_cell = None
+        for cell, item in zip(self._cells, self._items):
+            cell.render_tab(*item, self._colors)
+            if item[5]:
+                active_cell = cell
+        if active_cell is not None:
+            self.call_after_refresh(
+                lambda c=active_cell: c.scroll_visible(animate=False))</code></pre>
+    <p>(Refactor extracts the cell-render loop into <code>_refresh_cells</code>
+      so <code>set_colors</code> can re-render without re-mounting. Store
+      <code>self._items = []</code> in <code>__init__</code>. Keep
+      <code>bar_text</code> as-is.)</p>
+    <div class="step">Step 5 — <code>app.py</code>: give TabBar its colors</div>
+    <p>In <code>on_mount</code>, right after <code>self.colors =
+      aegis_colors(self.current_theme)</code> and before
+      <code>_spawn</code>, push to the bar:</p>
+<pre><code>        self.query_one(TabBar).set_colors(self.colors)</code></pre>
+    <p>(<code>TabBar</code> is composed before <code>on_mount</code> runs, so
+      it is queryable here.)</p>
+    <div class="step">Step 6 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+uv run ruff check src/aegis/tui/state.py src/aegis/tui/widgets.py src/aegis/tui/app.py
+git add src/aegis/tui/state.py src/aegis/tui/widgets.py src/aegis/tui/app.py \
+  tests/test_tui_state.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): themed dots + accent slug in the tab bar"</code></pre>
+  </section>
+
+  <section id="t4">
+    <h2>Task 4 — <code>render_event(ev, colors)</code> + pane/StatusBar</h2>
+    <div class="step">Step 1 — failing tests</div>
+    <p>Update every call in <code>tests/test_render_event.py</code> to pass an
+      Ink <code>AegisColors</code> and assert themed colors. Add at the top:</p>
+<pre><code>from aegis.tui.themes import aegis_colors, INK
+
+C = aegis_colors(INK)</code></pre>
+    <p>Change the helper and the colored-output assertions:</p>
+<pre><code>def as_text(renderable) -&gt; str:
+    con = Console(record=True, width=80)
+    con.print(renderable)
+    return con.export_text()
+
+
+def test_tool_use_uses_accent():
+    out = as_text(render_event(ToolUse(name="Read", summary="f.py"), C))
+    assert "Read" in out and "f.py" in out
+
+
+def test_tool_result_error_marked():
+    out = as_text(render_event(
+        ToolResult(text="boom", is_error=True), C))
+    assert "error" in out.lower()
+
+
+def test_systeminit_and_unknown_are_none():
+    assert render_event(SystemInit(session_id="x"), C) is None
+    assert render_event(Unknown(raw="{}"), C) is None</code></pre>
+    <p>(Every other existing call in that file gets the second arg
+      <code>C</code>; keep their behavioural assertions. Because Rich's
+      <code>export_text()</code> strips color, assert structure/text, not hex,
+      here — hex is asserted in the state/themes unit tests.)</p>
+    <p>Append to <code>tests/test_tui.py</code>:</p>
+<pre><code>@pytest.mark.asyncio
+async def test_pane_renders_with_theme_colors():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        assert pane._colors is app.colors
+        pane.query_one(Input).value = "hi"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._transcript_has("echo: hi")</code></pre>
+    <div class="step">Step 2 — run, expect fail (<code>render_event</code> arity; <code>pane._colors</code> missing)</div>
+    <div class="step">Step 3 — <code>src/aegis/render.py</code></div>
+<pre><code>def render_event(ev: Event, colors) -&gt; RenderableType | None:
+    """Map one typed event to a Rich renderable (themed), or None."""
+    if isinstance(ev, AssistantText):
+        text = ev.text.strip()
+        return Markdown(text) if text else None
+    if isinstance(ev, AssistantThinking):
+        return Text("✻ Thinking…", style=colors.muted)
+    if isinstance(ev, ToolUse):
+        arg = f"({ev.summary})" if ev.summary else ""
+        return Text.assemble((f"⏺ ", colors.accent), f"{ev.name}{arg}")
+    if isinstance(ev, ToolResult):
+        first = ev.text.splitlines()[0] if ev.text.strip() else ""
+        if ev.is_error:
+            return Text.assemble(("  └ ", colors.muted),
+                                 ("error ", colors.err), first)
+        return Text.assemble(("  └ ", colors.muted),
+                             ("ok ", colors.ok), first)
+    if isinstance(ev, Result):
+        secs = (ev.duration_ms or 0) / 1000
+        return Text(f"── done in {secs:.1f}s ──", style=colors.muted)
+    if isinstance(ev, (SystemInit, Unknown)):
+        return None
+    return None</code></pre>
+    <div class="step">Step 4 — <code>src/aegis/tui/widgets.py</code>: StatusBar takes colors</div>
+<pre><code>    def __init__(self, handle: str, agent_slug: str,
+                 model: str, permission: str, colors) -&gt; None:
+        super().__init__(markup=True)
+        self._identity = (
+            f"{handle}  [{colors.accent}]·{agent_slug}·[/]  "
+            f"{model} · {permission}")
+        self._state = AgentState.ready
+        self._metrics = ""</code></pre>
+    <p>(Rest of <code>StatusBar</code> unchanged.)</p>
+    <div class="step">Step 5 — <code>src/aegis/tui/pane.py</code>: colors hub</div>
+    <p>Constructor gains <code>colors</code>; store as <code>self._colors</code>;
+      add <code>set_colors</code>; pass to <code>StatusBar</code> and
+      <code>render_event</code>; user prefix uses <code>colors.user</code>.</p>
+<pre><code>    def __init__(self, session: HarnessSession, agent: Agent,
+                 agent_slug: str, handle: str, colors) -&gt; None:
+        super().__init__(id=f"pane-{handle}")
+        self._session = session
+        self._agent = agent
+        self.agent_slug = agent_slug
+        self.handle = handle
+        self._colors = colors
+        self.state = AgentState.ready
+        self.unseen = False
+        self._started = False
+        self._metrics = SessionMetrics()
+
+    def set_colors(self, colors) -&gt; None:
+        self._colors = colors</code></pre>
+    <p>In <code>compose</code>, pass colors to StatusBar:</p>
+<pre><code>            yield StatusBar(self.handle, self.agent_slug,
+                            self._agent.model,
+                            self._agent.permission.value, self._colors)</code></pre>
+    <p>In <code>on_input_submitted</code>, theme the user prefix:</p>
+<pre><code>        self._write(Text.assemble((f"› ", self._colors.user), text))</code></pre>
+    <p>In <code>_run_turn</code>, pass colors to the renderer:</p>
+<pre><code>                renderable = render_event(ev, self._colors)</code></pre>
+    <div class="step">Step 6 — <code>app.py</code>: pass colors into new panes</div>
+    <p>In <code>_spawn</code>, the <code>ConversationPane(...)</code>
+      construction gains <code>self.colors</code>:</p>
+<pre><code>        pane = ConversationPane(self._make_session(agent), agent,
+                                slug, handle, self.colors)</code></pre>
+    <p>(Now <code>watch_theme</code>'s <code>pane.set_colors</code> call from
+      T2 is satisfied — the seam is complete and correct.)</p>
+    <div class="step">Step 7 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+uv run ruff check src/aegis/render.py src/aegis/tui/widgets.py \
+  src/aegis/tui/pane.py src/aegis/tui/app.py
+git add src/aegis/render.py src/aegis/tui/widgets.py src/aegis/tui/pane.py \
+  src/aegis/tui/app.py tests/test_render_event.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): theme-driven render_event + pane/StatusBar colors"</code></pre>
+  </section>
+
+  <section id="t5">
+    <h2>Task 5 — Blank-line turn spacing</h2>
+    <div class="step">Step 1 — failing test (append to <code>tests/test_tui.py</code>)</div>
+<pre><code>@pytest.mark.asyncio
+async def test_blank_line_between_turns():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "first"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        pane.query_one(Input).value = "second"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        from textual.widgets import RichLog
+        lines = [l.text if hasattr(l, "text") else str(l)
+                 for l in pane.query_one(RichLog).lines]
+        # exactly one empty line immediately before the 2nd user prompt,
+        # and none before the very first
+        joined = "\n".join(lines)
+        assert "\n\n› second" in joined
+        assert not joined.startswith("\n")</code></pre>
+    <div class="step">Step 2 — run, expect fail (no gap today)</div>
+    <div class="step">Step 3 — <code>src/aegis/tui/pane.py</code></div>
+    <p>Add <code>self._had_turn = False</code> in <code>__init__</code> (next
+      to <code>self._started</code>). At the top of
+      <code>on_input_submitted</code>, after the empty/working guard and
+      before writing the user line:</p>
+<pre><code>        if self._had_turn:
+            self._write(Text(""))      # one blank row between turns
+        self._had_turn = True</code></pre>
+    <p>(Placed after <code>text = event.value.strip()</code> /
+      <code>if not text or self.state is AgentState.working: return</code> so
+      an ignored empty submit does not insert a gap.)</p>
+    <div class="step">Step 4 — run; full suite green; commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add src/aegis/tui/pane.py tests/test_tui.py
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "feat(tui): one blank row between conversation turns"</code></pre>
+  </section>
+
+  <section id="t6">
+    <h2>Task 6 — Docs (inline/mechanical)</h2>
+    <div class="step">Step 1 — README.md</div>
+    <p>Under the keys paragraph add: "The UI uses the built-in <strong>Ink</strong>
+      theme (calm near-black, amber accent). Themes are a Textual-native
+      registry — more are drop-in additions."</p>
+    <div class="step">Step 2 — AGENTS.md</div>
+    <p>Add to the <code>src/aegis/tui/</code> layout line:
+      <code>themes.py</code> (Theme registry + <code>AegisColors</code> role
+      map; <code>aegis-ink</code> default). Note colors are threaded as
+      <code>AegisColors</code>, not global.</p>
+    <div class="step">Step 3 — commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add README.md AGENTS.md
+git -c user.name="Alejandro Piad" -c user.email="apiad@apiad.net" \
+  commit -m "docs: Ink theme + theming engine in README/AGENTS"</code></pre>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage</summary>
+      <ul>
+        <li>Textual-native Theme + registry + <code>aegis_colors</code> role map → T1.</li>
+        <li>Ink default registered/set; <code>app.colors</code>; Ink TCSS (no boxes, panel/bg contrast, padding) → T2.</li>
+        <li><code>watch_theme</code> recompute seam, guarded/no-op pre-panes → T2 (contract completed in T4).</li>
+        <li>Threaded colors (not global): <code>dot(colors)</code> T3, <code>render_event(ev, colors)</code> T4, <code>StatusBar(...,colors)</code> T4, <code>ConversationPane(...,colors)</code> T4.</li>
+        <li>Themed dots/accent-slug/tool glyph/thinking/result → T3+T4 (role map from T1).</li>
+        <li>Blank-line turn gap (content), padding (TCSS) → T5 + T2.</li>
+        <li>Tests: themes unit, dot/render signature tests, pilots for theme boot + spacing; live driver untouched → T1–T5.</li>
+        <li>Non-goals respected: no config/picker/runtime-switch; A/B not added.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder &amp; type-consistency scan</summary>
+      <p>No placeholder steps. Signatures consistent across tasks:
+        <code>aegis_colors(theme)→AegisColors</code>;
+        <code>AgentState.dot(colors)</code>;
+        <code>render_event(ev, colors)</code>;
+        <code>_TabCell.render_tab(idx,handle,slug,state,unseen,active,colors)</code>;
+        <code>TabBar.set_colors(colors)</code> + <code>_refresh_cells</code>;
+        <code>StatusBar(handle,agent_slug,model,permission,colors)</code>;
+        <code>ConversationPane(session,agent,agent_slug,handle,colors)</code> +
+        <code>set_colors</code>. App passes <code>self.colors</code> to TabBar
+        (T3) and panes (T4); <code>watch_theme</code> uses both (complete after
+        T4).</p>
+    </details>
+    <details>
+      <summary>Risk notes</summary>
+      <ul>
+        <li>Ordering keeps green: T2 adds <code>watch_theme</code> referencing
+          <code>pane.set_colors</code> before T4 defines it, but it is dormant
+          (theme never changes; one theme set once pre-panes) and guarded —
+          documented in T2 Step 3. The contract is whole after T4.</li>
+        <li>Textual <code>Theme</code> may require <code>primary</code>; INK
+          sets it. <code>theme.variables</code> may be <code>None</code> on a
+          bare theme — <code>aegis_colors</code> guards with
+          <code>or {}</code> + foreground fallback (tested).</li>
+        <li><code>$aegis-rule</code>/box-drawing hairlines were rejected in
+          favour of panel-vs-background contrast + padding to avoid the
+          Textual "border eats the only row" pitfall on height-1 bars — same
+          calm Ink result, no layout fragility.</li>
+        <li>Test work written/validated inline; live <code>claude</code> test
+          unchanged.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis plan</footer>
+
+</div>
+</body>
+</html>
