@@ -376,22 +376,27 @@ async def test_ink_layout_has_breathing_padding():
 
 @pytest.mark.asyncio
 async def test_input_border_stable_across_focus_blur():
-    # Regression: Textual Input:focus re-adds a `tall` border that our
-    # `border: none` (lower specificity) could not override → the box
-    # geometry changed between focus/blur and the input "lifted".
+    # Regression: the input "lifted" because its border differed between
+    # focus and blur (Textual Input:focus re-adds a `tall` border at higher
+    # specificity). The invariant that prevents the lift is SYMMETRY — the
+    # border must be identical focused vs blurred (it may be present; it
+    # must not change). It now carries a top+bottom rule (Claude-Code-like).
     app = _app()
     async with app.run_test() as pilot:
         inp = app._panes[0].query_one(Input)
         app.set_focus(inp)
         await pilot.pause()
-        focused_border = inp.styles.border.top
+        f_top, f_bot = inp.styles.border.top, inp.styles.border.bottom
         app.set_focus(None)
         await pilot.pause()
-        blurred_border = inp.styles.border.top
-        assert focused_border == blurred_border, (
-            f"focus={focused_border} blur={blurred_border}")
-        # and it's actually borderless (no row-eating geometry)
-        assert focused_border[0] in ("", "none"), focused_border
+        b_top, b_bot = inp.styles.border.top, inp.styles.border.bottom
+        assert (f_top, f_bot) == (b_top, b_bot), (
+            f"focus={(f_top, f_bot)} blur={(b_top, b_bot)}")
+        # the requested rule above/below the input is present
+        assert f_top[0] and f_top[0] not in ("", "none"), f_top
+        assert f_bot[0] and f_bot[0] not in ("", "none"), f_bot
+        # and there is air between the status line and the input
+        assert inp.styles.margin.top >= 1, inp.styles.margin
 
 
 @pytest.mark.asyncio

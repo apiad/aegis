@@ -35,8 +35,13 @@ class ConversationPane(Widget):
                                  color: $foreground; padding: 0 2; }
     ConversationPane Input { height: 3; background: $surface;
                              color: $foreground; padding: 0 2;
-                             border: none; }
-    ConversationPane Input:focus { border: none; }
+                             border: none;
+                             border-top: solid $foreground 20%;
+                             border-bottom: solid $foreground 20%;
+                             margin-top: 1; }
+    ConversationPane Input:focus { border: none;
+                             border-top: solid $foreground 20%;
+                             border-bottom: solid $foreground 20%; }
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,
