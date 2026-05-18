@@ -96,3 +96,48 @@ def test_parse_result_without_usage_tokens_are_none():
                             "duration_ms": 1, "is_error": False}))
     assert ev.input_tokens is None
     assert ev.output_tokens is None
+
+
+def test_token_usage_true_input_and_cached_pct():
+    from aegis.events import TokenUsage
+    u = TokenUsage(input=4, cache_creation=15000, cache_read=85000, output=120)
+    assert u.true_input == 100004              # input + cc + cr
+    assert u.cached_pct == round(100 * 85000 / 100004)
+    z = TokenUsage(input=0, cache_creation=0, cache_read=0, output=0)
+    assert z.true_input == 0 and z.cached_pct == 0
+
+
+def test_parse_result_carries_token_usage():
+    ev = parse(json.dumps({
+        "type": "result", "subtype": "success",
+        "duration_ms": 9, "is_error": False,
+        "usage": {"input_tokens": 4, "cache_creation_input_tokens": 1192,
+                  "cache_read_input_tokens": 37801, "output_tokens": 261},
+    }))
+    assert isinstance(ev, Result)
+    assert ev.usage is not None
+    assert ev.usage.true_input == 4 + 1192 + 37801
+    assert ev.usage.output == 261
+    assert ev.input_tokens == 4 and ev.output_tokens == 261   # back-compat
+
+
+def test_parse_assistant_text_carries_usage():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "text", "text": "hi"}],
+            "usage": {"input_tokens": 2, "cache_creation_input_tokens": 37801,
+                      "cache_read_input_tokens": 0, "output_tokens": 34},
+        },
+    }))
+    assert isinstance(ev, AssistantText) and ev.text == "hi"
+    assert ev.usage is not None and ev.usage.true_input == 2 + 37801
+
+
+def test_parse_assistant_without_usage_is_none():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{"type": "text", "text": "x"}]},
+    }))
+    assert isinstance(ev, AssistantText)
+    assert ev.usage is None

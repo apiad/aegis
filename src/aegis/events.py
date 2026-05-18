@@ -4,6 +4,26 @@ import json
 from dataclasses import dataclass
 
 
+@dataclass(frozen=True)
+class TokenUsage:
+    """One usage snapshot. The stream's `input` is uncached-only; the true
+    context the model ingests is input + cache_creation + cache_read
+    (canonical derivation, cf. bin/claude-usage-aggregate)."""
+    input: int
+    cache_creation: int
+    cache_read: int
+    output: int
+
+    @property
+    def true_input(self) -> int:
+        return self.input + self.cache_creation + self.cache_read
+
+    @property
+    def cached_pct(self) -> int:
+        ti = self.true_input
+        return round(100 * self.cache_read / ti) if ti else 0
+
+
 @dataclass
 class SystemInit:
     session_id: str | None
@@ -12,17 +32,20 @@ class SystemInit:
 @dataclass
 class AssistantText:
     text: str
+    usage: TokenUsage | None = None
 
 
 @dataclass
 class AssistantThinking:
     text: str
+    usage: TokenUsage | None = None
 
 
 @dataclass
 class ToolUse:
     name: str
     summary: str
+    usage: TokenUsage | None = None
 
 
 @dataclass
@@ -37,6 +60,7 @@ class Result:
     is_error: bool
     input_tokens: int | None = None
     output_tokens: int | None = None
+    usage: TokenUsage | None = None
 
 
 @dataclass
@@ -78,6 +102,21 @@ def _first_block(content: list) -> dict | None:
     return content[0] if content and isinstance(content[0], dict) else None
 
 
+def _token_usage(d: object) -> TokenUsage | None:
+    if not isinstance(d, dict):
+        return None
+    keys = ("input_tokens", "cache_creation_input_tokens",
+            "cache_read_input_tokens", "output_tokens")
+    if not any(k in d for k in keys):
+        return None
+    return TokenUsage(
+        input=int(d.get("input_tokens") or 0),
+        cache_creation=int(d.get("cache_creation_input_tokens") or 0),
+        cache_read=int(d.get("cache_read_input_tokens") or 0),
+        output=int(d.get("output_tokens") or 0),
+    )
+
+
 def parse(line: str) -> Event:
     try:
         obj = json.loads(line)
@@ -100,24 +139,29 @@ def parse(line: str) -> Event:
             is_error=bool(obj.get("is_error", False)),
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
+            usage=_token_usage(usage),
         )
 
     if etype == "assistant":
-        content = obj.get("message", {}).get("content", [])
+        message = obj.get("message", {})
+        content = message.get("content", [])
         block = _first_block(content) if isinstance(content, list) else None
         if block is None:
             return Unknown(raw=line)
+        u = _token_usage(message.get("usage"))
         btype = block.get("type")
         if btype == "text":
-            return AssistantText(text=block.get("text", ""))
+            return AssistantText(text=block.get("text", ""), usage=u)
         if btype == "thinking":
-            return AssistantThinking(text=block.get("thinking", ""))
+            return AssistantThinking(text=block.get("thinking", ""),
+                                     usage=u)
         if btype == "tool_use":
             return ToolUse(
                 name=block.get("name", "?"),
                 summary=_summarize_tool(
                     block.get("name", ""), block.get("input", {}) or {}
                 ),
+                usage=u,
             )
         return Unknown(raw=line)
 
