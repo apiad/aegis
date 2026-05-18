@@ -15,8 +15,13 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/drivers/` - HarnessDriver seam; ClaudeDriver in claude.py
 - `src/aegis/events.py` - stream-json parser (typed events)
 - `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
-- `src/aegis/tui/` - Textual full-screen app (app.py), widgets, AgentState
+- `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
+  (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
+  SessionMetrics (metrics.py), generated handles (names.py), AgentPicker
+  modal (picker.py)
 - `legacy/` - sidelined workflow-engine prototype (not built, not tested)
+- `docs/superpowers/{specs,plans}/*.html` - specs & plans are self-contained
+  HTML (house format), not Markdown
 
 ## Tests
 

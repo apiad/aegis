@@ -10,10 +10,15 @@ Claude Code via its `stream-json` protocol and re-renders output cleanly.
     aegis               # full-screen TUI with the default agent
     aegis --agent fast  # pick a named agent profile
 
-Type in the input box and press Enter. `Escape` interrupts the current turn;
-`Ctrl+Q` quits. The transcript scrolls with PageUp/PageDown or the mouse.
-A terminal bell rings when a turn finishes; the tab dot is green (idle),
-orange (working), or red (error).
+Type in the input box and press Enter. Each tab is an independent agent with
+a generated handle (e.g. `lucid-knuth`); its dot is green (idle), orange
+(working), or red (error).
+
+Keys: `Ctrl+T` new tab · `Ctrl+N` new tab (pick a profile) · `Ctrl+W` close
+tab (closing the last quits) · `Ctrl+1`…`Ctrl+9` jump to tab · `Ctrl+Tab` /
+`Ctrl+→` next · `Ctrl+←` prev · `Escape` interrupt the active turn · `Ctrl+Q`
+quit. A background tab that finishes shows a `*` and rings the bell until you
+switch to it.
 
 ## Config (.aegis.py)
 
