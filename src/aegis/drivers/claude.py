@@ -9,6 +9,12 @@ from aegis.events import Event, Result, parse
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.mcp import PRIMING, mcp_config_json
 
+# claude stream-json emits one JSON object per line; a single line carries
+# the full payload of a tool_result (e.g. a large file Read). asyncio's
+# StreamReader default line limit is 64 KiB — far too small (reading SOUL.md
+# alone exceeds it). Give the reader generous headroom.
+_STREAM_LIMIT = 16 * 1024 * 1024  # 16 MiB
+
 _PERMISSION_MODE = {
     Permission.read: "plan",
     Permission.write: "acceptEdits",
@@ -39,16 +45,24 @@ class ClaudeSession(HarnessSession):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=_STREAM_LIMIT,
         )
         self._reader = asyncio.create_task(self._pump_stdout())
 
     async def _pump_stdout(self) -> None:
         assert self._proc and self._proc.stdout
-        async for raw in self._proc.stdout:
-            line = raw.decode("utf-8", "replace").strip()
-            if line:
-                await self._queue.put(parse(line))
-        await self._queue.put(None)  # stream closed sentinel
+        try:
+            async for raw in self._proc.stdout:
+                line = raw.decode("utf-8", "replace").strip()
+                if line:
+                    await self._queue.put(parse(line))
+        except Exception:
+            # A stream/parse failure must not silently kill the turn: the
+            # finally below still delivers the sentinel so events() ends
+            # the turn instead of deadlocking on an empty queue forever.
+            pass
+        finally:
+            await self._queue.put(None)  # always signal stream end
 
     async def send(self, text: str) -> None:
         assert self._proc and self._proc.stdin

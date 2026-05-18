@@ -22,6 +22,8 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         return Text.assemble(("⏺ ", colors.accent), f"{ev.name}{arg}")
     if isinstance(ev, ToolResult):
         first = ev.text.splitlines()[0] if ev.text.strip() else ""
+        if len(first) > 100:
+            first = first[:100] + "…"
         if ev.is_error:
             return Text.assemble(("  └ ", colors.muted),
                                  ("error ", colors.err), first)
