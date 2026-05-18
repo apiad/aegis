@@ -8,6 +8,7 @@ from rich.console import Console
 
 from aegis.config import ConfigError, load_config, write_init_scaffold
 from aegis.drivers import get_driver
+from aegis.mcp import AegisMCP
 from aegis.tui import AegisApp
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -60,10 +61,10 @@ def run(
             f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
         raise typer.Exit(1)
 
-    def make_session(profile):
-        return get_driver(profile.harness).session(profile, cwd)
+    def make_session(profile, mcp_url):
+        return get_driver(profile.harness).session(profile, cwd, mcp_url)
 
-    AegisApp(agents, name, make_session).run()
+    AegisApp(agents, name, make_session, AegisMCP()).run()
 
 
 def main() -> None:

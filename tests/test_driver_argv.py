@@ -1,13 +1,18 @@
+import json
+
 import pytest
 from aegis.config import Agent
 from aegis.drivers import DRIVERS, get_driver
 from aegis.drivers.claude import ClaudeDriver
 
 
-def argv_for(permission, effort="high", model="opus"):
+MCP_URL = "http://127.0.0.1:9/mcp/"
+
+
+def argv_for(permission, effort="high", model="opus", mcp_url=MCP_URL):
     agent = Agent(harness="claude-code", model=model,
                   effort=effort, permission=permission)
-    return ClaudeDriver().build_argv(agent, cwd="/tmp/wd")
+    return ClaudeDriver().build_argv(agent, "/tmp/wd", mcp_url)
 
 
 def test_registry_has_claude():
@@ -42,3 +47,15 @@ def test_effort_and_model_passthrough():
 def test_unknown_harness_raises():
     with pytest.raises(KeyError):
         get_driver("opencode")
+
+
+def test_build_argv_injects_strict_mcp_and_priming():
+    argv = argv_for("auto", mcp_url="http://127.0.0.1:9/mcp/")
+    assert "--strict-mcp-config" in argv
+    i = argv.index("--mcp-config")
+    cfg = json.loads(argv[i + 1])
+    assert cfg["mcpServers"]["aegis"]["url"] == "http://127.0.0.1:9/mcp/"
+    assert cfg["mcpServers"]["aegis"]["type"] == "http"
+    j = argv.index("--append-system-prompt")
+    assert "aegis_meta" in argv[j + 1]
+    assert "-p" in argv

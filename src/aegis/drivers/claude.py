@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from aegis.config import Agent, Effort, Permission
 from aegis.events import Event, Result, parse
 from aegis.drivers.base import HarnessDriver, HarnessSession
+from aegis.mcp import PRIMING, mcp_config_json
 
 _PERMISSION_MODE = {
     Permission.read: "plan",
@@ -78,7 +79,8 @@ class ClaudeSession(HarnessSession):
 
 
 class ClaudeDriver(HarnessDriver):
-    def build_argv(self, agent: Agent, cwd: str) -> list[str]:
+    def build_argv(self, agent: Agent, cwd: str,
+                   mcp_url: str) -> list[str]:
         return [
             "claude", "-p",
             "--input-format", "stream-json",
@@ -88,7 +90,11 @@ class ClaudeDriver(HarnessDriver):
             "--model", agent.model,
             "--effort", _EFFORT[agent.effort],
             "--permission-mode", _PERMISSION_MODE[agent.permission],
+            "--mcp-config", mcp_config_json(mcp_url),
+            "--strict-mcp-config",
+            "--append-system-prompt", PRIMING,
         ]
 
-    def session(self, agent: Agent, cwd: str) -> ClaudeSession:
-        return ClaudeSession(self.build_argv(agent, cwd), cwd)
+    def session(self, agent: Agent, cwd: str,
+                mcp_url: str) -> ClaudeSession:
+        return ClaudeSession(self.build_argv(agent, cwd, mcp_url), cwd)

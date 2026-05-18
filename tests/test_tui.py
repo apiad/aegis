@@ -29,10 +29,24 @@ class FakeSession:
     async def close(self): self.closed = True
 
 
+class FakeMCP:
+    url = "http://127.0.0.1:0/mcp/"
+
+    def __init__(self):
+        self.started = False
+        self.stopped = False
+
+    async def start(self):
+        self.started = True
+
+    async def stop(self):
+        self.stopped = True
+
+
 def _factory(*sessions):
     it = iter(sessions or (FakeSession(),))
     made = []
-    def make(agent):
+    def make(agent, mcp_url):
         try:
             s = next(it)
         except StopIteration:
@@ -43,9 +57,19 @@ def _factory(*sessions):
     return make
 
 
-def _app(factory=None):
+def _app(factory=None, mcp=None):
     f = factory or _factory()
-    return AegisApp({"default": _agent()}, "default", f)
+    return AegisApp({"default": _agent()}, "default", f, mcp or FakeMCP())
+
+
+@pytest.mark.asyncio
+async def test_app_starts_and_stops_mcp():
+    m = FakeMCP()
+    app = AegisApp({"default": _agent()}, "default", _factory(), m)
+    async with app.run_test() as pilot:
+        assert m.started is True
+        await pilot.press("ctrl+q")
+    assert m.stopped is True
 
 
 @pytest.mark.asyncio
@@ -81,7 +105,7 @@ async def test_submit_sends_renders_and_bells():
 @pytest.mark.asyncio
 async def test_quit_closes_started_session_and_exits():
     f = _factory()
-    app = AegisApp({"default": _agent()}, "default", f)
+    app = AegisApp({"default": _agent()}, "default", f, FakeMCP())
     async with app.run_test() as pilot:
         app._panes[0].query_one(Input).value = "hi"
         await pilot.press("enter")     # starts the session
@@ -138,7 +162,8 @@ async def test_tabbar_shows_handle_slug_dot():
 @pytest.mark.asyncio
 async def test_tabbar_scrolls_active_into_view():
     app = AegisApp({"default": _agent()}, "default",
-                   _factory(*[FakeSession() for _ in range(8)]))
+                   _factory(*[FakeSession() for _ in range(8)]),
+                   FakeMCP())
     async with app.run_test(size=(40, 10)) as pilot:
         bar = app.query_one(TabBar)
         for _ in range(7):               # 8 tabs total, overflow 40 cols
@@ -191,7 +216,7 @@ async def test_background_finish_sets_unseen_and_one_bell():
 @pytest.mark.asyncio
 async def test_ctrl_w_closes_last_tab_exits():
     f = _factory()
-    app = AegisApp({"default": _agent()}, "default", f)
+    app = AegisApp({"default": _agent()}, "default", f, FakeMCP())
     async with app.run_test() as pilot:
         await pilot.press("ctrl+w")
     assert app.is_running is False
@@ -203,7 +228,7 @@ async def test_ctrl_w_closes_last_tab_exits():
 @pytest.mark.asyncio
 async def test_lazy_start_session_only_on_first_message():
     f = _factory()
-    app = AegisApp({"default": _agent()}, "default", f)
+    app = AegisApp({"default": _agent()}, "default", f, FakeMCP())
     async with app.run_test() as pilot:
         sess = f.made[0]
         assert sess.started is False          # not started at mount
@@ -260,7 +285,8 @@ async def test_ctrl_n_picker_spawns_chosen_profile():
     agents = {"default": _agent(),
               "fast": Agent(harness="claude-code", model="sonnet",
                             effort="low", permission="read")}
-    app = AegisApp(agents, "default", _factory(FakeSession(), FakeSession()))
+    app = AegisApp(agents, "default", _factory(FakeSession(), FakeSession()),
+                   FakeMCP())
     async with app.run_test() as pilot:
         await pilot.press("ctrl+n")
         await pilot.pause()
@@ -276,7 +302,7 @@ async def test_ctrl_n_picker_cancel_no_new_pane():
     agents = {"default": _agent(),
               "fast": Agent(harness="claude-code", model="sonnet",
                             effort="low", permission="read")}
-    app = AegisApp(agents, "default", _factory(FakeSession()))
+    app = AegisApp(agents, "default", _factory(FakeSession()), FakeMCP())
     async with app.run_test() as pilot:
         await pilot.press("ctrl+n")
         await pilot.pause()

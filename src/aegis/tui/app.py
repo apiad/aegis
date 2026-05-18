@@ -16,7 +16,7 @@ from aegis.tui.themes import (
 )
 from aegis.tui.widgets import TabBar
 
-SessionFactory = Callable[[Agent], HarnessSession]
+SessionFactory = Callable[[Agent, str], HarnessSession]
 
 
 class AegisApp(App):
@@ -41,11 +41,12 @@ class AegisApp(App):
     ]
 
     def __init__(self, agents: dict[str, Agent], default_agent: str,
-                 make_session: SessionFactory) -> None:
+                 make_session: SessionFactory, mcp) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
+        self._mcp = mcp
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
 
@@ -63,6 +64,7 @@ class AegisApp(App):
         self.theme = DEFAULT_THEME
         self._palette = aegis_colors(self.current_theme)
         self.query_one(TabBar).set_palette(self._palette)
+        await self._mcp.start()
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
@@ -87,8 +89,9 @@ class AegisApp(App):
     async def _spawn(self, slug: str) -> None:
         agent = self._agents[slug]
         handle = generate_name({p.handle for p in self._panes})
-        pane = ConversationPane(self._make_session(agent), agent,
-                                slug, handle, self._palette)
+        pane = ConversationPane(
+            self._make_session(agent, self._mcp.url), agent,
+            slug, handle, self._palette)
         self._panes.append(pane)
         cs = self.query_one(ContentSwitcher)
         await cs.mount(pane)
@@ -176,4 +179,5 @@ class AegisApp(App):
     async def action_quit(self) -> None:
         for pane in self._panes:
             await pane.close()
+        await self._mcp.stop()
         self.exit()
