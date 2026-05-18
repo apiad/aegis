@@ -90,7 +90,8 @@ class AegisApp(App):
                     self._finish(error=ev.is_error)
         except Exception:  # noqa: BLE001 - surface, don't crash the UI
             self._write(Text("⚠ harness error", style="red"))
-            self._finish(error=True)
+            if not saw_result:  # don't double-finish (double bell) if Result already handled
+                self._finish(error=True)
             return
         if not saw_result:
             self._write(Text("⚠ harness exited", style="red"))

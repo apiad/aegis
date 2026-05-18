@@ -67,3 +67,37 @@ async def test_quit_binding_exits():
     async with app.run_test() as pilot:
         await pilot.press("ctrl+q")
     assert app.is_running is False
+
+
+class ResultThenErrorSession:
+    def __init__(self):
+        self.sent = []
+        self.started = self.closed = False
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, text):
+        self.sent.append(text)
+
+    async def events(self):
+        from aegis.events import Result
+        yield Result(duration_ms=5, is_error=False)
+        raise RuntimeError("harness blew up after result")
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_bell_fires_once_when_result_then_error():
+    app = AegisApp(ResultThenErrorSession(), _agent(), "default")
+    bells = []
+    async with app.run_test() as pilot:
+        app.bell = lambda: bells.append(1)
+        inp = app.query_one(Input)
+        inp.value = "hello"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert bells == [1]  # exactly one bell despite the post-Result exception

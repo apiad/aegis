@@ -13,7 +13,7 @@ class AgentState(Enum):
         # Rich markup; rendered by Static widgets with markup enabled.
         return {
             AgentState.ready: "[green]●[/green]",
-            AgentState.working: "[yellow]●[/yellow]",
+            AgentState.working: "[orange1]●[/orange1]",
             AgentState.error: "[red]●[/red]",
         }[self]
 
