@@ -1,6 +1,6 @@
 import pytest
 from aegis.config import Agent
-from aegis.events import AssistantText, Result
+from aegis.events import AssistantText, Result, ToolResult, ToolUse
 from aegis.tui.app import AegisApp
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import TabStrip, StatusBar
@@ -101,3 +101,47 @@ async def test_bell_fires_once_when_result_then_error():
         await pilot.pause()
         await pilot.pause()
         assert bells == [1]  # exactly one bell despite the post-Result exception
+
+
+class ToolTurnSession:
+    def __init__(self):
+        self.sent = []
+        self.started = self.closed = False
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, text):
+        self.sent.append(text)
+
+    async def events(self):
+        yield ToolUse(name="Bash", summary="echo hi")
+        yield ToolResult(text="boom", is_error=True)
+        yield Result(duration_ms=10, is_error=False,
+                     input_tokens=1200, output_tokens=340)
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_status_metrics_render_and_tick():
+    from aegis.tui.metrics import SessionMetrics
+    app = AegisApp(ToolTurnSession(), _agent(), "default")
+    async with app.run_test() as pilot:
+        clock = [100.0]
+        app._now = lambda: clock[0]
+        app._metrics = SessionMetrics(clock[0])
+        inp = app.query_one(Input)
+        inp.value = "go"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        sb_text = str(app.query_one(StatusBar).content)
+        assert "↑1.2k" in sb_text
+        assert "↓340" in sb_text
+        assert "⚒ 1 (1 err)" in sb_text
+        clock[0] = 225.0
+        app._tick()
+        sb_text2 = str(app.query_one(StatusBar).content)
+        assert "2m05s" in sb_text2

@@ -25,12 +25,13 @@ class TabStrip(Static):
 
 
 class StatusBar(Static):
-    """`<agent> · <model> · <permission>` left, state label right."""
+    """`<agent> · <model> · <permission>`, state label, then metrics."""
 
     def __init__(self, agent_name: str, model: str, permission: str) -> None:
         super().__init__(markup=True)
         self._identity = f"{agent_name} · {model} · {permission}"
         self._state = AgentState.ready
+        self._metrics = ""
 
     def on_mount(self) -> None:
         self._refresh()
@@ -39,5 +40,12 @@ class StatusBar(Static):
         self._state = state
         self._refresh()
 
+    def set_metrics(self, text: str) -> None:
+        self._metrics = text
+        self._refresh()
+
     def _refresh(self) -> None:
-        self.update(f"{self._identity}    {self._state.label}")
+        line = f"{self._identity}    {self._state.label}"
+        if self._metrics:
+            line += f"    {self._metrics}"
+        self.update(line)

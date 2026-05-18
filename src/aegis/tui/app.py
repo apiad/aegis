@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -8,8 +10,9 @@ from textual.widgets import Input, RichLog
 
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
-from aegis.events import Result
+from aegis.events import Result, ToolResult, ToolUse
 from aegis.render import render_event
+from aegis.tui.metrics import SessionMetrics
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar, TabStrip
 
@@ -46,7 +49,20 @@ class AegisApp(App):
     async def on_mount(self) -> None:
         await self._session.start()
         self._set_state(AgentState.ready)
+        self._metrics = SessionMetrics(self._now())
+        self.set_interval(1.0, self._tick)
         self.query_one(Input).focus()
+
+    def _now(self) -> float:
+        return time.monotonic()
+
+    def _refresh_metrics(self) -> None:
+        self.query_one(StatusBar).set_metrics(
+            self._metrics.render(self._now())
+        )
+
+    def _tick(self) -> None:
+        self._refresh_metrics()
 
     def _set_state(self, state: AgentState) -> None:
         self.state = state
@@ -74,6 +90,7 @@ class AegisApp(App):
         inp.disabled = True
         self._write(Text.assemble(("› ", "bold"), text))
         self._set_state(AgentState.working)
+        self._metrics.start_turn(self._now())
         self.run_worker(self._run_turn(text), group="turn",
                         exclusive=True)
 
@@ -85,9 +102,15 @@ class AegisApp(App):
                 renderable = render_event(ev)
                 if renderable is not None:
                     self._write(renderable)
+                if isinstance(ev, ToolUse):
+                    self._metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self._metrics.record_tool_error()
                 if isinstance(ev, Result):
+                    self._metrics.end_turn(ev, self._now())
                     saw_result = True
                     self._finish(error=ev.is_error)
+                self._refresh_metrics()
         except Exception:  # noqa: BLE001 - surface, don't crash the UI
             self._write(Text("⚠ harness error", style="red"))
             if not saw_result:  # don't double-finish (double bell) if Result already handled
@@ -108,8 +131,10 @@ class AegisApp(App):
         if self.state is not AgentState.working:
             return
         self.workers.cancel_group(self, "turn")
+        self._metrics.cancel_turn(self._now())
         self._write(Text("^C — interrupted", style="dim"))
         self._set_state(AgentState.ready)
+        self._refresh_metrics()
         inp = self.query_one(Input)
         inp.disabled = False
         inp.focus()
