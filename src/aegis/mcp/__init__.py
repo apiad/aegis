@@ -1,3 +1,4 @@
+from aegis.mcp.bridge import AppBridge, SessionInfo
 from aegis.mcp.runtime import AegisMCP
 from aegis.mcp.server import (
     BRIEFING,
@@ -9,6 +10,8 @@ from aegis.mcp.server import (
 
 __all__ = [
     "AegisMCP",
+    "AppBridge",
+    "SessionInfo",
     "build_server",
     "aegis_meta",
     "BRIEFING",
