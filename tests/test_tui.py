@@ -372,3 +372,23 @@ async def test_ink_layout_has_breathing_padding():
         inp_pad = pane.query_one(Input).styles.padding
         assert log_pad.top >= 1 and log_pad.right >= 2, log_pad
         assert inp_pad.right >= 1, inp_pad
+
+
+@pytest.mark.asyncio
+async def test_input_border_stable_across_focus_blur():
+    # Regression: Textual Input:focus re-adds a `tall` border that our
+    # `border: none` (lower specificity) could not override → the box
+    # geometry changed between focus/blur and the input "lifted".
+    app = _app()
+    async with app.run_test() as pilot:
+        inp = app._panes[0].query_one(Input)
+        app.set_focus(inp)
+        await pilot.pause()
+        focused_border = inp.styles.border.top
+        app.set_focus(None)
+        await pilot.pause()
+        blurred_border = inp.styles.border.top
+        assert focused_border == blurred_border, (
+            f"focus={focused_border} blur={blurred_border}")
+        # and it's actually borderless (no row-eating geometry)
+        assert focused_border[0] in ("", "none"), focused_border

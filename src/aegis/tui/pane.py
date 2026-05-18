@@ -36,6 +36,7 @@ class ConversationPane(Widget):
     ConversationPane Input { height: 3; background: $surface;
                              color: $foreground; padding: 0 2;
                              border: none; }
+    ConversationPane Input:focus { border: none; }
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,
