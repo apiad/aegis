@@ -42,7 +42,8 @@ class ConversationPane(Widget):
         self.handle = handle
         self.state = AgentState.ready
         self.unseen = False
-        self._metrics = SessionMetrics(self._now())
+        self._started = False
+        self._metrics = SessionMetrics()
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -52,7 +53,8 @@ class ConversationPane(Widget):
             yield Input(placeholder="type a message…")
 
     async def on_mount(self) -> None:
-        await self._session.start()
+        # Lazy: the harness subprocess is not started until the first
+        # message (see _run_turn). The pane is "ready" with no process yet.
         self._set_state(AgentState.ready, finished=False)
         self.refresh_metrics()
 
@@ -97,6 +99,10 @@ class ConversationPane(Widget):
     async def _run_turn(self, text: str) -> None:
         saw_result = False
         try:
+            if not self._started:
+                await self._session.start()
+                self._started = True
+                self._metrics.begin_session(self._now())
             await self._session.send(text)
             async for ev in self._session.events():
                 renderable = render_event(ev)
@@ -141,4 +147,5 @@ class ConversationPane(Widget):
 
     async def close(self) -> None:
         self.workers.cancel_group(self, "turn")
-        await self._session.close()
+        if self._started:
+            await self._session.close()

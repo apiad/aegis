@@ -79,12 +79,16 @@ async def test_submit_sends_renders_and_bells():
 
 
 @pytest.mark.asyncio
-async def test_quit_closes_session_and_exits():
+async def test_quit_closes_started_session_and_exits():
     f = _factory()
     app = AegisApp({"default": _agent()}, "default", f)
     async with app.run_test() as pilot:
+        app._panes[0].query_one(Input).value = "hi"
+        await pilot.press("enter")     # starts the session
+        await pilot.pause()
         await pilot.press("ctrl+q")
     assert app.is_running is False
+    assert f.made[0].started is True
     assert f.made[0].closed is True
 
 
@@ -173,7 +177,30 @@ async def test_ctrl_w_closes_last_tab_exits():
     async with app.run_test() as pilot:
         await pilot.press("ctrl+w")
     assert app.is_running is False
-    assert f.made[0].closed is True
+    # never messaged → subprocess was never spawned, nothing to close
+    assert f.made[0].started is False
+    assert f.made[0].closed is False
+
+
+@pytest.mark.asyncio
+async def test_lazy_start_session_only_on_first_message():
+    f = _factory()
+    app = AegisApp({"default": _agent()}, "default", f)
+    async with app.run_test() as pilot:
+        sess = f.made[0]
+        assert sess.started is False          # not started at mount
+        from aegis.tui.widgets import StatusBar
+        sb = str(app._panes[0].query_one(StatusBar).content)
+        assert "0s / 0s" in sb                # session clock unanchored
+        app._panes[0].query_one(Input).value = "one"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert sess.started is True           # started on first message
+        app._panes[0].query_one(Input).value = "two"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert sess.sent == ["one", "two"]    # not re-started; still one session
 
 
 @pytest.mark.asyncio
