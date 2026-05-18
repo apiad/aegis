@@ -25,7 +25,7 @@ def _fmt_time(seconds: float) -> str:
 
 @dataclass
 class SessionMetrics:
-    session_start: float
+    session_start: float | None = None
     in_tokens: int = 0
     out_tokens: int = 0
     tool_calls: int = 0
@@ -59,7 +59,13 @@ class SessionMetrics:
             return now - self.turn_start
         return self.last_turn_seconds
 
+    def begin_session(self, now: float) -> None:
+        if self.session_start is None:
+            self.session_start = now
+
     def session_seconds(self, now: float) -> float:
+        if self.session_start is None:
+            return 0.0
         return now - self.session_start
 
     def render(self, now: float) -> str:

@@ -95,3 +95,22 @@ def test_time_formatting():
 def test_render_before_first_turn_is_zero_seconds():
     m = SessionMetrics(0.0)
     assert "0s / 0s" in m.render(0.0)
+
+
+def test_session_unanchored_is_zero_until_begin():
+    m = SessionMetrics()
+    assert m.session_seconds(999.0) == 0.0
+    m.begin_session(100.0)
+    assert m.session_seconds(105.0) == 5.0
+
+
+def test_begin_session_is_idempotent():
+    m = SessionMetrics()
+    m.begin_session(10.0)
+    m.begin_session(50.0)
+    assert m.session_seconds(20.0) == 10.0
+
+
+def test_explicit_anchor_still_works():
+    m = SessionMetrics(0.0)
+    assert m.session_seconds(7.0) == 7.0
