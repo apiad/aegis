@@ -43,13 +43,13 @@ def run(
     name = agent or default_agent
     if name not in agents:
         _console.print(
-            f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]"
-        )
+            f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
         raise typer.Exit(1)
-    profile = agents[name]
-    driver = get_driver(profile.harness)
-    session = driver.session(profile, cwd)
-    AegisApp(session, profile, name).run()
+
+    def make_session(agent):
+        return get_driver(agent.harness).session(agent, cwd)
+
+    AegisApp(agents, name, make_session).run()
 
 
 def main() -> None:

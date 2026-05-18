@@ -1,28 +1,24 @@
 from __future__ import annotations
 
-import time
+from collections.abc import Callable
 
-from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.widgets import Input, RichLog
+from textual.widgets import ContentSwitcher, Input
 
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
-from aegis.events import Result, ToolResult, ToolUse
-from aegis.render import render_event
-from aegis.tui.metrics import SessionMetrics
-from aegis.tui.state import AgentState
-from aegis.tui.widgets import StatusBar, TabStrip
+from aegis.tui.names import generate_name
+from aegis.tui.pane import ConversationPane, PaneStateChanged
+from aegis.tui.widgets import TabBar
+
+SessionFactory = Callable[[Agent], HarnessSession]
 
 
 class AegisApp(App):
     CSS = """
-    TabStrip { height: 1; background: $panel; }
-    StatusBar { height: 1; background: $panel; }
-    RichLog { height: 1fr; }
-    Input { height: 3; }
+    TabBar { height: 1; background: $panel; }
+    ContentSwitcher { height: 1fr; }
     """
 
     BINDINGS = [
@@ -30,115 +26,66 @@ class AegisApp(App):
         Binding("escape", "interrupt", "Interrupt", priority=True),
     ]
 
-    def __init__(self, session: HarnessSession, agent: Agent,
-                 agent_name: str) -> None:
+    def __init__(self, agents: dict[str, Agent], default_agent: str,
+                 make_session: SessionFactory) -> None:
         super().__init__()
-        self._session = session
-        self._agent = agent
-        self._agent_name = agent_name
-        self.state = AgentState.ready
+        self._agents = agents
+        self._default_agent = default_agent
+        self._make_session = make_session
+        self._panes: list[ConversationPane] = []
 
     def compose(self) -> ComposeResult:
-        yield TabStrip(self._agent_name)
-        with Vertical():
-            yield RichLog(markup=False, wrap=True, auto_scroll=True)
-            yield StatusBar(self._agent_name, self._agent.model,
-                            self._agent.permission.value)
-            yield Input(placeholder="type a message…")
+        yield TabBar()
+        yield ContentSwitcher()
 
     async def on_mount(self) -> None:
-        await self._session.start()
-        self._set_state(AgentState.ready)
-        self._metrics = SessionMetrics(self._now())
+        await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
-        self.query_one(Input).focus()
 
-    def _now(self) -> float:
-        return time.monotonic()
+    @property
+    def _active(self) -> ConversationPane | None:
+        cs = self.query_one(ContentSwitcher)
+        if cs.current is None:
+            return None
+        return self.query_one(f"#{cs.current}", ConversationPane)
 
-    def _refresh_metrics(self) -> None:
-        self.query_one(StatusBar).set_metrics(
-            self._metrics.render(self._now())
-        )
+    async def _spawn(self, slug: str) -> None:
+        agent = self._agents[slug]
+        handle = generate_name({p.handle for p in self._panes})
+        pane = ConversationPane(self._make_session(agent), agent,
+                                slug, handle)
+        self._panes.append(pane)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(pane)
+        cs.current = pane.id
+        self._refresh_tabbar()
+        pane.focus_input()
+
+    def _refresh_tabbar(self) -> None:
+        cs = self.query_one(ContentSwitcher)
+        items = [
+            (i + 1, p.handle, p.agent_slug, p.state, p.unseen,
+             p.id == cs.current)
+            for i, p in enumerate(self._panes)
+        ]
+        self.query_one(TabBar).set_tabs(items)
 
     def _tick(self) -> None:
-        self._refresh_metrics()
+        active = self._active
+        if active is not None:
+            active.refresh_metrics()
 
-    def _set_state(self, state: AgentState) -> None:
-        self.state = state
-        self.query_one(TabStrip).set_state(state)
-        self.query_one(StatusBar).set_state(state)
-
-    def _write(self, renderable) -> None:
-        self.query_one(RichLog).write(renderable)
-
-    def _transcript_has(self, needle: str) -> bool:
-        log = self.query_one(RichLog)
-        for line in log.lines:
-            # Strip.text is the public API on textual.strip.Strip objects
-            seg_text = line.text if hasattr(line, "text") else str(line)
-            if needle in seg_text:
-                return True
-        return False
-
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
-        if not text or self.state is AgentState.working:
-            return
-        inp = self.query_one(Input)
-        inp.value = ""
-        inp.disabled = True
-        self._write(Text.assemble(("› ", "bold"), text))
-        self._set_state(AgentState.working)
-        self._metrics.start_turn(self._now())
-        self.run_worker(self._run_turn(text), group="turn",
-                        exclusive=True)
-
-    async def _run_turn(self, text: str) -> None:
-        saw_result = False
-        try:
-            await self._session.send(text)
-            async for ev in self._session.events():
-                renderable = render_event(ev)
-                if renderable is not None:
-                    self._write(renderable)
-                if isinstance(ev, ToolUse):
-                    self._metrics.record_tool()
-                elif isinstance(ev, ToolResult) and ev.is_error:
-                    self._metrics.record_tool_error()
-                if isinstance(ev, Result):
-                    self._metrics.end_turn(ev, self._now())
-                    saw_result = True
-                    self._finish(error=ev.is_error)
-                self._refresh_metrics()
-        except Exception:  # noqa: BLE001 - surface, don't crash the UI
-            self._write(Text("⚠ harness error", style="red"))
-            if not saw_result:  # don't double-finish (double bell) if Result already handled
-                self._finish(error=True)
-            return
-        if not saw_result:
-            self._write(Text("⚠ harness exited", style="red"))
-            self._finish(error=True)
-
-    def _finish(self, *, error: bool) -> None:
-        self._set_state(AgentState.error if error else AgentState.ready)
-        inp = self.query_one(Input)
-        inp.disabled = False
-        inp.focus()
-        self.bell()
+    def on_pane_state_changed(self, message: PaneStateChanged) -> None:
+        if message.finished:
+            self.bell()
+        self._refresh_tabbar()
 
     def action_interrupt(self) -> None:
-        if self.state is not AgentState.working:
-            return
-        self.workers.cancel_group(self, "turn")
-        self._metrics.cancel_turn(self._now())
-        self._write(Text("^C — interrupted", style="dim"))
-        self._set_state(AgentState.ready)
-        self._refresh_metrics()
-        inp = self.query_one(Input)
-        inp.disabled = False
-        inp.focus()
+        active = self._active
+        if active is not None:
+            active.interrupt()
 
     async def action_quit(self) -> None:
-        await self._session.close()
+        for pane in self._panes:
+            await pane.close()
         self.exit()

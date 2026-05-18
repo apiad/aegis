@@ -5,31 +5,35 @@ from textual.widgets import Static
 from aegis.tui.state import AgentState
 
 
-class TabStrip(Static):
-    """One row: the active agent's dot + name. Tab-ready (one entry in v1)."""
+class TabBar(Static):
+    """One-line tab bar. Real rendering lands in a later task."""
 
-    def __init__(self, agent_name: str) -> None:
+    def __init__(self) -> None:
         super().__init__(markup=True)
-        self._name = agent_name
-        self._state = AgentState.ready
+        self._items: list = []
 
-    def on_mount(self) -> None:
-        self._refresh()
-
-    def set_state(self, state: AgentState) -> None:
-        self._state = state
+    def set_tabs(self, items: list) -> None:
+        self._items = items
         self._refresh()
 
     def _refresh(self) -> None:
-        self.update(f"{self._state.dot} {self._name}")
+        parts = []
+        for idx, handle, slug, state, unseen, active in self._items:
+            mark = "*" if unseen else ""
+            label = f"{state.dot} {idx} {handle}{mark}"
+            parts.append(f"[reverse]{label}[/reverse]" if active else label)
+        self.update("  ".join(parts))
 
 
 class StatusBar(Static):
     """`<agent> · <model> · <permission>`, state label, then metrics."""
 
-    def __init__(self, agent_name: str, model: str, permission: str) -> None:
+    def __init__(self, handle: str, agent_slug: str,
+                 model: str, permission: str) -> None:
         super().__init__(markup=True)
-        self._identity = f"{agent_name} · {model} · {permission}"
+        self._identity = (
+            f"{handle}  [#788C5D]·{agent_slug}·[/#788C5D]  "
+            f"{model} · {permission}")
         self._state = AgentState.ready
         self._metrics = ""
 
