@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis v0.1.0 Release" status=approved date=2026-05-18 source="builds on all 2026-05-18 aegis specs; first tagged release" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis v0.1.0 Release — Design</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;
+    --g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em;background:#E7EEDF;color:var(--olive)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:14px 0 6px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Release Spec · Aegis</div>
+    <h1>Aegis v0.1.0 — First Tagged Release</h1>
+    <div class="meta">
+      <span class="badge">approved</span>
+      <span>2026-05-18</span>
+      <span>Pending written-spec review</span>
+      <span>License: MIT (confirmed)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#version">Versioning</a>
+    <a href="#readme">README</a>
+    <a href="#docs">MkDocs site</a>
+    <a href="#ci">CI/CD</a>
+    <a href="#release">Release mechanics</a>
+    <a href="#order">Order &amp; dependencies</a>
+    <a href="#testing">Verification</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Ship the first proper tagged release of aegis: a polished README, a
+      Material MkDocs site auto-deployed to GitHub Pages via CI, a green test
+      CI badge, an MIT license, a <code>v0.1.0</code> annotated tag, and a
+      GitHub Release with notes. Everything shipped to date (stream-json CLI
+      driver, full-screen Textual TUI, multi-tab + cross-tab signalling,
+      generated handles, Ink theme engine, live token metrics, lazy start)
+      becomes the <code>0.1.0</code> changelog.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Version <code>v0.1.0</code></strong> — matches the
+        never-bumped <code>pyproject</code>; first tag (none exist).</li>
+      <li><strong>Git tag + GitHub Release only</strong> — no PyPI; install
+        stays <code>uv</code>/from-source (it drives the local
+        <code>claude</code> CLI).</li>
+      <li><strong>MkDocs Material, focused page set</strong>; the public site
+        excludes <code>docs/superpowers/</code> (specs/plans stay internal).</li>
+      <li><strong>MIT license.</strong></li>
+      <li><strong>Docs deploy via <code>mkdocs gh-deploy</code></strong> from a
+        GitHub Actions workflow to the <code>gh-pages</code> branch (Material's
+        recommended path; least config).</li>
+    </ol>
+  </section>
+
+  <section id="version">
+    <h2>Versioning &amp; changelog</h2>
+    <ul>
+      <li><code>pyproject.toml</code> remains <code>version = "0.1.0"</code>
+        (already correct — single source of truth).</li>
+      <li><strong><code>aegis --version</code></strong>: a typer
+        <code>--version</code> eager flag on the app, printing
+        <code>aegis &lt;v&gt;</code> from
+        <code>importlib.metadata.version("aegis")</code> then exiting. It must
+        short-circuit <em>before</em> config loading / the TUI launch (works
+        with no <code>.aegis.py</code>).</li>
+      <li><strong><code>CHANGELOG.md</code></strong> (Keep-a-Changelog):
+        a single <code>## [0.1.0] - 2026-05-18</code> section, grouped
+        <em>Added</em>, listing the shipped capabilities (CLI driver, TUI,
+        multi-tab, handles, themes/Ink, metrics, lazy start). Link-style
+        compare footer omitted (no prior tag).</li>
+    </ul>
+  </section>
+
+  <section id="readme">
+    <h2>Shiny README (markdown)</h2>
+    <p>README.md is rewritten (GitHub convention = markdown; the global
+      HTML-spec rule does <em>not</em> apply to project README/docs). Sections,
+      in order:</p>
+    <ul>
+      <li><strong>Title + tagline</strong>: “Aegis — a meta-harness for coding
+        agents.”</li>
+      <li><strong>Badge row</strong>: CI status (the <code>ci.yml</code>
+        workflow), Python 3.13, License MIT, Docs (link to the Pages site).
+        Shields.io static/dynamic badges; no external JS.</li>
+      <li><strong>What &amp; why</strong>: 3–4 sentences — drives Claude Code
+        via <code>claude -p</code> stream-json, multi-agent TUI, the control
+        plane above the harness.</li>
+      <li><strong>TUI snapshot</strong>: a fenced ASCII block approximating the
+        Ink TUI (tab bar, transcript, status line). <em>No image
+        generation</em> (explicit-only policy; none requested).</li>
+      <li><strong>Quickstart</strong>: <code>uv pip install -e .</code> →
+        <code>aegis init</code> → <code>aegis</code>.</li>
+      <li><strong>Keys / tabs / themes</strong> table (from the shipped
+        keymap).</li>
+      <li><strong>Config</strong>: the <code>.aegis.py</code> agents example.</li>
+      <li><strong>Docs &amp; vision</strong> links (Pages site; vision lives in
+        the private vault — link the in-repo <code>docs/architecture.md</code>
+        summary instead of the vault path).</li>
+      <li><strong>Status &amp; roadmap</strong>: phases shipped → next
+        (Phase 3 MCP plane).</li>
+      <li><strong>License</strong>: MIT.</li>
+    </ul>
+  </section>
+
+  <section id="docs">
+    <h2>MkDocs site</h2>
+    <h3>mkdocs.yml (repo root)</h3>
+    <ul>
+      <li><code>site_name: Aegis</code>, <code>site_description</code>,
+        <code>repo_url: https://github.com/apiad/aegis</code>,
+        <code>repo_name: apiad/aegis</code>, <code>edit_uri</code> to
+        <code>docs/</code>.</li>
+      <li><code>theme: name: material</code> with palette (dark default,
+        slate/amber to echo Ink), navigation features
+        (<code>navigation.sections</code>, <code>navigation.top</code>,
+        <code>content.code.copy</code>), and a code highlight.</li>
+      <li><code>docs_dir: docs</code> with
+        <strong><code>exclude_docs: |\n  superpowers/</code></strong>
+        (mkdocs ≥ 1.5) so <code>docs/superpowers/**</code> (specs/plans) is
+        never built or published.</li>
+      <li><code>nav:</code> Home → Install → Usage → Configuration →
+        Architecture &amp; Vision → Roadmap.</li>
+      <li>Dependency: a <code>docs</code> dependency group in
+        <code>pyproject.toml</code> (<code>mkdocs-material</code>) so the
+        site builds reproducibly via <code>uv</code> locally and in CI.</li>
+    </ul>
+    <h3>Pages (new files under <code>docs/</code>, alongside the excluded
+      <code>superpowers/</code>)</h3>
+    <table>
+      <thead><tr><th>File</th><th>Content (reuses)</th></tr></thead>
+      <tbody>
+        <tr><td><code>docs/index.md</code></td><td>Shiny overview = README hero condensed; what/why; TUI ASCII; links.</td></tr>
+        <tr><td><code>docs/install.md</code></td><td>Prereqs (Python 3.13, <code>uv</code>, a working <code>claude</code> CLI), install, <code>aegis init</code>.</td></tr>
+        <tr><td><code>docs/usage.md</code></td><td>Running, the keymap, tabs, themes (Ink), the status-line metrics (true input + cached%), interrupt/quit.</td></tr>
+        <tr><td><code>docs/configuration.md</code></td><td><code>.aegis.py</code>: agents, harness/model/effort/permission, default_agent.</td></tr>
+        <tr><td><code>docs/architecture.md</code></td><td>Meta-harness model; the driver/pane/shell layering; condensed from AGENTS.md + the vision (no vault paths — self-contained summary + a link to the public vision if/when published).</td></tr>
+        <tr><td><code>docs/roadmap.md</code></td><td>Phases shipped (1 → 1.5 → 2 → polish) and what's next (Phase 3 MCP plane), from the vision's roadmap.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="ci">
+    <h2>CI/CD (<code>.github/workflows/</code>)</h2>
+    <h3><code>ci.yml</code> — tests</h3>
+    <p>On <code>push</code> and <code>pull_request</code>: checkout, install
+      <code>uv</code> (astral-sh/setup-uv), <code>uv sync</code>,
+      <code>uv run pytest -q -k "not live"</code> (the live <code>claude</code>
+      test can't run on CI — no auth/binary; the marker already excludes it).
+      Single job, Python 3.13. Its status feeds the README badge.</p>
+    <h3><code>docs.yml</code> — docs deploy</h3>
+    <p>On <code>push</code> to <code>main</code> (and
+      <code>workflow_dispatch</code>): checkout (full history for
+      <code>gh-deploy</code>), install <code>uv</code> + the
+      <code>docs</code> group, <code>uv run mkdocs gh-deploy --force
+      --no-history</code>. Permissions: <code>contents: write</code> (push to
+      <code>gh-pages</code>). Concurrency guard so overlapping pushes don't
+      race the branch.</p>
+    <h3>One-time Pages enablement (release step, not a workflow)</h3>
+    <p>GitHub Pages source must be set to the <code>gh-pages</code> branch.
+      Repo settings can't be toggled by hand here; use
+      <code>gh api -X POST repos/apiad/aegis/pages -f source[branch]=gh-pages
+      -f source[path]=/</code> (or <code>PUT</code> if Pages already exists),
+      run once after the first successful <code>docs.yml</code> deploy creates
+      the branch. Captured as an explicit ordered step in the plan.</p>
+  </section>
+
+  <section id="release">
+    <h2>Release mechanics</h2>
+    <ol>
+      <li><code>LICENSE</code> file: MIT, <code>Copyright (c) 2026 Alejandro
+        Piad Morffis</code>. In <code>pyproject.toml</code> use the table form
+        <code>license = {text = "MIT"}</code> + the
+        <code>"License :: OSI Approved :: MIT License"</code> classifier
+        (table form, not the PEP 639 SPDX string, to avoid hatchling-version
+        warnings).</li>
+      <li>Annotated tag <code>v0.1.0</code> on the post-merge
+        <code>main</code> HEAD: <code>git tag -a v0.1.0 -m "aegis v0.1.0"</code>,
+        push the tag.</li>
+      <li><code>gh release create v0.1.0 --title "aegis v0.1.0" --notes-file
+        &lt;(changelog 0.1.0 section)</code> — notes are the CHANGELOG body
+        for 0.1.0 plus a one-line link to the docs site.</li>
+    </ol>
+  </section>
+
+  <section id="order">
+    <h2>Order &amp; dependencies</h2>
+    <ol>
+      <li>LICENSE + pyproject license/docs-group + <code>--version</code> flag
+        + CHANGELOG.</li>
+      <li>README rewrite.</li>
+      <li><code>mkdocs.yml</code> + the six <code>docs/*.md</code> pages;
+        verify <code>uv run mkdocs build --strict</code> clean locally
+        (catches broken nav/links and confirms <code>superpowers/</code> is
+        excluded).</li>
+      <li><code>ci.yml</code> + <code>docs.yml</code>.</li>
+      <li>Commit &amp; push <code>main</code> → <code>docs.yml</code> runs,
+        creates <code>gh-pages</code> → enable Pages via <code>gh api</code> →
+        confirm the site is live.</li>
+      <li>Tag <code>v0.1.0</code> + <code>gh release create</code> — last, so
+        the release reflects the polished, docs-live state.</li>
+    </ol>
+    <p>Steps 1–4 keep <code>uv run pytest -q -k "not live"</code> green at each
+      commit (the <code>--version</code> flag is the only code change; tested).</p>
+  </section>
+
+  <section id="testing">
+    <h2>Verification</h2>
+    <ul>
+      <li><strong><code>--version</code></strong>: a typer
+        <code>CliRunner</code> test — <code>aegis --version</code> prints
+        <code>aegis 0.1.0</code> and exits 0 with no <code>.aegis.py</code>
+        present (must not require config or launch the TUI).</li>
+      <li><strong>Docs build</strong>: <code>uv run mkdocs build --strict</code>
+        succeeds locally and in a CI dry-run; assert the built
+        <code>site/</code> contains <em>no</em> <code>superpowers</code> path
+        (exclusion holds). A tiny test or a documented manual check; the
+        <code>--strict</code> build failing on warnings is the gate.</li>
+      <li><strong>CI workflows</strong>: YAML lint / <code>act</code> not
+        required; correctness verified by the first real run on push (the plan
+        treats the first green Actions run + a reachable Pages URL as the
+        acceptance check).</li>
+      <li><strong>Full suite</strong> stays green
+        (<code>uv run pytest -q -k "not live"</code>) through steps 1–4;
+        the live driver test is unchanged.</li>
+      <li>Test work written/validated inline (not delegated).</li>
+    </ul>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>PyPI publishing / build artifacts.</li>
+      <li>API / module reference docs, contributing guide, versioned
+        (mike) docs.</li>
+      <li>Release automation (auto-tag-on-merge); the tag/release is a
+        deliberate manual step this round.</li>
+      <li>Screenshots / generated images (explicit-only policy).</li>
+      <li>Moving or publishing <code>docs/superpowers/</code> (stays internal,
+        excluded).</li>
+    </ul>
+    <details>
+      <summary>Deferred / future</summary>
+      <p>PyPI + signed wheels, <code>mike</code> for versioned docs, an
+        autorelease workflow on tag push, and an architecture diagram are
+        natural follow-ups once the project stabilises past Phase 3.</p>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis release spec</footer>
+
+</div>
+</body>
+</html>
