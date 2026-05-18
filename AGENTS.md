@@ -18,7 +18,12 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker
-  modal (picker.py)
+  modal (picker.py), Theme registry + AegisColors role map (themes.py;
+  `aegis-ink` default)
+- Theme colors are threaded as an `AegisColors` object (`app.palette`,
+  passed into `render_event`/`dot`/widgets) — not a module global; the
+  app attribute is `palette` (not `colors`) to avoid shadowing Textual's
+  `App.colors`
 - `legacy/` - sidelined workflow-engine prototype (not built, not tested)
 - `docs/superpowers/{specs,plans}/*.html` - specs & plans are self-contained
   HTML (house format), not Markdown

@@ -20,6 +20,10 @@ tab (closing the last quits) · `Ctrl+1`…`Ctrl+9` jump to tab · `Ctrl+Tab` /
 quit. A background tab that finishes shows a `*` and rings the bell until you
 switch to it.
 
+The UI uses the built-in **Ink** theme — a calm near-black palette with a
+single amber accent and one blank row between turns. Themes are a
+Textual-native registry; more are drop-in additions (no config knob yet).
+
 ## Config (.aegis.py)
 
 Config is always Python. `aegis init` scaffolds an `agents` dict of
