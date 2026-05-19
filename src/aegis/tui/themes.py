@@ -24,7 +24,52 @@ INK = Theme(
     },
 )
 
-THEMES: dict[str, Theme] = {"ink": INK}
+# Warm Parchment — mockup A (.playground/aegis-mockups/A-warm-parchment.html).
+# Aged-paper warmth: clay accent, gold warning, olive ready, rust error.
+PARCHMENT = Theme(
+    name="aegis-parchment",
+    dark=True,
+    background="#1c1a16",
+    surface="#201e19",
+    panel="#23211c",
+    foreground="#E9E2D2",
+    primary="#D97757",
+    accent="#D97757",
+    success="#9CAE78",
+    warning="#E3B341",
+    error="#E0775F",
+    variables={
+        "aegis-muted": "#8c8676",
+        "aegis-faint": "#5c574a",
+        "aegis-rule": "#3a362d",
+        "aegis-userbg": "#2b281f",
+    },
+)
+
+# Cool Slate — mockup B (.playground/aegis-mockups/B-cool-slate.html).
+# Cool blue-grey field with a warm amber accent; teal ready, rose error.
+SLATE = Theme(
+    name="aegis-slate",
+    dark=True,
+    background="#10141b",
+    surface="#13171f",
+    panel="#161b24",
+    foreground="#CDD6E3",
+    primary="#E0A35E",
+    accent="#E0A35E",
+    success="#5FB39A",
+    warning="#E0A35E",
+    error="#E07A86",
+    variables={
+        "aegis-muted": "#6b7686",
+        "aegis-faint": "#454e5c",
+        "aegis-rule": "#27303d",
+        "aegis-userbg": "#1e2530",
+    },
+)
+
+THEMES: dict[str, Theme] = {"ink": INK, "parchment": PARCHMENT,
+                            "slate": SLATE}
 DEFAULT_THEME = "aegis-ink"
 
 
