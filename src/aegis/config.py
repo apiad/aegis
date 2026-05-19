@@ -1,10 +1,37 @@
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Sequence
 
 from pydantic import BaseModel, ValidationError
+
+
+DEFAULT_TELEGRAM_PROMPT = (
+    "You are replying via telegram, keep response compact and focused "
+    "if possible, only resort to long responses if it really matters")
+
+
+@dataclass(frozen=True)
+class TelegramConfig:
+    token: str | None
+    chat_id: int | None
+    auto_prompt: str
+
+
+def load_telegram_config(path: Path) -> TelegramConfig:
+    ns: dict[str, object] = {}
+    if path.is_file():
+        exec(compile(path.read_text(), str(path), "exec"), ns)  # noqa: S102
+    token = os.environ.get("AEGIS_TELEGRAM_TOKEN") or ns.get("telegram_token")
+    chat_id = ns.get("telegram_chat_id")
+    auto = ns.get("auto_add_to_telegram_prompt", DEFAULT_TELEGRAM_PROMPT)
+    return TelegramConfig(
+        token=token or None,
+        chat_id=int(chat_id) if chat_id is not None else None,
+        auto_prompt="" if auto == "" else str(auto))
 
 
 class Permission(str, Enum):
