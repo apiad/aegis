@@ -106,6 +106,11 @@ class ClaudeDriver(HarnessDriver):
             "--permission-mode", _PERMISSION_MODE[agent.permission],
             "--mcp-config", mcp_config_json(mcp_url),
             "--strict-mcp-config",
+            # The aegis plane is aegis's own server, trusted by
+            # construction. Allowlist it so its tools never hit an
+            # interactive permission prompt — there is none under
+            # `claude -p` stream-json, so an un-allowed call just fails.
+            "--allowedTools", "mcp__aegis",
             "--append-system-prompt", PRIMING.format(handle=handle),
         ]
 
