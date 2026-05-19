@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
+# Local aegis config — may hold a Telegram token; never commit
+.aegis.py
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
