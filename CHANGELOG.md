@@ -5,6 +5,20 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+- Headless `aegis serve` daemon: SessionManager + MCP plane, plus an
+  optional Telegram front-end (`/new`, `/close`, `/interrupt`,
+  `/<handle> …`, bare-text routing with mid-turn status refresher).
+  Configured via `telegram_token` / `telegram_chat_id` /
+  `auto_add_to_telegram_prompt` in `.aegis.py` (token may also come
+  from `AEGIS_TELEGRAM_TOKEN`). systemd unit template at
+  `scripts/aegis-serve.service`.
+- `src/aegis/core/`: harness-agnostic `AgentSession` and `SessionManager`
+  extracted from the TUI; the Textual pane and the Telegram frontend
+  both delegate to these.
+- Unified `find_project_root()`: both `aegis` and `aegis serve` resolve
+  the project root by walking ancestors for `.aegis.py`.
+
 ## [0.2.0] - 2026-05-18
 
 ### Added

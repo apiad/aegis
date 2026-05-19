@@ -2,7 +2,12 @@
 
 ## Running
 
-    aegis init && aegis
+    aegis init && aegis           # full-screen TUI
+    aegis serve                   # headless: MCP plane + optional Telegram
+
+`aegis` and `aegis serve` both resolve the project root via
+`find_project_root()` (closest ancestor containing `.aegis.py`); the harness
+subprocess is rooted there unless `--cwd` overrides.
 
 ## Package management
 
@@ -15,6 +20,19 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/drivers/` - HarnessDriver seam; ClaudeDriver in claude.py
 - `src/aegis/events.py` - stream-json parser (typed events)
 - `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
+- `src/aegis/core/` - harness-agnostic session core: `AgentSession`
+  (turn loop, metrics, state, observer callbacks — `session.py`) and
+  `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over
+  many AgentSessions — `manager.py`). The TUI's ConversationPane and the
+  Telegram frontend both delegate to these.
+- `src/aegis/telegram/` - Telegram bot front-end: `BotClient` (long-poll
+  Bot API with exponential backoff + `retry_after` handling — `bot.py`),
+  pure formatting helpers (`format.py`: `escape_md`, `status_line`,
+  `chunk`), and `TelegramFrontend` (`/new /close /interrupt /agents
+  /sessions /<handle> /help`, bare-text routing with auto_prompt suffix,
+  mid-turn status refresher — `frontend.py`). Activated by `aegis serve`
+  when `telegram_token` + `telegram_chat_id` are configured in
+  `.aegis.py` (token also accepted via `AEGIS_TELEGRAM_TOKEN`).
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker

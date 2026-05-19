@@ -32,9 +32,10 @@ to hand off to another — a way to **drive the whole harness
 deterministically from the top**. (Cf. the sidelined `legacy/`
 workflow-engine prototype.) Depends on delegation being defined.
 
-### 3. Telegram interface — **prioritized**
+### 3. Telegram interface — **done (2026-05-19)**
 
-Important. A Telegram interface to aegis.
+Shipped via `aegis serve` + `src/aegis/telegram/`. See README "Headless /
+Telegram" and CHANGELOG `[Unreleased]`.
 
 ### 4. Task queue — **prioritized**
 

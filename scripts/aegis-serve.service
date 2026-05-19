@@ -1,0 +1,15 @@
+[Unit]
+Description=Aegis headless daemon (MCP plane + Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace
+ExecStart=/usr/bin/env uv run --directory %h/Workspace/repos/aegis aegis serve
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

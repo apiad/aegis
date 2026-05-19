@@ -70,6 +70,29 @@ default_agent = "default"
 
 `permission`: `read` | `write` | `full` | `auto`.
 
+## Headless / Telegram
+
+`aegis serve` runs the SessionManager headlessly, exposing the MCP plane
+and (when configured) a Telegram bot front-end:
+
+```python
+# .aegis.py
+telegram_token = "…"        # or set AEGIS_TELEGRAM_TOKEN
+telegram_chat_id = 123456   # the single allowed chat
+# auto_add_to_telegram_prompt = ""   # to disable the default brevity hint
+```
+
+Routing inside the chat:
+
+- `/new [agent]` — spawn a new session (defaults to `default_agent`)
+- `/close [handle]` — close a session (default: active one)
+- `/interrupt` — interrupt the active turn
+- `/<handle> text…` — one-shot to a specific session (doesn't move sticky)
+- bare text — sent to the active session, with `auto_add_to_telegram_prompt`
+  appended
+
+A systemd unit template lives at `scripts/aegis-serve.service`.
+
 ## Docs & status
 
 Full docs: **https://apiad.github.io/aegis/**

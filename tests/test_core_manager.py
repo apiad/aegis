@@ -58,7 +58,7 @@ async def test_spawn_unknown_slug_raises():
 @pytest.mark.asyncio
 async def test_mru_active_after_spawn():
     m = make_mgr()
-    a = m.spawn("default")
+    m.spawn("default")
     b = m.spawn("researcher")
     info = m.list_sessions()
     actives = [si for si in info if si.active]
@@ -69,6 +69,7 @@ async def test_mru_active_after_spawn():
 @pytest.mark.asyncio
 async def test_close_all_clears_sessions():
     m = make_mgr()
-    m.spawn("default"); m.spawn("researcher")
+    m.spawn("default")
+    m.spawn("researcher")
     await m.close_all()
     assert m.list_sessions() == []

@@ -50,14 +50,17 @@ def fe(bot, m):
 
 @pytest.mark.asyncio
 async def test_wrong_chat_dropped():
-    b = FakeBot(); f = fe(b, mgr())
+    b = FakeBot()
+    f = fe(b, mgr())
     await f.handle_update({"message": {"chat": {"id": 1}, "text": "/new"}})
     assert b.sent == []
 
 
 @pytest.mark.asyncio
 async def test_new_spawns_and_sets_active():
-    b = FakeBot(); m = mgr(); f = fe(b, m)
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m)
     await f.handle_update(
         {"message": {"chat": {"id": 99}, "text": "/new researcher"}})
     assert len(m.list_sessions()) == 1
@@ -66,7 +69,9 @@ async def test_new_spawns_and_sets_active():
 
 @pytest.mark.asyncio
 async def test_bare_text_appends_auto_prompt():
-    b = FakeBot(); m = mgr(); f = fe(b, m)
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m)
     await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
     s = m.list_sessions()[0]
     core = m.get(s.handle)
@@ -77,7 +82,8 @@ async def test_bare_text_appends_auto_prompt():
 
 @pytest.mark.asyncio
 async def test_unknown_slug_lists_agents():
-    b = FakeBot(); f = fe(b, mgr())
+    b = FakeBot()
+    f = fe(b, mgr())
     await f.handle_update(
         {"message": {"chat": {"id": 99}, "text": "/new bogus"}})
     assert "researcher" in b.sent[-1][1]
@@ -122,7 +128,9 @@ async def test_mid_turn_refresher_edits_status_repeatedly():
 
 @pytest.mark.asyncio
 async def test_handle_oneshot_does_not_move_sticky():
-    b = FakeBot(); m = mgr(); f = fe(b, m)
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m)
     await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
     h1 = m.list_sessions()[0].handle
     await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
