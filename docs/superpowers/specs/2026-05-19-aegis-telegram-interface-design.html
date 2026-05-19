@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Telegram Interface" status=approved date=2026-05-19 source="repos/aegis; builds on MCP plane slice-2 (bridge.py AppBridge)" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Telegram Interface — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300)}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec</div>
+    <h1>Aegis Telegram Interface — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-19</span>
+      <span>Builds on: MCP plane slice-2 (<code>mcp/bridge.py</code> <code>AppBridge</code>)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#components">Components</a>
+    <a href="#commands">Command surface</a>
+    <a href="#flow">Data flow</a>
+    <a href="#errors">Error handling</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Make it possible to drive an autonomous coding session from Telegram:
+    spawn agents, message them, switch between them, and get notified when
+    each finishes — from a phone, against a long-lived headless
+    <code>aegis</code> daemon. Not full TUI parity; a focused remote control
+    surface.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Headless daemon is primary.</strong> New <code>aegis
+      serve</code> runs with no Textual, long-lived (VPS). The TUI becomes
+      one of several frontends, not the home of the sessions.</li>
+      <li><strong>DRY core from day one (1a).</strong> Extract a
+      frontend-agnostic <code>AgentSession</code> + <code>SessionManager</code>;
+      rewire <code>ConversationPane</code> to delegate to it now. No
+      duplicated turn/metrics/state loop ever exists.</li>
+      <li><strong><code>AppBridge</code> is the seam.</strong>
+      <code>SessionManager</code> <em>is</em> the concrete
+      <code>AppBridge</code> (the Protocol at <code>mcp/bridge.py:16-21</code>
+      already matches it); the MCP runtime binds to it instead of to
+      <code>AegisApp</code>.</li>
+      <li><strong>Unified root resolution.</strong>
+      <code>find_project_root</code> walks up from cwd to the nearest
+      ancestor with a <code>.aegis.py</code>; that dir is the harness cwd for
+      every spawned agent. One discovery rule for <code>aegis</code>,
+      <code>aegis init</code>, <code>aegis serve</code> — replaces today's
+      <code>default_search_paths()</code>.</li>
+      <li><strong>Single-chat, sticky active agent.</strong>
+      <code>/&lt;handle&gt;</code> switches the sticky target; bare messages
+      go to it; <code>/&lt;handle&gt; &lt;text&gt;</code> one-shots without
+      moving the pointer.</li>
+      <li><strong>Notifications: final reply text only.</strong> Telegram
+      sink keeps <code>AssistantText</code> blocks; drops
+      <code>AssistantThinking</code>/<code>ToolUse</code>/<code>ToolResult</code>.
+      No tool digest.</li>
+      <li><strong>Per-turn status message, edited in place.</strong> One
+      message per turn carrying the same status-line fields as the TUI
+      <code>StatusBar</code>; refreshed ~2s; flips to done/error; then the
+      final reply is posted, chunked.</li>
+      <li><strong>Raw async Bot API client.</strong> Thin
+      <code>httpx</code> wrapper over ~4 endpoints; no
+      <code>python-telegram-bot</code> framework dependency.</li>
+      <li><strong>Auth: single hardcoded chat id.</strong> Updates from any
+      other chat are dropped. No registration flow.</li>
+      <li><strong>Agents run with their configured permission.</strong>
+      Aegis does not override <code>permission</code>; whatever the
+      <code>.aegis.py</code> profile sets is used as-is.</li>
+    </ol>
+  </section>
+
+  <section id="components">
+    <h2>Components</h2>
+    <table>
+      <thead><tr><th>Unit</th><th>Responsibility</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td><code>core/session.py</code><br><code>AgentSession</code></td>
+          <td>Owns one <code>HarnessSession</code>, <code>AgentState</code>,
+          <code>SessionMetrics</code>, and the running turn
+          <code>asyncio.Task</code>. Lazy-starts harness on first
+          <code>send</code>; the turn loop drives metrics/state and pushes
+          typed <code>Event</code>s to observers (no rendering). Logic lifted
+          verbatim from <code>pane.py:_run_turn</code>/<code>_finish</code>/<code>interrupt</code>.</td>
+          <td><code>drivers.base</code>, <code>events</code>,
+          <code>tui.state</code>, <code>tui.metrics</code></td></tr>
+        <tr><td><code>core/manager.py</code><br><code>SessionManager</code></td>
+          <td>Owns the session list, <code>make_session</code> factory, MCP
+          bind. <code>spawn(slug)</code>, <code>close(handle)</code>,
+          <code>interrupt(handle)</code>, <code>list_sessions</code>,
+          <code>list_agents</code>, <code>handoff(...)</code>,
+          <code>close_all()</code>. Implements <code>AppBridge</code>.</td>
+          <td><code>core.session</code>, <code>mcp.bridge</code>,
+          <code>tui.names</code>, <code>config</code></td></tr>
+        <tr><td><code>tui/pane.py</code><br><code>ConversationPane</code></td>
+          <td>Rewired: pure observer over an injected
+          <code>AgentSession</code>. Renders <code>on_event</code> to
+          <code>RichLog</code>, reflects <code>on_state</code> in the
+          <code>StatusBar</code>/<code>Input</code>. No turn/metrics logic.</td>
+          <td><code>core.session</code>, Textual</td></tr>
+        <tr><td><code>telegram/bot.py</code></td>
+          <td>Async Bot API client (<code>getUpdates</code> long-poll,
+          <code>sendMessage</code>, <code>editMessageText</code>) with
+          retry/backoff and 429 handling.</td>
+          <td><code>httpx</code></td></tr>
+        <tr><td><code>telegram/frontend.py</code></td>
+          <td>Binds to <code>SessionManager</code>. Inbound: parse update,
+          auth-check, route command/text. Outbound: per-turn status message
+          lifecycle + chunked final reply. Holds sticky active handle.</td>
+          <td><code>telegram.bot</code>, <code>core.manager</code></td></tr>
+        <tr><td><code>telegram/format.py</code></td>
+          <td>Pure functions: status-line render from
+          <code>SessionMetrics</code>, <code>MarkdownV2</code> escaping,
+          ≤4096 chunking with hard cap + truncation marker.</td>
+          <td>—</td></tr>
+        <tr><td><code>config.py</code></td>
+          <td>Add <code>find_project_root</code>; read optional
+          <code>telegram_token</code> / <code>telegram_chat_id</code> (env
+          <code>AEGIS_TELEGRAM_TOKEN</code> takes precedence for the secret).</td>
+          <td>—</td></tr>
+        <tr><td><code>cli.py</code></td>
+          <td>New <code>aegis serve</code> Typer command: resolve root, load
+          config, build <code>SessionManager</code>, bind+start MCP,
+          optionally start Telegram frontend, supervise until SIGINT/SIGTERM,
+          clean shutdown.</td>
+          <td><code>core.manager</code>, <code>telegram.frontend</code>,
+          <code>mcp</code></td></tr>
+        <tr><td><code>scripts/aegis-serve.service</code></td>
+          <td><code>systemd --user</code> unit template:
+          <code>Restart=on-failure</code>, secret via
+          <code>EnvironmentFile</code>, long-poll (no inbound port).</td>
+          <td>—</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="commands">
+    <h2>Command surface (v1)</h2>
+    <table>
+      <thead><tr><th>Command</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>/new [slug]</code></td><td>Spawn agent profile
+        <code>slug</code> from <code>.aegis.py</code>; omitted →
+        <code>default_agent</code>. New handle becomes sticky active. Unknown
+        slug → reply listing valid slugs.</td></tr>
+        <tr><td><code>/close</code></td><td>Close the active agent
+        (<code>AgentSession.close()</code> + drop from manager). Sticky falls
+        back to most-recently-active remaining, else none. Daemon stays alive
+        even with zero sessions.</td></tr>
+        <tr><td><code>/interrupt</code></td><td>Interrupt the active agent's
+        running turn. Always allowed.</td></tr>
+        <tr><td><code>/agents</code></td><td>List configured agent
+        slugs.</td></tr>
+        <tr><td><code>/sessions</code></td><td>List live sessions with state
+        (<code>● lucid-knuth working · ○ wry-hopper ready</code>).</td></tr>
+        <tr><td><code>/&lt;handle&gt;</code></td><td>Alone → switch sticky
+        active. With trailing text → one-shot send to that handle, sticky
+        pointer unchanged.</td></tr>
+        <tr><td><code>/help</code></td><td>Terse command list.</td></tr>
+        <tr><td><em>bare text</em></td><td>Send to sticky active agent. No
+        active agent → <code>no active agent — /new to spawn</code>.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow</h2>
+    <h3>Inbound (Telegram → agent)</h3>
+    <ol>
+      <li><code>getUpdates</code> long-poll returns an update; resume offset
+      stored.</li>
+      <li>Auth: <code>chat.id != telegram_chat_id</code> → log at debug,
+      drop.</li>
+      <li>Parse: leading <code>/</code> → command (or
+      <code>/&lt;handle&gt;</code> routing); else bare text → active
+      agent.</li>
+      <li>Target agent <code>working</code> and command is a send →
+      <code>lucid-knuth is working — /interrupt first</code>.
+      <code>/interrupt</code>, <code>/close</code> always allowed; pure-query
+      commands never touch a turn.</li>
+      <li><code>AgentSession.send(text)</code> → lazy-start harness on first
+      turn → turn task begins.</li>
+    </ol>
+    <h3>Outbound (agent → Telegram), per turn</h3>
+    <ol>
+      <li><code>on_state(working)</code>: <code>sendMessage</code> →
+      <code>⏳ lucid-knuth · working · ·opus·high ↑0 (–) ↓0</code>; store the
+      returned <code>message_id</code> (as an awaitable) keyed by
+      <code>(handle, turn)</code>; start a refresher task.</li>
+      <li>Refresher edits that message every ~2s with the live status line
+      from <code>SessionMetrics</code> (same fields as the TUI
+      <code>StatusBar</code>). Telegram same-message edit limit ≈1/s; 2s is
+      safe.</li>
+      <li>Sink accumulates <code>AssistantText.text</code> blocks only.</li>
+      <li><code>on_state(finished)</code>: cancel refresher; final
+      <code>editMessageText</code> →
+      <code>✅ lucid-knuth · ready · …final metrics…</code> (or
+      <code>⚠️ … · error</code>).</li>
+      <li>Post accumulated reply as new message(s),
+      <code>MarkdownV2</code>-escaped, split ≤4096 chars, labeled
+      <code>lucid-knuth (1/3)</code>; hard cap (e.g. 5 chunks) then
+      <code>… (truncated, N more chunks)</code>.</li>
+    </ol>
+    <pre><code>class AgentSession:
+    def __init__(self, session, agent, agent_slug, handle): ...
+    async def send(self, text: str) -&gt; None: ...      # lazy start + turn task
+    async def interrupt(self) -&gt; None: ...
+    async def close(self) -&gt; None: ...
+    on_event: Callable[[AgentSession, Event], None]
+    on_state: Callable[[AgentSession, AgentState, bool], None]  # (..., finished)
+
+# SessionManager satisfies the existing runtime_checkable Protocol:
+#   isinstance(mgr, AppBridge) is True</code></pre>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <ul>
+      <li><strong>Harness error / exit-without-Result.</strong> Existing
+      <code>pane.py:166-175</code> logic moves into <code>AgentSession</code>:
+      commit metrics, state → <code>error</code>. Telegram: status final-edits
+      to <code>⚠️ … · error</code>; any partial <code>AssistantText</code>
+      collected is still posted.</li>
+      <li><strong>Bot API failures.</strong> Every call retry-with-backoff.
+      <code>getUpdates</code> network error → exponential backoff (cap ~30s),
+      resume from last offset (no missed/duplicate updates).
+      <code>sendMessage</code>/<code>editMessageText</code> failure → log +
+      drop (never crash a turn); next 2s refresher self-heals an edit miss.
+      <code>429</code> → honor <code>retry_after</code>.</li>
+      <li><strong>Status-message race.</strong> Turn finishes before the
+      status <code>sendMessage</code> returns → finish-edit awaits the stored
+      <code>message_id</code>; if it never arrives, fall back to a fresh
+      <code>sendMessage</code> for the final state. Per-turn
+      <code>message_id</code> + refresher; <code>/interrupt</code> and
+      <code>/close</code> cancel the refresher cleanly.</li>
+      <li><strong>Stale sticky pointer.</strong> Active agent closed
+      (<code>/close</code> or harness death) → fall back to
+      most-recently-active remaining, else none.</li>
+      <li><strong>Non-auto permission stall.</strong> A profile whose
+      <code>permission</code> isn't <code>auto</code> can hit a permission
+      prompt unanswerable from Telegram → turn stalls on
+      <code>working</code>. Known v1 limitation; <code>/interrupt</code> is
+      the escape hatch. Documented, not induced.</li>
+      <li><strong>Auth.</strong> Chat-id check before any routing; mismatch
+      logged at debug, dropped.</li>
+      <li><strong>Secret hygiene.</strong> Token never logged; env
+      <code>AEGIS_TELEGRAM_TOKEN</code> takes precedence over
+      <code>.aegis.py</code> and is the documented VPS path.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <p>TDD per repo convention: failing test first, commit per logical unit;
+    fast hermetic suite is <code>uv run pytest -k "not live"</code>. All
+    test-writing stays inline (not delegated) — it is the verification layer,
+    especially for the TUI rewire.</p>
+    <ul>
+      <li><strong><code>AgentSession</code> (hermetic).</strong> Fake
+      <code>HarnessSession</code> yielding scripted <code>Event</code>s
+      (existing parser fixtures). Assert: lazy start on first
+      <code>send</code>; observers fire in order; metrics commit on
+      <code>Result</code>; interrupt/close cancel + set state; harness-error
+      and exit-without-Result → <code>error</code>. Also pins TUI behavior
+      post-rewire.</li>
+      <li><strong><code>ConversationPane</code> regression.</strong> Existing
+      TUI tests stay green after the 1a rewire — the safety net. Add any
+      missing coverage <em>before</em> rewiring.</li>
+      <li><strong><code>SessionManager</code>.</strong> spawn/list/close/
+      interrupt; <code>isinstance(mgr, AppBridge)</code>; handoff (existing
+      bridge tests repointed from <code>AegisApp</code>).</li>
+      <li><strong>Telegram routing (bulk, hermetic).</strong> Fake Bot API
+      client (records outbound, feeds scripted <code>getUpdates</code>).
+      Table-driven over every command incl. <code>/new &lt;bad-slug&gt;</code>,
+      <code>/close</code>, working-guard, wrong-chat-id drop,
+      no-active-agent, sticky-switch vs one-shot. Assert exact outbound
+      sequence: status send → refresh edits → final edit → labeled chunked
+      reply with truncation cap.</li>
+      <li><strong><code>format.py</code>.</strong> Pure-function tests:
+      status-line render, <code>MarkdownV2</code> escaping, chunking + cap.</li>
+      <li><strong><code>find_project_root</code>.</strong>
+      <code>tmp_path</code> trees: cwd, ancestor, none (init path), nested
+      closest-wins.</li>
+      <li><strong><code>aegis serve</code> wiring.</strong> One hermetic
+      test: no-Telegram-config comes up headless, MCP binds to
+      <code>SessionManager</code>, SIGTERM → clean <code>close_all</code>. No
+      live <code>claude</code> in CI; existing
+      <code>tests/test_integration_live.py</code> left as-is.</li>
+    </ul>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li>Permission-prompt handling over Telegram (agents run their
+      configured permission; non-<code>auto</code> stalls are a documented
+      limitation).</li>
+      <li>Forum/topic-per-agent addressing (single linear chat in v1).</li>
+      <li>Multi-chat / multi-user / registration flow (single hardcoded chat
+      id).</li>
+      <li>Webhooks (long-poll only — no inbound port/TLS on the VPS).</li>
+      <li>HTTP control-plane / separate bridge process (Approach 2 — the
+      documented scale-out path, not v1).</li>
+      <li>Tool-activity digests in notifications (final reply text only).</li>
+      <li>Per-spawn working-directory selection (one project root per
+      daemon, resolved from <code>.aegis.py</code>).</li>
+    </ul>
+    <details>
+      <summary>Open questions &amp; deferred items</summary>
+      <ul>
+        <li>Hard chunk cap value (placeholder: 5 chunks then truncation
+        marker) — tune after first real use; uncapped mode is a later toggle
+        if wanted.</li>
+        <li>Refresher interval (placeholder ~2s) — may raise if Telegram
+        rate-limits in practice.</li>
+        <li>TUI rebind already done in this spec (1a); the remaining
+        deferred item is whether <code>AegisApp</code> itself should later be
+        a thin frontend over <code>SessionManager</code> (today it still owns
+        the pane list) — out of scope here.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies</footer>
+
+</div>
+</body>
+</html>
