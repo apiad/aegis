@@ -153,16 +153,18 @@ class TelegramFrontend:
                 "/new [slug] /close /interrupt /agents /sessions "
                 "/<handle> [text] /help")
         else:
-            handle = head[1:]
-            core = self._m.get(handle)
+            # Telegram only auto-links /[A-Za-z0-9_]+, but handles are
+            # hyphenated. Accept the tappable underscore alias too.
+            raw = head[1:]
+            core = self._m.get(raw) or self._m.get(raw.replace("_", "-"))
             if core is None:
-                await self._reply(f"no session {handle!r} — /sessions")
+                await self._reply(f"no session {raw!r} — /sessions")
                 return
             if rest:
                 await self._send_to(core, rest)
             else:
-                self._active = handle
-                await self._reply(f"▸ talking to {handle}")
+                self._active = core.handle
+                await self._reply(f"▸ talking to {core.handle}")
 
     def _agents_line(self) -> str:
         return "agents: " + ", ".join(self._m.list_agents())
@@ -171,8 +173,11 @@ class TelegramFrontend:
         si = self._m.list_sessions()
         if not si:
             return "no sessions"
-        return " · ".join(
-            f"{'●' if s.state == 'working' else '○'} {s.handle} {s.state}"
+        # One per line; /underscore_alias is tappable in Telegram and routes
+        # back via the _ -> - normalisation in _command.
+        return "\n".join(
+            f"{'●' if s.state == 'working' else '○'} "
+            f"/{s.handle.replace('-', '_')} {s.state}"
             for s in si)
 
     async def run(self, bot) -> None:

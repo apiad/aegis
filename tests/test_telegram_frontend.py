@@ -138,3 +138,31 @@ async def test_handle_oneshot_does_not_move_sticky():
     await f.handle_update(
         {"message": {"chat": {"id": 99}, "text": f"/{h1} ping"}})
     assert f._active == h2  # sticky still on the most recent
+
+
+@pytest.mark.asyncio
+async def test_sessions_line_is_tappable():
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    h = m.list_sessions()[0].handle              # hyphenated, e.g. amber-floyd
+    await f.handle_update(
+        {"message": {"chat": {"id": 99}, "text": "/sessions"}})
+    line = b.sent[-1][1]
+    assert f"/{h.replace('-', '_')}" in line      # tappable underscore form
+    assert "\n" in line or len(m.list_sessions()) == 1  # one per line
+
+
+@pytest.mark.asyncio
+async def test_underscore_handle_switches_sticky():
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    h1 = m.list_sessions()[0].handle
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    # switch back to the first using the tappable underscore alias
+    alias = "/" + h1.replace("-", "_")
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": alias}})
+    assert f._active == h1
