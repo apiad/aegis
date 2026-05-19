@@ -138,6 +138,16 @@
       <li><strong>Agents run with their configured permission.</strong>
       Aegis does not override <code>permission</code>; whatever the
       <code>.aegis.py</code> profile sets is used as-is.</li>
+      <li><strong>Auto-appended Telegram prompt.</strong> Optional
+      <code>.aegis.py</code> string <code>auto_add_to_telegram_prompt</code>
+      (default: <em>"You are replying via telegram, keep response compact and
+      focused if possible, only resort to long responses if it really
+      matters"</em>) is appended to every user message that is routed from
+      Telegram to an agent, separated by a blank line and bracketed as a meta
+      note. Empty string disables it. Applies to bare text and
+      <code>/&lt;handle&gt; &lt;text&gt;</code> one-shots; <strong>not</strong>
+      to commands, nor to MCP/handoff-injected turns (those are not Telegram
+      input).</li>
     </ol>
   </section>
 
@@ -187,7 +197,9 @@
         <tr><td><code>config.py</code></td>
           <td>Add <code>find_project_root</code>; read optional
           <code>telegram_token</code> / <code>telegram_chat_id</code> (env
-          <code>AEGIS_TELEGRAM_TOKEN</code> takes precedence for the secret).</td>
+          <code>AEGIS_TELEGRAM_TOKEN</code> takes precedence for the secret)
+          and <code>auto_add_to_telegram_prompt</code> (string, has a default,
+          empty disables).</td>
           <td>—</td></tr>
         <tr><td><code>cli.py</code></td>
           <td>New <code>aegis serve</code> Typer command: resolve root, load
@@ -249,6 +261,9 @@
       <code>lucid-knuth is working — /interrupt first</code>.
       <code>/interrupt</code>, <code>/close</code> always allowed; pure-query
       commands never touch a turn.</li>
+      <li>If the routed message is agent-bound Telegram text (bare or
+      one-shot) and <code>auto_add_to_telegram_prompt</code> is non-empty,
+      wrap: <code>f"{text}\n\n[{auto_add_to_telegram_prompt}]"</code>.</li>
       <li><code>AgentSession.send(text)</code> → lazy-start harness on first
       turn → turn task begins.</li>
     </ol>
@@ -344,7 +359,10 @@
       client (records outbound, feeds scripted <code>getUpdates</code>).
       Table-driven over every command incl. <code>/new &lt;bad-slug&gt;</code>,
       <code>/close</code>, working-guard, wrong-chat-id drop,
-      no-active-agent, sticky-switch vs one-shot. Assert exact outbound
+      no-active-agent, sticky-switch vs one-shot. Assert
+      <code>auto_add_to_telegram_prompt</code> is appended to agent-bound text
+      (bare + one-shot) and absent on commands / when empty. Assert exact
+      outbound
       sequence: status send → refresh edits → final edit → labeled chunked
       reply with truncation cap.</li>
       <li><strong><code>format.py</code>.</strong> Pure-function tests:
