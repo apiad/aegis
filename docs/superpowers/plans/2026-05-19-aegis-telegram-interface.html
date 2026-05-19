@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis Telegram Interface Implementation Plan" status=approved date=2026-05-19 source="docs/superpowers/specs/2026-05-19-aegis-telegram-interface-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Telegram Interface — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--oat:#E3DACC;
+    --olive:#788C5D;--rust:#B04A3F;--blue:#4A6FA5;--g150:#F0EEE6;
+    --g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:18px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12.5px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12.5px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  .task{border-left:3px solid var(--clay)}
+  .step{font-weight:600;color:var(--slate)}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan</div>
+    <h1>Aegis Telegram Interface — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-19</span>
+      <span>Spec: <code>docs/superpowers/specs/2026-05-19-aegis-telegram-interface-design.html</code></span>
+    </div>
+  </header>
+
+  <section>
+    <p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL — use
+    <code>superpowers:subagent-driven-development</code> (recommended) or
+    <code>superpowers:executing-plans</code> to implement this plan
+    task-by-task. Steps use <code>[ ]</code> checkbox markers for tracking.</p>
+    <p><strong>Goal:</strong> Drive autonomous coding sessions from Telegram
+    against a long-lived headless <code>aegis serve</code> daemon — spawn,
+    message, switch, get notified.</p>
+    <p><strong>Architecture:</strong> Extract a Textual-free
+    <code>AgentSession</code> (turn loop/metrics/state) and
+    <code>SessionManager</code> (the concrete <code>AppBridge</code>) out of
+    the TUI; rewire <code>ConversationPane</code> to delegate to
+    <code>AgentSession</code> (DRY, no duplicated loop); add a raw-httpx
+    Telegram frontend and an <code>aegis serve</code> command that binds both
+    the MCP plane and Telegram to one <code>SessionManager</code>.</p>
+    <p><strong>Tech stack:</strong> Python 3.13, <code>uv</code>, pytest
+    (<code>asyncio_mode=auto</code>), Typer, httpx (new dep), Textual (TUI
+    only).</p>
+    <p><strong>Conventions:</strong> TDD — failing test first, then minimal
+    code, commit per logical unit. Fast hermetic suite:
+    <code>uv run pytest -q -k "not live"</code>. Work directly on
+    <code>main</code> (no feature branch). Commit message footer:
+    <code>Co-Authored-By: Claude Opus 4.7 (1M context) &lt;noreply@anthropic.com&gt;</code>.</p>
+  </section>
+
+  <nav class="toc">
+    <a href="#files">File structure</a>
+    <a href="#t1">T1 root resolution</a>
+    <a href="#t2">T2 AgentSession</a>
+    <a href="#t3">T3 pane rewire</a>
+    <a href="#t4">T4 SessionManager</a>
+    <a href="#t5">T5 bot client</a>
+    <a href="#t6">T6 format</a>
+    <a href="#t7">T7 frontend</a>
+    <a href="#t8">T8 config keys</a>
+    <a href="#t9">T9 aegis serve</a>
+    <a href="#t10">T10 deploy + docs</a>
+    <a href="#review">Self-review</a>
+  </nav>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Action</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/config.py</code></td><td>modify</td>
+          <td>Add <code>find_project_root</code>; load
+          <code>telegram_token</code>/<code>telegram_chat_id</code>/
+          <code>auto_add_to_telegram_prompt</code> via a
+          <code>TelegramConfig</code> return.</td></tr>
+        <tr><td><code>src/aegis/core/__init__.py</code></td><td>create</td>
+          <td>Package marker.</td></tr>
+        <tr><td><code>src/aegis/core/session.py</code></td><td>create</td>
+          <td><code>AgentSession</code> — Textual-free turn loop, metrics,
+          state, observer callbacks.</td></tr>
+        <tr><td><code>src/aegis/core/manager.py</code></td><td>create</td>
+          <td><code>SessionManager</code> — session list, spawn/close/
+          interrupt, implements <code>AppBridge</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/pane.py</code></td><td>modify</td>
+          <td>Delegate to an injected <code>AgentSession</code>; pane becomes
+          a pure observer/renderer.</td></tr>
+        <tr><td><code>src/aegis/telegram/__init__.py</code></td><td>create</td>
+          <td>Package marker.</td></tr>
+        <tr><td><code>src/aegis/telegram/bot.py</code></td><td>create</td>
+          <td>Async Bot API client (long-poll, send, edit, backoff/429).</td></tr>
+        <tr><td><code>src/aegis/telegram/format.py</code></td><td>create</td>
+          <td>Pure: status line, MarkdownV2 escape, chunking + cap.</td></tr>
+        <tr><td><code>src/aegis/telegram/frontend.py</code></td><td>create</td>
+          <td>Routing + per-turn status lifecycle, bound to
+          <code>SessionManager</code>.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td>modify</td>
+          <td>Add <code>aegis serve</code>; route <code>aegis</code>/
+          <code>init</code> through <code>find_project_root</code>.</td></tr>
+        <tr><td><code>pyproject.toml</code></td><td>modify</td>
+          <td>Add <code>httpx&gt;=0.28</code> dependency.</td></tr>
+        <tr><td><code>scripts/aegis-serve.service</code></td><td>create</td>
+          <td><code>systemd --user</code> unit template.</td></tr>
+        <tr><td><code>tests/test_core_session.py</code>,
+          <code>test_core_manager.py</code>, <code>test_telegram_bot.py</code>,
+          <code>test_telegram_format.py</code>,
+          <code>test_telegram_frontend.py</code>,
+          <code>test_serve.py</code></td><td>create</td>
+          <td>Hermetic suites per unit. <code>test_config.py</code>,
+          <code>test_tui.py</code>, <code>test_mcp_bridge.py</code>
+          extended/repointed.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================= TASK 1 ================= -->
+  <section id="t1" class="task">
+    <h2>Task 1 — Unified project-root resolution</h2>
+    <p><strong>Files:</strong> Modify <code>src/aegis/config.py</code>,
+    <code>src/aegis/cli.py</code>; Test <code>tests/test_config.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Write failing test</span>. Append to
+    <code>tests/test_config.py</code>:</p>
+    <pre><code>from pathlib import Path
+from aegis.config import find_project_root
+
+def test_find_project_root_in_cwd(tmp_path):
+    (tmp_path / ".aegis.py").write_text("agents={}\n")
+    assert find_project_root(tmp_path) == tmp_path
+
+def test_find_project_root_in_ancestor(tmp_path):
+    (tmp_path / ".aegis.py").write_text("x=1\n")
+    deep = tmp_path / "a" / "b"
+    deep.mkdir(parents=True)
+    assert find_project_root(deep) == tmp_path
+
+def test_find_project_root_closest_wins(tmp_path):
+    (tmp_path / ".aegis.py").write_text("x=1\n")
+    inner = tmp_path / "inner"
+    sub = inner / "sub"
+    sub.mkdir(parents=True)
+    (inner / ".aegis.py").write_text("x=1\n")
+    assert find_project_root(sub) == inner
+
+def test_find_project_root_none(tmp_path):
+    assert find_project_root(tmp_path) is None</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run, expect FAIL</span>:
+    <code>uv run pytest tests/test_config.py -q -k find_project_root</code>
+    → <code>ImportError: cannot import name 'find_project_root'</code>.</p>
+
+    <p><span class="step">[ ] Step 3 — Implement</span>. Add to
+    <code>src/aegis/config.py</code> (after <code>default_search_paths</code>):</p>
+    <pre><code>def find_project_root(start: Path | None = None) -&gt; Path | None:
+    """Closest ancestor of `start` (default cwd) containing .aegis.py."""
+    cur = (start or Path.cwd()).resolve()
+    for d in (cur, *cur.parents):
+        if (d / ".aegis.py").is_file():
+            return d
+    return None</code></pre>
+    <p>Then make <code>load_config</code> root-aware — change its signature to
+    accept an optional explicit file and keep back-compat:</p>
+    <pre><code>def load_config(
+    search_paths: Sequence[Path] | None = None,
+) -&gt; tuple[dict[str, Agent], str]:
+    if search_paths is None:
+        root = find_project_root()
+        paths = ([root / ".aegis.py"] if root else []) + [Path.home() / ".aegis.py"]
+    else:
+        paths = list(search_paths)
+    target = next((p for p in paths if p.is_file()), None)
+    # ...unchanged from here down...</code></pre>
+
+    <p><span class="step">[ ] Step 4 — Run, expect PASS</span>:
+    <code>uv run pytest tests/test_config.py -q</code> (whole file — confirms
+    existing config tests still green).</p>
+
+    <p><span class="step">[ ] Step 5 — Wire CLI</span>. In
+    <code>src/aegis/cli.py</code> <code>run()</code>, replace the
+    <code>cwd</code> default behavior so the harness cwd is the resolved root
+    when <code>--cwd</code> is left default:</p>
+    <pre><code>from aegis.config import ConfigError, load_config, write_init_scaffold, find_project_root
+
+# inside run(), after load_config succeeds:
+    root = find_project_root() or Path.cwd()
+    effective_cwd = root if cwd == "." else cwd
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, str(effective_cwd), mcp_url, handle)</code></pre>
+    <p>And in <code>init()</code>, scaffold at the resolved root if one exists,
+    else cwd:</p>
+    <pre><code>    root = find_project_root()
+    write_init_scaffold((root or Path.cwd()) / ".aegis.py")</code></pre>
+
+    <p><span class="step">[ ] Step 6 — Regression + commit</span>:
+    <code>uv run pytest -q -k "not live"</code> (all green), then
+    <code>git add -A &amp;&amp; git commit -m "feat(config): unified find_project_root; CLI uses resolved root as harness cwd"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 2 ================= -->
+  <section id="t2" class="task">
+    <h2>Task 2 — <code>AgentSession</code> core (extract turn loop)</h2>
+    <p><strong>Files:</strong> Create <code>src/aegis/core/__init__.py</code>,
+    <code>src/aegis/core/session.py</code>, <code>tests/test_core_session.py</code>.</p>
+    <p>Logic is lifted verbatim from <code>pane.py:136-199</code>
+    (<code>_run_turn</code>/<code>_finish</code>/<code>interrupt</code>/
+    <code>close</code>) minus all Textual/rendering; rendering becomes an
+    observer callback.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span>
+    <code>tests/test_core_session.py</code>:</p>
+    <pre><code>import asyncio, pytest
+from aegis.core.session import AgentSession
+from aegis.events import AssistantText, ToolUse, Result, TokenUsage
+from aegis.tui.state import AgentState
+
+class FakeSession:
+    def __init__(self, events): self._events=events; self.started=False; self.closed=False; self.sent=[]
+    async def start(self): self.started=True
+    async def send(self, t): self.sent.append(t)
+    async def close(self): self.closed=True
+    async def events(self):
+        for e in self._events:
+            await asyncio.sleep(0); yield e
+
+def _u(): return TokenUsage(input=1, output=2, cache_read=0, cache_creation=0) \
+    if "true_input" not in dir(TokenUsage) else TokenUsage(1,2,0,0)
+
+@pytest.mark.asyncio
+async def test_lazy_start_and_observers_and_commit():
+    evs=[AssistantText(text="hi"), Result(is_error=False, usage=None)]
+    s=AgentSession(FakeSession(evs), agent=None, agent_slug="default", handle="h1")
+    seen=[]; states=[]
+    s.on_event=lambda se,e: seen.append(type(e).__name__)
+    s.on_state=lambda se,st,fin: states.append((st,fin))
+    await s.send("do x")
+    await s._task
+    assert s._session.started and s._session.sent==["do x"]
+    assert seen==["AssistantText","Result"]
+    assert states==[(AgentState.working,False),(AgentState.ready,True)]
+
+@pytest.mark.asyncio
+async def test_exit_without_result_is_error():
+    s=AgentSession(FakeSession([AssistantText(text="partial")]), None,"default","h1")
+    st=[]; s.on_state=lambda se,x,f: st.append((x,f))
+    await s.send("x"); await s._task
+    assert st[-1]==(AgentState.error,True)
+
+@pytest.mark.asyncio
+async def test_interrupt_cancels_and_resets():
+    async def hang():
+        while True: await asyncio.sleep(0.01)
+    class Hang(FakeSession):
+        async def events(self):
+            await hang(); yield  # never
+    s=AgentSession(Hang([]), None,"default","h1")
+    st=[]; s.on_state=lambda se,x,f: st.append((x,f))
+    await s.send("x"); await asyncio.sleep(0.02)
+    await s.interrupt()
+    assert s.state is AgentState.ready and st[-1]==(AgentState.ready,False)</code></pre>
+    <p>(The <code>_u</code> helper is defensive against the exact
+    <code>TokenUsage</code> constructor; inspect <code>aegis/events.py</code>
+    and use its real fields — do not keep the dual form if unneeded.)</p>
+
+    <p><span class="step">[ ] Step 2 — Run, expect FAIL</span>:
+    <code>uv run pytest tests/test_core_session.py -q</code> → import error.</p>
+
+    <p><span class="step">[ ] Step 3 — Implement</span>
+    <code>src/aegis/core/__init__.py</code> empty; <code>core/session.py</code>:</p>
+    <pre><code>from __future__ import annotations
+import asyncio, time
+from collections.abc import Callable
+
+from aegis.drivers.base import HarnessSession
+from aegis.events import Event, Result, ToolUse, ToolResult
+from aegis.tui.metrics import SessionMetrics
+from aegis.tui.state import AgentState
+
+EventCb = Callable[["AgentSession", Event], None]
+StateCb = Callable[["AgentSession", AgentState, bool], None]
+
+
+class AgentSession:
+    """One harness conversation, frontend-agnostic. Observers render."""
+
+    def __init__(self, session: HarnessSession, agent, agent_slug: str,
+                 handle: str, *, now: Callable[[], float] = time.monotonic):
+        self._session = session
+        self.agent = agent
+        self.agent_slug = agent_slug
+        self.handle = handle
+        self.state = AgentState.ready
+        self.metrics = SessionMetrics()
+        self._now = now
+        self._started = False
+        self._task: asyncio.Task | None = None
+        self.on_event: EventCb | None = None
+        self.on_state: StateCb | None = None
+
+    def _emit_state(self, state: AgentState, *, finished: bool) -&gt; None:
+        self.state = state
+        if self.on_state is not None:
+            self.on_state(self, state, finished)
+
+    async def send(self, text: str) -&gt; None:
+        if self.state is AgentState.working:
+            return
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
+
+    async def _run_turn(self, text: str) -&gt; None:
+        saw_result = False
+        try:
+            if not self._started:
+                await self._session.start()
+                self._started = True
+                self.metrics.begin_session(self._now())
+            await self._session.send(text)
+            async for ev in self._session.events():
+                if self.on_event is not None:
+                    self.on_event(self, ev)
+                if isinstance(ev, ToolUse):
+                    self.metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self.metrics.record_tool_error()
+                if isinstance(ev, Result):
+                    self.metrics.commit(ev.usage, self._now())
+                    saw_result = True
+                    self._emit_state(
+                        AgentState.error if ev.is_error else AgentState.ready,
+                        finished=True)
+                else:
+                    u = getattr(ev, "usage", None)
+                    if u is not None:
+                        self.metrics.observe(u)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - harness failure surfaces as error
+            if not saw_result:
+                self.metrics.commit(None, self._now())
+                self._emit_state(AgentState.error, finished=True)
+            return
+        if not saw_result:
+            self.metrics.commit(None, self._now())
+            self._emit_state(AgentState.error, finished=True)
+
+    async def interrupt(self) -&gt; None:
+        if self.state is not AgentState.working:
+            return
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self.metrics.cancel_turn(self._now())
+        self._emit_state(AgentState.ready, finished=False)
+
+    async def close(self) -&gt; None:
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        if self._started:
+            await self._session.close()</code></pre>
+
+    <p><span class="step">[ ] Step 4 — Run, expect PASS</span>:
+    <code>uv run pytest tests/test_core_session.py -q</code>.</p>
+    <p><span class="step">[ ] Step 5 — Commit</span>:
+    <code>git add src/aegis/core tests/test_core_session.py &amp;&amp; git commit -m "feat(core): AgentSession — frontend-agnostic turn loop + observers"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 3 ================= -->
+  <section id="t3" class="task">
+    <h2>Task 3 — Rewire <code>ConversationPane</code> onto <code>AgentSession</code></h2>
+    <p><strong>Files:</strong> Modify <code>src/aegis/tui/pane.py</code>;
+    safety net is the existing <code>tests/test_tui.py</code> /
+    <code>tests/test_tui_state.py</code> — they must stay green.</p>
+
+    <p><span class="step">[ ] Step 1 — Read the safety net</span>: read
+    <code>tests/test_tui.py</code> and <code>tests/test_tui_state.py</code>.
+    If any observable behavior (user line written, blank-row spacing,
+    <code>PaneStateChanged</code> emitted with <code>finished</code>,
+    interrupt line <code>^C — interrupted</code>, "⚠ harness error"/"⚠
+    harness exited") is asserted, note the assertion. If a behavior is
+    <em>not</em> covered, add a test for it <em>before</em> changing
+    <code>pane.py</code> (commit that test separately).</p>
+
+    <p><span class="step">[ ] Step 2 — Rewire</span>. Keep
+    <code>ConversationPane.__init__</code> signature (it still takes a
+    <code>HarnessSession</code>); internally wrap it:</p>
+    <pre><code>from aegis.core.session import AgentSession
+
+    def __init__(self, session, agent, agent_slug, handle, palette):
+        super().__init__(id=f"pane-{handle}")
+        self._agent = agent
+        self.agent_slug = agent_slug
+        self.handle = handle
+        self._palette = palette
+        self.unseen = False
+        self._had_turn = False
+        self._core = AgentSession(session, agent, agent_slug, handle)
+        self._core.on_event = self._on_core_event
+        self._core.on_state = self._on_core_state
+
+    @property
+    def state(self):                 # keep read API used by app.py
+        return self._core.state</code></pre>
+    <p>Replace <code>_submit</code>'s worker/metrics block with a delegated
+    send (the user-line write + spacing stay — they are render concerns):</p>
+    <pre><code>    def _submit(self, text: str) -&gt; None:
+        inp = self.query_one(Input)
+        inp.disabled = True
+        if self._had_turn:
+            self._write(Text(""))
+        self._had_turn = True
+        log = self.query_one(RichLog)
+        width = log.size.width or 80
+        self._write(render_user_line(text, self._palette, width))
+        self._write(Text(""))
+        self.run_worker(self._core.send(text), group="turn")</code></pre>
+    <p>Add the observer handlers (port the render body of the old
+    <code>_run_turn</code> loop + <code>_finish</code>):</p>
+    <pre><code>    def _on_core_event(self, _core, ev) -&gt; None:
+        renderable = render_event(ev, self._palette)
+        if renderable is not None:
+            self._write(renderable)
+            if not isinstance(ev, (ToolUse, Result)):
+                self._write(Text(""))
+        self.refresh_metrics()
+
+    def _on_core_state(self, _core, state, finished: bool) -&gt; None:
+        self.query_one(StatusBar).set_state(state)
+        if finished and state is AgentState.error \
+                and not self._transcript_has("⚠ harness"):
+            self._write(Text("⚠ harness error", style=self._palette.err))
+        self.post_message(PaneStateChanged(self, finished))
+        if finished:
+            inp = self.query_one(Input)
+            inp.disabled = False
+            inp.focus()
+        self.refresh_metrics()</code></pre>
+    <p>Point <code>refresh_metrics</code> at the core's metrics:
+    <code>self.query_one(StatusBar).set_metrics(self._core.metrics.render(time.monotonic()))</code>.
+    Replace <code>interrupt()</code> body with a worker that calls
+    <code>await self._core.interrupt()</code> then writes
+    <code>^C — interrupted</code> and re-enables the input;
+    <code>close()</code> becomes
+    <code>self.run_worker(self._core.close(), group="turn")</code> or
+    <code>await self._core.close()</code>. Delete the now-dead
+    <code>_metrics</code>, <code>_started</code>, <code>_set_state</code>,
+    <code>_run_turn</code>, <code>_now</code>.</p>
+
+    <p><span class="step">[ ] Step 3 — Run the safety net</span>:
+    <code>uv run pytest tests/test_tui.py tests/test_tui_state.py tests/test_metrics.py -q</code>.
+    Expect all PASS. If a spacing/timing assertion fails because observers
+    fire synchronously vs the old worker, adjust the handler (not the test)
+    until behavior matches.</p>
+    <p><span class="step">[ ] Step 4 — Full hermetic run</span>:
+    <code>uv run pytest -q -k "not live"</code> — all green.</p>
+    <p><span class="step">[ ] Step 5 — Commit</span>:
+    <code>git add src/aegis/tui/pane.py tests/ &amp;&amp; git commit -m "refactor(tui): ConversationPane delegates to AgentSession (DRY, no dup loop)"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 4 ================= -->
+  <section id="t4" class="task">
+    <h2>Task 4 — <code>SessionManager</code> (the concrete AppBridge)</h2>
+    <p><strong>Files:</strong> Create <code>src/aegis/core/manager.py</code>,
+    <code>tests/test_core_manager.py</code>. The <code>handoff</code> logic is
+    lifted from <code>app.py:201-214</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span>
+    <code>tests/test_core_manager.py</code>:</p>
+    <pre><code>import pytest
+from aegis.core.manager import SessionManager
+from aegis.mcp.bridge import AppBridge
+from aegis.tui.state import AgentState
+
+class FakeHarness:
+    async def start(self): ...
+    async def send(self, t): ...
+    async def close(self): ...
+    async def events(self):
+        if False: yield
+
+def make_mgr():
+    agents={"default":object(),"researcher":object()}
+    return SessionManager(agents,"default",
+        make_session=lambda profile,url,handle: FakeHarness(),
+        mcp=None)
+
+def test_implements_appbridge():
+    assert isinstance(make_mgr(), AppBridge)
+
+@pytest.mark.asyncio
+async def test_spawn_list_close():
+    m=make_mgr()
+    s=m.spawn("default")
+    assert s.handle in [si.handle for si in m.list_sessions()]
+    assert sorted(m.list_agents())==["default","researcher"]
+    await m.close(s.handle)
+    assert m.list_sessions()==[]
+
+@pytest.mark.asyncio
+async def test_handoff_rejects_self_and_unknown():
+    m=make_mgr(); a=m.spawn("default")
+    assert "cannot hand off to yourself" in await m.handoff(a.handle,a.handle,"x")
+    assert "no session" in await m.handoff(a.handle,"nope","x")</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run, expect FAIL</span>
+    (import error).</p>
+
+    <p><span class="step">[ ] Step 3 — Implement</span>
+    <code>src/aegis/core/manager.py</code>:</p>
+    <pre><code>from __future__ import annotations
+from collections.abc import Callable
+
+from aegis.core.session import AgentSession
+from aegis.mcp.bridge import SessionInfo
+from aegis.tui.names import generate_name
+from aegis.tui.state import AgentState
+
+SessionFactory = Callable[[object, str, str], object]
+
+
+class SessionManager:
+    """Frontend-agnostic owner of live AgentSessions. Is an AppBridge."""
+
+    def __init__(self, agents: dict, default_agent: str,
+                 make_session: SessionFactory, mcp) -&gt; None:
+        self._agents = agents
+        self._default_agent = default_agent
+        self._make_session = make_session
+        self._mcp = mcp
+        self._sessions: list[AgentSession] = []
+        self._mru: list[str] = []          # most-recently-active handles
+
+    def spawn(self, slug: str | None = None) -&gt; AgentSession:
+        slug = slug or self._default_agent
+        if slug not in self._agents:
+            raise KeyError(slug)
+        agent = self._agents[slug]
+        handle = generate_name({s.handle for s in self._sessions})
+        url = self._mcp.url if self._mcp is not None else ""
+        s = AgentSession(self._make_session(agent, url, handle),
+                         agent, slug, handle)
+        self._sessions.append(s)
+        self._touch(handle)
+        return s
+
+    def _touch(self, handle: str) -&gt; None:
+        if handle in self._mru:
+            self._mru.remove(handle)
+        self._mru.insert(0, handle)
+
+    def get(self, handle: str) -&gt; AgentSession | None:
+        return next((s for s in self._sessions if s.handle == handle), None)
+
+    async def close(self, handle: str) -&gt; None:
+        s = self.get(handle)
+        if s is None:
+            return
+        await s.close()
+        self._sessions.remove(s)
+        if handle in self._mru:
+            self._mru.remove(handle)
+
+    async def interrupt(self, handle: str) -&gt; None:
+        s = self.get(handle)
+        if s is not None:
+            await s.interrupt()
+
+    async def close_all(self) -&gt; None:
+        for s in list(self._sessions):
+            await s.close()
+        self._sessions.clear()
+        self._mru.clear()
+
+    # --- AppBridge --------------------------------------------------------
+    def list_sessions(self) -&gt; list[SessionInfo]:
+        top = self._mru[0] if self._mru else None
+        return [SessionInfo(handle=s.handle, agent_slug=s.agent_slug,
+                            state=s.state.value, active=(s.handle == top),
+                            unseen=False)
+                for s in self._sessions]
+
+    def list_agents(self) -&gt; list[str]:
+        return sorted(self._agents)
+
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str:
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        target = self.get(target_handle)
+        if target is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        if target.state is AgentState.working:
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        await target.send(f"[handoff from {from_handle}] {context}")
+        return f"delivered to {target_handle}"</code></pre>
+
+    <p><span class="step">[ ] Step 4 — Run, expect PASS</span>; then
+    <code>uv run pytest tests/test_mcp_bridge.py tests/test_mcp_server.py -q</code>
+    to confirm the Protocol contract is unchanged.</p>
+    <p><span class="step">[ ] Step 5 — Commit</span>:
+    <code>git add src/aegis/core/manager.py tests/test_core_manager.py &amp;&amp; git commit -m "feat(core): SessionManager — AppBridge impl with spawn/close/mru"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 5 ================= -->
+  <section id="t5" class="task">
+    <h2>Task 5 — Telegram Bot API client</h2>
+    <p><strong>Files:</strong> Modify <code>pyproject.toml</code>; create
+    <code>src/aegis/telegram/__init__.py</code>,
+    <code>src/aegis/telegram/bot.py</code>,
+    <code>tests/test_telegram_bot.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Add dep</span>: in
+    <code>pyproject.toml</code> <code>dependencies</code> add
+    <code>"httpx&gt;=0.28"</code>; run <code>uv sync</code>.</p>
+
+    <p><span class="step">[ ] Step 2 — Failing test</span>
+    <code>tests/test_telegram_bot.py</code> (inject a fake transport so no
+    network):</p>
+    <pre><code>import httpx, pytest
+from aegis.telegram.bot import BotClient
+
+def _client(handler):
+    transport=httpx.MockTransport(handler)
+    return BotClient(token="T", http=httpx.AsyncClient(
+        transport=transport, base_url="https://api.telegram.org"))
+
+@pytest.mark.asyncio
+async def test_send_message_returns_message_id():
+    def h(req): return httpx.Response(200, json={"ok":True,"result":{"message_id":42}})
+    b=_client(h)
+    assert await b.send_message(1,"hi")==42
+
+@pytest.mark.asyncio
+async def test_get_updates_passes_offset_and_returns_list():
+    seen={}
+    def h(req):
+        seen["url"]=str(req.url)
+        return httpx.Response(200, json={"ok":True,"result":[{"update_id":7}]})
+    b=_client(h)
+    up=await b.get_updates(offset=5, timeout=0)
+    assert up==[{"update_id":7}] and "offset=5" in seen["url"]
+
+@pytest.mark.asyncio
+async def test_retry_after_on_429(monkeypatch):
+    calls={"n":0}
+    async def nosleep(_): pass
+    monkeypatch.setattr("asyncio.sleep", nosleep)
+    def h(req):
+        calls["n"]+=1
+        if calls["n"]==1:
+            return httpx.Response(429, json={"ok":False,"parameters":{"retry_after":1}})
+        return httpx.Response(200, json={"ok":True,"result":{"message_id":1}})
+    b=_client(h)
+    assert await b.send_message(1,"x")==1 and calls["n"]==2</code></pre>
+
+    <p><span class="step">[ ] Step 3 — Run, expect FAIL</span>.</p>
+    <p><span class="step">[ ] Step 4 — Implement</span>
+    <code>telegram/__init__.py</code> empty; <code>telegram/bot.py</code>:</p>
+    <pre><code>from __future__ import annotations
+import asyncio, logging
+import httpx
+
+log = logging.getLogger("aegis.telegram")
+
+
+class BotClient:
+    def __init__(self, token: str, http: httpx.AsyncClient | None = None):
+        self._token = token
+        self._http = http or httpx.AsyncClient(
+            base_url="https://api.telegram.org", timeout=httpx.Timeout(65.0))
+
+    def _url(self, method: str) -&gt; str:
+        return f"/bot{self._token}/{method}"
+
+    async def _call(self, method: str, **params):
+        for attempt in range(5):
+            try:
+                r = await self._http.get(self._url(method), params=params)
+            except httpx.HTTPError as e:
+                wait = min(2 ** attempt, 30)
+                log.warning("telegram %s network error: %s (retry %ss)",
+                            method, e, wait)
+                await asyncio.sleep(wait)
+                continue
+            if r.status_code == 429:
+                ra = r.json().get("parameters", {}).get("retry_after", 1)
+                await asyncio.sleep(ra)
+                continue
+            data = r.json()
+            if not data.get("ok"):
+                log.warning("telegram %s !ok: %s", method, data)
+                return None
+            return data["result"]
+        log.error("telegram %s gave up after retries", method)
+        return None
+
+    async def get_updates(self, offset: int, timeout: int = 50) -&gt; list[dict]:
+        res = await self._call("getUpdates", offset=offset, timeout=timeout)
+        return res or []
+
+    async def send_message(self, chat_id: int, text: str,
+                           markdown: bool = False) -&gt; int | None:
+        params = {"chat_id": chat_id, "text": text}
+        if markdown:
+            params["parse_mode"] = "MarkdownV2"
+        res = await self._call("sendMessage", **params)
+        return res["message_id"] if res else None
+
+    async def edit_message(self, chat_id: int, message_id: int,
+                           text: str) -&gt; None:
+        await self._call("editMessageText", chat_id=chat_id,
+                         message_id=message_id, text=text)
+
+    async def aclose(self) -&gt; None:
+        await self._http.aclose()</code></pre>
+
+    <p><span class="step">[ ] Step 5 — Run PASS, commit</span>:
+    <code>git add pyproject.toml uv.lock src/aegis/telegram/__init__.py src/aegis/telegram/bot.py tests/test_telegram_bot.py &amp;&amp; git commit -m "feat(telegram): async Bot API client with backoff + 429 handling"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 6 ================= -->
+  <section id="t6" class="task">
+    <h2>Task 6 — Pure formatting helpers</h2>
+    <p><strong>Files:</strong> Create <code>src/aegis/telegram/format.py</code>,
+    <code>tests/test_telegram_format.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span>:</p>
+    <pre><code>from aegis.telegram.format import escape_md, chunk, status_line
+
+def test_escape_md():
+    assert escape_md("a_b*c[")=="a\\_b\\*c\\["
+
+def test_chunk_caps_and_labels():
+    parts=chunk("x"*9000, label="lucid-knuth", limit=4096, max_parts=2)
+    assert len(parts)==2
+    assert parts[0].startswith("lucid-knuth (1/2)")
+    assert "truncated" in parts[-1]
+
+def test_chunk_single_no_label_noise():
+    parts=chunk("short", label="h", limit=4096, max_parts=5)
+    assert parts==["short"]
+
+def test_status_line_shape():
+    s=status_line("lucid-knuth","working","·opus·high","↑0 (–) ↓0")
+    assert s=="⏳ lucid-knuth · working · ·opus·high ↑0 (–) ↓0"</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run FAIL</span>.</p>
+    <p><span class="step">[ ] Step 3 — Implement</span>
+    <code>telegram/format.py</code>:</p>
+    <pre><code>from __future__ import annotations
+
+_MD = r"_*[]()~`&gt;#+-=|{}.!"
+
+def escape_md(text: str) -&gt; str:
+    return "".join("\\" + c if c in _MD else c for c in text)
+
+def status_line(handle: str, state: str, model: str, metrics: str) -&gt; str:
+    icon = {"working": "⏳", "ready": "✅", "error": "⚠️"}.get(state, "•")
+    return f"{icon} {handle} · {state} · {model} {metrics}"
+
+def chunk(text: str, *, label: str, limit: int = 4096,
+          max_parts: int = 5) -&gt; list[str]:
+    body = text.strip() or "(no output)"
+    raw = [body[i:i + limit - 40] for i in range(0, len(body), limit - 40)]
+    if len(raw) == 1:
+        return [raw[0]]
+    kept = raw[:max_parts]
+    out = [f"{label} ({i+1}/{len(kept)})\n{p}" for i, p in enumerate(kept)]
+    dropped = len(raw) - len(kept)
+    if dropped &gt; 0:
+        out[-1] += f"\n… (truncated, {dropped} more chunk"
+        out[-1] += "s)" if dropped != 1 else ")"
+    return out</code></pre>
+    <p><span class="step">[ ] Step 4 — Run PASS, commit</span>:
+    <code>git add src/aegis/telegram/format.py tests/test_telegram_format.py &amp;&amp; git commit -m "feat(telegram): pure status-line / MarkdownV2 / chunking helpers"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 7 ================= -->
+  <section id="t7" class="task">
+    <h2>Task 7 — Telegram frontend (routing + status lifecycle)</h2>
+    <p><strong>Files:</strong> Create
+    <code>src/aegis/telegram/frontend.py</code>,
+    <code>tests/test_telegram_frontend.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span> — fake bot records
+    calls; real <code>SessionManager</code> with the <code>FakeHarness</code>
+    from Task 4 (no scripted events → turn finishes immediately as
+    error-without-Result, which is fine: we assert routing + outbound
+    sequence, not harness content):</p>
+    <pre><code>import asyncio, pytest
+from aegis.core.manager import SessionManager
+from aegis.telegram.frontend import TelegramFrontend
+
+class FakeHarness:
+    async def start(self): ...
+    async def send(self,t): self.sent=getattr(self,"sent",[])+[t]
+    async def close(self): ...
+    async def events(self):
+        if False: yield
+
+class FakeBot:
+    def __init__(self): self.sent=[]; self.edits=[]; self._mid=0
+    async def send_message(self,c,t,markdown=False):
+        self._mid+=1; self.sent.append((c,t)); return self._mid
+    async def edit_message(self,c,m,t): self.edits.append((m,t))
+
+def mgr():
+    return SessionManager({"default":1,"researcher":2},"default",
+        lambda p,u,h: FakeHarness(), mcp=None)
+
+def fe(bot,m):
+    return TelegramFrontend(bot, m, chat_id=99,
+        auto_prompt="BE BRIEF", refresh_interval=0.0)
+
+@pytest.mark.asyncio
+async def test_wrong_chat_dropped():
+    b=FakeBot(); f=fe(b,mgr())
+    await f.handle_update({"message":{"chat":{"id":1},"text":"/new"}})
+    assert b.sent==[]
+
+@pytest.mark.asyncio
+async def test_new_spawns_and_sets_active():
+    b=FakeBot(); m=mgr(); f=fe(b,m)
+    await f.handle_update({"message":{"chat":{"id":99},"text":"/new researcher"}})
+    assert len(m.list_sessions())==1
+    assert "spawned" in b.sent[-1][1]
+
+@pytest.mark.asyncio
+async def test_bare_text_appends_auto_prompt():
+    b=FakeBot(); m=mgr(); f=fe(b,m)
+    await f.handle_update({"message":{"chat":{"id":99},"text":"/new"}})
+    s=m.list_sessions()[0]; core=m.get(s.handle)
+    await f.handle_update({"message":{"chat":{"id":99},"text":"do x"}})
+    await asyncio.sleep(0)
+    assert core._session.sent[0]=="do x\n\n[BE BRIEF]"
+
+@pytest.mark.asyncio
+async def test_unknown_slug_lists_agents():
+    b=FakeBot(); f=fe(b,mgr())
+    await f.handle_update({"message":{"chat":{"id":99},"text":"/new bogus"}})
+    assert "researcher" in b.sent[-1][1]
+
+@pytest.mark.asyncio
+async def test_handle_oneshot_does_not_move_sticky():
+    b=FakeBot(); m=mgr(); f=fe(b,m)
+    await f.handle_update({"message":{"chat":{"id":99},"text":"/new"}})
+    h1=m.list_sessions()[0].handle
+    await f.handle_update({"message":{"chat":{"id":99},"text":"/new"}})
+    h2=[s.handle for s in m.list_sessions() if s.handle!=h1][0]
+    await f.handle_update({"message":{"chat":{"id":99},"text":f"/{h1} ping"}})
+    assert f._active==h2  # sticky still on the most recent</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run FAIL</span>.</p>
+    <p><span class="step">[ ] Step 3 — Implement</span>
+    <code>telegram/frontend.py</code>:</p>
+    <pre><code>from __future__ import annotations
+import asyncio, logging, time
+
+from aegis.core.manager import SessionManager
+from aegis.telegram.format import chunk, escape_md, status_line
+from aegis.tui.state import AgentState
+
+log = logging.getLogger("aegis.telegram")
+_QUERY = {"/agents", "/sessions", "/help"}
+
+
+class TelegramFrontend:
+    def __init__(self, bot, manager: SessionManager, *, chat_id: int,
+                 auto_prompt: str, refresh_interval: float = 2.0):
+        self._bot = bot
+        self._m = manager
+        self._chat = chat_id
+        self._auto = auto_prompt
+        self._refresh = refresh_interval
+        self._active: str | None = None
+
+    async def _reply(self, text: str) -&gt; None:
+        await self._bot.send_message(self._chat, text)
+
+    def _augment(self, text: str) -&gt; str:
+        return f"{text}\n\n[{self._auto}]" if self._auto else text
+
+    async def _send_to(self, core, text: str) -&gt; None:
+        if core.state is AgentState.working:
+            await self._reply(f"{core.handle} is working — /interrupt first")
+            return
+        self._attach_observers(core)
+        await core.send(self._augment(text))
+
+    def _attach_observers(self, core) -&gt; None:
+        if getattr(core, "_tg_wired", False):
+            return
+        core._tg_wired = True
+        state = {"mid": None, "buf": []}
+
+        def on_event(_c, ev):
+            from aegis.events import AssistantText
+            if isinstance(ev, AssistantText):
+                state["buf"].append(ev.text)
+
+        def on_state(_c, st, finished):
+            asyncio.create_task(self._on_state(_c, st, finished, state))
+
+        core.on_event = on_event
+        core.on_state = on_state
+
+    async def _on_state(self, core, st, finished, state) -&gt; None:
+        line = status_line(core.handle, st.value,
+                           getattr(core.agent, "model", "?"),
+                           core.metrics.render(time.monotonic()))
+        if st is AgentState.working and state["mid"] is None:
+            state["mid"] = await self._bot.send_message(self._chat, line)
+        elif state["mid"] is not None:
+            await self._bot.edit_message(self._chat, state["mid"], line)
+        if finished:
+            reply = "".join(state["buf"]).strip()
+            for part in chunk(escape_md(reply), label=core.handle):
+                await self._bot.send_message(self._chat, part, markdown=True)
+            state["buf"].clear()
+            state["mid"] = None
+
+    async def handle_update(self, update: dict) -&gt; None:
+        msg = update.get("message") or {}
+        if msg.get("chat", {}).get("id") != self._chat:
+            log.debug("drop update from chat %s", msg.get("chat"))
+            return
+        text = (msg.get("text") or "").strip()
+        if not text:
+            return
+        if text.startswith("/"):
+            await self._command(text)
+        else:
+            await self._route_text(text)
+
+    async def _route_text(self, text: str) -&gt; None:
+        if self._active is None:
+            await self._reply("no active agent — /new to spawn")
+            return
+        core = self._m.get(self._active)
+        if core is None:
+            self._active = None
+            await self._reply("no active agent — /new to spawn")
+            return
+        await self._send_to(core, text)
+
+    async def _command(self, text: str) -&gt; None:
+        head, _, rest = text.partition(" ")
+        rest = rest.strip()
+        if head == "/new":
+            try:
+                core = self._m.spawn(rest or None)
+            except KeyError:
+                await self._reply("unknown agent. " + self._agents_line())
+                return
+            self._active = core.handle
+            await self._reply(f"▸ spawned {core.handle} "
+                              f"({core.agent_slug})")
+        elif head == "/close":
+            if self._active is None:
+                await self._reply("no active agent")
+                return
+            closed = self._active
+            await self._m.close(closed)
+            rest_sessions = self._m.list_sessions()
+            self._active = rest_sessions[0].handle if rest_sessions else None
+            tail = (f"active: {self._active}" if self._active
+                    else "no active agent")
+            await self._reply(f"▸ closed {closed} · {tail}")
+        elif head == "/interrupt":
+            if self._active is not None:
+                await self._m.interrupt(self._active)
+                await self._reply(f"▸ interrupted {self._active}")
+        elif head == "/agents":
+            await self._reply(self._agents_line())
+        elif head == "/sessions":
+            await self._reply(self._sessions_line())
+        elif head == "/help":
+            await self._reply("/new [slug] /close /interrupt /agents "
+                              "/sessions /<handle> [text] /help")
+        else:
+            handle = head[1:]
+            core = self._m.get(handle)
+            if core is None:
+                await self._reply(f"no session {handle!r} — /sessions")
+                return
+            if rest:
+                await self._send_to(core, rest)          # one-shot
+            else:
+                self._active = handle                    # sticky switch
+                await self._reply(f"▸ talking to {handle}")
+
+    def _agents_line(self) -&gt; str:
+        return "agents: " + ", ".join(self._m.list_agents())
+
+    def _sessions_line(self) -&gt; str:
+        si = self._m.list_sessions()
+        if not si:
+            return "no sessions"
+        return " · ".join(
+            f"{'●' if s.state=='working' else '○'} {s.handle} {s.state}"
+            for s in si)
+
+    async def run(self, bot) -&gt; None:
+        offset = 0
+        while True:
+            for up in await bot.get_updates(offset):
+                offset = up["update_id"] + 1
+                try:
+                    await self.handle_update(up)
+                except Exception:  # noqa: BLE001 - never die on one update
+                    log.exception("update handling failed")</code></pre>
+    <p>Note: <code>_on_state</code> is scheduled via
+    <code>asyncio.create_task</code> because observer callbacks are sync; in
+    tests <code>refresh_interval=0.0</code> and the immediate
+    error-without-Result path means a single <code>await asyncio.sleep(0)</code>
+    drains it. The periodic mid-turn refresher (edit every
+    <code>refresh_interval</code>s) is a follow-up micro-step: add a
+    background task per working turn that re-renders <code>status_line</code>;
+    keep it out of the first green if it complicates the FAIL→PASS cycle, but
+    it IS required before Task 9 ships — add it as Step 5 here.</p>
+
+    <p><span class="step">[ ] Step 4 — Run PASS</span> for all
+    <code>test_telegram_frontend.py</code> cases.</p>
+    <p><span class="step">[ ] Step 5 — Add the mid-turn refresher</span>:
+    write a failing test asserting <code>edit_message</code> is called &gt;1×
+    during a long (multi-event, delayed) fake turn with
+    <code>refresh_interval</code> small; implement a per-turn
+    <code>asyncio.Task</code> started on <code>working</code> that loops
+    <code>edit_message</code> every <code>refresh_interval</code>s until
+    <code>finished</code>, then cancelled. Run PASS.</p>
+    <p><span class="step">[ ] Step 6 — Commit</span>:
+    <code>git add src/aegis/telegram/frontend.py tests/test_telegram_frontend.py &amp;&amp; git commit -m "feat(telegram): frontend routing, sticky agent, status lifecycle"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 8 ================= -->
+  <section id="t8" class="task">
+    <h2>Task 8 — Config: Telegram keys</h2>
+    <p><strong>Files:</strong> Modify <code>src/aegis/config.py</code>; extend
+    <code>tests/test_config.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span>:</p>
+    <pre><code>import os
+from aegis.config import load_telegram_config
+
+DEFAULT_PROMPT = ("You are replying via telegram, keep response compact and "
+    "focused if possible, only resort to long responses if it really matters")
+
+def test_telegram_config_defaults(tmp_path, monkeypatch):
+    p=tmp_path/".aegis.py"; p.write_text("telegram_chat_id=5\n")
+    monkeypatch.delenv("AEGIS_TELEGRAM_TOKEN", raising=False)
+    cfg=load_telegram_config(p)
+    assert cfg.chat_id==5 and cfg.token is None
+    assert cfg.auto_prompt==DEFAULT_PROMPT
+
+def test_env_token_wins(tmp_path, monkeypatch):
+    p=tmp_path/".aegis.py"; p.write_text("telegram_token='infile'\n")
+    monkeypatch.setenv("AEGIS_TELEGRAM_TOKEN","fromenv")
+    assert load_telegram_config(p).token=="fromenv"
+
+def test_empty_auto_prompt_disables(tmp_path):
+    p=tmp_path/".aegis.py"; p.write_text("auto_add_to_telegram_prompt=''\n")
+    assert load_telegram_config(p).auto_prompt==""</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run FAIL</span>.</p>
+    <p><span class="step">[ ] Step 3 — Implement</span> in
+    <code>config.py</code>:</p>
+    <pre><code>import os
+from dataclasses import dataclass
+
+DEFAULT_TELEGRAM_PROMPT = (
+    "You are replying via telegram, keep response compact and focused "
+    "if possible, only resort to long responses if it really matters")
+
+
+@dataclass(frozen=True)
+class TelegramConfig:
+    token: str | None
+    chat_id: int | None
+    auto_prompt: str
+
+
+def load_telegram_config(path: Path) -&gt; TelegramConfig:
+    ns: dict[str, object] = {}
+    if path.is_file():
+        exec(compile(path.read_text(), str(path), "exec"), ns)  # noqa: S102
+    token = os.environ.get("AEGIS_TELEGRAM_TOKEN") or ns.get("telegram_token")
+    chat_id = ns.get("telegram_chat_id")
+    auto = ns.get("auto_add_to_telegram_prompt", DEFAULT_TELEGRAM_PROMPT)
+    return TelegramConfig(
+        token=token or None,
+        chat_id=int(chat_id) if chat_id is not None else None,
+        auto_prompt="" if auto == "" else str(auto))</code></pre>
+    <p><span class="step">[ ] Step 4 — Run PASS, commit</span>:
+    <code>git add src/aegis/config.py tests/test_config.py &amp;&amp; git commit -m "feat(config): TelegramConfig — token/chat_id/auto_prompt loading"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 9 ================= -->
+  <section id="t9" class="task">
+    <h2>Task 9 — <code>aegis serve</code> command + supervisor</h2>
+    <p><strong>Files:</strong> Modify <code>src/aegis/cli.py</code>; create
+    <code>tests/test_serve.py</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — Failing test</span> (headless, no
+    Telegram config → comes up, binds MCP to a SessionManager, clean
+    shutdown). Factor the loop into an awaitable <code>_serve(...)</code> so
+    it is testable without the process signal machinery:</p>
+    <pre><code>import asyncio, pytest
+from aegis.cli import _serve
+
+class FakeMCP:
+    url="http://x"; started=False; stopped=False
+    def bind(self,b): self.bound=b
+    async def start(self): self.started=True
+    async def stop(self): self.stopped=True
+
+@pytest.mark.asyncio
+async def test_serve_headless_binds_and_stops():
+    mcp=FakeMCP()
+    stop=asyncio.Event()
+    async def trigger(): stop.set()
+    asyncio.get_event_loop().call_soon(stop.set)
+    await _serve(agents={"default":1}, default_agent="default",
+                 make_session=lambda p,u,h: None, mcp=mcp,
+                 tg=None, stop=stop)
+    assert mcp.started and mcp.stopped
+    from aegis.mcp.bridge import AppBridge
+    assert isinstance(mcp.bound, AppBridge)</code></pre>
+
+    <p><span class="step">[ ] Step 2 — Run FAIL</span>.</p>
+    <p><span class="step">[ ] Step 3 — Implement</span> in
+    <code>cli.py</code>:</p>
+    <pre><code>import asyncio, signal
+from aegis.core.manager import SessionManager
+from aegis.config import load_telegram_config, find_project_root
+
+
+async def _serve(*, agents, default_agent, make_session, mcp, tg,
+                 stop: asyncio.Event) -&gt; None:
+    mgr = SessionManager(agents, default_agent, make_session, mcp)
+    mcp.bind(mgr)
+    await mcp.start()
+    tasks = []
+    if tg is not None:
+        from aegis.telegram.bot import BotClient
+        from aegis.telegram.frontend import TelegramFrontend
+        bot = BotClient(tg.token)
+        fe = TelegramFrontend(bot, mgr, chat_id=tg.chat_id,
+                              auto_prompt=tg.auto_prompt)
+        tasks.append(asyncio.create_task(fe.run(bot)))
+    try:
+        await stop.wait()
+    finally:
+        for t in tasks:
+            t.cancel()
+        await mgr.close_all()
+        await mcp.stop()
+
+
+@app.command()
+def serve(cwd: str = typer.Option(".", "--cwd")) -&gt; None:
+    """Run the headless daemon (MCP plane + optional Telegram)."""
+    try:
+        agents, default_agent = load_config()
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]"); raise typer.Exit(1)
+    root = find_project_root() or Path.cwd()
+    effective = str(root if cwd == "." else cwd)
+
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, effective, mcp_url, handle)
+
+    tg = None
+    tcfg = load_telegram_config(root / ".aegis.py")
+    if tcfg.token and tcfg.chat_id:
+        tg = tcfg
+    else:
+        _console.print("[yellow]No telegram_token/chat_id — "
+                       "headless MCP-only.[/yellow]")
+
+    async def main_async():
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stop.set)
+        await _serve(agents=agents, default_agent=default_agent,
+                     make_session=make_session, mcp=AegisMCP(),
+                     tg=tg, stop=stop)
+
+    asyncio.run(main_async())</code></pre>
+
+    <p><span class="step">[ ] Step 4 — Run PASS</span>; full hermetic suite
+    <code>uv run pytest -q -k "not live"</code> green.</p>
+    <p><span class="step">[ ] Step 5 — Manual smoke (optional, gated)</span>:
+    with a real token+chat in a scratch <code>.aegis.py</code>,
+    <code>aegis serve</code>, then from Telegram: <code>/new</code> →
+    <code>/sessions</code> → a bare prompt → observe status message +
+    reply → <code>/close</code>. Not in CI.</p>
+    <p><span class="step">[ ] Step 6 — Commit</span>:
+    <code>git add src/aegis/cli.py tests/test_serve.py &amp;&amp; git commit -m "feat(cli): aegis serve — headless SessionManager + MCP + Telegram"</code>.</p>
+  </section>
+
+  <!-- ================= TASK 10 ================= -->
+  <section id="t10" class="task">
+    <h2>Task 10 — Deployment unit + docs</h2>
+    <p><strong>Files:</strong> Create <code>scripts/aegis-serve.service</code>;
+    modify <code>AGENTS.md</code>, <code>README.md</code>,
+    <code>CHANGELOG.md</code>, <code>TASKS.md</code>.</p>
+
+    <p><span class="step">[ ] Step 1 — systemd unit</span>
+    <code>scripts/aegis-serve.service</code>:</p>
+    <pre><code>[Unit]
+Description=aegis serve (headless daemon + Telegram)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace/repos/aegis
+EnvironmentFile=%h/.config/aegis/serve.env
+ExecStart=%h/.local/bin/uv run aegis serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target</code></pre>
+    <p>(<code>serve.env</code> holds <code>AEGIS_TELEGRAM_TOKEN=…</code>;
+    install with <code>systemctl --user enable --now aegis-serve</code>.)</p>
+
+    <p><span class="step">[ ] Step 2 — Docs</span>. <code>AGENTS.md</code>
+    Layout: add <code>core/</code> (session.py, manager.py) and
+    <code>telegram/</code> entries, and the <code>aegis serve</code> line +
+    the <code>find_project_root</code> resolution rule.
+    <code>README.md</code>: add a "Headless / Telegram" section (the command
+    set table, <code>.aegis.py</code> keys, systemd pointer).
+    <code>CHANGELOG.md</code>: new entry. <code>TASKS.md</code>: mark "3.
+    Telegram interface" done; leave "4. Task queue" open.</p>
+
+    <p><span class="step">[ ] Step 3 — Final gate</span>:
+    <code>uv run pytest -q -k "not live"</code> green; <code>ruff check .</code>
+    as its own step (do not pipe through <code>tail</code>), check rc=0.</p>
+    <p><span class="step">[ ] Step 4 — Commit + push</span>:
+    <code>git add -A &amp;&amp; git commit -m "docs(telegram): serve unit + AGENTS/README/CHANGELOG; close TASKS item 3" &amp;&amp; git push origin main</code>.</p>
+  </section>
+
+  <section id="review">
+    <h2>Self-review</h2>
+    <p><strong>Spec coverage:</strong> headless daemon → T9; SessionManager
+    extraction → T4; DRY AgentSession + pane rewire → T2/T3; unified
+    <code>find_project_root</code> → T1; sticky/one-shot addressing, full
+    command set incl. <code>/close</code> → T7; final-reply-only + chunk/cap
+    → T6/T7; edit-in-place status + refresher → T7 (Steps 3–5); raw httpx
+    client + backoff/429 → T5; auth chat-id drop → T7; configured-permission
+    pass-through → inherent (no override added anywhere);
+    <code>auto_add_to_telegram_prompt</code> → T8 (load) + T7 (apply,
+    test-asserted); systemd/VPS → T10; testing strategy → each task is
+    TDD-first. No spec requirement is unmapped.</p>
+    <p><strong>Placeholder scan:</strong> all code steps carry runnable code;
+    the only deferred micro-item (mid-turn refresher) is promoted to an
+    explicit numbered step (T7 Step 5) with its own FAIL→PASS, not a "TODO".</p>
+    <p><strong>Type consistency:</strong> <code>AgentSession</code> API
+    (<code>send</code>/<code>interrupt</code>/<code>close</code>,
+    <code>on_event</code>/<code>on_state(.., finished)</code>,
+    <code>state</code>, <code>metrics</code>, <code>handle</code>,
+    <code>agent</code>, <code>agent_slug</code>) is identical across
+    T2/T3/T4/T7. <code>SessionManager</code>
+    (<code>spawn</code>/<code>get</code>/<code>close</code>/
+    <code>interrupt</code>/<code>close_all</code>/<code>list_sessions</code>/
+    <code>list_agents</code>/<code>handoff</code>) consistent across T4/T7/T9.
+    <code>BotClient</code> (<code>get_updates</code>/<code>send_message</code>/
+    <code>edit_message</code>) consistent across T5/T7/T9.</p>
+    <details>
+      <summary>Known accepted risks</summary>
+      <ul>
+        <li>T3 may surface ordering differences (observers fire inline vs the
+        old Textual worker). The existing TUI suite is the arbiter; adjust
+        handlers, not tests.</li>
+        <li><code>AegisApp</code> still owns its pane list and its own bridge
+        methods (it does not yet route through <code>SessionManager</code>) —
+        explicitly deferred by the spec; not a gap.</li>
+        <li>Non-<code>auto</code> permission stalls remain a documented
+        limitation; <code>/interrupt</code> is the escape hatch.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies</footer>
+
+</div>
+</body>
+</html>
