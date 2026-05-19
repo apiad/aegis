@@ -2,6 +2,7 @@ import pytest
 from aegis.config import (
     Agent, Permission, Effort, INIT_TEMPLATE,
     load_config, write_init_scaffold, ConfigError,
+    find_project_root,
 )
 
 
@@ -75,3 +76,28 @@ def test_write_init_scaffold_writes_template(tmp_path):
     f = tmp_path / ".aegis.py"
     write_init_scaffold(f)
     assert f.read_text() == INIT_TEMPLATE
+
+
+def test_find_project_root_in_cwd(tmp_path):
+    (tmp_path / ".aegis.py").write_text("agents={}\n")
+    assert find_project_root(tmp_path) == tmp_path
+
+
+def test_find_project_root_in_ancestor(tmp_path):
+    (tmp_path / ".aegis.py").write_text("x=1\n")
+    deep = tmp_path / "a" / "b"
+    deep.mkdir(parents=True)
+    assert find_project_root(deep) == tmp_path
+
+
+def test_find_project_root_closest_wins(tmp_path):
+    (tmp_path / ".aegis.py").write_text("x=1\n")
+    inner = tmp_path / "inner"
+    sub = inner / "sub"
+    sub.mkdir(parents=True)
+    (inner / ".aegis.py").write_text("x=1\n")
+    assert find_project_root(sub) == inner
+
+
+def test_find_project_root_none(tmp_path):
+    assert find_project_root(tmp_path) is None

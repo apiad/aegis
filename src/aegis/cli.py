@@ -6,7 +6,9 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from aegis.config import ConfigError, load_config, write_init_scaffold
+from aegis.config import (
+    ConfigError, find_project_root, load_config, write_init_scaffold,
+)
 from aegis.drivers import get_driver
 from aegis.mcp import AegisMCP
 from aegis.tui import AegisApp
@@ -28,8 +30,9 @@ def _version_callback(value: bool) -> None:
 @app.command()
 def init() -> None:
     """Create a .aegis.py config scaffold in the current directory."""
+    root = find_project_root()
     try:
-        write_init_scaffold(Path.cwd() / ".aegis.py")
+        write_init_scaffold((root or Path.cwd()) / ".aegis.py")
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -61,9 +64,12 @@ def run(
             f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
         raise typer.Exit(1)
 
+    root = find_project_root() or Path.cwd()
+    effective_cwd = str(root) if cwd == "." else cwd
+
     def make_session(profile, mcp_url, handle):
         return get_driver(profile.harness).session(
-            profile, cwd, mcp_url, handle)
+            profile, effective_cwd, mcp_url, handle)
 
     AegisApp(agents, name, make_session, AegisMCP()).run()
 

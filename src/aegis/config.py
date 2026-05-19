@@ -53,10 +53,23 @@ def default_search_paths() -> list[Path]:
     return [Path.cwd() / ".aegis.py", Path.home() / ".aegis.py"]
 
 
+def find_project_root(start: Path | None = None) -> Path | None:
+    """Closest ancestor of `start` (default cwd) containing .aegis.py."""
+    cur = (start or Path.cwd()).resolve()
+    for d in (cur, *cur.parents):
+        if (d / ".aegis.py").is_file():
+            return d
+    return None
+
+
 def load_config(
     search_paths: Sequence[Path] | None = None,
 ) -> tuple[dict[str, Agent], str]:
-    paths = list(search_paths) if search_paths is not None else default_search_paths()
+    if search_paths is None:
+        root = find_project_root()
+        paths = ([root / ".aegis.py"] if root else []) + [Path.home() / ".aegis.py"]
+    else:
+        paths = list(search_paths)
     target = next((p for p in paths if p.is_file()), None)
     if target is None:
         raise ConfigError(
