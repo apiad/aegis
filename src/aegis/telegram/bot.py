@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+
+import httpx
+
+log = logging.getLogger("aegis.telegram")
+
+
+class BotClient:
+    def __init__(self, token: str,
+                 http: httpx.AsyncClient | None = None) -> None:
+        self._token = token
+        self._http = http or httpx.AsyncClient(
+            base_url="https://api.telegram.org",
+            timeout=httpx.Timeout(65.0))
+
+    def _url(self, method: str) -> str:
+        return f"/bot{self._token}/{method}"
+
+    async def _call(self, method: str, **params):
+        for attempt in range(5):
+            try:
+                r = await self._http.get(self._url(method), params=params)
+            except httpx.HTTPError as e:
+                wait = min(2 ** attempt, 30)
+                log.warning("telegram %s network error: %s (retry %ss)",
+                            method, e, wait)
+                await asyncio.sleep(wait)
+                continue
+            if r.status_code == 429:
+                ra = r.json().get("parameters", {}).get("retry_after", 1)
+                await asyncio.sleep(ra)
+                continue
+            data = r.json()
+            if not data.get("ok"):
+                log.warning("telegram %s !ok: %s", method, data)
+                return None
+            return data["result"]
+        log.error("telegram %s gave up after retries", method)
+        return None
+
+    async def get_updates(self, offset: int,
+                          timeout: int = 50) -> list[dict]:
+        res = await self._call("getUpdates", offset=offset, timeout=timeout)
+        return res or []
+
+    async def send_message(self, chat_id: int, text: str,
+                           markdown: bool = False) -> int | None:
+        params = {"chat_id": chat_id, "text": text}
+        if markdown:
+            params["parse_mode"] = "MarkdownV2"
+        res = await self._call("sendMessage", **params)
+        return res["message_id"] if res else None
+
+    async def edit_message(self, chat_id: int, message_id: int,
+                           text: str) -> None:
+        await self._call("editMessageText", chat_id=chat_id,
+                         message_id=message_id, text=text)
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
