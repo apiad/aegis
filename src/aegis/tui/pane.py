@@ -10,10 +10,10 @@ from textual.widget import Widget
 from textual.widgets import Input, RichLog
 
 from aegis.config import Agent
+from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
-from aegis.events import Result, ToolResult, ToolUse
+from aegis.events import Result, ToolUse
 from aegis.render import render_event, render_user_line
-from aegis.tui.metrics import SessionMetrics
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar
 
@@ -47,16 +47,23 @@ class ConversationPane(Widget):
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette) -> None:
         super().__init__(id=f"pane-{handle}")
-        self._session = session
         self._agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
         self._palette = palette
-        self.state = AgentState.ready
         self.unseen = False
-        self._started = False
         self._had_turn = False
-        self._metrics = SessionMetrics()
+        self._core = AgentSession(session, agent, agent_slug, handle)
+        self._core.on_event = self._on_core_event
+        self._core.on_state = self._on_core_state
+
+    @property
+    def state(self) -> AgentState:
+        return self._core.state
+
+    @property
+    def _session(self) -> HarnessSession:
+        return self._core._session
 
     def set_palette(self, palette) -> None:
         self._palette = palette
@@ -70,22 +77,12 @@ class ConversationPane(Widget):
             yield Input(placeholder="type a message…")
 
     async def on_mount(self) -> None:
-        # Lazy: the harness subprocess is not started until the first
-        # message (see _run_turn). The pane is "ready" with no process yet.
-        self._set_state(AgentState.ready, finished=False)
+        self.query_one(StatusBar).set_state(AgentState.ready)
         self.refresh_metrics()
-
-    def _now(self) -> float:
-        return time.monotonic()
 
     def refresh_metrics(self) -> None:
         self.query_one(StatusBar).set_metrics(
-            self._metrics.render(self._now()))
-
-    def _set_state(self, state: AgentState, *, finished: bool) -> None:
-        self.state = state
-        self.query_one(StatusBar).set_state(state)
-        self.post_message(PaneStateChanged(self, finished))
+            self._core.metrics.render(time.monotonic()))
 
     def _write(self, renderable) -> None:
         self.query_one(RichLog).write(renderable)
@@ -110,90 +107,55 @@ class ConversationPane(Widget):
         self._submit(text)
 
     def _submit(self, text: str) -> None:
-        """Common submission path: write user line, set working,
-        start a worker. Used by on_input_submitted and deliver_handoff."""
         inp = self.query_one(Input)
         inp.disabled = True
         if self._had_turn:
-            self._write(Text(""))      # one blank row between turns
+            self._write(Text(""))
         self._had_turn = True
         log = self.query_one(RichLog)
         width = log.size.width or 80
         self._write(render_user_line(text, self._palette, width))
-        self._write(Text(""))         # space between user and agent
-        self._set_state(AgentState.working, finished=False)
-        self._metrics.start_turn(self._now())
-        self.run_worker(self._run_turn(text), group="turn", exclusive=True)
+        self._write(Text(""))
+        self.run_worker(self._core.send(text), group="turn", exclusive=True)
 
     async def deliver_handoff(self, from_handle: str,
                               context: str) -> None:
-        """Inject a tagged user turn from a peer agent. Reuses the
-        normal submission path so the receiving harness sees it as a
-        user message (prefixed so a human or the agent itself can tell
-        it came from a peer)."""
         self._submit(f"[handoff from {from_handle}] {context}")
 
-    async def _run_turn(self, text: str) -> None:
-        saw_result = False
-        try:
-            if not self._started:
-                await self._session.start()
-                self._started = True
-                self._metrics.begin_session(self._now())
-            await self._session.send(text)
-            async for ev in self._session.events():
-                renderable = render_event(ev, self._palette)
-                if renderable is not None:
-                    self._write(renderable)
-                    # Air after a *completed* step — but keep a tool call
-                    # glued to its result, and don't trail the ── done ──
-                    # line (the next turn's leading blank separates it).
-                    if not isinstance(ev, (ToolUse, Result)):
-                        self._write(Text(""))
-                if isinstance(ev, ToolUse):
-                    self._metrics.record_tool()
-                elif isinstance(ev, ToolResult) and ev.is_error:
-                    self._metrics.record_tool_error()
-                if isinstance(ev, Result):
-                    self._metrics.commit(ev.usage, self._now())
-                    saw_result = True
-                    self._finish(error=ev.is_error)
-                else:
-                    u = getattr(ev, "usage", None)
-                    if u is not None:
-                        self._metrics.observe(u)  # provisional, live
-                self.refresh_metrics()
-        except Exception:  # noqa: BLE001
-            self._write(Text("⚠ harness error", style=self._palette.err))
-            if not saw_result:
-                self._metrics.commit(None, self._now())
-                self._finish(error=True)
-            return
-        if not saw_result:
-            self._write(Text("⚠ harness exited", style=self._palette.err))
-            self._metrics.commit(None, self._now())
-            self._finish(error=True)
+    def _on_core_event(self, _core, ev) -> None:
+        renderable = render_event(ev, self._palette)
+        if renderable is not None:
+            self._write(renderable)
+            if not isinstance(ev, (ToolUse, Result)):
+                self._write(Text(""))
+        self.refresh_metrics()
 
-    def _finish(self, *, error: bool) -> None:
-        self._set_state(AgentState.error if error else AgentState.ready,
-                        finished=True)
-        inp = self.query_one(Input)
-        inp.disabled = False
-        inp.focus()
+    def _on_core_state(self, _core, state: AgentState,
+                       finished: bool) -> None:
+        self.query_one(StatusBar).set_state(state)
+        if finished and state is AgentState.error \
+                and not self._transcript_has("⚠ harness"):
+            self._write(Text("⚠ harness error", style=self._palette.err))
+        self.post_message(PaneStateChanged(self, finished))
+        if finished:
+            inp = self.query_one(Input)
+            inp.disabled = False
+            inp.focus()
+        self.refresh_metrics()
 
     def interrupt(self) -> None:
         if self.state is not AgentState.working:
             return
-        self.workers.cancel_group(self, "turn")
-        self._metrics.cancel_turn(self._now())
-        self._write(Text("^C — interrupted", style=self._palette.muted))
-        self._set_state(AgentState.ready, finished=False)
-        self.refresh_metrics()
-        inp = self.query_one(Input)
-        inp.disabled = False
-        inp.focus()
+
+        async def _do() -> None:
+            await self._core.interrupt()
+            self._write(Text("^C — interrupted", style=self._palette.muted))
+            self.refresh_metrics()
+            inp = self.query_one(Input)
+            inp.disabled = False
+            inp.focus()
+
+        self.run_worker(_do(), group="turn", exclusive=True)
 
     async def close(self) -> None:
-        self.workers.cancel_group(self, "turn")
-        if self._started:
-            await self._session.close()
+        await self._core.close()
