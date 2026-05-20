@@ -4,6 +4,9 @@
 # Local aegis config — may hold a Telegram token; never commit
 .aegis.py
 
+# Runtime state — queue lifecycle logs + per-handle inbox logs (JSONL).
+.aegis/state/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
