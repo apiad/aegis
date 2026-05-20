@@ -59,7 +59,7 @@ async def test_live_enqueue_to_callback_roundtrip(tmp_path):
     await mcp.start()
     await qm.start()
     try:
-        producer = mgr.spawn("default")
+        producer = mgr._sync_spawn("default")
         await producer.send(
             "Call aegis_enqueue(queue='default', "
             "payload='Reply with the single word ECHO and stop.', "

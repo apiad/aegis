@@ -292,3 +292,69 @@ async def test_engine_send_does_not_await(tmp_path):
     e.send("h", "msg")
     # touched_handles populated synchronously
     assert "h" in e._touched_handles
+
+
+from aegis.core.session import AgentSession
+from aegis.tui.state import AgentState
+
+
+class _LiveFakeHarness:
+    """Fake harness whose events generator finishes one short turn."""
+    def __init__(self):
+        self.sent = []
+        self.started = self.closed = False
+    async def start(self): self.started = True
+    async def send(self, t): self.sent.append(t)
+    async def close(self): self.closed = True
+    async def events(self):
+        import asyncio as _a
+        await _a.sleep(0)
+        yield AssistantText("ok")
+        yield Result(duration_ms=1, is_error=False, usage=None)
+
+
+async def test_drain_returns_when_target_idle(tmp_path):
+    inbox = InboxRouter()
+    h = "lucid-knuth"
+    sess = AgentSession(_LiveFakeHarness(), None, "default", h, inbox=inbox)
+    inbox.bind_session(h, sess)
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=_StubBridge(), queue_manager=None,
+                       inbox_router=inbox, state_dir=tmp_path,
+                       drain_timeout=2.0)
+    e.send(h, "go")
+    await e.drain(h)
+    assert sess.state is AgentState.ready
+
+
+async def test_drain_no_touched_handle_is_noop(tmp_path):
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=_StubBridge(), queue_manager=None,
+                       inbox_router=InboxRouter(), state_dir=tmp_path)
+    # Touched-handle set is empty; drain returns immediately.
+    await e.drain()
+
+
+async def test_drain_timeout_logs_warning_and_returns(tmp_path, capfd):
+    inbox = InboxRouter()
+    h = "stuck"
+    class _NeverFinishes:
+        sent = []; started = closed = False
+        async def start(self): pass
+        async def send(self, t): self.sent.append(t)
+        async def close(self): pass
+        async def events(self):
+            import asyncio as _a
+            await _a.Event().wait()
+            if False: yield  # pragma: no cover
+    sess = AgentSession(_NeverFinishes(), None, "default", h, inbox=inbox)
+    inbox.bind_session(h, sess)
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=_StubBridge(), queue_manager=None,
+                       inbox_router=inbox, state_dir=tmp_path,
+                       drain_timeout=0.05)
+    e.send(h, "go")
+    await e.drain(h)
+    out = capfd.readouterr().err
+    assert "drain timed out" in out
+    assert h in out

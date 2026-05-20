@@ -164,3 +164,39 @@ class WorkflowEngine:
             body=message)
         self._touched_handles.add(handle)
         asyncio.create_task(self._inbox.deliver(handle, msg))
+
+    # ── drain ────────────────────────────────────────────────────────
+    async def drain(self, handle: str | None = None) -> None:
+        """Await each touched handle's session to reach state == ready.
+        If handle is None, drain all touched handles. Per-handle ceiling
+        of self._drain_timeout; on timeout, log a warning and continue
+        (don't trap workflow shutdown on a hung agent)."""
+        targets = (
+            [handle] if handle is not None else list(self._touched_handles))
+        for h in targets:
+            await self._drain_one(h)
+
+    async def _drain_one(self, handle: str) -> None:
+        # Let any pending send()-scheduled deliver tasks fire so that a
+        # touched handle has actually transitioned to working before we
+        # decide whether the early-return path applies.
+        await asyncio.sleep(0)
+        session = (
+            self._inbox._sessions.get(handle) if self._inbox else None)
+        if session is None:
+            return
+        from aegis.tui.state import AgentState
+        if session.state is AgentState.ready and not getattr(
+                session, "_inbox_buffer", []):
+            return
+        deadline = asyncio.get_event_loop().time() + self._drain_timeout
+        while True:
+            if session.state is AgentState.ready and not getattr(
+                    session, "_inbox_buffer", []):
+                return
+            if asyncio.get_event_loop().time() >= deadline:
+                self.log(
+                    f"drain timed out after {self._drain_timeout}s for "
+                    f"handle={handle!r} (state={session.state.value})")
+                return
+            await asyncio.sleep(0.05)
