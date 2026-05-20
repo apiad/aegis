@@ -74,3 +74,75 @@ async def test_runner_caller_handle_threaded_to_engine(tmp_path):
                      caller_handle="lucid-knuth", state_dir=tmp_path)
     assert out["status"] == "ok"
     assert captured["caller"] == "lucid-knuth"
+
+
+class _RecordingBridge:
+    """Bridge that records spawn/close calls. Test double for Task 3.5."""
+    queue_manager = None
+    inbox_router = None
+    def __init__(self):
+        self.spawned: list[str] = []
+        self.closed: list[str] = []
+    def list_sessions(self): return []
+    def list_agents(self): return ["default"]
+    async def spawn(self, profile, *, handle=None):
+        h = handle or f"{profile}-h{len(self.spawned)}"
+        self.spawned.append(h)
+        return h
+    async def close(self, handle):
+        self.closed.append(handle)
+
+
+async def test_runner_auto_closes_spawned_handles(tmp_path):
+    br = _RecordingBridge()
+    @workflow
+    async def spawns_two(engine):
+        await engine.spawn("default", handle="a-one")
+        await engine.spawn("default", handle="b-two")
+        return "done"
+    out = await run_workflow(
+        "spawns_two", {},
+        bridge=br, queue_manager=None, inbox_router=None,
+        state_dir=tmp_path)
+    assert out["status"] == "ok"
+    assert sorted(br.closed) == ["a-one", "b-two"]
+
+
+async def test_runner_auto_closes_on_error_too(tmp_path):
+    br = _RecordingBridge()
+    @workflow
+    async def spawns_then_fails(engine):
+        await engine.spawn("default", handle="leaked")
+        raise WorkflowError("boom")
+    out = await run_workflow(
+        "spawns_then_fails", {},
+        bridge=br, queue_manager=None, inbox_router=None,
+        state_dir=tmp_path)
+    assert out["status"] == "error"
+    assert br.closed == ["leaked"]
+
+
+async def test_runner_auto_drains_touched_handles(tmp_path):
+    """drain() should be invoked at teardown — we assert by spying on
+    the engine's drain method via a monkeypatch on a workflow that
+    touched some handle through send()."""
+    from aegis.queue import InboxRouter
+    drained = []
+
+    @workflow
+    async def touches(engine):
+        # Monkeypatch drain to record the call (still preserve behavior).
+        original_drain = engine.drain
+        async def spy(handle=None):
+            drained.append(("call", handle))
+            return await original_drain(handle)
+        engine.drain = spy
+        # Touch a handle (no session bound — drain becomes a no-op).
+        engine.send("ghost", "hi")
+        return "ok"
+    out = await run_workflow(
+        "touches", {},
+        bridge=_StubBridge(), queue_manager=None,
+        inbox_router=InboxRouter(), state_dir=tmp_path)
+    assert out["status"] == "ok"
+    assert drained == [("call", None)]

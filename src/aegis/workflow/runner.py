@@ -53,5 +53,17 @@ async def run_workflow(
 
 
 async def _runner_cleanup(engine: WorkflowEngine) -> None:
-    """Best-effort teardown. VS1 placeholder; VS3 fills in drain + close."""
-    return
+    """Best-effort teardown: drain all touched handles, then close every
+    spawned handle. Each step swallows its own errors so a hung drain
+    or a flaky close can't strand the runner."""
+    try:
+        await engine.drain()
+    except Exception as e:  # noqa: BLE001 — drain is best-effort
+        engine.log(f"runner cleanup: drain raised {type(e).__name__}: {e}")
+    for handle in list(engine._spawned_handles):
+        try:
+            await engine.close(handle)
+        except Exception as e:  # noqa: BLE001 — close is best-effort
+            engine.log(
+                f"runner cleanup: close({handle!r}) raised "
+                f"{type(e).__name__}: {e}")
