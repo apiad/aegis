@@ -718,3 +718,24 @@ async def test_queue_callback_round_trip_into_producer_pane():
             f"producer never woke with callback; sent={producer_sess.sent}")
         body = callback_turns[0]
         assert tid in body and "WORKER-DONE" in body
+
+
+@pytest.mark.asyncio
+async def test_aegisapp_spawn_mounts_pane_and_returns_handle():
+    app = _app(_factory(FakeSession()))
+    async with app.run_test() as pilot:
+        h = await app.spawn("default", handle="vivid-laplace")
+        await pilot.pause()
+        assert h == "vivid-laplace"
+        assert any(p.handle == "vivid-laplace" for p in app._panes)
+
+
+@pytest.mark.asyncio
+async def test_aegisapp_close_removes_pane():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        h = await app.spawn("default", handle="vivid-laplace")
+        await pilot.pause()
+        await app.close(h)
+        await pilot.pause()
+        assert not any(p.handle == "vivid-laplace" for p in app._panes)

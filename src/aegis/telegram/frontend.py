@@ -122,7 +122,7 @@ class TelegramFrontend:
         rest = rest.strip()
         if head == "/new":
             try:
-                core = self._m.spawn(rest or None)
+                core = self._m._sync_spawn(rest or None)
             except KeyError:
                 await self._reply("unknown agent. " + self._agents_line())
                 return

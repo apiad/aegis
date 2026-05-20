@@ -16,11 +16,13 @@ def test_appbridge_is_runtime_checkable_protocol():
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
+        async def spawn(self, profile, *, handle=None): return "h"
+        async def close(self, handle): return None
     assert isinstance(Impl(), AppBridge)
     assert not isinstance(object(), AppBridge)
 
 
-def test_appbridge_requires_queue_manager_and_inbox_router():
+def test_appbridge_requires_full_surface():
     from aegis.queue import InboxRouter
 
     class FullImpl:
@@ -29,11 +31,16 @@ def test_appbridge_requires_queue_manager_and_inbox_router():
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
+        async def spawn(self, profile, *, handle=None): return "h"
+        async def close(self, handle): return None
 
-    class MissingImpl:
+    class MissingSpawn:
+        queue_manager = object()
+        inbox_router = InboxRouter()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
+        async def close(self, handle): return None
 
     assert isinstance(FullImpl(), AppBridge)
-    assert not isinstance(MissingImpl(), AppBridge)
+    assert not isinstance(MissingSpawn(), AppBridge)

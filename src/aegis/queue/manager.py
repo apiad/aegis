@@ -124,9 +124,11 @@ class QueueManager:
             self._log(queue, {
                 "event": "dispatched", "task_id": task.id,
                 "worker_handle": worker_handle})
-            session = self._sm.spawn(q.agent_profile,
-                                     opening_prompt=task.payload,
-                                     handle=worker_handle)
+            # Use the sync seam — async AppBridge.spawn is for workflow.
+            sync_spawn = getattr(self._sm, "_sync_spawn", self._sm.spawn)
+            session = sync_spawn(q.agent_profile,
+                                 opening_prompt=task.payload,
+                                 handle=worker_handle)
             self._attach_observers(session, dispatched)
 
     def _attach_observers(self, session, task: Task) -> None:

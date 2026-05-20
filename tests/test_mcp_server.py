@@ -40,6 +40,12 @@ class FakeBridge:
         # protocol surface for back-compat with any external caller.
         return f"ignored: {a}->{b}"
 
+    async def spawn(self, profile, *, handle=None):
+        return handle or "stub-handle"
+
+    async def close(self, handle):
+        return None
+
 
 async def _call(server, name, **kwargs):
     tools = await server.list_tools()

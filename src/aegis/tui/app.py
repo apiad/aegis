@@ -251,6 +251,20 @@ class AegisApp(App):
         await target.deliver_handoff(from_handle, context)
         return f"delivered to {target_handle}"
 
+    async def spawn(self, profile: str, *,
+                    handle: str | None = None) -> str:
+        """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
+        sm_adapter = _SessionManagerAdapter(self)
+        sess = sm_adapter.spawn(profile, handle=handle)
+        return sess.handle
+
+    async def close(self, handle: str) -> None:
+        """AppBridge-shaped: close a pane by handle."""
+        pane = next((p for p in self._panes if p.handle == handle), None)
+        if pane is not None:
+            await self._close_pane(pane)
+            self._refresh_tabbar()
+
 
 class _SessionManagerAdapter:
     """SessionManager-shaped facade over AegisApp for QueueManager.

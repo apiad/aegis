@@ -33,9 +33,9 @@ class SessionManager:
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
 
-    def spawn(self, slug: str | None = None, *,
-              opening_prompt: str | None = None,
-              handle: str | None = None) -> AgentSession:
+    def _sync_spawn(self, slug: str | None = None, *,
+                    opening_prompt: str | None = None,
+                    handle: str | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
@@ -53,6 +53,12 @@ class SessionManager:
         if opening_prompt is not None:
             asyncio.create_task(s.send(opening_prompt))
         return s
+
+    async def spawn(self, profile: str, *,
+                    handle: str | None = None) -> str:
+        """AppBridge-shaped async spawn. Returns the new handle."""
+        sess = self._sync_spawn(profile, handle=handle)
+        return sess.handle
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
