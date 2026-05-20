@@ -14,6 +14,13 @@ from aegis.mcp.server import (
 
 
 class FakeBridge:
+    # Required by the extended AppBridge Protocol — the existing handoff
+    # tests do not exercise these, but tools registered in T1.7 attempt to
+    # call bridge.queue_manager / bridge.inbox_router so they cannot be
+    # absent. Per-test setup overrides where needed.
+    queue_manager = None
+    inbox_router = None
+
     def __init__(self):
         self._sessions = [
             SessionInfo(handle="lucid-knuth", agent_slug="default",
@@ -75,7 +82,8 @@ def test_build_server_registers_all_aegis_tools():
     tools = asyncio.run(srv.list_tools())
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
-        "aegis_list_agents", "aegis_handoff"}
+        "aegis_list_agents", "aegis_handoff",
+        "aegis_enqueue", "aegis_task_status"}
 
 
 @pytest.mark.asyncio

@@ -27,7 +27,16 @@ BRIEFING = (
     "your own aegis handle as from_handle — it is in your system prompt. "
     "The target receives a tagged user turn and starts working; you do "
     "not wait for its reply. Returns 'delivered to <handle>' on success, "
-    "or a 'handoff rejected: …' reason (self / unknown / busy).\n\n"
+    "or a 'handoff rejected: …' reason (self / unknown / busy).\n"
+    "  - aegis_enqueue(queue, payload, from_handle, callback=true) : "
+    "delegate a task onto a named queue; the substrate spawns a worker "
+    "of the queue's configured agent profile, runs the payload as its "
+    "opening prompt, and (if callback=true) delivers the worker's final "
+    "result into your inbox as a normal incoming message. Returns "
+    "{task_id, queued_position}; keep working between enqueue and "
+    "callback arrival.\n"
+    "  - aegis_task_status(task_id) : inspect a previously-enqueued "
+    "task. Use when callback was false or you want to poll mid-flight.\n\n"
     "More aegis tools (vault/file/web/workflow) are planned. Built-in "
     "Claude tools (Read, Edit, Bash, WebFetch, …) are unchanged and "
     "available. Call aegis_meta once at the start to orient, then proceed "
@@ -74,6 +83,43 @@ def build_server(bridge: AppBridge) -> FastMCP:
         'handoff rejected: …' reason (self / unknown / busy).
         """
         return await bridge.handoff(from_handle, target_handle, context)
+
+    @server.tool
+    async def aegis_enqueue(queue: str, payload: str, from_handle: str,
+                            callback: bool = True) -> dict:
+        """Enqueue a task on a named queue. Returns task_id + queued_position.
+
+        If callback=true (default), the worker's final result lands in your
+        inbox as a normal user message when it completes; you can keep
+        working between enqueue and the callback arrival. If callback=false,
+        the result is dropped — use aegis_task_status to poll instead.
+
+        from_handle is your own aegis handle (read it from your system
+        prompt). Unknown queue returns {"error": "enqueue rejected: …"}.
+        """
+        from aegis.queue import sender_agent
+        try:
+            tid, pos = bridge.queue_manager.enqueue(
+                queue, payload,
+                enqueued_by=sender_agent(from_handle),
+                callback=callback)
+        except KeyError as e:
+            return {"error": f"enqueue rejected: unknown queue {e.args[0]!r}"}
+        return {"task_id": tid, "queued_position": pos}
+
+    @server.tool
+    async def aegis_task_status(task_id: str) -> dict:
+        """Inspect a previously-enqueued task by its task_id.
+
+        Returns {"status": "pending"|"dispatched"|"completed"|"failed", …}
+        with result/error/completed_at/queued_position fields when set.
+        Returns {"status": "unknown"} if the task_id is not known to this
+        aegis instance.
+        """
+        st = bridge.queue_manager.status(task_id)
+        if st is None:
+            return {"status": "unknown"}
+        return st
 
     return server
 
