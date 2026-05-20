@@ -50,3 +50,34 @@ async def test_unbind_falls_back_to_buffering():
     await r.deliver("h", _msg(body="z"))
     assert fake.delivered == []
     assert [m.body for m in r.pending("h")] == ["z"]
+
+
+async def test_deliver_writes_through_to_jsonl(tmp_path):
+    from aegis.queue.jsonl import read_records
+    r = InboxRouter(state_dir=tmp_path)
+    await r.deliver("h", _msg(body="alpha"))
+    log = read_records(tmp_path / "inboxes" / "h.jsonl")
+    assert len(log) == 1
+    assert log[0]["body"] == "alpha"
+    assert log[0]["sender"] == "queue:impl"
+    assert log[0]["v"] == 1
+
+
+async def test_deliver_persists_even_when_session_bound(tmp_path):
+    # A bound session is poked AND the record lands on disk — the audit
+    # log is independent of live delivery state.
+    from aegis.queue.jsonl import read_records
+    r = InboxRouter(state_dir=tmp_path)
+    fake = FakeSession()
+    r.bind_session("h", fake)
+    await r.deliver("h", _msg(body="audit-me"))
+    assert len(fake.delivered) == 1
+    log = read_records(tmp_path / "inboxes" / "h.jsonl")
+    assert log[0]["body"] == "audit-me"
+
+
+async def test_deliver_state_dir_none_skips_disk(tmp_path):
+    # VS1 behavior preserved: no writethrough when state_dir is omitted.
+    r = InboxRouter()
+    await r.deliver("h", _msg(body="x"))
+    assert not (tmp_path / "inboxes").exists()

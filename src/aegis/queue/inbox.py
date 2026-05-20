@@ -28,6 +28,15 @@ class InboxRouter:
         self._sessions.pop(handle, None)
 
     async def deliver(self, handle: str, msg: InboxMessage) -> None:
+        # Persist before any live-session signalling: the JSONL record is
+        # the audit-log; an in-flight crash between writethrough and poke
+        # still leaves the message recoverable from disk.
+        if self._state_dir is not None:
+            from dataclasses import asdict
+
+            from aegis.queue.jsonl import append_record
+            path = Path(self._state_dir) / "inboxes" / f"{handle}.jsonl"
+            append_record(path, asdict(msg))
         session = self._sessions.get(handle)
         if session is not None:
             await session.deliver(msg)
