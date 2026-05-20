@@ -149,8 +149,26 @@ async def test_handoff_rejects_busy_target():
 def test_meta_and_priming_updated():
     b = BRIEFING.lower()
     for t in ("aegis_list_sessions", "aegis_list_agents",
-              "aegis_handoff"):
+              "aegis_handoff", "aegis_enqueue", "aegis_task_status"):
         assert t in b
     assert "{handle}" in PRIMING
     assert "aegis_meta" in PRIMING
     assert "your aegis handle" in PRIMING.lower()
+
+
+def test_briefing_explains_inbox_header_and_delegation():
+    """Spawned agents must know (a) what arrives in their inbox and how
+    to recognise it, and (b) when to enqueue vs. hand off."""
+    b = BRIEFING
+    # Inbox header shapes — the three sender prefixes a v1 agent meets.
+    assert "queue:<name>" in b and "task_id" in b
+    assert "agent:<handle>" in b
+    assert "telegram" in b.lower()
+    # Wake-on-idle / batched-at-turn-boundary semantics named explicitly.
+    assert "turn boundary" in b.lower()
+    assert "wakes you" in b.lower() or "wake" in b.lower()
+    # Delegation pattern + handoff-vs-enqueue guidance present.
+    assert "delegation pattern" in b.lower()
+    assert "aegis_handoff (not enqueue)" in b or (
+        "aegis_handoff" in b and "aegis_enqueue" in b
+        and "specific" in b.lower())
