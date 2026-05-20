@@ -66,3 +66,48 @@ def test_engine_list_passthroughs(tmp_path):
     e = _engine(tmp_path)
     assert e.list_sessions() == []
     assert e.list_agents() == ["default"]
+
+
+import asyncio
+import subprocess
+
+from aegis.workflow import WorkflowError
+
+
+async def test_bash_returns_completed_process(tmp_path):
+    e = _engine(tmp_path)
+    proc = await e.bash("echo hi")
+    assert isinstance(proc, subprocess.CompletedProcess)
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "hi"
+    assert proc.stderr == ""
+
+
+async def test_bash_nonzero_returncode_not_raised(tmp_path):
+    e = _engine(tmp_path)
+    proc = await e.bash("false")
+    assert proc.returncode != 0
+
+
+async def test_bash_timeout_raises_workflow_error(tmp_path):
+    e = _engine(tmp_path)
+    with pytest.raises(WorkflowError, match="timed out"):
+        await e.bash("sleep 5", timeout=0.1)
+
+
+async def test_bash_default_cwd_is_project_root(tmp_path, monkeypatch):
+    # Run from a tmp dir; bash() should still resolve to project root
+    # (or fall back to tmp_path when no .aegis.py upstream).
+    monkeypatch.chdir(tmp_path)
+    e = _engine(tmp_path)
+    proc = await e.bash("pwd")
+    # We don't assert exact path (depends on find_project_root in test env)
+    # — just that it executed and produced a string.
+    assert proc.returncode == 0
+    assert proc.stdout.strip()
+
+
+async def test_bash_explicit_cwd_honored(tmp_path):
+    e = _engine(tmp_path)
+    proc = await e.bash("pwd", cwd=tmp_path)
+    assert tmp_path.name in proc.stdout

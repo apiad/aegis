@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from aegis.config import find_project_root
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue.schema import now_iso
+from aegis.workflow.decorator import WorkflowError
 
 
 class WorkflowEngine:
@@ -54,3 +59,34 @@ class WorkflowEngine:
         record = {"timestamp": self._now(), "message": message}
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
+
+    # ── bash ─────────────────────────────────────────────────────────
+    async def bash(self, cmd: str, *,
+                   cwd: str | Path | None = None,
+                   timeout: float | None = None,
+                   env: dict | None = None,
+                   ) -> subprocess.CompletedProcess:
+        """Async shell. cwd defaults to project root (find_project_root)
+        or os.getcwd(); timeout=None means wait forever. On timeout,
+        raises WorkflowError after killing the subprocess."""
+        if cwd is None:
+            cwd = str(find_project_root() or os.getcwd())
+        proc = await asyncio.create_subprocess_shell(
+            cmd, cwd=str(cwd), env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            try:
+                await proc.wait()
+            except Exception:  # noqa: BLE001
+                pass
+            raise WorkflowError(
+                f"bash timed out after {timeout}s: {cmd}")
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=proc.returncode,
+            stdout=stdout.decode("utf-8", errors="replace"),
+            stderr=stderr.decode("utf-8", errors="replace"))
