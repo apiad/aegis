@@ -151,3 +151,16 @@ class WorkflowEngine:
             await self._bridge.close(handle)
         except Exception:  # noqa: BLE001 — close is best-effort
             pass
+
+    # ── send ─────────────────────────────────────────────────────────
+    def send(self, handle: str, message: str) -> None:
+        """Enqueue a substrate-tagged message in handle's inbox.
+        Sync, fire-and-forget. Returns immediately; the actual delivery
+        is scheduled as an asyncio task (which inherits the calling
+        context — workflows always run on the aegis event loop)."""
+        msg = InboxMessage(
+            sender=f"workflow:{self.workflow_name}",
+            timestamp=self._now(),
+            body=message)
+        self._touched_handles.add(handle)
+        asyncio.create_task(self._inbox.deliver(handle, msg))

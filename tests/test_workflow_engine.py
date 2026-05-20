@@ -251,3 +251,44 @@ async def test_engine_close_removes_handle_and_is_idempotent(tmp_path):
     # Idempotent: closing again is a no-op
     await e.close(h)
     assert br._closed == ["r1"]    # not appended twice
+
+
+class _RecordingInbox:
+    """Captures every deliver call; doesn't actually route."""
+    def __init__(self):
+        self.delivered: list[tuple[str, InboxMessage]] = []
+        self._sessions = {}
+    def bind_session(self, handle, session):
+        self._sessions[handle] = session
+    def unbind_session(self, handle):
+        self._sessions.pop(handle, None)
+    async def deliver(self, handle, msg):
+        self.delivered.append((handle, msg))
+
+
+async def test_engine_send_queues_tagged_message(tmp_path):
+    inbox = _RecordingInbox()
+    e = WorkflowEngine(workflow_name="tdd_step", workflow_run_id="01",
+                       bridge=_StubBridge(), queue_manager=None,
+                       inbox_router=inbox, state_dir=tmp_path)
+    e.send("lucid-knuth", "do the thing")
+    # send schedules an asyncio task; let it run.
+    await asyncio.sleep(0)
+    assert len(inbox.delivered) == 1
+    handle, msg = inbox.delivered[0]
+    assert handle == "lucid-knuth"
+    assert msg.sender == "workflow:tdd_step"
+    assert msg.body == "do the thing"
+    assert msg.timestamp        # ISO string
+    assert "lucid-knuth" in e._touched_handles
+
+
+async def test_engine_send_does_not_await(tmp_path):
+    inbox = _RecordingInbox()
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=_StubBridge(), queue_manager=None,
+                       inbox_router=inbox, state_dir=tmp_path)
+    # send is sync (no await); should return immediately
+    e.send("h", "msg")
+    # touched_handles populated synchronously
+    assert "h" in e._touched_handles
