@@ -1,0 +1,161 @@
+"""QueueManager — substrate-deterministic dispatch.
+
+One owner per `aegis serve` (or interactive) process. Pure FIFO per queue +
+max-parallel cap + dispatch-on-event. No background loop: dispatch is
+checked synchronously on every enqueue and on every worker completion.
+Persistence + restart replay land in VS2; this build is memory-only.
+"""
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from pathlib import Path
+
+from aegis.events import AssistantText
+from aegis.queue.schema import (
+    InboxMessage,
+    Queue,
+    Task,
+    new_ulid,
+    now_iso,
+    sender_queue,
+)
+from aegis.tui.names import generate_name
+from aegis.tui.state import AgentState
+
+
+def _handle_of(sender_tag: str) -> str:
+    """Extract the inbox handle from a SenderTag. Only ``agent:<handle>``
+    has a delivery target in v1; others (telegram/system/queue:…) deliver
+    to a sentinel handle equal to the sender — the router tolerates
+    unbound handles and just buffers."""
+    if sender_tag.startswith("agent:"):
+        return sender_tag.split(":", 1)[1]
+    return sender_tag
+
+
+class QueueManager:
+    def __init__(self, queues: dict[str, Queue], session_manager,
+                 inbox_router,
+                 *, state_dir: Path | None = None,
+                 now: Callable[[], str] = now_iso,
+                 handle_factory: Callable[[set[str]], str] | None = None) -> None:
+        self._queues = dict(queues)
+        self._sm = session_manager
+        self._inbox = inbox_router
+        self._state_dir = state_dir
+        self._now = now
+        self._handle_factory = handle_factory or generate_name
+        # in-memory state
+        self._pending: dict[str, list[Task]] = {q: [] for q in self._queues}
+        self._inflight: dict[str, list[Task]] = {q: [] for q in self._queues}
+        self._all: dict[str, Task] = {}
+        # per-worker result accumulators: handle -> (task, last_assistant_text)
+        self._workers: dict[str, tuple[Task, str]] = {}
+
+    def list_queues(self) -> list[str]:
+        return sorted(self._queues)
+
+    def enqueue(self, queue: str, payload: str, *,
+                enqueued_by: str, callback: bool) -> tuple[str, int]:
+        if queue not in self._queues:
+            raise KeyError(queue)
+        task = Task(
+            id=new_ulid(), queue=queue, payload=payload,
+            enqueued_by=enqueued_by, enqueued_at=self._now(),
+            callback=callback, status="pending")
+        self._pending[queue].append(task)
+        self._all[task.id] = task
+        position = len(self._pending[queue])
+        self._try_dispatch(queue)
+        return task.id, position
+
+    def status(self, task_id: str) -> dict | None:
+        t = self._all.get(task_id)
+        if t is None:
+            return None
+        return {
+            "status": t.status,
+            "result": t.result,
+            "error": t.error,
+            "completed_at": t.completed_at,
+            "queued_position": self._position_of(t),
+        }
+
+    def _position_of(self, t: Task) -> int | None:
+        if t.status != "pending":
+            return None
+        fifo = self._pending[t.queue]
+        for i, x in enumerate(fifo, start=1):
+            if x.id == t.id:
+                return i
+        return None
+
+    def _try_dispatch(self, queue: str) -> None:
+        q = self._queues[queue]
+        while (len(self._inflight[queue]) < q.max_parallel
+               and self._pending[queue]):
+            task = self._pending[queue].pop(0)
+            used = (set(self._workers)
+                    | {s.handle for s in getattr(self._sm,
+                                                  "_sessions", [])})
+            worker_handle = self._handle_factory(used)
+            dispatched = Task(**{**task.__dict__,
+                                 "status": "dispatched",
+                                 "worker_handle": worker_handle})
+            self._all[task.id] = dispatched
+            self._inflight[queue].append(dispatched)
+            self._workers[worker_handle] = (dispatched, "")
+            session = self._sm.spawn(q.agent_profile,
+                                     opening_prompt=task.payload,
+                                     handle=worker_handle)
+            self._attach_observers(session, dispatched)
+
+    def _attach_observers(self, session, task: Task) -> None:
+        def on_event(_s, ev):
+            if isinstance(ev, AssistantText):
+                t, _last = self._workers[session.handle]
+                self._workers[session.handle] = (t, ev.text)
+
+        def on_state(_s, st, finished):
+            if not finished:
+                return
+            asyncio.create_task(self._finalize(session, st))
+
+        session.on_event = on_event
+        session.on_state = on_state
+
+    async def _finalize(self, session, st) -> None:
+        if session.handle not in self._workers:
+            return
+        task, last_text = self._workers.pop(session.handle)
+        ok = (st is AgentState.ready)
+        status = "completed" if ok else "failed"
+        result = last_text if ok else None
+        error = None if ok else (last_text or "worker exited with error")
+        completed = Task(**{**task.__dict__,
+                            "status": status,
+                            "result": result,
+                            "error": error,
+                            "completed_at": self._now()})
+        self._all[task.id] = completed
+        self._inflight[task.queue] = [
+            t for t in self._inflight[task.queue] if t.id != task.id]
+        if task.callback:
+            body = result if ok else (error or "")
+            msg = InboxMessage(
+                sender=sender_queue(task.queue),
+                timestamp=self._now(),
+                body=body,
+                task_id=task.id,
+                status=("ok" if ok else "error"))
+            await self._inbox.deliver(_handle_of(task.enqueued_by), msg)
+        try:
+            await self._sm.close(session.handle)
+        except Exception:  # noqa: BLE001 — close is best-effort
+            pass
+        self._try_dispatch(task.queue)
+
+    # VS2 lifecycle hooks (no-ops in VS1).
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
