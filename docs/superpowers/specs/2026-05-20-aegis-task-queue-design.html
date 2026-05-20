@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Task Queue (v1) — Design" status=approved date=2026-05-20 source="docs/superpowers/specs/2026-05-19-aegis-telegram-interface-design.html · vault/Atlas/Architecture/2026-05-17-aegis-vision.md" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Task Queue (v1) — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300)}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec</div>
+    <h1>Aegis Task Queue (v1) — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-20</span>
+      <span>Builds on: vision <code>2026-05-17-aegis-vision.md</code> · slice-2 MCP plane <code>2026-05-18-aegis-mcp-plane-slice2-design.html</code> · Telegram interface <code>2026-05-19-aegis-telegram-interface-design.html</code></span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#data-model">Data model</a>
+    <a href="#components">Components</a>
+    <a href="#mcp">MCP surface</a>
+    <a href="#config">Config</a>
+    <a href="#flow">Data flow</a>
+    <a href="#errors">Error handling</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Give Aegis a first-class <strong>inter-agent delegation</strong> primitive: agent A enqueues a task on a named queue; the substrate spawns a worker of the queue's configured agent profile, runs the task, and (if the producer asked for a callback) delivers the result into the producer's inbox as a normal incoming message. Cron/recurring schedules and migration of the <code>vault/+/jobs/</code> substrate are explicit non-goals for v1 — the primitive earns its keep by enabling something Aegis cannot do today, and those phases build on top later.</p>
+    <p>V1 also introduces the <strong>agent inbox</strong> primitive that makes callbacks possible. Inboxes are general-purpose: callbacks, Telegram pushes, agent-to-agent handoffs, and future long-lived-terminal notifications all converge on the same delivery channel with universal sender tagging.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Use case.</strong> V1 is the inter-agent delegation primitive, not a replacement for the vault job substrate. Vault-job migration is a later phase (vision Phase 6).</li>
+      <li><strong>Two primitives, not one.</strong> Task queues and agent inboxes are separate concerns that compose. The callback path goes <em>through</em> the inbox primitive; it is not a separate return channel.</li>
+      <li><strong>Substrate-deterministic dispatch.</strong> Queues are not LLM-controlled. Each queue's worker policy is static config: one agent profile + a max-parallel cap. No priority, no routing logic, no agent-chosen worker.</li>
+      <li><strong>Async + callback (no sync block).</strong> <code>aegis_enqueue</code> returns a <code>task_id</code> immediately. If <code>callback=true</code>, the result is delivered into the producer's inbox when ready. Producer keeps working in between.</li>
+      <li><strong>Wake-on-idle inbox semantics.</strong> An inbox arrival wakes an idle agent into a new turn. Mid-turn arrivals buffer and flush at the next turn boundary. Multiple pending messages flush as a single batched user-message block (each retains its own header). Aegis sessions become event-driven.</li>
+      <li><strong>Universal tagging.</strong> Every inbox message and every queue entry carries a typed <code>sender</code> tag (<code>queue:&lt;id&gt;</code>, <code>telegram</code>, <code>agent:&lt;handle&gt;</code>, <code>system</code>; forward placeholders like <code>terminal:&lt;name&gt;</code> are reserved in the schema) and a <code>timestamp</code>. Callbacks additionally carry <code>task_id</code> + <code>status</code>.</li>
+      <li><strong>File-persisted state.</strong> Append-only JSONL under <code>.aegis/state/queues/&lt;queue&gt;.jsonl</code> (events: enqueued / dispatched / completed / failed) and <code>.aegis/state/inboxes/&lt;handle&gt;.jsonl</code> (one record per delivered message). Both gitignored. Schema versioned with a <code>v: 1</code> field per record.</li>
+      <li><strong>At-most-once workers.</strong> On <code>aegis serve</code> restart, every in-flight task is marked <code>failed: interrupted</code> and a failure callback is delivered. Workers are not resumed. Producer is responsible for idempotency / retry.</li>
+      <li><strong>Ephemeral workers.</strong> One task per spawned agent; the worker exits when the task completes. No worker pools, no reuse.</li>
+      <li><strong>Day-one consumers.</strong> Agents-via-MCP (any spawned Claude Code session), the TUI (worker tabs surface automatically via the existing <code>SessionManager</code> → <code>ConversationPane</code> path), and Telegram (inbox arrivals already render as chat lines via the existing frontend). No new TUI queue-status pane in v1 — visibility is "queues are visible via the worker tabs they spawn, full stop"; JSONL files are trivially tailable for debugging.</li>
+      <li><strong>Cancel via inbox, not a dedicated tool.</strong> A producer wanting to stop a runaway worker uses <code>aegis_handoff</code> to post a cancel-request into the worker's inbox. Keeps the MCP surface minimal.</li>
+    </ol>
+  </section>
+
+  <section id="data-model">
+    <h2>Data model</h2>
+    <p>Three records, all JSONL-serialisable. Every record carries <code>v: 1</code>.</p>
+    <pre><code># Static config (from .aegis.py)
+Queue:
+  name: str               # "impl", "review", "research", ...
+  agent_profile: str      # references an agent profile declared in the same .aegis.py
+  max_parallel: int       # cap on concurrent workers; tasks beyond cap wait FIFO
+
+# A task — append-log event types: enqueued | dispatched | completed | failed
+Task:
+  id: str                       # ULID; sortable + URL-safe
+  queue: str
+  payload: str                  # prompt the worker receives as its first user message
+  enqueued_by: SenderTag        # "agent:lucid-knuth" | "telegram" | "system" | ...
+  enqueued_at: iso8601
+  callback: bool                # if true, deliver result into enqueued_by's inbox
+  status: pending | dispatched | completed | failed
+  worker_handle: str | None     # set on dispatch
+  result: str | None            # set on completion (worker's final assistant text)
+  error: str | None             # set on failure (short reason)
+  completed_at: iso8601 | None
+
+# An inbox message — what lands in an agent's inbox
+InboxMessage:
+  sender: SenderTag             # typed; see Locked decisions §6
+  timestamp: iso8601
+  body: str                     # the message text the agent sees
+  task_id: str | None           # set when sender starts with "queue:"
+  status: ok | error | None     # set when sender starts with "queue:"</code></pre>
+    <p><code>SenderTag</code> is a small typed union encoded as a string prefix (<code>queue:&lt;id&gt;</code>, <code>agent:&lt;handle&gt;</code>, <code>telegram</code>, <code>system</code>, plus reserved future prefixes). The substrate validates known prefixes; unknown but well-formed prefixes are accepted as opaque to keep schema migrations cheap.</p>
+  </section>
+
+  <section id="components">
+    <h2>Components</h2>
+    <table>
+      <thead><tr><th>Unit</th><th>Responsibility</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>src/aegis/queue/manager.py</code> · <code>QueueManager</code></td>
+          <td>Owns declared queues. Public: <code>enqueue()</code>, <code>status()</code>, <code>list_queues()</code>. Internal: per-queue dispatch loop that watches the FIFO + in-flight count and spawns workers when capacity opens; observes worker completion; writes lifecycle events to the queue's JSONL; fires callbacks via <code>InboxRouter</code>.</td>
+          <td><code>SessionManager</code>, <code>InboxRouter</code></td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/queue/inbox.py</code> · <code>InboxRouter</code></td>
+          <td>Owns per-handle inbox files + in-memory pending buffers. Public: <code>deliver(handle, msg)</code>, <code>drain(handle) -&gt; [msg]</code>. Writes-through to JSONL before signalling the target session.</td>
+          <td><code>SessionManager</code></td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/core/session.py</code> · <code>AgentSession</code> (modified)</td>
+          <td>New <code>deliver(msg)</code> entry point. When idle, schedules a wake-turn whose user-message is the drained inbox. When mid-turn, buffers and chains a follow-up turn at the existing turn-end hook if the inbox is non-empty at boundary.</td>
+          <td><code>InboxRouter</code></td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/core/manager.py</code> · <code>SessionManager</code> (modified)</td>
+          <td>Add <code>opening_prompt</code> parameter to <code>spawn()</code> so a worker is launched directly into its first turn without an interactive nudge.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/config.py</code> (modified)</td>
+          <td>Parse the new <code>queues</code> dict from <code>.aegis.py</code>. Validate that every queue's <code>agent</code> references a declared profile; fail-loud at <code>aegis serve</code> boot if not.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/mcp/server.py</code> (modified)</td>
+          <td>Register the two new MCP tools (<code>aegis_enqueue</code>, <code>aegis_task_status</code>). Refactor <code>aegis_handoff</code> to delegate to <code>InboxRouter.deliver</code> with <code>sender=agent:&lt;from_handle&gt;</code> so all delivery flows through one channel.</td>
+          <td><code>QueueManager</code>, <code>InboxRouter</code></td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/mcp/bridge.py</code> · <code>AppBridge</code> (extended)</td>
+          <td>Expose <code>queue_manager</code> and <code>inbox_router</code> attributes to the MCP server (same Protocol pattern as the existing session bridge).</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The TUI requires no new code: <code>ConversationPane</code> already renders any <code>AgentSession</code>, and a queue-spawned worker is just another session. The existing per-tab state-dot / sticky <code>*</code> / bell mechanism fires automatically when an inbox message lands on a producer's session. Tab handles get a queue suffix (e.g. <code>vivid-laplace · impl#01J42</code>) so workers are distinguishable at a glance.</p>
+    <p>Telegram likewise needs no new commands: an inbox arrival on a Telegram-bound handle renders as a chat line via the existing <code>TelegramFrontend</code>, with the substrate-rendered header (<code>&gt; from queue:impl · task#01J42 · ok · 2026-05-20 07:14</code>) baked into the message body.</p>
+  </section>
+
+  <section id="mcp">
+    <h2>MCP surface</h2>
+    <p>Two new tools on the slice-2 MCP plane. Both follow the existing <code>from_handle</code> convention (the agent's priming bakes its own handle, which it passes back as a parameter).</p>
+    <table>
+      <thead><tr><th>Tool</th><th>Parameters</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>aegis_enqueue</code></td>
+          <td><code>queue: str</code>, <code>payload: str</code>, <code>callback: bool = true</code>, <code>from_handle: str</code></td>
+          <td><code>{task_id: str, queued_position: int}</code> — <code>queued_position</code> is 1-indexed position in the queue's pending FIFO at enqueue time (1 = head; ignores in-flight workers).</td>
+        </tr>
+        <tr>
+          <td><code>aegis_task_status</code></td>
+          <td><code>task_id: str</code></td>
+          <td><code>{status, result?, error?, completed_at?, queued_position?}</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p><strong>What is intentionally <em>not</em> exposed.</strong></p>
+    <ul>
+      <li>No <code>aegis_inbox_peek</code> — auto-flush at turn-boundary is the canonical delivery; mid-turn introspection breaks the reasoning invariant.</li>
+      <li>No <code>aegis_cancel</code> — producers cancel via <code>aegis_handoff</code> into the worker's inbox.</li>
+      <li>No <code>aegis_create_queue</code> — queues are static config in <code>.aegis.py</code>; the MCP plane does not mutate the queue topology.</li>
+    </ul>
+    <p><strong>Internal refactor.</strong> <code>aegis_handoff</code> becomes a thin wrapper around <code>InboxRouter.deliver(to_handle, InboxMessage(sender=agent:&lt;from_handle&gt;, body=payload, timestamp=now))</code>. Universal tagging means handoff payloads now arrive with the same <code>sender · timestamp</code> header that callback results use. No semantic change visible to producers; the handoff tool's parameters and return shape are unchanged.</p>
+  </section>
+
+  <section id="config">
+    <h2>Config: <code>.aegis.py</code></h2>
+    <p>Append a top-level <code>queues</code> dict to the existing config module.</p>
+    <pre><code># .aegis.py
+agents = {
+  "claude-impl":   {"harness": "claude", "model": "opus",   "permission": "auto"},
+  "claude-review": {"harness": "claude", "model": "sonnet", "permission": "ask"},
+}
+
+queues = {
+  "impl":   {"agent": "claude-impl",   "max_parallel": 2},
+  "review": {"agent": "claude-review", "max_parallel": 4},
+}</code></pre>
+    <p>Validation at <code>aegis serve</code> boot: every queue's <code>agent</code> must reference a declared profile. Unknown agent → fail-loud, print which queue is broken. Same pattern as the existing profile loader.</p>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow</h2>
+    <p>One delegation, end to end:</p>
+    <ol>
+      <li><strong>Enqueue.</strong> Producer <code>lucid-knuth</code> calls <code>aegis_enqueue(queue="impl", payload="implement plan X", callback=true)</code>. The MCP tool forwards to <code>QueueManager.enqueue("impl", "implement plan X", enqueued_by="agent:lucid-knuth", callback=true)</code>.</li>
+      <li><strong>Persist + ack.</strong> <code>QueueManager</code> assigns ULID <code>01J42</code>, appends an <code>enqueued</code> record to <code>.aegis/state/queues/impl.jsonl</code>, pushes onto the in-memory FIFO. Returns <code>{task_id: "01J42", queued_position: 1}</code> synchronously. Producer's tool call returns; the producer continues working.</li>
+      <li><strong>Dispatch.</strong> The per-queue dispatch loop sees 0 in-flight, cap 2, FIFO non-empty. Pops the task. Calls <code>SessionManager.spawn(profile="claude-impl", opening_prompt="implement plan X")</code>. Gets back worker handle <code>vivid-laplace</code>. Appends a <code>dispatched</code> record (sets <code>worker_handle</code>). Registers a completion observer on the worker's <code>AgentSession</code>.</li>
+      <li><strong>TUI surfaces the worker.</strong> Tab <code>vivid-laplace · impl#01J42</code> appears in the tab bar automatically — no TUI code change needed. Alex can click in to watch the worker run live, or ignore it.</li>
+      <li><strong>Worker runs.</strong> Streams turns through its pane normally. Exits when its work is complete (worker decides — either via its own <code>aegis_meta</code> close call or by reaching a natural stop). Substrate captures the worker's final assistant text as <code>result</code>, appends a <code>completed</code> record.</li>
+      <li><strong>Callback.</strong> Substrate builds <code>InboxMessage(sender="queue:impl", task_id="01J42", status="ok", body=&lt;result&gt;, timestamp=now)</code>. Calls <code>InboxRouter.deliver("lucid-knuth", msg)</code>. Router writes-through to <code>.aegis/state/inboxes/lucid-knuth.jsonl</code> and pokes the producer's <code>AgentSession</code>.</li>
+      <li><strong>Receive.</strong> Producer is idle → arrival wakes it into a new turn whose user-message is the drained inbox. (Alternatively: producer is mid-turn → message buffers, flushed at next turn boundary.) The user-message begins with a substrate-rendered header: <code>&gt; from queue:impl · task#01J42 · ok · 2026-05-20 07:14</code>, followed by the worker's result text.</li>
+      <li><strong>Continue.</strong> Producer reads the result. Decides next move (enqueue another task, hand off, respond to Alex, exit). Loop continues.</li>
+    </ol>
+    <p><strong>Variants.</strong></p>
+    <ul>
+      <li>Multiple producers, one queue: strict FIFO. No priority in v1.</li>
+      <li>Multiple arrivals while a producer is mid-turn: batched into one user-message block at turn end, each entry retains its own header. Senders may be heterogeneous (e.g. one from <code>queue:impl</code>, one from <code>telegram</code>) — rendered as a list.</li>
+      <li>Producer is idle, two arrivals land within milliseconds of each other: both buffered; the wake schedules one turn with both batched, not two turns.</li>
+    </ul>
+  </section>
+
+  <section id="errors">
+    <h2>Error handling</h2>
+    <p>Unifying principle: <strong>every observable failure becomes either a startup refusal or a tagged inbox message</strong>. The substrate never silently drops a producer's expected callback.</p>
+    <table>
+      <thead><tr><th>Failure</th><th>V1 behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Worker exits abnormally (subprocess crash, harness error)</td><td>Substrate appends a <code>failed</code> record; delivers <code>InboxMessage(status="error", body=&lt;reason&gt;)</code> to the producer's inbox.</td></tr>
+        <tr><td>Worker hangs / runs too long</td><td>No automatic timeout in v1. Operator interrupts via the TUI's existing <code>Esc</code> binding or Telegram <code>/interrupt &lt;handle&gt;</code>. A <code>task_timeout</code> config knob is straightforward and deferred to v1.1.</td></tr>
+        <tr><td><code>aegis serve</code> restart mid-flight</td><td>On boot: replay queue logs; mark every <code>dispatched</code>-but-not-<code>completed</code> task as <code>failed: interrupted</code>; deliver a failure callback into the producer's inbox file (durable on disk even if the producer's live session is also gone). Workers are not resumed.</td></tr>
+        <tr><td>Producer has exited by the time the callback fires</td><td>Orphaned inbox file at <code>.aegis/state/inboxes/&lt;handle&gt;.jsonl</code>. Callback persists for forensics; no live delivery. Documented v1 trait — generated handles are per-spawn unique, so a closed session's inbox is effectively dead-lettered.</td></tr>
+        <tr><td>Queue at cap</td><td>New tasks FIFO-wait. No load shedding, no priority bumping. <code>queued_position</code> in the enqueue response tells the producer its depth.</td></tr>
+        <tr><td>Unknown queue name on enqueue</td><td>MCP tool returns an error synchronously; the agent sees it as the tool result. No queue side-effects.</td></tr>
+        <tr><td>Invalid <code>.aegis.py</code> (queue references unknown agent profile)</td><td><code>aegis serve</code> refuses to start, prints which queue is broken. Same fail-loud pattern as the existing profile loader.</td></tr>
+        <tr><td><code>.aegis/state/</code> not writable</td><td>Refuse to start. TUI, Telegram, and MCP plane all stay down until the operator fixes it.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <p>Continue the existing hermetic-vs-live split (per <code>AGENTS.md</code>: <code>uv run pytest -q -k "not live"</code> for the fast suite).</p>
+    <h3>Hermetic unit tests</h3>
+    <ul>
+      <li><strong><code>QueueManager</code></strong> — FIFO ordering; cap enforcement; dispatch loop wakes on headroom; persistence-then-replay across a simulated restart correctly marks in-flight tasks as <code>failed: interrupted</code>. Uses a stub <code>SessionManager</code> that records <code>spawn()</code> calls without launching subprocesses; lets us simulate worker completion + failure deterministically.</li>
+      <li><strong><code>InboxRouter</code></strong> — <code>deliver()</code> writes through to JSONL + buffer; live-session delivery triggers <code>AgentSession.deliver</code>; idle-session delivery schedules a wake-turn; <code>drain()</code> returns batched messages in arrival order; persistence + replay across restart.</li>
+      <li><strong><code>AgentSession.deliver</code></strong> — wake-on-idle schedules a turn; mid-turn buffers; turn-end hook chains a follow-up turn when the inbox is non-empty.</li>
+      <li><strong>JSONL schema round-trips</strong> — every record type encode/decode; one explicit "v=2 adds an optional field" forward-compatibility test so future schema bumps don't break v1 reads.</li>
+      <li><strong>MCP tools</strong> — <code>aegis_enqueue</code> and <code>aegis_task_status</code>: shape, error responses (unknown queue, missing payload), <code>from_handle</code> reflection.</li>
+      <li><strong><code>aegis_handoff</code> refactor</strong> — existing handoff tests continue to pass; new assertion that the delivered <code>InboxMessage</code> carries <code>sender="agent:&lt;from_handle&gt;"</code>.</li>
+      <li><strong>Config loader</strong> — valid <code>queues</code> dict parses; queue referencing unknown agent profile fails loud at load time with the offending queue name in the error.</li>
+    </ul>
+    <h3>Live integration</h3>
+    <ul>
+      <li>One new file <code>tests/test_queue_live.py</code>, auto-skips if <code>claude</code> is not on PATH. End-to-end: spawn a producer with a tiny opening prompt that calls <code>aegis_enqueue</code> for a trivial task, worker runs, callback arrives, producer reads the result. The smoke test that proves the whole loop is wired. Mirrors <code>tests/test_integration_live.py</code>.</li>
+    </ul>
+    <p>Test data uses <code>tmp_path</code> for the state dir. No real Telegram, no network.</p>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li><strong>Replacing the vault job substrate.</strong> Cron/recurring schedules and migration of <code>vault/+/jobs/</code> are vision Phase 6, not v1. The v1 queue is one-shot, agent-initiated work only.</li>
+      <li><strong>Sync delegation tool.</strong> A wrapper that does enqueue + await in one MCP call is composable on top of v1 but not shipped.</li>
+      <li><strong>Cancellation MCP tool.</strong> Cancel-via-inbox is sufficient for v1.</li>
+      <li><strong>Dynamic queue creation.</strong> MCP plane does not mutate queue topology; queues are static config.</li>
+      <li><strong>Worker pools / reuse.</strong> Workers are ephemeral; one task per spawn.</li>
+      <li><strong>Priority / routing / load shedding.</strong> Strict FIFO per queue, no priority.</li>
+      <li><strong>Cross-aegis-instance queues.</strong> V1 lives inside a single <code>aegis serve</code> process. Distribution is vision Phase 5.</li>
+      <li><strong>TUI queue-status pane.</strong> Visibility in v1 is "queues are visible via the worker tabs they spawn". A dedicated queue/inbox observability pane is a follow-up polish item once the backend has proven out — it touches Telegram, MCP, and TUI so the data model has to settle first.</li>
+      <li><strong>Long-lived bash terminals as senders.</strong> <code>sender: terminal:&lt;name&gt;</code> is reserved in the tag schema but not implemented; that primitive is vision Phase 4.</li>
+    </ul>
+    <details>
+      <summary>Open questions &amp; deferred items</summary>
+      <ul>
+        <li><strong>Worker exit signal.</strong> "Worker exits when its work is complete" assumes the worker calls <code>aegis_meta</code> to close, or hits a natural stop. The exact contract — does the substrate watch for an idle-with-no-pending-inbox state? a sentinel tool call? — is an implementation detail to settle in the plan. Likely the simplest answer: worker exits when its <code>AgentSession</code> closes (existing mechanism), and the substrate captures whatever the session's last assistant text was as <code>result</code>.</li>
+        <li><strong>Result capture granularity.</strong> The worker's "final assistant text" is the most natural <code>result</code>, but workers that do many tool calls may have a long final message vs. a short one. V1 takes whatever the worker's last assistant turn produced verbatim; structured result envelopes are deferred.</li>
+        <li><strong>Inbox file growth.</strong> Append-only JSONL grows unboundedly. V1 ships without compaction; a future rotation policy (rotate at N MB, keep last M files) is straightforward.</li>
+        <li><strong>Two producers awaiting the same task_id.</strong> Not possible in v1 — only the original enqueuer receives the callback. If "subscribe to a task" becomes a need, it's an additive primitive.</li>
+        <li><strong>Schema migration ergonomics.</strong> The <code>v: 1</code> field plus accepting unknown-but-well-formed sender prefixes covers the easy cases; harder migrations (renaming a field, changing semantics) will need a one-off replay-and-rewrite script when they arrive.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies</footer>
+
+</div>
+</body>
+</html>
