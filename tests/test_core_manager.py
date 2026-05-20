@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from aegis.core.manager import SessionManager
@@ -73,3 +75,49 @@ async def test_close_all_clears_sessions():
     m.spawn("researcher")
     await m.close_all()
     assert m.list_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_spawn_with_opening_prompt_kicks_first_turn():
+    sent: list[str] = []
+
+    class Recording:
+        def __init__(self): self.started = self.closed = False
+        async def start(self): self.started = True
+        async def send(self, t): sent.append(t)
+        async def close(self): self.closed = True
+
+        async def events(self):
+            from aegis.events import Result
+            await asyncio.sleep(0)
+            yield Result(duration_ms=1, is_error=False, usage=None)
+
+    agents = {"default": object()}
+    m = SessionManager(agents, "default",
+                       make_session=lambda a, u, h: Recording(),
+                       mcp=None)
+    s = m.spawn("default", opening_prompt="hello there")
+    # spawn wraps the first send() in asyncio.create_task; yield once so
+    # that outer task runs and sets s._task.
+    await asyncio.sleep(0)
+    assert s._task is not None
+    await s._task
+    assert sent == ["hello there"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_with_explicit_handle():
+    m = make_mgr()
+    s = m.spawn("default", handle="vivid-laplace")
+    assert s.handle == "vivid-laplace"
+
+
+@pytest.mark.asyncio
+async def test_spawn_threads_inbox_router_when_set():
+    from aegis.queue import InboxRouter
+    inbox = InboxRouter()
+    m = SessionManager({"default": object()}, "default",
+                       make_session=lambda a, u, h: FakeHarness(),
+                       mcp=None, inbox=inbox)
+    s = m.spawn("default")
+    assert s._inbox is inbox

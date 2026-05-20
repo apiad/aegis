@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 
 from aegis.core.session import AgentSession
@@ -14,25 +15,35 @@ class SessionManager:
     """Frontend-agnostic owner of live AgentSessions. Is an AppBridge."""
 
     def __init__(self, agents: dict, default_agent: str,
-                 make_session: SessionFactory, mcp) -> None:
+                 make_session: SessionFactory, mcp,
+                 *, inbox=None) -> None:
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        self._inbox = inbox
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
 
-    def spawn(self, slug: str | None = None) -> AgentSession:
+    def spawn(self, slug: str | None = None, *,
+              opening_prompt: str | None = None,
+              handle: str | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
         agent = self._agents[slug]
-        handle = generate_name({s.handle for s in self._sessions})
+        h = handle or generate_name({s.handle for s in self._sessions})
         url = self._mcp.url if self._mcp is not None else ""
-        s = AgentSession(self._make_session(agent, url, handle),
-                         agent, slug, handle)
+        s = AgentSession(self._make_session(agent, url, h),
+                         agent, slug, h,
+                         inbox=self._inbox,
+                         opening_prompt=opening_prompt)
+        if self._inbox is not None:
+            self._inbox.bind_session(h, s)
         self._sessions.append(s)
-        self._touch(handle)
+        self._touch(h)
+        if opening_prompt is not None:
+            asyncio.create_task(s.send(opening_prompt))
         return s
 
     def _touch(self, handle: str) -> None:
@@ -49,6 +60,8 @@ class SessionManager:
             return
         await s.close()
         self._sessions.remove(s)
+        if self._inbox is not None:
+            self._inbox.unbind_session(handle)
         if handle in self._mru:
             self._mru.remove(handle)
 
@@ -60,6 +73,8 @@ class SessionManager:
     async def close_all(self) -> None:
         for s in list(self._sessions):
             await s.close()
+            if self._inbox is not None:
+                self._inbox.unbind_session(s.handle)
         self._sessions.clear()
         self._mru.clear()
 
