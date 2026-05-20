@@ -40,9 +40,10 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `aegis-ink` default)
 - `src/aegis/mcp/` - FastMCP server (`server.py`: BRIEFING/PRIMING,
   `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
-  `aegis_list_agents`, `aegis_handoff`; `mcp_config_json`) +
-  `AppBridge`/`SessionInfo` (`bridge.py`: pure Protocol the server
-  consumes; `AegisApp` implements it) + `AegisMCP` runtime
+  `aegis_list_agents`, `aegis_handoff` + queue-v1 tools `aegis_enqueue`,
+  `aegis_task_status`; `mcp_config_json`) + `AppBridge`/`SessionInfo`
+  (`bridge.py`: pure Protocol the server consumes; `AegisApp` and
+  `SessionManager` both implement it) + `AegisMCP` runtime
   (`runtime.py`: co-resident HTTP server, port pick, start/stop,
   `bind(bridge)`). The app owns one shared instance, binds itself,
   starts it before the first spawn, and injects strict
@@ -50,9 +51,26 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   alongside a primer system-prompt that bakes the pane's handle
   (`PRIMING.format(handle=…)`). Each agent reads its own handle from
   its system prompt and passes it as `from_handle` to
-  `aegis_handoff`. aegis sessions run `--strict-mcp-config`: the
-  user's other MCP servers are not present inside aegis; built-in
-  claude tools (Read/Edit/Bash/…) are unchanged.
+  `aegis_handoff` / `aegis_enqueue`. aegis sessions run
+  `--strict-mcp-config`: the user's other MCP servers are not present
+  inside aegis; built-in claude tools (Read/Edit/Bash/…) are unchanged.
+- `src/aegis/queue/` - inter-agent task queues + agent inboxes.
+  `QueueManager` (FIFO + max-parallel cap + substrate-deterministic
+  dispatch on every enqueue/completion event; JSONL lifecycle log
+  under `.aegis/state/queues/<queue>.jsonl`; `start()` replays on
+  boot and marks in-flight tasks `failed:interrupted`),
+  `InboxRouter` (per-handle delivery; wake-on-idle / mid-turn buffer /
+  turn-end chain through `AgentSession.deliver`; JSONL writethrough
+  under `.aegis/state/inboxes/<handle>.jsonl`), schema records
+  (`Queue`, `Task`, `InboxMessage`) + helpers (`new_ulid`,
+  `now_iso`, `sender_agent`/`sender_queue`, `render_inbox_header`).
+  MCP surface: `aegis_enqueue` (queue, payload, from_handle,
+  callback=True) and `aegis_task_status`. `aegis_handoff` now flows
+  through the same inbox channel — target agents read handoffs and
+  callbacks through one consistent surface (universal tagging).
+  Queues are declared in `.aegis.py` as
+  `queues = {"<name>": {"agent": "<profile>", "max_parallel": N}, …}`;
+  unknown agent references fail loud at `aegis serve` boot.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's
