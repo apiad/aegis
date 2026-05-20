@@ -87,7 +87,8 @@ def test_build_server_registers_all_aegis_tools():
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff",
-        "aegis_enqueue", "aegis_task_status"}
+        "aegis_enqueue", "aegis_task_status",
+        "aegis_run_workflow"}
 
 
 @pytest.mark.asyncio
@@ -150,6 +151,43 @@ async def test_handoff_rejects_busy_target():
                       context="now")
     assert "busy" in out and "busy-one" in out
     assert br.inbox_router.pending("busy-one") == []
+
+
+@pytest.mark.asyncio
+async def test_run_workflow_tool_returns_runner_dict():
+    from aegis.workflow import workflow
+    from aegis.workflow.decorator import _REGISTRY
+    _REGISTRY.clear()
+
+    @workflow
+    async def greet(engine, *, who):
+        return f"hello {who}, caller={engine.caller_handle}"
+
+    br = FakeBridge()
+    srv = build_server(br)
+    tools = await srv.list_tools()
+    tool = next(t for t in tools if t.name == "aegis_run_workflow")
+    res = await tool.run({"name": "greet", "kwargs": {"who": "alex"},
+                          "from_handle": "lucid-knuth"})
+    out = res.structured_content
+    assert out["status"] == "ok"
+    assert out["result"] == "hello alex, caller=lucid-knuth"
+    assert "workflow_run_id" in out
+    _REGISTRY.clear()
+
+
+@pytest.mark.asyncio
+async def test_run_workflow_tool_unknown_workflow():
+    from aegis.workflow.decorator import _REGISTRY
+    _REGISTRY.clear()
+    br = FakeBridge()
+    srv = build_server(br)
+    tools = await srv.list_tools()
+    tool = next(t for t in tools if t.name == "aegis_run_workflow")
+    res = await tool.run({"name": "ghost", "kwargs": {}, "from_handle": "x"})
+    out = res.structured_content
+    assert out["status"] == "error"
+    assert "unknown workflow" in out["error"]
 
 
 def test_meta_and_priming_updated():

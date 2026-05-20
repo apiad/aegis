@@ -174,6 +174,36 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return {"task_id": tid, "queued_position": pos}
 
     @server.tool
+    async def aegis_run_workflow(name: str, kwargs: dict,
+                                 from_handle: str) -> dict:
+        """Invoke a registered workflow with kwargs. Synchronous: the call
+        does not return until the workflow finishes (or raises).
+
+        ``name`` is the function name the workflow was registered under
+        (see the workflow registry / ``aegis workflow list``). ``kwargs``
+        is the dict of keyword arguments forwarded to the workflow.
+        ``from_handle`` is your aegis handle — exposed to the workflow as
+        ``engine.caller_handle`` so it can route follow-ups back.
+
+        Returns the runner result dict directly:
+        ``{"status": "ok"|"error", "result"?: any, "error"?: str,
+        "workflow_run_id": str}``. ``state_dir`` is pulled from the
+        bridge's queue manager when available, so the workflow's JSONL
+        log lands beside the queue/inbox state.
+        """
+        from aegis.workflow.runner import run_workflow
+
+        qm = bridge.queue_manager
+        state_dir = getattr(qm, "_state_dir", None) if qm is not None else None
+        return await run_workflow(
+            name, kwargs,
+            bridge=bridge,
+            queue_manager=qm,
+            inbox_router=bridge.inbox_router,
+            caller_handle=from_handle,
+            state_dir=state_dir)
+
+    @server.tool
     async def aegis_task_status(task_id: str) -> dict:
         """Inspect a previously-enqueued task by its task_id.
 
