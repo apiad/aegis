@@ -71,6 +71,18 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   Queues are declared in `.aegis.py` as
   `queues = {"<name>": {"agent": "<profile>", "max_parallel": N}, …}`;
   unknown agent references fail loud at `aegis serve` boot.
+- `src/aegis/workflow/` - the workflow scaffold (v1). `@workflow`
+  decorator + auto-registry (`decorator.py`); `WorkflowEngine` runtime
+  with `delegate` (one-shot via queue), `send`/`drain` (live-agent
+  fire-and-forget + await idle), `spawn`/`close` (long-lived agent
+  lifecycle), `bash` (async shell), `log` (stderr + JSONL under
+  `.aegis/state/workflows/`), and `caller_handle` (whoever invoked
+  via MCP `aegis_run_workflow`); `runner.run_workflow` is the unified
+  entry for CLI (`aegis workflow run`) and MCP (`aegis_run_workflow`),
+  with auto-drain + auto-close in finally. Compose on the v1 queue
+  for delegation; no second agent-spawn plane.
+- `examples/` - shipped workflows (`tdd_step.py`). Import in your
+  `.aegis.py` to register them.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's
