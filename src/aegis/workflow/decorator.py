@@ -28,10 +28,19 @@ def workflow(fn: WorkflowFn) -> WorkflowFn:
         raise TypeError(
             f"@workflow on {fn.__name__}: first parameter must be 'engine'")
     name = fn.__name__
-    if name in _REGISTRY:
+    existing = _REGISTRY.get(name)
+    if existing is not None:
+        # Idempotent re-registration: same source location → same workflow,
+        # just the .aegis.py being reloaded (load_config + load_queues both
+        # exec the file). Different source location → real collision.
+        ec, nc = existing.__code__, fn.__code__
+        if (ec.co_filename == nc.co_filename
+                and ec.co_firstlineno == nc.co_firstlineno):
+            _REGISTRY[name] = fn
+            return fn
         raise ConfigError(
             f"workflow name collision: {name!r} already registered "
-            f"(from {_REGISTRY[name].__module__}); cannot re-register "
+            f"(from {existing.__module__}); cannot re-register "
             f"from {fn.__module__}")
     _REGISTRY[name] = fn
     return fn

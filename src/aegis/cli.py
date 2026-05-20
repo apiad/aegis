@@ -153,6 +153,104 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
     asyncio.run(main_async())
 
 
+# Workflow subcommand group --------------------------------------------
+workflow_app = typer.Typer(help="Author + run aegis workflows.")
+app.add_typer(workflow_app, name="workflow")
+
+
+@workflow_app.command("list")
+def workflow_list_cmd() -> None:
+    """List all @workflow-decorated functions discovered via .aegis.py."""
+    try:
+        load_config()    # loads .aegis.py → @workflow decorators fire
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    from aegis.workflow import list_workflows
+    names = list_workflows()
+    if not names:
+        _console.print("[yellow]no workflows registered.[/yellow]")
+        return
+    for n in names:
+        typer.echo(n)
+
+
+@workflow_app.command(
+    "run",
+    context_settings={"allow_extra_args": True,
+                      "ignore_unknown_options": True})
+def workflow_run_cmd(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="workflow name"),
+) -> None:
+    """Run a workflow by name. Pass kwargs as ``--key=value``.
+
+    All kwargs arrive as strings; the workflow body coerces if needed.
+    """
+    try:
+        agents, default_agent = load_config()
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    root = find_project_root() or Path.cwd()
+    try:
+        queues = load_queues(root / ".aegis.py")
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    # Parse trailing --key=value kwargs from ctx.args.
+    kwargs: dict[str, str] = {}
+    for tok in ctx.args:
+        if not tok.startswith("--") or "=" not in tok:
+            _console.print(f"[red]bad kwarg: {tok!r} (use --key=value)[/red]")
+            raise typer.Exit(1)
+        k, v = tok[2:].split("=", 1)
+        kwargs[k.replace("-", "_")] = v
+
+    from aegis.workflow import get_workflow, list_workflows, run_workflow
+
+    if get_workflow(name) is None:
+        _console.print(
+            f"[red]unknown workflow: {name!r}. "
+            f"Available: {list_workflows()}[/red]")
+        raise typer.Exit(1)
+
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, str(root), mcp_url, handle)
+
+    async def main_async():
+        from aegis.queue import InboxRouter, QueueManager
+        inbox = InboxRouter(state_dir=root / ".aegis" / "state")
+        mgr = SessionManager(agents, default_agent, make_session,
+                             AegisMCP(), inbox=inbox)
+        qm = QueueManager(queues, mgr, inbox,
+                          state_dir=root / ".aegis" / "state")
+        mgr.attach_queue_manager(qm)
+        mgr._mcp.bind(mgr)
+        await mgr._mcp.start()
+        await qm.start()
+        try:
+            out = await run_workflow(
+                name, kwargs, bridge=mgr, queue_manager=qm,
+                inbox_router=inbox,
+                state_dir=root / ".aegis" / "state")
+        finally:
+            await qm.stop()
+            await mgr.close_all()
+            await mgr._mcp.stop()
+        return out
+
+    out = asyncio.run(main_async())
+    typer.echo(out["status"])
+    if out["status"] == "ok":
+        typer.echo(out.get("result", ""))
+    else:
+        typer.echo(out.get("error", ""))
+        raise typer.Exit(1)
+
+
 def main() -> None:
     app()
 
