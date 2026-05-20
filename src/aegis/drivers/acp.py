@@ -143,10 +143,9 @@ class AcpSession(HarnessSession):
         self._client = _AegisAcpClient(self._queue)
 
     def _argv(self) -> list[str]:
-        argv = list(self.BASE_CMD)
-        if getattr(self._agent, "model", ""):
-            argv += ["-m", self._agent.model]
-        return argv
+        # Default: just the BASE_CMD. Subclasses override to inject
+        # provider-specific flags like model selection.
+        return list(self.BASE_CMD)
 
     async def start(self) -> None:
         argv = self._argv()
@@ -238,13 +237,16 @@ class AcpDriver(HarnessDriver):
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:
-        argv = list(self.BASE_CMD)
-        if getattr(agent, "model", ""):
-            argv += ["-m", agent.model]
-        return argv
+        # Default: BASE_CMD verbatim. Provider drivers override to add
+        # CLI-specific flags (e.g. Gemini's -m model selector). Models
+        # that the CLI doesn't accept stay in agent.model for logging
+        # / queue routing; the CLI uses its own default config.
+        return list(self.BASE_CMD)
 
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle)
-        s.BASE_CMD = self.BASE_CMD
+        # The session reads BASE_CMD from itself; provider sessions
+        # override _argv if they need per-call argv tweaks.
+        s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
