@@ -43,22 +43,24 @@ class AegisApp(App):
     ]
 
     def __init__(self, agents: dict[str, Agent], default_agent: str,
-                 make_session: SessionFactory, mcp) -> None:
+                 make_session: SessionFactory, mcp,
+                 *, queues: "dict | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
         # AppBridge surface attrs. AegisApp is the bridge in the
-        # interactive (TUI) path. V1: queue plane is present-but-empty —
-        # aegis_enqueue against an unknown queue returns the documented
-        # error. Full per-pane inbox binding lands in VS4.
+        # interactive (TUI) path. queue_manager stays None when no queues
+        # are configured (aegis_enqueue against an unknown queue returns
+        # the documented error). Full per-pane inbox binding lands in VS4.
         from aegis.queue import InboxRouter
         self.inbox_router = InboxRouter()
         self.queue_manager = None
         self._mcp.bind(self)
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
+        self._queues = queues or {}
 
     def compose(self) -> ComposeResult:
         yield TabBar()

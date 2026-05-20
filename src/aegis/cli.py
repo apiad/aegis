@@ -9,8 +9,8 @@ import typer
 from rich.console import Console
 
 from aegis.config import (
-    ConfigError, find_project_root, load_config, load_telegram_config,
-    write_init_scaffold,
+    ConfigError, find_project_root, load_config, load_queues,
+    load_telegram_config, write_init_scaffold,
 )
 from aegis.core.manager import SessionManager
 from aegis.drivers import get_driver
@@ -71,24 +71,27 @@ def run(
     root = find_project_root() or Path.cwd()
     effective_cwd = str(root) if cwd == "." else cwd
 
+    try:
+        queues = load_queues(root / ".aegis.py")
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
     def make_session(profile, mcp_url, handle):
         return get_driver(profile.harness).session(
             profile, effective_cwd, mcp_url, handle)
 
-    AegisApp(agents, name, make_session, AegisMCP()).run()
+    AegisApp(agents, name, make_session, AegisMCP(), queues=queues).run()
 
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
-                 stop: asyncio.Event) -> None:
+                 stop: asyncio.Event, queues: dict | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
     mgr = SessionManager(agents, default_agent, make_session, mcp,
                          inbox=inbox)
-    # VS3 swaps the empty queues dict for the loaded .aegis.py queues; for
-    # VS1 the manager is wired but holds no queues — aegis_enqueue against
-    # an unknown queue returns the documented "enqueue rejected" error.
-    qm = QueueManager({}, mgr, inbox)
+    qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
     mcp.bind(mgr)
     await mcp.start()
@@ -126,6 +129,12 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
         return get_driver(profile.harness).session(
             profile, effective, mcp_url, handle)
 
+    try:
+        queues = load_queues(root / ".aegis.py")
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
     tcfg = load_telegram_config(root / ".aegis.py")
     tg = tcfg if tcfg.token and tcfg.chat_id else None
     if tg is None:
@@ -139,7 +148,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             loop.add_signal_handler(sig, stop.set)
         await _serve(agents=agents, default_agent=default_agent,
                      make_session=make_session, mcp=AegisMCP(),
-                     tg=tg, stop=stop)
+                     tg=tg, stop=stop, queues=queues)
 
     asyncio.run(main_async())
 
