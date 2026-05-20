@@ -52,20 +52,16 @@ channel for shape symmetry).
 
 ## Next up
 
-### 1. Workflow scaffold — **unblocked**
+### 1. Workflow scaffold v1 — **shipped (2026-05-20)**
 
-Harness-level scaffold for the "workflow idea": something runnable at
-the harness level that spawns agents, gives them tasks, and directs one
-to hand off to another — a way to **drive the whole harness
-deterministically from the top**. Previously gated on delegation being
-defined; the task queue answers that gate.
-
-The sidelined `legacy/` workflow-engine prototype (`WorkflowContext`,
-`Attempt`, queue-based step protocol, FastMCP server) is reusable raw
-material — its public API will be redesigned around the v1 queue +
-inbox primitives.
-
-→ needs a brainstorm.
+`@workflow` decorator + auto-registry, `WorkflowEngine` runtime
+(`delegate` / `send` / `drain` / `spawn` / `close` / `bash` / `log` /
+`caller_handle`), `runner.run_workflow` with auto-drain + auto-close,
+`aegis workflow list/run` CLI, and `aegis_run_workflow` MCP tool — all
+composed on the v1 queue + inbox. Canonical example `examples/tdd_step.py`
+plus a live e2e test (`tests/test_workflow_live.py`, marker `live`,
+auto-skip when `claude` is off PATH) ride along. Plan:
+`docs/superpowers/plans/2026-05-20-aegis-workflow-scaffold-v1.md`.
 
 ### 2. Queue v1 polish
 
