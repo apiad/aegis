@@ -63,32 +63,48 @@ plus a live e2e test (`tests/test_workflow_live.py`, marker `live`,
 auto-skip when `claude` is off PATH) ride along. Plan:
 `docs/superpowers/plans/2026-05-20-aegis-workflow-scaffold-v1.md`.
 
-### 1.5. Multi-provider drivers (Gemini + OpenCode) — **shipped (2026-05-20)**
+### 1.5. Multi-provider drivers v2 (ACP) — **shipped (2026-05-20)**
 
-`GeminiDriver` (`gemini -p ... --output-format stream-json`) +
-`OpenCodeDriver` (`opencode run ... --format json`), with per-provider
-stream parsers. New ergonomic `Agent(provider=...)` shape with
-`ClaudeCode` / `GeminiCLI` / `OpenCode` Pydantic classes carrying only
-the fields each CLI actually consumes; legacy flat `Agent(harness=...)`
-shape still works via a back-compat shim. Three queues
-(`impl`, `impl-gemini`, `impl-opencode`) declared in `.aegis.py` so any
-agent can delegate to any provider via `aegis_enqueue`.
+Replaces the v1 one-shot CLI drivers with ACP-based versions on the
+official `agent-client-protocol` Python SDK. **Both v1 limitations
+dissolved against real binaries**:
 
-V1 limitations (documented, deferred):
+- **Multi-turn per session.** `send()` calls `conn.prompt()` on the
+  same `session_id`; conversation state persists. Live-tested:
+  "memorize 4217 → recite it back" works on both Gemini and OpenCode.
+- **Per-session aegis-MCP injection.** `new_session(mcp_servers=[
+  {type:http, name:aegis, url:<mcp_url>, headers:[]}])` — agent
+  connects to our HTTP MCP server for that session only. Live-tested:
+  spun up a FastMCP server, both providers called the tool. Full
+  feature parity with Claude's `--mcp-config`.
 
-- Gemini and OpenCode sessions are **one-shot per send**. Both CLIs
-  lack stream-json INPUT (no per-process multi-turn like Claude). A
-  second `send()` on the same session raises. Fine for queue workers
-  (one task per worker); multi-turn drive for these providers is v2.
-- Gemini and OpenCode workers do **not** have aegis MCP injected.
-  Both CLIs use global MCP config (`gemini mcp add` / `opencode mcp`)
-  rather than per-invocation `--mcp-config`. Workers can do their
-  task but cannot call `aegis_enqueue` etc back. Substrate captures
-  the worker's final assistant text as the result; sufficient for
-  cross-provider task passing through the queue.
+Architecture: one generic `AcpSession`+`AcpDriver` in `drivers/acp.py`;
+two ~10-line provider shims (`GeminiDriver`, `OpenCodeDriver`); per-CLI
+hand parsers deleted (ACP carries the event taxonomy). `_AegisAcpClient`
+translates `session_update` notifications into aegis Event types
+(AssistantText, AssistantThinking, ToolUse, ToolResult).
 
-Live: `tests/test_drivers_multiprovider_live.py` — gemini ~6s,
-opencode ~18s.
+The earlier provider-config classes (`ClaudeCode` / `GeminiCLI` /
+`OpenCode` in `config.py`) and the three queues (`impl`, `impl-gemini`,
+`impl-opencode`) in `.aegis.py` from the v1 work all carry over
+unchanged.
+
+Live tests (6, ~165s total): round-trip + multi-turn + MCP-injection
+per provider. Hermetic: 261 passed (was 277; -16 from deleted v1
+parsers).
+
+Three driver-shape gotchas captured in code comments + playtest
+findings (`.playground/acp-probe/FINDINGS.md`):
+
+- ACP SDK invokes `on_connect` synchronously, not as a coroutine.
+- Notifications dispatch as separate supervised tasks — `send()` must
+  yield to the loop a few times after `prompt()` returns so
+  notification handlers complete before the synthesized Result lands.
+- OpenCode's `opencode acp` doesn't accept `-m <model>` (Gemini's
+  does). Model-flag injection lives per-driver.
+
+Spec: `vault/Atlas/Architecture/2026-05-20-aegis-acp-drivers-design.md`.
+Plan: `vault/Atlas/Architecture/plans/2026-05-20-aegis-acp-drivers-v2.md`.
 
 ### 2. Queue v1 polish
 
