@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 
@@ -36,7 +37,18 @@ BRIEFING = (
     "{task_id, queued_position}; keep working between enqueue and "
     "callback arrival.\n"
     "  - aegis_task_status(task_id) : inspect a previously-enqueued "
-    "task. Use when callback was false or you want to poll mid-flight.\n\n"
+    "task. Use when callback was false or you want to poll mid-flight.\n"
+    "  - aegis_run_workflow(name, kwargs, from_handle, callback=true) : "
+    "invoke a registered workflow (a deterministic Python procedure "
+    "that drives a sequence of agent interactions with predicate-"
+    "verified steps and retry-with-feedback). Non-blocking: returns "
+    "{workflow_run_id, status: 'running'} immediately. If you pass "
+    "your own handle as from_handle, the workflow runs ON YOU — it "
+    "will send you follow-up messages (engine.send → your inbox) "
+    "between its bash predicates, and you must be free to process "
+    "them, which is why this tool can't block. With callback=true the "
+    "final result lands in your inbox tagged sender=workflow:<name> "
+    "with task_id matching workflow_run_id.\n\n"
     "INBOX — how messages reach you. Anything other people or the "
     "substrate send you arrives as a normal user-message turn, but "
     "begins with a one-line substrate header so you can tell where it "
@@ -52,6 +64,12 @@ BRIEFING = (
     "  > from telegram · <timestamp>\n"
     "      A user message from Alex (or whoever owns the Telegram "
     "chat) — same as anything else they would type.\n"
+    "  > from workflow:<name> · task#<id> · ok|error · <timestamp>\n"
+    "      Either (a) the final result of a workflow you invoked via "
+    "aegis_run_workflow, tagged with the workflow_run_id returned to "
+    "you, or (b) an intermediate instruction from a workflow that is "
+    "currently running ON YOU (no task_id in that case — the workflow "
+    "is mid-flight). Read the body and proceed.\n"
     "Multiple messages that arrive while you are mid-turn batch into a "
     "single user-message at your next turn boundary; each entry keeps "
     "its own header. If you were idle, an arrival wakes you into a new "
@@ -174,34 +192,80 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return {"task_id": tid, "queued_position": pos}
 
     @server.tool
-    async def aegis_run_workflow(name: str, kwargs: dict,
-                                 from_handle: str) -> dict:
-        """Invoke a registered workflow with kwargs. Synchronous: the call
-        does not return until the workflow finishes (or raises).
+    async def aegis_run_workflow(
+        name: str, kwargs: dict | None = None,
+        from_handle: str = "", callback: bool = True,
+    ) -> dict:
+        """Invoke a registered workflow. Non-blocking: returns
+        ``{workflow_run_id, status: "running"}`` immediately; the
+        workflow runs in the background.
 
-        ``name`` is the function name the workflow was registered under
-        (see the workflow registry / ``aegis workflow list``). ``kwargs``
-        is the dict of keyword arguments forwarded to the workflow.
-        ``from_handle`` is your aegis handle — exposed to the workflow as
-        ``engine.caller_handle`` so it can route follow-ups back.
+        **Non-blocking is load-bearing.** The canonical case is an agent
+        invoking a workflow on itself (passing its own handle as
+        ``from_handle``) — the workflow then drives the caller via
+        ``engine.send`` / ``engine.drain``, and the caller must be free
+        to process those sends. Sync-block here would deadlock the
+        caller's MCP turn against its own pending inbox messages.
 
-        Returns the runner result dict directly:
-        ``{"status": "ok"|"error", "result"?: any, "error"?: str,
-        "workflow_run_id": str}``. ``state_dir`` is pulled from the
-        bridge's queue manager when available, so the workflow's JSONL
-        log lands beside the queue/inbox state.
+        ``kwargs`` is forwarded to the workflow. ``from_handle`` is your
+        aegis handle (read from your system prompt) — surfaced to the
+        workflow as ``engine.caller_handle``.
+
+        ``callback=true`` (default): when the workflow finishes, the
+        result lands in your inbox as a normal user-message turn tagged
+        ``sender="workflow:<name>"``, with ``task_id`` matching the
+        ``workflow_run_id`` returned here. ``callback=false`` drops the
+        result (use only when you don't need recovery).
         """
+        from aegis.queue import InboxMessage
+        from aegis.queue.schema import new_ulid, now_iso
+        from aegis.workflow import get_workflow, list_workflows
         from aegis.workflow.runner import run_workflow
 
+        if get_workflow(name) is None:
+            return {
+                "error": (f"unknown workflow: {name!r}. "
+                          f"Available: {list_workflows()}")}
+
+        run_id = new_ulid()
         qm = bridge.queue_manager
-        state_dir = getattr(qm, "_state_dir", None) if qm is not None else None
-        return await run_workflow(
-            name, kwargs,
-            bridge=bridge,
-            queue_manager=qm,
-            inbox_router=bridge.inbox_router,
-            caller_handle=from_handle,
-            state_dir=state_dir)
+        state_dir = (getattr(qm, "_state_dir", None)
+                     if qm is not None else None)
+        kw = kwargs or {}
+
+        async def _run_and_callback() -> None:
+            out = await run_workflow(
+                name, kw,
+                bridge=bridge,
+                queue_manager=qm,
+                inbox_router=bridge.inbox_router,
+                caller_handle=from_handle or None,
+                state_dir=state_dir,
+                workflow_run_id=run_id)
+            if not callback or not from_handle:
+                return
+            ok = out["status"] == "ok"
+            body = out.get("result") if ok else out.get("error", "")
+            msg = InboxMessage(
+                sender=f"workflow:{name}",
+                timestamp=now_iso(),
+                body=str(body) if body is not None else "",
+                task_id=run_id,
+                status=("ok" if ok else "error"))
+            await bridge.inbox_router.deliver(from_handle, msg)
+
+        # Schedule via Textual's App.run_worker when the bridge is the
+        # interactive TUI (so the workflow's downstream session.deliver
+        # chain inherits active_app context and pane renderer hooks
+        # don't trip NoActiveAppError — same lesson as the queue v1
+        # adapter's mount path). Otherwise asyncio.create_task is fine.
+        scheduler = getattr(bridge, "run_worker", None)
+        if scheduler is not None:
+            scheduler(_run_and_callback(),
+                      name=f"workflow:{name}:{run_id}", exclusive=False)
+        else:
+            asyncio.create_task(_run_and_callback())
+        return {"workflow_run_id": run_id, "status": "running"}
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:

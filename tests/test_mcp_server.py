@@ -154,7 +154,10 @@ async def test_handoff_rejects_busy_target():
 
 
 @pytest.mark.asyncio
-async def test_run_workflow_tool_returns_runner_dict():
+async def test_run_workflow_tool_returns_run_id_immediately_and_callbacks():
+    """Non-blocking: returns {workflow_run_id, status: 'running'} sync,
+    workflow runs in the background, result lands in producer's inbox
+    tagged sender=workflow:<name> with task_id matching the run_id."""
     from aegis.workflow import workflow
     from aegis.workflow.decorator import _REGISTRY
     _REGISTRY.clear()
@@ -170,14 +173,53 @@ async def test_run_workflow_tool_returns_runner_dict():
     res = await tool.run({"name": "greet", "kwargs": {"who": "alex"},
                           "from_handle": "lucid-knuth"})
     out = res.structured_content
-    assert out["status"] == "ok"
-    assert out["result"] == "hello alex, caller=lucid-knuth"
+    # Immediate ack.
+    assert out["status"] == "running"
     assert "workflow_run_id" in out
+    run_id = out["workflow_run_id"]
+    # Let the scheduled task run + deliver the callback.
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if br.inbox_router.pending("lucid-knuth"):
+            break
+    pending = br.inbox_router.pending("lucid-knuth")
+    assert len(pending) == 1
+    msg = pending[0]
+    assert msg.sender == "workflow:greet"
+    assert msg.task_id == run_id
+    assert msg.status == "ok"
+    assert msg.body == "hello alex, caller=lucid-knuth"
+    _REGISTRY.clear()
+
+
+@pytest.mark.asyncio
+async def test_run_workflow_tool_callback_false_skips_inbox():
+    """callback=False fires the workflow but drops the result."""
+    from aegis.workflow import workflow
+    from aegis.workflow.decorator import _REGISTRY
+    _REGISTRY.clear()
+
+    @workflow
+    async def silent(engine):
+        return "no one will hear this"
+
+    br = FakeBridge()
+    srv = build_server(br)
+    tools = await srv.list_tools()
+    tool = next(t for t in tools if t.name == "aegis_run_workflow")
+    res = await tool.run({"name": "silent", "kwargs": {},
+                          "from_handle": "lucid-knuth",
+                          "callback": False})
+    assert res.structured_content["status"] == "running"
+    for _ in range(10):
+        await asyncio.sleep(0.01)
+    assert br.inbox_router.pending("lucid-knuth") == []
     _REGISTRY.clear()
 
 
 @pytest.mark.asyncio
 async def test_run_workflow_tool_unknown_workflow():
+    """Unknown name returns error synchronously (no callback)."""
     from aegis.workflow.decorator import _REGISTRY
     _REGISTRY.clear()
     br = FakeBridge()
@@ -186,18 +228,60 @@ async def test_run_workflow_tool_unknown_workflow():
     tool = next(t for t in tools if t.name == "aegis_run_workflow")
     res = await tool.run({"name": "ghost", "kwargs": {}, "from_handle": "x"})
     out = res.structured_content
-    assert out["status"] == "error"
-    assert "unknown workflow" in out["error"]
+    assert "error" in out
+    assert "ghost" in out["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_workflow_tool_workflow_error_callbacks_as_error_status():
+    """A WorkflowError-raising workflow produces an error-tagged callback."""
+    from aegis.workflow import workflow, WorkflowError
+    from aegis.workflow.decorator import _REGISTRY
+    _REGISTRY.clear()
+
+    @workflow
+    async def predicate_fails(engine):
+        raise WorkflowError("predicate violated")
+
+    br = FakeBridge()
+    srv = build_server(br)
+    tools = await srv.list_tools()
+    tool = next(t for t in tools if t.name == "aegis_run_workflow")
+    res = await tool.run({"name": "predicate_fails", "kwargs": {},
+                          "from_handle": "lucid-knuth"})
+    assert res.structured_content["status"] == "running"
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if br.inbox_router.pending("lucid-knuth"):
+            break
+    pending = br.inbox_router.pending("lucid-knuth")
+    assert len(pending) == 1
+    msg = pending[0]
+    assert msg.status == "error"
+    assert "predicate violated" in msg.body
+    _REGISTRY.clear()
 
 
 def test_meta_and_priming_updated():
     b = BRIEFING.lower()
     for t in ("aegis_list_sessions", "aegis_list_agents",
-              "aegis_handoff", "aegis_enqueue", "aegis_task_status"):
+              "aegis_handoff", "aegis_enqueue", "aegis_task_status",
+              "aegis_run_workflow"):
         assert t in b
     assert "{handle}" in PRIMING
     assert "aegis_meta" in PRIMING
     assert "your aegis handle" in PRIMING.lower()
+
+
+def test_briefing_explains_workflow_callback_header():
+    """Agents need to recognize workflow callbacks landing in their
+    inbox — distinct from queue callbacks (queue:<name>) and peer
+    handoffs (agent:<handle>)."""
+    b = BRIEFING
+    assert "workflow:<name>" in b
+    # The 'why non-blocking' rationale must be present so callers don't
+    # try to await the tool call.
+    assert "non-blocking" in b.lower() or "Non-blocking" in b
 
 
 def test_briefing_explains_inbox_header_and_delegation():

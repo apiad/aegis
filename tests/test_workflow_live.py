@@ -22,9 +22,16 @@ pytestmark = [
 ]
 
 
-async def test_live_tdd_workflow_writes_and_passes_trivial_test(tmp_path):
-    """Tiny TDD loop: ask the worker to write a test asserting 1+1==2,
-    verify it fails on a stub module, implement, verify green."""
+async def test_live_tdd_workflow_writes_and_passes_factorial(tmp_path):
+    """Tiny but non-trivial TDD loop: write tests for a `factorial(n)`
+    function that doesn't yet exist, verify they fail (ImportError or
+    NameError), have the worker implement factorial, verify they pass.
+
+    Earlier draft used `assert 1+1==2`, which Python validates without
+    any implementation — TDD's 'tests should fail before impl' predicate
+    correctly rejected that case. Factorial needs a real function body
+    so the loop actually runs through to green.
+    """
     # Register the workflow.
     from examples.tdd_step import tdd_step                    # noqa: F401
 
@@ -49,21 +56,27 @@ async def test_live_tdd_workflow_writes_and_passes_trivial_test(tmp_path):
     await mcp.start()
     await qm.start()
     try:
+        plan = (
+            "Implement a function `factorial(n: int) -> int` in a new "
+            f"file {tmp_path / 'factorial.py'}. It must return n! "
+            "(0! = 1, 1! = 1, 5! = 120). The function does not exist "
+            "yet — tests written first must import it and will fail "
+            "with ImportError until the implementation lands.")
         out = await asyncio.wait_for(
             run_workflow(
                 "tdd_step",
-                {"plan_step": "trivial: assert one plus one equals two",
+                {"plan_step": plan,
                  "test_command": "python -m pytest",
-                 "test_path": str(tmp_path / "test_one_plus_one.py")},
+                 "test_path": str(tmp_path / "test_factorial.py")},
                 bridge=mgr, queue_manager=qm, inbox_router=inbox,
                 state_dir=tmp_path),
-            timeout=180)
+            timeout=240)
         assert out["status"] == "ok", out
         assert "green" in (out["result"] or "")
-        # Sanity: the test file exists and passes.
-        assert (tmp_path / "test_one_plus_one.py").exists()
+        # Sanity: the implementation file exists; tests pass.
+        assert (tmp_path / "factorial.py").exists()
         proc = subprocess.run(
-            ["python", "-m", "pytest", str(tmp_path / "test_one_plus_one.py")],
+            ["python", "-m", "pytest", str(tmp_path / "test_factorial.py")],
             capture_output=True, text=True)
         assert proc.returncode == 0
     finally:

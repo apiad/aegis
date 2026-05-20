@@ -15,12 +15,17 @@ async def run_workflow(
     bridge: Any, queue_manager: Any, inbox_router: Any,
     caller_handle: str | None = None,
     state_dir: Path | None = None,
+    workflow_run_id: str | None = None,
 ) -> dict:
     """Build a WorkflowEngine, invoke the named workflow with kwargs,
     auto-drain touched handles + auto-close spawned handles in finally.
     Returns {status, result?, error?, workflow_run_id}.
+
+    ``workflow_run_id`` may be pre-minted by the caller (used by the
+    MCP tool, which returns the id to the producer synchronously and
+    then needs the eventual callback to carry the same id).
     """
-    run_id = new_ulid()
+    run_id = workflow_run_id or new_ulid()
     fn = get_workflow(name)
     if fn is None:
         return {
