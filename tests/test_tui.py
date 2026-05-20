@@ -639,6 +639,49 @@ async def test_queue_enqueue_spawns_worker_pane_and_dispatches_payload():
 
 
 @pytest.mark.asyncio
+async def test_queue_spawn_works_without_active_app_context():
+    """Regression for the NoActiveAppError crash: when an MCP tool handler
+    fires enqueue, the handler is on the App's asyncio loop but outside
+    Textual's active_app ContextVar (FastMCP/uvicorn doesn't propagate
+    it). The adapter must use App.run_worker (which sets up the context)
+    rather than bare asyncio.create_task. Simulated here by invoking
+    enqueue inside a fresh contextvars.Context that lacks the var."""
+    import contextvars
+
+    from aegis.queue import Queue, sender_agent
+
+    producer_sess = FakeSession()
+    worker_sess = FakeSession(
+        script=lambda t: [AssistantText(text="OK"),
+                          Result(duration_ms=1, is_error=False)])
+    f = _factory(producer_sess, worker_sess)
+    queues = {"impl": Queue(name="impl", agent_profile="default",
+                            max_parallel=1)}
+    app = _app(f, queues=queues)
+    async with app.run_test() as pilot:
+        producer = app._panes[0]
+
+        def call_enqueue():
+            return app.queue_manager.enqueue(
+                "impl", "go",
+                enqueued_by=sender_agent(producer.handle), callback=True)
+
+        # Run enqueue under a fresh context — no active_app inherited.
+        ctx = contextvars.Context()
+        tid, _ = ctx.run(call_enqueue)
+        # If the adapter used bare asyncio.create_task the worker pane's
+        # compose() would crash NoActiveAppError on the next tick. With
+        # App.run_worker, the mount task runs inside Textual's context.
+        for _ in range(30):
+            await pilot.pause()
+            if app.queue_manager.status(tid)["status"] == "completed":
+                break
+        st = app.queue_manager.status(tid)
+        assert st["status"] == "completed"
+        assert "OK" in (st["result"] or "")
+
+
+@pytest.mark.asyncio
 async def test_queue_callback_round_trip_into_producer_pane():
     """Full loop: completion → finalize → InboxRouter.deliver →
     producer pane's AgentSession.deliver renders the substrate-tagged

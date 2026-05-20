@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 
 from textual import work
@@ -283,10 +282,15 @@ class _SessionManagerAdapter:
             slug, h, self._app._palette)
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
-        # Schedule mount + opening prompt off the queue's enqueue path.
-        # foreground=False so a queue worker doesn't steal focus from
-        # whatever pane Alex is currently using.
-        asyncio.create_task(self._mount_and_kick(pane, opening_prompt))
+        # App.run_worker (not asyncio.create_task) so the mount task runs
+        # inside Textual's active_app ContextVar. Otherwise the pane's
+        # compose() fails NoActiveAppError when invoked from an MCP tool
+        # handler — same asyncio loop, but the context isn't propagated
+        # by bare create_task. foreground=False (mount-and-kick doesn't
+        # cs.current = pane.id) so a queue worker doesn't steal focus.
+        self._app.run_worker(
+            self._mount_and_kick(pane, opening_prompt),
+            group=f"queue-spawn-{h}", exclusive=False)
         return pane._core
 
     async def _mount_and_kick(self, pane: ConversationPane,
