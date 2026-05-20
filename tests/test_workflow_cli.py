@@ -56,6 +56,21 @@ def test_workflow_run_unknown_exits_nonzero_with_listing(sample_aegis_py):
     assert "hello" in res.output    # available list
 
 
+def test_workflow_run_writes_log_jsonl(sample_aegis_py, tmp_path_factory):
+    # The sample_aegis_py fixture monkeypatches cwd; the runner writes
+    # .aegis/state/workflows/<run_id>.jsonl under project root.
+    res = CliRunner().invoke(
+        app, ["workflow", "run", "hello", "--name=Alex"])
+    assert res.exit_code == 0
+    from pathlib import Path
+    log_dir = Path.cwd() / ".aegis" / "state" / "workflows"
+    assert log_dir.exists()
+    log_files = list(log_dir.glob("*.jsonl"))
+    assert len(log_files) == 1
+    content = log_files[0].read_text()
+    assert "Hi Alex!" in content
+
+
 def test_workflow_list_empty_registry(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".aegis.py").write_text("""
