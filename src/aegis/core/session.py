@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import Event, Result, ToolResult, ToolUse
+from aegis.queue.schema import InboxMessage, render_inbox_header
 from aegis.tui.metrics import SessionMetrics
 from aegis.tui.state import AgentState
 
@@ -13,12 +14,19 @@ EventCb = Callable[["AgentSession", Event], None]
 StateCb = Callable[["AgentSession", AgentState, bool], None]
 
 
+def _render_batch(batch: list[InboxMessage]) -> str:
+    return "\n\n".join(
+        render_inbox_header(m) + "\n" + m.body for m in batch)
+
+
 class AgentSession:
     """One harness conversation, frontend-agnostic. Observers render."""
 
     def __init__(self, session: HarnessSession, agent, agent_slug: str,
                  handle: str, *,
-                 now: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.monotonic,
+                 inbox=None,
+                 opening_prompt: str | None = None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
@@ -28,6 +36,9 @@ class AgentSession:
         self._now = now
         self._started = False
         self._task: asyncio.Task | None = None
+        self._inbox = inbox                       # InboxRouter | None
+        self._inbox_buffer: list[InboxMessage] = []
+        self._opening_prompt = opening_prompt
         self.on_event: EventCb | None = None
         self.on_state: StateCb | None = None
 
@@ -39,6 +50,20 @@ class AgentSession:
     async def send(self, text: str) -> None:
         if self.state is AgentState.working:
             return
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
+
+    async def deliver(self, msg: InboxMessage) -> None:
+        """Push an inbox message at this session. Wake if idle; buffer
+        if mid-turn; the turn-end hook will chain a follow-up turn."""
+        self._inbox_buffer.append(msg)
+        if self.state is AgentState.working:
+            return
+        # idle: drain everything we hold and wake
+        batch = self._inbox_buffer
+        self._inbox_buffer = []
+        text = _render_batch(batch)
         self._emit_state(AgentState.working, finished=False)
         self.metrics.start_turn(self._now())
         self._task = asyncio.create_task(self._run_turn(text))
@@ -74,10 +99,22 @@ class AgentSession:
             if not saw_result:
                 self.metrics.commit(None, self._now())
                 self._emit_state(AgentState.error, finished=True)
+            self._chain_if_pending()
             return
         if not saw_result:
             self.metrics.commit(None, self._now())
             self._emit_state(AgentState.error, finished=True)
+        self._chain_if_pending()
+
+    def _chain_if_pending(self) -> None:
+        if not self._inbox_buffer:
+            return
+        batch = self._inbox_buffer
+        self._inbox_buffer = []
+        text = _render_batch(batch)
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
 
     async def interrupt(self) -> None:
         if self.state is not AgentState.working:
