@@ -7,8 +7,11 @@ import pytest
 from aegis.mcp import AegisMCP, mcp_config_json
 from aegis.mcp.bridge import SessionInfo
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("claude") is None, reason="claude not on PATH")
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(shutil.which("claude") is None,
+                       reason="claude not on PATH"),
+]
 
 
 class _OneSession:

@@ -5,9 +5,11 @@ from aegis.config import Agent
 from aegis.drivers.claude import ClaudeDriver
 from aegis.events import AssistantText, Result
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("claude") is None, reason="claude not on PATH"
-)
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(shutil.which("claude") is None,
+                       reason="claude not on PATH"),
+]
 
 
 def test_live_claude_say_hi():

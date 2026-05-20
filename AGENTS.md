@@ -63,9 +63,12 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 
 ## Tests
 
-`uv run pytest -q -k "not live"` for the fast hermetic suite. Drop the filter
-to include the live `claude` round-trip (`tests/test_integration_live.py`,
-auto-skips if `claude` is not on PATH).
+`uv run pytest -q -m "not live"` for the fast hermetic suite. Drop the marker
+filter to include the live `claude` round-trip (`tests/test_integration_live.py`,
+`tests/test_mcp_live.py`; auto-skip if `claude` is not on PATH). The `live`
+marker is registered in `pyproject.toml`; do not use `-k "not live"` — it
+matches `live` as a substring and silently eats unrelated names (e.g.
+anything containing `deliver`).
 
 Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 `claude` stream-json output, then sanitizes identifiers/paths before commit).

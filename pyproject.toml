@@ -37,6 +37,9 @@ target-version = "py313"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 norecursedirs = ["legacy"]
+markers = [
+    "live: tests that spawn a real `claude` subprocess (auto-skip when not on PATH; deselect with `-m \"not live\"` for the hermetic suite)",
+]
 
 [tool.coverage.run]
 source = ["src"]
