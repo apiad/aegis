@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Workflow Scaffold v1 — Design" status=approved date=2026-05-20 source="vault/Atlas/Architecture/2026-05-20-aegis-workflow-scaffold-design.md · builds on 2026-05-17-aegis-vision and 2026-05-20-aegis-task-queue-design" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Workflow Scaffold v1 — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec</div>
+    <h1>Aegis Workflow Scaffold v1 — Design</h1>
+    <div class="meta">
+      <span class="badge badge-ok">approved</span>
+      <span>2026-05-20</span>
+      <span>Markdown canonical: <code>vault/Atlas/Architecture/2026-05-20-aegis-workflow-scaffold-design.md</code></span>
+      <span>Builds on: vision <code>2026-05-17-aegis-vision.md</code> · task queue v1 <code>2026-05-20-aegis-task-queue-design.html</code></span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#goal">Goal</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#engine">Engine surface</a>
+    <a href="#flow">Data flow</a>
+    <a href="#errors">Failure modes</a>
+    <a href="#testing">Testing</a>
+    <a href="#nongoals">Non-goals</a>
+  </nav>
+
+  <section id="goal">
+    <h2>Goal</h2>
+    <p>Ship the <strong>harness-runs-the-program</strong> workflow primitive the vision introduces: a structured Python procedure where the <em>harness</em> drives the sequence of agent interactions, <em>verifies predicates</em> between steps, and <em>retries with feedback</em> on failure. The agent is a participant, not the author — there is no risk of the workflow executing out of order, skipping a step, or finishing early.</p>
+    <p>V1 ships the engine + one canonical end-to-end workflow (TDD on a plan step) so the substrate has a worked proof, mirroring how the task queue shipped with a live smoke. Workflows are authored as Python <code>@workflow async def</code> functions, auto-discovered via the decorator, and compose on the v1 task queue — workflows do not have their own agent-spawn plane; they ride the queue + inbox primitives.</p>
+  </section>
+
+  <section id="decisions">
+    <h2>Locked decisions</h2>
+    <ol>
+      <li><strong>Ambition: substrate + one canonical workflow.</strong> Ship the engine <em>and</em> a real TDD workflow end-to-end. Proves multi-step, predicate verification, retry-with-feedback, and agent-as-participant in one artifact. A DSL/YAML authoring layer is a deliberate non-goal for v1.</li>
+      <li><strong>Authoring shape: <code>@workflow async def</code> Python.</strong> Async functions decorated with <code>@workflow</code>, taking <code>engine</code> as first positional arg and any other params as keyword args. Workflows live in <code>.aegis.py</code> (inline) or in any module imported by it (typically <code>examples/</code>).</li>
+      <li><strong>Discovery: decorator-only auto-registry.</strong> No explicit <code>workflows = {...}</code> dict. The <code>@workflow</code> decorator registers in a module-level <code>_REGISTRY</code>; name collisions raise <code>ConfigError</code> at load time.</li>
+      <li><strong>Engine surface mirrors the agent's surface.</strong> Workflows speak the same vocabulary as agents (<code>delegate</code>, <code>handoff</code>, <code>bash</code> (future on the agent side), <code>list_sessions</code>, <code>list_agents</code>) — deterministic Python instead of LLM-driven, same primitives.</li>
+      <li><strong>Workflows compose on the queue.</strong> <code>engine.delegate(queue, payload)</code> is the substrate seam for one-shot worker spawn — internally an <code>aegis_enqueue</code> + await on the callback. No second agent-spawn plane.</li>
+      <li><strong>Long-lived team-member primitive distinct from one-shot delegation.</strong> <code>engine.spawn(profile)</code> / <code>engine.handoff(handle, msg)</code> / <code>engine.close(handle)</code> let a workflow keep a persistent agent across many turns (the "team of agents" pattern). Distinct from <code>delegate</code>, which is queue-managed and ephemeral.</li>
+      <li><strong><code>engine.handoff</code> is send-and-await</strong> (workflow side) where the agent-side MCP <code>aegis_handoff</code> is fire-and-forget. Same name + payload shape, honestly divergent semantics where caller constraints differ (workflow can block; agent's turn shouldn't).</li>
+      <li><strong>Two invocation surfaces: CLI + MCP.</strong> <code>aegis workflow run &lt;name&gt; [--key=value...]</code> (always sync-block — you typed it, you wait) and <code>aegis_run_workflow(name, kwargs, from_handle, callback=true)</code> MCP tool (mirrors <code>aegis_enqueue</code> exactly — returns <code>workflow_run_id</code> immediately; result lands in producer's inbox tagged <code>sender="workflow:&lt;name&gt;"</code> when done).</li>
+      <li><strong>No persistence in v1.</strong> Workflow runs are in-flight async coroutines; restart loses them. Spawned queue workers and inbox files persist (existing substrate); orphaned in-flight tasks become <code>failed: interrupted</code> via the queue's restart-replay.</li>
+      <li><strong>Auto-close-on-exit for long-lived agents.</strong> The runner closes every handle in <code>engine._spawned_handles</code> in the <code>finally</code>. Workflow can <code>await engine.close(h)</code> explicitly for early retirement.</li>
+    </ol>
+  </section>
+
+  <section id="architecture">
+    <h2>Architecture</h2>
+    <p>Three modules under <code>src/aegis/workflow/</code>:</p>
+    <table>
+      <thead><tr><th>Module</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>decorator.py</code></td>
+          <td><code>@workflow</code> + module-level <code>_REGISTRY: dict[str, WorkflowFn]</code>. Validates signature (async, <code>engine</code> first arg); raises on name collision. Provides <code>list_workflows()</code> + <code>get_workflow(name)</code>.</td>
+        </tr>
+        <tr>
+          <td><code>engine.py</code></td>
+          <td><code>WorkflowEngine</code> runtime handle every workflow receives. Constructed per-run, bound to live substrate (QueueManager, InboxRouter, AppBridge). Tracks <code>_spawned_handles</code> for auto-close.</td>
+        </tr>
+        <tr>
+          <td><code>runner.py</code></td>
+          <td><code>run_workflow(name, kwargs) -&gt; dict</code> — unified entry for CLI + MCP. Builds engine, calls <code>await fn(engine, **kwargs)</code> inside try/except, shapes result as <code>{status, result?, error?}</code>, runs auto-close in finally.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Plus three integration touchpoints:</p>
+    <table>
+      <thead><tr><th>File</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>src/aegis/cli.py</code></td>
+          <td>New <code>aegis workflow run &lt;name&gt; [--key=value...]</code> + <code>aegis workflow list</code> subcommands.</td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/mcp/server.py</code></td>
+          <td>New <code>aegis_run_workflow</code> MCP tool (BRIEFING gains a paragraph naming it).</td>
+        </tr>
+        <tr>
+          <td><code>src/aegis/mcp/bridge.py</code></td>
+          <td><code>AppBridge</code> gains <code>async spawn(profile, *, handle=None) -&gt; str</code> and <code>async close(handle) -&gt; None</code> so the engine can spawn/close long-lived agents through the same bridge the queue uses. Both <code>SessionManager</code> and <code>AegisApp</code> implement them.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Workflow runs share the single live aegis substrate (one MCP server, one QueueManager, one InboxRouter, one SessionManager) — they're just async tasks on the same loop. Concurrent runs work; they share queue caps and the agent pool.</p>
+  </section>
+
+  <section id="engine">
+    <h2>Engine surface</h2>
+<pre><code>class WorkflowEngine:
+    workflow_name: str          # set by runner
+    workflow_run_id: str        # ULID, set by runner
+
+    async def delegate(self, queue: str, payload: str) -&gt; str: ...
+    async def bash(self, cmd: str, *,
+                   cwd: str | Path | None = None,
+                   timeout: float | None = None,
+                   env: dict | None = None) -&gt; CompletedProcess: ...
+    async def spawn(self, profile: str, *,
+                    handle: str | None = None) -&gt; str: ...
+    async def handoff(self, handle: str, message: str) -&gt; str: ...
+    async def close(self, handle: str) -&gt; None: ...
+    def log(self, message: str) -&gt; None: ...
+    def list_sessions(self) -&gt; list[SessionInfo]: ...
+    def list_agents(self) -&gt; list[str]: ...</code></pre>
+    <p>Plus a defined exception:</p>
+<pre><code>class WorkflowError(Exception):
+    """Expected failure inside a workflow (predicate violated, retry
+    exhausted, etc.). Workflows raise this for clean failure reporting.
+    Plain Exception is treated as an unexpected crash."""</code></pre>
+
+    <h3><code>delegate(queue, payload) -&gt; str</code> — one-shot delegation through the queue substrate</h3>
+    <ol>
+      <li>Mint a unique handle <code>f"workflow:{name}:{ulid}"</code> per call.</li>
+      <li>Bind a tiny <code>_DelegationPromise</code> (session-shaped: <code>async def deliver(msg)</code> resolves an <code>asyncio.Future</code>) under that handle.</li>
+      <li><code>queue_manager.enqueue(queue, payload, enqueued_by=handle, callback=True)</code>. <code>_handle_of(non-agent-prefix)</code> returns the handle as-is, so the callback routes back to the promise.</li>
+      <li><code>await promise</code> — substrate fires <code>inbox_router.deliver</code> on worker finalize.</li>
+      <li>If <code>msg.status == "error"</code>: raise <code>WorkflowError(f"task {task_id} failed: {msg.body}")</code>. Otherwise return <code>msg.body</code>.</li>
+      <li><code>finally:</code> unbind handle.</li>
+    </ol>
+
+    <h3><code>bash(cmd, *, cwd, timeout, env)</code> — async shell</h3>
+    <p>Wraps <code>asyncio.create_subprocess_shell</code>; collects stdout/stderr decoded UTF-8 with <code>replace</code>; returns <code>subprocess.CompletedProcess</code>. Defaults: <code>cwd = find_project_root() or os.getcwd()</code>, <code>timeout = None</code>, <code>env = None</code>. On timeout: kill, await, raise <code>WorkflowError(f"bash timed out after {timeout}s: {cmd}")</code>.</p>
+
+    <h3><code>spawn(profile, *, handle=None) -&gt; str</code> — long-lived agent</h3>
+    <p>Calls <code>bridge.spawn(profile, handle=handle)</code> (new method). In the TUI the agent appears as a visible <code>ConversationPane</code> tab via the existing <code>_SessionManagerAdapter</code>; in headless it's a <code>SessionManager.spawn</code>. Records the handle in <code>engine._spawned_handles</code>. Returns the handle.</p>
+
+    <h3><code>handoff(handle, message) -&gt; str</code> — send-and-await</h3>
+    <ol>
+      <li>Validate target exists in <code>bridge.list_sessions()</code>. Missing → raise <code>WorkflowError(f"handoff rejected: no session {handle!r}")</code>.</li>
+      <li>Validate target isn't <code>state == "working"</code>. Busy → raise <code>WorkflowError(f"handoff rejected: {handle!r} is busy")</code>.</li>
+      <li>Attach one-shot <code>add_event_observer</code> (captures last <code>AssistantText.text</code>) + <code>add_state_observer</code> (resolves future on next <code>finished=True</code>) on the target session.</li>
+      <li><code>inbox_router.deliver(handle, InboxMessage(sender=f"workflow:{name}", body=message, timestamp=now_iso()))</code>.</li>
+      <li><code>await future</code> — agent processes the turn (substrate-tagged user message in their context), emits assistant text, finishes.</li>
+      <li>Detach both observers; return the captured text.</li>
+    </ol>
+
+    <h3><code>close(handle)</code> — retire a long-lived agent</h3>
+    <p><code>bridge.close(handle)</code>; discard from <code>_spawned_handles</code>. Idempotent.</p>
+
+    <h3><code>log(message)</code> — workflow-visible logging</h3>
+    <p><code>print(f"[workflow:{name}] {message}", file=stderr)</code> + one-line append to <code>.aegis/state/workflows/&lt;run_id&gt;.jsonl</code> (timestamp + message). No clever routing to producer pane / Telegram in v1.</p>
+
+    <h3><code>list_sessions / list_agents</code> — read-only introspection</h3>
+    <p>Direct pass-throughs to the bridge methods; same data agents see via MCP tools.</p>
+
+    <details>
+      <summary>Out of v1 (deliberate)</summary>
+      <ul>
+        <li><strong>Multi-turn-conversation-with-one-queue-worker.</strong> <code>delegate</code> always spawns a fresh worker. Multi-turn drive uses <code>spawn</code>+<code>handoff</code>+<code>close</code> instead. No fusion primitive.</li>
+        <li><strong>Parallel fan-out helper.</strong> <code>asyncio.gather(engine.delegate(...), engine.delegate(...))</code> works natively. No <code>engine.gather</code>.</li>
+        <li><strong>Workflow-spawns-workflow</strong> (<code>engine.run_workflow(...)</code>). For v1 a workflow body that needs another workflow <code>import</code>s and <code>await</code>s the function directly with a shared engine — no engine method needed.</li>
+        <li><strong>Cancellation API</strong> beyond cancelling the asyncio task (CLI Ctrl-C or future MCP cancel tool).</li>
+        <li><strong>Polling MCP tool</strong> (<code>aegis_workflow_status</code>). Producers either use <code>callback=true</code> (default) or accept fire-and-forget with no recovery.</li>
+        <li><strong>DSL / YAML authoring layer.</strong> Python only in v1.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section id="flow">
+    <h2>Data flow</h2>
+
+    <h3>CLI invocation</h3>
+<pre><code>$ aegis workflow run tdd_step --plan-step="VS1 inbox" --test-command="uv run pytest -k inbox"</code></pre>
+    <ol>
+      <li>Typer parses <code>--key=value</code> flags into <code>kwargs: dict[str, str]</code>; loads <code>.aegis.py</code> so <code>@workflow</code> decorators fire and the registry populates.</li>
+      <li>CLI looks up <code>tdd_step</code> in <code>_REGISTRY</code>. Unknown name → print available workflows + <code>Exit(1)</code>.</li>
+      <li><code>runner.run_workflow("tdd_step", kwargs)</code> bootstraps a serve-like environment: <code>InboxRouter</code>, <code>QueueManager</code> (from <code>.aegis.py</code> queues), <code>SessionManager</code>, <code>AegisMCP</code>. Binds and starts.</li>
+      <li>Constructs <code>WorkflowEngine(workflow_name="tdd_step", workflow_run_id=ulid, bridge=bridge, queue_manager=qm, inbox_router=inbox)</code>.</li>
+      <li><code>try: await fn(engine, **kwargs)</code> — wrapped in the failure-shape logic.</li>
+      <li><strong>Teardown</strong> in <code>finally</code>: close every handle still in <code>engine._spawned_handles</code>; stop the queue manager; stop MCP.</li>
+      <li>CLI pretty-prints <code>{status, result?, error?}</code> and exits 0 on <code>ok</code>, 1 on <code>error</code>.</li>
+    </ol>
+
+    <h3>MCP invocation</h3>
+<pre><code>aegis_run_workflow(name="tdd_step",
+                   kwargs={"plan_step": "...", "test_command": "..."},
+                   from_handle="lucid-knuth",
+                   callback=True)</code></pre>
+    <ol>
+      <li>Tool handler validates <code>name</code> exists in registry; missing → <code>{"error": "unknown workflow: 'foo'. Available: [...]"}</code> synchronous return.</li>
+      <li>Mint <code>workflow_run_id</code>; schedule the workflow as a task via <code>App.run_worker</code> (TUI — establishes Textual <code>active_app</code> context, see queue-v1 lesson) or <code>asyncio.create_task</code> (headless).</li>
+      <li>Tool returns <code>{workflow_run_id, status: "running"}</code> <strong>immediately</strong> — producer's tool call doesn't block on the workflow.</li>
+      <li>On completion: build <code>InboxMessage(sender=f"workflow:{name}", task_id=workflow_run_id, status="ok"|"error", body=&lt;result|error&gt;, timestamp=now)</code>. Deliver via <code>inbox_router.deliver(_handle_of(sender_agent(from_handle)), msg)</code>. Producer wakes (idle) or buffers (mid-turn), same universal-tagging path as queue callbacks.</li>
+      <li><code>callback=False</code> → fire-and-forget; result discarded (no polling in v1).</li>
+    </ol>
+  </section>
+
+  <section id="errors">
+    <h2>Failure modes</h2>
+    <p>Unifying principle, same as queue v1: every observable failure is either a startup refusal, a <code>WorkflowError</code>-shaped result, or a tagged inbox message. Never silent.</p>
+    <table>
+      <thead><tr><th>Failure</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Workflow raises <code>WorkflowError(msg)</code></td><td>Result <code>{status: "error", error: msg}</code>. Auto-close fires. Clean exit.</td></tr>
+        <tr><td>Workflow raises plain <code>Exception</code></td><td>Result <code>{status: "error", error: f"unexpected: {type(e).__name__}: {e}"}</code>. Traceback to stderr for debug. Auto-close fires.</td></tr>
+        <tr><td><code>engine.delegate</code> worker fails</td><td><code>delegate</code> raises <code>WorkflowError(f"task {task_id} failed: {body}")</code>. Workflow catches+retries or propagates.</td></tr>
+        <tr><td><code>engine.bash</code> exceeds timeout</td><td>Kill, raise <code>WorkflowError(f"bash timed out after {timeout}s: {cmd}")</code>.</td></tr>
+        <tr><td><code>engine.handoff</code> target missing</td><td><code>WorkflowError</code> before delivery — fail-fast.</td></tr>
+        <tr><td><code>engine.handoff</code> target is <code>working</code></td><td><code>WorkflowError(f"handoff rejected: {handle!r} is busy")</code>. Workflow decides retry vs. fail.</td></tr>
+        <tr><td><code>engine.spawn</code> unknown profile</td><td><code>WorkflowError(f"unknown agent profile: {profile!r}. Known: {sorted(...)}")</code> at bridge.</td></tr>
+        <tr><td><code>engine.spawn</code>'d agents leaked at workflow end</td><td>Runner's <code>finally</code> closes everything in <code>_spawned_handles</code>. Logged via <code>engine.log</code>.</td></tr>
+        <tr><td>Workflow registry name collision at <code>.aegis.py</code> load</td><td><code>ConfigError</code> at boot — fail-loud, prints both source locations.</td></tr>
+        <tr><td>MCP-invoked workflow + producer exited before callback</td><td>Callback persists to producer's inbox file (durable). Same dead-letter behavior as queue callbacks.</td></tr>
+        <tr><td>CLI workflow run with no <code>.aegis.py</code></td><td>Fail-loud at config load (existing behavior).</td></tr>
+        <tr><td>Two aegis processes both running workflows</td><td>Independent MCP servers on different ports, independent state. Per-process scope in v1; coordination is Phase 5 (distribution).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+
+    <h3>Hermetic (<code>uv run pytest -q -m "not live"</code>)</h3>
+    <ul>
+      <li><strong><code>@workflow</code> decorator</strong> — registers under function name; raises <code>TypeError</code> if not <code>async def</code>; raises <code>TypeError</code> if first param isn't <code>engine</code>; raises <code>ConfigError</code> on name collision.</li>
+      <li><strong><code>WorkflowEngine.delegate</code></strong> — stub QueueManager + stub worker returning <code>"OK"</code>; assert <code>delegate</code> returns <code>"OK"</code>. Error path: stub worker fails → <code>WorkflowError</code> with <code>task_id</code> in message. Concurrent calls get unique inbox handles.</li>
+      <li><strong><code>WorkflowEngine.bash</code></strong> — real shell for trivial commands (<code>echo</code>, <code>pytest --version</code>); timeout test with <code>sleep 5</code> and <code>timeout=0.1</code>.</li>
+      <li><strong><code>WorkflowEngine.spawn / handoff / close</code></strong> — stub SessionManager + FakeHarness scripts; round-trip a handoff, assert captured response matches scripted <code>AssistantText</code>. <code>close</code> removes handle from <code>_spawned_handles</code>. <code>handoff</code> to missing handle → <code>WorkflowError</code>.</li>
+      <li><strong>Auto-close on workflow exit</strong> — workflow spawns 2 agents, returns; assert both got <code>bridge.close()</code> in the runner's <code>finally</code>.</li>
+      <li><strong><code>runner.run_workflow</code></strong> — <code>WorkflowError</code> → <code>{status: error, error: msg}</code>; plain <code>Exception</code> → <code>{status: error, error: "unexpected: ..."}</code>; success returning <code>"x"</code> → <code>{status: ok, result: "x"}</code>.</li>
+      <li><strong>CLI</strong> — <code>aegis workflow list</code> enumerates registry; <code>aegis workflow run &lt;unknown&gt;</code> exits non-zero with available list; <code>aegis workflow run &lt;known&gt;</code> calls the runner end-to-end (stub bridge so no real subprocess).</li>
+      <li><strong>MCP</strong> — <code>aegis_run_workflow</code> with <code>callback=True</code> returns <code>workflow_run_id</code> immediately; after completion, <code>InboxMessage(sender="workflow:&lt;name&gt;", task_id=&lt;run_id&gt;, status="ok")</code> lands in producer's inbox. Unknown-name returns documented error shape synchronously.</li>
+    </ul>
+
+    <h3>Live (<code>tests/test_workflow_live.py</code>, marker <code>live</code>)</h3>
+    <p>One workflow that does a tiny real TDD loop: write a test asserting <code>1 + 1 == 2</code>, verify it fails on a stub module, write the implementation, verify it passes. Uses real <code>claude</code> subprocesses via the queue. Skips when <code>claude</code> not on PATH. Bounds: ~90s budget, sonnet + full permission matching the queue smoke. Proves the full chain: CLI → runner → engine → delegate → real worker → bash predicate → success path.</p>
+  </section>
+
+  <section id="nongoals">
+    <h2>Non-goals (v1)</h2>
+    <ul>
+      <li><strong>DSL / declarative authoring</strong> (YAML, JSON). Python <code>@workflow</code> only.</li>
+      <li><strong>Multi-turn-with-one-queue-worker</strong> primitive. Use spawn+handoff+close.</li>
+      <li><strong>Workflow persistence / resume across restart.</strong> Runs are in-memory asyncio tasks.</li>
+      <li><strong>Workflow-spawns-workflow</strong> as an engine method. Direct <code>await</code> of an imported function is the v1 answer.</li>
+      <li><strong>Cancellation MCP tool.</strong> <code>asyncio.CancelledError</code> (CLI Ctrl-C) suffices for v1.</li>
+      <li><strong>Polling MCP tool</strong> (<code>aegis_workflow_status</code>). <code>callback=true</code> (default) is the canonical recovery path.</li>
+      <li><strong>Dynamic workflow registration</strong> at runtime (e.g. via MCP). Discovery is <code>.aegis.py</code>-load-time only.</li>
+    </ul>
+    <details>
+      <summary>Open questions deferred</summary>
+      <ul>
+        <li><strong>Predicate primitives library.</strong> v1 workflows do their own predicates in Python (<code>if "PASS" in proc.stdout: ...</code>). A shared library of reusable predicates (<code>assert_tests_fail(cmd)</code>, <code>assert_file_exists</code>) may be worthwhile once 3+ workflows show common patterns.</li>
+        <li><strong>Workflow tab in the TUI.</strong> v1 shows queue workers spawned by a workflow as their natural tabs; the workflow itself has no dedicated surface. A "workflow tab" showing live progress + log lines may help once multiple long workflows run concurrently.</li>
+        <li><strong>MCP <code>aegis_bash</code> tool for agents.</strong> The engine's <code>bash</code> shape is the reference implementation for what agents will eventually get. Out of scope here; will land when agents need it.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · canonical source is the <code>.md</code> in vault/Atlas/Architecture/</footer>
+
+</div>
+</body>
+</html>
