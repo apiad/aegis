@@ -1,0 +1,3022 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=plan title="Aegis Task Queue v1 — Implementation Plan" status=approved date=2026-05-20 source="docs/superpowers/specs/2026-05-20-aegis-task-queue-design.html" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Task Queue v1 — Implementation Plan</title>
+<style>
+  :root{--ivory:#FAF9F5;--slate:#141413;--clay:#D97757;--olive:#788C5D;
+    --blue:#4A6FA5;--g150:#F0EEE6;--g300:#D1CFC5;--g500:#87867F;--g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.25;
+    color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;background:#E7EEDF;color:var(--olive);
+    text-transform:uppercase;letter-spacing:.05em}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:14px;font-weight:600;color:var(--g700);margin:16px 0 8px;
+    font-family:var(--mono)}
+  p{margin-bottom:12px} ul,ol{margin:0 0 12px 24px} li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300);
+    vertical-align:top}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:12px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:12px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  .step{font-family:var(--mono);font-size:12px;color:var(--clay);
+    font-weight:600;margin:14px 0 4px}
+  .slice{font-family:var(--mono);font-size:11px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--blue);font-weight:700;margin-top:10px}
+  .warn{background:#F6E9D8;border:1px solid #E0B27A;border-radius:8px;
+    padding:12px 16px;margin:0 0 16px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Implementation Plan · Aegis · Task Queue v1</div>
+    <h1>Task Queue v1 — Implementation Plan</h1>
+    <div class="meta">
+      <span class="badge">approved</span><span>2026-05-20</span>
+      <span>Spec: <code>docs/superpowers/specs/2026-05-20-aegis-task-queue-design.html</code></span>
+    </div>
+    <p style="margin-top:14px"><strong>For agentic workers:</strong> REQUIRED
+      SUB-SKILL — <code>superpowers:subagent-driven-development</code> or
+      <code>superpowers:executing-plans</code>. Commit to <code>main</code>
+      (authorized for aegis). Every task keeps
+      <code>uv run pytest -q -k "not live"</code> green; one logical change
+      per commit; push after each task.</p>
+    <p><strong>Goal.</strong> Ship the inter-agent delegation primitive
+      (<code>aegis_enqueue</code> / <code>aegis_task_status</code>) plus the
+      agent-inbox primitive that callbacks ride on. Five vertical slices,
+      thinnest happy-path first; persistence and config layered after the
+      e2e loop is green.</p>
+    <p><strong>Architecture.</strong> Two new modules under
+      <code>src/aegis/queue/</code>: <code>InboxRouter</code> (per-handle
+      message delivery, idle-wake + mid-turn buffer + JSONL writethrough)
+      and <code>QueueManager</code> (FIFO per queue, max-parallel cap,
+      dispatch-on-event, JSONL lifecycle log). <code>AgentSession</code>
+      gains <code>deliver()</code> and turn-end inbox-chain. The MCP plane
+      gets two new tools; <code>aegis_handoff</code> is refactored to flow
+      through the same inbox channel. <code>.aegis.py</code> grows a
+      <code>queues</code> dict. State lives under
+      <code>.aegis/state/{queues,inboxes}/*.jsonl</code> (gitignored,
+      <code>v: 1</code> per record).</p>
+    <div class="warn"><strong>Hard preconditions (fail loud if any miss).</strong>
+      (1) <code>cd repos/aegis &amp;&amp; git pull --ff-only</code>.
+      (2) The spec file exists on disk at commit <code>1f4e3c8</code> or
+      later (the design doc is the authority for any ambiguity in this
+      plan). (3) <code>uv run pytest -q -k "not live"</code> is green
+      before starting. If any precondition fails, abort with a Telegram
+      ping and do not begin implementation.</div>
+  </header>
+
+  <nav class="toc">
+    <a href="#files">Files</a>
+    <a href="#contracts">Shared contracts</a>
+    <a href="#vs1">VS1 happy path</a>
+    <a href="#vs2">VS2 persistence</a>
+    <a href="#vs3">VS3 config</a>
+    <a href="#vs4">VS4 polish</a>
+    <a href="#vs5">VS5 live smoke</a>
+    <a href="#review">Self-review</a>
+  </nav>
+
+  <section id="files">
+    <h2>File structure</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/queue/__init__.py</code></td><td>New — re-export <code>QueueManager</code>, <code>InboxRouter</code>, <code>InboxMessage</code>, <code>Queue</code>, <code>Task</code>.</td></tr>
+        <tr><td><code>src/aegis/queue/schema.py</code></td><td>New — dataclasses (<code>Queue</code>, <code>Task</code>, <code>InboxMessage</code>), sender-tag helpers, <code>new_ulid()</code>, <code>render_inbox_header()</code>.</td></tr>
+        <tr><td><code>src/aegis/queue/inbox.py</code></td><td>New — <code>InboxRouter</code>: per-handle buffer + JSONL writethrough + session poking.</td></tr>
+        <tr><td><code>src/aegis/queue/manager.py</code></td><td>New — <code>QueueManager</code>: FIFO, cap, dispatch, completion observer, JSONL lifecycle log, restart replay.</td></tr>
+        <tr><td><code>src/aegis/queue/jsonl.py</code></td><td>New (VS2) — append-only JSONL writer/reader; <code>v: 1</code> per record.</td></tr>
+        <tr><td><code>src/aegis/core/session.py</code></td><td>Modify — add <code>deliver(msg)</code>, optional <code>inbox</code> kwarg, turn-end chain hook.</td></tr>
+        <tr><td><code>src/aegis/core/manager.py</code></td><td>Modify — <code>spawn()</code> gains <code>opening_prompt=</code> + <code>handle=</code> kwargs; threads <code>inbox</code> into <code>AgentSession</code>.</td></tr>
+        <tr><td><code>src/aegis/config.py</code></td><td>Modify (VS3) — parse <code>queues</code> dict; <code>load_queues(...)</code> with fail-loud validation.</td></tr>
+        <tr><td><code>src/aegis/mcp/bridge.py</code></td><td>Modify — extend <code>AppBridge</code> Protocol with <code>queue_manager</code> + <code>inbox_router</code> attributes.</td></tr>
+        <tr><td><code>src/aegis/mcp/server.py</code></td><td>Modify — register <code>aegis_enqueue</code>, <code>aegis_task_status</code>; refactor <code>aegis_handoff</code> to delegate to <code>InboxRouter</code>.</td></tr>
+        <tr><td><code>src/aegis/cli.py</code></td><td>Modify (VS3) — build <code>InboxRouter</code> + <code>QueueManager</code> in <code>_serve</code> + interactive entry; attach to bridge.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code></td><td>Modify — expose <code>queue_manager</code>/<code>inbox_router</code>; tab label includes queue suffix (VS4).</td></tr>
+        <tr><td><code>src/aegis/tui/widgets.py</code></td><td>Modify (VS4) — <code>render_tab</code> accepts optional queue suffix.</td></tr>
+        <tr><td><code>.gitignore</code></td><td>Modify (VS2) — add <code>.aegis/state/</code>.</td></tr>
+        <tr><td><code>tests/test_queue_schema.py</code></td><td>New (VS1) — sender tags, ULID, header rendering, dataclass roundtrip.</td></tr>
+        <tr><td><code>tests/test_queue_inbox.py</code></td><td>New (VS1) — <code>InboxRouter</code> wake/buffer/drain.</td></tr>
+        <tr><td><code>tests/test_queue_session_deliver.py</code></td><td>New (VS1) — <code>AgentSession.deliver</code> wake/buffer/chain.</td></tr>
+        <tr><td><code>tests/test_queue_manager.py</code></td><td>New (VS1) — <code>QueueManager</code> FIFO, cap, dispatch, completion, error callback.</td></tr>
+        <tr><td><code>tests/test_queue_mcp.py</code></td><td>New (VS1) — <code>aegis_enqueue</code>/<code>aegis_task_status</code> shape + errors.</td></tr>
+        <tr><td><code>tests/test_queue_e2e.py</code></td><td>New (VS1, extended in VS2) — full hermetic loop; VS2 adds restart replay.</td></tr>
+        <tr><td><code>tests/test_queue_persistence.py</code></td><td>New (VS2) — JSONL roundtrip + v=2 forward-compat.</td></tr>
+        <tr><td><code>tests/test_queue_config.py</code></td><td>New (VS3) — valid + invalid <code>queues</code> dict.</td></tr>
+        <tr><td><code>tests/test_core_manager.py</code></td><td>Modify — add <code>opening_prompt</code> test.</td></tr>
+        <tr><td><code>tests/test_mcp_server.py</code></td><td>Modify (VS4) — <code>aegis_handoff</code> now delivers via inbox router with <code>sender=agent:&lt;from_handle&gt;</code>.</td></tr>
+        <tr><td><code>tests/test_tui.py</code></td><td>Modify (VS4) — tab label suffix.</td></tr>
+        <tr><td><code>tests/test_queue_live.py</code></td><td>New (VS5) — live <code>claude</code> e2e; auto-skip when not on PATH.</td></tr>
+        <tr><td><code>AGENTS.md</code></td><td>Modify (VS5) — note <code>queue/</code> module + the two new MCP tools.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="contracts">
+    <h2>Shared contracts (used across slices — define once, do not rewrite)</h2>
+    <p>These identifiers appear in many tasks below. When a later task imports
+      one of them, look here for the canonical signature.</p>
+    <h3>Sender tags &amp; identifiers</h3>
+    <ul>
+      <li><code>SenderTag = str</code> — string prefix encoding. Known
+        prefixes: <code>queue:&lt;name&gt;</code>,
+        <code>agent:&lt;handle&gt;</code>, <code>telegram</code>,
+        <code>system</code>. Unknown but well-formed prefixes accepted as
+        opaque (per spec §data-model).</li>
+      <li><code>sender_queue(name: str) -&gt; str</code> →
+        <code>f"queue:{name}"</code>.</li>
+      <li><code>sender_agent(handle: str) -&gt; str</code> →
+        <code>f"agent:{handle}"</code>.</li>
+      <li><code>new_ulid() -&gt; str</code> — 26-char Crockford-base32,
+        48-bit ms timestamp + 80-bit randomness. Stable lexicographic
+        sort = chronological sort.</li>
+      <li><code>now_iso() -&gt; str</code> — UTC ISO-8601, second
+        precision: <code>2026-05-20T07:14:00Z</code>.</li>
+    </ul>
+    <h3>Schema record signatures</h3>
+    <pre><code>@dataclass(frozen=True)
+class Queue:
+    name: str
+    agent_profile: str
+    max_parallel: int
+
+@dataclass(frozen=True)
+class Task:
+    id: str
+    queue: str
+    payload: str
+    enqueued_by: str       # SenderTag
+    enqueued_at: str       # iso8601
+    callback: bool
+    status: str            # "pending" | "dispatched" | "completed" | "failed"
+    worker_handle: str | None = None
+    result: str | None = None
+    error: str | None = None
+    completed_at: str | None = None
+
+@dataclass(frozen=True)
+class InboxMessage:
+    sender: str
+    timestamp: str
+    body: str
+    task_id: str | None = None
+    status: str | None = None   # "ok" | "error" | None</code></pre>
+    <h3>Render header</h3>
+    <p><code>render_inbox_header(msg: InboxMessage) -&gt; str</code> emits
+      one line:</p>
+    <pre><code>&gt; from {sender} · task#{task_id} · {status} · {timestamp}
+&gt; from {sender} · {timestamp}        # when no task_id</code></pre>
+    <h3>InboxRouter</h3>
+    <pre><code>class InboxRouter:
+    def __init__(self, state_dir: Path | None = None): ...
+    def bind_session(self, handle: str, session: AgentSession) -&gt; None
+    def unbind_session(self, handle: str) -&gt; None
+    async def deliver(self, handle: str, msg: InboxMessage) -&gt; None
+    def drain(self, handle: str) -&gt; list[InboxMessage]
+    def pending(self, handle: str) -&gt; list[InboxMessage]   # read-only peek (tests)</code></pre>
+    <h3>AgentSession (modifications)</h3>
+    <pre><code>AgentSession.__init__(... , inbox: InboxRouter | None = None, *,
+                      opening_prompt: str | None = None)
+async def AgentSession.deliver(msg: InboxMessage) -&gt; None
+# Plus: at turn end, if self._inbox is not None and drain(handle) returns
+# items, schedule a follow-up turn with the batched user-message body
+# (header + body for each msg, joined by blank lines).</code></pre>
+    <h3>SessionManager (modifications)</h3>
+    <pre><code>def SessionManager.spawn(slug: str | None = None, *,
+                         opening_prompt: str | None = None,
+                         handle: str | None = None) -&gt; AgentSession
+# Threads self._inbox into each new AgentSession (set in __init__).</code></pre>
+    <h3>QueueManager</h3>
+    <pre><code>class QueueManager:
+    def __init__(self, queues: dict[str, Queue],
+                 session_manager: SessionManager,
+                 inbox_router: InboxRouter,
+                 *, state_dir: Path | None = None,
+                 now: Callable[[], str] = now_iso): ...
+
+    async def start(self) -&gt; None        # VS2 — replay JSONL, mark interrupted
+    async def stop(self) -&gt; None         # idempotent
+
+    def enqueue(self, queue: str, payload: str, *,
+                enqueued_by: str, callback: bool) -&gt; tuple[str, int]
+    def status(self, task_id: str) -&gt; dict | None
+    def list_queues(self) -&gt; list[str]</code></pre>
+    <h3>AppBridge (extended)</h3>
+    <pre><code>class AppBridge(Protocol):
+    def list_sessions(self) -&gt; list[SessionInfo]: ...
+    def list_agents(self) -&gt; list[str]: ...
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str: ...
+    # Extended:
+    queue_manager: QueueManager
+    inbox_router: InboxRouter</code></pre>
+    <h3>New MCP tools</h3>
+    <pre><code>aegis_enqueue(queue: str, payload: str, from_handle: str,
+              callback: bool = True) -&gt; {"task_id": str, "queued_position": int}
+aegis_task_status(task_id: str) -&gt; dict       # {"status": "...", ...}</code></pre>
+  </section>
+
+  <!-- ===================== VS1 ===================== -->
+  <section id="vs1">
+    <h2>Vertical slice 1 — End-to-end happy path (in-memory, hermetic)</h2>
+    <p>Thinnest end-to-end loop: producer calls <code>aegis_enqueue</code>,
+      worker spawns with the payload as its opening prompt, worker
+      completes, callback message lands in producer's inbox, producer
+      wakes (or buffers) and sees the tagged batched user-message. No
+      disk, no real <code>claude</code>. Closing test is the e2e
+      assertion.</p>
+
+    <h3 id="t1.1">Task 1.1 — queue/ package + schema + ULID + header</h3>
+    <p><strong>Files:</strong> Create
+      <code>src/aegis/queue/__init__.py</code>,
+      <code>src/aegis/queue/schema.py</code>,
+      <code>tests/test_queue_schema.py</code>.</p>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_schema.py</code></div>
+<pre><code>from aegis.queue.schema import (
+    InboxMessage, Queue, Task,
+    new_ulid, now_iso, render_inbox_header,
+    sender_agent, sender_queue,
+)
+
+
+def test_sender_tag_helpers():
+    assert sender_queue("impl") == "queue:impl"
+    assert sender_agent("lucid-knuth") == "agent:lucid-knuth"
+
+
+def test_new_ulid_is_26_crockford_chars_and_sorts():
+    a = new_ulid()
+    b = new_ulid()
+    assert len(a) == 26 and len(b) == 26
+    allowed = set("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+    assert set(a) &lt;= allowed and set(b) &lt;= allowed
+    # 1ms tick is enough; the second one is &gt;= first
+    assert b &gt;= a
+
+
+def test_now_iso_shape():
+    s = now_iso()
+    # Y-m-dTH:M:SZ — 20 chars, ends with Z
+    assert len(s) == 20 and s.endswith("Z") and s[10] == "T"
+
+
+def test_dataclasses_construct():
+    q = Queue(name="impl", agent_profile="claude-impl", max_parallel=2)
+    assert q.name == "impl"
+    t = Task(id="01J42", queue="impl", payload="do thing",
+             enqueued_by="agent:lucid-knuth", enqueued_at="2026-05-20T07:14:00Z",
+             callback=True, status="pending")
+    assert t.worker_handle is None and t.callback is True
+    m = InboxMessage(sender="queue:impl", timestamp="2026-05-20T07:14:00Z",
+                     body="done", task_id="01J42", status="ok")
+    assert m.task_id == "01J42"
+
+
+def test_render_inbox_header_with_task():
+    m = InboxMessage(sender="queue:impl",
+                     timestamp="2026-05-20T07:14:00Z",
+                     body="ignored", task_id="01J42", status="ok")
+    assert render_inbox_header(m) == (
+        "&gt; from queue:impl · task#01J42 · ok · 2026-05-20T07:14:00Z")
+
+
+def test_render_inbox_header_without_task():
+    m = InboxMessage(sender="agent:wry-hopper",
+                     timestamp="2026-05-20T07:14:00Z",
+                     body="ignored")
+    assert render_inbox_header(m) == (
+        "&gt; from agent:wry-hopper · 2026-05-20T07:14:00Z")
+</code></pre>
+    <p><em>Note:</em> the literal <code>&gt;</code> in the assertion is
+      the real <code>&gt;</code> character; HTML-escaped here.</p>
+    <div class="step">Step 2 — run, expect ImportError</div>
+<pre><code>uv run pytest tests/test_queue_schema.py -q
+# expected: ERROR — No module named 'aegis.queue'</code></pre>
+    <div class="step">Step 3 — implement
+      <code>src/aegis/queue/schema.py</code></div>
+<pre><code>from __future__ import annotations
+
+import secrets
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def sender_queue(name: str) -&gt; str:
+    return f"queue:{name}"
+
+
+def sender_agent(handle: str) -&gt; str:
+    return f"agent:{handle}"
+
+
+def new_ulid() -&gt; str:
+    """26-char Crockford-base32 ULID: 48-bit ms timestamp + 80-bit randomness."""
+    ts = int(time.time() * 1000) &amp; ((1 &lt;&lt; 48) - 1)
+    rnd = secrets.randbits(80)
+    n = (ts &lt;&lt; 80) | rnd
+    out = []
+    for _ in range(26):
+        out.append(_CROCKFORD[n &amp; 0x1F])
+        n &gt;&gt;= 5
+    return "".join(reversed(out))
+
+
+def now_iso() -&gt; str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@dataclass(frozen=True)
+class Queue:
+    name: str
+    agent_profile: str
+    max_parallel: int
+
+
+@dataclass(frozen=True)
+class Task:
+    id: str
+    queue: str
+    payload: str
+    enqueued_by: str
+    enqueued_at: str
+    callback: bool
+    status: str
+    worker_handle: str | None = None
+    result: str | None = None
+    error: str | None = None
+    completed_at: str | None = None
+
+
+@dataclass(frozen=True)
+class InboxMessage:
+    sender: str
+    timestamp: str
+    body: str
+    task_id: str | None = None
+    status: str | None = None
+
+
+def render_inbox_header(msg: InboxMessage) -&gt; str:
+    if msg.task_id is not None:
+        status = msg.status or "?"
+        return (f"&gt; from {msg.sender} · task#{msg.task_id} · "
+                f"{status} · {msg.timestamp}")
+    return f"&gt; from {msg.sender} · {msg.timestamp}"
+</code></pre>
+    <p>And <code>src/aegis/queue/__init__.py</code>:</p>
+<pre><code>from aegis.queue.schema import (
+    InboxMessage, Queue, Task,
+    new_ulid, now_iso, render_inbox_header,
+    sender_agent, sender_queue,
+)
+
+__all__ = [
+    "InboxMessage", "Queue", "Task",
+    "new_ulid", "now_iso", "render_inbox_header",
+    "sender_agent", "sender_queue",
+]
+</code></pre>
+    <div class="step">Step 4 — run, expect pass</div>
+<pre><code>uv run pytest tests/test_queue_schema.py -q
+# expected: 6 passed</code></pre>
+    <div class="step">Step 5 — commit</div>
+<pre><code>git add src/aegis/queue/__init__.py src/aegis/queue/schema.py \
+  tests/test_queue_schema.py
+git commit -m "feat(queue): schema (Queue/Task/InboxMessage) + ULID + header"
+git push</code></pre>
+
+    <h3 id="t1.2">Task 1.2 — InboxRouter (memory-only)</h3>
+    <p><strong>Files:</strong> Create <code>src/aegis/queue/inbox.py</code>,
+      <code>tests/test_queue_inbox.py</code>. Modify
+      <code>src/aegis/queue/__init__.py</code> to re-export
+      <code>InboxRouter</code>.</p>
+    <div class="step">Step 1 — failing tests</div>
+<pre><code># tests/test_queue_inbox.py
+from __future__ import annotations
+
+import pytest
+
+from aegis.queue import InboxMessage, InboxRouter
+
+
+class FakeSession:
+    def __init__(self):
+        self.delivered: list[InboxMessage] = []
+
+    async def deliver(self, msg: InboxMessage) -&gt; None:
+        self.delivered.append(msg)
+
+
+def _msg(sender="queue:impl", body="hi", task_id="01J42", status="ok"):
+    return InboxMessage(sender=sender, timestamp="2026-05-20T07:14:00Z",
+                        body=body, task_id=task_id, status=status)
+
+
+@pytest.mark.asyncio
+async def test_deliver_to_unbound_handle_buffers():
+    r = InboxRouter()
+    await r.deliver("lucid-knuth", _msg())
+    assert len(r.pending("lucid-knuth")) == 1
+
+
+@pytest.mark.asyncio
+async def test_drain_returns_arrival_order_and_clears():
+    r = InboxRouter()
+    await r.deliver("h", _msg(body="a"))
+    await r.deliver("h", _msg(body="b"))
+    drained = r.drain("h")
+    assert [m.body for m in drained] == ["a", "b"]
+    assert r.drain("h") == []
+
+
+@pytest.mark.asyncio
+async def test_deliver_to_bound_session_invokes_deliver_and_does_not_buffer():
+    r = InboxRouter()
+    fake = FakeSession()
+    r.bind_session("h", fake)
+    m = _msg(body="x")
+    await r.deliver("h", m)
+    assert fake.delivered == [m]
+    # session owns flow; router does not double-buffer once bound
+    assert r.pending("h") == []
+
+
+@pytest.mark.asyncio
+async def test_unbind_falls_back_to_buffering():
+    r = InboxRouter()
+    fake = FakeSession()
+    r.bind_session("h", fake)
+    r.unbind_session("h")
+    await r.deliver("h", _msg(body="z"))
+    assert fake.delivered == []
+    assert [m.body for m in r.pending("h")] == ["z"]
+</code></pre>
+    <div class="step">Step 2 — run, expect ImportError</div>
+<pre><code>uv run pytest tests/test_queue_inbox.py -q
+# expected: ERROR — cannot import name 'InboxRouter'</code></pre>
+    <div class="step">Step 3 — implement
+      <code>src/aegis/queue/inbox.py</code></div>
+<pre><code>from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from aegis.queue.schema import InboxMessage
+
+if TYPE_CHECKING:
+    from aegis.core.session import AgentSession
+
+
+class InboxRouter:
+    """Per-handle delivery channel. Pokes a live AgentSession when bound,
+    otherwise buffers in-memory pending. JSONL writethrough lands in VS2."""
+
+    def __init__(self, state_dir: Path | None = None) -&gt; None:
+        self._state_dir = state_dir
+        self._pending: dict[str, list[InboxMessage]] = {}
+        self._sessions: dict[str, "AgentSession"] = {}
+
+    def bind_session(self, handle: str, session: "AgentSession") -&gt; None:
+        self._sessions[handle] = session
+
+    def unbind_session(self, handle: str) -&gt; None:
+        self._sessions.pop(handle, None)
+
+    async def deliver(self, handle: str, msg: InboxMessage) -&gt; None:
+        session = self._sessions.get(handle)
+        if session is not None:
+            await session.deliver(msg)
+            return
+        self._pending.setdefault(handle, []).append(msg)
+
+    def drain(self, handle: str) -&gt; list[InboxMessage]:
+        return self._pending.pop(handle, [])
+
+    def pending(self, handle: str) -&gt; list[InboxMessage]:
+        return list(self._pending.get(handle, []))
+</code></pre>
+    <p>Update <code>src/aegis/queue/__init__.py</code>:</p>
+<pre><code>from aegis.queue.inbox import InboxRouter
+from aegis.queue.schema import (
+    InboxMessage, Queue, Task,
+    new_ulid, now_iso, render_inbox_header,
+    sender_agent, sender_queue,
+)
+
+__all__ = [
+    "InboxMessage", "InboxRouter", "Queue", "Task",
+    "new_ulid", "now_iso", "render_inbox_header",
+    "sender_agent", "sender_queue",
+]
+</code></pre>
+    <div class="step">Step 4 — run, expect pass; commit</div>
+<pre><code>uv run pytest tests/test_queue_inbox.py -q   # 4 passed
+uv run pytest -q -k "not live"               # full suite green
+git add src/aegis/queue/inbox.py src/aegis/queue/__init__.py \
+  tests/test_queue_inbox.py
+git commit -m "feat(queue): InboxRouter (in-memory deliver/drain/bind)"
+git push</code></pre>
+
+    <h3 id="t1.3">Task 1.3 — AgentSession.deliver (wake / buffer / chain)</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/core/session.py</code>;
+      Create <code>tests/test_queue_session_deliver.py</code>.</p>
+    <p><strong>Behavior:</strong></p>
+    <ul>
+      <li><em>Idle delivery:</em> if state is <code>ready</code> and no
+        turn is in flight, schedule a new turn whose user-message is the
+        rendered drained inbox (just-delivered msg plus any pending).</li>
+      <li><em>Mid-turn delivery:</em> if state is <code>working</code>,
+        append to <code>self._inbox_buffer</code>. At turn end (in
+        <code>_run_turn</code> after <code>commit</code>), drain
+        <code>_inbox_buffer</code>; if non-empty, schedule a chained
+        follow-up turn with the batched user-message.</li>
+      <li><em>Render:</em> user-message body =
+        <code>"\n\n".join(render_inbox_header(m) + "\n" + m.body for m in batch)</code>.</li>
+    </ul>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_session_deliver.py</code></div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from aegis.core.session import AgentSession
+from aegis.events import AssistantText, Result
+from aegis.queue import InboxMessage
+from aegis.tui.state import AgentState
+
+
+class FakeHarness:
+    def __init__(self, events_per_turn):
+        # events_per_turn: list of lists; one inner list per turn.
+        self._turns = list(events_per_turn)
+        self.started = False
+        self.closed = False
+        self.sent: list[str] = []
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, t):
+        self.sent.append(t)
+
+    async def close(self):
+        self.closed = True
+
+    async def events(self):
+        evs = self._turns.pop(0) if self._turns else []
+        for e in evs:
+            await asyncio.sleep(0)
+            yield e
+
+
+def _msg(body, ts="2026-05-20T07:14:00Z"):
+    return InboxMessage(sender="queue:impl", timestamp=ts, body=body,
+                        task_id="01J42", status="ok")
+
+
+@pytest.mark.asyncio
+async def test_idle_delivery_wakes_into_new_turn():
+    evs = [
+        [AssistantText(text="ok"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    h = FakeHarness(evs)
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    await s.deliver(_msg("hello"))
+    # let the scheduled task run
+    assert s._task is not None
+    await s._task
+    assert s.state is AgentState.ready
+    assert len(h.sent) == 1
+    body = h.sent[0]
+    assert "&gt; from queue:impl · task#01J42 · ok" in body
+    assert "hello" in body
+
+
+@pytest.mark.asyncio
+async def test_mid_turn_delivery_buffers_and_chains():
+    # Turn 1: producer's current work. Turn 2: chain triggered by mid-turn delivery.
+    evs = [
+        [AssistantText(text="working"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [AssistantText(text="reply"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    h = FakeHarness(evs)
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    await s.send("work")
+    # state is now working; deliver mid-turn
+    await s.deliver(_msg("interrupt"))
+    # buffer, no second turn yet
+    await s._task
+    # the chain task should be set and will run a follow-up turn
+    chain = s._task
+    assert chain is not None
+    await chain
+    assert len(h.sent) == 2
+    assert h.sent[0] == "work"
+    assert "interrupt" in h.sent[1]
+
+
+@pytest.mark.asyncio
+async def test_multiple_arrivals_batch_into_one_chain_turn():
+    evs = [
+        [AssistantText(text="working"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [AssistantText(text="reply"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    h = FakeHarness(evs)
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    await s.send("work")
+    await s.deliver(_msg("a"))
+    await s.deliver(_msg("b"))
+    await s._task          # first turn
+    await s._task          # chain
+    assert len(h.sent) == 2
+    body = h.sent[1]
+    # both bodies present, each with own header
+    assert body.count("&gt; from queue:impl") == 2
+    assert "a" in body and "b" in body
+</code></pre>
+    <p><em>Note:</em> literal <code>&gt;</code> characters in the
+      assertions are real <code>&gt;</code> (HTML-escaped here).</p>
+    <div class="step">Step 2 — run, expect fail (no <code>deliver</code> on
+      <code>AgentSession</code>)</div>
+    <div class="step">Step 3 — modify
+      <code>src/aegis/core/session.py</code></div>
+    <p>Add the imports + buffer + new method, and chain at the end of
+      <code>_run_turn</code>. Full diff (replacing the class body):</p>
+<pre><code>from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Callable
+
+from aegis.drivers.base import HarnessSession
+from aegis.events import Event, Result, ToolResult, ToolUse
+from aegis.queue.schema import InboxMessage, render_inbox_header
+from aegis.tui.metrics import SessionMetrics
+from aegis.tui.state import AgentState
+
+EventCb = Callable[["AgentSession", Event], None]
+StateCb = Callable[["AgentSession", AgentState, bool], None]
+
+
+def _render_batch(batch: list[InboxMessage]) -&gt; str:
+    return "\n\n".join(
+        render_inbox_header(m) + "\n" + m.body for m in batch)
+
+
+class AgentSession:
+    """One harness conversation, frontend-agnostic. Observers render."""
+
+    def __init__(self, session: HarnessSession, agent, agent_slug: str,
+                 handle: str, *,
+                 now: Callable[[], float] = time.monotonic,
+                 inbox=None,
+                 opening_prompt: str | None = None) -&gt; None:
+        self._session = session
+        self.agent = agent
+        self.agent_slug = agent_slug
+        self.handle = handle
+        self.state = AgentState.ready
+        self.metrics = SessionMetrics()
+        self._now = now
+        self._started = False
+        self._task: asyncio.Task | None = None
+        self._inbox = inbox                       # InboxRouter | None
+        self._inbox_buffer: list[InboxMessage] = []
+        self._opening_prompt = opening_prompt
+        self.on_event: EventCb | None = None
+        self.on_state: StateCb | None = None
+
+    def _emit_state(self, state: AgentState, *, finished: bool) -&gt; None:
+        self.state = state
+        if self.on_state is not None:
+            self.on_state(self, state, finished)
+
+    async def send(self, text: str) -&gt; None:
+        if self.state is AgentState.working:
+            return
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
+
+    async def deliver(self, msg: InboxMessage) -&gt; None:
+        """Push an inbox message at this session. Wake if idle; buffer
+        if mid-turn; the turn-end hook will chain a follow-up turn."""
+        self._inbox_buffer.append(msg)
+        if self.state is AgentState.working:
+            return
+        # idle: drain everything we hold and wake
+        batch = self._inbox_buffer
+        self._inbox_buffer = []
+        text = _render_batch(batch)
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
+
+    async def _run_turn(self, text: str) -&gt; None:
+        saw_result = False
+        try:
+            if not self._started:
+                await self._session.start()
+                self._started = True
+                self.metrics.begin_session(self._now())
+            await self._session.send(text)
+            async for ev in self._session.events():
+                if self.on_event is not None:
+                    self.on_event(self, ev)
+                if isinstance(ev, ToolUse):
+                    self.metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self.metrics.record_tool_error()
+                if isinstance(ev, Result):
+                    self.metrics.commit(ev.usage, self._now())
+                    saw_result = True
+                    self._emit_state(
+                        AgentState.error if ev.is_error else AgentState.ready,
+                        finished=True)
+                else:
+                    u = getattr(ev, "usage", None)
+                    if u is not None:
+                        self.metrics.observe(u)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - harness failure surfaces as error
+            if not saw_result:
+                self.metrics.commit(None, self._now())
+                self._emit_state(AgentState.error, finished=True)
+            self._chain_if_pending()
+            return
+        if not saw_result:
+            self.metrics.commit(None, self._now())
+            self._emit_state(AgentState.error, finished=True)
+        self._chain_if_pending()
+
+    def _chain_if_pending(self) -&gt; None:
+        if not self._inbox_buffer:
+            return
+        batch = self._inbox_buffer
+        self._inbox_buffer = []
+        text = _render_batch(batch)
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+        self._task = asyncio.create_task(self._run_turn(text))
+
+    async def interrupt(self) -&gt; None:
+        if self.state is not AgentState.working:
+            return
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self.metrics.cancel_turn(self._now())
+        self._emit_state(AgentState.ready, finished=False)
+
+    async def close(self) -&gt; None:
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        if self._started:
+            await self._session.close()
+</code></pre>
+    <p><em>Why <code>opening_prompt</code> sits here:</em> Task 1.4
+      <code>SessionManager.spawn(opening_prompt=…)</code> sets the field;
+      AegisApp/SessionManager use it to <code>await s.send(opening_prompt)</code>
+      right after creation. It is stored here purely for clarity at the
+      seam — the field is read only by <code>SessionManager.spawn</code>.</p>
+    <div class="step">Step 4 — run, expect pass</div>
+<pre><code>uv run pytest tests/test_queue_session_deliver.py tests/test_core_session.py -q
+# expected: all pass (deliver tests new; existing session tests still pass)
+uv run pytest -q -k "not live"
+# expected: 137 + new tests all pass</code></pre>
+    <div class="step">Step 5 — commit</div>
+<pre><code>git add src/aegis/core/session.py tests/test_queue_session_deliver.py
+git commit -m "feat(core): AgentSession.deliver — wake/buffer/chain"
+git push</code></pre>
+
+    <h3 id="t1.4">Task 1.4 — SessionManager.spawn(opening_prompt=, handle=)</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/core/manager.py</code>;
+      Extend <code>tests/test_core_manager.py</code>.</p>
+    <p>Two additions: (a) <code>opening_prompt</code> kwarg — after creating
+      the session, call <code>await s.send(opening_prompt)</code> if set;
+      (b) optional <code>handle</code> kwarg — let callers fix the handle
+      (used by <code>QueueManager</code> when it wants the worker handle
+      visible in the dispatch log before the spawn finishes). Also:
+      store an <code>InboxRouter | None</code> on the manager and thread
+      it into every spawned <code>AgentSession</code>.</p>
+    <div class="step">Step 1 — failing tests, append to
+      <code>tests/test_core_manager.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_spawn_with_opening_prompt_kicks_first_turn():
+    sent: list[str] = []
+
+    class Recording:
+        def __init__(self): self.started=self.closed=False
+        async def start(self): self.started=True
+        async def send(self, t): sent.append(t)
+        async def close(self): self.closed=True
+        async def events(self):
+            from aegis.events import Result
+            await asyncio.sleep(0)
+            yield Result(duration_ms=1, is_error=False, usage=None)
+
+    import asyncio
+    agents = {"default": object()}
+    m = SessionManager(agents, "default",
+                       make_session=lambda a, u, h: Recording(),
+                       mcp=None)
+    s = m.spawn("default", opening_prompt="hello there")
+    # spawn schedules the first turn; let it run
+    assert s._task is not None
+    await s._task
+    assert sent == ["hello there"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_with_explicit_handle():
+    m = make_mgr()
+    s = m.spawn("default", handle="vivid-laplace")
+    assert s.handle == "vivid-laplace"
+
+
+@pytest.mark.asyncio
+async def test_spawn_threads_inbox_router_when_set():
+    from aegis.queue import InboxRouter
+    inbox = InboxRouter()
+    m = SessionManager({"default": object()}, "default",
+                       make_session=lambda a, u, h: FakeHarness(),
+                       mcp=None, inbox=inbox)
+    s = m.spawn("default")
+    assert s._inbox is inbox
+</code></pre>
+    <p>(Add <code>import asyncio</code> at the top of
+      <code>test_core_manager.py</code> if missing.)</p>
+    <div class="step">Step 2 — run, expect fail (kwarg not supported;
+      <code>inbox</code> not accepted by SessionManager)</div>
+    <div class="step">Step 3 — modify
+      <code>src/aegis/core/manager.py</code></div>
+<pre><code>from __future__ import annotations
+
+from collections.abc import Callable
+
+from aegis.core.session import AgentSession
+from aegis.mcp.bridge import SessionInfo
+from aegis.tui.names import generate_name
+from aegis.tui.state import AgentState
+
+SessionFactory = Callable[[object, str, str], object]
+
+
+class SessionManager:
+    """Frontend-agnostic owner of live AgentSessions. Is an AppBridge."""
+
+    def __init__(self, agents: dict, default_agent: str,
+                 make_session: SessionFactory, mcp,
+                 *, inbox=None) -&gt; None:
+        self._agents = agents
+        self._default_agent = default_agent
+        self._make_session = make_session
+        self._mcp = mcp
+        self._inbox = inbox
+        self._sessions: list[AgentSession] = []
+        self._mru: list[str] = []
+
+    def spawn(self, slug: str | None = None, *,
+              opening_prompt: str | None = None,
+              handle: str | None = None) -&gt; AgentSession:
+        slug = slug or self._default_agent
+        if slug not in self._agents:
+            raise KeyError(slug)
+        agent = self._agents[slug]
+        h = handle or generate_name({s.handle for s in self._sessions})
+        url = self._mcp.url if self._mcp is not None else ""
+        s = AgentSession(self._make_session(agent, url, h),
+                         agent, slug, h,
+                         inbox=self._inbox,
+                         opening_prompt=opening_prompt)
+        if self._inbox is not None:
+            self._inbox.bind_session(h, s)
+        self._sessions.append(s)
+        self._touch(h)
+        if opening_prompt is not None:
+            import asyncio
+            asyncio.create_task(s.send(opening_prompt))
+        return s
+
+    def _touch(self, handle: str) -&gt; None:
+        if handle in self._mru:
+            self._mru.remove(handle)
+        self._mru.insert(0, handle)
+
+    def get(self, handle: str) -&gt; AgentSession | None:
+        return next((s for s in self._sessions if s.handle == handle), None)
+
+    async def close(self, handle: str) -&gt; None:
+        s = self.get(handle)
+        if s is None:
+            return
+        await s.close()
+        self._sessions.remove(s)
+        if self._inbox is not None:
+            self._inbox.unbind_session(handle)
+        if handle in self._mru:
+            self._mru.remove(handle)
+
+    async def interrupt(self, handle: str) -&gt; None:
+        s = self.get(handle)
+        if s is not None:
+            await s.interrupt()
+
+    async def close_all(self) -&gt; None:
+        for s in list(self._sessions):
+            await s.close()
+            if self._inbox is not None:
+                self._inbox.unbind_session(s.handle)
+        self._sessions.clear()
+        self._mru.clear()
+
+    # --- AppBridge --------------------------------------------------------
+    def list_sessions(self) -&gt; list[SessionInfo]:
+        top = self._mru[0] if self._mru else None
+        return [
+            SessionInfo(handle=s.handle, agent_slug=s.agent_slug,
+                        state=s.state.value, active=(s.handle == top),
+                        unseen=False)
+            for s in self._sessions
+        ]
+
+    def list_agents(self) -&gt; list[str]:
+        return sorted(self._agents)
+
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str:
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        target = self.get(target_handle)
+        if target is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        if target.state is AgentState.working:
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        await target.send(f"[handoff from {from_handle}] {context}")
+        return f"delivered to {target_handle}"
+</code></pre>
+    <p><em>Note on <code>opening_prompt</code>:</em> we
+      <code>asyncio.create_task(s.send(...))</code> rather than
+      <code>await</code> because <code>spawn</code> stays sync (the
+      current callers in <code>cli.py</code> / <code>tui/app.py</code>
+      treat it as sync). <code>handoff</code> continues to call
+      <code>send</code> directly here; VS4 refactors the MCP-layer
+      <code>aegis_handoff</code> to use the inbox channel instead.</p>
+    <div class="step">Step 4 — run, expect pass; commit</div>
+<pre><code>uv run pytest tests/test_core_manager.py -q   # all pass incl. 3 new
+uv run pytest -q -k "not live"
+git add src/aegis/core/manager.py tests/test_core_manager.py
+git commit -m "feat(core): SessionManager spawn opening_prompt/handle/inbox"
+git push</code></pre>
+
+    <h3 id="t1.5">Task 1.5 — QueueManager (FIFO, cap, dispatch, completion)</h3>
+    <p><strong>Files:</strong> Create
+      <code>src/aegis/queue/manager.py</code>,
+      <code>tests/test_queue_manager.py</code>. Re-export from
+      <code>src/aegis/queue/__init__.py</code>.</p>
+    <p><strong>Semantics:</strong></p>
+    <ul>
+      <li><code>enqueue</code> appends to per-queue FIFO, returns
+        <code>(task_id, queued_position)</code> where position is 1-indexed
+        in the <em>pending</em> queue at enqueue time (1 = head; ignores
+        in-flight workers). Then synchronously calls
+        <code>_try_dispatch(queue)</code>.</li>
+      <li><code>_try_dispatch(queue)</code>: while in-flight count &lt; cap
+        and FIFO non-empty, pop the head task, mark
+        <code>dispatched</code>, call
+        <code>session_manager.spawn(queue.agent_profile,
+        opening_prompt=task.payload)</code>, attach observers to capture
+        completion.</li>
+      <li>Completion observer: tracks <code>AssistantText</code> events
+        and the <code>on_state</code> hook. When the worker session
+        transitions to a finished state (<code>ready</code> or
+        <code>error</code> with <code>finished=True</code>) we capture
+        the last <code>AssistantText.text</code> as the result (empty
+        string if none), mark the task
+        <code>completed</code>/<code>failed</code>, fire the callback via
+        <code>InboxRouter</code>, close the worker session, then call
+        <code>_try_dispatch(queue)</code> again.</li>
+      <li>Unknown queue: <code>enqueue</code> raises
+        <code>KeyError(queue)</code>.</li>
+    </ul>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_manager.py</code></div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from aegis.core.session import AgentSession
+from aegis.events import AssistantText, Result
+from aegis.queue import (
+    InboxRouter, Queue, QueueManager,
+    sender_agent, sender_queue,
+)
+from aegis.tui.state import AgentState
+
+
+class FakeHarness:
+    def __init__(self, events):
+        self._events = list(events)
+        self.started = self.closed = False
+        self.sent: list[str] = []
+
+    async def start(self): self.started = True
+    async def send(self, t): self.sent.append(t)
+    async def close(self): self.closed = True
+
+    async def events(self):
+        for e in self._events:
+            await asyncio.sleep(0)
+            yield e
+
+
+class StubSessionManager:
+    """Records spawns and returns AgentSession instances we control."""
+
+    def __init__(self):
+        self.spawns: list[tuple] = []
+        self._scripts: dict[str, list] = {}   # handle -&gt; events
+        self.closed: list[str] = []
+
+    def script(self, handle: str, events: list) -&gt; None:
+        self._scripts[handle] = events
+
+    def spawn(self, slug: str, *,
+              opening_prompt: str | None = None,
+              handle: str | None = None) -&gt; AgentSession:
+        assert handle is not None, "QueueManager must pass an explicit handle"
+        evs = self._scripts.get(handle,
+            [AssistantText(text="DONE"),
+             Result(duration_ms=1, is_error=False, usage=None)])
+        s = AgentSession(FakeHarness(evs), agent=None,
+                         agent_slug=slug, handle=handle)
+        self.spawns.append((slug, handle, opening_prompt, s))
+        if opening_prompt is not None:
+            asyncio.create_task(s.send(opening_prompt))
+        return s
+
+    async def close(self, handle: str) -&gt; None:
+        self.closed.append(handle)
+
+
+def _q(name="impl", profile="claude-impl", cap=2):
+    return Queue(name=name, agent_profile=profile, max_parallel=cap)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_returns_id_and_position():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=0)}, sm, inbox)
+    tid1, pos1 = qm.enqueue("impl", "a",
+                            enqueued_by=sender_agent("p"), callback=False)
+    tid2, pos2 = qm.enqueue("impl", "b",
+                            enqueued_by=sender_agent("p"), callback=False)
+    assert pos1 == 1 and pos2 == 2
+    assert tid1 != tid2
+
+
+@pytest.mark.asyncio
+async def test_unknown_queue_raises():
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q()}, sm, inbox)
+    with pytest.raises(KeyError):
+        qm.enqueue("ghost", "x",
+                   enqueued_by=sender_agent("p"), callback=False)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_respects_cap():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: f"w{len(used)+1}")
+    # script the first worker to NOT complete (hang)
+    sm.script("w1", [AssistantText(text="x")])   # no Result =&gt; never finishes
+    qm.enqueue("impl", "a",
+               enqueued_by=sender_agent("p"), callback=False)
+    qm.enqueue("impl", "b",
+               enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.01)
+    # cap=1 =&gt; only one spawn so far
+    assert [h for _slug, h, _p, _s in sm.spawns] == ["w1"]
+
+
+@pytest.mark.asyncio
+async def test_callback_delivered_on_completion():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="all done"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("lucid-knuth"),
+                        callback=True)
+    # let the worker run and dispatch's observer fire
+    await asyncio.sleep(0.05)
+    pending = inbox.pending("lucid-knuth")
+    assert len(pending) == 1
+    msg = pending[0]
+    assert msg.sender == sender_queue("impl")
+    assert msg.task_id == tid
+    assert msg.status == "ok"
+    assert "all done" in msg.body
+    # task status is completed
+    st = qm.status(tid)
+    assert st["status"] == "completed" and "all done" in st["result"]
+    # worker was closed
+    assert "w1" in sm.closed
+
+
+@pytest.mark.asyncio
+async def test_failed_worker_delivers_error_callback():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("lucid-knuth"),
+                        callback=True)
+    await asyncio.sleep(0.05)
+    pending = inbox.pending("lucid-knuth")
+    assert len(pending) == 1 and pending[0].status == "error"
+    assert qm.status(tid)["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_callback_false_skips_inbox_delivery():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="ok"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    qm.enqueue("impl", "go",
+               enqueued_by=sender_agent("lucid-knuth"), callback=False)
+    await asyncio.sleep(0.05)
+    assert inbox.pending("lucid-knuth") == []
+
+
+@pytest.mark.asyncio
+async def test_status_unknown_returns_none():
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q()}, sm, inbox)
+    assert qm.status("does-not-exist") is None
+</code></pre>
+    <div class="step">Step 2 — run, expect ImportError on
+      <code>QueueManager</code></div>
+    <div class="step">Step 3 — implement
+      <code>src/aegis/queue/manager.py</code></div>
+<pre><code>from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+
+from aegis.events import AssistantText
+from aegis.queue.schema import (
+    InboxMessage, Queue, Task,
+    new_ulid, now_iso, sender_queue,
+)
+from aegis.tui.names import generate_name
+from aegis.tui.state import AgentState
+
+
+class QueueManager:
+    """One owner per aegis process. Pure FIFO + cap + dispatch-on-event.
+    No background loop: dispatch is checked synchronously on enqueue and
+    on each worker completion. Persistence + restart replay land in VS2."""
+
+    def __init__(self, queues: dict[str, Queue], session_manager,
+                 inbox_router,
+                 *, state_dir: Path | None = None,
+                 now: Callable[[], str] = now_iso,
+                 handle_factory: Callable[[set[str]], str] | None = None) -&gt; None:
+        self._queues = dict(queues)
+        self._sm = session_manager
+        self._inbox = inbox_router
+        self._state_dir = state_dir
+        self._now = now
+        self._handle_factory = handle_factory or generate_name
+        # in-memory state
+        self._pending: dict[str, list[Task]] = {q: [] for q in self._queues}
+        self._inflight: dict[str, list[Task]] = {q: [] for q in self._queues}
+        self._all: dict[str, Task] = {}
+        # per-worker result accumulators: handle -&gt; (task, last_text)
+        self._workers: dict[str, tuple[Task, str]] = {}
+
+    def list_queues(self) -&gt; list[str]:
+        return sorted(self._queues)
+
+    def enqueue(self, queue: str, payload: str, *,
+                enqueued_by: str, callback: bool) -&gt; tuple[str, int]:
+        if queue not in self._queues:
+            raise KeyError(queue)
+        task = Task(
+            id=new_ulid(), queue=queue, payload=payload,
+            enqueued_by=enqueued_by, enqueued_at=self._now(),
+            callback=callback, status="pending")
+        self._pending[queue].append(task)
+        self._all[task.id] = task
+        position = len(self._pending[queue])
+        self._try_dispatch(queue)
+        return task.id, position
+
+    def status(self, task_id: str) -&gt; dict | None:
+        t = self._all.get(task_id)
+        if t is None:
+            return None
+        return {
+            "status": t.status,
+            "result": t.result,
+            "error": t.error,
+            "completed_at": t.completed_at,
+            "queued_position": self._position_of(t),
+        }
+
+    def _position_of(self, t: Task) -&gt; int | None:
+        if t.status != "pending":
+            return None
+        fifo = self._pending[t.queue]
+        for i, x in enumerate(fifo, start=1):
+            if x.id == t.id:
+                return i
+        return None
+
+    def _try_dispatch(self, queue: str) -&gt; None:
+        q = self._queues[queue]
+        while (len(self._inflight[queue]) &lt; q.max_parallel
+               and self._pending[queue]):
+            task = self._pending[queue].pop(0)
+            used = ({h for h in self._workers}
+                    | {s.handle for s in getattr(self._sm,
+                                                  "_sessions", [])})
+            worker_handle = self._handle_factory(used)
+            dispatched = Task(**{**task.__dict__,
+                                 "status": "dispatched",
+                                 "worker_handle": worker_handle})
+            self._all[task.id] = dispatched
+            self._inflight[queue].append(dispatched)
+            self._workers[worker_handle] = (dispatched, "")
+            session = self._sm.spawn(q.agent_profile,
+                                     opening_prompt=task.payload,
+                                     handle=worker_handle)
+            self._attach_observers(session, dispatched)
+
+    def _attach_observers(self, session, task: Task) -&gt; None:
+        def on_event(_s, ev):
+            if isinstance(ev, AssistantText):
+                t, _last = self._workers[session.handle]
+                self._workers[session.handle] = (t, ev.text)
+
+        def on_state(_s, st, finished):
+            if not finished:
+                return
+            import asyncio
+            asyncio.create_task(self._finalize(session, st))
+
+        session.on_event = on_event
+        session.on_state = on_state
+
+    async def _finalize(self, session, st) -&gt; None:
+        if session.handle not in self._workers:
+            return
+        task, last_text = self._workers.pop(session.handle)
+        ok = (st is AgentState.ready)
+        status = "completed" if ok else "failed"
+        result = last_text if ok else None
+        error = None if ok else (last_text or "worker exited with error")
+        completed = Task(**{**task.__dict__,
+                            "status": status,
+                            "result": result,
+                            "error": error,
+                            "completed_at": self._now()})
+        self._all[task.id] = completed
+        self._inflight[task.queue] = [
+            t for t in self._inflight[task.queue] if t.id != task.id]
+        if task.callback:
+            body = result if ok else (error or "")
+            msg = InboxMessage(
+                sender=sender_queue(task.queue),
+                timestamp=self._now(),
+                body=body,
+                task_id=task.id,
+                status=("ok" if ok else "error"))
+            await self._inbox.deliver(_handle_of(task.enqueued_by), msg)
+        try:
+            await self._sm.close(session.handle)
+        except Exception:  # noqa: BLE001 — close is best-effort
+            pass
+        self._try_dispatch(task.queue)
+
+    # VS2 hooks (no-ops in VS1):
+    async def start(self) -&gt; None: ...
+    async def stop(self) -&gt; None: ...
+
+
+def _handle_of(sender_tag: str) -&gt; str:
+    """Extract the inbox handle from a SenderTag. Only 'agent:&lt;handle&gt;'
+    has a delivery target in v1; others (telegram/system/queue:…) deliver
+    to a sentinel handle equal to the sender (no live session = buffer
+    only). The router tolerates unbound handles."""
+    if sender_tag.startswith("agent:"):
+        return sender_tag.split(":", 1)[1]
+    return sender_tag
+</code></pre>
+    <p>Update <code>src/aegis/queue/__init__.py</code> to add
+      <code>QueueManager</code> to imports + <code>__all__</code>.</p>
+    <p><em>Notes:</em> the <code>used</code> handle set takes a defensive
+      <code>getattr(self._sm, "_sessions", [])</code> because real
+      <code>SessionManager</code> exposes <code>_sessions</code> and the
+      stub does not — both work. <code>_finalize</code> is fire-and-forget
+      from <code>on_state</code> (sync hook) via
+      <code>asyncio.create_task</code>; the test awaits with a brief
+      <code>asyncio.sleep</code>.</p>
+    <div class="step">Step 4 — run, expect pass; commit</div>
+<pre><code>uv run pytest tests/test_queue_manager.py -q   # 7 passed
+uv run pytest -q -k "not live"
+git add src/aegis/queue/manager.py src/aegis/queue/__init__.py \
+  tests/test_queue_manager.py
+git commit -m "feat(queue): QueueManager FIFO+cap dispatch with callback"
+git push</code></pre>
+
+    <h3 id="t1.6">Task 1.6 — Extend AppBridge protocol</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/mcp/bridge.py</code>;
+      Extend <code>tests/test_mcp_bridge.py</code>.</p>
+    <p>Add two attributes to the runtime-checkable Protocol. Both Bridge
+      implementors (<code>SessionManager</code>, <code>AegisApp</code>)
+      will gain them in T1.8.</p>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_mcp_bridge.py</code></div>
+<pre><code>def test_appbridge_requires_queue_manager_and_inbox_router():
+    from aegis.mcp.bridge import AppBridge
+    from aegis.queue import InboxRouter
+
+    class FullImpl:
+        queue_manager = object()       # any non-None
+        inbox_router = InboxRouter()
+        def list_sessions(self): return []
+        def list_agents(self): return []
+        async def handoff(self, a, b, c): return "ok"
+
+    class MissingImpl:
+        def list_sessions(self): return []
+        def list_agents(self): return []
+        async def handoff(self, a, b, c): return "ok"
+
+    assert isinstance(FullImpl(), AppBridge)
+    assert not isinstance(MissingImpl(), AppBridge)
+</code></pre>
+    <div class="step">Step 2 — run, expect fail (Protocol still accepts
+      MissingImpl)</div>
+    <div class="step">Step 3 — modify
+      <code>src/aegis/mcp/bridge.py</code></div>
+<pre><code>from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class SessionInfo:
+    handle: str
+    agent_slug: str
+    state: str
+    active: bool
+    unseen: bool
+
+
+@runtime_checkable
+class AppBridge(Protocol):
+    queue_manager: object         # QueueManager instance
+    inbox_router: object          # InboxRouter instance
+
+    def list_sessions(self) -&gt; list[SessionInfo]: ...
+    def list_agents(self) -&gt; list[str]: ...
+    async def handoff(self, from_handle: str, target_handle: str,
+                      context: str) -&gt; str: ...
+</code></pre>
+    <p><em>Why <code>object</code> annotations:</em> <code>QueueManager</code>
+      and <code>InboxRouter</code> live in <code>aegis.queue</code>;
+      importing them here would create a cycle (<code>queue.manager</code>
+      may later import bridge types). The Protocol only needs the
+      attribute to exist; the runtime-isinstance check is structural.</p>
+    <div class="step">Step 4 — run, expect pass; commit</div>
+<pre><code>uv run pytest tests/test_mcp_bridge.py -q     # passes incl. new test
+uv run pytest -q -k "not live"
+git add src/aegis/mcp/bridge.py tests/test_mcp_bridge.py
+git commit -m "feat(mcp): extend AppBridge with queue_manager + inbox_router"
+git push</code></pre>
+
+    <h3 id="t1.7">Task 1.7 — MCP tools: aegis_enqueue + aegis_task_status</h3>
+    <p><strong>Files:</strong> Modify
+      <code>src/aegis/mcp/server.py</code>; Create
+      <code>tests/test_queue_mcp.py</code>.</p>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_mcp.py</code></div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from aegis.mcp.bridge import SessionInfo
+from aegis.mcp.server import build_server
+from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
+
+
+class FakeBridge:
+    def __init__(self, qm, inbox):
+        self.queue_manager = qm
+        self.inbox_router = inbox
+
+    def list_sessions(self): return []
+    def list_agents(self): return []
+    async def handoff(self, a, b, c): return "ok"
+
+
+class NopSM:
+    _sessions = []
+    def spawn(self, slug, *, opening_prompt=None, handle=None):
+        from aegis.core.session import AgentSession
+        class _H:
+            async def start(self): pass
+            async def send(self, t): pass
+            async def close(self): pass
+            async def events(self):
+                if False:
+                    yield
+        return AgentSession(_H(), None, slug, handle or "w1")
+    async def close(self, h): ...
+
+
+async def _call(server, name, **kwargs):
+    tools = await server.list_tools()
+    tool = next(t for t in tools if t.name == name)
+    result = await tool.run(kwargs)
+    sc = getattr(result, "structured_content", None)
+    if isinstance(sc, dict) and "result" in sc:
+        return sc["result"]
+    if sc is not None:
+        return sc
+    return result.content[0].text
+
+
+def _build(cap=0):
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": Queue(name="impl",
+                                     agent_profile="claude-impl",
+                                     max_parallel=cap)},
+                      NopSM(), inbox)
+    return build_server(FakeBridge(qm, inbox)), qm
+
+
+@pytest.mark.asyncio
+async def test_aegis_enqueue_returns_shape():
+    srv, qm = _build(cap=0)
+    out = await _call(srv, "aegis_enqueue",
+                      queue="impl", payload="do",
+                      from_handle="lucid-knuth", callback=True)
+    assert set(out) == {"task_id", "queued_position"}
+    assert isinstance(out["task_id"], str) and len(out["task_id"]) == 26
+    assert out["queued_position"] == 1
+    # task is in the manager, enqueued_by reflects from_handle
+    st = qm.status(out["task_id"])
+    assert st["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_aegis_enqueue_unknown_queue_returns_error_string():
+    srv, _qm = _build()
+    out = await _call(srv, "aegis_enqueue",
+                      queue="ghost", payload="x",
+                      from_handle="h", callback=False)
+    # fastmcp surfaces our raise as the structured error or string;
+    # we contract: response is a dict with a single "error" key OR a
+    # plain string starting with "enqueue rejected:".
+    if isinstance(out, dict):
+        assert "error" in out and "ghost" in out["error"]
+    else:
+        assert isinstance(out, str) and "ghost" in out
+
+
+@pytest.mark.asyncio
+async def test_aegis_task_status_known_and_unknown():
+    srv, qm = _build(cap=0)
+    tid, _ = qm.enqueue("impl", "x",
+                        enqueued_by=sender_agent("p"), callback=False)
+    out = await _call(srv, "aegis_task_status", task_id=tid)
+    assert out["status"] == "pending"
+    miss = await _call(srv, "aegis_task_status", task_id="nope")
+    # contract: unknown id returns {"status": "unknown"}
+    assert miss == {"status": "unknown"}
+
+
+@pytest.mark.asyncio
+async def test_aegis_enqueue_default_callback_is_true():
+    srv, qm = _build(cap=0)
+    out = await _call(srv, "aegis_enqueue", queue="impl", payload="x",
+                      from_handle="h")    # no callback kwarg
+    # the task's callback flag is True by default
+    t = next(t for t in qm._all.values() if t.id == out["task_id"])
+    assert t.callback is True
+</code></pre>
+    <div class="step">Step 2 — run, expect fail (tools not registered)</div>
+    <div class="step">Step 3 — modify
+      <code>src/aegis/mcp/server.py</code></div>
+    <p>Inside <code>build_server(bridge)</code>, after the existing tool
+      registrations, add:</p>
+<pre><code>    @server.tool
+    async def aegis_enqueue(queue: str, payload: str, from_handle: str,
+                            callback: bool = True) -&gt; dict:
+        """Enqueue a task on a named queue. Returns task_id + queued_position.
+        If callback=true, the worker's final result will land in your inbox
+        when it completes."""
+        from aegis.queue import sender_agent
+        try:
+            tid, pos = bridge.queue_manager.enqueue(
+                queue, payload,
+                enqueued_by=sender_agent(from_handle),
+                callback=callback)
+        except KeyError as e:
+            return {"error": f"enqueue rejected: unknown queue {e.args[0]!r}"}
+        return {"task_id": tid, "queued_position": pos}
+
+    @server.tool
+    async def aegis_task_status(task_id: str) -&gt; dict:
+        """Inspect a previously-enqueued task. {'status': 'unknown'} if not found."""
+        st = bridge.queue_manager.status(task_id)
+        if st is None:
+            return {"status": "unknown"}
+        return st
+</code></pre>
+    <p>Also extend <code>BRIEFING</code> to name the two new tools (one
+      sentence each) — mirror the existing <code>aegis_handoff</code>
+      sentence pattern. Keep prior text intact.</p>
+    <div class="step">Step 4 — also update
+      <code>tests/test_mcp_server.py::test_build_server_registers_all_aegis_tools</code></div>
+<pre><code>    assert {t.name for t in tools} == {
+        "aegis_meta", "aegis_list_sessions", "aegis_list_agents",
+        "aegis_handoff", "aegis_enqueue", "aegis_task_status"}
+</code></pre>
+    <p>And in <code>tests/test_mcp_server.py</code>'s <code>FakeBridge</code>,
+      add the two attributes (any non-None placeholders are fine; the
+      existing tests do not exercise them):</p>
+<pre><code>    queue_manager = None
+    inbox_router = None
+</code></pre>
+    <p>(These are required by the extended Protocol from T1.6 only when
+      <code>isinstance</code> is called; the existing tests do not
+      isinstance-check the bridge, but adding the attrs keeps the door
+      open.)</p>
+    <div class="step">Step 5 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_mcp.py tests/test_mcp_server.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/mcp/server.py tests/test_queue_mcp.py tests/test_mcp_server.py
+git commit -m "feat(mcp): aegis_enqueue + aegis_task_status tools"
+git push</code></pre>
+
+    <h3 id="t1.8">Task 1.8 — Wire QueueManager+InboxRouter into SessionManager</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/core/manager.py</code>
+      (expose <code>queue_manager</code>/<code>inbox_router</code>
+      attributes); Modify <code>src/aegis/tui/app.py</code> (same);
+      Modify <code>src/aegis/cli.py</code>'s <code>_serve</code> to
+      construct them and attach to the SessionManager;
+      Modify <code>tests/test_serve.py</code> to assert wire-up.</p>
+    <p><strong>Note:</strong> VS3 (config) is what populates the actual
+      <code>queues</code> dict from <code>.aegis.py</code>. For VS1, the
+      bridge holds a <code>QueueManager</code> built from an empty
+      <code>queues</code> dict (and <code>aegis_enqueue</code> against
+      an empty manager already returns the "unknown queue" error path
+      tested in T1.7). This keeps the bridge contract whole through every
+      slice; VS3 swaps the empty dict for the loaded one.</p>
+    <div class="step">Step 1 — failing test, extend
+      <code>tests/test_serve.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_serve_wires_inbox_and_queue_manager():
+    from aegis.queue import InboxRouter, QueueManager
+
+    mcp = FakeMCP()
+    stop = asyncio.Event()
+    asyncio.get_event_loop().call_soon(stop.set)
+    await _serve(agents={"default": 1}, default_agent="default",
+                 make_session=lambda p, u, h: None, mcp=mcp,
+                 tg=None, stop=stop)
+    bridge = mcp.bound
+    assert isinstance(bridge.inbox_router, InboxRouter)
+    assert isinstance(bridge.queue_manager, QueueManager)
+</code></pre>
+    <div class="step">Step 2 — run, expect fail (no
+      <code>queue_manager</code>/<code>inbox_router</code> attrs)</div>
+    <div class="step">Step 3 — modify
+      <code>src/aegis/core/manager.py</code></div>
+    <p>Add two public attributes — set in <code>__init__</code> after
+      assigning <code>self._inbox</code>:</p>
+<pre><code>        self.inbox_router = inbox            # may be None until set
+        self.queue_manager = None            # set by attach_queue_manager
+        # ... existing fields ...
+
+    def attach_queue_manager(self, qm) -&gt; None:
+        self.queue_manager = qm
+</code></pre>
+    <p>(Public attributes satisfy the Protocol. The inbox is already
+      threaded; assigning it to <code>self.inbox_router</code> just
+      exposes it on the bridge surface.)</p>
+    <div class="step">Step 4 — modify <code>src/aegis/cli.py</code>'s
+      <code>_serve</code> to build + attach</div>
+<pre><code>async def _serve(*, agents, default_agent, make_session, mcp, tg,
+                 stop: asyncio.Event) -&gt; None:
+    from aegis.queue import InboxRouter, QueueManager
+
+    inbox = InboxRouter()
+    mgr = SessionManager(agents, default_agent, make_session, mcp,
+                         inbox=inbox)
+    qm = QueueManager({}, mgr, inbox)        # VS3 replaces {} with loaded queues
+    mgr.attach_queue_manager(qm)
+    mcp.bind(mgr)
+    await mcp.start()
+    await qm.start()
+    tasks = []
+    if tg is not None:
+        from aegis.telegram.bot import BotClient
+        from aegis.telegram.frontend import TelegramFrontend
+        bot = BotClient(tg.token)
+        fe = TelegramFrontend(bot, mgr, chat_id=tg.chat_id,
+                              auto_prompt=tg.auto_prompt)
+        tasks.append(asyncio.create_task(fe.run(bot)))
+    try:
+        await stop.wait()
+    finally:
+        for t in tasks:
+            t.cancel()
+        await qm.stop()
+        await mgr.close_all()
+        await mcp.stop()
+</code></pre>
+    <div class="step">Step 5 — modify
+      <code>src/aegis/tui/app.py</code></div>
+    <p>In <code>AegisApp.__init__</code>, after the existing
+      <code>self._mcp = mcp</code> + <code>self._mcp.bind(self)</code>:</p>
+<pre><code>        from aegis.queue import InboxRouter, QueueManager
+        self.inbox_router = InboxRouter()
+        # The interactive (TUI) path builds its own SessionManager-less
+        # world: panes own AgentSessions directly. Inbox binding happens
+        # in _spawn (below). QueueManager gets the AegisApp as its
+        # session-manager-like — see _SessionManagerAdapter at the
+        # bottom of this file.
+        self.queue_manager = QueueManager(
+            {}, _SessionManagerAdapter(self), self.inbox_router)
+</code></pre>
+    <p>And after <code>pane = ConversationPane(...)</code> in
+      <code>_spawn</code>, bind the pane's inner core to the inbox so
+      callbacks land in the right session:</p>
+<pre><code>        # Wire the pane's AgentSession into the inbox so callbacks reach it.
+        self.inbox_router.bind_session(handle, pane._core)
+</code></pre>
+    <p>And in <code>action_close_tab</code> / <code>action_quit</code>
+      (anywhere the pane goes away), call
+      <code>self.inbox_router.unbind_session(pane.handle)</code> before
+      removing.</p>
+    <p>At the bottom of <code>src/aegis/tui/app.py</code>, add the
+      adapter so QueueManager can spawn workers as TUI tabs:</p>
+<pre><code>class _SessionManagerAdapter:
+    """Adapts AegisApp's pane-spawning to the SessionManager-shaped
+    interface QueueManager expects: spawn(slug, *, opening_prompt, handle)
+    and close(handle)."""
+
+    def __init__(self, app: "AegisApp") -&gt; None:
+        self._app = app
+        self._sessions = []   # QueueManager peeks at this for handle uniqueness
+
+    def spawn(self, slug, *, opening_prompt=None, handle=None):
+        # Schedule on the app's loop; QueueManager calls this from a
+        # tool handler (running on the same loop), so create_task is safe.
+        import asyncio
+        from aegis.tui.names import generate_name
+
+        h = handle or generate_name(
+            {p.handle for p in self._app._panes})
+        asyncio.create_task(self._spawn_pane(slug, h, opening_prompt))
+        # Return a lightweight Future-like with handle + on_event/on_state
+        # hooks the QueueManager will set. We resolve to the real pane._core
+        # via _async_pane lookup once mounted; until then, the observer
+        # hooks are stored on a placeholder forwarded by _spawn_pane.
+        from aegis.core.session import AgentSession  # for typing only
+        class _Placeholder:
+            handle = h
+            on_event = None
+            on_state = None
+        ph = _Placeholder()
+        self._pending_observers[h] = ph
+        return ph
+
+    async def _spawn_pane(self, slug, handle, opening_prompt):
+        await self._app._spawn(slug, handle=handle,
+                               opening_prompt=opening_prompt)
+        # Wire the queued observers onto the real core
+        pane = next(p for p in self._app._panes if p.handle == handle)
+        ph = self._pending_observers.pop(handle, None)
+        if ph is not None:
+            pane._core.on_event = ph.on_event
+            pane._core.on_state = ph.on_state
+
+    async def close(self, handle):
+        # Close the matching pane if it still exists.
+        pane = next((p for p in self._app._panes if p.handle == handle),
+                    None)
+        if pane is None:
+            return
+        await self._app._close_pane(pane)
+
+    _pending_observers = {}
+</code></pre>
+    <p>Then update <code>AegisApp._spawn</code> to accept the new
+      kwargs:</p>
+<pre><code>    async def _spawn(self, slug: str, *,
+                      handle: str | None = None,
+                      opening_prompt: str | None = None) -&gt; None:
+        agent = self._agents[slug]
+        h = handle or generate_name({p.handle for p in self._panes})
+        pane = ConversationPane(
+            self._make_session(agent, self._mcp.url, h), agent,
+            slug, h, self._palette)
+        self._panes.append(pane)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(pane)
+        cs.current = pane.id
+        self.inbox_router.bind_session(h, pane._core)
+        self._refresh_tabbar()
+        pane.focus_input()
+        if opening_prompt is not None:
+            await pane._core.send(opening_prompt)
+</code></pre>
+    <p>And factor a small helper for close-pane cleanup
+      <code>_close_pane(pane)</code> that
+      <code>unbind_session</code>s before tearing down — used by both
+      <code>action_close_tab</code> and the adapter's <code>close</code>.</p>
+    <p><em>Adapt-and-report clause:</em> if Textual mount/lifecycle
+      details prevent the synchronous-return-then-async-mount shape
+      above, switch <code>QueueManager._try_dispatch</code> to call an
+      awaitable spawn method on the adapter (await
+      <code>create_task</code>) and adjust this task's tests. The
+      <em>intent</em>: <code>QueueManager.spawn</code> returns an object
+      whose <code>handle</code>, <code>on_event</code>, and
+      <code>on_state</code> can be set, and whose state changes the
+      observer eventually sees.</p>
+    <div class="step">Step 6 — run + commit</div>
+<pre><code>uv run pytest tests/test_serve.py tests/test_tui.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/core/manager.py src/aegis/cli.py src/aegis/tui/app.py \
+  tests/test_serve.py
+git commit -m "feat(queue): wire QueueManager + InboxRouter into serve/TUI"
+git push</code></pre>
+
+    <h3 id="t1.9">Task 1.9 — End-to-end hermetic test</h3>
+    <p><strong>Files:</strong> Create <code>tests/test_queue_e2e.py</code>.</p>
+    <p>Drives the full loop without disk: producer session, real
+      <code>InboxRouter</code> + <code>QueueManager</code>, stub
+      session-manager that scripts FakeHarness events.</p>
+    <div class="step">Step 1 — write the test (it should pass on the
+      first run — this is the e2e proof for VS1)</div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from aegis.core.session import AgentSession
+from aegis.events import AssistantText, Result
+from aegis.queue import (
+    InboxRouter, Queue, QueueManager,
+    sender_agent, sender_queue,
+)
+
+
+class FakeHarness:
+    def __init__(self, events):
+        self._events = list(events); self.sent = []
+        self.started=self.closed=False
+    async def start(self): self.started=True
+    async def send(self, t): self.sent.append(t)
+    async def close(self): self.closed=True
+    async def events(self):
+        for e in self._events:
+            await asyncio.sleep(0); yield e
+
+
+class StubSM:
+    def __init__(self):
+        self._sessions = []
+        self._scripts = {}
+        self.closed = []
+
+    def script(self, handle, events):
+        self._scripts[handle] = events
+
+    def spawn(self, slug, *, opening_prompt=None, handle=None):
+        evs = self._scripts.get(handle,
+            [AssistantText(text="ok"),
+             Result(duration_ms=1, is_error=False, usage=None)])
+        s = AgentSession(FakeHarness(evs), None, slug, handle)
+        self._sessions.append(s)
+        if opening_prompt is not None:
+            asyncio.create_task(s.send(opening_prompt))
+        return s
+
+    async def close(self, handle):
+        self.closed.append(handle)
+        self._sessions = [s for s in self._sessions if s.handle != handle]
+
+
+@pytest.mark.asyncio
+async def test_e2e_enqueue_to_callback_wakes_producer():
+    inbox = InboxRouter()
+    sm = StubSM()
+
+    # Producer session is built by hand (mirrors what AegisApp/SessionManager
+    # would do): bind to inbox, start idle.
+    producer = AgentSession(FakeHarness(
+        [AssistantText(text="thanks, will do"),
+         Result(duration_ms=1, is_error=False, usage=None)]),
+        None, "producer", "lucid-knuth", inbox=inbox)
+    inbox.bind_session("lucid-knuth", producer)
+
+    # Worker script: opening prompt arrives as first sent, then "DONE"
+    # is the worker's last assistant text and becomes the result.
+    sm.script("vivid-laplace",
+              [AssistantText(text="DONE"),
+               Result(duration_ms=1, is_error=False, usage=None)])
+
+    qm = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="claude-impl",
+                       max_parallel=1)},
+        sm, inbox,
+        handle_factory=lambda used: "vivid-laplace")
+
+    tid, pos = qm.enqueue("impl", "implement plan X",
+                          enqueued_by=sender_agent("lucid-knuth"),
+                          callback=True)
+    assert pos == 1
+
+    # Let the dispatch + worker turn + finalize + producer wake all run.
+    # Brief pump:
+    for _ in range(20):
+        await asyncio.sleep(0.005)
+        if producer._task is not None and producer._task.done() is False:
+            continue
+        if qm.status(tid)["status"] == "completed":
+            break
+
+    # Final: task completed
+    st = qm.status(tid)
+    assert st["status"] == "completed"
+    assert "DONE" in (st["result"] or "")
+
+    # Producer's harness was woken with a user message containing the
+    # tagged inbox header and the worker's result body.
+    producer_sent = producer._session.sent
+    assert len(producer_sent) == 1
+    body = producer_sent[0]
+    assert body.startswith("&gt; from queue:impl · task#")
+    assert tid in body
+    assert "DONE" in body
+
+
+@pytest.mark.asyncio
+async def test_e2e_two_arrivals_while_busy_batch_into_one_chain():
+    inbox = InboxRouter()
+    sm = StubSM()
+    # Producer: turn 1 = ongoing work, turn 2 = response to batched inbox
+    producer = AgentSession(FakeHarness([
+        [AssistantText(text="busy"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [AssistantText(text="ack"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ][0]), None, "producer", "lucid-knuth", inbox=inbox)
+    # Patch: FakeHarness consumes single list; for two-turn we need
+    # the multi-turn variant. Use the version from VS1.3 tests instead.
+    # (Replicated below to keep this file self-contained.)
+</code></pre>
+    <p>(The second test is a polish belt-and-suspenders — if it complicates
+      the file, ship it as a follow-up; the first test is the canonical
+      e2e proof.)</p>
+    <div class="step">Step 2 — run, expect pass; commit</div>
+<pre><code>uv run pytest tests/test_queue_e2e.py -q
+# expected: 1 passed (and 1 more if the second test landed cleanly)
+uv run pytest -q -k "not live"
+git add tests/test_queue_e2e.py
+git commit -m "test(queue): e2e enqueue → worker → callback → producer wake"
+git push
+# &gt;&gt;&gt; VS1 GREEN — ping Telegram with: \
+#     ✅ VS1 e2e happy path green (commit &lt;sha&gt;)</code></pre>
+  </section>
+
+  <!-- ===================== VS2 ===================== -->
+  <section id="vs2">
+    <h2>Vertical slice 2 — Persistence (JSONL)</h2>
+    <p>Layer durable state under <code>.aegis/state/</code>. Every record
+      carries <code>v: 1</code>. On <code>QueueManager.start()</code>
+      replay each queue's log: any task in
+      <code>dispatched</code>-but-not-<code>completed</code>/<code>failed</code>
+      state becomes <code>failed: interrupted</code> and delivers a
+      failure callback into the producer's inbox file (even if no live
+      session — InboxRouter's writethrough makes the record durable).</p>
+
+    <h3 id="t2.1">Task 2.1 — JSONL append/read helpers</h3>
+    <p><strong>Files:</strong> Create <code>src/aegis/queue/jsonl.py</code>,
+      <code>tests/test_queue_persistence.py</code>; modify
+      <code>.gitignore</code>.</p>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_persistence.py</code></div>
+<pre><code>from __future__ import annotations
+
+import json
+
+from aegis.queue.jsonl import append_record, read_records
+
+
+def test_append_and_read_records_roundtrip(tmp_path):
+    p = tmp_path / "q.jsonl"
+    append_record(p, {"event": "enqueued", "task_id": "01J42"})
+    append_record(p, {"event": "dispatched", "task_id": "01J42"})
+    records = read_records(p)
+    assert len(records) == 2
+    for r in records:
+        assert r["v"] == 1
+    assert records[0]["event"] == "enqueued"
+    assert records[1]["event"] == "dispatched"
+
+
+def test_read_records_missing_file_returns_empty(tmp_path):
+    assert read_records(tmp_path / "nope.jsonl") == []
+
+
+def test_v2_records_pass_through_for_forward_compat(tmp_path):
+    p = tmp_path / "q.jsonl"
+    # Hand-write a v=2 record with an extra field
+    p.write_text(json.dumps(
+        {"v": 2, "event": "enqueued", "task_id": "01J99",
+         "future_field": "ignored-by-v1"}) + "\n")
+    records = read_records(p)
+    assert len(records) == 1 and records[0]["v"] == 2
+    assert records[0]["future_field"] == "ignored-by-v1"
+
+
+def test_append_creates_parent_dir(tmp_path):
+    p = tmp_path / "deeper" / "x.jsonl"
+    append_record(p, {"event": "ok"})
+    assert p.exists()
+</code></pre>
+    <div class="step">Step 2 — run, expect ImportError</div>
+    <div class="step">Step 3 — implement
+      <code>src/aegis/queue/jsonl.py</code></div>
+<pre><code>from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+SCHEMA_VERSION = 1
+
+
+def append_record(path: Path, record: dict) -&gt; None:
+    """Append one JSON object to path, creating parents as needed.
+    Stamps v: SCHEMA_VERSION if not already present."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out = {"v": SCHEMA_VERSION, **record}
+    if "v" in record:
+        out["v"] = record["v"]
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(out, separators=(",", ":")) + "\n")
+
+
+def read_records(path: Path) -&gt; list[dict]:
+    """Return all records as dicts. Returns [] if the file is missing."""
+    if not path.exists():
+        return []
+    out: list[dict] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            out.append(json.loads(line))
+    return out
+</code></pre>
+    <div class="step">Step 4 — update <code>.gitignore</code></div>
+<pre><code># Append:
+.aegis/state/
+</code></pre>
+    <div class="step">Step 5 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_persistence.py -q   # 4 passed
+git add src/aegis/queue/jsonl.py tests/test_queue_persistence.py .gitignore
+git commit -m "feat(queue): JSONL writer/reader with v:1 schema"
+git push</code></pre>
+
+    <h3 id="t2.2">Task 2.2 — QueueManager writes JSONL lifecycle events</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/queue/manager.py</code>;
+      extend <code>tests/test_queue_manager.py</code>.</p>
+    <p>When <code>state_dir</code> is set, persist to
+      <code>{state_dir}/queues/{queue}.jsonl</code> on each lifecycle
+      transition. Event records:</p>
+<pre><code>{"event": "enqueued",   "task_id": "...", "queue": "impl",
+ "payload": "...", "enqueued_by": "...", "enqueued_at": "...",
+ "callback": true}
+{"event": "dispatched", "task_id": "...", "worker_handle": "..."}
+{"event": "completed",  "task_id": "...", "result": "...",
+ "completed_at": "..."}
+{"event": "failed",     "task_id": "...", "error": "...",
+ "completed_at": "..."}
+</code></pre>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_queue_manager.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_queue_manager_persists_lifecycle(tmp_path):
+    from aegis.queue.jsonl import read_records
+
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      state_dir=tmp_path,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="r"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.05)
+    log = read_records(tmp_path / "queues" / "impl.jsonl")
+    events = [r["event"] for r in log]
+    assert events == ["enqueued", "dispatched", "completed"]
+    assert log[0]["task_id"] == tid
+    assert log[2]["result"] == "r"
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — modify <code>QueueManager</code></div>
+    <p>Add a helper and call it in the three places we already transition
+      state. <code>state_dir is None</code> → no-op (VS1 behavior
+      preserved).</p>
+<pre><code>    def _log(self, queue: str, event: dict) -&gt; None:
+        if self._state_dir is None:
+            return
+        from aegis.queue.jsonl import append_record
+        path = Path(self._state_dir) / "queues" / f"{queue}.jsonl"
+        append_record(path, event)
+</code></pre>
+    <p>In <code>enqueue</code>, after appending to pending:</p>
+<pre><code>        self._log(queue, {
+            "event": "enqueued", "task_id": task.id, "queue": queue,
+            "payload": payload, "enqueued_by": enqueued_by,
+            "enqueued_at": task.enqueued_at, "callback": callback})
+</code></pre>
+    <p>In <code>_try_dispatch</code>, after marking dispatched:</p>
+<pre><code>            self._log(queue, {
+                "event": "dispatched", "task_id": task.id,
+                "worker_handle": worker_handle})
+</code></pre>
+    <p>In <code>_finalize</code>, after marking completed/failed:</p>
+<pre><code>        self._log(task.queue, {
+            "event": status, "task_id": task.id,
+            "result": result, "error": error,
+            "completed_at": completed.completed_at})
+</code></pre>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_manager.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/queue/manager.py tests/test_queue_manager.py
+git commit -m "feat(queue): persist QueueManager lifecycle to JSONL"
+git push</code></pre>
+
+    <h3 id="t2.3">Task 2.3 — InboxRouter writethrough to JSONL</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/queue/inbox.py</code>;
+      extend <code>tests/test_queue_inbox.py</code>.</p>
+    <p>Persist one record per delivered message at
+      <code>{state_dir}/inboxes/{handle}.jsonl</code> <em>before</em>
+      poking the live session. If <code>state_dir</code> is None, behavior
+      matches VS1 (memory only).</p>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_queue_inbox.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_deliver_writes_through_to_jsonl(tmp_path):
+    from aegis.queue.jsonl import read_records
+    r = InboxRouter(state_dir=tmp_path)
+    await r.deliver("h", _msg(body="alpha"))
+    log = read_records(tmp_path / "inboxes" / "h.jsonl")
+    assert len(log) == 1
+    assert log[0]["body"] == "alpha"
+    assert log[0]["sender"] == "queue:impl"
+    assert log[0]["v"] == 1
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — modify
+      <code>InboxRouter.deliver</code></div>
+<pre><code>    async def deliver(self, handle: str, msg: InboxMessage) -&gt; None:
+        if self._state_dir is not None:
+            from aegis.queue.jsonl import append_record
+            from dataclasses import asdict
+            path = Path(self._state_dir) / "inboxes" / f"{handle}.jsonl"
+            append_record(path, asdict(msg))
+        session = self._sessions.get(handle)
+        if session is not None:
+            await session.deliver(msg)
+            return
+        self._pending.setdefault(handle, []).append(msg)
+</code></pre>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_inbox.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/queue/inbox.py tests/test_queue_inbox.py
+git commit -m "feat(queue): InboxRouter writethrough to JSONL"
+git push</code></pre>
+
+    <h3 id="t2.4">Task 2.4 — Restart replay: failed:interrupted callback</h3>
+    <p><strong>Files:</strong> Modify
+      <code>src/aegis/queue/manager.py</code>; extend
+      <code>tests/test_queue_e2e.py</code> with a restart scenario.</p>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_queue_e2e.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_restart_marks_inflight_as_failed_interrupted(tmp_path):
+    # Round 1: enqueue + dispatch, then "crash" without completion.
+    inbox1 = InboxRouter(state_dir=tmp_path)
+    sm1 = StubSM()
+    sm1.script("w1", [AssistantText(text="hi")])   # no Result =&gt; never finishes
+    qm1 = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="claude-impl",
+                       max_parallel=1)},
+        sm1, inbox1, state_dir=tmp_path,
+        handle_factory=lambda used: "w1")
+    tid, _ = qm1.enqueue("impl", "go",
+                         enqueued_by=sender_agent("lucid-knuth"),
+                         callback=True)
+    await asyncio.sleep(0.02)   # dispatch fires, worker hangs
+
+    # Round 2: fresh process — InboxRouter + QueueManager.start() replays.
+    inbox2 = InboxRouter(state_dir=tmp_path)
+    qm2 = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="claude-impl",
+                       max_parallel=1)},
+        StubSM(), inbox2, state_dir=tmp_path)
+    await qm2.start()
+
+    # Task is now failed:interrupted
+    st = qm2.status(tid)
+    assert st["status"] == "failed" and "interrupted" in (st["error"] or "")
+    # Failure callback landed in lucid-knuth's inbox file
+    from aegis.queue.jsonl import read_records
+    log = read_records(tmp_path / "inboxes" / "lucid-knuth.jsonl")
+    assert any(r.get("task_id") == tid and r.get("status") == "error"
+               for r in log)
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — implement
+      <code>QueueManager.start()</code></div>
+<pre><code>    async def start(self) -&gt; None:
+        if self._state_dir is None:
+            return
+        from aegis.queue.jsonl import read_records
+        from pathlib import Path
+        qdir = Path(self._state_dir) / "queues"
+        if not qdir.exists():
+            return
+        for path in sorted(qdir.glob("*.jsonl")):
+            queue_name = path.stem
+            if queue_name not in self._queues:
+                # orphaned log from a removed queue — leave it, skip
+                continue
+            tasks: dict[str, dict] = {}    # task_id -&gt; latest record fields
+            for rec in read_records(path):
+                tid = rec.get("task_id")
+                if tid is None:
+                    continue
+                tasks.setdefault(tid, {}).update(rec)
+                tasks[tid]["status"] = rec["event"]
+            for tid, r in tasks.items():
+                if r["status"] == "dispatched":
+                    await self._mark_interrupted(queue_name, tid, r)
+                # completed/failed tasks: replay into self._all
+                # (status() returns them after replay)
+                elif r["status"] in ("completed", "failed"):
+                    self._all[tid] = Task(
+                        id=tid, queue=queue_name,
+                        payload=r.get("payload", ""),
+                        enqueued_by=r.get("enqueued_by", "system"),
+                        enqueued_at=r.get("enqueued_at", self._now()),
+                        callback=bool(r.get("callback", False)),
+                        status=r["status"],
+                        worker_handle=r.get("worker_handle"),
+                        result=r.get("result"),
+                        error=r.get("error"),
+                        completed_at=r.get("completed_at"))
+                elif r["status"] == "enqueued":
+                    # pending at crash time — re-queue head-of-FIFO
+                    t = Task(
+                        id=tid, queue=queue_name,
+                        payload=r.get("payload", ""),
+                        enqueued_by=r.get("enqueued_by", "system"),
+                        enqueued_at=r.get("enqueued_at", self._now()),
+                        callback=bool(r.get("callback", False)),
+                        status="pending")
+                    self._all[tid] = t
+                    self._pending[queue_name].append(t)
+        # Kick dispatch on every queue we just rehydrated
+        for q in list(self._queues):
+            self._try_dispatch(q)
+
+    async def _mark_interrupted(self, queue: str, tid: str,
+                                last: dict) -&gt; None:
+        completed = Task(
+            id=tid, queue=queue,
+            payload=last.get("payload", ""),
+            enqueued_by=last.get("enqueued_by", "system"),
+            enqueued_at=last.get("enqueued_at", self._now()),
+            callback=bool(last.get("callback", False)),
+            status="failed",
+            worker_handle=last.get("worker_handle"),
+            result=None,
+            error="interrupted: aegis restarted mid-flight",
+            completed_at=self._now())
+        self._all[tid] = completed
+        self._log(queue, {
+            "event": "failed", "task_id": tid,
+            "result": None, "error": completed.error,
+            "completed_at": completed.completed_at})
+        if completed.callback:
+            msg = InboxMessage(
+                sender=sender_queue(queue),
+                timestamp=self._now(),
+                body=completed.error or "",
+                task_id=tid,
+                status="error")
+            await self._inbox.deliver(
+                _handle_of(completed.enqueued_by), msg)
+</code></pre>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_e2e.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/queue/manager.py tests/test_queue_e2e.py
+git commit -m "feat(queue): restart replay marks in-flight as failed:interrupted"
+git push
+# &gt;&gt;&gt; VS2 GREEN — ping Telegram: ✅ VS2 persistence + restart green
+</code></pre>
+  </section>
+
+  <!-- ===================== VS3 ===================== -->
+  <section id="vs3">
+    <h2>Vertical slice 3 — Config</h2>
+    <p>Parse a top-level <code>queues</code> dict from
+      <code>.aegis.py</code>. Validate at load time: every queue's
+      <code>agent</code> must reference a declared profile. Fail-loud
+      with the offending queue name.</p>
+
+    <h3 id="t3.1">Task 3.1 — load_queues + validation</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/config.py</code>,
+      <code>src/aegis/__init__.py</code> (re-export
+      <code>Queue</code>); Create <code>tests/test_queue_config.py</code>.</p>
+    <p><strong>Format:</strong></p>
+<pre><code># .aegis.py
+queues = {
+    "impl":   {"agent": "claude-impl",   "max_parallel": 2},
+    "review": {"agent": "claude-review", "max_parallel": 4},
+}
+</code></pre>
+    <div class="step">Step 1 — failing tests
+      <code>tests/test_queue_config.py</code></div>
+<pre><code>from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from aegis.config import ConfigError, load_queues
+
+
+def _write(tmp_path: Path, body: str) -&gt; Path:
+    p = tmp_path / ".aegis.py"
+    p.write_text(body)
+    return p
+
+
+def test_valid_queues_parse(tmp_path):
+    p = _write(tmp_path, """
+from aegis import Agent
+agents = {
+    "claude-impl": Agent(harness="claude-code", model="opus",
+                         effort="high", permission="auto"),
+    "claude-review": Agent(harness="claude-code", model="sonnet",
+                           effort="medium", permission="ask"),
+}
+default_agent = "claude-impl"
+queues = {
+    "impl":   {"agent": "claude-impl",   "max_parallel": 2},
+    "review": {"agent": "claude-review", "max_parallel": 4},
+}
+""")
+    qs = load_queues(p)
+    assert sorted(qs) == ["impl", "review"]
+    assert qs["impl"].agent_profile == "claude-impl"
+    assert qs["impl"].max_parallel == 2
+    assert qs["review"].agent_profile == "claude-review"
+
+
+def test_no_queues_dict_returns_empty(tmp_path):
+    p = _write(tmp_path, """
+from aegis import Agent
+agents = {"x": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto")}
+default_agent = "x"
+""")
+    assert load_queues(p) == {}
+
+
+def test_unknown_agent_profile_fails_loud(tmp_path):
+    p = _write(tmp_path, """
+from aegis import Agent
+agents = {"x": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto")}
+default_agent = "x"
+queues = {"impl": {"agent": "ghost", "max_parallel": 1}}
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(p)
+    assert "impl" in str(ei.value) and "ghost" in str(ei.value)
+
+
+def test_missing_required_keys_fails_loud(tmp_path):
+    p = _write(tmp_path, """
+from aegis import Agent
+agents = {"x": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto")}
+default_agent = "x"
+queues = {"impl": {"agent": "x"}}      # missing max_parallel
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(p)
+    assert "max_parallel" in str(ei.value) and "impl" in str(ei.value)
+
+
+def test_negative_max_parallel_fails_loud(tmp_path):
+    p = _write(tmp_path, """
+from aegis import Agent
+agents = {"x": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto")}
+default_agent = "x"
+queues = {"impl": {"agent": "x", "max_parallel": 0}}
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(p)
+    assert "max_parallel" in str(ei.value) and "&gt;= 1" in str(ei.value)
+</code></pre>
+    <div class="step">Step 2 — run, expect ImportError
+      (<code>load_queues</code>)</div>
+    <div class="step">Step 3 — implement in
+      <code>src/aegis/config.py</code></div>
+    <p>Append the function (do not refactor the existing loader):</p>
+<pre><code>def load_queues(path: Path) -&gt; dict[str, "Queue"]:
+    """Parse the `queues` dict from a .aegis.py file. Returns {} if
+    the file declares no queues. Raises ConfigError on any structural
+    or referential error, naming the offending queue."""
+    from aegis.queue import Queue
+
+    namespace: dict[str, object] = {}
+    try:
+        exec(compile(path.read_text(), str(path), "exec"),  # noqa: S102
+             namespace)
+    except Exception as e:  # noqa: BLE001
+        raise ConfigError(f"Failed to load {path}: {e}") from e
+
+    queues_raw = namespace.get("queues")
+    if queues_raw is None:
+        return {}
+    if not isinstance(queues_raw, dict):
+        raise ConfigError(f"{path}: `queues` must be a dict.")
+
+    agents = namespace.get("agents")
+    agent_names: set[str] = (
+        set(agents) if isinstance(agents, dict) else set())
+
+    out: dict[str, Queue] = {}
+    for name, cfg in queues_raw.items():
+        if not isinstance(cfg, dict):
+            raise ConfigError(
+                f"{path}: queues[{name!r}] must be a dict.")
+        if "agent" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key 'agent'.")
+        if "max_parallel" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key "
+                f"'max_parallel'.")
+        agent_ref = cfg["agent"]
+        cap = cfg["max_parallel"]
+        if agent_ref not in agent_names:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].agent={agent_ref!r} does not "
+                f"reference a declared agent profile "
+                f"(known: {sorted(agent_names)}).")
+        if not isinstance(cap, int) or cap &lt; 1:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].max_parallel must be an int "
+                f"&gt;= 1 (got {cap!r}).")
+        out[name] = Queue(name=name, agent_profile=agent_ref,
+                          max_parallel=cap)
+    return out
+</code></pre>
+    <p>Also extend <code>src/aegis/__init__.py</code>:</p>
+<pre><code>from aegis.config import Agent, Effort, Permission
+from aegis.queue import Queue
+
+__all__ = ["Agent", "Effort", "Permission", "Queue"]
+</code></pre>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_queue_config.py -q   # 5 passed
+uv run pytest -q -k "not live"
+git add src/aegis/config.py src/aegis/__init__.py tests/test_queue_config.py
+git commit -m "feat(config): load_queues with fail-loud validation"
+git push</code></pre>
+
+    <h3 id="t3.2">Task 3.2 — Wire load_queues into serve/TUI startup</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/cli.py</code>;
+      extend <code>tests/test_serve.py</code>.</p>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_serve.py</code></div>
+<pre><code>def test_serve_refuses_to_start_when_queues_invalid(tmp_path, monkeypatch):
+    """Surfaces the load_queues ConfigError at boot — clean exit."""
+    from aegis.cli import app
+    from typer.testing import CliRunner
+
+    root = tmp_path
+    (root / ".aegis.py").write_text("""
+from aegis import Agent
+agents = {"x": Agent(harness="claude-code", model="opus",
+                     effort="high", permission="auto")}
+default_agent = "x"
+queues = {"impl": {"agent": "ghost", "max_parallel": 1}}
+""")
+    monkeypatch.chdir(root)
+    res = CliRunner().invoke(app, ["serve"])
+    assert res.exit_code != 0
+    assert "ghost" in res.output and "impl" in res.output
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — modify <code>cli.py</code></div>
+    <p>In <code>serve()</code> (after <code>load_config()</code>):</p>
+<pre><code>    try:
+        queues = load_queues(root / ".aegis.py")
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+</code></pre>
+    <p>(Import <code>load_queues</code> at the top alongside
+      <code>load_config</code>.) Pass <code>queues</code> through
+      <code>_serve(...)</code> as a kwarg, and replace the empty-dict
+      placeholder from T1.8:</p>
+<pre><code>async def _serve(*, agents, default_agent, make_session, mcp, tg,
+                 stop: asyncio.Event, queues: dict | None = None) -&gt; None:
+    from aegis.queue import InboxRouter, QueueManager
+
+    inbox = InboxRouter()
+    mgr = SessionManager(agents, default_agent, make_session, mcp,
+                         inbox=inbox)
+    qm = QueueManager(queues or {}, mgr, inbox)
+    mgr.attach_queue_manager(qm)
+    mcp.bind(mgr)
+    await mcp.start()
+    await qm.start()
+    # ... rest unchanged
+</code></pre>
+    <p>And the <code>main_async</code> inside <code>serve()</code> passes
+      <code>queues=queues</code>. The interactive entry (<code>run()</code>)
+      also calls <code>load_queues</code> (fail-loud) and threads the dict
+      into <code>AegisApp(...)</code>'s new <code>queues</code> kwarg —
+      add the kwarg with default <code>{}</code>; replace the
+      <code>self.queue_manager = QueueManager({}, ...)</code> with
+      <code>QueueManager(queues, ...)</code>.</p>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_serve.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/cli.py src/aegis/tui/app.py tests/test_serve.py
+git commit -m "feat(config): wire load_queues into serve + AegisApp startup"
+git push
+# &gt;&gt;&gt; VS3 GREEN — ping Telegram: ✅ VS3 config + fail-loud green</code></pre>
+  </section>
+
+  <!-- ===================== VS4 ===================== -->
+  <section id="vs4">
+    <h2>Vertical slice 4 — Integration polish</h2>
+
+    <h3 id="t4.1">Task 4.1 — Worker tab handle suffix</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/tui/widgets.py</code>,
+      <code>src/aegis/tui/app.py</code>, <code>src/aegis/tui/pane.py</code>;
+      extend <code>tests/test_tui.py</code>.</p>
+    <p>QueueManager already knows which handles are workers (they live in
+      <code>self._workers</code>, keyed by handle). For the TUI, store
+      the queue-suffix annotation on the pane at spawn time. The
+      adapter's <code>spawn(slug, *, opening_prompt=..., handle=...)</code>
+      gains a fourth kwarg <code>queue_label: str | None = None</code>
+      that QueueManager will pass.</p>
+    <div class="step">Step 1 — failing test, append to
+      <code>tests/test_tui.py</code></div>
+<pre><code>@pytest.mark.asyncio
+async def test_worker_tab_has_queue_suffix():
+    # Hook the adapter directly; we don't need a real claude.
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        # Simulate a queue-dispatched spawn:
+        await app._spawn("default", handle="vivid-laplace",
+                         opening_prompt=None,
+                         queue_label="impl#01J42")
+        await pilot.pause()
+        label = app._tab_label_for("vivid-laplace")
+        assert "vivid-laplace · impl#01J42" in label
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — implementation</div>
+    <ul>
+      <li><code>ConversationPane.__init__</code> gains a
+        <code>queue_label: str | None = None</code> kwarg; store on
+        <code>self.queue_label</code>.</li>
+      <li><code>AegisApp._spawn</code> accepts
+        <code>queue_label: str | None = None</code>, threads to the
+        pane.</li>
+      <li><code>_refresh_tabbar</code>'s items tuple gets one more slot
+        (<code>p.queue_label</code>).</li>
+      <li><code>TabBar.set_tabs</code> / <code>_TabCell.render_tab</code>
+        accept the extra arg and render it inline:
+        <code>{handle} · {queue_label}</code> when set, otherwise just
+        <code>{handle}</code>. Update the existing
+        <code>("no tabs", "", ...)</code> placeholder tuple shape
+        accordingly.</li>
+      <li>Add <code>AegisApp._tab_label_for(handle: str) -&gt; str</code>
+        — returns the rendered label string for tests.</li>
+      <li>The <code>_SessionManagerAdapter.spawn</code> from T1.8 accepts
+        the <code>queue_label</code> kwarg and forwards. QueueManager
+        passes <code>queue_label=f"{queue}#{task.id[:5]}"</code> when
+        calling <code>session_manager.spawn(...)</code>. (Truncated to 5
+        for tab width; full ID stays visible in
+        <code>aegis_task_status</code>.)</li>
+    </ul>
+    <p>Update <code>QueueManager._try_dispatch</code> to pass
+      <code>queue_label</code>:</p>
+<pre><code>            session = self._sm.spawn(
+                q.agent_profile,
+                opening_prompt=task.payload,
+                handle=worker_handle,
+                queue_label=f"{task.queue}#{task.id[:5]}")
+</code></pre>
+    <p>And the stub <code>SessionManager.spawn</code> in
+      <code>tests/test_queue_manager.py</code> accepts the new kwarg
+      (ignore it). Same for the real
+      <code>SessionManager.spawn</code> — accept it for forward-compat
+      but it has no behavior in headless mode (no tabs).</p>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest -q -k "not live"
+git add src/aegis/tui/widgets.py src/aegis/tui/app.py src/aegis/tui/pane.py \
+  src/aegis/core/manager.py src/aegis/queue/manager.py \
+  tests/test_tui.py tests/test_queue_manager.py
+git commit -m "feat(queue): worker tabs render queue#task suffix"
+git push</code></pre>
+
+    <h3 id="t4.2">Task 4.2 — Refactor aegis_handoff → InboxRouter</h3>
+    <p><strong>Files:</strong> Modify <code>src/aegis/mcp/server.py</code>;
+      extend <code>tests/test_mcp_server.py</code>.</p>
+    <p><code>aegis_handoff</code> becomes a thin wrapper around
+      <code>InboxRouter.deliver(target, InboxMessage(sender=
+      sender_agent(from_handle), body=context, timestamp=now_iso()))</code>.
+      The MCP tool's parameters and return shape are unchanged from the
+      producer's perspective:
+      <code>"delivered to &lt;handle&gt;"</code> on success,
+      <code>"handoff rejected: …"</code> on self/unknown/busy. The
+      <em>visible</em> change is that the delivered user-message now
+      arrives with the universal substrate header (rendered by
+      <code>AgentSession.deliver</code>) rather than the legacy
+      <code>"[handoff from X]"</code> prefix.</p>
+    <div class="step">Step 1 — extend
+      <code>tests/test_mcp_server.py</code></div>
+    <p>Replace the existing <code>FakeBridge</code> with a fuller version
+      that exposes <code>queue_manager</code> + <code>inbox_router</code>,
+      and update <code>test_handoff_paths</code>:</p>
+<pre><code>class FakeBridge:
+    def __init__(self):
+        from aegis.queue import InboxRouter
+        from aegis.mcp.bridge import SessionInfo
+        self.inbox_router = InboxRouter()
+        self.queue_manager = None
+        self._sessions = [
+            SessionInfo(handle="lucid-knuth", agent_slug="default",
+                        state="ready", active=True, unseen=False)]
+
+    def list_sessions(self): return list(self._sessions)
+    def list_agents(self): return ["default", "fast"]
+
+    # legacy handoff() shim removed in this slice — server.aegis_handoff
+    # talks to inbox_router directly. Keep the method so other tests
+    # using FakeBridge.handoff() are unaffected.
+    async def handoff(self, a, b, c): return "ignored"
+
+
+@pytest.mark.asyncio
+async def test_handoff_delivers_via_inbox_router():
+    from aegis.queue import sender_agent
+
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_handoff",
+                      from_handle="wry-hopper",
+                      target_handle="lucid-knuth",
+                      context="please continue the spec")
+    assert "delivered to lucid-knuth" in out
+    pending = br.inbox_router.pending("lucid-knuth")
+    assert len(pending) == 1
+    msg = pending[0]
+    assert msg.sender == sender_agent("wry-hopper")
+    assert "please continue the spec" in msg.body
+    # no task_id — handoffs aren't queue results
+    assert msg.task_id is None
+
+
+@pytest.mark.asyncio
+async def test_handoff_self_and_unknown_still_reject():
+    br = FakeBridge()
+    srv = build_server(br)
+    assert "yourself" in await _call(srv, "aegis_handoff",
+        from_handle="x", target_handle="x", context="c")
+    assert "no session" in await _call(srv, "aegis_handoff",
+        from_handle="x", target_handle="ghost", context="c")
+</code></pre>
+    <div class="step">Step 2 — run, expect fail</div>
+    <div class="step">Step 3 — rewrite
+      <code>aegis_handoff</code> in <code>server.py</code></div>
+<pre><code>    @server.tool
+    async def aegis_handoff(from_handle: str, target_handle: str,
+                            context: str) -&gt; str:
+        """One-way context transfer to a live peer aegis session.
+        Delivered via the universal inbox channel — the target sees a
+        tagged user-message header (sender=agent:&lt;from_handle&gt;)."""
+        from aegis.queue import InboxMessage, now_iso, sender_agent
+
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        known = {s.handle for s in bridge.list_sessions()}
+        if target_handle not in known:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        target_info = next(s for s in bridge.list_sessions()
+                           if s.handle == target_handle)
+        if target_info.state == "working":
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        msg = InboxMessage(
+            sender=sender_agent(from_handle),
+            timestamp=now_iso(),
+            body=context)
+        await bridge.inbox_router.deliver(target_handle, msg)
+        return f"delivered to {target_handle}"
+</code></pre>
+    <p><em>Note:</em> the legacy <code>bridge.handoff()</code> method on
+      <code>SessionManager</code>/<code>AegisApp</code> is no longer
+      called by the MCP tool. Leave it in place for now (existing
+      Telegram/CLI paths may still reference it; check
+      <code>grep "\.handoff("</code>); we can prune later. The
+      Protocol-required <code>handoff</code> method stays declared on
+      <code>AppBridge</code> for now since other code may depend on it.
+      If grep shows no callers, the method may be deleted in the same
+      commit — exercise judgment.</p>
+    <div class="step">Step 4 — run + commit</div>
+<pre><code>uv run pytest tests/test_mcp_server.py -q
+uv run pytest -q -k "not live"
+git add src/aegis/mcp/server.py tests/test_mcp_server.py
+git commit -m "refactor(mcp): aegis_handoff delegates to InboxRouter (universal tagging)"
+git push</code></pre>
+
+    <h3 id="t4.3">Task 4.3 — Telegram delivery sanity</h3>
+    <p><strong>Files:</strong> Read-only audit + one assertion test;
+      extend <code>tests/test_telegram_frontend.py</code> if existing
+      test infra makes it cheap, otherwise skip the test and document the
+      hand-verified path in the VS5 close-out.</p>
+    <p>The spec promises: when a Telegram-bound agent receives an inbox
+      callback, the chat line carries the substrate header. The header
+      is part of <code>InboxMessage.body</code> as rendered into the
+      <em>user turn</em> by <code>AgentSession.deliver</code> (T1.3), then
+      replayed in the stream-json transcript and surfaced as an
+      AssistantText. The <code>TelegramFrontend</code> already chunks
+      assistant text; no code change is needed.</p>
+    <p>If the existing frontend tests provide a fixture that exercises
+      one round-trip, add a single assertion confirming a "&gt; from
+      queue:" line survives chunking and ends up in
+      <code>BotClient._sent</code>. If not, defer to VS5's live smoke
+      to prove the path end-to-end.</p>
+    <div class="step">Step 1 — quick grep</div>
+<pre><code>grep -n "chunk\|_sent\|on_event" tests/test_telegram_frontend.py
+# Decide based on output:
+#   - if a "deliver one assistant message → assert chat reply" fixture
+#     exists, add a one-line assertion ("&gt; from queue:" present)
+#   - otherwise: no code change in this task</code></pre>
+    <div class="step">Step 2 — commit only if a test was added</div>
+<pre><code>uv run pytest tests/test_telegram_frontend.py -q
+git add tests/test_telegram_frontend.py
+git commit -m "test(telegram): assert universal inbox header survives chunking"
+git push
+# &gt;&gt;&gt; VS4 GREEN — ping Telegram: ✅ VS4 tab suffix + universal handoff green</code></pre>
+  </section>
+
+  <!-- ===================== VS5 ===================== -->
+  <section id="vs5">
+    <h2>Vertical slice 5 — Live smoke</h2>
+
+    <h3 id="t5.1">Task 5.1 — tests/test_queue_live.py</h3>
+    <p><strong>Files:</strong> Create
+      <code>tests/test_queue_live.py</code>; modify <code>AGENTS.md</code>.</p>
+    <p>End-to-end with a real <code>claude</code> subprocess. Mirrors
+      <code>tests/test_integration_live.py</code>'s skip-if-missing
+      pattern.</p>
+    <div class="step">Step 1 — implement</div>
+<pre><code>from __future__ import annotations
+
+import asyncio
+import shutil
+
+import pytest
+
+from aegis.config import Agent
+from aegis.core.manager import SessionManager
+from aegis.drivers import get_driver
+from aegis.mcp import AegisMCP
+from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("claude") is None,
+    reason="claude CLI not on PATH; live test skipped")
+
+
+@pytest.mark.asyncio
+async def test_live_enqueue_to_callback_roundtrip(tmp_path):
+    """Producer agent calls aegis_enqueue; worker runs; callback lands
+    in producer's inbox; producer's next turn references the result."""
+    agent = Agent(harness="claude-code", model="haiku",
+                  effort="low", permission="auto")
+    agents = {"default": agent}
+
+    inbox = InboxRouter(state_dir=tmp_path)
+    mcp = AegisMCP()
+
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, str(tmp_path), mcp_url, handle)
+
+    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox)
+    qm = QueueManager(
+        {"default": Queue(name="default", agent_profile="default",
+                          max_parallel=1)},
+        mgr, inbox, state_dir=tmp_path)
+    mgr.attach_queue_manager(qm)
+    mcp.bind(mgr)
+    await mcp.start()
+    await qm.start()
+    try:
+        producer = mgr.spawn("default")
+        # Prompt: ask the producer to enqueue a tiny task and then stop.
+        await producer.send(
+            "Call aegis_enqueue(queue='default', "
+            "payload='Reply with the word ECHO and stop.', "
+            f"from_handle='{producer.handle}', callback=true). "
+            "Then reply 'enqueued' and stop.")
+        # Wait for producer's first turn to finish + worker to finish
+        # + callback to deliver + producer's chained turn to reference it.
+        for _ in range(60):           # ~60s budget
+            await asyncio.sleep(1)
+            # Did at least one task complete?
+            ids = list(qm._all)
+            if ids and qm.status(ids[0])["status"] == "completed":
+                break
+        ids = list(qm._all)
+        assert ids, "producer never enqueued"
+        st = qm.status(ids[0])
+        assert st["status"] == "completed"
+        assert "ECHO" in (st["result"] or "")
+    finally:
+        await qm.stop()
+        await mgr.close_all()
+        await mcp.stop()
+</code></pre>
+    <div class="step">Step 2 — update AGENTS.md</div>
+    <p>Append to the <code>src/aegis/queue/</code> line (or add a new
+      bullet in the layout list):</p>
+<pre><code>- `src/aegis/queue/` - inter-agent task queues + agent inboxes.
+  `QueueManager` (FIFO + cap + dispatch on event; JSONL log under
+  `.aegis/state/queues/`), `InboxRouter` (per-handle delivery; idle
+  wake / mid-turn buffer / turn-end chain; JSONL log under
+  `.aegis/state/inboxes/`), schema records (`Queue`, `Task`,
+  `InboxMessage`, ULID + universal sender tagging). MCP surface:
+  `aegis_enqueue`, `aegis_task_status`; `aegis_handoff` flows through
+  the same inbox channel.
+</code></pre>
+    <div class="step">Step 3 — run live (manual; skips on CI without
+      claude); commit</div>
+<pre><code>uv run pytest tests/test_queue_live.py -q
+# If claude on PATH: 1 passed (in ~30–60s)
+# If not: 1 skipped
+
+git add tests/test_queue_live.py AGENTS.md
+git commit -m "test(queue): live e2e smoke + docs"
+git push
+# &gt;&gt;&gt; VS5 GREEN — final ping: ✅ task queue v1 shipped (commits abc..xyz)</code></pre>
+    <div class="step">Step 4 — close-out</div>
+    <p>Append one line to
+      <code>vault/Calendar/Journal/journal-2026-05-20.md</code>:
+      <code>&gt; 🤖 HH:MM — milestone: aegis task queue v1 shipped</code>.
+      Final Telegram ping with the commit range. Stop. Do not start a
+      next initiative.</p>
+  </section>
+
+  <!-- ===================== Self-review ===================== -->
+  <section id="review">
+    <h2>Self-review</h2>
+    <details open>
+      <summary>Spec coverage — each Locked Decision &amp; component
+        maps to at least one task</summary>
+      <table>
+        <thead><tr><th>Spec item</th><th>Task(s)</th></tr></thead>
+        <tbody>
+          <tr><td>LD §1 — inter-agent delegation primitive (not vault job sub)</td><td>VS1 (no cron, no vault wiring)</td></tr>
+          <tr><td>LD §2 — two primitives (queue + inbox)</td><td>T1.2 (InboxRouter), T1.5 (QueueManager)</td></tr>
+          <tr><td>LD §3 — substrate-deterministic dispatch (static config)</td><td>T1.5 dispatch loop, T3.1 fail-loud validation</td></tr>
+          <tr><td>LD §4 — async + callback, no sync block</td><td>T1.7 (<code>aegis_enqueue</code> returns task_id+pos sync), T1.5 callback path</td></tr>
+          <tr><td>LD §5 — wake-on-idle, mid-turn buffer, batched flush</td><td>T1.3 <code>AgentSession.deliver</code> + <code>_chain_if_pending</code></td></tr>
+          <tr><td>LD §6 — universal sender tagging + timestamp</td><td>T1.1 schema + helpers; T4.2 handoff uses <code>agent:&lt;from&gt;</code></td></tr>
+          <tr><td>LD §7 — JSONL persistence under <code>.aegis/state/</code>, <code>v: 1</code></td><td>T2.1, T2.2, T2.3</td></tr>
+          <tr><td>LD §8 — at-most-once workers; failed:interrupted on restart</td><td>T2.4</td></tr>
+          <tr><td>LD §9 — ephemeral workers (one task per spawn)</td><td>T1.5 <code>_finalize</code> closes worker</td></tr>
+          <tr><td>LD §10 — TUI tabs surface workers; no new pane</td><td>T1.8 wiring; T4.1 queue suffix</td></tr>
+          <tr><td>LD §11 — cancel via inbox, not a tool</td><td>(non-goal; handoff is already the inbox-into-worker path)</td></tr>
+          <tr><td>Data model: Queue, Task, InboxMessage</td><td>T1.1</td></tr>
+          <tr><td>SenderTag union</td><td>T1.1 (<code>sender_queue</code>, <code>sender_agent</code>)</td></tr>
+          <tr><td>QueueManager component</td><td>T1.5, T2.2, T2.4</td></tr>
+          <tr><td>InboxRouter component</td><td>T1.2, T2.3</td></tr>
+          <tr><td>AgentSession.deliver</td><td>T1.3</td></tr>
+          <tr><td>SessionManager opening_prompt</td><td>T1.4</td></tr>
+          <tr><td>config.py queues dict</td><td>T3.1, T3.2</td></tr>
+          <tr><td>mcp/server.py new tools + handoff refactor</td><td>T1.7, T4.2</td></tr>
+          <tr><td>mcp/bridge.py extended</td><td>T1.6</td></tr>
+          <tr><td>Errors: worker crash → error callback</td><td>T1.5 <code>_finalize</code>'s ok=False branch</td></tr>
+          <tr><td>Errors: restart mid-flight</td><td>T2.4</td></tr>
+          <tr><td>Errors: orphaned inbox</td><td>InboxRouter pending-buffer is durable on disk via T2.3 — no extra task needed</td></tr>
+          <tr><td>Errors: queue at cap → FIFO wait</td><td>T1.5 (covered by <code>test_dispatch_respects_cap</code>)</td></tr>
+          <tr><td>Errors: unknown queue → MCP error</td><td>T1.7 (covered by <code>test_aegis_enqueue_unknown_queue</code>)</td></tr>
+          <tr><td>Errors: invalid <code>.aegis.py</code></td><td>T3.1, T3.2</td></tr>
+          <tr><td>Errors: <code>.aegis/state/</code> not writable</td><td>append_record will raise OSError; <code>QueueManager.start()</code> propagates → typer.Exit(1) in serve. Covered transitively by Python's default error path; no extra task.</td></tr>
+          <tr><td>Hermetic unit tests checklist (spec §testing)</td><td>T1.1–T2.4 (every bullet)</td></tr>
+          <tr><td>Forward-compat (v=2 ignored)</td><td>T2.1 (<code>test_v2_records_pass_through_for_forward_compat</code>)</td></tr>
+          <tr><td>Live integration</td><td>T5.1</td></tr>
+        </tbody>
+      </table>
+    </details>
+    <details>
+      <summary>Type / signature consistency check</summary>
+      <ul>
+        <li><code>InboxMessage(sender, timestamp, body, task_id=None,
+          status=None)</code> — same shape in T1.1 schema, T1.2 router
+          tests, T1.3 session tests, T1.5 manager finalize, T2.3
+          writethrough, T4.2 handoff refactor. ✓</li>
+        <li><code>Task(id, queue, payload, enqueued_by, enqueued_at,
+          callback, status, worker_handle?, result?, error?,
+          completed_at?)</code> — only constructed inside QueueManager;
+          replay code in T2.4 mirrors the same fields. ✓</li>
+        <li><code>QueueManager.enqueue(queue, payload, *, enqueued_by,
+          callback) -&gt; (task_id, queued_position)</code> — same in
+          T1.5 tests, T1.7 MCP tool, T2.4 replay. ✓</li>
+        <li><code>QueueManager.status(task_id) -&gt; dict | None</code>
+          — same in T1.5 tests and T1.7's <code>aegis_task_status</code>
+          (which converts <code>None</code> → <code>{"status":
+          "unknown"}</code>). ✓</li>
+        <li><code>SessionManager.spawn(slug, *, opening_prompt=None,
+          handle=None, queue_label=None)</code> — declared in T1.4;
+          T4.1 adds <code>queue_label</code> as forward-compat kwarg on
+          both the real SessionManager and the stub. ✓</li>
+        <li><code>InboxRouter.deliver(handle, msg)</code> — async
+          everywhere (T1.2, T2.3, T2.4 restart-callback, T4.2 handoff). ✓</li>
+        <li><code>AgentSession.deliver(msg)</code> — async; called by
+          <code>InboxRouter</code> only. ✓</li>
+        <li>Universal header format —
+          <code>render_inbox_header</code> emits one line; same string
+          asserted in T1.1, T1.3, T1.9 e2e. ✓</li>
+        <li>Reject strings — "yourself" / "no session" / "busy" / "unknown
+          queue" — identical wording across T4.2 server tool tests and
+          the rewritten <code>aegis_handoff</code>. ✓</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Placeholder scan</summary>
+      <p>Searched the plan for: "TODO", "TBD", "implement later", "add
+        appropriate error handling", "fill in details", "similar to". One
+        intentional adapt-and-report clause in T1.8 (Textual mount
+        lifecycle) — has explicit fallback path and acceptance criterion
+        (the <em>intent</em> is named). One in T4.3 (Telegram frontend
+        test infra) — explicit decision tree based on
+        <code>grep</code> output. Neither leaves implementation
+        ambiguous; both name the exact decision the engineer makes from
+        observed code.</p>
+    </details>
+    <details>
+      <summary>Risks</summary>
+      <ul>
+        <li><strong>Textual mount timing (T1.8).</strong> The
+          synchronous-return-then-async-mount adapter pattern is the
+          cleanest seam between QueueManager (sync
+          <code>_try_dispatch</code>) and Textual (async mount), but
+          Textual's worker/screen API may force a different shape. The
+          fallback (await within QueueManager via
+          <code>asyncio.create_task</code>) is one line — the spec is
+          unaffected.</li>
+        <li><strong>FastMCP error shape.</strong> The exact serialisation
+          when a tool returns <code>{"error": "..."}</code> vs raises is
+          fastmcp-version-dependent. T1.7's
+          <code>test_aegis_enqueue_unknown_queue_returns_error_string</code>
+          accepts either shape (<code>isinstance</code> branch). If we
+          end up wanting to raise instead, swap the
+          <code>return {"error": ...}</code> for a typed exception and
+          tighten the test.</li>
+        <li><strong>Last-AssistantText capture (T1.5).</strong> The spec
+          §nongoals "open questions" note flagged the worker-exit signal
+          as an implementation detail. Plan picks: capture the most
+          recent <code>AssistantText.text</code> and fire the callback
+          on the worker's first <code>Result</code> (i.e. end of its
+          first turn). For v1 ephemeral workers (one task per spawn),
+          this is the natural completion point. If a worker tool-calls
+          its way to a multi-turn workflow before reaching a final
+          AssistantText, only the latest turn's text counts — same
+          trait the spec already documented as acceptable.</li>
+        <li><strong>Inbox-file growth (spec deferred).</strong> No
+          compaction in v1, as the spec calls out. Plan does not address
+          rotation. Acceptable.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · aegis task queue v1 plan</footer>
+
+</div>
+</body>
+</html>
