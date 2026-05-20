@@ -102,10 +102,10 @@
       <li><strong>Ambition: substrate + one canonical workflow.</strong> Ship the engine <em>and</em> a real TDD workflow end-to-end. Proves multi-step, predicate verification, retry-with-feedback, and agent-as-participant in one artifact. A DSL/YAML authoring layer is a deliberate non-goal for v1.</li>
       <li><strong>Authoring shape: <code>@workflow async def</code> Python.</strong> Async functions decorated with <code>@workflow</code>, taking <code>engine</code> as first positional arg and any other params as keyword args. Workflows live in <code>.aegis.py</code> (inline) or in any module imported by it (typically <code>examples/</code>).</li>
       <li><strong>Discovery: decorator-only auto-registry.</strong> No explicit <code>workflows = {...}</code> dict. The <code>@workflow</code> decorator registers in a module-level <code>_REGISTRY</code>; name collisions raise <code>ConfigError</code> at load time.</li>
-      <li><strong>Engine surface mirrors the agent's surface.</strong> Workflows speak the same vocabulary as agents (<code>delegate</code>, <code>handoff</code>, <code>bash</code> (future on the agent side), <code>list_sessions</code>, <code>list_agents</code>) — deterministic Python instead of LLM-driven, same primitives.</li>
+      <li><strong>Engine surface mirrors the agent's surface where it makes sense.</strong> Workflows speak the same vocabulary as agents (<code>delegate</code>, <code>send</code>, <code>bash</code> (future on the agent side), <code>list_sessions</code>, <code>list_agents</code>) — deterministic Python instead of LLM-driven, same primitives. Where caller constraints differ from the agent side (notably: workflows can block; an agent's turn shouldn't), the workflow surface adds methods agents don't get (<code>drain</code>, <code>spawn</code>, <code>close</code>); the agent-side MCP keeps its existing fire-and-forget <code>aegis_handoff</code> under that name.</li>
       <li><strong>Workflows compose on the queue.</strong> <code>engine.delegate(queue, payload)</code> is the substrate seam for one-shot worker spawn — internally an <code>aegis_enqueue</code> + await on the callback. No second agent-spawn plane.</li>
-      <li><strong>Long-lived team-member primitive distinct from one-shot delegation.</strong> <code>engine.spawn(profile)</code> / <code>engine.handoff(handle, msg)</code> / <code>engine.close(handle)</code> let a workflow keep a persistent agent across many turns (the "team of agents" pattern). Distinct from <code>delegate</code>, which is queue-managed and ephemeral.</li>
-      <li><strong><code>engine.handoff</code> is send-and-await</strong> (workflow side) where the agent-side MCP <code>aegis_handoff</code> is fire-and-forget. Same name + payload shape, honestly divergent semantics where caller constraints differ (workflow can block; agent's turn shouldn't).</li>
+      <li><strong><code>engine.caller_handle</code> exposes who invoked the workflow.</strong> Set from the MCP <code>from_handle</code> parameter when an agent calls <code>aegis_run_workflow</code>; <code>None</code> when launched from CLI. Workflows that want to run <em>on</em> the calling agent ("implement this doing TDD" said into your own pane → TDD runs on your session) target <code>engine.caller_handle</code> with <code>send</code>. Workflows launched from CLI either <code>engine.spawn(...)</code> a fresh subject or skip the live-agent path entirely.</li>
+      <li><strong>Live-agent messaging is <code>send</code> (sync, fire-and-forget) + <code>drain</code> (async, await idle).</strong> No <code>handoff</code> method on the engine — the agent-to-agent MCP <code>aegis_handoff</code> keeps that name; the workflow's equivalent is just enqueuing into the recipient's inbox. <code>send</code> buffers/wakes through the existing <code>InboxRouter.deliver</code> path (already handles wake-on-idle / mid-turn-buffer / turn-end-flush); <code>drain(handle)</code> waits for the recipient to be idle. Runner auto-drains every touched handle in <code>finally</code>, with a 30s-per-handle ceiling so a hung agent can't trap workflow shutdown. Workflows that need synchronous "tell agent X, wait for them" write <code>engine.send(h, msg); await engine.drain(h)</code> — explicit and composable with multi-message batches.</li>
       <li><strong>Two invocation surfaces: CLI + MCP.</strong> <code>aegis workflow run &lt;name&gt; [--key=value...]</code> (always sync-block — you typed it, you wait) and <code>aegis_run_workflow(name, kwargs, from_handle, callback=true)</code> MCP tool (mirrors <code>aegis_enqueue</code> exactly — returns <code>workflow_run_id</code> immediately; result lands in producer's inbox tagged <code>sender="workflow:&lt;name&gt;"</code> when done).</li>
       <li><strong>No persistence in v1.</strong> Workflow runs are in-flight async coroutines; restart loses them. Spawned queue workers and inbox files persist (existing substrate); orphaned in-flight tasks become <code>failed: interrupted</code> via the queue's restart-replay.</li>
       <li><strong>Auto-close-on-exit for long-lived agents.</strong> The runner closes every handle in <code>engine._spawned_handles</code> in the <code>finally</code>. Workflow can <code>await engine.close(h)</code> explicitly for early retirement.</li>
@@ -158,19 +158,31 @@
 <pre><code>class WorkflowEngine:
     workflow_name: str          # set by runner
     workflow_run_id: str        # ULID, set by runner
+    caller_handle: str | None   # MCP from_handle, else None (CLI invocation)
 
+    # ── delegate / live-agent send ────────────────────────────────────
     async def delegate(self, queue: str, payload: str) -&gt; str: ...
+    def send(self, handle: str, message: str) -&gt; None: ...
+    async def drain(self, handle: str | None = None) -&gt; None: ...
+
+    # ── lifecycle ─────────────────────────────────────────────────────
+    async def spawn(self, profile: str, *,
+                    handle: str | None = None) -&gt; str: ...
+    async def close(self, handle: str) -&gt; None: ...
+
+    # ── predicate / utility / introspection ───────────────────────────
     async def bash(self, cmd: str, *,
                    cwd: str | Path | None = None,
                    timeout: float | None = None,
                    env: dict | None = None) -&gt; CompletedProcess: ...
-    async def spawn(self, profile: str, *,
-                    handle: str | None = None) -&gt; str: ...
-    async def handoff(self, handle: str, message: str) -&gt; str: ...
-    async def close(self, handle: str) -&gt; None: ...
     def log(self, message: str) -&gt; None: ...
     def list_sessions(self) -&gt; list[SessionInfo]: ...
-    def list_agents(self) -&gt; list[str]: ...</code></pre>
+    def list_agents(self) -&gt; list[str]: ...
+
+    # ── deferred (named for forward-compat; NOT in v1) ────────────────
+    # async def ask(self, prompt: str) -&gt; str: ...
+    #     Pause the workflow and ask the user a question (Telegram /
+    #     TUI prompt); resume with their answer. Human-in-the-loop.</code></pre>
     <p>Plus a defined exception:</p>
 <pre><code>class WorkflowError(Exception):
     """Expected failure inside a workflow (predicate violated, retry
@@ -193,15 +205,11 @@
     <h3><code>spawn(profile, *, handle=None) -&gt; str</code> — long-lived agent</h3>
     <p>Calls <code>bridge.spawn(profile, handle=handle)</code> (new method). In the TUI the agent appears as a visible <code>ConversationPane</code> tab via the existing <code>_SessionManagerAdapter</code>; in headless it's a <code>SessionManager.spawn</code>. Records the handle in <code>engine._spawned_handles</code>. Returns the handle.</p>
 
-    <h3><code>handoff(handle, message) -&gt; str</code> — send-and-await</h3>
-    <ol>
-      <li>Validate target exists in <code>bridge.list_sessions()</code>. Missing → raise <code>WorkflowError(f"handoff rejected: no session {handle!r}")</code>.</li>
-      <li>Validate target isn't <code>state == "working"</code>. Busy → raise <code>WorkflowError(f"handoff rejected: {handle!r} is busy")</code>.</li>
-      <li>Attach one-shot <code>add_event_observer</code> (captures last <code>AssistantText.text</code>) + <code>add_state_observer</code> (resolves future on next <code>finished=True</code>) on the target session.</li>
-      <li><code>inbox_router.deliver(handle, InboxMessage(sender=f"workflow:{name}", body=message, timestamp=now_iso()))</code>.</li>
-      <li><code>await future</code> — agent processes the turn (substrate-tagged user message in their context), emits assistant text, finishes.</li>
-      <li>Detach both observers; return the captured text.</li>
-    </ol>
+    <h3><code>send(handle, message)</code> — sync fire-and-forget</h3>
+    <p>Builds <code>InboxMessage(sender=f"workflow:{name}", body=message, timestamp=now_iso())</code>. Schedules <code>inbox_router.deliver(handle, msg)</code> as an asyncio task (existing <code>deliver</code> already does the right thing: wakes idle sessions, buffers mid-turn, flushes at turn-end). Adds the handle to <code>engine._touched_handles</code> so auto-drain knows whom to wait on at workflow exit. Returns immediately. Unknown handle silently dead-letters into the router's in-memory pending under that handle (documented v1 trait — if you typo a handle, your message lands in a buffer no live session will read).</p>
+
+    <h3><code>drain(handle=None)</code> — await idle</h3>
+    <p>Async; awaits each touched handle's session to reach <code>state == ready</code>. If <code>handle=None</code>, drains every handle the workflow has touched via <code>send</code> so far. Per-handle ceiling of 30s; on timeout, emits <code>engine.log</code> warning and returns (don't trap workflow shutdown on a hung agent). Mid-flow drain lets the workflow inject user notes between phases — "write tests" → drain → bash predicate → "fix tests" → drain → bash predicate.</p>
 
     <h3><code>close(handle)</code> — retire a long-lived agent</h3>
     <p><code>bridge.close(handle)</code>; discard from <code>_spawned_handles</code>. Idempotent.</p>
@@ -215,7 +223,8 @@
     <details>
       <summary>Out of v1 (deliberate)</summary>
       <ul>
-        <li><strong>Multi-turn-conversation-with-one-queue-worker.</strong> <code>delegate</code> always spawns a fresh worker. Multi-turn drive uses <code>spawn</code>+<code>handoff</code>+<code>close</code> instead. No fusion primitive.</li>
+        <li><strong>Multi-turn-conversation-with-one-queue-worker.</strong> <code>delegate</code> always spawns a fresh worker. Multi-turn drive uses <code>spawn</code> + <code>send</code>/<code>drain</code> + <code>close</code> instead. No fusion primitive.</li>
+        <li><strong><code>engine.ask(prompt) -&gt; str</code></strong> — human-in-the-loop primitive ("pause the workflow, ask the user something, resume with their answer"). Reserved by the engine surface for forward-compat; concrete implementation (Telegram prompt? TUI modal? both?) is a later spec.</li>
         <li><strong>Parallel fan-out helper.</strong> <code>asyncio.gather(engine.delegate(...), engine.delegate(...))</code> works natively. No <code>engine.gather</code>.</li>
         <li><strong>Workflow-spawns-workflow</strong> (<code>engine.run_workflow(...)</code>). For v1 a workflow body that needs another workflow <code>import</code>s and <code>await</code>s the function directly with a shared engine — no engine method needed.</li>
         <li><strong>Cancellation API</strong> beyond cancelling the asyncio task (CLI Ctrl-C or future MCP cancel tool).</li>
@@ -264,8 +273,8 @@
         <tr><td>Workflow raises plain <code>Exception</code></td><td>Result <code>{status: "error", error: f"unexpected: {type(e).__name__}: {e}"}</code>. Traceback to stderr for debug. Auto-close fires.</td></tr>
         <tr><td><code>engine.delegate</code> worker fails</td><td><code>delegate</code> raises <code>WorkflowError(f"task {task_id} failed: {body}")</code>. Workflow catches+retries or propagates.</td></tr>
         <tr><td><code>engine.bash</code> exceeds timeout</td><td>Kill, raise <code>WorkflowError(f"bash timed out after {timeout}s: {cmd}")</code>.</td></tr>
-        <tr><td><code>engine.handoff</code> target missing</td><td><code>WorkflowError</code> before delivery — fail-fast.</td></tr>
-        <tr><td><code>engine.handoff</code> target is <code>working</code></td><td><code>WorkflowError(f"handoff rejected: {handle!r} is busy")</code>. Workflow decides retry vs. fail.</td></tr>
+        <tr><td><code>engine.send</code> to unknown handle</td><td>Silent dead-letter into router's in-memory pending under that handle. Documented v1 trait; a strict-check follow-up can land if it bites.</td></tr>
+        <tr><td><code>engine.drain</code> exceeds the 30s-per-handle ceiling</td><td>Emit <code>engine.log</code> warning, return (don't trap workflow shutdown). Workflow author wraps with <code>asyncio.wait_for</code> if a stricter bound matters.</td></tr>
         <tr><td><code>engine.spawn</code> unknown profile</td><td><code>WorkflowError(f"unknown agent profile: {profile!r}. Known: {sorted(...)}")</code> at bridge.</td></tr>
         <tr><td><code>engine.spawn</code>'d agents leaked at workflow end</td><td>Runner's <code>finally</code> closes everything in <code>_spawned_handles</code>. Logged via <code>engine.log</code>.</td></tr>
         <tr><td>Workflow registry name collision at <code>.aegis.py</code> load</td><td><code>ConfigError</code> at boot — fail-loud, prints both source locations.</td></tr>
@@ -284,7 +293,9 @@
       <li><strong><code>@workflow</code> decorator</strong> — registers under function name; raises <code>TypeError</code> if not <code>async def</code>; raises <code>TypeError</code> if first param isn't <code>engine</code>; raises <code>ConfigError</code> on name collision.</li>
       <li><strong><code>WorkflowEngine.delegate</code></strong> — stub QueueManager + stub worker returning <code>"OK"</code>; assert <code>delegate</code> returns <code>"OK"</code>. Error path: stub worker fails → <code>WorkflowError</code> with <code>task_id</code> in message. Concurrent calls get unique inbox handles.</li>
       <li><strong><code>WorkflowEngine.bash</code></strong> — real shell for trivial commands (<code>echo</code>, <code>pytest --version</code>); timeout test with <code>sleep 5</code> and <code>timeout=0.1</code>.</li>
-      <li><strong><code>WorkflowEngine.spawn / handoff / close</code></strong> — stub SessionManager + FakeHarness scripts; round-trip a handoff, assert captured response matches scripted <code>AssistantText</code>. <code>close</code> removes handle from <code>_spawned_handles</code>. <code>handoff</code> to missing handle → <code>WorkflowError</code>.</li>
+      <li><strong><code>WorkflowEngine.spawn / close</code></strong> — stub SessionManager + FakeHarness; spawn adds the handle to <code>_spawned_handles</code>; close removes it + idempotent.</li>
+      <li><strong><code>WorkflowEngine.send / drain</code></strong> — stub <code>InboxRouter</code> records every <code>deliver</code> call; assert <code>send</code> queued a properly-tagged <code>InboxMessage</code> (sender <code>workflow:&lt;name&gt;</code>, body, timestamp); <code>drain</code> returns when every touched session is <code>state == ready</code>; drain timeout path triggers log warning + returns (no raise).</li>
+      <li><strong><code>engine.caller_handle</code></strong> — engine constructed with <code>caller_handle="h"</code> exposes it; engine constructed with <code>caller_handle=None</code> (CLI path) exposes None.</li>
       <li><strong>Auto-close on workflow exit</strong> — workflow spawns 2 agents, returns; assert both got <code>bridge.close()</code> in the runner's <code>finally</code>.</li>
       <li><strong><code>runner.run_workflow</code></strong> — <code>WorkflowError</code> → <code>{status: error, error: msg}</code>; plain <code>Exception</code> → <code>{status: error, error: "unexpected: ..."}</code>; success returning <code>"x"</code> → <code>{status: ok, result: "x"}</code>.</li>
       <li><strong>CLI</strong> — <code>aegis workflow list</code> enumerates registry; <code>aegis workflow run &lt;unknown&gt;</code> exits non-zero with available list; <code>aegis workflow run &lt;known&gt;</code> calls the runner end-to-end (stub bridge so no real subprocess).</li>
@@ -299,7 +310,7 @@
     <h2>Non-goals (v1)</h2>
     <ul>
       <li><strong>DSL / declarative authoring</strong> (YAML, JSON). Python <code>@workflow</code> only.</li>
-      <li><strong>Multi-turn-with-one-queue-worker</strong> primitive. Use spawn+handoff+close.</li>
+      <li><strong>Multi-turn-with-one-queue-worker</strong> primitive. Use spawn + send/drain + close on a long-lived agent instead.</li>
       <li><strong>Workflow persistence / resume across restart.</strong> Runs are in-memory asyncio tasks.</li>
       <li><strong>Workflow-spawns-workflow</strong> as an engine method. Direct <code>await</code> of an imported function is the v1 answer.</li>
       <li><strong>Cancellation MCP tool.</strong> <code>asyncio.CancelledError</code> (CLI Ctrl-C) suffices for v1.</li>
