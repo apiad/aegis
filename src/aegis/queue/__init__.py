@@ -1,3 +1,4 @@
+from aegis.queue.inbox import InboxRouter
 from aegis.queue.schema import (
     InboxMessage,
     Queue,
@@ -11,6 +12,7 @@ from aegis.queue.schema import (
 
 __all__ = [
     "InboxMessage",
+    "InboxRouter",
     "Queue",
     "Task",
     "new_ulid",
