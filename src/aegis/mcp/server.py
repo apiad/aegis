@@ -78,11 +78,36 @@ def build_server(bridge: AppBridge) -> FastMCP:
                             context: str) -> str:
         """One-way context transfer to a live peer aegis session.
 
+        Delivered via the universal inbox channel: the target receives a
+        normal user-message whose substrate header carries
+        ``sender=agent:<from_handle>`` and an ISO timestamp — same
+        universal-tagging shape that queue callbacks use, so the target
+        agent reads handoffs and callbacks through one consistent surface.
+
         from_handle is your own aegis handle (read it from your system
         prompt). Returns 'delivered to <target>' on success, or a
         'handoff rejected: …' reason (self / unknown / busy).
         """
-        return await bridge.handoff(from_handle, target_handle, context)
+        from aegis.queue import InboxMessage, now_iso, sender_agent
+
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        sessions = list(bridge.list_sessions())
+        target_info = next(
+            (s for s in sessions if s.handle == target_handle), None)
+        if target_info is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        if target_info.state == "working":
+            return (f"handoff rejected: {target_handle!r} is busy, "
+                    f"retry shortly")
+        await bridge.inbox_router.deliver(
+            target_handle,
+            InboxMessage(
+                sender=sender_agent(from_handle),
+                timestamp=now_iso(),
+                body=context))
+        return f"delivered to {target_handle}"
 
     @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,

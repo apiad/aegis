@@ -14,18 +14,19 @@ from aegis.mcp.server import (
 
 
 class FakeBridge:
-    # Required by the extended AppBridge Protocol — the existing handoff
-    # tests do not exercise these, but tools registered in T1.7 attempt to
-    # call bridge.queue_manager / bridge.inbox_router so they cannot be
-    # absent. Per-test setup overrides where needed.
+    # AppBridge surface. queue_manager stays None for the handoff tests
+    # (none of them exercise queue tools). inbox_router is the real one —
+    # aegis_handoff now delivers through it (T4.2), and the tests assert
+    # against its pending buffer rather than a side-channel attribute.
     queue_manager = None
-    inbox_router = None
 
     def __init__(self):
+        from aegis.queue import InboxRouter
+
+        self.inbox_router = InboxRouter()
         self._sessions = [
             SessionInfo(handle="lucid-knuth", agent_slug="default",
                         state="ready", active=True, unseen=False)]
-        self.delivered = None
 
     def list_sessions(self):
         return list(self._sessions)
@@ -34,13 +35,10 @@ class FakeBridge:
         return ["default", "fast"]
 
     async def handoff(self, a, b, c):
-        if a == b:
-            return "handoff rejected: cannot hand off to yourself"
-        if b != "lucid-knuth":
-            return (f"handoff rejected: no session {b!r} "
-                    f"(use aegis_list_sessions)")
-        self.delivered = (a, b, c)
-        return f"delivered to {b}"
+        # Legacy AppBridge method — no longer called by aegis_handoff after
+        # T4.2 (the MCP tool talks to inbox_router directly). Kept on the
+        # protocol surface for back-compat with any external caller.
+        return f"ignored: {a}->{b}"
 
 
 async def _call(server, name, **kwargs):
@@ -100,19 +98,52 @@ async def test_list_tools_serialise():
 
 
 @pytest.mark.asyncio
-async def test_handoff_paths():
+async def test_handoff_delivers_via_inbox_router():
+    from aegis.queue import sender_agent
+
     br = FakeBridge()
     srv = build_server(br)
-    assert "delivered to lucid-knuth" in await _call(
-        srv, "aegis_handoff", from_handle="wry-hopper",
-        target_handle="lucid-knuth", context="ctx")
-    assert br.delivered == ("wry-hopper", "lucid-knuth", "ctx")
+    out = await _call(srv, "aegis_handoff",
+                      from_handle="wry-hopper",
+                      target_handle="lucid-knuth",
+                      context="please continue the spec")
+    assert "delivered to lucid-knuth" in out
+    pending = br.inbox_router.pending("lucid-knuth")
+    assert len(pending) == 1
+    msg = pending[0]
+    assert msg.sender == sender_agent("wry-hopper")
+    assert "please continue the spec" in msg.body
+    # No task_id — handoffs aren't queue results.
+    assert msg.task_id is None
+
+
+@pytest.mark.asyncio
+async def test_handoff_self_and_unknown_still_reject():
+    br = FakeBridge()
+    srv = build_server(br)
     assert "yourself" in await _call(
         srv, "aegis_handoff", from_handle="x", target_handle="x",
         context="c")
     assert "no session" in await _call(
         srv, "aegis_handoff", from_handle="x", target_handle="ghost",
         context="c")
+    # No inbox delivery on rejection.
+    assert br.inbox_router.pending("ghost") == []
+
+
+@pytest.mark.asyncio
+async def test_handoff_rejects_busy_target():
+    br = FakeBridge()
+    # Mutate the session into 'working' state for this test.
+    br._sessions = [
+        SessionInfo(handle="busy-one", agent_slug="default",
+                    state="working", active=True, unseen=False)]
+    srv = build_server(br)
+    out = await _call(srv, "aegis_handoff",
+                      from_handle="me", target_handle="busy-one",
+                      context="now")
+    assert "busy" in out and "busy-one" in out
+    assert br.inbox_router.pending("busy-one") == []
 
 
 def test_meta_and_priming_updated():
