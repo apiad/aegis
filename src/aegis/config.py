@@ -4,9 +4,9 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Sequence
+from typing import Literal, Sequence
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 
 DEFAULT_TELEGRAM_PROMPT = (
@@ -48,11 +48,100 @@ class Effort(str, Enum):
     max = "max"
 
 
-class Agent(BaseModel):
-    harness: str
+class _ProviderBase(BaseModel):
+    """Base for provider config objects. Subclasses bind to a specific
+    harness CLI (claude-code, gemini, opencode) and carry the per-provider
+    fields that matter for that CLI."""
     model: str
-    effort: Effort
-    permission: Permission
+    permission: Permission = Permission.auto
+
+
+class ClaudeCode(_ProviderBase):
+    """Anthropic's `claude` CLI. Has an `effort` field (low|medium|high|max)
+    that no other provider currently exposes."""
+    name: Literal["claude-code"] = "claude-code"
+    effort: Effort = Effort.high
+
+
+class GeminiCLI(_ProviderBase):
+    """Google's `gemini` CLI. Model strings are bare gemini model names
+    (e.g. ``gemini-3-flash-preview``, ``gemini-3.1-pro``). No `effort`
+    field — Gemini doesn't expose one. Permission maps to its
+    ``--approval-mode`` (read=plan, write=auto_edit, full=yolo,
+    auto=default)."""
+    name: Literal["gemini"] = "gemini"
+    permission: Permission = Permission.full  # gemini headless ≈ yolo
+
+
+class OpenCode(_ProviderBase):
+    """OpenCode's `opencode` CLI. Model strings use the ``provider/model``
+    format opencode expects (e.g. ``opencode/claude-sonnet-4-6``,
+    ``opencode/gemini-3-flash``, ``opencode/gpt-5``). Run ``opencode
+    models`` to list what's available on your install."""
+    name: Literal["opencode"] = "opencode"
+    permission: Permission = Permission.full
+
+
+Provider = ClaudeCode | GeminiCLI | OpenCode
+
+_PROVIDERS_BY_NAME: dict[str, type[_ProviderBase]] = {
+    "claude-code": ClaudeCode,
+    "gemini":      GeminiCLI,
+    "opencode":    OpenCode,
+}
+
+
+class Agent(BaseModel):
+    """An agent profile. Two construction shapes are supported, both
+    equivalent after validation:
+
+    Provider-object shape (preferred — per-provider fields are validated):
+        Agent(provider=ClaudeCode(model="opus", effort="high"))
+        Agent(provider=GeminiCLI(model="gemini-3-flash-preview"))
+        Agent(provider=OpenCode(model="opencode/claude-sonnet-4-6"))
+
+    Flat shape (legacy — still works; constructs the provider internally):
+        Agent(harness="claude-code", model="opus", effort="high",
+              permission="auto")
+        Agent(harness="gemini",      model="gemini-3-flash-preview",
+              permission="full")
+
+    Internally a Provider object is always populated post-validation, so
+    drivers / queue config / TUI can read either ``agent.provider.*`` or
+    the legacy flat fields uniformly.
+    """
+    provider: Provider | None = None
+    # Legacy flat fields — empty string default so the validator can tell
+    # apart "user gave flat fields" from "user gave provider= only".
+    harness: str = ""
+    model: str = ""
+    effort: Effort = Effort.high
+    permission: Permission = Permission.auto
+
+    @model_validator(mode="after")
+    def _sync_provider_and_flat(self) -> "Agent":
+        if self.provider is not None:
+            # New shape: provider was given. Derive the flat fields.
+            self.harness = self.provider.name
+            self.model = self.provider.model
+            self.permission = self.provider.permission
+            self.effort = getattr(self.provider, "effort", Effort.high)
+            return self
+        # Legacy shape: build the provider object from the flat fields.
+        if not self.harness:
+            raise ValueError(
+                "Agent requires either provider=<ClaudeCode|GeminiCLI"
+                "|OpenCode> or the flat shape harness=+model=+...")
+        klass = _PROVIDERS_BY_NAME.get(self.harness)
+        if klass is None:
+            raise ValueError(
+                f"unknown harness {self.harness!r}; "
+                f"known: {sorted(_PROVIDERS_BY_NAME)}")
+        kw: dict = {"model": self.model, "permission": self.permission}
+        if klass is ClaudeCode:
+            kw["effort"] = self.effort
+        self.provider = klass(**kw)
+        return self
 
 
 class ConfigError(Exception):

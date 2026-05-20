@@ -17,7 +17,23 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 
 - `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis init`)
 - `src/aegis/config.py` - Agent profile + .aegis.py loader
-- `src/aegis/drivers/` - HarnessDriver seam; ClaudeDriver in claude.py
+- `src/aegis/drivers/` - HarnessDriver seam + concrete drivers:
+  `claude.py` (Claude Code, full-featured — multi-turn via stream-json
+  INPUT, per-invocation MCP injection via `--mcp-config`),
+  `gemini.py` (Gemini CLI, v1 one-shot — `gemini -p <prompt>
+  --output-format stream-json --approval-mode <mode>`),
+  `opencode.py` (OpenCode, v1 one-shot — `opencode run <message>
+  --format json -m <provider/model>`). Per-driver stream parsers in
+  `gemini_parse.py` and `opencode_parse.py` map each CLI's events into
+  the canonical `aegis.events` types. Gemini and OpenCode workers do
+  NOT inject aegis MCP in v1 (their MCP config is global, not
+  per-invocation) — workers can do their task but cannot call back to
+  `aegis_enqueue`; sufficient for queue-worker semantics where the
+  substrate captures the worker's final assistant text as the result.
+  Per-provider config classes (`ClaudeCode`, `GeminiCLI`, `OpenCode`)
+  in `config.py` carry only the fields each provider actually uses;
+  legacy flat `Agent(harness="…", model=…, effort=…, permission=…)`
+  shape still works via a back-compat shim.
 - `src/aegis/events.py` - stream-json parser (typed events)
 - `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
 - `src/aegis/core/` - harness-agnostic session core: `AgentSession`
@@ -94,11 +110,16 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 ## Tests
 
 `uv run pytest -q -m "not live"` for the fast hermetic suite. Drop the marker
-filter to include the live `claude` round-trip (`tests/test_integration_live.py`,
-`tests/test_mcp_live.py`; auto-skip if `claude` is not on PATH). The `live`
-marker is registered in `pyproject.toml`; do not use `-k "not live"` — it
-matches `live` as a substring and silently eats unrelated names (e.g.
-anything containing `deliver`).
+filter to include the live round-trip tests against the real CLI subprocesses
+— each auto-skips when the corresponding CLI is off PATH:
+- `tests/test_integration_live.py`, `tests/test_mcp_live.py`, and
+  `tests/test_queue_live.py`, `tests/test_workflow_live.py` need `claude`.
+- `tests/test_drivers_multiprovider_live.py` exercises `gemini` and
+  `opencode` driver round-trips (each subtest skips independently).
+
+The `live` marker is registered in `pyproject.toml`; do not use
+`-k "not live"` — it matches `live` as a substring and silently eats
+unrelated names (e.g. anything containing `deliver`).
 
 Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 `claude` stream-json output, then sanitizes identifiers/paths before commit).

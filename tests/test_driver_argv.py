@@ -48,7 +48,12 @@ def test_effort_and_model_passthrough():
 
 def test_unknown_harness_raises():
     with pytest.raises(KeyError):
-        get_driver("opencode")
+        get_driver("ghost-harness-that-does-not-exist")
+
+
+def test_known_harnesses_registered():
+    """V1 ships three providers: claude-code, gemini, opencode."""
+    assert set(DRIVERS) >= {"claude-code", "gemini", "opencode"}
 
 
 def test_build_argv_injects_strict_mcp_and_priming():

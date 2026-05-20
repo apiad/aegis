@@ -1,4 +1,9 @@
-from aegis.config import Agent, Effort, Permission
+from aegis.config import (
+    Agent, ClaudeCode, Effort, GeminiCLI, OpenCode, Permission, Provider,
+)
 from aegis.queue import Queue
 
-__all__ = ["Agent", "Effort", "Permission", "Queue"]
+__all__ = [
+    "Agent", "ClaudeCode", "Effort", "GeminiCLI", "OpenCode",
+    "Permission", "Provider", "Queue",
+]
