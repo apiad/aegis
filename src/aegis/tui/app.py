@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 
 from textual import work
@@ -10,6 +11,7 @@ from textual.widgets import ContentSwitcher
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
+from aegis.queue import InboxRouter, QueueManager
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
@@ -50,17 +52,17 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
-        # AppBridge surface attrs. AegisApp is the bridge in the
-        # interactive (TUI) path. queue_manager stays None when no queues
-        # are configured (aegis_enqueue against an unknown queue returns
-        # the documented error). Full per-pane inbox binding lands in VS4.
-        from aegis.queue import InboxRouter
-        self.inbox_router = InboxRouter()
-        self.queue_manager = None
-        self._mcp.bind(self)
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
+        # AppBridge surface. AegisApp is the bridge in the interactive
+        # (TUI) path. QueueManager spawns workers through an adapter that
+        # creates real ConversationPanes (so workers are visible tabs Alex
+        # can click into), and the per-pane inbox binding lives in _spawn.
+        self.inbox_router = InboxRouter()
+        self.queue_manager = QueueManager(
+            self._queues, _SessionManagerAdapter(self), self.inbox_router)
+        self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:
         yield TabBar()
@@ -77,6 +79,7 @@ class AegisApp(App):
         self._palette = aegis_colors(self.current_theme)
         self.query_one(TabBar).set_palette(self._palette)
         await self._mcp.start()
+        await self.queue_manager.start()
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
@@ -98,18 +101,42 @@ class AegisApp(App):
             return None
         return self.query_one(f"#{cs.current}", ConversationPane)
 
-    async def _spawn(self, slug: str) -> None:
+    async def _spawn(self, slug: str, *,
+                     handle: str | None = None,
+                     opening_prompt: str | None = None,
+                     foreground: bool = True) -> ConversationPane:
         agent = self._agents[slug]
-        handle = generate_name({p.handle for p in self._panes})
+        h = handle or generate_name({p.handle for p in self._panes})
         pane = ConversationPane(
-            self._make_session(agent, self._mcp.url, handle), agent,
-            slug, handle, self._palette)
+            self._make_session(agent, self._mcp.url, h), agent,
+            slug, h, self._palette)
         self._panes.append(pane)
+        # Inbox binding goes through the pane's _core AgentSession — the
+        # pane's renderer hooks stay primary; queue/handoff observers
+        # ride add_*_observer (see core/session.py).
+        self.inbox_router.bind_session(h, pane._core)
         cs = self.query_one(ContentSwitcher)
         await cs.mount(pane)
-        cs.current = pane.id
+        if foreground:
+            cs.current = pane.id
         self._refresh_tabbar()
-        pane.focus_input()
+        if foreground:
+            pane.focus_input()
+        if opening_prompt is not None:
+            # _submit is sync but launches the turn as a worker task.
+            pane._submit(opening_prompt)
+        return pane
+
+    async def _close_pane(self, pane: ConversationPane) -> None:
+        """Unified pane teardown — inbox unbind, then close, remove, list-pop."""
+        self.inbox_router.unbind_session(pane.handle)
+        await pane.close()
+        if pane in self._panes:
+            self._panes.remove(pane)
+        try:
+            await pane.remove()
+        except Exception:  # noqa: BLE001 — pane may already be detached
+            pass
 
     def _refresh_tabbar(self) -> None:
         cs = self.query_one(ContentSwitcher)
@@ -159,9 +186,7 @@ class AegisApp(App):
         if active is None:
             return
         idx = self._panes.index(active)
-        await active.close()
-        await active.remove()
-        self._panes.pop(idx)
+        await self._close_pane(active)
         if not self._panes:
             self.exit()
             return
@@ -189,8 +214,10 @@ class AegisApp(App):
             active.interrupt()
 
     async def action_quit(self) -> None:
-        for pane in self._panes:
+        for pane in list(self._panes):
+            self.inbox_router.unbind_session(pane.handle)
             await pane.close()
+        await self.queue_manager.stop()
         await self._mcp.stop()
         self.exit()
 
@@ -209,6 +236,9 @@ class AegisApp(App):
 
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str:
+        # Legacy AppBridge entry point — kept for back-compat with any
+        # external caller. The MCP aegis_handoff tool (T4.2) no longer
+        # calls this; it routes through inbox_router directly.
         if from_handle == target_handle:
             return "handoff rejected: cannot hand off to yourself"
         target = next((p for p in self._panes
@@ -221,3 +251,56 @@ class AegisApp(App):
                     f"retry shortly")
         await target.deliver_handoff(from_handle, context)
         return f"delivered to {target_handle}"
+
+
+class _SessionManagerAdapter:
+    """SessionManager-shaped facade over AegisApp for QueueManager.
+
+    QueueManager's dispatch loop expects ``spawn(slug, *, opening_prompt,
+    handle)`` to return *synchronously* with an object whose ``handle``,
+    ``add_event_observer``, and ``add_state_observer`` are usable
+    immediately. AegisApp's real spawn is async (Textual mount lifecycle),
+    so we split: the pane and its ``AgentSession`` are constructed
+    synchronously (so the adapter has something to hand back), and the
+    Textual mount + the worker's opening turn are scheduled as a task.
+    """
+
+    def __init__(self, app: "AegisApp") -> None:
+        self._app = app
+
+    @property
+    def _sessions(self):
+        # QueueManager reads this for handle uniqueness (existing helper).
+        return [p._core for p in self._app._panes]
+
+    def spawn(self, slug: str, *,
+              opening_prompt: str | None = None,
+              handle: str | None = None):
+        agent = self._app._agents[slug]
+        h = handle or generate_name({p.handle for p in self._app._panes})
+        pane = ConversationPane(
+            self._app._make_session(agent, self._app._mcp.url, h), agent,
+            slug, h, self._app._palette)
+        self._app._panes.append(pane)
+        self._app.inbox_router.bind_session(h, pane._core)
+        # Schedule mount + opening prompt off the queue's enqueue path.
+        # foreground=False so a queue worker doesn't steal focus from
+        # whatever pane Alex is currently using.
+        asyncio.create_task(self._mount_and_kick(pane, opening_prompt))
+        return pane._core
+
+    async def _mount_and_kick(self, pane: ConversationPane,
+                              opening_prompt: str | None) -> None:
+        cs = self._app.query_one(ContentSwitcher)
+        await cs.mount(pane)
+        self._app._refresh_tabbar()
+        if opening_prompt is not None:
+            pane._submit(opening_prompt)
+
+    async def close(self, handle: str) -> None:
+        pane = next((p for p in self._app._panes if p.handle == handle),
+                    None)
+        if pane is None:
+            return
+        await self._app._close_pane(pane)
+        self._app._refresh_tabbar()

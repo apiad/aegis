@@ -61,9 +61,10 @@ def _factory(*sessions):
     return make
 
 
-def _app(factory=None, mcp=None):
+def _app(factory=None, mcp=None, *, queues=None, agents=None):
     f = factory or _factory()
-    return AegisApp({"default": _agent()}, "default", f, mcp or FakeMCP())
+    a = agents or {"default": _agent()}
+    return AegisApp(a, "default", f, mcp or FakeMCP(), queues=queues)
 
 
 @pytest.mark.asyncio
@@ -547,3 +548,130 @@ async def test_step_spacing_glues_tool_pair_and_single_gap_after_done():
         # 3: exactly ONE blank between ── done ── and the next user line
         gap = [lines[j].strip() for j in range(done_i + 1, u2_i)]
         assert gap == [""], gap
+
+
+@pytest.mark.asyncio
+async def test_queue_manager_built_from_queues_kwarg():
+    """When queues are configured, AegisApp constructs a real QueueManager
+    bound to the inbox_router; bridge.queue_manager.list_queues reflects."""
+    from aegis.queue import InboxRouter, Queue, QueueManager
+
+    queues = {"impl": Queue(name="impl", agent_profile="default",
+                            max_parallel=1)}
+    app = _app(queues=queues)
+    async with app.run_test():
+        assert isinstance(app.queue_manager, QueueManager)
+        assert app.queue_manager.list_queues() == ["impl"]
+        assert isinstance(app.inbox_router, InboxRouter)
+
+
+@pytest.mark.asyncio
+async def test_initial_pane_is_bound_to_inbox_router():
+    """The default pane spawned in on_mount must be bound — peer handoffs
+    and queue callbacks routed to its handle reach the right pane."""
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        # Internal: InboxRouter._sessions maps handle → session-like.
+        assert pane.handle in app.inbox_router._sessions
+        assert app.inbox_router._sessions[pane.handle] is pane._core
+
+
+@pytest.mark.asyncio
+async def test_close_tab_unbinds_inbox_session():
+    """Closing a pane removes its inbox binding so the router doesn't
+    hold a dangling reference to a torn-down AgentSession."""
+    f = _factory(FakeSession(), FakeSession())
+    app = _app(f)
+    async with app.run_test() as pilot:
+        await app._spawn(app._default_agent)   # second pane
+        handles = [p.handle for p in app._panes]
+        assert all(h in app.inbox_router._sessions for h in handles)
+        closed = app._panes[-1].handle
+        await pilot.press("ctrl+w")
+        assert closed not in app.inbox_router._sessions
+
+
+@pytest.mark.asyncio
+async def test_queue_enqueue_spawns_worker_pane_and_dispatches_payload():
+    """Mid-flight check: enqueue produces a worker pane bound to the inbox
+    and feeds the payload to the worker's first turn. Uses a hanging
+    worker so we can observe the pane before _finalize tears it down."""
+    import asyncio
+
+    from aegis.queue import Queue, sender_agent
+
+    class HangingSession:
+        def __init__(self):
+            self.sent: list[str] = []
+            self.started = self.closed = False
+            self._gate = asyncio.Event()
+
+        async def start(self): self.started = True
+        async def send(self, t): self.sent.append(t)
+        async def events(self):
+            await self._gate.wait()
+            yield AssistantText("never")  # pragma: no cover
+        async def close(self): self.closed = True
+
+    producer_sess = FakeSession()
+    worker_sess = HangingSession()
+    f = _factory(producer_sess, worker_sess)
+    queues = {"impl": Queue(name="impl", agent_profile="default",
+                            max_parallel=1)}
+    app = _app(f, queues=queues)
+    async with app.run_test() as pilot:
+        producer = app._panes[0]
+        tid, pos = app.queue_manager.enqueue(
+            "impl", "do the thing",
+            enqueued_by=sender_agent(producer.handle), callback=True)
+        assert pos == 1
+        # _SessionManagerAdapter.spawn appends synchronously, then schedules
+        # mount + opening-prompt as a task. After enqueue returns the pane
+        # is already in app._panes; one pilot.pause runs the mount-and-kick
+        # task so the worker sees its payload.
+        assert len(app._panes) == 2
+        worker_pane = app._panes[-1]
+        assert worker_pane.handle in app.inbox_router._sessions
+        await pilot.pause()
+        await pilot.pause()
+        assert worker_sess.sent == ["do the thing"]
+
+
+@pytest.mark.asyncio
+async def test_queue_callback_round_trip_into_producer_pane():
+    """Full loop: completion → finalize → InboxRouter.deliver →
+    producer pane's AgentSession.deliver renders the substrate-tagged
+    batch into the producer's harness as a fresh user turn."""
+    from aegis.queue import Queue, sender_agent
+
+    producer_sess = FakeSession()
+    worker_sess = FakeSession(
+        script=lambda t: [AssistantText(text="WORKER-DONE"),
+                          Result(duration_ms=1, is_error=False)])
+    f = _factory(producer_sess, worker_sess)
+    queues = {"impl": Queue(name="impl", agent_profile="default",
+                            max_parallel=1)}
+    app = _app(f, queues=queues)
+    async with app.run_test() as pilot:
+        producer = app._panes[0]
+        tid, _ = app.queue_manager.enqueue(
+            "impl", "do the thing",
+            enqueued_by=sender_agent(producer.handle), callback=True)
+        for _ in range(30):
+            await pilot.pause()
+            if app.queue_manager.status(tid)["status"] == "completed":
+                break
+        st = app.queue_manager.status(tid)
+        assert st["status"] == "completed"
+        assert "WORKER-DONE" in (st["result"] or "")
+        # Producer's harness received the wake-on-idle turn — its sent
+        # list now holds the substrate-rendered batch (header + body).
+        await pilot.pause()
+        await pilot.pause()
+        callback_turns = [s for s in producer_sess.sent
+                          if "> from queue:impl" in s]
+        assert callback_turns, (
+            f"producer never woke with callback; sent={producer_sess.sent}")
+        body = callback_turns[0]
+        assert tid in body and "WORKER-DONE" in body
