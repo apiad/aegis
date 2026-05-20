@@ -63,6 +63,33 @@ plus a live e2e test (`tests/test_workflow_live.py`, marker `live`,
 auto-skip when `claude` is off PATH) ride along. Plan:
 `docs/superpowers/plans/2026-05-20-aegis-workflow-scaffold-v1.md`.
 
+### 1.5. Multi-provider drivers (Gemini + OpenCode) — **shipped (2026-05-20)**
+
+`GeminiDriver` (`gemini -p ... --output-format stream-json`) +
+`OpenCodeDriver` (`opencode run ... --format json`), with per-provider
+stream parsers. New ergonomic `Agent(provider=...)` shape with
+`ClaudeCode` / `GeminiCLI` / `OpenCode` Pydantic classes carrying only
+the fields each CLI actually consumes; legacy flat `Agent(harness=...)`
+shape still works via a back-compat shim. Three queues
+(`impl`, `impl-gemini`, `impl-opencode`) declared in `.aegis.py` so any
+agent can delegate to any provider via `aegis_enqueue`.
+
+V1 limitations (documented, deferred):
+
+- Gemini and OpenCode sessions are **one-shot per send**. Both CLIs
+  lack stream-json INPUT (no per-process multi-turn like Claude). A
+  second `send()` on the same session raises. Fine for queue workers
+  (one task per worker); multi-turn drive for these providers is v2.
+- Gemini and OpenCode workers do **not** have aegis MCP injected.
+  Both CLIs use global MCP config (`gemini mcp add` / `opencode mcp`)
+  rather than per-invocation `--mcp-config`. Workers can do their
+  task but cannot call `aegis_enqueue` etc back. Substrate captures
+  the worker's final assistant text as the result; sufficient for
+  cross-provider task passing through the queue.
+
+Live: `tests/test_drivers_multiprovider_live.py` — gemini ~6s,
+opencode ~18s.
+
 ### 2. Queue v1 polish
 
 Small, all on top of a shipped substrate:
