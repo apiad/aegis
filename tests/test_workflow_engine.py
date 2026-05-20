@@ -209,3 +209,45 @@ async def test_concurrent_delegates_use_unique_inbox_handles(tmp_path):
         e.delegate("impl", "a"),
         e.delegate("impl", "b"))
     assert {a, b} == {"ONE", "TWO"}
+
+
+class _SpawningStubBridge:
+    def __init__(self):
+        self._spawned = []
+        self._closed = []
+        self.queue_manager = None
+        self.inbox_router = None
+    def list_sessions(self): return []
+    def list_agents(self): return []
+    async def handoff(self, a, b, c): return "ok"
+    async def spawn(self, profile, *, handle=None):
+        h = handle or f"auto-{len(self._spawned) + 1}"
+        self._spawned.append((profile, h))
+        return h
+    async def close(self, handle):
+        self._closed.append(handle)
+
+
+async def test_engine_spawn_tracks_handle_and_returns_it(tmp_path):
+    br = _SpawningStubBridge()
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=br, queue_manager=None, inbox_router=None,
+                       state_dir=tmp_path)
+    h = await e.spawn("reviewer", handle="r1")
+    assert h == "r1"
+    assert "r1" in e._spawned_handles
+    assert ("reviewer", "r1") in br._spawned
+
+
+async def test_engine_close_removes_handle_and_is_idempotent(tmp_path):
+    br = _SpawningStubBridge()
+    e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
+                       bridge=br, queue_manager=None, inbox_router=None,
+                       state_dir=tmp_path)
+    h = await e.spawn("reviewer", handle="r1")
+    await e.close(h)
+    assert "r1" not in e._spawned_handles
+    assert "r1" in br._closed
+    # Idempotent: closing again is a no-op
+    await e.close(h)
+    assert br._closed == ["r1"]    # not appended twice

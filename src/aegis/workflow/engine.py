@@ -131,3 +131,23 @@ class WorkflowEngine:
             return msg.body
         finally:
             self._inbox.unbind_session(handle)
+
+    # ── spawn / close ────────────────────────────────────────────────
+    async def spawn(self, profile: str, *,
+                    handle: str | None = None) -> str:
+        """Spawn a long-lived agent through the bridge. Tracks handle for
+        auto-close on workflow exit. Returns the handle."""
+        h = await self._bridge.spawn(profile, handle=handle)
+        self._spawned_handles.add(h)
+        return h
+
+    async def close(self, handle: str) -> None:
+        """Close a long-lived agent. Idempotent — silent no-op if the
+        handle is unknown to this engine."""
+        if handle not in self._spawned_handles:
+            return
+        self._spawned_handles.discard(handle)
+        try:
+            await self._bridge.close(handle)
+        except Exception:  # noqa: BLE001 — close is best-effort
+            pass
