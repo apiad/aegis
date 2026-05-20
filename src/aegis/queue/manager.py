@@ -130,6 +130,11 @@ class QueueManager:
             self._attach_observers(session, dispatched)
 
     def _attach_observers(self, session, task: Task) -> None:
+        # add_event_observer / add_state_observer (not the primary on_event /
+        # on_state slots) so the substrate composes cleanly with a frontend
+        # that already claimed the primary hooks for its renderer — notably
+        # the TUI's ConversationPane._core, whose renderer cannot be
+        # clobbered.
         def on_event(_s, ev):
             if isinstance(ev, AssistantText):
                 t, _last = self._workers[session.handle]
@@ -140,8 +145,8 @@ class QueueManager:
                 return
             asyncio.create_task(self._finalize(session, st))
 
-        session.on_event = on_event
-        session.on_state = on_state
+        session.add_event_observer(on_event)
+        session.add_state_observer(on_state)
 
     async def _finalize(self, session, st) -> None:
         if session.handle not in self._workers:

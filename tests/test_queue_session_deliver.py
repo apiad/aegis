@@ -79,6 +79,35 @@ async def test_mid_turn_delivery_buffers_and_chains():
     assert "interrupt" in h.sent[1]
 
 
+async def test_extra_observers_fire_alongside_primary():
+    """Primary on_event / on_state slots stay claimed (e.g. by the TUI
+    pane's renderer); add_*_observer subscriptions fire in addition."""
+    evs = [
+        [AssistantText(text="hi"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    h = FakeHarness(evs)
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+
+    primary_events: list = []
+    extra_events: list = []
+    primary_states: list = []
+    extra_states: list = []
+    s.on_event = lambda _s, ev: primary_events.append(ev)
+    s.on_state = lambda _s, st, finished: primary_states.append((st, finished))
+    s.add_event_observer(lambda _s, ev: extra_events.append(ev))
+    s.add_state_observer(
+        lambda _s, st, finished: extra_states.append((st, finished)))
+
+    await s.send("go")
+    await s._task
+    # Both observers saw the same stream of events and the same state
+    # transitions. Ordering: primary then extras (deterministic).
+    assert len(primary_events) == 2 and len(extra_events) == 2
+    assert primary_states == extra_states
+    assert primary_states[-1] == (AgentState.ready, True)
+
+
 async def test_multiple_arrivals_batch_into_one_chain_turn():
     evs = [
         [AssistantText(text="working"),

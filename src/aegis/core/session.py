@@ -39,13 +39,30 @@ class AgentSession:
         self._inbox = inbox                       # InboxRouter | None
         self._inbox_buffer: list[InboxMessage] = []
         self._opening_prompt = opening_prompt
+        # Primary observers — the owning frontend (TUI pane, headless
+        # SessionManager wrapper) sets these for its own renderer/state
+        # tracking. Multi-observer slots below let extra subscribers
+        # (e.g. QueueManager's completion watcher) chain in without
+        # clobbering the primary.
         self.on_event: EventCb | None = None
         self.on_state: StateCb | None = None
+        self._extra_event_observers: list[EventCb] = []
+        self._extra_state_observers: list[StateCb] = []
+
+    def add_event_observer(self, cb: EventCb) -> None:
+        """Subscribe an additional event callback. Fires after on_event."""
+        self._extra_event_observers.append(cb)
+
+    def add_state_observer(self, cb: StateCb) -> None:
+        """Subscribe an additional state callback. Fires after on_state."""
+        self._extra_state_observers.append(cb)
 
     def _emit_state(self, state: AgentState, *, finished: bool) -> None:
         self.state = state
         if self.on_state is not None:
             self.on_state(self, state, finished)
+        for cb in self._extra_state_observers:
+            cb(self, state, finished)
 
     async def send(self, text: str) -> None:
         if self.state is AgentState.working:
@@ -79,6 +96,8 @@ class AgentSession:
             async for ev in self._session.events():
                 if self.on_event is not None:
                     self.on_event(self, ev)
+                for cb in self._extra_event_observers:
+                    cb(self, ev)
                 if isinstance(ev, ToolUse):
                     self.metrics.record_tool()
                 elif isinstance(ev, ToolResult) and ev.is_error:
