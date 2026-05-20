@@ -133,3 +133,57 @@ def write_init_scaffold(path: Path) -> None:
     if path.exists():
         raise ConfigError(f"{path} already exists; refusing to overwrite.")
     path.write_text(INIT_TEMPLATE)
+
+
+def load_queues(path: Path) -> "dict[str, object]":
+    """Parse the ``queues`` dict from a .aegis.py file.
+
+    Returns ``{}`` if the file declares no queues. Raises ``ConfigError``
+    on any structural or referential error, naming the offending queue
+    so the operator can fix the right place.
+    """
+    from aegis.queue import Queue
+
+    namespace: dict[str, object] = {}
+    try:
+        exec(compile(path.read_text(), str(path), "exec"),  # noqa: S102
+             namespace)
+    except Exception as e:  # noqa: BLE001 — config is intentionally Python
+        raise ConfigError(f"Failed to load {path}: {e}") from e
+
+    queues_raw = namespace.get("queues")
+    if queues_raw is None:
+        return {}
+    if not isinstance(queues_raw, dict):
+        raise ConfigError(f"{path}: `queues` must be a dict.")
+
+    agents = namespace.get("agents")
+    agent_names: set[str] = (
+        set(agents) if isinstance(agents, dict) else set())
+
+    out: dict[str, Queue] = {}
+    for name, cfg in queues_raw.items():
+        if not isinstance(cfg, dict):
+            raise ConfigError(
+                f"{path}: queues[{name!r}] must be a dict.")
+        if "agent" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key 'agent'.")
+        if "max_parallel" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key "
+                f"'max_parallel'.")
+        agent_ref = cfg["agent"]
+        cap = cfg["max_parallel"]
+        if agent_ref not in agent_names:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].agent={agent_ref!r} does not "
+                f"reference a declared agent profile "
+                f"(known: {sorted(agent_names)}).")
+        if not isinstance(cap, int) or cap < 1:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].max_parallel must be an int "
+                f">= 1 (got {cap!r}).")
+        out[name] = Queue(name=name, agent_profile=agent_ref,
+                          max_parallel=cap)
+    return out
