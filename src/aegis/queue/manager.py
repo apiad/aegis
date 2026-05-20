@@ -178,6 +178,93 @@ class QueueManager:
             pass
         self._try_dispatch(task.queue)
 
-    # VS2 lifecycle hooks (no-ops in VS1).
-    async def start(self) -> None: ...
-    async def stop(self) -> None: ...
+    # ----- VS2 lifecycle hooks --------------------------------------
+    async def start(self) -> None:
+        """Replay persisted state on boot. Tasks that were dispatched but
+        never reached completed/failed are marked ``failed:interrupted``
+        and a failure callback is delivered to the producer's inbox
+        (durable on disk even if no live session is bound). Pending-at-
+        crash tasks are re-queued at head-of-FIFO."""
+        if self._state_dir is None:
+            return
+        from aegis.queue.jsonl import read_records
+        qdir = Path(self._state_dir) / "queues"
+        if not qdir.exists():
+            return
+        for path in sorted(qdir.glob("*.jsonl")):
+            queue_name = path.stem
+            if queue_name not in self._queues:
+                # Orphaned log from a removed queue — leave the file
+                # untouched; reading other queues' logs is unaffected.
+                continue
+            # Per-task latest-aggregate view. Last event wins for status;
+            # all fields merged so the final dict has enqueued metadata
+            # plus dispatched/completed extras.
+            tasks: dict[str, dict] = {}
+            for rec in read_records(path):
+                tid = rec.get("task_id")
+                if tid is None:
+                    continue
+                tasks.setdefault(tid, {}).update(rec)
+                tasks[tid]["status"] = rec["event"]
+            for tid, r in tasks.items():
+                if r["status"] == "dispatched":
+                    await self._mark_interrupted(queue_name, tid, r)
+                elif r["status"] in ("completed", "failed"):
+                    self._all[tid] = Task(
+                        id=tid, queue=queue_name,
+                        payload=r.get("payload", ""),
+                        enqueued_by=r.get("enqueued_by", "system"),
+                        enqueued_at=r.get("enqueued_at", self._now()),
+                        callback=bool(r.get("callback", False)),
+                        status=r["status"],
+                        worker_handle=r.get("worker_handle"),
+                        result=r.get("result"),
+                        error=r.get("error"),
+                        completed_at=r.get("completed_at"))
+                elif r["status"] == "enqueued":
+                    t = Task(
+                        id=tid, queue=queue_name,
+                        payload=r.get("payload", ""),
+                        enqueued_by=r.get("enqueued_by", "system"),
+                        enqueued_at=r.get("enqueued_at", self._now()),
+                        callback=bool(r.get("callback", False)),
+                        status="pending")
+                    self._all[tid] = t
+                    self._pending[queue_name].append(t)
+        # Kick dispatch on every queue we just rehydrated.
+        for q in list(self._queues):
+            self._try_dispatch(q)
+
+    async def stop(self) -> None:
+        # Symmetry with start(); nothing to flush in v1 (writes are
+        # synchronous on each transition).
+        return
+
+    async def _mark_interrupted(self, queue: str, tid: str,
+                                last: dict) -> None:
+        completed = Task(
+            id=tid, queue=queue,
+            payload=last.get("payload", ""),
+            enqueued_by=last.get("enqueued_by", "system"),
+            enqueued_at=last.get("enqueued_at", self._now()),
+            callback=bool(last.get("callback", False)),
+            status="failed",
+            worker_handle=last.get("worker_handle"),
+            result=None,
+            error="interrupted: aegis restarted mid-flight",
+            completed_at=self._now())
+        self._all[tid] = completed
+        self._log(queue, {
+            "event": "failed", "task_id": tid,
+            "result": None, "error": completed.error,
+            "completed_at": completed.completed_at})
+        if completed.callback:
+            msg = InboxMessage(
+                sender=sender_queue(queue),
+                timestamp=self._now(),
+                body=completed.error or "",
+                task_id=tid,
+                status="error")
+            await self._inbox.deliver(
+                _handle_of(completed.enqueued_by), msg)
