@@ -111,3 +111,101 @@ async def test_bash_explicit_cwd_honored(tmp_path):
     e = _engine(tmp_path)
     proc = await e.bash("pwd", cwd=tmp_path)
     assert tmp_path.name in proc.stdout
+
+
+from aegis.queue import (
+    InboxMessage, InboxRouter, Queue, QueueManager, sender_agent,
+)
+from aegis.events import AssistantText, Result
+
+
+class _StubSM:
+    def __init__(self):
+        self._sessions = []
+        self._scripts: dict[str, list] = {}
+        self.closed: list[str] = []
+    def script(self, handle, events):
+        self._scripts[handle] = events
+    def spawn(self, slug, *, opening_prompt=None, handle=None):
+        from aegis.core.session import AgentSession
+        evs = self._scripts.get(
+            handle,
+            [AssistantText(text="DONE"),
+             Result(duration_ms=1, is_error=False, usage=None)])
+        class _H:
+            def __init__(s, e): s._e = list(e); s.sent = []; s.started = s.closed = False
+            async def start(s): s.started = True
+            async def send(s, t): s.sent.append(t)
+            async def close(s): s.closed = True
+            async def events(s):
+                import asyncio
+                for e in s._e:
+                    await asyncio.sleep(0)
+                    yield e
+        sess = AgentSession(_H(evs), None, slug, handle)
+        self._sessions.append(sess)
+        if opening_prompt is not None:
+            import asyncio
+            asyncio.create_task(sess.send(opening_prompt))
+        return sess
+    async def close(self, handle):
+        self.closed.append(handle)
+        self._sessions = [s for s in self._sessions if s.handle != handle]
+
+
+def _engine_with_queue(tmp_path, *, sm=None, inbox=None, qm=None,
+                       worker_handle="w1"):
+    sm = sm or _StubSM()
+    inbox = inbox or InboxRouter()
+    qm = qm or QueueManager(
+        {"impl": Queue(name="impl", agent_profile="default",
+                       max_parallel=1)},
+        sm, inbox, handle_factory=lambda used: worker_handle)
+    return (WorkflowEngine(
+        workflow_name="t", workflow_run_id="01TID",
+        bridge=_StubBridge(), queue_manager=qm, inbox_router=inbox,
+        state_dir=tmp_path), sm, qm, inbox)
+
+
+async def test_delegate_returns_worker_result_text(tmp_path):
+    e, sm, _qm, _inbox = _engine_with_queue(tmp_path)
+    sm.script("w1", [AssistantText(text="hello from worker"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    out = await e.delegate("impl", "do the thing")
+    assert out == "hello from worker"
+
+
+async def test_delegate_worker_failure_raises_workflow_error(tmp_path):
+    e, sm, _qm, _inbox = _engine_with_queue(tmp_path)
+    sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
+    with pytest.raises(WorkflowError, match="task .* failed"):
+        await e.delegate("impl", "fail me")
+
+
+async def test_delegate_unknown_queue_raises_workflow_error(tmp_path):
+    e, _sm, _qm, _inbox = _engine_with_queue(tmp_path)
+    with pytest.raises(WorkflowError, match="unknown queue"):
+        await e.delegate("ghost", "x")
+
+
+async def test_concurrent_delegates_use_unique_inbox_handles(tmp_path):
+    # Two workers in parallel; each callback resolves the correct promise.
+    sm = _StubSM()
+    inbox = InboxRouter()
+    qm = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="default",
+                       max_parallel=2)},
+        sm, inbox,
+        handle_factory=lambda used: f"w{len(used) + 1}")
+    sm.script("w1", [AssistantText(text="ONE"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    sm.script("w2", [AssistantText(text="TWO"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    e = WorkflowEngine(
+        workflow_name="t", workflow_run_id="01TID",
+        bridge=_StubBridge(), queue_manager=qm, inbox_router=inbox,
+        state_dir=tmp_path)
+    a, b = await asyncio.gather(
+        e.delegate("impl", "a"),
+        e.delegate("impl", "b"))
+    assert {a, b} == {"ONE", "TWO"}

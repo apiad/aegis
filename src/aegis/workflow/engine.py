@@ -10,8 +10,25 @@ from pathlib import Path
 
 from aegis.config import find_project_root
 from aegis.mcp.bridge import SessionInfo
-from aegis.queue.schema import now_iso
+from aegis.queue.schema import InboxMessage, new_ulid as _new_ulid, now_iso
 from aegis.workflow.decorator import WorkflowError
+
+
+class _DelegationPromise:
+    """Inbox-binding shape used by delegate(): receives one InboxMessage
+    and resolves a Future. Lives only for the duration of one delegate
+    call."""
+
+    def __init__(self) -> None:
+        self._future: asyncio.Future[InboxMessage] = (
+            asyncio.get_event_loop().create_future())
+
+    async def deliver(self, msg: InboxMessage) -> None:
+        if not self._future.done():
+            self._future.set_result(msg)
+
+    def __await__(self):
+        return self._future.__await__()
 
 
 class WorkflowEngine:
@@ -90,3 +107,27 @@ class WorkflowEngine:
             args=cmd, returncode=proc.returncode,
             stdout=stdout.decode("utf-8", errors="replace"),
             stderr=stderr.decode("utf-8", errors="replace"))
+
+    # ── delegate ─────────────────────────────────────────────────────
+    async def delegate(self, queue: str, payload: str) -> str:
+        """Enqueue a one-shot task on the named queue; await the worker's
+        callback; return its final assistant text. Raises WorkflowError
+        on unknown queue, worker failure, or substrate error."""
+        handle = f"workflow:{self.workflow_name}:{_new_ulid()}"
+        promise = _DelegationPromise()
+        self._inbox.bind_session(handle, promise)
+        try:
+            try:
+                task_id, _pos = self._queue.enqueue(
+                    queue, payload,
+                    enqueued_by=handle, callback=True)
+            except KeyError as e:
+                raise WorkflowError(
+                    f"unknown queue: {e.args[0]!r}") from e
+            msg = await promise
+            if msg.status == "error":
+                raise WorkflowError(
+                    f"task {task_id} failed: {msg.body}")
+            return msg.body
+        finally:
+            self._inbox.unbind_session(handle)
