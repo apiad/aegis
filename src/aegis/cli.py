@@ -80,9 +80,19 @@ def run(
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
                  stop: asyncio.Event) -> None:
-    mgr = SessionManager(agents, default_agent, make_session, mcp)
+    from aegis.queue import InboxRouter, QueueManager
+
+    inbox = InboxRouter()
+    mgr = SessionManager(agents, default_agent, make_session, mcp,
+                         inbox=inbox)
+    # VS3 swaps the empty queues dict for the loaded .aegis.py queues; for
+    # VS1 the manager is wired but holds no queues — aegis_enqueue against
+    # an unknown queue returns the documented "enqueue rejected" error.
+    qm = QueueManager({}, mgr, inbox)
+    mgr.attach_queue_manager(qm)
     mcp.bind(mgr)
     await mcp.start()
+    await qm.start()
     tasks = []
     if tg is not None:
         from aegis.telegram.bot import BotClient
@@ -96,6 +106,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     finally:
         for t in tasks:
             t.cancel()
+        await qm.stop()
         await mgr.close_all()
         await mcp.stop()
 

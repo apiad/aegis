@@ -49,6 +49,13 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        # AppBridge surface attrs. AegisApp is the bridge in the
+        # interactive (TUI) path. V1: queue plane is present-but-empty —
+        # aegis_enqueue against an unknown queue returns the documented
+        # error. Full per-pane inbox binding lands in VS4.
+        from aegis.queue import InboxRouter
+        self.inbox_router = InboxRouter()
+        self.queue_manager = None
         self._mcp.bind(self)
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)

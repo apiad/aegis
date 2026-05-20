@@ -22,8 +22,16 @@ class SessionManager:
         self._make_session = make_session
         self._mcp = mcp
         self._inbox = inbox
+        # AppBridge surface attrs. inbox_router is bound at construction;
+        # queue_manager is attached after construction so cli._serve can
+        # pass `self` to the QueueManager (avoids the chicken/egg).
+        self.inbox_router = inbox
+        self.queue_manager = None
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
+
+    def attach_queue_manager(self, qm) -> None:
+        self.queue_manager = qm
 
     def spawn(self, slug: str | None = None, *,
               opening_prompt: str | None = None,

@@ -36,3 +36,18 @@ async def test_serve_headless_binds_and_stops():
                  tg=None, stop=stop)
     assert mcp.started and mcp.stopped
     assert isinstance(mcp.bound, AppBridge)
+
+
+@pytest.mark.asyncio
+async def test_serve_wires_inbox_and_queue_manager():
+    from aegis.queue import InboxRouter, QueueManager
+
+    mcp = FakeMCP()
+    stop = asyncio.Event()
+    asyncio.get_event_loop().call_soon(stop.set)
+    await _serve(agents={"default": 1}, default_agent="default",
+                 make_session=lambda p, u, h: None, mcp=mcp,
+                 tg=None, stop=stop)
+    bridge = mcp.bound
+    assert isinstance(bridge.inbox_router, InboxRouter)
+    assert isinstance(bridge.queue_manager, QueueManager)
