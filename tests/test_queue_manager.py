@@ -182,3 +182,35 @@ async def test_status_unknown_returns_none():
     sm = StubSessionManager(); inbox = InboxRouter()
     qm = QueueManager({"impl": _q()}, sm, inbox)
     assert qm.status("does-not-exist") is None
+
+
+async def test_queue_manager_persists_lifecycle(tmp_path):
+    from aegis.queue.jsonl import read_records
+
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      state_dir=tmp_path,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="r"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.05)
+    log = read_records(tmp_path / "queues" / "impl.jsonl")
+    events = [r["event"] for r in log]
+    assert events == ["enqueued", "dispatched", "completed"]
+    assert log[0]["task_id"] == tid
+    assert log[2]["result"] == "r"
+
+
+async def test_state_dir_none_writes_nothing(tmp_path):
+    # Sanity: VS1 in-memory mode unchanged when state_dir is omitted.
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="r"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    qm.enqueue("impl", "go",
+               enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.05)
+    assert not (tmp_path / "queues").exists()

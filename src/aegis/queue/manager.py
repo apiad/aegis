@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from aegis.events import AssistantText
+from aegis.queue.jsonl import append_record
 from aegis.queue.schema import (
     InboxMessage,
     Queue,
@@ -56,6 +57,16 @@ class QueueManager:
     def list_queues(self) -> list[str]:
         return sorted(self._queues)
 
+    def _log(self, queue: str, event: dict) -> None:
+        """Persist one lifecycle event to the queue's JSONL log.
+
+        No-op when state_dir is not configured (VS1 in-memory mode).
+        """
+        if self._state_dir is None:
+            return
+        path = Path(self._state_dir) / "queues" / f"{queue}.jsonl"
+        append_record(path, event)
+
     def enqueue(self, queue: str, payload: str, *,
                 enqueued_by: str, callback: bool) -> tuple[str, int]:
         if queue not in self._queues:
@@ -67,6 +78,10 @@ class QueueManager:
         self._pending[queue].append(task)
         self._all[task.id] = task
         position = len(self._pending[queue])
+        self._log(queue, {
+            "event": "enqueued", "task_id": task.id, "queue": queue,
+            "payload": payload, "enqueued_by": enqueued_by,
+            "enqueued_at": task.enqueued_at, "callback": callback})
         self._try_dispatch(queue)
         return task.id, position
 
@@ -106,6 +121,9 @@ class QueueManager:
             self._all[task.id] = dispatched
             self._inflight[queue].append(dispatched)
             self._workers[worker_handle] = (dispatched, "")
+            self._log(queue, {
+                "event": "dispatched", "task_id": task.id,
+                "worker_handle": worker_handle})
             session = self._sm.spawn(q.agent_profile,
                                      opening_prompt=task.payload,
                                      handle=worker_handle)
@@ -141,6 +159,10 @@ class QueueManager:
         self._all[task.id] = completed
         self._inflight[task.queue] = [
             t for t in self._inflight[task.queue] if t.id != task.id]
+        self._log(task.queue, {
+            "event": status, "task_id": task.id,
+            "result": result, "error": error,
+            "completed_at": completed.completed_at})
         if task.callback:
             body = result if ok else (error or "")
             msg = InboxMessage(
