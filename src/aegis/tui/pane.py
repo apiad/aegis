@@ -135,7 +135,10 @@ class ConversationPane(Widget):
         self.query_one(StatusBar).set_state(state)
         if finished and state is AgentState.error \
                 and not self._transcript_has("⚠ harness"):
-            self._write(Text("⚠ harness error", style=self._palette.err))
+            err = getattr(self._core, "last_error", None)
+            label = (f"⚠ harness error: {type(err).__name__}: {err}"
+                     if err is not None else "⚠ harness error")
+            self._write(Text(label, style=self._palette.err))
         self.post_message(PaneStateChanged(self, finished))
         if finished:
             inp = self.query_one(Input)

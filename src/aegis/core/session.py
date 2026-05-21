@@ -48,6 +48,9 @@ class AgentSession:
         self.on_state: StateCb | None = None
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
+        # Captured by _run_turn's except clause for postmortem inspection.
+        # None until a harness error occurs; replaced on each new error.
+        self.last_error: Exception | None = None
 
     def add_event_observer(self, cb: EventCb) -> None:
         """Subscribe an additional event callback. Fires after on_event."""
@@ -114,7 +117,16 @@ class AgentSession:
                         self.metrics.observe(u)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - harness failure surfaces as error
+        except Exception as e:  # noqa: BLE001 — harness failure → error
+            # Capture the exception so observers / tests can introspect
+            # what actually broke. Also log to stderr with traceback;
+            # the renderer's "⚠ harness error" line is just a marker.
+            import sys
+            import traceback
+            self.last_error = e
+            print(f"[aegis] {self.handle} harness error: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            traceback.print_exception(e, file=sys.stderr)
             if not saw_result:
                 self.metrics.commit(None, self._now())
                 self._emit_state(AgentState.error, finished=True)
