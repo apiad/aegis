@@ -199,10 +199,11 @@ class _DashboardHarness(App):
         ("ctrl+d", "open_dashboard", "Queues"),
     ]
 
-    def __init__(self, digest):
+    def __init__(self, digest, sm=None):
         super().__init__()
         self.queue_digest = digest
         self._pal = aegis_colors(INK)
+        self.session_manager = sm
 
     @property
     def palette(self):
@@ -217,12 +218,12 @@ class _DashboardHarness(App):
 
 @pytest.fixture
 def make_dashboard_app():
-    def _factory(queues=None):
+    def _factory(queues=None, sm=None):
         q = queues or {"tasks": _AegisQueue("tasks", "claude", 2)}
         fake = _FakeQueueManager(q)
         digest = QueueDigest(fake)
         digest.start()
-        app = _DashboardHarness(digest)
+        app = _DashboardHarness(digest, sm=sm)
         return app, fake
 
     return _factory

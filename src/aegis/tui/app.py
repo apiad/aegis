@@ -74,6 +74,10 @@ class AegisApp(App):
     def palette(self) -> AegisColors:
         return self._palette
 
+    @property
+    def session_manager(self):
+        return _SessionFocusAdapter(self)
+
     async def on_mount(self) -> None:
         for theme in THEMES.values():
             self.register_theme(theme)
@@ -272,6 +276,30 @@ class AegisApp(App):
         if pane is not None:
             await self._close_pane(pane)
             self._refresh_tabbar()
+
+
+class _SessionFocusAdapter:
+    """Tab-focus facade over AegisApp for QueueDashboard's `>` action.
+
+    Separate from `_SessionManagerAdapter` (which is QueueManager's spawn
+    surface). This one only resolves handles to panes and switches the
+    ContentSwitcher to the matching tab.
+    """
+
+    def __init__(self, app: "AegisApp") -> None:
+        self._app = app
+
+    def get(self, handle: str):
+        for p in self._app._panes:
+            if p.handle == handle:
+                return p
+        return None
+
+    def focus(self, handle: str) -> None:
+        for p in self._app._panes:
+            if p.handle == handle:
+                self._app.query_one(ContentSwitcher).current = p.id
+                return
 
 
 class _SessionManagerAdapter:

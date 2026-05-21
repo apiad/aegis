@@ -207,6 +207,7 @@ class QueueDashboard(ModalScreen):
         Binding("up",    "cursor_prev",    "Up",      priority=True),
         Binding("down",  "cursor_next",    "Down",    priority=True),
         Binding("enter", "refresh_detail", "Refresh", priority=True),
+        Binding("greater_than_sign", "jump_to_tab", "Jump", priority=True),
     ]
 
     def __init__(self) -> None:
@@ -286,6 +287,18 @@ class QueueDashboard(ModalScreen):
 
     def action_refresh_detail(self) -> None:
         self._refresh_bands()
+
+    def action_jump_to_tab(self) -> None:
+        snap = self.app.queue_digest.snapshot()
+        sel = self.selected_task_id
+        match = next((t for t in snap.tasks if t.task_id == sel), None)
+        if match is None or match.worker_handle is None:
+            return
+        sm = getattr(self.app, "session_manager", None)
+        if sm is None or sm.get(match.worker_handle) is None:
+            return
+        sm.focus(match.worker_handle)
+        self.dismiss()
 
     def action_dismiss(self) -> None:
         self.dismiss()

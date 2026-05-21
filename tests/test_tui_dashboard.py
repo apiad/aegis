@@ -193,3 +193,29 @@ async def test_detail_panel_shows_selected_task_fields(make_dashboard_app):
         assert "summarize TASKS.md" in rendered
         assert "agent:lucid" in rendered
         assert "running" in rendered
+
+
+async def test_jump_to_tab_focuses_worker_pane(make_dashboard_app):
+    focused = []
+
+    class _SM:
+        def get(self, handle):
+            return object() if handle == "brisk-curie" else None
+        def focus(self, handle):
+            focused.append(handle)
+
+    app, manager = make_dashboard_app(sm=_SM())
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        manager.emit(QueueEnqueued(
+            task_id="t1", queue="tasks", payload="p",
+            enqueued_by="agent:c"))
+        manager.emit(QueueDispatched(
+            task_id="t1", queue="tasks",
+            worker_handle="brisk-curie", agent_slug="claude"))
+        manager.emit(QueueStarted(task_id="t1", queue="tasks"))
+        await pilot.pause()
+        await pilot.press("greater_than_sign")
+        await pilot.pause()
+        assert focused == ["brisk-curie"]
+        assert not isinstance(app.screen, QueueDashboard)
