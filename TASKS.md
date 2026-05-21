@@ -3,6 +3,39 @@
 Working roadmap for what's next. Curated public roadmap lives in
 `docs/roadmap.md`; this file is the scratch/priority list.
 
+## Shipped 2026-05-21
+
+### Queue dashboard v1 — **done**
+
+Observability surface for the queue substrate. Two pieces:
+
+- **Always-on strip.** One-line summary above every conversation's
+  status bar showing per-queue depth + most recent in-flight worker.
+  Adaptive format: 1 queue → full breakdown, 2–3 queues → compact
+  per-queue, 4+ queues → aggregate. Hidden when no queues configured.
+- **`Ctrl+D` modal dashboard.** Four bands — `QUEUES` (config + live
+  counts), `IN-FLIGHT`, `QUEUED`, `RECENT` (last 10 completed in
+  reverse time order) — left ⅔ of screen; `DetailPanel` on the right
+  ⅓ showing the selected task's identity, payload, lifecycle, and a
+  live tail of assistant text (ring buffer of 8 lines for running
+  workers, captured final text for completed). `↑↓` cursor, `Enter`
+  refresh, `>` jump to the worker's tab when one exists, `Esc`
+  close.
+
+New `QueueEvent` taxonomy + `QueueManager.subscribe(callback)` hook
+(committed-state push, observer exceptions swallowed). One
+`QueueDigest` service per app, subscribed once at boot; the strip and
+the dashboard both read from its `snapshot()`. Worker assistant-text
+events are routed through the digest's per-handle tail buffer. Live
+smoke test added (`tests/test_queue_dashboard_live.py`).
+
+Spec: `docs/superpowers/specs/2026-05-21-aegis-queue-dashboard-design.html`.
+Plan: `docs/superpowers/plans/2026-05-21-aegis-queue-dashboard-v1.md`.
+
+Hermetic: 309 passed (was 261; +47 from new tests + the priority-binding
+regression test). Implemented end-to-end on the VPS via the job
+substrate.
+
 ## Shipped 2026-05-20
 
 ### Task queue v1 — **done**

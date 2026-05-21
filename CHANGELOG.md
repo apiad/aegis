@@ -5,6 +5,24 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+- **Queue dashboard.** Always-on one-line strip above every
+  conversation's status bar (per-queue depth + most recent worker;
+  adaptive format for 1 / 2–3 / 4+ queues) plus a `Ctrl+D` modal
+  dashboard with `QUEUES / IN-FLIGHT / QUEUED / RECENT` bands and an
+  inline `DetailPanel` showing payload, lifecycle, and a live
+  assistant-text tail. `↑↓` move, `>` jumps to the worker's tab,
+  `Esc` closes. Backed by a new `QueueDigest` aggregator subscribed
+  to a push-based `QueueManager.subscribe()` hook (committed-state
+  observability; observer exceptions never poison the substrate).
+
+### Fixed
+- App-level `escape` priority binding no longer swallows modal-dismiss
+  presses — `action_interrupt` dismisses a pushed `ModalScreen`
+  before falling through to pane interrupt. Previously, pressing
+  `Esc` to close the agent picker or queue dashboard was a silent
+  no-op.
+
 ## [0.3.0] - 2026-05-21
 
 First public PyPI release as `aegis-harness`. Distribution name is
