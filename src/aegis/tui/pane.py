@@ -20,6 +20,7 @@ from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, AssistantThinking, ToolUse
 from aegis.render import render_event, render_user_line
 from aegis.tui.state import AgentState
+from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import StatusBar
 
 
@@ -211,12 +212,14 @@ class ConversationPane(Widget):
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,
-                 agent_slug: str, handle: str, palette) -> None:
+                 agent_slug: str, handle: str, palette,
+                 *, digest=None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
         self._palette = palette
+        self._digest = digest
         self.unseen = False
         self._core = AgentSession(session, agent, agent_slug, handle)
         self._core.on_event = self._on_core_event
@@ -238,10 +241,14 @@ class ConversationPane(Widget):
 
     def set_palette(self, palette) -> None:
         self._palette = palette
+        for w in self.query(QueueStrip):
+            w.set_palette(palette)
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield VerticalScroll(id="transcript")
+            if self._digest is not None:
+                yield QueueStrip(self._digest, self._palette)
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)

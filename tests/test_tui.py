@@ -815,3 +815,9 @@ async def test_aegisapp_close_removes_pane():
         await app.close(h)
         await pilot.pause()
         assert not any(p.handle == "vivid-laplace" for p in app._panes)
+
+
+def test_pane_signature_accepts_digest():
+    from aegis.tui.pane import ConversationPane
+    sig = ConversationPane.__init__.__code__.co_varnames
+    assert "digest" in sig
