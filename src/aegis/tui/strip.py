@@ -69,8 +69,8 @@ class QueueStrip(Static):
     queues; one row otherwise.
     """
     DEFAULT_CSS = """
-    QueueStrip { height: 1; padding: 0 2; background: $panel;
-                 color: $foreground; }
+    QueueStrip { height: 1; padding: 0 2; margin-bottom: 1;
+                 background: $panel; color: $foreground; }
     QueueStrip.-empty { display: none; }
     """
 
