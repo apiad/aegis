@@ -57,9 +57,9 @@ class WorkingIndicator(Static):
     one row when active. Cycles spinner glyph + verb + elapsed timer."""
 
     DEFAULT_CSS = """
-    WorkingIndicator { height: 0; padding: 0 4; background: transparent;
+    WorkingIndicator { height: 1; padding: 0 1; margin-bottom: 1;
+                       background: transparent;
                        color: $foreground 50%; text-style: italic; }
-    WorkingIndicator.-active { height: 1; }
     """
 
     def __init__(self, palette) -> None:
@@ -240,7 +240,6 @@ class ConversationPane(Widget):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield VerticalScroll(id="transcript")
-            yield WorkingIndicator(self._palette)
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)
@@ -257,13 +256,46 @@ class ConversationPane(Widget):
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
 
+    def _working_indicator(self) -> WorkingIndicator | None:
+        matches = self.query(WorkingIndicator)
+        return matches.first() if len(matches) else None
+
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str) -> CopyableBlock:
         block = CopyableBlock(renderable, text_payload)
         t = self._transcript()
-        t.mount(block)
+        ind = self._working_indicator()
+        if ind is not None and ind.parent is t:
+            # Keep the indicator pinned to the END of the transcript by
+            # inserting new blocks BEFORE it. As the agent streams and
+            # mounts new ToolUse / ToolResult / etc. blocks, the
+            # indicator stays right under the latest content.
+            t.mount(block, before=ind)
+        else:
+            t.mount(block)
         t.scroll_end(animate=False)
         return block
+
+    def _start_indicator(self) -> None:
+        """Create + mount a WorkingIndicator at the bottom of the
+        transcript, then start its animation. No-op if one is already
+        mounted."""
+        if self._working_indicator() is not None:
+            return
+        ind = WorkingIndicator(self._palette)
+        self._transcript().mount(ind)
+        ind.start()
+        self._transcript().scroll_end(animate=False)
+
+    def _stop_indicator(self) -> None:
+        """Stop + remove the WorkingIndicator if mounted."""
+        ind = self._working_indicator()
+        if ind is None:
+            return
+        with contextlib.suppress(Exception):
+            ind.stop()
+        with contextlib.suppress(Exception):
+            ind.remove()
 
     def _transcript_blocks(self) -> list[CopyableBlock]:
         return list(self.query(CopyableBlock))
@@ -292,8 +324,7 @@ class ConversationPane(Widget):
         width = self._transcript().size.width or 80
         self._mount_block(
             render_user_line(text, self._palette, width), text)
-        with contextlib.suppress(Exception):
-            self.query_one(WorkingIndicator).start()
+        self._start_indicator()
         self.run_worker(self._core.send(text),
                         group="turn", exclusive=True)
 
@@ -358,8 +389,7 @@ class ConversationPane(Widget):
                 Text(label, style=self._palette.err), label)
         self.post_message(PaneStateChanged(self, finished))
         if finished:
-            with contextlib.suppress(Exception):
-                self.query_one(WorkingIndicator).stop()
+            self._stop_indicator()
             inp = self.query_one(Input)
             inp.disabled = False
             inp.focus()
