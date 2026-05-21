@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Queue Dashboard (v1) — Design" status=draft date=2026-05-21 source="docs/superpowers/specs/2026-05-20-aegis-task-queue-design.html · docs/superpowers/specs/2026-05-18-aegis-v0.1-release-design.html · vault/Atlas/Architecture/2026-05-17-aegis-vision.md" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis Queue Dashboard (v1) — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300)}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+  .tui{background:var(--slate);color:#d4cdb8;font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:14px 16px;border-radius:8px;
+    white-space:pre;overflow-x:auto;margin:6px 0 14px}
+  .tui .accent{color:#e0a050} .tui .dim{color:#7d7460}
+  .tui .ok{color:#82a878}    .tui .work{color:#d5b455}
+  .tui .err{color:#c4685a}   .tui .rev{background:#2a2925;color:#efe7d0}
+  .tui .cur{background:#3a3a35;color:#efe7d0}
+  .tui .ink{color:#efe7d0}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec</div>
+    <h1>Aegis Queue Dashboard (v1) — Design</h1>
+    <div class="meta">
+      <span class="badge badge-warn">draft</span>
+      <span>2026-05-21</span>
+      <span>Builds on: task-queue v1 <code>2026-05-20-aegis-task-queue-design.html</code> · v0.1 TUI <code>2026-05-18-aegis-v0.1-release-design.html</code> · vision <code>vault/Atlas/Architecture/2026-05-17-aegis-vision.md</code></span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#summary">Summary</a>
+    <a href="#goals">Goals</a>
+    <a href="#non-goals">Non-goals</a>
+    <a href="#surfaces">Surfaces</a>
+    <a href="#layout">Layout</a>
+    <a href="#data">Data model</a>
+    <a href="#events">Event flow</a>
+    <a href="#components">Components</a>
+    <a href="#keys">Keybindings</a>
+    <a href="#edges">Edge cases</a>
+    <a href="#testing">Testing</a>
+    <a href="#future">Future</a>
+  </nav>
+
+  <section id="summary">
+    <h2>Summary</h2>
+    <p>The queue substrate (task-queue v1) is now load-bearing — workers run, callbacks come back, the workflow scaffold composes on top. But the only window into queue activity today is reading JSONL state files by hand. This spec introduces a TUI <b>queue dashboard</b>: an always-on compact strip plus an expandable full-screen dashboard that surfaces queues, in-flight workers, queued tasks, and recent history.</p>
+    <p>The dashboard is observability-first with a forward seam for a small set of operator verbs (cancel, requeue) later. <code>.aegis.py</code> is treated as a read-only source for queue configuration; editing config from the TUI is out of scope.</p>
+  </section>
+
+  <section id="goals">
+    <h2>Goals</h2>
+    <ul>
+      <li><b>Glanceable.</b> Without any keystroke, the user sees a compact one-line strip in every conversation showing queue depth and the most recent in-flight worker.</li>
+      <li><b>One-keystroke expand.</b> <code>Ctrl+D</code> from any conversation opens a full-screen dashboard. <code>Esc</code> collapses it back. Zero tab cost.</li>
+      <li><b>Show what is configured.</b> Each queue's <code>agent</code> profile and <code>max_parallel</code> are visible inline with live counts — the user sees the configuration of each queue without leaving the TUI.</li>
+      <li><b>Live, not polled.</b> Strip and dashboard update on every queue / inbox event, not on a timer. No tick lag.</li>
+      <li><b>Drill into any task.</b> Arrow-select a row, see its payload, lifecycle timestamps, and result tail (live for running, captured for completed) in an inline right-side detail panel.</li>
+      <li><b>Jump to live work.</b> When the selected task has a live worker tab in the TUI, one key (<code>&gt;</code>) jumps to it.</li>
+    </ul>
+  </section>
+
+  <section id="non-goals">
+    <h2>Non-goals</h2>
+    <ul>
+      <li><b>No config editing.</b> <code>.aegis.py</code> is Python; editing it from inside the TUI is a separate problem. The dashboard reads <code>queues</code> for display only.</li>
+      <li><b>No operator verbs in v1.</b> Cancel / requeue / pause-queue are deferred. The data model and selection model are designed to admit them without re-architecting (see Future).</li>
+      <li><b>No inbox visualization.</b> Inboxes are a separate plane; surfacing them is its own surface decision. Out of scope here.</li>
+      <li><b>No workflow visualization.</b> Workflow runs compose on the queue, so their constituent tasks already appear; the higher-level workflow structure is not surfaced in v1.</li>
+      <li><b>No web/Telegram surface.</b> TUI only. Telegram already has <code>/sessions</code>; a parallel queue surface there is its own design.</li>
+    </ul>
+  </section>
+
+  <section id="surfaces">
+    <h2>Surfaces</h2>
+    <p>Two surfaces, one data source.</p>
+
+    <h3>1. The strip — always-on, 1 line</h3>
+    <p>Lives below the conversation content and above the status bar. Visible in every conversation tab. Renders queue depth and the most recent in-flight worker. Adaptive format by queue count:</p>
+    <table>
+      <thead><tr><th>Queue count</th><th>Format</th></tr></thead>
+      <tbody>
+        <tr><td>1 queue</td><td><code>queues: tasks ●1/2 ○3 ✓14 ✗2    last: brisk-curie 12s</code></td></tr>
+        <tr><td>2–3 queues</td><td><code>queues: tasks ●1/2 ○3 · impl ●0/1 ○0    last: brisk-curie 12s</code></td></tr>
+        <tr><td>4+ queues</td><td><code>5 queues · ●3/8 ○12 · ✓42 ✗3    last: brisk-curie 12s</code></td></tr>
+        <tr><td>no queues configured</td><td>strip hidden entirely</td></tr>
+      </tbody>
+    </table>
+    <p>The strip is one Textual row. On terminals narrower than 80 columns, it auto-truncates the "last:" half before the "queues:" half.</p>
+
+    <h3>2. The dashboard — Ctrl+D expand, full-screen modal</h3>
+    <p>A Textual <code>ModalScreen</code> overlaid on the current TUI. Four bands stacked vertically on the left ~⅔ of the screen, a detail panel on the right ~⅓.</p>
+    <p>Bands (top to bottom): <b>QUEUES</b> (config + live counts), <b>IN-FLIGHT</b> (running workers), <b>QUEUED</b> (tasks waiting for a slot), <b>RECENT</b> (last N completed in reverse time order). The cursor lives in IN-FLIGHT by default; <code>↑↓</code> moves through every row of all three task bands (queues themselves are not selectable in v1).</p>
+  </section>
+
+  <section id="layout">
+    <h2>Layout</h2>
+    <p>The collapsed strip and the expanded dashboard, rendered against the Ink theme.</p>
+
+    <h3>Collapsed strip</h3>
+    <div class="tui"><span class="rev"> ● 1 lucid-knuth <span class="accent">·claude·</span> </span>   ● 2 brisk-curie <span class="accent">·gemini-flash·</span>*
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="dim">…conversation content…</span>
+
+
+
+
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="dim">queues:</span> <span class="ink">tasks</span> <span class="work">●1</span><span class="dim">/2</span> <span class="dim">○3</span>  <span class="ok">✓14</span> <span class="err">✗2</span>    <span class="dim">last:</span> <span class="work">brisk-curie</span> <span class="dim">12s</span>           <span class="dim">Ctrl+D expand</span>
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="ink">lucid-knuth</span> <span class="accent">·claude·</span> opus · auto    <span class="dim">ready</span>    <span class="dim">↑ tokens 4.2k · 0.18$</span></div>
+
+    <h3>Expanded dashboard with detail open</h3>
+    <div class="tui"><span class="rev"> ● 1 lucid-knuth <span class="accent">·claude·</span> </span>   ● 2 brisk-curie <span class="accent">·gemini-flash·</span>*  <span class="accent">⚙ queues</span>
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="accent">QUEUES</span>                                          <span class="accent">│ DETAIL</span>
+                                                <span class="dim">│</span>
+  <span class="ink">tasks</span>                                         <span class="dim">│</span> <span class="dim">task</span>    01HK…f3
+    agent <span class="accent">gemini-flash</span> · parallel <span class="ink">2</span>            <span class="dim">│</span> <span class="dim">queue</span>   tasks
+    running <span class="work">1</span> · queued <span class="work">3</span> · <span class="ok">✓14</span> <span class="err">✗2</span>           <span class="dim">│</span> <span class="dim">worker</span>  <span class="ink">brisk-curie</span>
+                                                <span class="dim">│</span> <span class="dim">agent</span>   gemini-flash
+<span class="accent">IN-FLIGHT</span>                                       <span class="dim">│</span> <span class="dim">from</span>    <span class="ink">lucid-knuth</span>
+                                                <span class="dim">│</span> <span class="dim">state</span>   <span class="work">running</span> · 12s
+<span class="cur"> ▶ <span class="work">●</span> brisk-curie    tasks  12s  "summari… </span><span class="dim">│</span>
+                                                <span class="dim">│</span> <span class="dim">payload</span>
+<span class="accent">QUEUED</span>                                          <span class="dim">│</span>   summarize repo TASKS.md
+                                                <span class="dim">│</span>   into 3 priority buckets
+   <span class="dim">○</span> —              tasks  —   "draft TDD st…   <span class="dim">│</span>
+   <span class="dim">○</span> —              tasks  —   "run smoke te…   <span class="dim">│</span> <span class="dim">tail (live)</span>
+   <span class="dim">○</span> —              tasks  —   "lint pass ov…   <span class="dim">│</span>   <span class="dim">Reading TASKS.md…</span>
+                                                <span class="dim">│</span>   <span class="dim">Found 4 top-level sections.</span>
+<span class="accent">RECENT</span>                                          <span class="dim">│</span>   <span class="dim">Compiling priorities…</span>
+                                                <span class="dim">│</span>
+   <span class="ok">✓</span> terse-noether  tasks  2m   "tdd loop"      <span class="dim">│</span> <span class="dim">lifecycle</span>
+   <span class="err">✗</span> vivid-curie    tasks  8m   "draft spec"    <span class="dim">│</span>   enqueued    12:21:08
+   <span class="ok">✓</span> lucid-bohr     tasks  14m  "rename mod…    <span class="dim">│</span>   dispatched  12:21:09
+                                                <span class="dim">│</span>   started     12:21:09
+                                                <span class="dim">│</span>   completed   <span class="dim">—</span>
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="dim">↑↓ select  enter focus  &gt; jump to tab  esc collapse                        </span>
+<span class="dim">────────────────────────────────────────────────────────────────────────────</span>
+<span class="ink">lucid-knuth</span> <span class="accent">·claude·</span> opus · auto    <span class="dim">ready</span>    <span class="dim">↑ tokens 4.2k · 0.18$</span></div>
+  </section>
+
+  <section id="data">
+    <h2>Data model</h2>
+    <p>The dashboard's view model is a snapshot built from the live state of <code>QueueManager</code> and the per-worker <code>AgentSession</code> registry (already present in <code>SessionManager</code>).</p>
+
+    <h3>QueueView</h3>
+    <pre><code>@dataclass
+class QueueView:
+    name: str            # e.g. "tasks"
+    agent: str           # configured agent profile slug
+    max_parallel: int
+    running: int         # count
+    queued: int          # count
+    ok: int              # session total
+    err: int             # session total</code></pre>
+
+    <h3>TaskView</h3>
+    <p>One <code>TaskView</code> per visible row in IN-FLIGHT / QUEUED / RECENT. Built from <code>queue.Task</code> records joined with <code>AgentSession</code> when running.</p>
+    <pre><code>@dataclass
+class TaskView:
+    task_id: str          # ULID
+    queue: str
+    state: Literal["queued","running","ok","err","interrupted"]
+    payload_summary: str  # first non-empty line of payload, truncated
+    worker_handle: str | None   # None if queued
+    agent_slug: str | None      # None if queued
+    from_sender: str            # producer handle or "telegram"/"substrate"
+    enqueued_at: datetime
+    dispatched_at: datetime | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration: timedelta | None  # live for running, frozen for completed
+    result_tail: list[str]      # last N lines of assistant text (running)
+                                # OR captured final text (completed)</code></pre>
+
+    <h3>Strip view</h3>
+    <p>A flat aggregate of all <code>QueueView</code>s plus the most-recently-started running <code>TaskView</code> (the "last:" cell). The strip never holds the full task list.</p>
+  </section>
+
+  <section id="events">
+    <h2>Event flow</h2>
+    <p>Push-based; no polling. The dashboard subscribes to a single event source, the strip subscribes to a derived aggregate.</p>
+
+    <h3>Substrate event hook</h3>
+    <p>Currently <code>QueueManager</code> emits a JSONL lifecycle log under <code>.aegis/state/queues/&lt;queue&gt;.jsonl</code>. We add a lightweight in-process observer hook alongside the file write:</p>
+    <pre><code># QueueManager
+def subscribe(self, callback: Callable[[QueueEvent], None]) -> Unsubscribe: ...
+
+# QueueEvent (one of)
+# - enqueued(task_id, queue, payload, from_handle)
+# - dispatched(task_id, worker_handle, agent_slug)
+# - started(task_id)
+# - completed(task_id, outcome, duration, result_text)</code></pre>
+    <p>Callbacks fire <i>after</i> the JSONL write (so observers see committed state). Hook is fire-and-forget; exceptions in callbacks are logged and swallowed so a buggy observer can't poison the substrate.</p>
+
+    <h3>Assistant-text tail</h3>
+    <p>For the "result tail (live)" pane, the dashboard subscribes to the running worker's <code>AgentSession</code> stream (the same event stream that <code>ConversationPane</code> consumes). The last N (default 8) lines of assistant text are kept in a ring buffer per <code>TaskView</code>. On <code>completed</code>, the captured final assistant text replaces the live tail.</p>
+
+    <h3>Strip aggregator</h3>
+    <p>A single <code>QueueDigest</code> service runs in the app, subscribes to <code>QueueManager.subscribe</code>, maintains per-queue counters in memory, and exposes a Textual reactive that both the strip widget and the dashboard's QUEUES band bind to. Snapshots are O(queues) on every event.</p>
+  </section>
+
+  <section id="components">
+    <h2>Components</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/queue/digest.py</code></td><td><code>QueueDigest</code> — substrate-side aggregator subscribing to <code>QueueManager</code>; exposes <code>QueueView[]</code> and "last started" task.</td></tr>
+        <tr><td><code>src/aegis/queue/manager.py</code> (edit)</td><td>Add <code>subscribe(callback) -> Unsubscribe</code> alongside existing JSONL writes. Backwards-compatible — no caller required to register.</td></tr>
+        <tr><td><code>src/aegis/tui/dashboard.py</code></td><td><code>QueueDashboard(ModalScreen)</code> — full-screen overlay; mounts <code>QueueBand</code>, <code>InFlightBand</code>, <code>QueuedBand</code>, <code>RecentBand</code>, <code>DetailPanel</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/strip.py</code></td><td><code>QueueStrip(Static)</code> — one-line strip widget; renders the adaptive format from <code>QueueDigest</code>.</td></tr>
+        <tr><td><code>src/aegis/tui/pane.py</code> (edit)</td><td>Mount <code>QueueStrip</code> between conversation log and <code>StatusBar</code>. Hide when no queues configured. Respect existing palette.</td></tr>
+        <tr><td><code>src/aegis/tui/app.py</code> (edit)</td><td>Construct <code>QueueDigest</code> at startup; bind <code>Ctrl+D</code> to push <code>QueueDashboard</code>; bind <code>Esc</code> in dashboard to dismiss.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>What the existing code already gives us</h3>
+    <ul>
+      <li><code>QueueManager</code> already tracks queued / running tasks and writes a JSONL lifecycle log.</li>
+      <li><code>SessionManager</code> already holds a registry of live <code>AgentSession</code>s keyed by handle, including those mounted as background worker tabs.</li>
+      <li><code>AgentSession</code> already streams <code>AssistantText</code> events — we tap that stream for the live tail.</li>
+      <li><code>themes.py</code> already exposes a palette role map; both new widgets bind through <code>app.palette</code> like every other widget.</li>
+    </ul>
+  </section>
+
+  <section id="keys">
+    <h2>Keybindings</h2>
+    <table>
+      <thead><tr><th>Key</th><th>Context</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><code>Ctrl+D</code></td><td>any conversation</td><td>open the dashboard</td></tr>
+        <tr><td><code>↑ / ↓</code></td><td>dashboard</td><td>move cursor through task rows (IN-FLIGHT → QUEUED → RECENT, wrapping)</td></tr>
+        <tr><td><code>Enter</code></td><td>dashboard</td><td>focus / refresh the detail panel for the selected row (no-op if already focused there)</td></tr>
+        <tr><td><code>&gt;</code></td><td>dashboard</td><td>jump to the selected task's live worker tab; dimmed/no-op for queued tasks and for completed tasks whose worker tab is gone</td></tr>
+        <tr><td><code>Esc</code></td><td>dashboard</td><td>collapse back to the strip</td></tr>
+      </tbody>
+    </table>
+    <p><code>Ctrl+D</code> was chosen over <code>Ctrl+Q</code> (which terminal emulators sometimes intercept as XON/XOFF flow control). If <code>Ctrl+D</code> turns out to conflict with Textual's reserved keys on some terminals, fall back to <code>Ctrl+Y</code>.</p>
+  </section>
+
+  <section id="edges">
+    <h2>Edge cases</h2>
+    <ul>
+      <li><b>No queues configured.</b> Strip hidden; <code>Ctrl+D</code> opens a dashboard that says "no queues configured in .aegis.py" and dismisses on any key.</li>
+      <li><b>Narrow terminal.</b> Strip truncates "last:" half first, then "queues:" half. Dashboard requires a minimum width (~80 cols); below that, render a single-column compact view with no detail panel.</li>
+      <li><b>Worker tab gone.</b> A completed task's worker tab may have been closed. <code>&gt;</code> is a no-op (and the footer hint dims) when the selected task's <code>worker_handle</code> is no longer in <code>SessionManager</code>.</li>
+      <li><b>Result tail size.</b> Ring buffer is fixed at 8 lines per task; the detail panel scrolls if more is captured for completed tasks.</li>
+      <li><b>Restart replay.</b> On boot, <code>QueueManager</code> already marks in-flight tasks as <code>failed:interrupted</code>; <code>QueueDigest</code> picks those up via the same subscribe path during replay. No special-cased replay code in the digest.</li>
+      <li><b>Tab bar already shows the dashboard "tab".</b> The dashboard is a <code>ModalScreen</code>, <i>not</i> a tab — it does not add a tab cell, but the tab bar header dims while the modal is open (consistent with the AgentPicker modal pattern).</li>
+      <li><b>Workflow-engine tasks.</b> Workflow runs enqueue through the same queue substrate, so their tasks appear in IN-FLIGHT / QUEUED / RECENT like any other. The workflow itself is not surfaced.</li>
+    </ul>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <ul>
+      <li><b>Unit — <code>QueueDigest</code>.</b> Drive a fake <code>QueueManager</code> subscribe stream through enqueued / dispatched / started / completed sequences; assert <code>QueueView[]</code> snapshots after each event. Cover multi-queue + replay (in-flight → <code>failed:interrupted</code>) cases.</li>
+      <li><b>Unit — <code>QueueStrip</code> renderer.</b> Pure render function from a <code>QueueDigest</code> snapshot to a Rich renderable; assert exact text for the 1-queue / 2–3-queue / 4+-queue / empty cases. No Textual app needed.</li>
+      <li><b>Unit — <code>QueueDashboard</code> bands.</b> Mount the dashboard against a stub digest + stub <code>SessionManager</code>; assert the visible row sets in IN-FLIGHT / QUEUED / RECENT, the cursor's initial position, and the detail panel for the initially selected row.</li>
+      <li><b>Behavioural — keybindings.</b> Using Textual's <code>App.run_test</code>, simulate <code>↑↓ / Enter / &gt; / Esc</code> and assert cursor moves, detail-panel target, modal dismissal, and <code>SessionManager.focus(handle)</code> calls. No live subprocess.</li>
+      <li><b>Live (marker: <code>live</code>).</b> One round-trip test that enqueues 2 tasks against the real <code>claude</code> binary (or skip when off PATH), opens the dashboard, asserts that the strip aggregates correctly and the detail panel's live tail receives at least one <code>AssistantText</code> event. Matches the existing live test patterns in <code>tests/test_queue_live.py</code>.</li>
+    </ul>
+    <p>Target ≥ 95 % line coverage on <code>queue/digest.py</code> and <code>tui/strip.py</code>; band & dashboard widgets are exercised primarily through behavioural tests.</p>
+  </section>
+
+  <section id="future">
+    <h2>Future</h2>
+    <ul>
+      <li><b>Operator verbs.</b> Add <code>x</code> to cancel a queued/running task (composes with the planned <code>aegis_cancel(task_id)</code> MCP tool from queue v1 polish) and <code>r</code> to requeue a failed task. <code>TaskView</code> already carries the <code>task_id</code> needed.</li>
+      <li><b>Inbox tier.</b> A fifth band or a sibling modal showing per-handle pending inbox messages; the <code>InboxRouter</code> would need a similar <code>subscribe</code> hook.</li>
+      <li><b>Workflow tier.</b> Show active <code>aegis workflow run</code>s as collapsed groups whose constituent tasks expand inline. Needs workflow runtime to expose a run registry.</li>
+      <li><b>Telegram surface.</b> A <code>/queues</code> command in the Telegram frontend backed by the same <code>QueueDigest</code> snapshot, formatted as a chat message. Same data, different transport.</li>
+      <li><b>Filter / sort.</b> Per-queue filter, per-state filter. YAGNI in v1 with one queue and ≤ ~20 active rows.</li>
+    </ul>
+  </section>
+
+  <footer>
+    aegis · queue-dashboard-v1 · 2026-05-21
+  </footer>
+</div>
+</body>
+</html>
