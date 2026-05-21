@@ -23,11 +23,39 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import acp
+
+
+class _RingHandler(logging.Handler):
+    """In-memory log handler that keeps the last N records. Attached to
+    the ``acp`` logger so the SDK's internal logging.exception calls
+    (e.g. 'Receive loop failed') are captured and surfaceable in our
+    error reports."""
+
+    def __init__(self, max_records: int = 64) -> None:
+        super().__init__(level=logging.DEBUG)
+        self._records: list[str] = []
+        self._max = max_records
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+        except Exception:  # noqa: BLE001
+            msg = record.getMessage()
+        self._records.append(msg)
+        if len(self._records) > self._max:
+            self._records.pop(0)
+
+    def snapshot(self) -> str:
+        return "\n".join(self._records)
+
+    def clear(self) -> None:
+        self._records.clear()
 
 from aegis.config import Agent
 from aegis.drivers.base import HarnessDriver, HarnessSession
@@ -194,11 +222,14 @@ class AcpSession(HarnessSession):
         await asyncio.sleep(0)
         rc = self._proc.returncode if self._proc else None
         tail = self._stderr_snapshot().rstrip()
+        acp_log = getattr(self, "_log_ring", None)
+        acp_log_text = acp_log.snapshot() if acp_log else ""
         argv = " ".join(self._argv())
         msg = (f"{type(exc).__name__}: {exc}\n"
                f"  subprocess: {argv}\n"
                f"  exit_code:  {rc if rc is not None else '(still running)'}\n"
-               f"  stderr:\n{tail or '(empty — subprocess produced no stderr before failing)'}")
+               f"  stderr:\n{tail or '(empty — subprocess produced no stderr before failing)'}\n"
+               f"  acp logger:\n{acp_log_text or '(empty)'}")
         wrapped = RuntimeError(msg)
         wrapped.__cause__ = exc
         return wrapped
@@ -219,6 +250,19 @@ class AcpSession(HarnessSession):
         # message to stderr — surfacing those bytes is how we debug.
         self._stderr_tail: list[bytes] = []
         self._stderr_task = asyncio.create_task(self._drain_stderr())
+        # The SDK logs internal failures (e.g. "Receive loop failed" with
+        # the parse error / EOF cause) via the acp logger. Without an
+        # explicit handler those records hit a NullHandler — invisible.
+        # Attach a ring buffer at DEBUG so _wrap_error can include them.
+        self._log_ring = _RingHandler(max_records=64)
+        self._log_ring.setFormatter(logging.Formatter(
+            "%(levelname)s %(name)s: %(message)s"))
+        self._acp_logger = logging.getLogger("acp")
+        self._prev_acp_level = self._acp_logger.level
+        self._acp_logger.addHandler(self._log_ring)
+        if self._acp_logger.level == logging.NOTSET \
+                or self._acp_logger.level > logging.DEBUG:
+            self._acp_logger.setLevel(logging.DEBUG)
         # ACP SDK arg order: (client, in_stream, out_stream) where
         # in_stream is where the CLIENT writes (= agent's stdin) and
         # out_stream is where the CLIENT reads (= agent's stdout).
@@ -295,6 +339,16 @@ class AcpSession(HarnessSession):
             self._proc.terminate()
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self._proc.wait(), timeout=3.0)
+        # Detach the acp log capture so we don't leak handlers across
+        # repeated session lifetimes within the same process.
+        ring = getattr(self, "_log_ring", None)
+        logger = getattr(self, "_acp_logger", None)
+        if ring is not None and logger is not None:
+            with contextlib.suppress(Exception):
+                logger.removeHandler(ring)
+            prev_level = getattr(self, "_prev_acp_level", logging.NOTSET)
+            with contextlib.suppress(Exception):
+                logger.setLevel(prev_level)
 
 
 class AcpDriver(HarnessDriver):
