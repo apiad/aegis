@@ -132,3 +132,20 @@ async def test_recent_band_shows_completed_in_reverse_time(make_dashboard_app):
         idx0 = rendered.index("p 0")
         idx2 = rendered.index("p 2")
         assert idx2 < idx0
+
+
+async def test_arrow_keys_move_cursor(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        for i in range(2):
+            manager.emit(QueueEnqueued(
+                task_id=f"t{i}", queue="tasks",
+                payload=f"p{i}", enqueued_by="agent:c"))
+        await pilot.pause()
+        screen = app.screen
+        assert screen.selected_task_id == "t0"
+        await pilot.press("down"); await pilot.pause()
+        assert screen.selected_task_id == "t1"
+        await pilot.press("up"); await pilot.pause()
+        assert screen.selected_task_id == "t0"
