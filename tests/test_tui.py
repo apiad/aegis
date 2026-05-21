@@ -613,8 +613,9 @@ async def test_clicking_a_block_copies_its_payload_to_clipboard():
 
 
 @pytest.mark.asyncio
-async def test_each_block_renders_copy_hint_footer():
-    """Every CopyableBlock composes a '(click to copy)' hint child."""
+async def test_each_block_has_click_to_copy_tooltip():
+    """Every CopyableBlock advertises 'click to copy' via Textual's
+    tooltip system (floating overlay; no layout shift, no extra row)."""
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
@@ -622,8 +623,7 @@ async def test_each_block_renders_copy_hint_footer():
         await pilot.press("enter")
         await pilot.pause(); await pilot.pause()
         for b in pane.query(CopyableBlock):
-            hints = list(b.query(".copy-hint"))
-            assert hints, f"block {b!r} missing copy-hint"
+            assert b.tooltip == "click to copy", b
 
 
 @pytest.mark.asyncio

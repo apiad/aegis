@@ -126,14 +126,6 @@ class CopyableBlock(Widget):
                     background: $background; }
     CopyableBlock:hover { background: $surface; }
     CopyableBlock > .content { background: transparent; height: auto; }
-    /* Hint is hidden by default so blocks stay slim. Hovering the
-       block reveals it underneath; the 1-row layout shift is only
-       there for the duration of the hover. */
-    CopyableBlock > .copy-hint { display: none; height: 1;
-                                 color: $foreground 30%;
-                                 text-style: italic; text-align: right;
-                                 background: transparent; }
-    CopyableBlock:hover > .copy-hint { display: block; }
     """
 
     def __init__(self, renderable: RenderableType,
@@ -141,10 +133,12 @@ class CopyableBlock(Widget):
         super().__init__()
         self._renderable = renderable
         self._text_payload = text_payload
+        # Textual tooltip floats above the widget on hover — no
+        # layout shift, no extra row inside the block.
+        self.tooltip = "click to copy"
 
     def compose(self) -> ComposeResult:
         yield Static(self._renderable, classes="content")
-        yield Static("(click to copy)", classes="copy-hint")
 
     def update_content(self, renderable: RenderableType,
                        text_payload: str) -> None:
