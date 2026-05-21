@@ -8,10 +8,21 @@ Persistence + restart replay land in VS2; this build is memory-only.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from aegis.events import AssistantText
+from aegis.queue.events import (
+    QueueCompleted,
+    QueueDispatched,
+    QueueEnqueued,
+    QueueEvent,
+    QueueObserver,
+    QueueStarted,
+    Unsubscribe,
+)
 from aegis.queue.jsonl import append_record
 from aegis.queue.schema import (
     InboxMessage,
@@ -53,9 +64,33 @@ class QueueManager:
         self._all: dict[str, Task] = {}
         # per-worker result accumulators: handle -> (task, last_assistant_text)
         self._workers: dict[str, tuple[Task, str]] = {}
+        # lifecycle observers — see subscribe()
+        self._observers: list[QueueObserver] = []
 
     def list_queues(self) -> list[str]:
         return sorted(self._queues)
+
+    def subscribe(self, callback: QueueObserver) -> Unsubscribe:
+        """Register an observer for every queue lifecycle transition.
+
+        Callbacks fire after the JSONL record is committed (committed-state
+        observability). Exceptions inside observers are caught and logged
+        — a broken observer never poisons the substrate.
+        """
+        self._observers.append(callback)
+
+        def _unsubscribe() -> None:
+            with contextlib.suppress(ValueError):
+                self._observers.remove(callback)
+        return _unsubscribe
+
+    def _emit(self, ev: QueueEvent) -> None:
+        for cb in list(self._observers):
+            try:
+                cb(ev)
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).exception(
+                    "queue observer raised on %s", type(ev).__name__)
 
     def _log(self, queue: str, event: dict) -> None:
         """Persist one lifecycle event to the queue's JSONL log.
@@ -82,6 +117,9 @@ class QueueManager:
             "event": "enqueued", "task_id": task.id, "queue": queue,
             "payload": payload, "enqueued_by": enqueued_by,
             "enqueued_at": task.enqueued_at, "callback": callback})
+        self._emit(QueueEnqueued(
+            task_id=task.id, queue=queue,
+            payload=payload, enqueued_by=enqueued_by))
         self._try_dispatch(queue)
         return task.id, position
 
@@ -124,6 +162,11 @@ class QueueManager:
             self._log(queue, {
                 "event": "dispatched", "task_id": task.id,
                 "worker_handle": worker_handle})
+            self._emit(QueueDispatched(
+                task_id=task.id, queue=queue,
+                worker_handle=worker_handle,
+                agent_slug=q.agent_profile))
+            self._emit(QueueStarted(task_id=task.id, queue=queue))
             # Use the sync seam — async AppBridge.spawn is for workflow.
             sync_spawn = getattr(self._sm, "_sync_spawn", self._sm.spawn)
             session = sync_spawn(q.agent_profile,
@@ -170,6 +213,11 @@ class QueueManager:
             "event": status, "task_id": task.id,
             "result": result, "error": error,
             "completed_at": completed.completed_at})
+        self._emit(QueueCompleted(
+            task_id=task.id, queue=task.queue,
+            outcome="completed" if ok else "failed",
+            result=result, error=error,
+            completed_at=completed.completed_at))
         if task.callback:
             body = result if ok else (error or "")
             msg = InboxMessage(
@@ -266,6 +314,11 @@ class QueueManager:
             "event": "failed", "task_id": tid,
             "result": None, "error": completed.error,
             "completed_at": completed.completed_at})
+        self._emit(QueueCompleted(
+            task_id=tid, queue=queue,
+            outcome="interrupted",
+            result=None, error=completed.error,
+            completed_at=completed.completed_at))
         if completed.callback:
             msg = InboxMessage(
                 sender=sender_queue(queue),
