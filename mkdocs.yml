@@ -1,5 +1,5 @@
 site_name: Aegis
-site_description: A meta-harness for coding agents.
+site_description: A multi-agent meta-harness for coding agents.
 site_url: https://apiad.github.io/aegis/
 repo_url: https://github.com/apiad/aegis
 repo_name: apiad/aegis
@@ -12,25 +12,73 @@ exclude_docs: |
 theme:
   name: material
   palette:
-    scheme: slate
-    primary: black
-    accent: amber
+    - scheme: slate
+      primary: black
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   features:
     - navigation.sections
     - navigation.top
+    - navigation.tabs
     - content.code.copy
-    - toc.integrate
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+    - search.highlight
 
 markdown_extensions:
   - admonition
-  - pymdownx.superfences
-  - pymdownx.highlight
+  - attr_list
+  - md_in_html
+  - footnotes
   - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_signature_annotations: true
+            separate_signature: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            merge_init_into_class: true
 
 nav:
   - Home: index.md
-  - Install: install.md
-  - Usage: usage.md
-  - Configuration: configuration.md
-  - Architecture & Vision: architecture.md
-  - Roadmap: roadmap.md
+  - Getting started:
+      - Install: install.md
+      - Usage: usage.md
+      - Configuration: configuration.md
+  - Concepts:
+      - Drivers: drivers.md
+      - Queues: queues.md
+      - Workflows: workflows.md
+      - MCP plane: mcp.md
+  - Reference:
+      - Architecture: architecture.md
+      - API: api.md
+      - Roadmap: roadmap.md

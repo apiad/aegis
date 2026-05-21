@@ -1,26 +1,161 @@
 # Configuration
 
-Config lives in `.aegis.py` (current directory, then `~/.aegis.py`). It is
-**Python**, executed to read two names: `agents` and `default_agent`.
+Aegis is configured by a single file: `.aegis.py`. It is **plain
+Python**, executed once at startup. Two names are required: `agents`
+(a dict of profile name → `Agent`) and `default_agent` (which key in
+that dict to use when no `--agent` is specified). Queues, Telegram, and
+workflows are optional.
+
+`aegis init` generates a starter file. The rest of this page is the
+reference.
+
+## Search order
+
+1. Closest ancestor of the current directory containing `.aegis.py`.
+2. `~/.aegis.py`.
+
+With no `.aegis.py` anywhere, `aegis` refuses to start.
+
+## Agents
 
 ```python
-from aegis import Agent
+from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
 
 agents = {
-    "default": Agent(harness="claude-code", model="opus",
-                     effort="high", permission="auto"),
-    "fast":    Agent(harness="claude-code", model="sonnet",
-                     effort="low", permission="read"),
+    "default": Agent(provider=ClaudeCode(model="opus", effort="high",
+                                          permission="auto")),
+    "fast":    Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
+                                         permission="full")),
+    "oss":     Agent(provider=OpenCode(model="opencode/kimi-k2.6",
+                                        permission="full")),
 }
 default_agent = "default"
 ```
 
-| Field | Values |
-|---|---|
-| `harness` | `claude-code` (only driver today) |
-| `model` | passthrough alias (`opus`, `sonnet`, …) |
-| `effort` | `low` \| `medium` \| `high` \| `max` |
-| `permission` | `read` \| `write` \| `full` \| `auto` |
+### Provider classes
 
-`aegis init` writes a starter `.aegis.py`. `Ctrl+N` in the TUI spawns a tab
-for any configured profile.
+Each provider has its own config class so per-provider fields are
+validated up-front.
+
+| Provider | Class | Fields | Notes |
+|---|---|---|---|
+| Claude Code | `ClaudeCode` | `model`, `effort`, `permission` | The only provider with an `effort` knob. |
+| Gemini CLI  | `GeminiCLI`  | `model`, `permission` | Permission maps to `--approval-mode`. |
+| OpenCode    | `OpenCode`   | `model`, `permission` | Model strings use `provider/model` form. |
+
+See [Drivers](drivers.md) for what each provider's `model` strings
+look like and how permission maps to the underlying CLI's flag.
+
+### Permission
+
+`Permission` is a string enum: `"read"`, `"write"`, `"full"`, `"auto"`.
+
+| Value | Claude | Gemini | OpenCode |
+|---|---|---|---|
+| `read`  | plan-mode | `--approval-mode plan`      | read-only tools |
+| `write` | edit-mode | `--approval-mode auto_edit` | edit tools |
+| `full`  | bypass    | `--approval-mode yolo`      | unrestricted |
+| `auto`  | default   | `--approval-mode default`   | default |
+
+### Effort (Claude only)
+
+`Effort` is a string enum: `"low"`, `"medium"`, `"high"`, `"max"`.
+Other providers don't expose an equivalent knob and ignore it.
+
+### Legacy flat shape
+
+The old flat keyword shape still works for back-compat:
+
+```python
+Agent(harness="claude-code", model="opus", effort="high",
+      permission="auto")
+```
+
+This is equivalent to `Agent(provider=ClaudeCode(...))`. Prefer the
+provider-object shape — it has stricter validation.
+
+## Queues
+
+Optional. Static configuration for the queue substrate; see
+[Queues](queues.md) for the runtime model.
+
+```python
+queues = {
+    "review":   {"agent": "fast", "max_parallel": 2},
+    "research": {"agent": "default", "max_parallel": 1},
+}
+```
+
+Each queue binds to one agent profile and a `max_parallel` cap. An
+agent can then call `aegis_enqueue(queue="review", payload=...)` and
+the substrate spawns a worker of that profile to run the payload.
+Validation is fail-loud at boot: unknown agent refs or non-positive
+caps cause `aegis` to abort with a clear error.
+
+## Headless / Telegram
+
+```python
+# .aegis.py
+telegram_token = "…"                  # or set AEGIS_TELEGRAM_TOKEN
+telegram_chat_id = 123456             # the single allowed chat
+# auto_add_to_telegram_prompt = ""    # set "" to disable the default brevity hint
+```
+
+Run with:
+
+```bash
+aegis serve
+```
+
+Routing inside the chat:
+
+| Command | Action |
+|---|---|
+| `/new [agent]` | Spawn a new session (defaults to `default_agent`) |
+| `/close [handle]` | Close a session (default: the active one) |
+| `/interrupt` | Interrupt the active turn |
+| `/<handle> text…` | One-shot to a specific session (doesn't move the sticky pointer) |
+| bare text | Sent to the active session, with `auto_add_to_telegram_prompt` appended |
+
+A systemd unit template lives at `scripts/aegis-serve.service`.
+
+## Workflows
+
+To make Python workflows visible to `aegis workflow run` and to the
+`aegis_run_workflow` MCP tool, **import** them in your `.aegis.py` so
+the `@workflow` decorator registers them:
+
+```python
+from examples.tdd_step import tdd_step    # noqa: F401 — registers
+```
+
+See [Workflows](workflows.md) for writing your own.
+
+## Worked example
+
+A full `.aegis.py` mixing everything:
+
+```python
+from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
+from examples.tdd_step import tdd_step      # noqa: F401
+
+agents = {
+    "default": Agent(provider=ClaudeCode(
+        model="opus", effort="high", permission="auto")),
+    "worker-sonnet": Agent(provider=ClaudeCode(
+        model="sonnet", effort="medium", permission="full")),
+    "reviewer": Agent(provider=GeminiCLI(
+        model="gemini-3.1-pro-preview", permission="auto")),
+    "oss": Agent(provider=OpenCode(
+        model="opencode/kimi-k2.6", permission="full")),
+}
+default_agent = "default"
+
+queues = {
+    "tdd":    {"agent": "worker-sonnet", "max_parallel": 2},
+    "review": {"agent": "reviewer",      "max_parallel": 1},
+}
+
+telegram_token   = None    # set via AEGIS_TELEGRAM_TOKEN env var instead
+telegram_chat_id = 123456789
+```
