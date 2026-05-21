@@ -95,7 +95,12 @@ from aegis.events import (
     ToolUse,
 )
 
-_AEGIS_VERSION = "0.2.0"
+try:
+    from importlib.metadata import PackageNotFoundError as _PNFE
+    from importlib.metadata import version as _pkg_version
+    _AEGIS_VERSION = _pkg_version("aegis-harness")
+except _PNFE:                    # not installed (e.g. running from source)
+    _AEGIS_VERSION = "0.0.0+unknown"
 _STREAM_LIMIT = 16 * 1024 * 1024
 
 

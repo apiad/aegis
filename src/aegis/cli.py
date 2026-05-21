@@ -24,7 +24,7 @@ _console = Console()
 def _version_callback(value: bool) -> None:
     if value:
         try:
-            v = _pkg_version("aegis")
+            v = _pkg_version("aegis-harness")
         except PackageNotFoundError:        # not installed (rare in dev)
             v = "0.0.0+unknown"
         typer.echo(f"aegis {v}")

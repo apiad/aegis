@@ -103,7 +103,6 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's
   `App.colors`
-- `legacy/` - sidelined workflow-engine prototype (not built, not tested)
 - `docs/superpowers/{specs,plans}/*.html` - specs & plans are self-contained
   HTML (house format), not Markdown
 
