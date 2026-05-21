@@ -92,3 +92,58 @@ don't steal focus. Their state dot, sticky `*`, and bell behave like
 any other tab — you can switch to a worker tab mid-flight to watch
 what it's doing, or just let it finish and the producer's inbox
 callback handles the result.
+
+### Always-on strip
+
+In every conversation, a one-line strip sits just above the status
+bar showing live queue state — depth, parallel cap, ok/err counts,
+and the handle of the most recently started in-flight worker. The
+format adapts to how many queues you have:
+
+| Queues | Strip |
+|---|---|
+| 1 | `queues: tasks ●1/2 ○3 ✓14 ✗2    last: brisk-curie` |
+| 2–3 | `queues: tasks ●1/2 ○3 · impl ●0/1    last: brisk-curie` |
+| 4+ | `5 queues · ●3/8 ○12 ✓42 ✗3    last: brisk-curie` |
+
+If no queues are configured in `.aegis.py`, the strip is hidden.
+
+### Dashboard (`Ctrl+D`)
+
+Press `Ctrl+D` from any conversation for a full-screen modal:
+
+- **QUEUES** — config (agent profile, max-parallel) + live counts.
+- **IN-FLIGHT** — running workers with elapsed time and payload
+  preview.
+- **QUEUED** — tasks waiting for a slot.
+- **RECENT** — last 10 completed tasks in reverse time order, with
+  outcome glyphs (`✓` ok, `✗` failed).
+
+On the right, a **detail panel** for the cursor-selected task shows
+identity, sender, state, payload, lifecycle timestamps, and a live
+tail of the worker's assistant text (or the captured final text for
+completed tasks).
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move the cursor across IN-FLIGHT → QUEUED → RECENT |
+| `Enter` | Refresh the detail panel |
+| `>` | Jump to the worker's tab (when one exists) |
+| `Esc` | Close the dashboard |
+
+### Inbox arrivals
+
+When a handoff, queue callback, or Telegram message lands on an
+agent, the receiving pane mounts a distinct block in the transcript
+**before** the agent reacts:
+
+```
+✉ from queue:review · task#01HK…f3 · ok · 2026-05-21T17:30:00Z
+  PR looks clean. Two nits flagged in the
+  diff comments; nothing blocking.
+  … (5 more lines)
+```
+
+The block fires synchronously whether the agent was idle (immediate
+dispatch) or mid-turn (buffered for chain), so the arrival is always
+visible.

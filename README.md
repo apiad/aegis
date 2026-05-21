@@ -76,6 +76,15 @@ generated `.aegis.py` is plain Python — edit it freely afterwards.
   finishes. Write Python workflows that orchestrate multiple agents
   (delegate / send / drain / spawn / close / bash) and run them via
   `aegis workflow run`.
+- **Queue dashboard.** Always-on one-line strip above every
+  conversation's status bar shows live per-queue depth and the most
+  recent in-flight worker; `Ctrl+D` expands into a full-screen modal
+  with `QUEUES / IN-FLIGHT / QUEUED / RECENT` bands and a detail
+  panel that tails live assistant text. `>` jumps to the worker's
+  tab. Every incoming handoff, queue callback, or Telegram message
+  also mounts a distinct `✉` block in the receiving agent's
+  transcript with a body preview, so you see what the agent is about
+  to react to.
 - **MCP plane** — every spawned agent gets injected with an aegis MCP
   server that exposes orientation (`aegis_meta`), session listing
   (`aegis_list_sessions`, `aegis_list_agents`), peer handoff
@@ -93,7 +102,8 @@ generated `.aegis.py` is plain Python — edit it freely afterwards.
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+W` | Close tab (last → quit) |
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
-| `Escape` | Interrupt the active turn |
+| `Ctrl+D` | Open / close the queue dashboard |
+| `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 

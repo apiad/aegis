@@ -159,4 +159,4 @@ def test_version_flag_prints_and_exits(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "aegis 0.3.0"
+    assert result.output.strip() == "aegis 0.4.0"

@@ -42,7 +42,9 @@ problems without replacing the underlying agent.
 - **Inter-agent delegation.** First-class queues — any agent can
   `aegis_enqueue(queue, payload)` and get an automatic inbox callback
   when the worker finishes. Workflows orchestrate multi-step pipelines
-  in plain Python.
+  in plain Python. A `Ctrl+D` queue dashboard surfaces what's running
+  across all queues; incoming handoffs and callbacks render as
+  distinct blocks in the receiving agent's transcript.
 - **Honest metrics.** True input (incl. cache) with cached %, output,
   tool calls, per-turn and per-session timing — never log-scraped.
 - **Headless mode.** `aegis serve` runs the SessionManager + MCP plane

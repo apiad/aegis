@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-21
+
 ### Added
 - **Queue dashboard.** Always-on one-line strip above every
   conversation's status bar (per-queue depth + most recent worker;
@@ -15,6 +17,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   `Esc` closes. Backed by a new `QueueDigest` aggregator subscribed
   to a push-based `QueueManager.subscribe()` hook (committed-state
   observability; observer exceptions never poison the substrate).
+- **Inbox visibility in the TUI.** When a handoff, queue callback,
+  Telegram message, or any other inbox message lands on an agent, the
+  pane mounts a distinct `✉` block in the transcript before the agent
+  reacts — sender / task / status / timestamp header plus up to 4 body
+  lines (truncation footer if longer). New
+  `AgentSession.on_inbox` observer slot fires synchronously on every
+  `deliver()`, idle or mid-turn. Pure renderer
+  `render.render_inbox_block(msg, colors)`.
 
 ### Fixed
 - App-level `escape` priority binding no longer swallows modal-dismiss
@@ -22,6 +32,9 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   before falling through to pane interrupt. Previously, pressing
   `Esc` to close the agent picker or queue dashboard was a silent
   no-op.
+- Queue strip no longer sits flush against the model/permission
+  status line — 1-row transparent margin separates the two panel
+  bands.
 
 ## [0.3.0] - 2026-05-21
 

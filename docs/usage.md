@@ -13,7 +13,8 @@
 | `Ctrl+W` | Close the active tab (closing the last quits) |
 | `Ctrl+1`..`Ctrl+9` | Jump directly to tab N |
 | `Ctrl+Tab` / `Ctrl+→` / `Ctrl+←` | Next / previous tab |
-| `Escape` | Interrupt the active turn |
+| `Ctrl+D` | Open / close the queue dashboard |
+| `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 
@@ -79,6 +80,24 @@ Press `Escape` to interrupt the active turn. The harness is notified;
 the agent stops at the next safe point (after the in-flight tool call,
 typically within a second). The TUI returns to idle and you can send
 again.
+
+If a modal screen is on top (the queue dashboard, the agent picker),
+`Escape` dismisses the modal instead — the interrupt path only fires
+on the default screen.
+
+## Queue dashboard
+
+When queues are configured in `.aegis.py`, a one-line **strip** sits
+just above the status bar in every conversation showing live per-queue
+depth and the most recent in-flight worker. Press `Ctrl+D` to expand
+into a full-screen modal with `QUEUES / IN-FLIGHT / QUEUED / RECENT`
+bands and a detail panel that tails the selected worker's assistant
+text. See [Queues → Dashboard](queues.md#dashboard-ctrld) for the full
+key map.
+
+When a handoff or queue callback lands on the active agent, a
+distinct `✉` block appears in the transcript with sender, status,
+timestamp, and a body preview — before the agent reacts.
 
 ## Headless mode
 
