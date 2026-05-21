@@ -5,7 +5,9 @@ from aegis.tui.app import AegisApp
 from aegis.tui.pane import ConversationPane
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar, TabBar
-from textual.widgets import Input, RichLog
+from textual.containers import VerticalScroll
+from textual.widgets import Input
+from aegis.tui.pane import CopyableBlock
 
 
 def _agent():
@@ -84,7 +86,7 @@ async def test_starts_with_one_pane_and_widgets():
         assert len(app._panes) == 1
         pane = app._panes[0]
         assert isinstance(pane, ConversationPane)
-        assert pane.query_one(RichLog) and pane.query_one(StatusBar)
+        assert pane.query_one(VerticalScroll) and pane.query_one(StatusBar)
         assert pane.query_one(Input)
         assert app.query_one(TabBar)
         assert pane.state is AgentState.ready
@@ -375,7 +377,9 @@ async def test_pane_holds_palette_and_renders():
 
 
 @pytest.mark.asyncio
-async def test_blank_line_between_turns():
+async def test_user_lines_are_separate_blocks():
+    """Each user submission becomes its own CopyableBlock; visual
+    separation is provided by CSS margin-bottom, no manual blank rows."""
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
@@ -385,11 +389,11 @@ async def test_blank_line_between_turns():
         pane.query_one(Input).value = "second"
         await pilot.press("enter")
         await pilot.pause(); await pilot.pause()
-        lines = [l.text if hasattr(l, "text") else str(l)
-                 for l in pane.query_one(RichLog).lines]
-        joined = "\n".join(lines)
-        assert "\n\n› second" in joined
-        assert not joined.startswith("\n")
+        payloads = [b.text_payload() for b in pane.query(CopyableBlock)]
+        # Both user inputs land as full-text payloads, in order.
+        i1 = payloads.index("first")
+        i2 = payloads.index("second")
+        assert i2 > i1
 
 
 @pytest.mark.asyncio
@@ -399,7 +403,7 @@ async def test_ink_layout_has_breathing_padding():
     app = _app()
     async with app.run_test():
         pane = app._panes[0]
-        log_pad = pane.query_one(RichLog).styles.padding
+        log_pad = pane.query_one("#transcript", VerticalScroll).styles.padding
         inp_pad = pane.query_one(Input).styles.padding
         assert log_pad.top >= 1 and log_pad.right >= 2, log_pad
         assert inp_pad.right >= 1, inp_pad
@@ -431,24 +435,26 @@ async def test_input_border_stable_across_focus_blur():
 
 
 @pytest.mark.asyncio
-async def test_blank_row_between_user_and_agent():
+async def test_user_block_precedes_agent_block():
+    """User input + agent reply land in two separate CopyableBlocks
+    in order (no shared block, no agent-first ordering)."""
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         pane.query_one(Input).value = "ping"
         await pilot.press("enter")
         await pilot.pause(); await pilot.pause()
-        lines = [l.text if hasattr(l, "text") else str(l)
-                 for l in pane.query_one(RichLog).lines]
-        # find the user line and the agent echo; a blank row must separate
-        ui = next(i for i, t in enumerate(lines) if t.startswith("› ping"))
-        ai = next(i for i, t in enumerate(lines) if "echo: ping" in t)
+        payloads = [b.text_payload() for b in pane.query(CopyableBlock)]
+        ui = payloads.index("ping")
+        ai = next(i for i, p in enumerate(payloads) if "echo: ping" in p)
         assert ai > ui
-        assert any(lines[j].strip() == "" for j in range(ui + 1, ai))
 
 
 @pytest.mark.asyncio
-async def test_blank_rows_between_agent_steps():
+async def test_agent_steps_become_distinct_blocks():
+    """Thinking, tool call, tool result, and final answer are each
+    their own CopyableBlock — natural visual separation via CSS
+    margin, copyability per step."""
     from aegis.events import AssistantThinking, ToolUse, ToolResult
     script = lambda t: [
         AssistantThinking("mm"), ToolUse(name="Read", summary="f.py"),
@@ -461,12 +467,13 @@ async def test_blank_rows_between_agent_steps():
         pane.query_one(Input).value = "go"
         await pilot.press("enter")
         await pilot.pause(); await pilot.pause()
-        lines = [l.text if hasattr(l, "text") else str(l)
-                 for l in pane.query_one(RichLog).lines]
-        think_i = next(i for i, t in enumerate(lines) if "Thinking" in t)
-        read_i = next(i for i, t in enumerate(lines) if "Read" in t)
-        # at least one blank row separates the thinking step from the tool
-        assert any(lines[j].strip() == "" for j in range(think_i + 1, read_i))
+        payloads = [b.text_payload() for b in pane.query(CopyableBlock)]
+        # User input first, then ordered agent steps as separate blocks.
+        assert payloads[0] == "go"
+        # Thinking block carries the accumulated thinking text payload.
+        think_i = next(i for i, p in enumerate(payloads) if p == "mm")
+        tool_i = next(i for i, p in enumerate(payloads) if p == "Read(f.py)")
+        assert tool_i > think_i
 
 
 @pytest.mark.asyncio
@@ -519,7 +526,10 @@ async def test_handoff_rejects_busy_target():
 
 
 @pytest.mark.asyncio
-async def test_step_spacing_glues_tool_pair_and_single_gap_after_done():
+async def test_block_ordering_across_two_turns():
+    """Tool call is immediately followed by its result, and the
+    sequence (tool → result → done → next-user) preserves order
+    across two turns. Spacing is now CSS, no blank-row assertions."""
     from aegis.events import AssistantThinking, ToolUse, ToolResult
     script = lambda t: [
         AssistantThinking("mm"), ToolUse(name="Read", summary="f.py"),
@@ -535,19 +545,52 @@ async def test_step_spacing_glues_tool_pair_and_single_gap_after_done():
         pane.query_one(Input).value = "second"
         await pilot.press("enter")
         await pilot.pause(); await pilot.pause()
-        lines = [l.text if hasattr(l, "text") else str(l)
-                 for l in pane.query_one(RichLog).lines]
-        tool_i = next(i for i, t in enumerate(lines) if "Read" in t)
-        res_i = next(i for i, t in enumerate(lines) if t.strip().startswith("└"))
-        done_i = next(i for i, t in enumerate(lines) if "done in" in t)
-        u2_i = next(i for i, t in enumerate(lines) if t.startswith("› second"))
-        # 1: tool_use is immediately followed by its result (no blank between)
-        assert res_i == tool_i + 1, lines[tool_i:res_i + 1]
-        # 2: a blank row follows the tool result
-        assert lines[res_i + 1].strip() == ""
-        # 3: exactly ONE blank between ── done ── and the next user line
-        gap = [lines[j].strip() for j in range(done_i + 1, u2_i)]
-        assert gap == [""], gap
+        payloads = [b.text_payload() for b in pane.query(CopyableBlock)]
+        tool_i = next(i for i, p in enumerate(payloads) if p == "Read(f.py)")
+        res_i = next(i for i, p in enumerate(payloads) if p == "ok")
+        done_i = next(i for i, p in enumerate(payloads) if "done in" in p)
+        u2_i = next(i for i, p in enumerate(payloads) if p == "second")
+        # tool_use is immediately followed by its result
+        assert res_i == tool_i + 1, payloads[tool_i:res_i + 1]
+        # ordering: tool → result → done → next-user, no other blocks between
+        assert done_i > res_i and u2_i > done_i
+
+
+@pytest.mark.asyncio
+async def test_clicking_a_block_copies_its_payload_to_clipboard():
+    """Click handler on a CopyableBlock calls app.copy_to_clipboard
+    with the block's text payload."""
+    app = _app()
+    copied: list[str] = []
+    async with app.run_test() as pilot:
+        # Replace the clipboard hook to avoid OSC52 in the test runner.
+        app.copy_to_clipboard = lambda text: copied.append(text)
+        app.notify = lambda *a, **kw: None
+        pane = app._panes[0]
+        pane.query_one(Input).value = "hello"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        # Find the user block and click it.
+        blocks = list(pane.query(CopyableBlock))
+        user_block = next(b for b in blocks
+                           if b.text_payload() == "hello")
+        await pilot.click(user_block)
+        await pilot.pause()
+        assert copied == ["hello"], copied
+
+
+@pytest.mark.asyncio
+async def test_each_block_renders_copy_hint_footer():
+    """Every CopyableBlock composes a '(click to copy)' hint child."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "x"
+        await pilot.press("enter")
+        await pilot.pause(); await pilot.pause()
+        for b in pane.query(CopyableBlock):
+            hints = list(b.query(".copy-hint"))
+            assert hints, f"block {b!r} missing copy-hint"
 
 
 @pytest.mark.asyncio

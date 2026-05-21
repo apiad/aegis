@@ -1,25 +1,99 @@
 from __future__ import annotations
 
+import contextlib
 import time
 
+from rich.console import RenderableType
+from rich.markdown import Markdown
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
+from textual.events import Click
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Input, RichLog
+from textual.widgets import Input, Static
 
 from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
-from aegis.events import Result, ToolUse
+from aegis.events import AssistantText, AssistantThinking
 from aegis.render import render_event, render_user_line
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar
 
 
+class CopyableBlock(Widget):
+    """One transcript cell — hover tints, click copies its text payload.
+
+    The visible content can be updated in place via ``update_content``
+    so that streaming text events (token-by-token AssistantText /
+    AssistantThinking) accumulate into a single block rather than
+    fragmenting into many short ones.
+    """
+
+    DEFAULT_CSS = """
+    CopyableBlock { height: auto; padding: 0 1; margin-bottom: 1;
+                    background: $background; }
+    CopyableBlock:hover { background: $surface; }
+    CopyableBlock > .content { background: transparent; height: auto; }
+    CopyableBlock > .copy-hint { height: 1; color: $foreground 30%;
+                                 text-style: italic; text-align: right;
+                                 background: transparent; }
+    """
+
+    def __init__(self, renderable: RenderableType,
+                 text_payload: str) -> None:
+        super().__init__()
+        self._renderable = renderable
+        self._text_payload = text_payload
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._renderable, classes="content")
+        yield Static("(click to copy)", classes="copy-hint")
+
+    def update_content(self, renderable: RenderableType,
+                       text_payload: str) -> None:
+        self._renderable = renderable
+        self._text_payload = text_payload
+        with contextlib.suppress(Exception):
+            self.query_one(".content", Static).update(renderable)
+
+    def text_payload(self) -> str:
+        return self._text_payload
+
+    def on_click(self, event: Click) -> None:
+        if not self._text_payload:
+            return
+        try:
+            self.app.copy_to_clipboard(self._text_payload)
+        except Exception:
+            return
+        try:
+            self.app.notify(
+                f"copied {len(self._text_payload)} chars", timeout=1.5)
+        except Exception:
+            pass
+
+
+def _payload_for_event(ev) -> str:
+    """Plain-text clipboard payload for a non-streaming Event."""
+    from aegis.events import Result, ToolResult, ToolUse
+    if isinstance(ev, ToolUse):
+        return (f"{ev.name}({ev.summary})" if ev.summary
+                else f"{ev.name}()")
+    if isinstance(ev, ToolResult):
+        return ev.text or ""
+    if isinstance(ev, Result):
+        secs = (ev.duration_ms or 0) / 1000
+        return f"done in {secs:.1f}s"
+    # AssistantText / Thinking are streamed elsewhere; other events
+    # already returned None from render_event.
+    return getattr(ev, "text", "") or repr(ev)
+
+
 class PaneStateChanged(Message):
-    def __init__(self, pane: "ConversationPane", finished: bool) -> None:
+    def __init__(self, pane: "ConversationPane",
+                 finished: bool) -> None:
         self.pane = pane
         self.finished = finished
         super().__init__()
@@ -29,8 +103,8 @@ class ConversationPane(Widget):
     DEFAULT_CSS = """
     ConversationPane { layout: vertical; height: 1fr;
                        background: $background; }
-    ConversationPane RichLog { height: 1fr; background: $background;
-                               padding: 1 4; scrollbar-size: 0 0; }
+    ConversationPane #transcript { height: 1fr; background: $background;
+                                   padding: 1 4; scrollbar-size: 0 0; }
     ConversationPane StatusBar { height: 1; background: $panel;
                                  color: $foreground; padding: 0 2; }
     ConversationPane Input { height: 3; background: $surface;
@@ -52,10 +126,15 @@ class ConversationPane(Widget):
         self.handle = handle
         self._palette = palette
         self.unseen = False
-        self._had_turn = False
         self._core = AgentSession(session, agent, agent_slug, handle)
         self._core.on_event = self._on_core_event
         self._core.on_state = self._on_core_state
+        # Streaming aggregation state: while inside a run of
+        # AssistantText (or AssistantThinking) events we accumulate
+        # into one CopyableBlock and update it in place.
+        self._streaming_block: CopyableBlock | None = None
+        self._streaming_kind: str | None = None     # "text" | "thinking"
+        self._streaming_text: str = ""
 
     @property
     def state(self) -> AgentState:
@@ -70,7 +149,7 @@ class ConversationPane(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield RichLog(markup=False, wrap=True, auto_scroll=True)
+            yield VerticalScroll(id="transcript")
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)
@@ -84,20 +163,29 @@ class ConversationPane(Widget):
         self.query_one(StatusBar).set_metrics(
             self._core.metrics.render(time.monotonic()))
 
-    def _write(self, renderable) -> None:
-        self.query_one(RichLog).write(renderable)
+    def _transcript(self) -> VerticalScroll:
+        return self.query_one("#transcript", VerticalScroll)
+
+    def _mount_block(self, renderable: RenderableType,
+                     text_payload: str) -> CopyableBlock:
+        block = CopyableBlock(renderable, text_payload)
+        t = self._transcript()
+        t.mount(block)
+        t.scroll_end(animate=False)
+        return block
+
+    def _transcript_blocks(self) -> list[CopyableBlock]:
+        return list(self.query(CopyableBlock))
 
     def _transcript_has(self, needle: str) -> bool:
-        for line in self.query_one(RichLog).lines:
-            txt = line.text if hasattr(line, "text") else str(line)
-            if needle in txt:
-                return True
-        return False
+        return any(needle in b.text_payload()
+                   for b in self._transcript_blocks())
 
     def focus_input(self) -> None:
         self.query_one(Input).focus()
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_input_submitted(self,
+                                  event: Input.Submitted) -> None:
         event.stop()
         text = event.value.strip()
         if not text or self.state is AgentState.working:
@@ -107,27 +195,61 @@ class ConversationPane(Widget):
         self._submit(text)
 
     def _submit(self, text: str) -> None:
+        self._flush_streaming()
         inp = self.query_one(Input)
         inp.disabled = True
-        if self._had_turn:
-            self._write(Text(""))
-        self._had_turn = True
-        log = self.query_one(RichLog)
-        width = log.size.width or 80
-        self._write(render_user_line(text, self._palette, width))
-        self._write(Text(""))
-        self.run_worker(self._core.send(text), group="turn", exclusive=True)
+        width = self._transcript().size.width or 80
+        self._mount_block(
+            render_user_line(text, self._palette, width), text)
+        self.run_worker(self._core.send(text),
+                        group="turn", exclusive=True)
 
     async def deliver_handoff(self, from_handle: str,
                               context: str) -> None:
         self._submit(f"[handoff from {from_handle}] {context}")
 
+    # --- streaming aggregation -------------------------------------
+
+    def _flush_streaming(self) -> None:
+        self._streaming_block = None
+        self._streaming_kind = None
+        self._streaming_text = ""
+
+    def _render_for_stream(self, kind: str,
+                            text: str) -> RenderableType:
+        if kind == "thinking":
+            return Text("✻ Thinking…", style=self._palette.muted)
+        return Markdown(text) if text.strip() else Text("")
+
+    def _stream_append(self, kind: str, new_text: str) -> None:
+        if self._streaming_kind != kind:
+            self._flush_streaming()
+            self._streaming_kind = kind
+            self._streaming_text = new_text
+            r = self._render_for_stream(kind, self._streaming_text)
+            self._streaming_block = self._mount_block(
+                r, self._streaming_text)
+        else:
+            self._streaming_text += new_text
+            if self._streaming_block is not None:
+                r = self._render_for_stream(
+                    kind, self._streaming_text)
+                self._streaming_block.update_content(
+                    r, self._streaming_text)
+
+    # --- event handlers --------------------------------------------
+
     def _on_core_event(self, _core, ev) -> None:
-        renderable = render_event(ev, self._palette)
-        if renderable is not None:
-            self._write(renderable)
-            if not isinstance(ev, (ToolUse, Result)):
-                self._write(Text(""))
+        if isinstance(ev, AssistantText):
+            if ev.text:
+                self._stream_append("text", ev.text)
+        elif isinstance(ev, AssistantThinking):
+            self._stream_append("thinking", ev.text or "")
+        else:
+            self._flush_streaming()
+            renderable = render_event(ev, self._palette)
+            if renderable is not None:
+                self._mount_block(renderable, _payload_for_event(ev))
         self.refresh_metrics()
 
     def _on_core_state(self, _core, state: AgentState,
@@ -135,10 +257,12 @@ class ConversationPane(Widget):
         self.query_one(StatusBar).set_state(state)
         if finished and state is AgentState.error \
                 and not self._transcript_has("⚠ harness"):
+            self._flush_streaming()
             err = getattr(self._core, "last_error", None)
             label = (f"⚠ harness error: {type(err).__name__}: {err}"
                      if err is not None else "⚠ harness error")
-            self._write(Text(label, style=self._palette.err))
+            self._mount_block(
+                Text(label, style=self._palette.err), label)
         self.post_message(PaneStateChanged(self, finished))
         if finished:
             inp = self.query_one(Input)
@@ -152,7 +276,10 @@ class ConversationPane(Widget):
 
         async def _do() -> None:
             await self._core.interrupt()
-            self._write(Text("^C — interrupted", style=self._palette.muted))
+            self._flush_streaming()
+            self._mount_block(
+                Text("^C — interrupted", style=self._palette.muted),
+                "^C — interrupted")
             self.refresh_metrics()
             inp = self.query_one(Input)
             inp.disabled = False
