@@ -10,7 +10,7 @@ from textual.widgets import ContentSwitcher
 from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
-from aegis.queue import InboxRouter, QueueManager
+from aegis.queue import InboxRouter, QueueDigest, QueueManager
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
@@ -61,6 +61,8 @@ class AegisApp(App):
         self.inbox_router = InboxRouter()
         self.queue_manager = QueueManager(
             self._queues, _SessionManagerAdapter(self), self.inbox_router)
+        self.queue_digest = QueueDigest(self.queue_manager)
+        self.queue_digest.start()
         self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:
@@ -108,7 +110,7 @@ class AegisApp(App):
         h = handle or generate_name({p.handle for p in self._panes})
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
-            slug, h, self._palette)
+            slug, h, self._palette, digest=self.queue_digest)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
@@ -216,6 +218,7 @@ class AegisApp(App):
         for pane in list(self._panes):
             self.inbox_router.unbind_session(pane.handle)
             await pane.close()
+        self.queue_digest.stop()
         await self.queue_manager.stop()
         await self._mcp.stop()
         self.exit()
@@ -293,7 +296,7 @@ class _SessionManagerAdapter:
         h = handle or generate_name({p.handle for p in self._app._panes})
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h), agent,
-            slug, h, self._app._palette)
+            slug, h, self._app._palette, digest=self._app.queue_digest)
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
         # App.run_worker (not asyncio.create_task) so the mount task runs

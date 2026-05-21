@@ -821,3 +821,13 @@ def test_pane_signature_accepts_digest():
     from aegis.tui.pane import ConversationPane
     sig = ConversationPane.__init__.__code__.co_varnames
     assert "digest" in sig
+
+
+def test_app_constructs_digest():
+    from aegis.queue import Queue
+
+    queues = {"tasks": Queue(name="tasks", agent_profile="default",
+                             max_parallel=2)}
+    app = _app(queues=queues)
+    assert hasattr(app, "queue_digest")
+    assert app.queue_digest is not None
