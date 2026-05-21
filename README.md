@@ -1,24 +1,29 @@
 # Aegis
 
-> A meta-harness for coding agents — drives Claude Code in a multi-agent
-> terminal UI.
+> A multi-agent meta-harness for coding agents — drives Claude Code,
+> Gemini CLI, and OpenCode side by side in one calm full-screen TUI.
 
 [![CI](https://github.com/apiad/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/apiad/aegis/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-mkdocs-blue)](https://apiad.github.io/aegis/)
-[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org/)
+[![Docs](https://img.shields.io/badge/docs-apiad.github.io%2Faegis-blue)](https://apiad.github.io/aegis/)
+[![PyPI](https://img.shields.io/pypi/v/aegis-harness.svg)](https://pypi.org/project/aegis-harness/)
+[![Python](https://img.shields.io/badge/python-3.13+-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Aegis sits **above** the harness. It drives `claude -p` over its
-`stream-json` protocol (no log scraping), parses the event stream, and
-re-renders it in a calm full-screen TUI where many agents run side by side.
+Aegis sits **above** the harness. It drives existing coding-agent CLIs —
+`claude` (Anthropic), `gemini` (Google), `opencode` (open-source) — over
+their structured protocols (stream-json and ACP), parses the event
+streams, and re-renders them in a calm Textual TUI where many agents run
+side by side. It adds a routing + delegation plane on top: queues,
+workflows, an MCP server every spawned agent talks to, and an optional
+Telegram front-end.
 
 ```
 ┌ aegis ───────────────────────────────────────────────┐
-│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·fast· *      │
+│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·gemini·  *  │
 │                                                       │
 │ › explain the retry logic                             │
 │                                                       │
-│ ✻ Thinking…                                           │
+│ ⠹ Thinking… (3.2s)                                    │
 │ ⏺ Read(worker.py)                                     │
 │   └ ok                                                 │
 │ The retry path lives in _run_turn …                   │
@@ -29,77 +34,136 @@ re-renders it in a calm full-screen TUI where many agents run side by side.
 └───────────────────────────────────────────────────────┘
 ```
 
+## Install
+
+```bash
+pip install aegis-harness        # or: uv pip install aegis-harness
+```
+
+Requires Python 3.13+ and at least one of: `claude`, `gemini`, or
+`opencode` on your `PATH`, signed-in.
+
 ## Quickstart
 
 ```bash
-uv pip install -e .
-aegis init      # writes .aegis.py
-aegis           # full-screen TUI
+aegis init     # interactive wizard — detects installed CLIs, writes .aegis.py
+aegis          # full-screen TUI
 ```
 
-Requires Python 3.13, [uv](https://docs.astral.sh/uv/), and a working
-`claude` CLI on PATH.
+The wizard finds whichever agent CLIs you have installed and walks you
+through picking a model, permission mode, and optional queues. The
+generated `.aegis.py` is plain Python — edit it freely afterwards.
+
+## What you get
+
+- **Multi-provider parity** — Claude Code, Gemini, and OpenCode all
+  speak through aegis with the same UX (multi-turn, streaming,
+  cancellation, per-session MCP injection). Gemini and OpenCode use
+  [ACP](https://github.com/zed-industries/agent-client-protocol);
+  Claude uses its stream-json bidirectional protocol.
+- **Multi-tab TUI** — N independent agent sessions in one terminal.
+  Per-tab profiles, generated alliterating handles
+  (`lucid-knuth`, `wry-hopper`), per-block copy-to-clipboard, an inline
+  spinner + rotating verb + timer while an agent works, cross-tab
+  signalling (state dot + sticky `*` + bell when a backgrounded agent
+  finishes).
+- **Honest metrics** — true input (incl. cache) with cached %, output,
+  tool calls, per-turn and per-session timing. Provisional while
+  streaming, exact at turn end.
+- **Queues + workflows** — first-class inter-agent delegation. Configure
+  queues in `.aegis.py`; any agent can call `aegis_enqueue(queue,
+  payload)` and get an automatic inbox callback when the worker
+  finishes. Write Python workflows that orchestrate multiple agents
+  (delegate / send / drain / spawn / close / bash) and run them via
+  `aegis workflow run`.
+- **MCP plane** — every spawned agent gets injected with an aegis MCP
+  server that exposes orientation (`aegis_meta`), session listing
+  (`aegis_list_sessions`, `aegis_list_agents`), peer handoff
+  (`aegis_handoff`), and queue dispatch (`aegis_enqueue`,
+  `aegis_task_status`). No log scraping anywhere in the stack.
+- **Headless + Telegram** — `aegis serve` runs the SessionManager and
+  MCP plane without a TUI, with an optional Telegram front-end so you
+  can drive agents from your phone.
 
 ## Keys
 
 | Key | Action |
 |---|---|
 | `Enter` | Send |
-| `Ctrl+T` / `Ctrl+N` | New tab / new tab (pick agent) |
+| `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+W` | Close tab (last → quit) |
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
 | `Escape` | Interrupt the active turn |
+| `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 
-Each tab is an independent agent with a generated handle; a backgrounded
-tab that finishes shows a `*` and rings the bell.
+A backgrounded tab that finishes shows a `*` and rings the bell.
 
 ## Configuration
 
-`.aegis.py` is Python:
+`.aegis.py` is plain Python. The wizard writes one for you; here's the
+shape:
 
 ```python
-from aegis import Agent
+from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
 
 agents = {
-    "default": Agent(harness="claude-code", model="opus",
-                      effort="high", permission="auto"),
+    "default": Agent(provider=ClaudeCode(model="opus", effort="high",
+                                          permission="auto")),
+    "fast":    Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
+                                         permission="full")),
+    "oss":     Agent(provider=OpenCode(model="opencode/kimi-k2.6",
+                                        permission="full")),
 }
 default_agent = "default"
+
+queues = {
+    "review": {"agent": "fast", "max_parallel": 2},
+}
 ```
 
-`permission`: `read` | `write` | `full` | `auto`.
+Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 
-## Headless / Telegram
+## Headless + Telegram
 
-`aegis serve` runs the SessionManager headlessly, exposing the MCP plane
-and (when configured) a Telegram bot front-end:
+`aegis serve` runs the SessionManager and MCP plane without the TUI; add
+a Telegram token to drive it from your phone:
 
 ```python
 # .aegis.py
 telegram_token = "…"        # or set AEGIS_TELEGRAM_TOKEN
 telegram_chat_id = 123456   # the single allowed chat
-# auto_add_to_telegram_prompt = ""   # to disable the default brevity hint
 ```
 
 Routing inside the chat:
 
-- `/new [agent]` — spawn a new session (defaults to `default_agent`)
-- `/close [handle]` — close a session (default: active one)
+- `/new [agent]` — spawn a new session
+- `/close [handle]` — close a session
 - `/interrupt` — interrupt the active turn
-- `/<handle> text…` — one-shot to a specific session (doesn't move sticky)
-- bare text — sent to the active session, with `auto_add_to_telegram_prompt`
-  appended
+- `/<handle> text…` — one-shot to a specific session
+- bare text — sent to the active session
 
 A systemd unit template lives at `scripts/aegis-serve.service`.
 
-## Docs & status
+## Docs
 
-Full docs: **https://apiad.github.io/aegis/**
+Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/aegis/)**
 
-Phase 1 (CLI) → 1.5 (TUI + metrics) → 2 (multi-tab) → theming/Ink shipped.
-Next: the MCP plane. Personal-infrastructure-grade, not general-public-ready;
-the original FastMCP prototype is preserved (unbuilt) under `legacy/`.
+- [Install](https://apiad.github.io/aegis/install/)
+- [Usage](https://apiad.github.io/aegis/usage/)
+- [Configuration](https://apiad.github.io/aegis/configuration/)
+- [Drivers](https://apiad.github.io/aegis/drivers/) — Claude / Gemini / OpenCode
+- [Queues](https://apiad.github.io/aegis/queues/) — inter-agent delegation
+- [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration
+- [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
+- [Architecture](https://apiad.github.io/aegis/architecture/)
+- [API reference](https://apiad.github.io/aegis/api/)
+
+## Status
+
+Beta. Personal-infrastructure-grade, evolves fast. Expect change before
+1.0. See the [roadmap](https://apiad.github.io/aegis/roadmap/) for
+what's next.
 
 ## License
 

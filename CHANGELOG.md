@@ -5,19 +5,57 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-21
+
+First public PyPI release as `aegis-harness`. Distribution name is
+`aegis-harness`; the importable package is still `aegis`.
+
 ### Added
-- Headless `aegis serve` daemon: SessionManager + MCP plane, plus an
-  optional Telegram front-end (`/new`, `/close`, `/interrupt`,
-  `/<handle> …`, bare-text routing with mid-turn status refresher).
-  Configured via `telegram_token` / `telegram_chat_id` /
-  `auto_add_to_telegram_prompt` in `.aegis.py` (token may also come
-  from `AEGIS_TELEGRAM_TOKEN`). systemd unit template at
-  `scripts/aegis-serve.service`.
-- `src/aegis/core/`: harness-agnostic `AgentSession` and `SessionManager`
-  extracted from the TUI; the Textual pane and the Telegram frontend
-  both delegate to these.
-- Unified `find_project_root()`: both `aegis` and `aegis serve` resolve
-  the project root by walking ancestors for `.aegis.py`.
+- **Multi-provider parity via ACP.** Gemini and OpenCode drivers rewritten
+  on the official Agent Client Protocol Python SDK
+  (`agent-client-protocol >= 0.10`). Multi-turn, streaming, cancellation,
+  and per-session MCP injection are now identical across `claude-code`,
+  `gemini`, and `opencode`.
+- **Per-provider config classes** (`ClaudeCode`, `GeminiCLI`, `OpenCode`)
+  in `aegis.config`. Legacy flat `Agent(harness=..., model=..., ...)`
+  shape still works via a back-compat validator.
+- **Task queues + workflows.** `aegis_enqueue` / `aegis_task_status` MCP
+  tools, `QueueManager` (FIFO + max-parallel + substrate-deterministic
+  dispatch + JSONL replay), `InboxRouter` with universal sender tagging,
+  `@workflow` decorator + `WorkflowEngine` runtime, `aegis workflow
+  list/run` CLI, `aegis_run_workflow` MCP tool.
+- **Headless mode.** `aegis serve` runs SessionManager + MCP plane without
+  a TUI, with an optional Telegram front-end (`/new`, `/close`,
+  `/interrupt`, `/<handle> …`, bare-text routing). Configured via
+  `telegram_token` / `telegram_chat_id` / `auto_add_to_telegram_prompt`
+  in `.aegis.py`. systemd unit template at `scripts/aegis-serve.service`.
+- **`aegis init` wizard.** Rich-powered interactive wizard that detects
+  installed agent CLIs, walks through agent + queue setup, and refuses
+  to clobber an upstream `.aegis.py` without `--force`.
+- **TUI polish.** Per-block click-to-copy with hover tooltip, inline
+  `WorkingIndicator` (spinner + rotating verb + elapsed timer) mounted
+  inside the transcript, glued `ToolUse`↔`ToolResult` blocks,
+  max-variety alliterating handle generation (no laureate or adjective
+  reuse, letter cycling).
+- **OIDC release workflow.** `.github/workflows/release.yml` publishes
+  to PyPI on `v*` tag push using PyPI trusted publishing — no token
+  stored in the repo.
+- **Expanded docs.** New pages for Drivers, Queues, Workflows, the MCP
+  plane, and an auto-generated API reference via mkdocstrings.
+
+### Changed
+- Distribution renamed from `aegis` to `aegis-harness` (the name `aegis`
+  was already taken on PyPI). Import path is unchanged.
+- README + docs site rewritten for the multi-provider surface; old
+  Phase 1/1.5/2 framing replaced with a current-capability summary.
+- Removed `legacy/` (sidelined FastMCP prototype) and `notes/`
+  (scratch markdown). Git history preserves both.
+
+### Fixed
+- ACP driver: workaround for an upstream SDK race in `Connection.__init__`
+  that was killing every Gemini/OpenCode session on startup.
+- ACP driver: measure `duration_ms` locally in `send()` (the final
+  status line was always showing 0.0s).
 
 ## [0.2.0] - 2026-05-18
 
