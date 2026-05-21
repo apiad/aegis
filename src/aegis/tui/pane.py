@@ -17,7 +17,7 @@ from textual.widgets import Input, Static
 from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
-from aegis.events import AssistantText, AssistantThinking
+from aegis.events import AssistantText, AssistantThinking, ToolUse
 from aegis.render import render_event, render_user_line
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar
@@ -124,13 +124,16 @@ class CopyableBlock(Widget):
     DEFAULT_CSS = """
     CopyableBlock { height: auto; padding: 0 1; margin-bottom: 1;
                     background: $background; }
+    /* Tight blocks have no margin below — used to glue a tool call
+       (⏺) to its result (└ ok) so they read as one paired unit. */
+    CopyableBlock.-tight { margin-bottom: 0; }
     CopyableBlock:hover { background: $surface; }
     CopyableBlock > .content { background: transparent; height: auto; }
     """
 
     def __init__(self, renderable: RenderableType,
-                 text_payload: str) -> None:
-        super().__init__()
+                 text_payload: str, *, tight: bool = False) -> None:
+        super().__init__(classes="-tight" if tight else None)
         self._renderable = renderable
         self._text_payload = text_payload
         # Textual tooltip floats above the widget on hover — no
@@ -260,8 +263,9 @@ class ConversationPane(Widget):
         return matches.first() if len(matches) else None
 
     def _mount_block(self, renderable: RenderableType,
-                     text_payload: str) -> CopyableBlock:
-        block = CopyableBlock(renderable, text_payload)
+                     text_payload: str,
+                     *, tight: bool = False) -> CopyableBlock:
+        block = CopyableBlock(renderable, text_payload, tight=tight)
         t = self._transcript()
         ind = self._working_indicator()
         if ind is not None and ind.parent is t:
@@ -372,7 +376,12 @@ class ConversationPane(Widget):
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
             if renderable is not None:
-                self._mount_block(renderable, _payload_for_event(ev))
+                # ToolUse mounts tight (no margin-bottom) so the
+                # following ToolResult sits flush against it — the
+                # ⏺ / └ pair reads as one visual unit.
+                self._mount_block(
+                    renderable, _payload_for_event(ev),
+                    tight=isinstance(ev, ToolUse))
         self.refresh_metrics()
 
     def _on_core_state(self, _core, state: AgentState,
