@@ -4,18 +4,22 @@ Each handle is ``<adjective>-<laureate>`` where the adjective and
 laureate share the same initial letter (alliteration), e.g.
 ``lucid-lamport``, ``keen-knuth``, ``brisk-blum``.
 
-Within a single session (the ``taken`` set passed by the caller):
+Within a session (the ``taken`` set passed by the caller) we maximize
+variety along THREE axes simultaneously, prioritized in this order:
 
-1. No laureate is reused until every laureate has appeared at least
-   once. So the first N handles draw from N distinct people.
-2. When a laureate must be reused (because the pool is exhausted), we
-   pick an adjective whose ``adjective-laureate`` pair hasn't appeared
-   yet — giving cycling variety within a person.
-3. If every combination is exhausted, fall back to ``<base>-2``,
-   ``<base>-3``, ….
+1. **Adjective freshness** — prefer adjectives never used yet, so we
+   don't get back-to-back ``keen-knuth`` and ``keen-kahn``.
+2. **Laureate freshness** — prefer laureates never used yet.
+3. **Letter cycling** — prefer initial letters used least so far, so
+   the K-block doesn't dominate just because it has the deepest pool.
+
+When all three are tied we pick randomly among the equally-best
+options. If every alliterating pair is genuinely taken we fall back
+to ``<base>-2``, ``<base>-3``, ….
 """
 from __future__ import annotations
 
+import collections
 import random
 
 
@@ -87,41 +91,48 @@ def generate_name(
 ) -> str:
     """Return an unused ``adjective-laureate`` handle.
 
-    Alliterates by construction; prefers unused laureates; cycles
-    adjectives within a laureate; numeric fallback only when every
-    valid alliterating pair is taken AND every laureate has been
-    seen at least once.
+    Score-based: each candidate alliterating pair gets a tuple
+    ``(adj_fresh, laureate_fresh, -letter_count)`` and we pick
+    randomly among the lexicographic-max tier. This satisfies all
+    three variety axes in priority order without needing a multi-
+    pass cascade.
     """
     r = rng or random
 
-    # Laureates already drawn (regardless of which adjective).
-    used_lasts = set()
+    used_adj: set[str] = set()
+    used_last: set[str] = set()
+    letter_count: collections.Counter[str] = collections.Counter()
     for handle in taken:
         parts = _split(handle)
-        if parts is not None:
-            used_lasts.add(parts[1])
-
-    # Two-pass laureate selection: unused first, then any.
-    for pool_filter in ("unused", "any"):
-        if pool_filter == "unused":
-            candidates = [L for L in LAUREATES if L not in used_lasts]
-        else:
-            candidates = list(LAUREATES)
-        if not candidates:
+        if parts is None:
             continue
-        # Randomize the laureate order so we don't always start with 'a'.
-        r.shuffle(candidates)
-        for last in candidates:
-            adj_pool = ADJECTIVES_BY_LETTER.get(last[0], ())
-            free = [a for a in adj_pool
-                    if f"{a}-{last}" not in taken]
-            if free:
-                return f"{r.choice(free)}-{last}"
-        # No adj-laureate pair is free under this filter — try the
-        # other filter, then fall through to numeric suffix.
+        adj, last = parts
+        used_adj.add(adj)
+        used_last.add(last)
+        letter_count[last[0]] += 1
 
-    # Every alliterating pair is taken. Append a numeric suffix to a
-    # randomly picked pair.
+    # Enumerate every alliterating pair not in `taken` and score it.
+    scored: list[tuple[tuple[int, int, int], str]] = []
+    for last in LAUREATES:
+        letter = last[0]
+        for adj in ADJECTIVES_BY_LETTER.get(letter, ()):
+            pair = f"{adj}-{last}"
+            if pair in taken:
+                continue
+            score = (
+                1 if adj not in used_adj else 0,    # +1 fresh adjective
+                1 if last not in used_last else 0,  # +1 fresh laureate
+                -letter_count[letter],              # less-used letter > more
+            )
+            scored.append((score, pair))
+
+    if scored:
+        max_score = max(s for s, _ in scored)
+        best = [p for s, p in scored if s == max_score]
+        return r.choice(best)
+
+    # Numeric fallback — every alliterating pair AND every cycle is
+    # used up. Pick a pair (random) and append the next free integer.
     last = r.choice(LAUREATES)
     adj_pool = ADJECTIVES_BY_LETTER.get(last[0], ("agent",))
     base = f"{r.choice(adj_pool)}-{last}"

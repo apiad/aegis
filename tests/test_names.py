@@ -44,6 +44,68 @@ def test_no_laureate_reused_until_pool_exhausted():
     assert len(set(seen_lasts)) == len(LAUREATES), seen_lasts
 
 
+def test_no_adjective_reuse_until_pool_exhausted():
+    """No adjective is reused across the session until every adjective
+    has appeared at least once (or no fresh combo remains)."""
+    rng = random.Random(7)
+    taken: set[str] = set()
+    seen_adjs: list[str] = []
+    # Total adjectives across all letters.
+    total_adjs = sum(len(pool)
+                     for pool in ADJECTIVES_BY_LETTER.values())
+    # Draw up to either total laureates or total adjectives, whichever
+    # is smaller — at that point every pick can still get a fresh adj
+    # AND fresh laureate.
+    n_picks = min(len(LAUREATES), total_adjs)
+    for _ in range(n_picks):
+        n = generate_name(taken, rng)
+        taken.add(n)
+        seen_adjs.append(n.split("-")[0])
+    # All distinct adjectives across the first n_picks.
+    assert len(set(seen_adjs)) == n_picks, seen_adjs
+
+
+def test_letter_cycles_when_choices_are_equal():
+    """When a fresh letter is available, the picker should rotate to
+    it rather than mining the same letter twice in a row."""
+    rng = random.Random(0)
+    taken: set[str] = set()
+    seen_letters: list[str] = []
+    # First few picks should give us distinct letters (we have 19
+    # different initial letters in LAUREATES — easy budget).
+    for _ in range(10):
+        n = generate_name(taken, rng)
+        taken.add(n)
+        seen_letters.append(n.split("-")[1][0])
+    # All distinct.
+    assert len(set(seen_letters)) == 10, seen_letters
+
+
+def test_no_keen_knuth_then_keen_kahn():
+    """Regression for the specific case Alex saw: keen-knuth followed
+    by keen-kahn should not happen — keen is already used, score
+    drops, picker switches to a non-keen adjective."""
+    rng = random.Random(12345)
+    taken = {"keen-knuth"}
+    # Now ask for many names; none should reuse "keen" until the
+    # adjective pool can no longer afford avoiding it.
+    saw_keen_again_when_alternatives_existed = False
+    for _ in range(30):
+        n = generate_name(taken, rng)
+        taken.add(n)
+        if n.startswith("keen-") and n != "keen-knuth":
+            # Did another adjective exist that was unused?
+            used_adj = {h.split("-")[0] for h in taken if h != n}
+            any_unused_adj = any(
+                a not in used_adj
+                for pool in ADJECTIVES_BY_LETTER.values()
+                for a in pool)
+            if any_unused_adj:
+                saw_keen_again_when_alternatives_existed = True
+                break
+    assert not saw_keen_again_when_alternatives_existed
+
+
 def test_cycles_adjectives_within_a_laureate_when_reused():
     """If a laureate must be reused, the adjective changes."""
     rng = random.Random(0)
