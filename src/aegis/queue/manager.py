@@ -66,6 +66,8 @@ class QueueManager:
         self._workers: dict[str, tuple[Task, str]] = {}
         # lifecycle observers — see subscribe()
         self._observers: list[QueueObserver] = []
+        # optional sink for live assistant-text forwarding (e.g. QueueDigest)
+        self._assistant_text_hook: Callable[[str, str], None] | None = None
 
     def list_queues(self) -> list[str]:
         return sorted(self._queues)
@@ -184,6 +186,11 @@ class QueueManager:
             if isinstance(ev, AssistantText):
                 t, _last = self._workers[session.handle]
                 self._workers[session.handle] = (t, ev.text)
+                if self._assistant_text_hook is not None:
+                    try:
+                        self._assistant_text_hook(session.handle, ev.text)
+                    except Exception:  # noqa: BLE001
+                        pass
 
         def on_state(_s, st, finished):
             if not finished:

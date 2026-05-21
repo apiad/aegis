@@ -14,6 +14,7 @@ from aegis.queue.events import (
 )
 
 RECENT_CAP = 10
+TAIL_CAP = 8
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,8 @@ class QueueDigest:
         self._queues: list[QueueView] = []
         # last task that transitioned to running
         self._last_started: TaskView | None = None
+        # per-worker rolling tail of assistant text (worker_handle -> lines)
+        self._tails: dict[str, list[str]] = {}
 
     def start(self) -> None:
         # Hydrate queue config from manager
@@ -81,11 +84,30 @@ class QueueDigest:
                 max_parallel=q.max_parallel,
                 running=0, queued=0, ok=0, err=0))
         self._unsub = self._manager.subscribe(self._on_event)
+        if hasattr(self._manager, "_assistant_text_hook"):
+            self._manager._assistant_text_hook = self.record_assistant_text
 
     def stop(self) -> None:
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+        if (getattr(self._manager, "_assistant_text_hook", None)
+                is self.record_assistant_text):
+            self._manager._assistant_text_hook = None
+
+    def record_assistant_text(self, worker_handle: str, text: str) -> None:
+        if not text or not worker_handle:
+            return
+        buf = self._tails.setdefault(worker_handle, [])
+        buf.append(text)
+        if len(buf) > TAIL_CAP:
+            del buf[: len(buf) - TAIL_CAP]
+
+    def tail_of(self, task_id: str) -> list[str]:
+        t = self._tasks.get(task_id)
+        if t is None or t.worker_handle is None:
+            return []
+        return list(self._tails.get(t.worker_handle, []))
 
     def snapshot(self) -> Snapshot:
         # Recompute per-queue live counts from task state

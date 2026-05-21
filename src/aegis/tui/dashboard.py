@@ -175,6 +175,18 @@ class DetailPanel(_Band):
         t.append("\nlifecycle\n", style=pal.muted)
         t.append(f"  completed_at  {match.completed_at or '—'}\n",
                  style=pal.muted)
+        if match.state == "running":
+            t.append("\ntail (live)\n", style=pal.muted)
+            tail = self._digest.tail_of(match.task_id)
+            if not tail:
+                t.append("  —\n", style=pal.muted)
+            else:
+                for line in tail:
+                    t.append(f"  {line}\n", style=pal.ink)
+        elif match.state in ("ok", "err"):
+            t.append("\nresult\n", style=pal.muted)
+            for line in (match.result or match.error or "—").splitlines():
+                t.append(f"  {line}\n", style=pal.ink)
         self._inner.update(t)
 
 

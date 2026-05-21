@@ -151,6 +151,26 @@ async def test_arrow_keys_move_cursor(make_dashboard_app):
         assert screen.selected_task_id == "t0"
 
 
+async def test_detail_panel_renders_live_tail(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        manager.emit(QueueEnqueued(
+            task_id="t1", queue="tasks", payload="p",
+            enqueued_by="agent:c"))
+        manager.emit(QueueDispatched(
+            task_id="t1", queue="tasks",
+            worker_handle="brisk-curie", agent_slug="claude"))
+        manager.emit(QueueStarted(task_id="t1", queue="tasks"))
+        app.queue_digest.record_assistant_text(
+            "brisk-curie", "Reading TASKS.md…")
+        app.screen._refresh_bands()
+        await pilot.pause()
+        detail = app.screen.query_one("#detail")
+        rendered = detail.query_one(Static).content.plain
+        assert "Reading TASKS.md…" in rendered
+
+
 async def test_detail_panel_shows_selected_task_fields(make_dashboard_app):
     app, manager = make_dashboard_app()
     async with app.run_test() as pilot:

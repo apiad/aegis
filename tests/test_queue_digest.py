@@ -124,3 +124,20 @@ def test_digest_unsubscribes_on_stop():
         task_id="t1", queue="tasks", payload="p",
         enqueued_by="agent:c"))
     assert d.snapshot().queues[0].queued == 0
+
+
+def test_digest_records_assistant_text_per_worker():
+    sm = _StubManager([_q("tasks")])
+    d = QueueDigest(sm)
+    d.start()
+    sm.emit(QueueEnqueued(
+        task_id="t1", queue="tasks", payload="p",
+        enqueued_by="agent:c"))
+    sm.emit(QueueDispatched(
+        task_id="t1", queue="tasks",
+        worker_handle="brisk-curie", agent_slug="claude"))
+    sm.emit(QueueStarted(task_id="t1", queue="tasks"))
+    d.record_assistant_text("brisk-curie", "Reading TASKS.md…")
+    d.record_assistant_text("brisk-curie", "Found 4 sections.")
+    assert d.tail_of("t1") == [
+        "Reading TASKS.md…", "Found 4 sections."]
