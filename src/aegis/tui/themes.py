@@ -84,6 +84,8 @@ class AegisColors:
     err: str
     user: str
     user_bg: str
+    ink: str = ""        # default foreground / "ink" of the page
+    work: str = ""       # alias for working — used by queue dashboard
 
 
 def aegis_colors(theme: Theme) -> AegisColors:
@@ -103,4 +105,6 @@ def aegis_colors(theme: Theme) -> AegisColors:
         err=theme.error or fg,
         user=theme.accent or fg,
         user_bg=var("aegis-userbg"),
+        ink=theme.foreground or fg,
+        work=theme.warning or fg,
     )
