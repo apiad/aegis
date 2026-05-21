@@ -148,23 +148,6 @@ class ConfigError(Exception):
     pass
 
 
-INIT_TEMPLATE = '''\
-# .aegis.py - Aegis configuration (always Python)
-from aegis import Agent
-
-agents = {
-    "default": Agent(
-        harness="claude-code",   # only driver in v1
-        model="opus",            # passthrough alias to the harness
-        effort="high",           # low | medium | high | max
-        permission="auto",       # read | write | full | auto
-    ),
-}
-
-default_agent = "default"
-'''
-
-
 def default_search_paths() -> list[Path]:
     return [Path.cwd() / ".aegis.py", Path.home() / ".aegis.py"]
 
@@ -216,12 +199,6 @@ def load_config(
             f"`default_agent` in {target} must be one of {sorted(agents)}."
         )
     return agents, default_agent
-
-
-def write_init_scaffold(path: Path) -> None:
-    if path.exists():
-        raise ConfigError(f"{path} already exists; refusing to overwrite.")
-    path.write_text(INIT_TEMPLATE)
 
 
 def load_queues(path: Path) -> "dict[str, object]":

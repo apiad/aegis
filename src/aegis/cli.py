@@ -10,7 +10,7 @@ from rich.console import Console
 
 from aegis.config import (
     ConfigError, find_project_root, load_config, load_queues,
-    load_telegram_config, write_init_scaffold,
+    load_telegram_config,
 )
 from aegis.core.manager import SessionManager
 from aegis.drivers import get_driver
@@ -32,15 +32,47 @@ def _version_callback(value: bool) -> None:
 
 
 @app.command()
-def init() -> None:
-    """Create a .aegis.py config scaffold in the current directory."""
-    root = find_project_root()
-    try:
-        write_init_scaffold((root or Path.cwd()) / ".aegis.py")
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
+def init(
+    force: bool = typer.Option(
+        False, "--force", "-f",
+        help="Overwrite any existing .aegis.py and ignore upstream ones."),
+) -> None:
+    """Interactive wizard to create a .aegis.py.
+
+    Detects installed agent CLIs (claude, gemini, opencode) and walks
+    you through adding agents and queues. Refuses to run if any
+    .aegis.py exists in the current dir or an ancestor (pass --force
+    to override + overwrite).
+    """
+    upstream = find_project_root()
+    target = (upstream or Path.cwd()) / ".aegis.py"
+
+    if upstream is not None and not force:
+        _console.print(
+            f"[red]aegis already configured at "
+            f"[bold]{upstream / '.aegis.py'}[/bold].[/red]\n"
+            f"[dim]Pass --force to overwrite and re-run the wizard.[/dim]")
         raise typer.Exit(1)
-    _console.print("[green]Created .aegis.py[/green]")
+
+    if target.exists() and not force:
+        # find_project_root returned None (no upstream found from here)
+        # but the file still exists in cwd. Same refuse-without-force.
+        _console.print(
+            f"[red]{target} already exists.[/red]\n"
+            f"[dim]Pass --force to overwrite.[/dim]")
+        raise typer.Exit(1)
+
+    from aegis.init_wizard import render_aegis_py, run_wizard
+    config = run_wizard(_console)
+    if config is None:
+        _console.print("[yellow]aborted; no file written.[/yellow]")
+        raise typer.Exit(1)
+
+    target.write_text(render_aegis_py(config))
+    _console.print(f"\n[green]Wrote {target}[/green]")
+    _console.print(
+        f"[dim]Run [bold]aegis[/bold] to start the interactive TUI, "
+        f"or [bold]aegis serve[/bold] for headless mode.[/dim]")
 
 
 @app.callback(invoke_without_command=True)

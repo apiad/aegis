@@ -1,7 +1,7 @@
 import pytest
 from aegis.config import (
-    Agent, Permission, Effort, INIT_TEMPLATE,
-    load_config, write_init_scaffold, ConfigError,
+    Agent, Permission, Effort,
+    load_config, ConfigError,
     find_project_root, load_telegram_config,
 )
 
@@ -17,15 +17,6 @@ def test_agent_constructs_with_enums():
     assert a.effort is Effort.high
     assert a.harness == "claude-code"
     assert a.model == "opus"
-
-
-def test_init_template_parses_to_default_agent(tmp_path):
-    f = tmp_path / ".aegis.py"
-    f.write_text(INIT_TEMPLATE)
-    agents, default = load_config(search_paths=[f])
-    assert default == "default"
-    assert agents["default"].model == "opus"
-    assert agents["default"].permission is Permission.auto
 
 
 def test_load_config_missing_everywhere_points_to_init(tmp_path):
@@ -67,19 +58,6 @@ def test_load_config_bad_permission_names_field(tmp_path):
                   'default_agent="default"\n')
     with pytest.raises(ConfigError, match="permission"):
         load_config(search_paths=[f])
-
-
-def test_write_init_scaffold_refuses_overwrite(tmp_path):
-    f = tmp_path / ".aegis.py"
-    f.write_text("# existing\n")
-    with pytest.raises(ConfigError, match="exists"):
-        write_init_scaffold(f)
-
-
-def test_write_init_scaffold_writes_template(tmp_path):
-    f = tmp_path / ".aegis.py"
-    write_init_scaffold(f)
-    assert f.read_text() == INIT_TEMPLATE
 
 
 def test_find_project_root_in_cwd(tmp_path):
