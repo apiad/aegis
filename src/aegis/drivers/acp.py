@@ -250,19 +250,31 @@ class AcpSession(HarnessSession):
         # message to stderr — surfacing those bytes is how we debug.
         self._stderr_tail: list[bytes] = []
         self._stderr_task = asyncio.create_task(self._drain_stderr())
-        # The SDK logs internal failures (e.g. "Receive loop failed" with
-        # the parse error / EOF cause) via the acp logger. Without an
-        # explicit handler those records hit a NullHandler — invisible.
-        # Attach a ring buffer at DEBUG so _wrap_error can include them.
+        # The SDK logs internal failures (e.g. "Receive loop failed",
+        # "Error parsing JSON-RPC message") via the bare top-level
+        # logging.exception(...) call — which routes to the ROOT logger,
+        # NOT the "acp" logger. Attach the ring handler to root with a
+        # filter so we only capture records that originated inside the
+        # acp.* package (avoids slurping unrelated app noise).
+        class _AcpFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                # SDK calls are 'logging.exception(...)' from inside
+                # acp/* modules — pathname/module identifies them.
+                module = (record.module or "")
+                pathname = (record.pathname or "")
+                return ("/acp/" in pathname or pathname.endswith("/acp")
+                        or module.startswith("acp"))
+
         self._log_ring = _RingHandler(max_records=64)
         self._log_ring.setFormatter(logging.Formatter(
-            "%(levelname)s %(name)s: %(message)s"))
-        self._acp_logger = logging.getLogger("acp")
-        self._prev_acp_level = self._acp_logger.level
-        self._acp_logger.addHandler(self._log_ring)
-        if self._acp_logger.level == logging.NOTSET \
-                or self._acp_logger.level > logging.DEBUG:
-            self._acp_logger.setLevel(logging.DEBUG)
+            "%(levelname)s %(name)s [%(module)s]: %(message)s"))
+        self._log_ring.addFilter(_AcpFilter())
+        self._root_logger = logging.getLogger()
+        self._prev_root_level = self._root_logger.level
+        self._root_logger.addHandler(self._log_ring)
+        if self._root_logger.level == logging.NOTSET \
+                or self._root_logger.level > logging.DEBUG:
+            self._root_logger.setLevel(logging.DEBUG)
         # ACP SDK arg order: (client, in_stream, out_stream) where
         # in_stream is where the CLIENT writes (= agent's stdin) and
         # out_stream is where the CLIENT reads (= agent's stdout).
@@ -339,14 +351,14 @@ class AcpSession(HarnessSession):
             self._proc.terminate()
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self._proc.wait(), timeout=3.0)
-        # Detach the acp log capture so we don't leak handlers across
-        # repeated session lifetimes within the same process.
+        # Detach the root-logger ring handler so we don't leak handlers
+        # across repeated session lifetimes within the same process.
         ring = getattr(self, "_log_ring", None)
-        logger = getattr(self, "_acp_logger", None)
+        logger = getattr(self, "_root_logger", None)
         if ring is not None and logger is not None:
             with contextlib.suppress(Exception):
                 logger.removeHandler(ring)
-            prev_level = getattr(self, "_prev_acp_level", logging.NOTSET)
+            prev_level = getattr(self, "_prev_root_level", logging.NOTSET)
             with contextlib.suppress(Exception):
                 logger.setLevel(prev_level)
 
