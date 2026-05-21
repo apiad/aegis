@@ -219,6 +219,14 @@ class AegisApp(App):
         await self.push_screen(QueueDashboard())
 
     def action_interrupt(self) -> None:
+        # The escape binding is priority=True at the app level, so it
+        # would otherwise eat escape presses meant to dismiss a modal
+        # (the dashboard, the agent picker). Dismiss the modal first
+        # and only fall through to interrupt on the default screen.
+        from textual.screen import ModalScreen
+        if isinstance(self.screen, ModalScreen):
+            self.screen.dismiss()
+            return
         active = self._active
         if active is not None:
             active.interrupt()

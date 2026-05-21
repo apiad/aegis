@@ -845,3 +845,20 @@ async def test_ctrl_d_opens_dashboard():
         await pilot.press("ctrl+d")
         await pilot.pause()
         assert isinstance(app.screen, QueueDashboard)
+
+
+@pytest.mark.asyncio
+async def test_escape_dismisses_dashboard_when_open():
+    from aegis.queue import Queue
+    from aegis.tui.dashboard import QueueDashboard
+
+    queues = {"tasks": Queue(name="tasks", agent_profile="default",
+                             max_parallel=2)}
+    app = _app(queues=queues)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        assert isinstance(app.screen, QueueDashboard)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, QueueDashboard)
