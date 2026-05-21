@@ -149,3 +149,27 @@ async def test_arrow_keys_move_cursor(make_dashboard_app):
         assert screen.selected_task_id == "t1"
         await pilot.press("up"); await pilot.pause()
         assert screen.selected_task_id == "t0"
+
+
+async def test_detail_panel_shows_selected_task_fields(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        manager.emit(QueueEnqueued(
+            task_id="t1", queue="tasks",
+            payload="summarize TASKS.md\ninto buckets",
+            enqueued_by="agent:lucid"))
+        manager.emit(QueueDispatched(
+            task_id="t1", queue="tasks",
+            worker_handle="brisk-curie", agent_slug="claude"))
+        manager.emit(QueueStarted(task_id="t1", queue="tasks"))
+        await pilot.pause()
+        detail = app.screen.query_one("#detail")
+        rendered = detail.query_one(Static).content.plain
+        assert "t1" in rendered
+        assert "tasks" in rendered
+        assert "brisk-curie" in rendered
+        assert "claude" in rendered
+        assert "summarize TASKS.md" in rendered
+        assert "agent:lucid" in rendered
+        assert "running" in rendered

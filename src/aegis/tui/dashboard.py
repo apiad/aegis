@@ -140,6 +140,44 @@ class RecentBand(_Band):
         self._inner.update(t)
 
 
+class DetailPanel(_Band):
+    def refresh_render(self) -> None:
+        snap = self._digest.snapshot()
+        screen = self.screen
+        sel = getattr(screen, "selected_task_id", None)
+        match = next((t for t in snap.tasks if t.task_id == sel), None)
+        pal = self._palette
+        t = Text()
+        t.append("DETAIL\n\n", style=f"bold {pal.accent}")
+        if match is None:
+            t.append("(no task selected)\n", style=pal.muted)
+            self._inner.update(t)
+            return
+        t.append("task    ", style=pal.muted)
+        t.append(f"{match.task_id}\n", style=pal.ink)
+        t.append("queue   ", style=pal.muted)
+        t.append(f"{match.queue}\n", style=pal.ink)
+        t.append("worker  ", style=pal.muted)
+        t.append(f"{match.worker_handle or '—'}\n", style=pal.ink)
+        t.append("agent   ", style=pal.muted)
+        t.append(f"{match.agent_slug or '—'}\n", style=pal.ink)
+        t.append("from    ", style=pal.muted)
+        t.append(f"{match.from_sender}\n", style=pal.ink)
+        t.append("state   ", style=pal.muted)
+        state_style = {
+            "running": pal.work, "queued": pal.muted,
+            "ok": pal.ok, "err": pal.err,
+        }.get(match.state, pal.ink)
+        t.append(f"{match.state}\n\n", style=state_style)
+        t.append("payload\n", style=pal.muted)
+        for line in match.payload_summary.splitlines():
+            t.append(f"  {line}\n", style=pal.ink)
+        t.append("\nlifecycle\n", style=pal.muted)
+        t.append(f"  completed_at  {match.completed_at or '—'}\n",
+                 style=pal.muted)
+        self._inner.update(t)
+
+
 class QueueDashboard(ModalScreen):
     CSS = """
     QueueDashboard { align: center middle; background: $background; }
@@ -175,7 +213,7 @@ class QueueDashboard(ModalScreen):
                     yield QueuedBand(digest, palette, id="band-queued")
                     yield RecentBand(digest, palette, id="band-recent")
                 with Vertical(id="right"):
-                    yield Static("DETAIL", id="detail")
+                    yield DetailPanel(digest, palette, id="detail")
             yield Static(
                 "↑↓ select  enter focus  > jump to tab  esc collapse",
                 id="footer")
