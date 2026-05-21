@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import random
 import time
 
 from rich.console import RenderableType
@@ -20,6 +21,95 @@ from aegis.events import AssistantText, AssistantThinking
 from aegis.render import render_event, render_user_line
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar
+
+
+# ---------- WorkingIndicator -----------------------------------------
+
+# Single-row indicator that lives between the transcript and the
+# status bar. Hidden by default (collapses to 0 height); becomes
+# visible while the pane is in AgentState.working with:
+#
+#   ⠋  Pondering…  3.2s
+#
+# The verb rotates every ~5s to keep the eye amused during long runs.
+# The spinner glyph cycles at ~100ms; the timer ticks at the same rate.
+
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_VERBS: tuple[str, ...] = (
+    "Thinking", "Pondering", "Cogitating", "Ruminating",
+    "Brewing", "Marinating", "Percolating", "Stewing",
+    "Distilling", "Conjuring", "Architecting", "Synthesizing",
+    "Crystallizing", "Untangling", "Deliberating", "Forging",
+    "Composing", "Convoluting", "Spelunking", "Wrangling",
+    "Brainstorming", "Plotting", "Scheming", "Reticulating",
+)
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s:02d}s"
+
+
+class WorkingIndicator(Static):
+    """Inline 'agent is working' row. Hidden (0-height) when idle,
+    one row when active. Cycles spinner glyph + verb + elapsed timer."""
+
+    DEFAULT_CSS = """
+    WorkingIndicator { height: 0; padding: 0 4; background: transparent;
+                       color: $foreground 50%; text-style: italic; }
+    WorkingIndicator.-active { height: 1; }
+    """
+
+    def __init__(self, palette) -> None:
+        super().__init__("", id="working-indicator")
+        self._palette = palette
+        self._started_at: float | None = None
+        self._frame = 0
+        self._verb_idx = 0
+        self._tick_timer = None
+        self._verb_timer = None
+
+    def start(self) -> None:
+        self.add_class("-active")
+        self._started_at = time.monotonic()
+        self._frame = 0
+        self._verb_idx = random.randrange(len(_VERBS))
+        self._refresh()
+        # Spinner + timer redraw at 100ms; verb rotates every 5s.
+        self._tick_timer = self.set_interval(0.1, self._tick)
+        self._verb_timer = self.set_interval(5.0, self._rotate_verb)
+
+    def stop(self) -> None:
+        self.remove_class("-active")
+        self._started_at = None
+        for t in (self._tick_timer, self._verb_timer):
+            if t is not None:
+                with contextlib.suppress(Exception):
+                    t.stop()
+        self._tick_timer = None
+        self._verb_timer = None
+        self.update("")
+
+    def _tick(self) -> None:
+        self._frame = (self._frame + 1) % len(_SPINNER_FRAMES)
+        self._refresh()
+
+    def _rotate_verb(self) -> None:
+        self._verb_idx = (self._verb_idx + 1) % len(_VERBS)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        if self._started_at is None:
+            return
+        spinner = _SPINNER_FRAMES[self._frame]
+        verb = _VERBS[self._verb_idx]
+        elapsed = _fmt_elapsed(time.monotonic() - self._started_at)
+        self.update(Text(
+            f"{spinner}  {verb}…  {elapsed}",
+            style=f"italic {self._palette.muted}",
+        ))
 
 
 class CopyableBlock(Widget):
@@ -150,6 +240,7 @@ class ConversationPane(Widget):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield VerticalScroll(id="transcript")
+            yield WorkingIndicator(self._palette)
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)
@@ -201,6 +292,8 @@ class ConversationPane(Widget):
         width = self._transcript().size.width or 80
         self._mount_block(
             render_user_line(text, self._palette, width), text)
+        with contextlib.suppress(Exception):
+            self.query_one(WorkingIndicator).start()
         self.run_worker(self._core.send(text),
                         group="turn", exclusive=True)
 
@@ -265,6 +358,8 @@ class ConversationPane(Widget):
                 Text(label, style=self._palette.err), label)
         self.post_message(PaneStateChanged(self, finished))
         if finished:
+            with contextlib.suppress(Exception):
+                self.query_one(WorkingIndicator).stop()
             inp = self.query_one(Input)
             inp.disabled = False
             inp.focus()

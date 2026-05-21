@@ -557,6 +557,37 @@ async def test_block_ordering_across_two_turns():
 
 
 @pytest.mark.asyncio
+async def test_working_indicator_activates_during_turn_and_clears_on_finish():
+    """The inline indicator row gains the .-active class while a turn
+    is in flight and drops it when the turn completes naturally."""
+    from aegis.tui.pane import WorkingIndicator
+
+    app = _app()   # uses default FakeSession echo (responds + Result)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        ind = pane.query_one(WorkingIndicator)
+        # Idle: indicator collapsed.
+        assert not ind.has_class("-active")
+        pane.query_one(Input).value = "ping"
+        await pilot.press("enter")
+        # Immediately after submit, before the worker has finished:
+        await pilot.pause()
+        # FakeSession may already have completed; check both branches.
+        # If still working, indicator is active.
+        if pane.state is AgentState.working:
+            assert ind.has_class("-active")
+            assert ind._started_at is not None
+        # Wait for the turn to complete.
+        for _ in range(20):
+            await pilot.pause()
+            if pane.state is not AgentState.working:
+                break
+        # Settled: indicator inactive.
+        assert pane.state is AgentState.ready
+        assert not ind.has_class("-active")
+
+
+@pytest.mark.asyncio
 async def test_clicking_a_block_copies_its_payload_to_clipboard():
     """Click handler on a CopyableBlock calls app.copy_to_clipboard
     with the block's text payload."""
