@@ -29,6 +29,33 @@ from pathlib import Path
 from typing import Any
 
 import acp
+import acp.connection as _acp_connection
+
+
+# ---------------------------------------------------------------------
+# Workaround for an upstream ACP SDK race (observed against
+# agent-client-protocol 0.10.0, real-terminal Textual loop):
+#
+#   Connection.__init__ schedules self._receive_loop() as a task BEFORE
+#   it assigns ``self._receive_timeout``. Normally __init__ runs to
+#   completion before the loop ticks, so the receive loop sees the
+#   attribute. Under aggressive task scheduling (Textual + Python 3.13
+#   here) the receive task can run first → AttributeError in the
+#   readline call → 'Receive loop failed' → connection closed →
+#   ConnectionError on the next initialize().
+#
+# Setting ``_receive_timeout = None`` as a CLASS-LEVEL default makes
+# the attribute lookup safe even when the instance attribute hasn't
+# been assigned yet. Idempotent: if upstream lands a fix, this still
+# does the right thing.
+# ---------------------------------------------------------------------
+if not hasattr(_acp_connection.Connection, "_receive_timeout") \
+        or isinstance(
+            _acp_connection.Connection.__dict__.get("_receive_timeout"),
+            type(None)) is False:
+    # Add as a class attribute so per-instance reads have a fallback
+    # before __init__ writes the instance attribute.
+    _acp_connection.Connection._receive_timeout = None  # type: ignore[attr-defined]
 
 
 class _RingHandler(logging.Handler):

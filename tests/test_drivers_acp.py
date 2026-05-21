@@ -189,6 +189,23 @@ def _agent() -> Agent:
 
 # ---------- Tests -----------------------------------------------------
 
+def test_acp_sdk_receive_timeout_race_workaround_active():
+    """The ACP SDK 0.10.0 has a race: Connection.__init__ starts the
+    receive loop before assigning self._receive_timeout. Under
+    aggressive task scheduling (real-terminal Textual loop) the loop
+    can run first and crash with AttributeError, killing the receive
+    loop → 'Connection closed' on the next initialize().
+
+    aegis.drivers.acp installs a class-level default that makes the
+    attribute lookup safe even before __init__ finishes. This guards
+    that the workaround stays in place across refactors / SDK upgrades."""
+    import aegis.drivers.acp  # noqa: F401 — triggers the monkey-patch
+    from acp.connection import Connection
+    bare = Connection.__new__(Connection)
+    # Must not AttributeError; default is None (no read timeout).
+    assert bare._receive_timeout is None
+
+
 async def test_acp_session_basic_round_trip(tmp_path):
     """initialize + new_session + prompt → AssistantText + Result."""
     sess = _stub_driver(_STUB_OK).session(
