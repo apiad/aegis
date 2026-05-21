@@ -147,6 +147,51 @@ class AcpSession(HarnessSession):
         # provider-specific flags like model selection.
         return list(self.BASE_CMD)
 
+    async def _drain_stderr(self) -> None:
+        """Continuously read subprocess stderr into a ring buffer.
+        Cap at ~64KB so a runaway log can't OOM us. The contents are
+        attached to the exception in start()/send() when the SDK
+        bubbles up a ConnectionError so the operator sees the real
+        reason the subprocess died."""
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        max_bytes = 64 * 1024
+        total = 0
+        try:
+            while True:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
+                    return
+                self._stderr_tail.append(chunk)
+                total += len(chunk)
+                while total > max_bytes and len(self._stderr_tail) > 1:
+                    total -= len(self._stderr_tail.pop(0))
+        except Exception:  # noqa: BLE001
+            return
+
+    def _stderr_snapshot(self) -> str:
+        if not getattr(self, "_stderr_tail", None):
+            return ""
+        return b"".join(self._stderr_tail).decode("utf-8", "replace")
+
+    def _wrap_error(self, exc: BaseException) -> BaseException:
+        """Annotate a ConnectionError/EOF-ish failure with subprocess
+        stderr + exit code so the surfaced error is actually actionable.
+        Other exception types pass through unchanged."""
+        rc = self._proc.returncode if self._proc else None
+        tail = self._stderr_snapshot().rstrip()
+        if not tail and rc is None:
+            return exc
+        argv = " ".join(self._argv())
+        msg = (f"{type(exc).__name__}: {exc}\n"
+               f"  subprocess: {argv}\n"
+               f"  exit_code:  {rc}\n"
+               f"  stderr:\n{tail or '(empty)'}")
+        wrapped = RuntimeError(msg)
+        wrapped.__cause__ = exc
+        return wrapped
+
     async def start(self) -> None:
         argv = self._argv()
         self._proc = await asyncio.create_subprocess_exec(
@@ -157,37 +202,49 @@ class AcpSession(HarnessSession):
             stderr=asyncio.subprocess.PIPE,
             limit=_STREAM_LIMIT,
         )
+        # Drain subprocess stderr into a ring buffer in the background.
+        # When a ConnectionError/EOF bubbles up from the SDK ("Connection
+        # closed") it usually means the subprocess died with a real error
+        # message to stderr — surfacing those bytes is how we debug.
+        self._stderr_tail: list[bytes] = []
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
         # ACP SDK arg order: (client, in_stream, out_stream) where
         # in_stream is where the CLIENT writes (= agent's stdin) and
         # out_stream is where the CLIENT reads (= agent's stdout).
         self._conn = acp.connect_to_agent(
             self._client, self._proc.stdin, self._proc.stdout)
-        await self._conn.initialize(
-            protocol_version=1,
-            client_capabilities={
-                "fs": {"readTextFile": True, "writeTextFile": True},
-                "terminal": False,
-            },
-            client_info={"name": "aegis", "version": _AEGIS_VERSION},
-        )
-        mcp_servers = ([{
-            "type": "http",
-            "name": "aegis",
-            "url": self._mcp_url,
-            "headers": [],
-        }] if self._mcp_url else [])
-        sess = await self._conn.new_session(
-            cwd=self._cwd, mcp_servers=mcp_servers)
-        self._session_id = sess.session_id
+        try:
+            await self._conn.initialize(
+                protocol_version=1,
+                client_capabilities={
+                    "fs": {"readTextFile": True, "writeTextFile": True},
+                    "terminal": False,
+                },
+                client_info={"name": "aegis", "version": _AEGIS_VERSION},
+            )
+            mcp_servers = ([{
+                "type": "http",
+                "name": "aegis",
+                "url": self._mcp_url,
+                "headers": [],
+            }] if self._mcp_url else [])
+            sess = await self._conn.new_session(
+                cwd=self._cwd, mcp_servers=mcp_servers)
+            self._session_id = sess.session_id
+        except BaseException as e:
+            raise self._wrap_error(e) from None
 
     async def send(self, text: str) -> None:
         if not self._conn or not self._session_id:
             raise RuntimeError(
                 "AcpSession.send() called before start()")
-        resp = await self._conn.prompt(
-            session_id=self._session_id,
-            prompt=[{"type": "text", "text": text}],
-        )
+        try:
+            resp = await self._conn.prompt(
+                session_id=self._session_id,
+                prompt=[{"type": "text", "text": text}],
+            )
+        except BaseException as e:
+            raise self._wrap_error(e) from None
         # The ACP SDK dispatches incoming notifications as separate
         # supervised tasks (see acp.task.dispatcher._dispatch_notification),
         # which means session_update handlers can still be pending when
