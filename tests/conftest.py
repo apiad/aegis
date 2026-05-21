@@ -6,6 +6,13 @@ from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 from asyncio import Queue
 from fastmcp import Client
+from textual.app import App
+from textual.widgets import Label
+
+from aegis.queue.digest import QueueDigest
+from aegis.queue.schema import Queue as _AegisQueue
+from aegis.tui.dashboard import QueueDashboard
+from aegis.tui.themes import aegis_colors, INK
 
 
 class MockQueue:
@@ -164,3 +171,58 @@ def invalid_json():
 def mock_context():
     """Create a mock FastMCP Context."""
     return MockContext()
+
+
+class _FakeQueueManager:
+    """Fake QueueManager — emits events on demand, no real workers."""
+
+    def __init__(self, queues):
+        self._queues = queues
+        self._subs = []
+
+    def subscribe(self, cb):
+        self._subs.append(cb)
+
+        def _unsub():
+            if cb in self._subs:
+                self._subs.remove(cb)
+
+        return _unsub
+
+    def emit(self, ev):
+        for cb in list(self._subs):
+            cb(ev)
+
+
+class _DashboardHarness(App):
+    BINDINGS = [
+        ("ctrl+d", "open_dashboard", "Queues"),
+    ]
+
+    def __init__(self, digest):
+        super().__init__()
+        self.queue_digest = digest
+        self._pal = aegis_colors(INK)
+
+    @property
+    def palette(self):
+        return self._pal
+
+    def compose(self):
+        yield Label("home")
+
+    async def action_open_dashboard(self):
+        await self.push_screen(QueueDashboard())
+
+
+@pytest.fixture
+def make_dashboard_app():
+    def _factory(queues=None):
+        q = queues or {"tasks": _AegisQueue("tasks", "claude", 2)}
+        fake = _FakeQueueManager(q)
+        digest = QueueDigest(fake)
+        digest.start()
+        app = _DashboardHarness(digest)
+        return app, fake
+
+    return _factory

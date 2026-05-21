@@ -1,11 +1,70 @@
 """QueueDashboard — modal observability surface for the queue substrate."""
 from __future__ import annotations
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.widget import Widget
 from textual.widgets import Static
+
+from aegis.queue.digest import QueueDigest
+
+
+class _Band(Widget):
+    DEFAULT_CSS = """
+    _Band { height: auto; padding: 0; margin-bottom: 1; }
+    """
+
+    def __init__(self, digest: QueueDigest, palette,
+                 *, id: str | None = None) -> None:
+        super().__init__(id=id)
+        self._digest = digest
+        self._palette = palette
+        self._unsub = None
+        self._inner = Static("")
+
+    def compose(self) -> ComposeResult:
+        yield self._inner
+
+    def on_mount(self) -> None:
+        self._unsub = self._digest._manager.subscribe(
+            lambda ev: self.refresh_render())
+        self.refresh_render()
+
+    def on_unmount(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+
+    def refresh_render(self) -> None:
+        raise NotImplementedError
+
+
+class QueuesBand(_Band):
+    def refresh_render(self) -> None:
+        snap = self._digest.snapshot()
+        pal = self._palette
+        t = Text()
+        t.append("QUEUES\n", style=f"bold {pal.accent}")
+        for q in snap.queues:
+            t.append(f"\n  {q.name}\n", style=pal.ink)
+            t.append("    agent ", style=pal.muted)
+            t.append(q.agent, style=pal.accent)
+            t.append(" · parallel ", style=pal.muted)
+            t.append(f"{q.max_parallel}\n", style=pal.ink)
+            t.append("    running ", style=pal.muted)
+            t.append(f"{q.running}", style=pal.work)
+            t.append(" · queued ", style=pal.muted)
+            t.append(f"{q.queued}", style=pal.work)
+            if q.ok:
+                t.append(" · ", style=pal.muted)
+                t.append(f"✓{q.ok}", style=pal.ok)
+            if q.err:
+                t.append(" ", style=pal.muted)
+                t.append(f"✗{q.err}", style=pal.err)
+        self._inner.update(t)
 
 
 class QueueDashboard(ModalScreen):
@@ -25,10 +84,12 @@ class QueueDashboard(ModalScreen):
     ]
 
     def compose(self) -> ComposeResult:
+        digest = self.app.queue_digest
+        palette = self.app.palette
         with Vertical(id="wrap"):
             with Horizontal():
                 with Vertical(id="left"):
-                    yield Static("QUEUES", id="band-queues")
+                    yield QueuesBand(digest, palette, id="band-queues")
                     yield Static("IN-FLIGHT", id="band-inflight")
                     yield Static("QUEUED", id="band-queued")
                     yield Static("RECENT", id="band-recent")
