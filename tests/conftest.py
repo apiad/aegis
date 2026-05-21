@@ -219,7 +219,8 @@ class _DashboardHarness(App):
 @pytest.fixture
 def make_dashboard_app():
     def _factory(queues=None, sm=None):
-        q = queues or {"tasks": _AegisQueue("tasks", "claude", 2)}
+        q = queues if queues is not None else {
+            "tasks": _AegisQueue("tasks", "claude", 2)}
         fake = _FakeQueueManager(q)
         digest = QueueDigest(fake)
         digest.start()

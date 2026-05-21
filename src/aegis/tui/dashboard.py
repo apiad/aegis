@@ -49,6 +49,11 @@ class QueuesBand(_Band):
         pal = self._palette
         t = Text()
         t.append("QUEUES\n", style=f"bold {pal.accent}")
+        if not snap.queues:
+            t.append("(no queues configured in .aegis.py)\n",
+                     style=pal.muted)
+            self._inner.update(t)
+            return
         for q in snap.queues:
             t.append(f"\n  {q.name}\n", style=pal.ink)
             t.append("    agent ", style=pal.muted)

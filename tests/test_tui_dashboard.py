@@ -219,3 +219,13 @@ async def test_jump_to_tab_focuses_worker_pane(make_dashboard_app):
         await pilot.pause()
         assert focused == ["brisk-curie"]
         assert not isinstance(app.screen, QueueDashboard)
+
+
+async def test_dashboard_no_queues_shows_message(make_dashboard_app):
+    app, _ = make_dashboard_app(queues={})
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        band = app.screen.query_one("#band-queues")
+        rendered = band.query_one(Static).content.plain.lower()
+        assert "no queues configured" in rendered
