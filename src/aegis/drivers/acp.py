@@ -175,19 +175,30 @@ class AcpSession(HarnessSession):
             return ""
         return b"".join(self._stderr_tail).decode("utf-8", "replace")
 
-    def _wrap_error(self, exc: BaseException) -> BaseException:
+    async def _wrap_error(self, exc: BaseException) -> BaseException:
         """Annotate a ConnectionError/EOF-ish failure with subprocess
         stderr + exit code so the surfaced error is actually actionable.
-        Other exception types pass through unchanged."""
+
+        Always wraps — even when stderr is empty — so the operator can
+        see that the diagnostic ran and confirm the subprocess actually
+        produced nothing. Gives the subprocess up to 1s to finish dying
+        and flush its stderr before reading the snapshot."""
+        # Give the subprocess a moment to actually exit + flush.
+        if self._proc is not None:
+            try:
+                await asyncio.wait_for(self._proc.wait(), timeout=1.0)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                pass
+        # Drain task should be near-done now that the pipe closed; give
+        # it a tick to finish appending.
+        await asyncio.sleep(0)
         rc = self._proc.returncode if self._proc else None
         tail = self._stderr_snapshot().rstrip()
-        if not tail and rc is None:
-            return exc
         argv = " ".join(self._argv())
         msg = (f"{type(exc).__name__}: {exc}\n"
                f"  subprocess: {argv}\n"
-               f"  exit_code:  {rc}\n"
-               f"  stderr:\n{tail or '(empty)'}")
+               f"  exit_code:  {rc if rc is not None else '(still running)'}\n"
+               f"  stderr:\n{tail or '(empty — subprocess produced no stderr before failing)'}")
         wrapped = RuntimeError(msg)
         wrapped.__cause__ = exc
         return wrapped
@@ -232,7 +243,7 @@ class AcpSession(HarnessSession):
                 cwd=self._cwd, mcp_servers=mcp_servers)
             self._session_id = sess.session_id
         except BaseException as e:
-            raise self._wrap_error(e) from None
+            raise (await self._wrap_error(e)) from None
 
     async def send(self, text: str) -> None:
         if not self._conn or not self._session_id:
@@ -244,7 +255,7 @@ class AcpSession(HarnessSession):
                 prompt=[{"type": "text", "text": text}],
             )
         except BaseException as e:
-            raise self._wrap_error(e) from None
+            raise (await self._wrap_error(e)) from None
         # The ACP SDK dispatches incoming notifications as separate
         # supervised tasks (see acp.task.dispatcher._dispatch_notification),
         # which means session_update handlers can still be pending when
