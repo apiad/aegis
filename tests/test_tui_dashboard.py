@@ -48,7 +48,8 @@ async def test_dashboard_pushes_and_dismisses():
         assert not isinstance(app.screen, QueueDashboard)
 
 
-from aegis.queue.events import QueueDispatched, QueueEnqueued, QueueStarted
+from aegis.queue.events import (
+    QueueCompleted, QueueDispatched, QueueEnqueued, QueueStarted)
 from textual.widgets import Static
 
 
@@ -71,3 +72,63 @@ async def test_queues_band_renders_config_and_counts(make_dashboard_app):
         assert "claude" in rendered
         assert "parallel 2" in rendered
         assert "running 1" in rendered
+
+
+async def test_inflight_band_lists_running_tasks(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        manager.emit(QueueEnqueued(
+            task_id="t1", queue="tasks",
+            payload="summarize TASKS.md", enqueued_by="agent:c"))
+        manager.emit(QueueDispatched(
+            task_id="t1", queue="tasks",
+            worker_handle="brisk-curie", agent_slug="claude"))
+        manager.emit(QueueStarted(task_id="t1", queue="tasks"))
+        await pilot.pause()
+        band = app.screen.query_one("#band-inflight")
+        rendered = band.query_one(Static).content.plain
+        assert "brisk-curie" in rendered
+        assert "summarize TASKS.md" in rendered
+
+
+async def test_queued_band_lists_pending_tasks(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        for i in range(3):
+            manager.emit(QueueEnqueued(
+                task_id=f"q{i}", queue="tasks",
+                payload=f"payload {i}", enqueued_by="agent:c"))
+        await pilot.pause()
+        band = app.screen.query_one("#band-queued")
+        rendered = band.query_one(Static).content.plain
+        for i in range(3):
+            assert f"payload {i}" in rendered
+
+
+async def test_recent_band_shows_completed_in_reverse_time(make_dashboard_app):
+    app, manager = make_dashboard_app()
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        for i, outcome in enumerate(["completed", "failed", "completed"]):
+            manager.emit(QueueEnqueued(
+                task_id=f"r{i}", queue="tasks",
+                payload=f"p {i}", enqueued_by="agent:c"))
+            manager.emit(QueueDispatched(
+                task_id=f"r{i}", queue="tasks",
+                worker_handle=f"w{i}", agent_slug="claude"))
+            manager.emit(QueueStarted(task_id=f"r{i}", queue="tasks"))
+            manager.emit(QueueCompleted(
+                task_id=f"r{i}", queue="tasks", outcome=outcome,
+                result=None, error=None,
+                completed_at=f"2026-05-21T12:00:0{i}Z"))
+        await pilot.pause()
+        band = app.screen.query_one("#band-recent")
+        rendered = band.query_one(Static).content.plain
+        idx0 = rendered.index("p 0")
+        idx2 = rendered.index("p 2")
+        assert idx2 < idx0

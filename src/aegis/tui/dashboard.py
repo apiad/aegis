@@ -67,6 +67,66 @@ class QueuesBand(_Band):
         self._inner.update(t)
 
 
+def _format_task_row(t, palette, mode: str) -> Text:
+    """One-line task row. mode is 'inflight' | 'queued' | 'recent'."""
+    pal = palette
+    line = Text()
+    if mode == "inflight":
+        line.append(" ● ", style=pal.work)
+        line.append(t.worker_handle or "—", style=pal.ink)
+    elif mode == "queued":
+        line.append(" ○ —          ", style=pal.muted)
+    else:  # recent
+        glyph, style = (("✓", pal.ok) if t.state == "ok"
+                        else ("✗", pal.err))
+        line.append(f" {glyph} ", style=style)
+        line.append(
+            (t.worker_handle or "—").ljust(14)[:14], style=pal.muted)
+    line.append(f"  {t.queue:<8}", style=pal.muted)
+    line.append(f"  {t.payload_summary}", style=pal.ink)
+    line.append("\n")
+    return line
+
+
+class InFlightBand(_Band):
+    def refresh_render(self) -> None:
+        snap = self._digest.snapshot()
+        running = [x for x in snap.tasks if x.state == "running"]
+        t = Text()
+        t.append("IN-FLIGHT\n", style=f"bold {self._palette.accent}")
+        if not running:
+            t.append("  (none)\n", style=self._palette.muted)
+        for row in running:
+            t.append_text(_format_task_row(row, self._palette, "inflight"))
+        self._inner.update(t)
+
+
+class QueuedBand(_Band):
+    def refresh_render(self) -> None:
+        snap = self._digest.snapshot()
+        queued = [x for x in snap.tasks if x.state == "queued"]
+        t = Text()
+        t.append("QUEUED\n", style=f"bold {self._palette.accent}")
+        if not queued:
+            t.append("  (none)\n", style=self._palette.muted)
+        for row in queued:
+            t.append_text(_format_task_row(row, self._palette, "queued"))
+        self._inner.update(t)
+
+
+class RecentBand(_Band):
+    def refresh_render(self) -> None:
+        snap = self._digest.snapshot()
+        recent = [x for x in snap.tasks if x.state in ("ok", "err")]
+        t = Text()
+        t.append("RECENT\n", style=f"bold {self._palette.accent}")
+        if not recent:
+            t.append("  (none)\n", style=self._palette.muted)
+        for row in recent:
+            t.append_text(_format_task_row(row, self._palette, "recent"))
+        self._inner.update(t)
+
+
 class QueueDashboard(ModalScreen):
     CSS = """
     QueueDashboard { align: center middle; background: $background; }
@@ -90,9 +150,9 @@ class QueueDashboard(ModalScreen):
             with Horizontal():
                 with Vertical(id="left"):
                     yield QueuesBand(digest, palette, id="band-queues")
-                    yield Static("IN-FLIGHT", id="band-inflight")
-                    yield Static("QUEUED", id="band-queued")
-                    yield Static("RECENT", id="band-recent")
+                    yield InFlightBand(digest, palette, id="band-inflight")
+                    yield QueuedBand(digest, palette, id="band-queued")
+                    yield RecentBand(digest, palette, id="band-recent")
                 with Vertical(id="right"):
                     yield Static("DETAIL", id="detail")
             yield Static(
