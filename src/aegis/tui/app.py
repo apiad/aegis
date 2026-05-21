@@ -36,6 +36,7 @@ class AegisApp(App):
         Binding("ctrl+t", "new_tab", "New tab", priority=True),
         Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
+        Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
@@ -208,6 +209,10 @@ class AegisApp(App):
                 message.pane.unseen = True
             self.bell()
         self._refresh_tabbar()
+
+    async def action_open_dashboard(self) -> None:
+        from aegis.tui.dashboard import QueueDashboard
+        await self.push_screen(QueueDashboard())
 
     def action_interrupt(self) -> None:
         active = self._active

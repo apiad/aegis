@@ -831,3 +831,17 @@ def test_app_constructs_digest():
     app = _app(queues=queues)
     assert hasattr(app, "queue_digest")
     assert app.queue_digest is not None
+
+
+@pytest.mark.asyncio
+async def test_ctrl_d_opens_dashboard():
+    from aegis.queue import Queue
+    from aegis.tui.dashboard import QueueDashboard
+
+    queues = {"tasks": Queue(name="tasks", agent_profile="default",
+                             max_parallel=2)}
+    app = _app(queues=queues)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        assert isinstance(app.screen, QueueDashboard)
