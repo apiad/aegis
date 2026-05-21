@@ -127,3 +127,37 @@ async def test_multiple_arrivals_batch_into_one_chain_turn():
     # both bodies present, each with own header
     assert body.count("> from queue:impl") == 2
     assert "a" in body and "b" in body
+
+
+async def test_deliver_fires_on_inbox_observer():
+    """Frontends need a synchronous hook to render incoming inbox
+    messages as they arrive, regardless of whether the session is idle
+    (immediate dispatch) or mid-turn (buffered + chained)."""
+    seen: list[InboxMessage] = []
+
+    evs = [
+        [AssistantText(text="ok"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [AssistantText(text="reply"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    h = FakeHarness(evs)
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s.on_inbox = lambda _s, msg: seen.append(msg)
+
+    # idle delivery — fires immediately
+    await s.deliver(_msg("hello"))
+    await s._task
+    assert len(seen) == 1
+    assert seen[0].body == "hello"
+
+    # mid-turn delivery — also fires immediately, even though the
+    # message gets buffered for the chained turn
+    await s.send("work")
+    await s.deliver(_msg("interrupt"))
+    assert len(seen) == 2
+    assert seen[1].body == "interrupt"
+    # cleanup pending tasks
+    await s._task
+    if s._task is not None and not s._task.done():
+        await s._task

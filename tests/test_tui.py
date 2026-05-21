@@ -862,3 +862,30 @@ async def test_escape_dismisses_dashboard_when_open():
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, QueueDashboard)
+
+
+@pytest.mark.asyncio
+async def test_pane_renders_inbox_block_on_delivery():
+    """When a handoff or queue callback arrives, the pane mounts a
+    distinct ✉ block in the transcript so the operator can see the
+    incoming message before the agent reacts."""
+    from aegis.queue.schema import InboxMessage
+
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._panes[0]
+        msg = InboxMessage(
+            sender="agent:lucid-knuth",
+            timestamp="2026-05-21T17:30:00Z",
+            body="please summarize the TASKS.md\ninto 3 priority buckets",
+            task_id=None, status=None)
+        await pane._core.deliver(msg)
+        await pilot.pause()
+        blocks = list(pane.query(CopyableBlock))
+        # An inbox block carries the ✉ glyph + sender in its payload
+        match = [b for b in blocks
+                 if "agent:lucid-knuth" in b.text_payload()]
+        assert match, [b.text_payload() for b in blocks]
+        assert "please summarize the TASKS.md" in match[0].text_payload()
+        await pilot.press("ctrl+q")

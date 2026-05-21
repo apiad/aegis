@@ -12,6 +12,7 @@ from aegis.tui.state import AgentState
 
 EventCb = Callable[["AgentSession", Event], None]
 StateCb = Callable[["AgentSession", AgentState, bool], None]
+InboxCb = Callable[["AgentSession", InboxMessage], None]
 
 
 def _render_batch(batch: list[InboxMessage]) -> str:
@@ -46,6 +47,11 @@ class AgentSession:
         # clobbering the primary.
         self.on_event: EventCb | None = None
         self.on_state: StateCb | None = None
+        # Fired synchronously at the top of deliver() for every incoming
+        # inbox message — fires whether the session is idle (dispatches
+        # immediately) or mid-turn (buffers for chain). Lets frontends
+        # surface "received from <sender>" before the agent reacts.
+        self.on_inbox: InboxCb | None = None
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
         # Captured by _run_turn's except clause for postmortem inspection.
@@ -77,6 +83,8 @@ class AgentSession:
     async def deliver(self, msg: InboxMessage) -> None:
         """Push an inbox message at this session. Wake if idle; buffer
         if mid-turn; the turn-end hook will chain a follow-up turn."""
+        if self.on_inbox is not None:
+            self.on_inbox(self, msg)
         self._inbox_buffer.append(msg)
         if self.state is AgentState.working:
             return

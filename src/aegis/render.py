@@ -49,3 +49,32 @@ def render_user_line(text: str, colors, width: int | None = None) -> Text:
     if width and width > line.cell_len:
         line.pad_right(width - line.cell_len)
     return line
+
+
+def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
+    """Visible block for an incoming inbox message.
+
+    Header line carries the sender / task / status / timestamp; below it
+    we show up to `preview_lines` body lines (dimmed) so Alex can see
+    what the agent is about to react to without scrolling into the next
+    turn. Truncation footer says how many more lines were elided.
+    """
+    line = Text()
+    line.append("✉ ", style=f"bold {colors.accent}")
+    if msg.task_id is not None:
+        status = msg.status or "?"
+        head = (f"from {msg.sender} · task#{msg.task_id} · "
+                f"{status} · {msg.timestamp}")
+    else:
+        head = f"from {msg.sender} · {msg.timestamp}"
+    line.append(head, style=colors.accent)
+    line.append("\n")
+    body_lines = msg.body.splitlines() if msg.body else []
+    for ln in body_lines[:preview_lines]:
+        line.append(f"  {ln}\n", style=colors.muted)
+    if len(body_lines) > preview_lines:
+        remaining = len(body_lines) - preview_lines
+        s = "" if remaining == 1 else "s"
+        line.append(f"  … ({remaining} more line{s})\n",
+                    style=colors.muted)
+    return line

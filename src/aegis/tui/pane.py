@@ -18,7 +18,7 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, AssistantThinking, ToolUse
-from aegis.render import render_event, render_user_line
+from aegis.render import render_event, render_inbox_block, render_user_line
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import StatusBar
@@ -224,6 +224,7 @@ class ConversationPane(Widget):
         self._core = AgentSession(session, agent, agent_slug, handle)
         self._core.on_event = self._on_core_event
         self._core.on_state = self._on_core_state
+        self._core.on_inbox = self._on_core_inbox
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
@@ -372,6 +373,19 @@ class ConversationPane(Widget):
                     r, self._streaming_text)
 
     # --- event handlers --------------------------------------------
+
+    def _on_core_inbox(self, _core, msg) -> None:
+        """Render an incoming inbox message (handoff / queue callback /
+        telegram) as a distinct block in the transcript before the agent
+        reacts. Fires on every deliver(), whether the session was idle
+        or buffering mid-turn."""
+        self._flush_streaming()
+        renderable = render_inbox_block(msg, self._palette)
+        # Plain-text clipboard payload mirrors the substrate header
+        # convention so copy-on-click gives the same shape the agent saw.
+        from aegis.queue.schema import render_inbox_header
+        payload = f"{render_inbox_header(msg)}\n{msg.body or ''}"
+        self._mount_block(renderable, payload)
 
     def _on_core_event(self, _core, ev) -> None:
         if isinstance(ev, AssistantText):
