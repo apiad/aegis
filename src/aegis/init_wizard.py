@@ -59,7 +59,7 @@ _PROVIDER_CATALOG: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         name="gemini", cli="gemini", cls_name="GeminiCLI",
-        model_shortlist=("gemini-3-flash-preview", "gemini-3-pro-preview"),
+        model_shortlist=("gemini-3-flash-preview", "gemini-3.1-pro-preview"),
         permission_choices=("read", "write", "full", "auto"),
         default_permission="full",
         has_effort=False,
