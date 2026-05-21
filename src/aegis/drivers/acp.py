@@ -329,9 +329,11 @@ class AcpSession(HarnessSession):
             raise (await self._wrap_error(e)) from None
 
     async def send(self, text: str) -> None:
+        import time as _time
         if not self._conn or not self._session_id:
             raise RuntimeError(
                 "AcpSession.send() called before start()")
+        started = _time.monotonic()
         try:
             resp = await self._conn.prompt(
                 session_id=self._session_id,
@@ -348,7 +350,9 @@ class AcpSession(HarnessSession):
             await asyncio.sleep(0)
         # Synthesize the terminal Result from PromptResponse. Token
         # counts arrive (when available) under
-        # resp.field_meta["quota"]["token_count"].
+        # resp.field_meta["quota"]["token_count"]. duration_ms is
+        # measured locally — ACP's PromptResponse doesn't carry it.
+        duration_ms = int((_time.monotonic() - started) * 1000)
         is_error = resp.stop_reason not in ("end_turn", None)
         in_tok = out_tok = None
         try:
@@ -358,7 +362,7 @@ class AcpSession(HarnessSession):
         except (KeyError, TypeError, AttributeError):
             pass
         self._queue.put_nowait(Result(
-            duration_ms=None, is_error=is_error,
+            duration_ms=duration_ms, is_error=is_error,
             input_tokens=in_tok, output_tokens=out_tok))
         # End-of-turn sentinel so events() returns.
         self._queue.put_nowait(None)
