@@ -167,6 +167,12 @@
   margin: 2rem auto;
 }
 
+/* Constrain all terminals to their container — the body itself
+ * scrolls horizontally if a line is wider than the viewport. */
+.aegis-term {
+  max-width: 100%;
+}
+
 /* Section: pitch ---------------------------------------------------- */
 
 .aegis-section {
@@ -201,16 +207,17 @@
 
 .aegis-stack {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.2rem;
   margin: 2rem 0;
 }
 
 @media (max-width: 720px) {
-  .aegis-stack { grid-template-columns: 1fr; }
+  .aegis-stack { grid-template-columns: minmax(0, 1fr); }
 }
 
 .aegis-stack .col {
+  min-width: 0;
   background: var(--aegis-panel);
   border: 1px solid var(--aegis-rule);
   border-radius: 8px;
@@ -245,16 +252,22 @@
 
 .aegis-primitives {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
   margin: 2rem 0;
 }
 
 @media (max-width: 880px) {
-  .aegis-primitives { grid-template-columns: 1fr; }
+  .aegis-primitives { grid-template-columns: minmax(0, 1fr); }
 }
 
 .aegis-card {
+  /* min-width: 0 unblocks the grid track from expanding to fit the
+   * card's intrinsic content width — the terminal mockups inside use
+   * white-space: pre with long lines that would otherwise overflow
+   * the grid right of the viewport. Combined with overflow-x: auto
+   * on .aegis-term-body, long lines scroll inside the card. */
+  min-width: 0;
   background: var(--aegis-surface);
   border: 1px solid var(--aegis-rule);
   border-radius: 10px;
