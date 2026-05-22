@@ -15,6 +15,11 @@ from aegis.workflow.decorator import (
     PredicateFailed, SubagentSpawnError, WorkflowError,
 )
 
+__all__ = [
+    "WorkflowEngine", "PredicateFailed", "SubagentSpawnError",
+    "WorkflowError",
+]
+
 
 class _DelegationPromise:
     """Inbox-binding shape used by delegate(): receives one InboxMessage
@@ -122,15 +127,26 @@ class WorkflowEngine:
                    cwd: str | Path | None = None,
                    timeout: float | None = None,
                    env: dict | None = None,
-                   ) -> subprocess.CompletedProcess:
-        """Async shell. cwd defaults to project root (find_project_root)
-        or os.getcwd(); timeout=None means wait forever. On timeout,
-        raises WorkflowError after killing the subprocess.
+                   ) -> "_BashResult":
+        """Async shell. Delegates to ``bridge.workflow_runner.run_bash``
+        when the runner exposes one (test bridges intercept here);
+        otherwise runs the command via ``asyncio.create_subprocess_shell``
+        with ``cwd`` defaulting to the project root.
 
-        Returns ``subprocess.CompletedProcess`` with attribute access
-        (``.returncode``, ``.stdout``, ``.stderr``). Also exposes
-        ``exit``/``stdout``/``stderr`` via dict-style indexing so the
-        catalog's ``bash_predicate`` retry-with templates work."""
+        Returns a ``_BashResult`` (``subprocess.CompletedProcess``
+        subclass) so callers may use either attribute access
+        (``.returncode``/``.stdout``/``.stderr``) or dict-style
+        indexing (``["exit"]``/``["stdout"]``/``["stderr"]``) — the
+        latter is what ``bash_predicate`` retry-with templates expect."""
+        runner = self._runner()
+        if runner is not None and hasattr(runner, "run_bash"):
+            res = await runner.run_bash(cmd, cwd=cwd, timeout=timeout)
+            if isinstance(res, dict):
+                return _BashResult(
+                    args=cmd, returncode=res.get("exit", 0),
+                    stdout=res.get("stdout", ""),
+                    stderr=res.get("stderr", ""))
+            return res
         if cwd is None:
             cwd = str(find_project_root() or os.getcwd())
         proc = await asyncio.create_subprocess_shell(
@@ -152,6 +168,51 @@ class WorkflowEngine:
             args=cmd, returncode=proc.returncode,
             stdout=stdout.decode("utf-8", errors="replace"),
             stderr=stderr.decode("utf-8", errors="replace"))
+
+    async def bash_predicate(self, cmd: str, *,
+                             retry_with,
+                             max_retries: int = 3,
+                             cwd: str | Path | None = None,
+                             timeout: float | None = None,
+                             ) -> "_BashResult":
+        """Run ``cmd`` repeatedly until it exits 0 or ``max_retries`` is
+        reached. On each non-zero exit, send ``retry_with`` feedback to
+        ``self.host`` and try again.
+
+        ``retry_with`` may be a string template
+        (formatted with ``{exit}``/``{stdout}``/``{stderr}``) or a
+        callable that takes the bash result dict and returns the
+        feedback. Raises ``PredicateFailed`` if the budget is
+        exhausted."""
+        attempts = 0
+        last_result: _BashResult | None = None
+        while True:
+            res = await self.bash(cmd, cwd=cwd, timeout=timeout)
+            attempts += 1
+            if res["exit"] == 0:
+                return res
+            last_result = res
+            if attempts > max_retries:
+                raise PredicateFailed(
+                    cmd,
+                    {"exit": res["exit"], "stdout": res["stdout"],
+                     "stderr": res["stderr"]},
+                    attempts=attempts)
+            if callable(retry_with):
+                feedback = retry_with({
+                    "exit": res["exit"], "stdout": res["stdout"],
+                    "stderr": res["stderr"]})
+            else:
+                feedback = retry_with.format(
+                    exit=res["exit"], stdout=res["stdout"],
+                    stderr=res["stderr"])
+            if self.host is not None:
+                await self.send(self.host, feedback)
+
+    async def parallel(self, coros) -> list:
+        """Run the given awaitables concurrently; return their results
+        in order. Thin wrapper around ``asyncio.gather``."""
+        return list(await asyncio.gather(*coros))
 
     # ── delegate (queue-worker pattern; legacy) ──────────────────────
     async def delegate(self, queue: str, payload: str) -> str:
