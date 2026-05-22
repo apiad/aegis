@@ -21,9 +21,29 @@ from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, AssistantThinking, ToolUse
 from aegis.render import render_event, render_inbox_block, render_user_line
+from aegis.state.session_log import EventReplay
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import StatusBar
+
+
+def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
+    """Render replay events as a list of Rich renderables, in order,
+    using the live render path. Appends a ⚠ interrupted marker if
+    replay.interrupted. Returns an empty list for an empty replay.
+    """
+    if colors is None:
+        from aegis.tui.themes import INK, aegis_colors
+        colors = aegis_colors(INK)
+    blocks: list[RenderableType] = []
+    for ev in replay.events:
+        r = render_event(ev, colors)
+        if r is None:
+            continue
+        blocks.append(r)
+    if replay.interrupted:
+        blocks.append(Text("⚠ interrupted", style="yellow"))
+    return blocks
 
 
 def make_session_log_observer(state_dir_path: Path, handle: str):
@@ -229,7 +249,8 @@ class ConversationPane(Widget):
 
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette,
-                 *, digest=None, state_dir_path: Path | None = None) -> None:
+                 *, digest=None, state_dir_path: Path | None = None,
+                 replay: EventReplay | None = None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -246,6 +267,7 @@ class ConversationPane(Widget):
         if state_dir_path is not None:
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, handle))
+        self._replay = replay
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
@@ -278,7 +300,21 @@ class ConversationPane(Widget):
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
+        self._mount_replay()
         self.refresh_metrics()
+
+    def _mount_replay(self) -> None:
+        """Paint prior events from a replay onto the transcript, then
+        mark an interrupted turn if the session ended mid-turn."""
+        if self._replay is None:
+            return
+        for ev in self._replay.events:
+            self._on_core_event(None, ev)
+        if self._replay.interrupted:
+            self._flush_streaming()
+            self._mount_block(
+                Text("⚠ interrupted", style="yellow"),
+                "⚠ interrupted")
 
     def refresh_metrics(self) -> None:
         self.query_one(StatusBar).set_metrics(
