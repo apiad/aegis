@@ -505,5 +505,17 @@ class ConversationPane(Widget):
         self._transcript().mount(banner, before=self._transcript().children[0]
                                  if self._transcript().children else None)
 
+    def show_resume_failure(self, reason: str) -> None:
+        """Mount a styled failure banner at the top of this pane's transcript.
+
+        Used when driver.resume(...) raised for this tab. The pane stays open
+        so Alex can inspect the reason and close it manually.
+        """
+        from textual.widgets import Static
+        text = Text(f"⚠ resume failed: {reason}", style="bold red")
+        banner = Static(text, classes="resume-failure")
+        self._transcript().mount(banner, before=self._transcript().children[0]
+                                 if self._transcript().children else None)
+
     async def close(self) -> None:
         await self._core.close()

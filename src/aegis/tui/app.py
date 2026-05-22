@@ -220,7 +220,7 @@ class AegisApp(App):
         self.query_one(TabBar).set_palette(self._palette)
         await self._mcp.start()
         await self.queue_manager.start()
-        # TODO(Task 11 / session-persistence-v1): wire bootstrap_resume here.
+        # TODO(Task 11/13 / session-persistence-v1): wire bootstrap_resume here.
         # bootstrap_resume() is now the pure orchestrator — it classifies tabs
         # via plan_resume, calls driver.resume() per resumable tab, and returns
         # a banner string. Wiring it into on_mount requires a spawn path that
@@ -228,9 +228,13 @@ class AegisApp(App):
         # is a deeper refactor than fits this task. The follow-up (Task 14 or
         # later) should:
         #   1. Add ConversationPane.from_resumed(session, ...) classmethod.
-        #   2. Call bootstrap_resume(..., open_tab=<mount resumed pane>) here.
+        #   2. Call bootstrap_resume(..., open_tab=<mount resumed pane>,
+        #      open_failed_tab=<mount placeholder + show_resume_failure>) here.
         #   3. If banner starts "no resumable", skip default spawn and self.exit().
         #   4. Otherwise call show_resume_banner on the active pane.
+        # Task 13 added ConversationPane.show_resume_failure(reason) for use by
+        # open_failed_tab; the orchestrator is already exercised in tests, but
+        # the AegisApp closure for it shares the same from_resumed dependency.
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
