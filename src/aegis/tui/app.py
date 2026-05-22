@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 
 from textual import work
@@ -24,10 +22,6 @@ from aegis.tui.themes import (
 from aegis.tui.widgets import TabBar
 
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle) -> None:
