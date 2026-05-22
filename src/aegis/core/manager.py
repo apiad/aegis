@@ -28,6 +28,7 @@ class SessionManager:
         self.inbox_router = inbox
         self.queue_manager = None
         self.canvas_manager = None
+        self.terminal_manager = None
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
 
@@ -36,6 +37,9 @@ class SessionManager:
 
     def attach_canvas_manager(self, cm) -> None:
         self.canvas_manager = cm
+
+    def attach_terminal_manager(self, tm) -> None:
+        self.terminal_manager = tm
 
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,

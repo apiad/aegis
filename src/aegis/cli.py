@@ -148,6 +148,11 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
                        notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)
+    from aegis.terminal.manager import TerminalManager
+    from aegis.terminal.notify import make_terminal_notifier
+    tm = TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals")
+    tm.set_notifier(make_terminal_notifier(inbox))
+    mgr.attach_terminal_manager(tm)
     mcp.bind(mgr)
     await mcp.start()
     await qm.start()

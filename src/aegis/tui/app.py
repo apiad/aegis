@@ -198,6 +198,13 @@ class AegisApp(App):
         self.canvas_manager = CanvasManager(
             state_dir=self._state_dir,
             notifier=make_canvas_notifier(self.inbox_router))
+        # Terminal plane — live shared PTYs reachable via MCP.
+        from aegis.terminal.manager import TerminalManager
+        from aegis.terminal.notify import make_terminal_notifier
+        self.terminal_manager = TerminalManager(
+            state_dir=self._state_dir / "terminals")
+        self.terminal_manager.set_notifier(
+            make_terminal_notifier(self.inbox_router))
         self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:

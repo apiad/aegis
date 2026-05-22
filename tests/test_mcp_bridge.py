@@ -14,6 +14,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         queue_manager = object()
         inbox_router = InboxRouter()
         canvas_manager = object()
+        terminal_manager = object()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -30,6 +31,7 @@ def test_appbridge_requires_full_surface():
         queue_manager = object()
         inbox_router = InboxRouter()
         canvas_manager = object()
+        terminal_manager = object()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -40,6 +42,7 @@ def test_appbridge_requires_full_surface():
         queue_manager = object()
         inbox_router = InboxRouter()
         canvas_manager = object()
+        terminal_manager = object()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"

@@ -62,6 +62,31 @@ BRIEFING = (
     "  - aegis_canvas_list() : see all canvases open in this aegis. Use "
     "before opening a new one to check whether the work already has a "
     "home.\n"
+    "  - aegis_term_spawn(name, shell?, cwd?, env?, from_handle) : "
+    "spawn a live shared PTY terminal — a real shell process that you, "
+    "Alex, and peer agents can run commands on, send raw keystrokes "
+    "to, read history from, and subscribe to. Names are unique within "
+    "this aegis. Returns {name, pid, shell, cwd, started_at, …}.\n"
+    "  - aegis_term_list() : list all live terminals.\n"
+    "  - aegis_term_run(name, cmd, timeout?, from_handle) : run a "
+    "command in the terminal — BLOCKS until the shell finishes it "
+    "(detected via OSC 133 markers). Holds a per-terminal lock so "
+    "concurrent runs serialize. Returns the full command record "
+    "(stdout, stderr, exit, duration_s, seq, writer).\n"
+    "  - aegis_term_keys(name, keys, from_handle) : send raw bytes — "
+    "fire-and-forget, bypasses the run-lock. Use for interactive "
+    "prompts ('y\\n'), Ctrl-C ('\\x03'), or driving REPLs while a "
+    "long-running command is in flight.\n"
+    "  - aegis_term_read(name, last_n?, since_seq?, from_handle) : "
+    "read recent command records from the ledger.\n"
+    "  - aegis_term_subscribe(name, from_handle) / "
+    "aegis_term_unsubscribe(name, from_handle) : opt in/out of "
+    "command-finish wakes. Every command that finishes (yours or a "
+    "peer's or Alex's typed input) wakes subscribers with a normal "
+    "user-message tagged sender=term:<name>; your own commands are "
+    "suppressed from your own wakes.\n"
+    "  - aegis_term_close(name, purge?, from_handle) : terminate the "
+    "PTY. ``purge=true`` also wipes the on-disk state.\n"
     "  - aegis_run_workflow(name, kwargs, from_handle, callback=true) : "
     "invoke a registered workflow (a deterministic Python procedure "
     "that drives a sequence of agent interactions with predicate-"
@@ -94,6 +119,12 @@ BRIEFING = (
     "the writer, line-count diff, and a short preview of the new "
     "content. Re-read the canvas (aegis_canvas_read) before reacting if "
     "you need the full state.\n"
+    "  > from term:<name> · <timestamp>\n"
+    "      A subscriber wake from a shared terminal: a command finished "
+    "in a terminal you subscribed to. The body shows the command, "
+    "writer, exit code, duration, and a tail of stdout (plus stderr "
+    "block when non-empty). Call aegis_term_read for more history if "
+    "you need it.\n"
     "  > from workflow:<name> · task#<id> · ok|error · <timestamp>\n"
     "      Either (a) the final result of a workflow you invoked via "
     "aegis_run_workflow, tagged with the workflow_run_id returned to "
@@ -156,6 +187,34 @@ PRIMING = (
 def aegis_meta() -> str:
     """Orientation briefing: where you are and what aegis offers."""
     return BRIEFING
+
+
+def _terminal_info_to_dict(info) -> dict:
+    return {
+        "name": info.name,
+        "pid": info.pid,
+        "shell": info.shell,
+        "cwd": info.cwd,
+        "started_at": info.started_at,
+        "last_cmd_at": info.last_cmd_at,
+        "last_exit": info.last_exit,
+    }
+
+
+def _command_record_to_dict(rec) -> dict:
+    return {
+        "seq": rec.seq,
+        "cmd": rec.cmd,
+        "writer": rec.writer,
+        "started_at": rec.started_at,
+        "finished_at": rec.finished_at,
+        "duration_s": rec.duration_s,
+        "exit": rec.exit,
+        "stdout": rec.stdout,
+        "stderr": rec.stderr,
+        "killed_by_restart": rec.killed_by_restart,
+        "timed_out": rec.timed_out,
+    }
 
 
 def _canvas_info_to_dict(info) -> dict:
@@ -511,6 +570,151 @@ def build_server(bridge: AppBridge) -> FastMCP:
         if cm is None:
             return []
         return [_canvas_info_to_dict(i) for i in cm.list_canvases()]
+
+    @server.tool
+    async def aegis_term_spawn(
+        name: str, shell: str | None = None, cwd: str | None = None,
+        env: dict | None = None, from_handle: str = "",
+    ) -> dict:
+        """Spawn a live shared PTY terminal.
+
+        Errors if ``name`` already exists. ``shell`` defaults to $SHELL
+        (then /bin/bash); ``cwd`` defaults to aegis's launch dir.
+        Returns ``{name, pid, shell, cwd, started_at, last_cmd_at,
+        last_exit}``.
+        """
+        from aegis.terminal.manager import TerminalAlreadyExists
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        try:
+            info = await tm.spawn(name=name, shell=shell, cwd=cwd, env=env)
+        except TerminalAlreadyExists:
+            return {"error": f"term_spawn rejected: {name!r} already exists"}
+        return _terminal_info_to_dict(info)
+
+    @server.tool
+    async def aegis_term_list() -> list[dict]:
+        """List all live terminals."""
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return []
+        return [_terminal_info_to_dict(i) for i in tm.list()]
+
+    @server.tool
+    async def aegis_term_run(
+        name: str, cmd: str, timeout: float | None = None,
+        from_handle: str = "",
+    ) -> dict:
+        """Run a command in a terminal. Blocks until the shell's OSC 133
+        D marker arrives (or ``timeout`` elapses). Holds a per-terminal
+        lock so concurrent ``run`` calls serialize FIFO.
+
+        Pass your aegis handle as ``from_handle`` — recorded as the
+        writer, and used to suppress your own command's wake from your
+        inbox. Returns the full command record.
+        """
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        writer = f"agent:{from_handle}" if from_handle else "agent:unknown"
+        try:
+            rec = await tm.run(name, cmd, writer=writer, timeout=timeout)
+        except TerminalNotFound:
+            return {"error": f"term_run rejected: unknown terminal {name!r}"}
+        return _command_record_to_dict(rec)
+
+    @server.tool
+    async def aegis_term_keys(
+        name: str, keys: str, from_handle: str = "",
+    ) -> dict:
+        """Send raw bytes to a terminal — fire-and-forget, bypasses the
+        per-terminal lock. Use for interactive prompts (``y\\n``),
+        Ctrl-C (``\\x03``), or driving REPLs. UTF-8 string accepted.
+        """
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        writer = f"agent:{from_handle}" if from_handle else "agent:unknown"
+        try:
+            await tm.send_keys(name, keys, writer=writer)
+        except TerminalNotFound:
+            return {"error": f"term_keys rejected: unknown terminal {name!r}"}
+        return {"ok": True}
+
+    @server.tool
+    async def aegis_term_read(
+        name: str, last_n: int = 5, since_seq: int | None = None,
+        from_handle: str = "",
+    ) -> list[dict]:
+        """Read command records from a terminal's ledger. ``since_seq``
+        overrides ``last_n`` when set (returns records with seq > value).
+        """
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return []
+        try:
+            recs = tm.read(name, last_n=last_n, since_seq=since_seq)
+        except TerminalNotFound:
+            return []
+        return [_command_record_to_dict(r) for r in recs]
+
+    @server.tool
+    async def aegis_term_subscribe(
+        name: str, from_handle: str,
+    ) -> dict:
+        """Subscribe to a terminal's command-finish events. Every command
+        the terminal finishes wakes you with a normal user-message turn
+        tagged ``sender=term:<name>`` (except your own commands).
+        Idempotent.
+        """
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        handle = f"agent:{from_handle}" if from_handle else "agent:unknown"
+        try:
+            subs = tm.subscribe(name, handle)
+        except TerminalNotFound:
+            return {"error": f"term_subscribe rejected: unknown terminal {name!r}"}
+        return {"ok": True, "subscribers": subs}
+
+    @server.tool
+    async def aegis_term_unsubscribe(
+        name: str, from_handle: str,
+    ) -> dict:
+        """Stop receiving command-finish wakes for a terminal."""
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        handle = f"agent:{from_handle}" if from_handle else "agent:unknown"
+        try:
+            tm.unsubscribe(name, handle)
+        except TerminalNotFound:
+            return {"error": f"term_unsubscribe rejected: unknown terminal {name!r}"}
+        return {"ok": True}
+
+    @server.tool
+    async def aegis_term_close(
+        name: str, purge: bool = False, from_handle: str = "",
+    ) -> dict:
+        """Close a terminal. SIGTERM then SIGKILL after 2s. ``purge=true``
+        also wipes the terminal's state directory; the default keeps the
+        ledger on disk.
+        """
+        from aegis.terminal.manager import TerminalNotFound
+        tm = getattr(bridge, "terminal_manager", None)
+        if tm is None:
+            return {"error": "terminal plane not available"}
+        try:
+            await tm.close(name, purge=purge)
+        except TerminalNotFound:
+            return {"error": f"term_close rejected: unknown terminal {name!r}"}
+        return {"ok": True}
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:

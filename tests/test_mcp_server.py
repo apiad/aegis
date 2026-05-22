@@ -94,7 +94,11 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_canvas_write_section",
         "aegis_canvas_append_to_section",
         "aegis_canvas_subscribe", "aegis_canvas_unsubscribe",
-        "aegis_canvas_list"}
+        "aegis_canvas_list",
+        "aegis_term_spawn", "aegis_term_list", "aegis_term_run",
+        "aegis_term_keys", "aegis_term_read",
+        "aegis_term_subscribe", "aegis_term_unsubscribe",
+        "aegis_term_close"}
 
 
 @pytest.mark.asyncio
