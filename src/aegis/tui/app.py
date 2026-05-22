@@ -123,10 +123,13 @@ def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | 
     return load(state_dir_path)
 
 
-def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle) -> None:
+def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle,
+                             *, terminals=None) -> None:
     """Persist the current tab roster to workspace.json."""
     from aegis.state.workspace import Workspace, save
-    save(state_dir_path, Workspace(active_handle=active_handle, tabs=list(tabs)))
+    save(state_dir_path,
+         Workspace(active_handle=active_handle, tabs=list(tabs),
+                   terminals=list(terminals or [])))
 
 
 def _provider_slug(pane: ConversationPane) -> str:
@@ -244,7 +247,34 @@ class AegisApp(App):
         # open_failed_tab; the orchestrator is already exercised in tests, but
         # the AegisApp closure for it shares the same from_resumed dependency.
         await self._spawn(self._default_agent)
+        await self._maybe_resume_terminals()
         self.set_interval(1.0, self._tick)
+
+    async def _maybe_resume_terminals(self) -> None:
+        """If a saved workspace has terminals and --clean is False,
+        re-spawn each one as a fresh shell over the existing ledger.
+        TerminalTab's on_mount renders prior records dimmed."""
+        if self._clean:
+            return
+        ws = pick_workspace_to_resume(self._state_dir, clean=False)
+        if ws is None or not ws.terminals:
+            return
+        for t in ws.terminals:
+            try:
+                await self._spawn_terminal_from_snapshot(t)
+            except Exception:
+                # One bad terminal shouldn't block the others or the app.
+                continue
+
+    async def _spawn_terminal_from_snapshot(self, snap) -> None:
+        from aegis.tui.terminal_tab import TerminalTab
+        info = await self.terminal_manager.spawn(
+            name=snap.name, shell=snap.shell, cwd=snap.cwd)
+        tab = TerminalTab(self.terminal_manager, info, palette=self._palette)
+        self._panes.append(tab)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(tab)
+        self._refresh_tabbar()
 
     def watch_theme(self, theme_name: str | None) -> None:
         # Recompute seam — exercised once a 2nd theme exists. Dormant now
@@ -327,12 +357,19 @@ class AegisApp(App):
                 if p.id == cs.current:
                     active_handle = p.handle
                     break
-        # Terminal tabs aren't part of the agent workspace schema yet
-        # (their persistence lands in slice 7). Skip them here.
         tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)
                 if isinstance(p, ConversationPane)]
+        from aegis.tui.terminal_tab import TerminalTab
+        from aegis.state.workspace import WorkspaceTerminal
+        terms = [
+            WorkspaceTerminal(
+                name=p._info.name, shell=p._info.shell,
+                cwd=p._info.cwd, created_at=p._created_at)
+            for p in self._panes if isinstance(p, TerminalTab)
+        ]
         write_workspace_snapshot(self._state_dir, tabs=tabs,
-                                 active_handle=active_handle)
+                                 active_handle=active_handle,
+                                 terminals=terms)
 
     def _tick(self) -> None:
         active = self._active

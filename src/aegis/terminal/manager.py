@@ -168,7 +168,18 @@ class TerminalManager:
                 raw_log_path=raw_log_path,
             )
             state.raw_log_fh = open(raw_log_path, "ab")
-            state.next_seq = len(_read_ledger(ledger_path))
+            existing = _read_ledger(ledger_path)
+            # Sweep stale in-flight records from a prior process that
+            # died with a command still running. Mark them as killed by
+            # the restart so the ledger stays consistent.
+            mutated = False
+            for r in existing:
+                if r.finished_at is None and not r.killed_by_restart:
+                    r.killed_by_restart = True
+                    mutated = True
+            if mutated:
+                _rewrite_ledger(ledger_path, existing)
+            state.next_seq = len(existing)
             self._terminals[name] = state
             _write_meta(term_dir, info, shell)
             state.reader_task = asyncio.create_task(self._reader_loop(state))
@@ -473,6 +484,11 @@ def _decode_capped(buf: bytearray, cap: int = 64 * 1024) -> str:
 def _append_ledger(path: Path, rec: CommandRecord) -> None:
     with open(path, "a") as f:
         f.write(json.dumps(asdict(rec)) + "\n")
+
+
+def _rewrite_ledger(path: Path, records: list[CommandRecord]) -> None:
+    payload = "".join(json.dumps(asdict(r)) + "\n" for r in records)
+    path.write_text(payload)
 
 
 def _read_ledger(path: Path) -> list[CommandRecord]:

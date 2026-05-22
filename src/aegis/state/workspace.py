@@ -30,9 +30,22 @@ class WorkspaceTab:
 
 
 @dataclass(frozen=True)
+class WorkspaceTerminal:
+    """Snapshot of a live terminal for resume. Recorded alongside agent
+    tabs so ``aegis --resume`` can re-spawn them as fresh shells over
+    their existing ledger."""
+
+    name: str
+    shell: str
+    cwd: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class Workspace:
     active_handle: str | None
     tabs: list[WorkspaceTab] = field(default_factory=list)
+    terminals: list[WorkspaceTerminal] = field(default_factory=list)
 
 
 def state_dir(cwd: Path) -> Path:
@@ -50,6 +63,7 @@ def save(state_dir_path: Path, ws: Workspace) -> None:
         "saved_at": _now_iso(),
         "active_handle": ws.active_handle,
         "tabs": [asdict(t) for t in ws.tabs],
+        "terminals": [asdict(t) for t in ws.terminals],
     }
     target = state_dir_path / "workspace.json"
     # Atomic write: tmp file + rename, so a crash mid-write never leaves
@@ -92,4 +106,17 @@ def load(state_dir_path: Path) -> Workspace | None:
         ]
     except (KeyError, TypeError) as e:
         raise CorruptWorkspace(f"malformed tab record: {e}") from e
-    return Workspace(active_handle=raw.get("active_handle"), tabs=tabs)
+    try:
+        terminals = [
+            WorkspaceTerminal(
+                name=t["name"],
+                shell=t["shell"],
+                cwd=t["cwd"],
+                created_at=t["created_at"],
+            )
+            for t in raw.get("terminals", [])
+        ]
+    except (KeyError, TypeError) as e:
+        raise CorruptWorkspace(f"malformed terminal record: {e}") from e
+    return Workspace(active_handle=raw.get("active_handle"),
+                     tabs=tabs, terminals=terminals)
