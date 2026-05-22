@@ -323,6 +323,73 @@
   font-size: 0.95rem;
 }
 
+/* --------------------------------------------------------------------
+ * Material override: kill heading offsets + headerlink anchors inside
+ * aegis custom components, so cards/sections don't visually skew right
+ * relative to their body text.
+ * ------------------------------------------------------------------ */
+
+.md-typeset .aegis-hero h1,
+.md-typeset .aegis-section h2,
+.md-typeset .aegis-card h3,
+.md-typeset .aegis-stack h4,
+.md-typeset .aegis-final h2 {
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+  margin-left: 0 !important;
+}
+
+.md-typeset .aegis-hero .headerlink,
+.md-typeset .aegis-section .headerlink,
+.md-typeset .aegis-card .headerlink,
+.md-typeset .aegis-stack .headerlink,
+.md-typeset .aegis-final .headerlink {
+  display: none !important;
+}
+
+/* Material wraps inline code in <p> with margins; tighten the hero CTA
+ * so the install line and the button sit on one row without extra gap. */
+.md-typeset .aegis-hero-cta p {
+  margin: 0;
+}
+
+/* Cards: Material's .md-typeset h3 has bigger top margins that push
+ * the title down inside the card padding. */
+.md-typeset .aegis-card h3 {
+  margin: 0 0 0.55rem !important;
+}
+
+.md-typeset .aegis-card p {
+  margin: 0 0 1rem !important;
+}
+
+/* Final callback: tame the code fence so it doesn't dominate the small
+ * centered box. Pull it inline-narrow, remove the Material chrome's
+ * outer margin, and lay the three buttons out on one flexed row. */
+
+.md-typeset .aegis-final .highlight {
+  max-width: 28rem;
+  margin: 0 auto 1.25rem;
+  text-align: left;
+}
+
+.md-typeset .aegis-final pre,
+.md-typeset .aegis-final pre > code {
+  margin: 0 !important;
+}
+
+.md-typeset .aegis-final p:last-child {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.md-typeset .aegis-final p:last-child a.aegis-button {
+  margin: 0;
+}
+
 /* Subtle adjustments to material chrome inside Ink palette */
 
 .md-typeset code {
