@@ -462,5 +462,12 @@ class ConversationPane(Widget):
 
         self.run_worker(_do(), group="turn", exclusive=True)
 
+    def show_resume_banner(self, text: str) -> None:
+        """Mount a single banner line at the top of this pane's transcript."""
+        from textual.widgets import Static
+        banner = Static(text, classes="resume-banner")
+        self._transcript().mount(banner, before=self._transcript().children[0]
+                                 if self._transcript().children else None)
+
     async def close(self) -> None:
         await self._core.close()

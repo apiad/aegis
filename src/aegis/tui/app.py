@@ -24,6 +24,92 @@ from aegis.tui.widgets import TabBar
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
+                     open_tab, open_failed_tab=None):
+    """Drive the resume flow. Pure orchestrator.
+
+    - state_dir_path: project state dir.
+    - ws: optional pre-loaded Workspace. If None, loads from disk
+      (returns "" if no workspace.json present).
+    - agents: dict[profile_name -> Agent].
+    - drivers: dict[provider_slug -> driver instance with supports_resume +
+      resume(agent, cwd, mcp_url, handle, session_id)].
+    - open_tab(handle, replay, session): called per resumable tab.
+    - open_failed_tab(handle, reason): optional; called when resume() raises.
+      If None, the failure is treated as a silent skip with a banner mention.
+
+    Returns the startup-banner string for the active pane:
+      ""                                  — nothing to do
+      "no resumable tabs (..)"            — caller should exit clean
+      "↻ resumed N · skipped M (..)"      — banner to show in active pane
+      "↻ resumed N"                       — only resumed, no skips
+    """
+    from aegis.state.workspace import load
+    from aegis.state.session_log import replay_events
+    from aegis.tui.resume_plan import plan_resume
+
+    if ws is None:
+        ws = load(state_dir_path)
+        if ws is None:
+            return ""
+
+    plan = plan_resume(ws, agents, drivers)
+
+    if not plan.resumable:
+        if not plan.skipped:
+            return ""
+        return _no_resumable_message(plan.skipped)
+
+    failures: list[tuple[str, str]] = []
+    for tp in plan.resumable:
+        tab = tp.tab
+        drv = drivers[tab.provider]
+        agent = agents[tab.profile]
+        try:
+            session = drv.resume(agent, cwd, mcp_url, tab.handle, tab.session_id)
+        except Exception as e:
+            if open_failed_tab is not None:
+                open_failed_tab(handle=tab.handle, reason=str(e))
+            else:
+                failures.append((tab.handle, str(e)))
+            continue
+        replay = replay_events(state_dir_path, tab.handle)
+        open_tab(handle=tab.handle, replay=replay, session=session)
+
+    return _banner(resumed=len(plan.resumable) - len(failures),
+                   skipped=plan.skipped, failures=failures)
+
+
+def _no_resumable_message(skipped):
+    by_provider: dict[str, int] = {}
+    by_reason: dict[str, int] = {}
+    for s in skipped:
+        by_provider[s.tab.provider] = by_provider.get(s.tab.provider, 0) + 1
+        by_reason[s.reason.value] = by_reason.get(s.reason.value, 0) + 1
+    parts = []
+    for prov, n in sorted(by_provider.items()):
+        parts.append(f"{n} {prov}")
+    reason_parts = sorted(by_reason.items())
+    reason_str = ", ".join(f"{r}" for r, _ in reason_parts)
+    return (f"no resumable tabs ({len(skipped)} tabs in last workspace: "
+            f"{', '.join(parts)} — {reason_str})")
+
+
+def _banner(resumed: int, skipped, failures) -> str:
+    if resumed == 0 and not skipped and not failures:
+        return ""
+    if not skipped and not failures:
+        return f"↻ resumed {resumed} tab(s)"
+    parts = []
+    if skipped:
+        # Group providers for the parenthetical
+        provs = sorted({s.tab.provider for s in skipped})
+        parts.append(f"skipped {len(skipped)} ({', '.join(provs)})")
+    if failures:
+        parts.append(f"failed {len(failures)}")
+    return f"↻ resumed {resumed} · " + " · ".join(parts)
+
+
 def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | None":
     """Return the Workspace to resume, or None for a fresh start.
 
@@ -134,6 +220,17 @@ class AegisApp(App):
         self.query_one(TabBar).set_palette(self._palette)
         await self._mcp.start()
         await self.queue_manager.start()
+        # TODO(Task 11 / session-persistence-v1): wire bootstrap_resume here.
+        # bootstrap_resume() is now the pure orchestrator — it classifies tabs
+        # via plan_resume, calls driver.resume() per resumable tab, and returns
+        # a banner string. Wiring it into on_mount requires a spawn path that
+        # accepts a pre-existing HarnessSession (bypassing make_session), which
+        # is a deeper refactor than fits this task. The follow-up (Task 14 or
+        # later) should:
+        #   1. Add ConversationPane.from_resumed(session, ...) classmethod.
+        #   2. Call bootstrap_resume(..., open_tab=<mount resumed pane>) here.
+        #   3. If banner starts "no resumable", skip default spawn and self.exit().
+        #   4. Otherwise call show_resume_banner on the active pane.
         await self._spawn(self._default_agent)
         self.set_interval(1.0, self._tick)
 
