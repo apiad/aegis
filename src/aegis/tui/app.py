@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from datetime import datetime, timezone
+from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -11,6 +14,7 @@ from aegis.config import Agent
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import InboxRouter, QueueDigest, QueueManager
+from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
@@ -20,6 +24,33 @@ from aegis.tui.themes import (
 from aegis.tui.widgets import TabBar
 
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle) -> None:
+    """Persist the current tab roster to workspace.json."""
+    from aegis.state.workspace import Workspace, save
+    save(state_dir_path, Workspace(active_handle=active_handle, tabs=list(tabs)))
+
+
+def _provider_slug(pane: ConversationPane) -> str:
+    """Return the provider slug string for a pane (e.g. 'claude-code')."""
+    # agent.harness is the canonical slug: 'claude-code', 'gemini', 'opencode'
+    return pane._agent.harness
+
+
+def _pane_to_tab(pane: ConversationPane, order: int) -> WorkspaceTab:
+    return WorkspaceTab(
+        handle=pane.handle,
+        profile=pane.agent_slug,
+        order=order,
+        provider=_provider_slug(pane),
+        session_id=getattr(pane._core._session, "session_id", None),
+        created_at=pane._created_at,
+    )
 
 
 class AegisApp(App):
@@ -55,6 +86,7 @@ class AegisApp(App):
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
+        self._state_dir: Path = state_dir(Path.cwd())
         # AppBridge surface. AegisApp is the bridge in the interactive
         # (TUI) path. QueueManager spawns workers through an adapter that
         # creates real ConversationPanes (so workers are visible tabs Alex
@@ -115,7 +147,8 @@ class AegisApp(App):
         h = handle or generate_name({p.handle for p in self._panes})
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
-            slug, h, self._palette, digest=self.queue_digest)
+            slug, h, self._palette, digest=self.queue_digest,
+            state_dir_path=self._state_dir)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
@@ -152,6 +185,19 @@ class AegisApp(App):
             for i, p in enumerate(self._panes)
         ]
         self.query_one(TabBar).set_tabs(items)
+        self._write_snapshot()
+
+    def _write_snapshot(self) -> None:
+        cs = self.query_one(ContentSwitcher)
+        active_handle = None
+        if cs.current is not None:
+            for p in self._panes:
+                if p.id == cs.current:
+                    active_handle = p.handle
+                    break
+        tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)]
+        write_workspace_snapshot(self._state_dir, tabs=tabs,
+                                 active_handle=active_handle)
 
     def _tick(self) -> None:
         active = self._active
@@ -337,7 +383,8 @@ class _SessionManagerAdapter:
         h = handle or generate_name({p.handle for p in self._app._panes})
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h), agent,
-            slug, h, self._app._palette, digest=self._app.queue_digest)
+            slug, h, self._app._palette, digest=self._app.queue_digest,
+            state_dir_path=self._app._state_dir)
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
         # App.run_worker (not asyncio.create_task) so the mount task runs

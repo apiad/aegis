@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import random
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from rich.console import RenderableType
 from rich.markdown import Markdown
@@ -22,6 +24,20 @@ from aegis.render import render_event, render_inbox_block, render_user_line
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import StatusBar
+
+
+def make_session_log_observer(state_dir_path: Path, handle: str):
+    """Returns an EventCb that appends every event to the per-tab JSONL."""
+    from aegis.state.session_log import append_event
+
+    def _obs(_sess, ev):
+        try:
+            append_event(state_dir_path, handle, ev)
+        except Exception:
+            # Persistence must never break the live render.
+            pass
+
+    return _obs
 
 
 # ---------- WorkingIndicator -----------------------------------------
@@ -213,18 +229,23 @@ class ConversationPane(Widget):
 
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette,
-                 *, digest=None) -> None:
+                 *, digest=None, state_dir_path: Path | None = None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
         self._palette = palette
         self._digest = digest
+        self._created_at: str = (
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         self.unseen = False
         self._core = AgentSession(session, agent, agent_slug, handle)
         self._core.on_event = self._on_core_event
         self._core.on_state = self._on_core_state
         self._core.on_inbox = self._on_core_inbox
+        if state_dir_path is not None:
+            self._core.add_event_observer(
+                make_session_log_observer(state_dir_path, handle))
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
