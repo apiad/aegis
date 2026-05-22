@@ -15,7 +15,9 @@ from aegis.config import (
 from aegis.core.manager import SessionManager
 from aegis.drivers import get_driver
 from aegis.mcp import AegisMCP
+from aegis.state.workspace import CorruptWorkspace, state_dir
 from aegis.tui import AegisApp
+from aegis.tui.app import pick_workspace_to_resume
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
@@ -111,6 +113,14 @@ def run(
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
+
+    try:
+        pick_workspace_to_resume(state_dir(Path.cwd()), clean=clean)
+    except CorruptWorkspace as e:
+        typer.echo(f"aegis: {e}", err=True)
+        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
+                   err=True)
+        raise typer.Exit(code=2)
 
     def make_session(profile, mcp_url, handle):
         return get_driver(profile.harness).session(
