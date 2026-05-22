@@ -58,6 +58,10 @@ class AgentSession:
         # None until a harness error occurs; replaced on each new error.
         self.last_error: Exception | None = None
 
+    @property
+    def session_id(self) -> str | None:
+        return self._session.session_id
+
     def add_event_observer(self, cb: EventCb) -> None:
         """Subscribe an additional event callback. Fires after on_event."""
         self._extra_event_observers.append(cb)

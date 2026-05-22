@@ -37,6 +37,19 @@ class ClaudeSession(HarnessSession):
         self._proc: asyncio.subprocess.Process | None = None
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
         self._reader: asyncio.Task | None = None
+        self._session_id: str | None = None
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session_id
+
+    def _latch_session_id(self, ev: Event) -> None:
+        """Latch session_id on first SystemInit with a non-empty session_id."""
+        from aegis.events import SystemInit
+        if (self._session_id is None
+                and isinstance(ev, SystemInit)
+                and ev.session_id):
+            self._session_id = ev.session_id
 
     async def start(self) -> None:
         self._proc = await asyncio.create_subprocess_exec(
@@ -55,7 +68,9 @@ class ClaudeSession(HarnessSession):
             async for raw in self._proc.stdout:
                 line = raw.decode("utf-8", "replace").strip()
                 if line:
-                    await self._queue.put(parse(line))
+                    ev = parse(line)
+                    self._latch_session_id(ev)
+                    await self._queue.put(ev)
         except Exception:
             # A stream/parse failure must not silently kill the turn: the
             # finally below still delivers the sentinel so events() ends
@@ -115,3 +130,12 @@ class ClaudeDriver(HarnessDriver):
                 mcp_url: str, handle: str) -> ClaudeSession:
         return ClaudeSession(
             self.build_argv(agent, cwd, mcp_url, handle), cwd)
+
+    def resume(self, agent: Agent, cwd: str,
+               mcp_url: str, handle: str,
+               session_id: str) -> ClaudeSession:
+        """Build a ClaudeSession that resumes an existing conversation."""
+        argv = self.build_argv(agent, cwd, mcp_url, handle)
+        # Insert --resume <session_id> right after the "claude -p" prefix
+        resumed_argv = argv[:2] + ["--resume", session_id] + argv[2:]
+        return ClaudeSession(resumed_argv, cwd)

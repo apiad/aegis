@@ -22,6 +22,13 @@ class HarnessSession(abc.ABC):
     @abc.abstractmethod
     async def close(self) -> None: ...
 
+    @property
+    def session_id(self) -> str | None:
+        """The driver-assigned session id, if known. Latched lazily as
+        the upstream protocol reveals it. Returns None for drivers that
+        don't expose one or before the first event arrives."""
+        return None
+
 
 class HarnessDriver(abc.ABC):
     """Translates a harness-agnostic Agent into a concrete session."""
