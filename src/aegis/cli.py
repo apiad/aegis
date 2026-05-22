@@ -311,6 +311,55 @@ def workflow_run_cmd(
         raise typer.Exit(1)
 
 
+@workflow_app.command("status")
+def workflow_status_cmd(
+    workflow_id: str = typer.Argument(..., help="workflow id"),
+) -> None:
+    """Show the last recorded status from the ledger for ``workflow_id``.
+
+    Reads ``.aegis/state/<id>/ledger.jsonl`` — useful for inspecting a
+    completed or failed run. For live status of a workflow attached to a
+    running daemon, call the ``aegis_workflow_status`` MCP tool instead.
+    """
+    import json
+    root = find_project_root() or Path.cwd()
+    ledger = root / ".aegis" / "state" / workflow_id / "ledger.jsonl"
+    if not ledger.exists():
+        _console.print(f"[red]no ledger for {workflow_id!r} at {ledger}[/red]")
+        raise typer.Exit(1)
+    records = [json.loads(line) for line in ledger.read_text().splitlines()
+               if line.strip()]
+    if not records:
+        _console.print("[yellow]empty ledger[/yellow]")
+        return
+    last = records[-1]
+    typer.echo(f"workflow_id: {workflow_id}")
+    typer.echo(f"last kind:   {last.get('kind', '?')}")
+    typer.echo(f"at:          {last.get('at', '?')}")
+    if "name" in last:
+        typer.echo(f"checkpoint:  {last['name']}")
+    if last.get("kind") == "errored":
+        typer.echo(f"error:       {last.get('error', '?')}")
+    if last.get("kind") == "finished":
+        typer.echo(f"result:      {last.get('result', '')}")
+
+
+@workflow_app.command("cancel")
+def workflow_cancel_cmd(
+    workflow_id: str = typer.Argument(..., help="workflow id"),
+) -> None:
+    """Cancel a workflow attached to a running daemon.
+
+    Requires a live runner; for hermetic CLI runs the workflow already
+    finished when the command returns. Talk to the daemon via the
+    ``aegis_workflow_cancel`` MCP tool instead.
+    """
+    _console.print(
+        "[yellow]Cancel requires a running daemon. Use the "
+        "aegis_workflow_cancel MCP tool against the live MCP server.[/yellow]")
+    raise typer.Exit(1)
+
+
 def main() -> None:
     app()
 

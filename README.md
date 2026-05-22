@@ -137,7 +137,7 @@ async def tdd_cycle(engine, *, feature: str) -> str:
         f"pytest tests/ -k {feature}",
         retry_with="Tests are still failing. Output:\n{stdout}")
     reviewer = await engine.spawn("reviewer")
-    return await engine.ask(reviewer, "Final review of branch.")
+    return await engine.send(reviewer, "Final review of branch.")
 ```
 
 Triggered by any agent: `aegis_run_workflow(name="tdd-cycle",
@@ -145,6 +145,12 @@ kwargs={"feature": "rate_limit"})`. Workflows sit at the top of the
 stack — they span agents, they own the loop, they're the right tool
 when the spec is "follow this exact procedure" rather than "figure
 it out."
+
+The `aegis.workflows` package ships four seed workflows registered on
+import: `brainstorm_to_spec` (Q/A → spec doc), `execute_plan` (parse
+plan → dispatch implementer per task with durable resume),
+`review_branch` (parallel reviewer fan-out → report), and `tdd_cycle`
+(predicate-driven TDD loop). See [docs/workflows.md](docs/workflows.md).
 
 ## What else is in the box
 

@@ -6,6 +6,20 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 ## [Unreleased]
 
 ### Added
+- **Workflow catalog v1.** Four seed workflows under `aegis.workflows`:
+  `brainstorm_to_spec` (interactive Q/A → spec doc), `execute_plan`
+  (parse plan markdown → dispatch implementer per task with durable
+  resume), `review_branch` (parallel multi-reviewer fan-out → markdown
+  report), `tdd_cycle` (three-phase predicate-driven loop). Engine
+  gains `ask_human`, `spawn`/`close`, `checkpoint`/`resume_state`,
+  `bash_predicate`, `parallel`, `config`, `host`, `workflow_id`.
+  Runner becomes a long-lived class owning background workflow tasks
+  with a JSONL ledger at `.aegis/state/<id>/`; `aegis_run_workflow`
+  MCP tool is now non-blocking. New tools `aegis_workflow_status` and
+  `aegis_workflow_cancel`; new CLI commands `aegis workflow status`
+  and `aegis workflow cancel`. Spec:
+  `docs/superpowers/specs/2026-05-22-workflow-catalog-design.md`.
+  Docs: `docs/workflows.md`.
 - **Session persistence.** `aegis` resumes the last workspace by default;
   `aegis --clean` opts out. Per-tab event logs + workspace.json live under
   `.aegis/state/`. Tabs whose drivers don't support session resume
