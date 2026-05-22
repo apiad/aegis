@@ -1,7 +1,7 @@
 # Aegis
 
-> A multi-agent meta-harness for coding agents — drives Claude Code,
-> Gemini CLI, and OpenCode side by side in one calm full-screen TUI.
+> **The meta-harness.** Drive Claude Code, Gemini CLI, and OpenCode side
+> by side from one calm terminal — and make them collaborate.
 
 [![CI](https://github.com/apiad/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/apiad/aegis/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-apiad.github.io%2Faegis-blue)](https://apiad.github.io/aegis/)
@@ -9,30 +9,167 @@
 [![Python](https://img.shields.io/badge/python-3.13+-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Aegis sits **above** the harness. It drives existing coding-agent CLIs —
-`claude` (Anthropic), `gemini` (Google), `opencode` (open-source) — over
-their structured protocols (stream-json and ACP), parses the event
-streams, and re-renders them in a calm Textual TUI where many agents run
-side by side. It adds a routing + delegation plane on top: queues,
-workflows, an MCP server every spawned agent talks to, and an optional
-Telegram front-end.
+```
+┌ aegis · 3 agents · ~/code/aegis ─────────────────────────────────────┐
+│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·gemini·   ● 3 brisk-curie * │
+│                                                                       │
+│ › explain the retry path in worker.py                                 │
+│                                                                       │
+│ ⠹ Thinking… (3.2s)                                                    │
+│ ⏺ Read(worker.py)                                                     │
+│   └ ok                                                                 │
+│ The retry path lives in _run_turn at line 142 …                       │
+│                                                                       │
+│ ⏺ aegis_handoff(target=wry-hopper)                                    │
+│   └ delivered to wry-hopper                                           │
+│                                                                       │
+│ queues: tests ●1/2 ○0 ✓3 ✗0    last: brisk-curie                      │
+│ lucid-knuth ·opus· opus·full   ↑128k (94% cached) ↓1k                 │
+│ ───────────────────────────────────────────────────────────────────── │
+│ › ask something…                                                      │
+└───────────────────────────────────────────────────────────────────────┘
+```
 
+## Above the harness, not beside it
+
+Most agentic frameworks (CrewAI, LangGraph, AutoGen, the whole long
+list) talk **directly to LLM providers** — they replace your coding
+agent and reimplement tool use, permissions, sandboxing, terminal
+integration. Aegis takes the opposite path:
+
+- **It sits above your existing coding agents** and drives them over
+  their structured protocols — `stream-json` for Claude Code, the Agent
+  Client Protocol (ACP) for Gemini CLI and OpenCode, and a clean driver
+  seam for whatever lands next.
+- **It doesn't reimplement the agent.** Tool use, sandboxing, MCP
+  hosting, model selection — that's the harness's job. Aegis's job is
+  the layer *above*: tabs, routing, delegation, persistence, the
+  things a single-conversation CLI was never built to do.
+- **It makes them collaborate.** Four composable coordination
+  primitives mean a Claude tab can hand off to a Gemini tab, dispatch
+  an OpenCode worker, subscribe to a shared canvas, or kick off a
+  deterministic Python workflow that drives all three.
+
+The harness wars are over. You probably already have your favorite (or
+two, or three). Aegis lets you keep them — and run them as a team.
+
+## Four primitives for agent coordination
+
+Each primitive has one verb and lands the same way in the receiving
+agent's transcript: as a `✉` block with a sender tag, timestamp, and a
+short body preview. One delivery channel, four wake patterns.
+
+### `→` Inbox — send context to a peer
+
+Any agent can hand off to any other live agent. Fire-and-forget; the
+recipient gets a normal user-message turn tagged with the sender's
+handle. Use when you want a *specific* peer to pick up where you left
+off.
+
+```python
+aegis_handoff(target_handle="reviewer", from_handle="impl",
+              context="PR ready at branch feat/x — please review")
+# → reviewer's transcript:
+#   ✉ from agent:impl · 17:42:03Z
+#     PR ready at branch feat/x — please review
 ```
-┌ aegis ───────────────────────────────────────────────┐
-│ ● 1 lucid-knuth ·opus·   ● 2 wry-hopper ·gemini·  *  │
-│                                                       │
-│ › explain the retry logic                             │
-│                                                       │
-│ ⠹ Thinking… (3.2s)                                    │
-│ ⏺ Read(worker.py)                                     │
-│   └ ok                                                 │
-│ The retry path lives in _run_turn …                   │
-│                                                       │
-│ lucid-knuth ·opus· opus·full   ↑128k (94% cached) ↓1k │
-│ ───────────────────────────────────────────────────── │
-│ › ask something…                                      │
-└───────────────────────────────────────────────────────┘
+
+### `⏳` Queue — spawn a worker on demand
+
+Enqueue a task to a named queue and the substrate spawns a fresh agent
+of the queue's configured profile, runs the payload as its opening
+turn, and (with `callback=true`) delivers the worker's final result
+back to your inbox. Producer keeps working between enqueue and
+callback. Generalizes delegation: parallelism, max-in-flight caps,
+restart safety, all built in.
+
+```python
+aegis_enqueue(queue="review", payload="…full self-contained prompt…",
+              from_handle="impl", callback=True)
+# → {task_id: 01HK…, queued_position: 1}
+# …minutes later, in impl's transcript:
+#   ✉ from queue:review · task#01HK… · ok · 17:46:11Z
+#     PR looks clean. Two nits flagged in the diff comments…
 ```
+
+### `▦` Canvas — collaborate on a shared document
+
+Open a shared markdown file. Multiple agents read it, write sections of
+it, subscribe to it. Each write wakes every other subscriber with a
+diff-aware notification. The classical blackboard pattern — terminal-
+native, MCP-driven, file-backed (you can grep it, commit it, open it in
+your editor).
+
+```python
+# PM
+aegis_canvas_open(name="report-q3", file="vault/reports/q3.md",
+                  from_handle="pm")
+aegis_canvas_subscribe(name="report-q3", from_handle="pm")
+
+# Researcher (in another tab, after a handoff)
+aegis_canvas_write_section(name="report-q3", section="data",
+                           content="Q3 numbers came in stronger…",
+                           from_handle="researcher")
+# → PM's transcript:
+#   ✉ from canvas:report-q3 · 20:30:00Z
+#     section "data" · written by agent:researcher (+18 / -3 lines)
+#     ──
+#     Q3 numbers came in stronger than projected…
+```
+
+### `⟳` Workflow — deterministic Python orchestration
+
+When the dance has to be **reliable** — TDD loops, bug triage,
+multi-step plans, anything where retries with feedback matter — wrap it
+in a workflow. Plain Python at the top of the stack. Calls agents, runs
+bash predicates, retries with feedback, captures structured output.
+
+```python
+@workflow("tdd-cycle")
+async def tdd_cycle(engine, *, feature: str) -> str:
+    impl = await engine.spawn("implementer")
+    await engine.send(impl, f"Write a failing test for: {feature}")
+    await engine.bash_predicate(
+        f"pytest tests/ -k {feature} 2>&1 | grep -E 'FAIL|ERROR'",
+        retry_with="The test should fail because the feature isn't built yet")
+    await engine.send(impl, "Now implement it.")
+    await engine.bash_predicate(
+        f"pytest tests/ -k {feature}",
+        retry_with="Tests are still failing. Output:\n{stdout}")
+    reviewer = await engine.spawn("reviewer")
+    return await engine.ask(reviewer, "Final review of branch.")
+```
+
+Triggered by any agent: `aegis_run_workflow(name="tdd-cycle",
+kwargs={"feature": "rate_limit"})`. Workflows sit at the top of the
+stack — they span agents, they own the loop, they're the right tool
+when the spec is "follow this exact procedure" rather than "figure
+it out."
+
+## What else is in the box
+
+- **Multi-tab TUI.** Generated alliterating handles (`lucid-knuth`,
+  `wry-hopper`). State dots, sticky `*`, terminal bell when a
+  backgrounded agent finishes. Click any block to copy it.
+- **Honest metrics.** True input (incl. cache) with cached %, output,
+  tool calls, per-turn and per-session wall-clock. Provisional while
+  streaming, exact at turn end. **No log scraping anywhere.**
+- **Queue dashboard.** Always-on one-line strip above the status bar
+  shows live per-queue depth and the most recent in-flight worker.
+  `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
+  QUEUED / RECENT` bands and a live assistant-text tail.
+- **Session persistence.** `aegis` reopens the last workspace by
+  default — same tabs, same profiles, same order, with each underlying
+  agent session genuinely resumed (model memory intact). `aegis --clean`
+  opts out.
+- **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP
+  plane without a TUI. Add a Telegram token to drive the team from your
+  phone.
+- **MCP plane.** Every spawned agent is injected with the aegis MCP
+  server: orientation (`aegis_meta`), session listing, handoff, queue
+  dispatch, canvas ops, workflow invocation. One consistent surface
+  across providers. With `--strict-mcp-config`, aegis is the *only* MCP
+  server the spawned agent sees.
 
 ## Install
 
@@ -52,57 +189,7 @@ aegis          # full-screen TUI
 
 The wizard finds whichever agent CLIs you have installed and walks you
 through picking a model, permission mode, and optional queues. The
-generated `.aegis.py` is plain Python — edit it freely afterwards.
-
-## What you get
-
-- **Multi-provider parity** — Claude Code, Gemini, and OpenCode all
-  speak through aegis with the same UX (multi-turn, streaming,
-  cancellation, per-session MCP injection). Gemini and OpenCode use
-  [ACP](https://github.com/zed-industries/agent-client-protocol);
-  Claude uses its stream-json bidirectional protocol.
-- **Multi-tab TUI** — N independent agent sessions in one terminal.
-  Per-tab profiles, generated alliterating handles
-  (`lucid-knuth`, `wry-hopper`), per-block copy-to-clipboard, an inline
-  spinner + rotating verb + timer while an agent works, cross-tab
-  signalling (state dot + sticky `*` + bell when a backgrounded agent
-  finishes).
-- **Honest metrics** — true input (incl. cache) with cached %, output,
-  tool calls, per-turn and per-session timing. Provisional while
-  streaming, exact at turn end.
-- **Queues + workflows** — first-class inter-agent delegation. Configure
-  queues in `.aegis.py`; any agent can call `aegis_enqueue(queue,
-  payload)` and get an automatic inbox callback when the worker
-  finishes. Write Python workflows that orchestrate multiple agents
-  (delegate / send / drain / spawn / close / bash) and run them via
-  `aegis workflow run`.
-- **Shared canvas.** A third coordination primitive (alongside queues
-  and inbox handoffs): a markdown file multiple agents read, write
-  sections of, and subscribe to. Writes fire an `✉` inbox notification
-  to every other subscriber with the writer, diff, and a preview —
-  ideal for collaborative reports, shared plans, multi-agent
-  document shaping. Same MCP surface every agent already has.
-- **Queue dashboard.** Always-on one-line strip above every
-  conversation's status bar shows live per-queue depth and the most
-  recent in-flight worker; `Ctrl+D` expands into a full-screen modal
-  with `QUEUES / IN-FLIGHT / QUEUED / RECENT` bands and a detail
-  panel that tails live assistant text. `>` jumps to the worker's
-  tab. Every incoming handoff, queue callback, or Telegram message
-  also mounts a distinct `✉` block in the receiving agent's
-  transcript with a body preview, so you see what the agent is about
-  to react to.
-- **Session persistence.** `aegis` reopens the last workspace by default
-  — same tabs, profiles, order, with each model session genuinely
-  resumed (memory intact, not a transcript replay). `aegis --clean`
-  starts fresh.
-- **MCP plane** — every spawned agent gets injected with an aegis MCP
-  server that exposes orientation (`aegis_meta`), session listing
-  (`aegis_list_sessions`, `aegis_list_agents`), peer handoff
-  (`aegis_handoff`), and queue dispatch (`aegis_enqueue`,
-  `aegis_task_status`). No log scraping anywhere in the stack.
-- **Headless + Telegram** — `aegis serve` runs the SessionManager and
-  MCP plane without a TUI, with an optional Telegram front-end so you
-  can drive agents from your phone.
+generated `.aegis.py` is plain Python — edit it freely afterward.
 
 ## Keys
 
@@ -113,7 +200,7 @@ generated `.aegis.py` is plain Python — edit it freely afterwards.
 | `Ctrl+W` | Close tab (last → quit) |
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
 | `Ctrl+D` | Open / close the queue dashboard |
-| `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
+| `Escape` | Interrupt the active turn (or dismiss a modal) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 
@@ -128,17 +215,20 @@ shape:
 from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
 
 agents = {
-    "default": Agent(provider=ClaudeCode(model="opus", effort="high",
-                                          permission="auto")),
-    "fast":    Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
+    "default":  Agent(provider=ClaudeCode(model="opus", effort="high",
+                                           permission="auto")),
+    "reviewer": Agent(provider=ClaudeCode(model="sonnet",
+                                           permission="read")),
+    "fast":     Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
+                                          permission="full")),
+    "oss":      Agent(provider=OpenCode(model="opencode/kimi-k2.6",
                                          permission="full")),
-    "oss":     Agent(provider=OpenCode(model="opencode/kimi-k2.6",
-                                        permission="full")),
 }
 default_agent = "default"
 
 queues = {
-    "review": {"agent": "fast", "max_parallel": 2},
+    "review": {"agent": "reviewer", "max_parallel": 2},
+    "fast":   {"agent": "fast",     "max_parallel": 4},
 }
 ```
 

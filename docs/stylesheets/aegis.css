@@ -1,0 +1,340 @@
+/* aegis docs — custom landing-page styles in the Ink theme.
+ *
+ * Palette mirrors src/aegis/tui/themes.py::INK so the website feels
+ * like a continuation of the TUI: warm off-white text on near-black,
+ * one amber accent.
+ */
+
+:root,
+[data-md-color-scheme="slate"] {
+  --aegis-bg:       #0e0e0d;
+  --aegis-surface:  #141412;
+  --aegis-panel:    #1a1a17;
+  --aegis-fg:       #DCD9CF;
+  --aegis-muted:    #76736a;
+  --aegis-faint:    #4a4843;
+  --aegis-rule:     #26241f;
+  --aegis-accent:   #E0A872;
+  --aegis-success:  #9DB07E;
+  --aegis-error:    #C56B5C;
+  --aegis-userbg:   #24241f;
+
+  /* Pull Material's slate scheme toward Ink. */
+  --md-default-bg-color:        var(--aegis-bg);
+  --md-default-fg-color:        var(--aegis-fg);
+  --md-default-fg-color--light: var(--aegis-fg);
+  --md-typeset-color:           var(--aegis-fg);
+  --md-typeset-a-color:         var(--aegis-accent);
+  --md-accent-fg-color:         var(--aegis-accent);
+  --md-code-bg-color:           var(--aegis-panel);
+  --md-code-fg-color:           var(--aegis-fg);
+}
+
+/* Hero -------------------------------------------------------------- */
+
+.aegis-hero {
+  margin: 2rem 0 3rem;
+  padding: 2rem 0 0;
+  text-align: center;
+}
+
+.aegis-hero-mark {
+  font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 3.5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--aegis-fg);
+  margin: 0;
+  line-height: 1;
+}
+
+.aegis-hero-mark::before {
+  content: "● ";
+  color: var(--aegis-accent);
+  font-size: 0.85em;
+  vertical-align: 0.1em;
+}
+
+.aegis-hero-tagline {
+  max-width: 38rem;
+  margin: 1rem auto 0;
+  color: var(--aegis-fg);
+  font-size: 1.15rem;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.aegis-hero-tagline em {
+  color: var(--aegis-accent);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.aegis-hero-cta {
+  margin: 2rem auto 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.aegis-hero-cta code {
+  background: var(--aegis-panel) !important;
+  color: var(--aegis-fg) !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  border: 1px solid var(--aegis-rule);
+}
+
+.aegis-hero-cta a.aegis-button {
+  background: var(--aegis-accent);
+  color: var(--aegis-bg) !important;
+  padding: 0.55rem 1.1rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: filter 120ms ease;
+}
+
+.aegis-hero-cta a.aegis-button:hover {
+  filter: brightness(1.1);
+}
+
+/* Terminal mockup --------------------------------------------------- */
+
+.aegis-term {
+  background: var(--aegis-surface);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.aegis-term-chrome {
+  background: var(--aegis-panel);
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--aegis-rule);
+  font-size: 0.78rem;
+  color: var(--aegis-muted);
+}
+
+.aegis-term-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--aegis-faint);
+}
+
+.aegis-term-dot.accent {
+  background: var(--aegis-accent);
+}
+
+.aegis-term-title {
+  margin-left: 0.5rem;
+  font-weight: 500;
+}
+
+.aegis-term-body {
+  padding: 1rem 1.2rem;
+  background: var(--aegis-bg);
+  color: var(--aegis-fg);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Color spans inside terminal bodies */
+.aegis-term-body .t-accent  { color: var(--aegis-accent); }
+.aegis-term-body .t-success { color: var(--aegis-success); }
+.aegis-term-body .t-error   { color: var(--aegis-error); }
+.aegis-term-body .t-muted   { color: var(--aegis-muted); }
+.aegis-term-body .t-bold    { font-weight: 600; color: var(--aegis-fg); }
+.aegis-term-body .t-user    { background: var(--aegis-userbg);
+                              padding: 0 0.25rem; }
+
+/* Big hero terminal */
+.aegis-term.hero {
+  max-width: 56rem;
+  margin: 2rem auto;
+}
+
+/* Section: pitch ---------------------------------------------------- */
+
+.aegis-section {
+  margin: 4rem 0;
+}
+
+.aegis-section h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--aegis-fg);
+  border: none !important;
+  padding: 0 !important;
+}
+
+.aegis-section h2 .aegis-accent {
+  color: var(--aegis-accent);
+}
+
+.aegis-lead {
+  font-size: 1.05rem;
+  color: var(--aegis-fg);
+  line-height: 1.65;
+  max-width: 44rem;
+}
+
+.aegis-lead.muted {
+  color: var(--aegis-muted);
+}
+
+/* Comparison grid: ABOVE the harness */
+
+.aegis-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem;
+  margin: 2rem 0;
+}
+
+@media (max-width: 720px) {
+  .aegis-stack { grid-template-columns: 1fr; }
+}
+
+.aegis-stack .col {
+  background: var(--aegis-panel);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 8px;
+  padding: 1.2rem;
+}
+
+.aegis-stack .col h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--aegis-accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.aegis-stack .col p {
+  margin: 0;
+  color: var(--aegis-fg);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.aegis-stack .col.dim {
+  opacity: 0.65;
+}
+
+.aegis-stack .col.dim h4 {
+  color: var(--aegis-muted);
+}
+
+/* Primitives grid --------------------------------------------------- */
+
+.aegis-primitives {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+@media (max-width: 880px) {
+  .aegis-primitives { grid-template-columns: 1fr; }
+}
+
+.aegis-card {
+  background: var(--aegis-surface);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 10px;
+  padding: 1.3rem 1.4rem 1.5rem;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.aegis-card:hover {
+  border-color: var(--aegis-accent);
+  transform: translateY(-2px);
+}
+
+.aegis-card-glyph {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  color: var(--aegis-accent);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.3rem;
+}
+
+.aegis-card h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.15rem;
+  color: var(--aegis-fg);
+  font-weight: 700;
+}
+
+.aegis-card p {
+  margin: 0 0 1rem;
+  color: var(--aegis-fg);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.aegis-card .aegis-term {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+}
+
+.aegis-card .aegis-term-body {
+  padding: 0.65rem 0.85rem;
+}
+
+/* Footer CTA */
+
+.aegis-final {
+  margin: 4rem 0 2rem;
+  padding: 2rem;
+  background: var(--aegis-panel);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.aegis-final h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--aegis-fg);
+}
+
+.aegis-final p {
+  margin: 0 0 1.25rem;
+  color: var(--aegis-muted);
+  font-size: 0.95rem;
+}
+
+/* Subtle adjustments to material chrome inside Ink palette */
+
+.md-typeset code {
+  border-radius: 4px;
+}
+
+.md-header {
+  background: var(--aegis-surface) !important;
+  border-bottom: 1px solid var(--aegis-rule);
+}
+
+.md-tabs {
+  background: var(--aegis-surface) !important;
+  border-bottom: 1px solid var(--aegis-rule);
+}

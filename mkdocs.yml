@@ -53,6 +53,9 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
 
+extra_css:
+  - stylesheets/aegis.css
+
 plugins:
   - search
   - mkdocstrings:
@@ -76,6 +79,7 @@ nav:
   - Concepts:
       - Drivers: drivers.md
       - Queues: queues.md
+      - Canvas: canvas.md
       - Workflows: workflows.md
       - MCP plane: mcp.md
   - Reference:
