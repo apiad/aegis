@@ -240,6 +240,41 @@ class WorkflowEngine:
             await self._inbox.deliver(handle, msg)
         return ""
 
+    # ── checkpoint / resume ─────────────────────────────────────────
+    async def checkpoint(self, name: str, payload: dict) -> None:
+        """Persist a named checkpoint to the workflow's ledger so that a
+        later ``resume_state()`` (in a fresh run with the same
+        ``workflow_id``) returns ``payload``. Raises ``TypeError`` early
+        if ``payload`` is not JSON-serializable."""
+        json.dumps(payload)
+        runner = self._runner()
+        if runner is None or not hasattr(runner, "append_ledger"):
+            raise RuntimeError(
+                "checkpoint: bridge has no workflow_runner with append_ledger")
+        record = {
+            "kind": "checkpoint",
+            "at": self._now(),
+            "name": name,
+            "payload": payload,
+        }
+        res = runner.append_ledger(self.workflow_id, record)
+        if asyncio.iscoroutine(res):
+            await res
+
+    async def resume_state(self) -> dict | None:
+        """Return the most recent checkpoint payload for this workflow
+        run, or ``None`` if no checkpoint exists yet."""
+        runner = self._runner()
+        if runner is None or not hasattr(runner, "read_ledger"):
+            return None
+        records = runner.read_ledger(self.workflow_id)
+        if asyncio.iscoroutine(records):
+            records = await records
+        for rec in reversed(records or []):
+            if rec.get("kind") == "checkpoint":
+                return rec.get("payload")
+        return None
+
     # ── ask_human ────────────────────────────────────────────────────
     async def ask_human(self, question: str, *,
                         options: list[str] | None = None,

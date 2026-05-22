@@ -13,6 +13,17 @@ from aegis.workflow.decorator import (
 from aegis.workflow.engine import WorkflowEngine
 
 
+def _jsonable(value):
+    """Coerce ``value`` to something json.dumps can handle; fall back to
+    ``str()`` if it isn't natively serializable."""
+    import json
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return str(value)
+
+
 async def run_workflow(
     name: str, kwargs: dict, *,
     bridge: Any, queue_manager: Any, inbox_router: Any,
@@ -112,6 +123,72 @@ class WorkflowRunner:
         self._running: dict[str, _RunningWorkflow] = {}
         self._questions: dict[str, deque[_PendingQuestion]] = {}
         self._last_options: dict[str, list[str] | None] = {}
+        self._state_dir: Path | None = None
+
+    # ── ledger persistence ────────────────────────────────────────────
+    def set_state_dir(self, path: Path) -> None:
+        self._state_dir = Path(path)
+
+    def _state_root(self) -> Path | None:
+        if self._state_dir is not None:
+            return self._state_dir
+        # Fall back to the bridge's state_dir (FakeBridge in tests, the
+        # TUI app exposes one at the queue manager level in prod).
+        d = getattr(self._bridge, "_state_dir", None)
+        if d is not None:
+            return Path(d)
+        return None
+
+    def _workflow_dir(self, wid: str) -> Path:
+        root = self._state_root()
+        if root is None:
+            raise RuntimeError(
+                "WorkflowRunner: state_dir not set (call set_state_dir "
+                "first, or attach via the bridge)")
+        return root / wid
+
+    def _ledger_path(self, wid: str) -> Path:
+        return self._workflow_dir(wid) / "ledger.jsonl"
+
+    def _meta_path(self, wid: str) -> Path:
+        return self._workflow_dir(wid) / "meta.json"
+
+    def append_ledger(self, wid: str, record: dict) -> None:
+        import json
+        path = self._ledger_path(wid)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
+    def read_ledger(self, wid: str) -> list[dict]:
+        import json
+        path = self._ledger_path(wid)
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text().splitlines()
+                if line.strip()]
+
+    def _write_meta(self, wid: str, *, name: str, host: str | None,
+                    kwargs: dict) -> None:
+        import json
+        try:
+            path = self._meta_path(wid)
+        except RuntimeError:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "name": name, "host": host, "kwargs": kwargs,
+        }))
+
+    def _read_meta(self, wid: str) -> dict | None:
+        import json
+        try:
+            path = self._meta_path(wid)
+        except RuntimeError:
+            return None
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
 
     # ── lifecycle ─────────────────────────────────────────────────────
     async def start(self, name: str, kwargs: dict | None = None, *,
@@ -142,6 +219,7 @@ class WorkflowRunner:
             queue_manager=getattr(self._bridge, "queue_manager", None),
             inbox_router=getattr(self._bridge, "inbox_router", None),
             state_dir=state_dir)
+        self._write_meta(wid, name=name, host=host, kwargs=kwargs or {})
         coro = self._run(engine, fn, kwargs or {}, done_callback)
         if scheduler is not None:
             task = scheduler(coro, name=f"workflow:{name}:{wid}")
@@ -161,21 +239,28 @@ class WorkflowRunner:
             if record is not None:
                 record.status = "ok"
                 record.result = result
+            self._safe_append(wid, {"kind": "finished",
+                                    "result": _jsonable(result)})
         except asyncio.CancelledError:
             if record is not None:
                 record.status = "cancelled"
                 record.error = "cancelled_by_user"
+            self._safe_append(wid, {"kind": "errored",
+                                    "error": "cancelled_by_user"})
             raise
         except WorkflowError as e:
             if record is not None:
                 record.status = "error"
                 record.error = str(e)
+            self._safe_append(wid, {"kind": "errored", "error": str(e)})
         except Exception as e:  # noqa: BLE001
             import traceback
             traceback.print_exc()
             if record is not None:
                 record.status = "error"
                 record.error = f"unexpected: {type(e).__name__}: {e}"
+            self._safe_append(wid, {"kind": "errored",
+                                    "error": f"{type(e).__name__}: {e}"})
         finally:
             await _runner_cleanup(engine)
             if done_callback is not None:
@@ -185,6 +270,38 @@ class WorkflowRunner:
                         await res
                 except Exception:  # noqa: BLE001
                     pass
+
+    def _safe_append(self, wid: str, record: dict) -> None:
+        try:
+            self.append_ledger(wid, record)
+        except Exception:  # noqa: BLE001 — ledger write is best-effort
+            pass
+
+    async def resume(self, workflow_id: str) -> str | None:
+        """Restart a workflow whose ledger exists but which is not yet
+        finished. Returns the workflow_id (same one — resume re-uses it
+        so resume_state() finds the prior checkpoint), or ``None`` if
+        the workflow is already terminal."""
+        meta = self._read_meta(workflow_id)
+        if meta is None:
+            raise KeyError(f"unknown workflow_id: {workflow_id!r}")
+        records = self.read_ledger(workflow_id)
+        if any(r.get("kind") in {"finished", "errored"}
+               and r.get("error") != "cancelled_by_user"
+               and not r.get("_resumed") for r in records):
+            # Workflow has a terminal record — but we accept re-running
+            # after an errored entry (the resume case). Reject only on
+            # 'finished'.
+            pass
+        if any(r.get("kind") == "finished" for r in records):
+            return None
+        # Mark resume in the ledger for forensics.
+        self._safe_append(workflow_id, {"kind": "resumed"})
+        await self.start(
+            meta["name"], meta.get("kwargs", {}),
+            host=meta.get("host"),
+            workflow_id=workflow_id)
+        return workflow_id
 
     def status(self, workflow_id: str) -> dict:
         r = self._running.get(workflow_id)
