@@ -1,19 +1,14 @@
 """Aegis workflow catalog.
 
-Importing a workflow from this package registers it with the workflow
-runtime, after which it's invocable via ``aegis_run_workflow``::
-
-    from aegis.workflows import brainstorm_to_spec
-    # Now aegis_run_workflow(name="brainstorm_to_spec", ...) works.
+Importing a seed workflow registers it with the workflow runtime, after
+which it's invocable via ``aegis_run_workflow``. The submodule imports
+below trigger the ``@workflow`` decorators without rebinding the
+submodule names at package level — so ``aegis.workflows.review_branch``
+remains the module, not the function (important for ``monkeypatch``).
 """
-from aegis.workflows.brainstorm_to_spec import brainstorm_to_spec
-from aegis.workflows.execute_plan import execute_plan
-from aegis.workflows.review_branch import review_branch
-from aegis.workflows.tdd_cycle import tdd_cycle
-
-__all__ = [
-    "brainstorm_to_spec",
-    "execute_plan",
-    "review_branch",
-    "tdd_cycle",
-]
+from aegis.workflows import (  # noqa: F401
+    brainstorm_to_spec,
+    execute_plan,
+    review_branch,
+    tdd_cycle,
+)
