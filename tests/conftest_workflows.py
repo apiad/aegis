@@ -233,10 +233,12 @@ class _Harness:
                 "name": "seed", "payload": initial_state,
             })
         self.cwd = cwd
+        cfg = dict(config) if config else {}
+        if cwd is not None and "cwd" not in cfg:
+            cfg["cwd"] = str(cwd)
         self.engine = WorkflowEngine(
             bridge=self.bridge, workflow_id=workflow_id,
-            name="harness", host=host,
-            config=dict(config) if config else {})
+            name="harness", host=host, config=cfg)
 
     async def _send_and_await_reply(self, *, handle: str, prompt: str,
                                     workflow_id: str, workflow_name: str,
