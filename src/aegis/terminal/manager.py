@@ -85,6 +85,23 @@ class TerminalManager:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self._terminals: dict[str, _TerminalState] = {}
         self._spawn_lock = asyncio.Lock()
+        self._notifier = None
+
+    def set_notifier(self, notifier) -> None:
+        self._notifier = notifier
+
+    def subscribe(self, name: str, handle: str) -> list[str]:
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        state.subscribers.add(handle)
+        return sorted(state.subscribers)
+
+    def unsubscribe(self, name: str, handle: str) -> None:
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        state.subscribers.discard(handle)
 
     async def spawn(
         self,
@@ -284,6 +301,10 @@ class TerminalManager:
             _append_ledger(state.ledger_path, record)
             if pending.waiter is not None and not pending.waiter.done():
                 pending.waiter.set_result(record)
+            if self._notifier is not None:
+                asyncio.create_task(
+                    self._notifier(state.info.name, record, sorted(state.subscribers))
+                )
 
     def _finalize_pending_on_eof(self, state: _TerminalState) -> None:
         pending = state.pending
