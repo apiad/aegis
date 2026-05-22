@@ -266,14 +266,15 @@ class _RecordingInbox:
         self.delivered.append((handle, msg))
 
 
-async def test_engine_send_queues_tagged_message(tmp_path):
+async def test_engine_send_fallback_delivers_to_inbox(tmp_path):
+    """When the bridge has no ``workflow_runner``, ``send`` falls back
+    to legacy inbox delivery and returns "" (no reply available)."""
     inbox = _RecordingInbox()
     e = WorkflowEngine(workflow_name="tdd_step", workflow_run_id="01",
                        bridge=_StubBridge(), queue_manager=None,
                        inbox_router=inbox, state_dir=tmp_path)
-    e.send("lucid-knuth", "do the thing")
-    # send schedules an asyncio task; let it run.
-    await asyncio.sleep(0)
+    reply = await e.send("lucid-knuth", "do the thing")
+    assert reply == ""
     assert len(inbox.delivered) == 1
     handle, msg = inbox.delivered[0]
     assert handle == "lucid-knuth"
@@ -283,14 +284,12 @@ async def test_engine_send_queues_tagged_message(tmp_path):
     assert "lucid-knuth" in e._touched_handles
 
 
-async def test_engine_send_does_not_await(tmp_path):
+async def test_engine_send_tracks_touched_handle(tmp_path):
     inbox = _RecordingInbox()
     e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
                        bridge=_StubBridge(), queue_manager=None,
                        inbox_router=inbox, state_dir=tmp_path)
-    # send is sync (no await); should return immediately
-    e.send("h", "msg")
-    # touched_handles populated synchronously
+    await e.send("h", "msg")
     assert "h" in e._touched_handles
 
 
@@ -322,7 +321,7 @@ async def test_drain_returns_when_target_idle(tmp_path):
                        bridge=_StubBridge(), queue_manager=None,
                        inbox_router=inbox, state_dir=tmp_path,
                        drain_timeout=2.0)
-    e.send(h, "go")
+    await e.send(h, "go")
     await e.drain(h)
     assert sess.state is AgentState.ready
 
@@ -353,7 +352,7 @@ async def test_drain_timeout_logs_warning_and_returns(tmp_path, capfd):
                        bridge=_StubBridge(), queue_manager=None,
                        inbox_router=inbox, state_dir=tmp_path,
                        drain_timeout=0.05)
-    e.send(h, "go")
+    await e.send(h, "go")
     await e.drain(h)
     out = capfd.readouterr().err
     assert "drain timed out" in out

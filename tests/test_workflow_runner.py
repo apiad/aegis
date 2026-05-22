@@ -138,7 +138,7 @@ async def test_runner_auto_drains_touched_handles(tmp_path):
             return await original_drain(handle)
         engine.drain = spy
         # Touch a handle (no session bound — drain becomes a no-op).
-        engine.send("ghost", "hi")
+        await engine.send("ghost", "hi")
         return "ok"
     out = await run_workflow(
         "touches", {},

@@ -5,13 +5,15 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from aegis.config import find_project_root
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue.schema import InboxMessage, new_ulid as _new_ulid, now_iso
-from aegis.workflow.decorator import WorkflowError
+from aegis.workflow.decorator import (
+    PredicateFailed, SubagentSpawnError, WorkflowError,
+)
 
 
 class _DelegationPromise:
@@ -35,19 +37,45 @@ class WorkflowEngine:
     """Runtime handle a workflow receives as its first positional argument.
 
     Constructed once per workflow run; bound to live aegis substrate
-    (AppBridge, QueueManager, InboxRouter). Tracks _spawned_handles for
-    auto-close and _touched_handles for auto-drain at runner exit.
+    (AppBridge, QueueManager, InboxRouter) and to a ``WorkflowRunner``
+    on the bridge that mediates send-and-await-reply, ask_human, spawn,
+    bash, ledger persistence, and narration. Tracks _spawned_handles
+    for auto-close and _touched_handles for auto-drain at runner exit.
     """
 
-    def __init__(self, *, workflow_name: str, workflow_run_id: str,
-                 bridge, queue_manager, inbox_router,
+    def __init__(self, *,
+                 # New canonical kwargs:
+                 name: str | None = None,
+                 workflow_id: str | None = None,
+                 host: str | None = None,
+                 config: dict | None = None,
+                 # Legacy aliases (kept for back-compat):
+                 workflow_name: str | None = None,
+                 workflow_run_id: str | None = None,
                  caller_handle: str | None = None,
+                 # Plumbing:
+                 bridge=None, queue_manager=None, inbox_router=None,
                  state_dir: Path | None = None,
                  now: Callable[[], str] = now_iso,
                  drain_timeout: float = 30.0) -> None:
-        self.workflow_name = workflow_name
-        self.workflow_run_id = workflow_run_id
-        self.caller_handle = caller_handle
+        name_val = name if name is not None else workflow_name
+        if name_val is None:
+            raise TypeError(
+                "WorkflowEngine: 'name' (or legacy 'workflow_name') is required")
+        self.name = self.workflow_name = name_val
+
+        wid_val = workflow_id if workflow_id is not None else workflow_run_id
+        if wid_val is None:
+            raise TypeError(
+                "WorkflowEngine: 'workflow_id' (or legacy "
+                "'workflow_run_id') is required")
+        self.workflow_id = self.workflow_run_id = wid_val
+
+        host_val = host if host is not None else caller_handle
+        self.host = self.caller_handle = host_val
+
+        self.config: dict = dict(config) if config else {}
+
         self._bridge = bridge
         self._queue = queue_manager
         self._inbox = inbox_router
@@ -66,16 +94,28 @@ class WorkflowEngine:
 
     # ── log ──────────────────────────────────────────────────────────
     def log(self, message: str) -> None:
-        print(f"[workflow:{self.workflow_name}] {message}",
+        """Single-line narration. Writes to stderr + JSONL under state_dir.
+
+        Kept sync for v1 back-compat with existing workflows; the
+        catalog seeds may also call this without ``await``."""
+        print(f"[workflow:{self.name}] {message}",
               file=sys.stderr, flush=True)
         if self._state_dir is None:
             return
         path = (Path(self._state_dir) / "workflows"
-                / f"{self.workflow_run_id}.jsonl")
+                / f"{self.workflow_id}.jsonl")
         path.parent.mkdir(parents=True, exist_ok=True)
         record = {"timestamp": self._now(), "message": message}
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
+        runner = self._runner()
+        if runner is not None and hasattr(runner, "narrate"):
+            try:
+                coro = runner.narrate(self.workflow_id, self.host, message)
+                if asyncio.iscoroutine(coro):
+                    asyncio.create_task(coro)
+            except Exception:  # noqa: BLE001
+                pass
 
     # ── bash ─────────────────────────────────────────────────────────
     async def bash(self, cmd: str, *,
@@ -85,7 +125,12 @@ class WorkflowEngine:
                    ) -> subprocess.CompletedProcess:
         """Async shell. cwd defaults to project root (find_project_root)
         or os.getcwd(); timeout=None means wait forever. On timeout,
-        raises WorkflowError after killing the subprocess."""
+        raises WorkflowError after killing the subprocess.
+
+        Returns ``subprocess.CompletedProcess`` with attribute access
+        (``.returncode``, ``.stdout``, ``.stderr``). Also exposes
+        ``exit``/``stdout``/``stderr`` via dict-style indexing so the
+        catalog's ``bash_predicate`` retry-with templates work."""
         if cwd is None:
             cwd = str(find_project_root() or os.getcwd())
         proc = await asyncio.create_subprocess_shell(
@@ -103,17 +148,17 @@ class WorkflowEngine:
                 pass
             raise WorkflowError(
                 f"bash timed out after {timeout}s: {cmd}")
-        return subprocess.CompletedProcess(
+        return _BashResult(
             args=cmd, returncode=proc.returncode,
             stdout=stdout.decode("utf-8", errors="replace"),
             stderr=stderr.decode("utf-8", errors="replace"))
 
-    # ── delegate ─────────────────────────────────────────────────────
+    # ── delegate (queue-worker pattern; legacy) ──────────────────────
     async def delegate(self, queue: str, payload: str) -> str:
         """Enqueue a one-shot task on the named queue; await the worker's
         callback; return its final assistant text. Raises WorkflowError
         on unknown queue, worker failure, or substrate error."""
-        handle = f"workflow:{self.workflow_name}:{_new_ulid()}"
+        handle = f"workflow:{self.name}:{_new_ulid()}"
         promise = _DelegationPromise()
         self._inbox.bind_session(handle, promise)
         try:
@@ -134,55 +179,83 @@ class WorkflowEngine:
 
     # ── spawn / close ────────────────────────────────────────────────
     async def spawn(self, profile: str, *,
+                    alias: str | None = None,
                     handle: str | None = None) -> str:
-        """Spawn a long-lived agent through the bridge. Tracks handle for
-        auto-close on workflow exit. Returns the handle."""
-        h = await self._bridge.spawn(profile, handle=handle)
+        """Spawn a fresh subagent of ``profile``; track for auto-close on
+        workflow exit. ``alias`` is the preferred kwarg; ``handle`` is a
+        legacy alias accepted for back-compat. Returns the new handle."""
+        requested = alias if alias is not None else handle
+        runner = self._runner()
+        try:
+            if runner is not None and hasattr(runner, "spawn_subagent"):
+                h = await runner.spawn_subagent(profile, alias=requested)
+            else:
+                h = await self._bridge.spawn(profile, handle=requested)
+        except Exception as e:  # noqa: BLE001
+            raise SubagentSpawnError(
+                f"spawn({profile!r}, alias={requested!r}) failed: {e}"
+            ) from e
         self._spawned_handles.add(h)
         return h
 
     async def close(self, handle: str) -> None:
-        """Close a long-lived agent. Idempotent — silent no-op if the
-        handle is unknown to this engine."""
+        """Close a spawned subagent. Raises ``ValueError`` if ``handle``
+        is the host. Idempotent for unknown handles."""
+        if self.host is not None and handle == self.host:
+            raise ValueError(
+                f"cannot close host handle: {handle!r}")
         if handle not in self._spawned_handles:
             return
         self._spawned_handles.discard(handle)
+        runner = self._runner()
         try:
-            await self._bridge.close(handle)
+            if runner is not None and hasattr(runner, "close_session"):
+                await runner.close_session(handle)
+            else:
+                await self._bridge.close(handle)
         except Exception:  # noqa: BLE001 — close is best-effort
             pass
 
     # ── send ─────────────────────────────────────────────────────────
-    def send(self, handle: str, message: str) -> None:
-        """Enqueue a substrate-tagged message in handle's inbox.
-        Sync, fire-and-forget. Returns immediately; the actual delivery
-        is scheduled as an asyncio task (which inherits the calling
-        context — workflows always run on the aegis event loop)."""
-        msg = InboxMessage(
-            sender=f"workflow:{self.workflow_name}",
-            timestamp=self._now(),
-            body=message)
+    async def send(self, handle: str, prompt: str, *,
+                   timeout: float | None = None) -> str:
+        """Send ``prompt`` as a user-turn to ``handle`` (host or
+        subagent); await the next complete assistant message from that
+        handle; return its text."""
         self._touched_handles.add(handle)
-        asyncio.create_task(self._inbox.deliver(handle, msg))
+        runner = self._runner()
+        if runner is not None and hasattr(runner, "send_and_await_reply"):
+            return await runner.send_and_await_reply(
+                handle=handle, prompt=prompt,
+                workflow_id=self.workflow_id,
+                workflow_name=self.name,
+                timeout=timeout)
+        # Fallback: legacy fire-and-forget through inbox_router (returns "").
+        # Used by code paths that haven't yet been migrated to the runner.
+        if self._inbox is not None:
+            msg = InboxMessage(
+                sender=f"workflow:{self.name}",
+                timestamp=self._now(),
+                body=prompt)
+            await self._inbox.deliver(handle, msg)
+        return ""
 
     # ── drain ────────────────────────────────────────────────────────
     async def drain(self, handle: str | None = None) -> None:
         """Await each touched handle's session to reach state == ready.
-        If handle is None, drain all touched handles. Per-handle ceiling
-        of self._drain_timeout; on timeout, log a warning and continue
-        (don't trap workflow shutdown on a hung agent)."""
+        Legacy primitive kept for back-compat with `tdd_step` and
+        tests; the new ``send`` already blocks until reply, so most
+        new workflows won't need this."""
         targets = (
             [handle] if handle is not None else list(self._touched_handles))
         for h in targets:
             await self._drain_one(h)
 
     async def _drain_one(self, handle: str) -> None:
-        # Let any pending send()-scheduled deliver tasks fire so that a
-        # touched handle has actually transitioned to working before we
-        # decide whether the early-return path applies.
         await asyncio.sleep(0)
-        session = (
-            self._inbox._sessions.get(handle) if self._inbox else None)
+        if self._inbox is None:
+            return
+        session = self._inbox._sessions.get(handle)
         if session is None:
             return
         from aegis.tui.state import AgentState
@@ -200,3 +273,27 @@ class WorkflowEngine:
                     f"handle={handle!r} (state={session.state.value})")
                 return
             await asyncio.sleep(0.05)
+
+    # ── helpers ──────────────────────────────────────────────────────
+    def _runner(self):
+        return getattr(self._bridge, "workflow_runner", None)
+
+
+class _BashResult(subprocess.CompletedProcess):
+    """``CompletedProcess`` extended with dict-style access for catalog
+    helpers (``result["exit"]``/``["stdout"]``/``["stderr"]``)."""
+
+    def __getitem__(self, key):
+        if key == "exit":
+            return self.returncode
+        if key == "stdout":
+            return self.stdout
+        if key == "stderr":
+            return self.stderr
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default

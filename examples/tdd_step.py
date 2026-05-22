@@ -30,11 +30,11 @@ async def tdd_step(engine, *, plan_step: str,
     """Run one TDD cycle. Subject = caller (if MCP-invoked) or a fresh
     queue worker (if CLI-invoked). Returns when tests are green;
     raises WorkflowError on hard failure (predicate violated)."""
-    subject = engine.caller_handle or await engine.spawn("worker-sonnet")
-    spawned = subject != engine.caller_handle
+    subject = engine.host or await engine.spawn("worker-sonnet")
+    spawned = subject != engine.host
     try:
         # 1. Write failing tests at the known path.
-        engine.send(
+        await engine.send(
             subject,
             f"Write failing tests at {test_path} for: {plan_step}. "
             f"Cover the spec.")
@@ -47,7 +47,7 @@ async def tdd_step(engine, *, plan_step: str,
                 f"tests at {test_path} passed without implementation")
 
         # 3. Implement.
-        engine.send(
+        await engine.send(
             subject,
             f"Make {test_path} pass.\n\nFailing output:\n{proc.stdout}")
         await engine.drain(subject)
@@ -58,7 +58,7 @@ async def tdd_step(engine, *, plan_step: str,
             if proc.returncode == 0:
                 engine.log(f"green after {attempt + 1} attempt(s)")
                 return f"green: {test_path}"
-            engine.send(
+            await engine.send(
                 subject,
                 f"Still failing:\n{proc.stdout}\n\nFix.")
             await engine.drain(subject)

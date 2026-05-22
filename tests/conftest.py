@@ -1,5 +1,8 @@
 """Shared test fixtures and configuration."""
 
+# Wire in workflow fixtures (fake_bridge*, workflow_test_harness).
+from tests.conftest_workflows import *  # noqa: F401,F403,E402
+
 import pytest
 import json
 from typing import Any, AsyncIterator
