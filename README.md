@@ -76,6 +76,12 @@ generated `.aegis.py` is plain Python — edit it freely afterwards.
   finishes. Write Python workflows that orchestrate multiple agents
   (delegate / send / drain / spawn / close / bash) and run them via
   `aegis workflow run`.
+- **Shared canvas.** A third coordination primitive (alongside queues
+  and inbox handoffs): a markdown file multiple agents read, write
+  sections of, and subscribe to. Writes fire an `✉` inbox notification
+  to every other subscriber with the writer, diff, and a preview —
+  ideal for collaborative reports, shared plans, multi-agent
+  document shaping. Same MCP surface every agent already has.
 - **Queue dashboard.** Always-on one-line strip above every
   conversation's status bar shows live per-queue depth and the most
   recent in-flight worker; `Ctrl+D` expands into a full-screen modal
@@ -164,6 +170,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Configuration](https://apiad.github.io/aegis/configuration/)
 - [Drivers](https://apiad.github.io/aegis/drivers/) — Claude / Gemini / OpenCode
 - [Queues](https://apiad.github.io/aegis/queues/) — inter-agent delegation
+- [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)

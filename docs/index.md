@@ -58,6 +58,7 @@ problems without replacing the underlying agent.
 - [Configuration](configuration.md) — the `.aegis.py` file.
 - [Drivers](drivers.md) — Claude, Gemini, OpenCode side by side.
 - [Queues](queues.md) — inter-agent delegation.
+- [Canvas](canvas.md) — shared markdown blackboard.
 - [Workflows](workflows.md) — Python orchestration.
 - [MCP plane](mcp.md) — the tool surface every agent gets.
 - [Architecture & Vision](architecture.md) — how the pieces fit.

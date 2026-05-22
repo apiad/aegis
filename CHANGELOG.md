@@ -5,6 +5,20 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+- **Shared canvas.** Third coordination primitive after queues and
+  inbox handoffs: a markdown file multiple agents can read, write
+  sections of, and subscribe to. Writes fire `✉ from canvas:<name>`
+  inbox notifications to every other subscriber with diff math + a
+  preview — same delivery channel as queue callbacks and handoffs,
+  zero new TUI. Six MCP tools (`aegis_canvas_open / read /
+  write_section / append_to_section / subscribe / unsubscribe /
+  list`); section ownership is by convention only in v1, ledger
+  records who wrote what. State at `.aegis/state/canvases/<name>/`;
+  the markdown file lives wherever the caller points it. Spec:
+  `docs/superpowers/specs/2026-05-21-shared-canvas-design.md`. Docs:
+  `docs/canvas.md`.
+
 ## [0.4.0] - 2026-05-21
 
 ### Added
