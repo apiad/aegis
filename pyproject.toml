@@ -30,6 +30,7 @@ dependencies = [
     "agent-client-protocol>=0.10",
     "fastmcp>=3.2.0",
     "httpx>=0.28",
+    "ptyprocess>=0.7.0",
     "pydantic>=2.12.5",
     "rich>=14.3.3",
     "textual>=8.2.6",
