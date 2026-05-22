@@ -177,12 +177,13 @@ When the dance has to be reliable — TDD loops, bug triage, multi-step plans �
 The TUI is calm and dense. The metrics are honest. The substrate persists.
 </p>
 
-- **Multi-tab TUI.** N independent agent sessions. Generated alliterating handles (`lucid-knuth`, `wry-hopper`). State dots, sticky `*`, terminal bell when a backgrounded agent finishes. Per-block click-to-copy.
+- **Multi-tab TUI.** N independent agent sessions plus terminal tabs. Generated alliterating handles (`lucid-knuth`, `wry-hopper`). State dots, sticky `*`, terminal bell when a backgrounded agent finishes. Per-block click-to-copy.
 - **Honest metrics.** True input (including cache) with cached %, output, tool calls, per-turn and per-session timing. Provisional while streaming, exact at turn end. No log scraping anywhere.
 - **Queue dashboard.** Always-on one-line strip above the status bar (per-queue depth, last in-flight worker). `Ctrl+D` for a full dashboard with in-flight / queued / recent bands and a live assistant-text tail.
-- **Session persistence.** `aegis` reopens the last workspace by default — tabs, profiles, order, with each underlying agent session genuinely resumed. `aegis --clean` opts out.
+- **Session persistence.** `aegis` reopens the last workspace by default — agent tabs, terminal tabs, profiles, order, with each underlying session genuinely resumed. `aegis --clean` opts out.
+- **Workflow catalog.** The `aegis.workflows` package ships seed workflows you import to register: `brainstorm_to_spec`, `execute_plan`, `review_branch`, `tdd_cycle`. The engine offers `ask_human` for host-tab dialogue, explicit checkpoints with durable resume, `spawn`/`close` for subagents, `bash_predicate` for retry-with-feedback loops, and `parallel` for fan-out joins.
 - **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP plane without a TUI. Add a Telegram token and drive your agent team from your phone.
-- **MCP plane.** Every spawned agent is injected with the aegis MCP server. Orientation (`aegis_meta`), session listing, handoff, queue dispatch, canvas ops, workflow invocation — one consistent surface across providers.
+- **MCP plane.** Every spawned agent is injected with the aegis MCP server. Orientation (`aegis_meta`), session listing, handoff, queue dispatch, canvas ops, terminal ops, workflow invocation — one consistent surface across providers.
 
 </section>
 

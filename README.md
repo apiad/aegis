@@ -180,8 +180,9 @@ plan → dispatch implementer per task with durable resume),
 ## What else is in the box
 
 - **Multi-tab TUI.** Generated alliterating handles (`lucid-knuth`,
-  `wry-hopper`). State dots, sticky `*`, terminal bell when a
-  backgrounded agent finishes. Click any block to copy it.
+  `wry-hopper`) for agents, purpose names (`build`, `db`) for terminals.
+  State dots, sticky `*`, terminal bell when a backgrounded agent
+  finishes. Click any block to copy it.
 - **Honest metrics.** True input (incl. cache) with cached %, output,
   tool calls, per-turn and per-session wall-clock. Provisional while
   streaming, exact at turn end. **No log scraping anywhere.**
@@ -190,17 +191,22 @@ plan → dispatch implementer per task with durable resume),
   `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
   QUEUED / RECENT` bands and a live assistant-text tail.
 - **Session persistence.** `aegis` reopens the last workspace by
-  default — same tabs, same profiles, same order, with each underlying
-  agent session genuinely resumed (model memory intact). `aegis --clean`
-  opts out.
+  default — agent tabs, terminal tabs, profiles, order, with each
+  underlying session genuinely resumed (model memory intact).
+  `aegis --clean` opts out.
+- **Workflow catalog.** `aegis.workflows` ships four ready-to-use
+  seeds (`brainstorm_to_spec`, `execute_plan`, `review_branch`,
+  `tdd_cycle`); importing them registers. Engine offers `ask_human`,
+  explicit `checkpoint` + durable resume, `bash_predicate` retry
+  loops, and `parallel` fan-out.
 - **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP
   plane without a TUI. Add a Telegram token to drive the team from your
   phone.
 - **MCP plane.** Every spawned agent is injected with the aegis MCP
   server: orientation (`aegis_meta`), session listing, handoff, queue
-  dispatch, canvas ops, workflow invocation. One consistent surface
-  across providers. With `--strict-mcp-config`, aegis is the *only* MCP
-  server the spawned agent sees.
+  dispatch, canvas ops, terminal ops, workflow invocation. One
+  consistent surface across providers. With `--strict-mcp-config`,
+  aegis is the *only* MCP server the spawned agent sees.
 
 ## Install
 
@@ -228,8 +234,10 @@ generated `.aegis.py` is plain Python — edit it freely afterward.
 |---|---|
 | `Enter` | Send |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
+| `Ctrl+E` | New terminal tab (`term:<name>`) |
 | `Ctrl+W` | Close tab (last → quit) |
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
+| `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `Ctrl+D` | Open / close the queue dashboard |
 | `Escape` | Interrupt the active turn (or dismiss a modal) |
 | `Click on a block` | Copy that message / tool result to clipboard |
@@ -296,9 +304,11 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Drivers](https://apiad.github.io/aegis/drivers/) — Claude / Gemini / OpenCode
 - [Queues](https://apiad.github.io/aegis/queues/) — inter-agent delegation
 - [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
-- [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration
+- [Terminals](https://apiad.github.io/aegis/terminals/) — shared live PTY
+- [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)
+- [Roadmap](https://apiad.github.io/aegis/roadmap/)
 - [API reference](https://apiad.github.io/aegis/api/)
 
 ## Status

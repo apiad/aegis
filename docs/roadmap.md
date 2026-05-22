@@ -25,7 +25,7 @@
   bash / log), `runner.run_workflow` with auto-drain + auto-close,
   `aegis workflow list/run` CLI, `aegis_run_workflow` MCP tool.
 
-### v0.3.0 (current)
+### v0.3.0
 - **Multi-provider parity via ACP** — Gemini and OpenCode drivers
   rewritten on the official [Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol)
   Python SDK. Multi-turn, streaming, cancellation, and per-session
@@ -39,14 +39,53 @@
   `.aegis.py` without `--force`.
 - **First PyPI release** — distributed as `aegis-harness`.
 
+### v0.4.x (current)
+- **Queue dashboard** — always-on one-line strip (per-queue depth,
+  last in-flight worker); `Ctrl+D` full-screen modal with `QUEUES /
+  IN-FLIGHT / QUEUED / RECENT` bands and a live assistant-text tail.
+- **Session persistence** — `aegis` reopens the last workspace by
+  default (tabs, profiles, order, with each underlying agent session
+  genuinely resumed via provider-native resume APIs); `aegis --clean`
+  opts out. Per-tab resume failures are contained and surfaced in-pane.
+- **Shared canvas** — third coordination primitive. `aegis_canvas_*`
+  MCP tools, file-backed markdown blackboard, per-section diff-aware
+  notifications through the inbox channel.
+- **Live terminals** — fourth coordination primitive in the inbox-
+  delivery family. Real PTY-backed shells, OSC 133 shell integration
+  for deterministic command-finish detection, eight `aegis_term_*`
+  MCP tools, new `term:<name>` TUI tab type with command-block
+  rendering and a `Ctrl+K` raw-key mode, session-scoped persistence
+  with `killed_by_restart` sweep on resume.
+- **Workflow catalog** — the `aegis.workflows` package: importing a
+  workflow registers it. Four seeds ship: `brainstorm_to_spec` (Q/A
+  → spec doc), `execute_plan` (parse plan → dispatch implementer per
+  task with durable resume), `review_branch` (parallel reviewer
+  fan-out → report), `tdd_cycle` (predicate-driven TDD loop). Engine
+  gained `ask_human` (host-tab dialogue), `spawn`/`close` (subagent
+  lifecycle), `checkpoint`/`resume_state` (explicit durability),
+  `bash_predicate` (retry-with-feedback loop), `parallel` (fan-out
+  join). `aegis_run_workflow` became non-blocking, joined by
+  `aegis_workflow_status` and `aegis_workflow_cancel`.
+
 ## Next
 
-- **Multi-host distribution** — laptop ↔ VPS session sharing.
-- **More drivers** — Codex, Aider, Cursor if/when they speak ACP.
-- **Richer workflow primitives** — checkpoints, durable resume,
-  parallel branches.
-- **Spec language** — first-class plan files that workflows execute
-  step by step.
+- **Auto-checkpoint primitives.** Promote heavy primitives
+  (`subagent`, `bash_predicate`, `parallel` joins) to auto-snapshot
+  so authors don't write explicit checkpoints around them.
+- **More catalog workflows.** `bug_repro`, `refactor_safely`,
+  `ingest_to_wiki`, `distill_to_zettel`, `triage_issue`,
+  `on_ci_failure`, `on_pr_opened`. Each new seed firms up the
+  engine API.
+- **Workflow visibility.** Status band in `Ctrl+D` dashboard
+  (running / paused-on-ask_human / done / errored) alongside queues.
+- **Multi-host distribution.** Laptop ↔ VPS session sharing via an
+  `aegis-shelld` daemon. The terminal state layout was deliberately
+  designed forward-compatible for this; it's the natural unlock for
+  tmux-style real persistence of PTYs.
+- **More drivers.** Codex, Aider, Cursor if/when they speak ACP.
+- **Richer workflow primitives.** Parallel branches with named
+  joins, durable replay (Temporal-style), spec-language workflows
+  (markdown plan files that workflows execute step by step).
 
 Aegis is personal-infrastructure-grade and evolves fast; expect
 change before 1.0.
