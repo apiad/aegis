@@ -91,6 +91,10 @@ generated `.aegis.py` is plain Python — edit it freely afterwards.
   also mounts a distinct `✉` block in the receiving agent's
   transcript with a body preview, so you see what the agent is about
   to react to.
+- **Session persistence.** `aegis` reopens the last workspace by default
+  — same tabs, profiles, order, with each model session genuinely
+  resumed (memory intact, not a transcript replay). `aegis --clean`
+  starts fresh.
 - **MCP plane** — every spawned agent gets injected with an aegis MCP
   server that exposes orientation (`aegis_meta`), session listing
   (`aegis_list_sessions`, `aegis_list_agents`), peer handoff

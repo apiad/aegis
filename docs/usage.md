@@ -99,6 +99,36 @@ When a handoff or queue callback lands on the active agent, a
 distinct `✉` block appears in the transcript with sender, status,
 timestamp, and a body preview — before the agent reacts.
 
+## Persistence
+
+`aegis` reopens the **last workspace** by default — same tabs, same
+profiles, same order, with each underlying model session genuinely
+**resumed** (the agent's memory is intact, not a transcript replay).
+Pass `--clean` to start fresh and overwrite the persisted workspace.
+
+```bash
+aegis           # resume the last workspace
+aegis --clean   # start fresh (no resume)
+```
+
+What's persisted, under `.aegis/state/` next to your `.aegis.py`:
+
+- **`workspace.json`** — the tabs that were open: handle, profile,
+  display order, which tab was active.
+- **`sessions/<handle>.jsonl`** — per-tab append-only event log used by
+  the TUI to rebuild each pane's transcript.
+
+Limitations:
+
+- **Driver support.** Only drivers that support session resume are
+  re-attached. Currently Claude Code resumes; Gemini and OpenCode do
+  not — their tabs are skipped at startup with a one-line banner.
+- **Cwd-bound.** Claude resume is tied to the working directory of the
+  original session. Moving or renaming the project breaks resume for
+  that workspace; use `--clean` to recover.
+- **Workers not resumed.** Queue workers and workflow runs are not part
+  of the workspace snapshot; only interactive tabs are restored.
+
 ## Headless mode
 
 If you want the routing plane (sessions, queues, MCP) without the TUI,

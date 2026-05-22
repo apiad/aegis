@@ -6,6 +6,10 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 ## [Unreleased]
 
 ### Added
+- **Session persistence.** `aegis` resumes the last workspace by default;
+  `aegis --clean` opts out. Per-tab event logs + workspace.json live under
+  `.aegis/state/`. Tabs whose drivers don't support session resume
+  (currently Gemini, OpenCode) are skipped with a startup banner.
 - **Shared canvas.** Third coordination primitive after queues and
   inbox handoffs: a markdown file multiple agents can read, write
   sections of, and subscribe to. Writes fire `✉ from canvas:<name>`
