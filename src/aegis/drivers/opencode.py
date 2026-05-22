@@ -10,3 +10,4 @@ from aegis.drivers.acp import AcpDriver
 
 class OpenCodeDriver(AcpDriver):
     BASE_CMD = ["opencode", "acp"]
+    supports_resume = False

@@ -93,6 +93,8 @@ class ClaudeSession(HarnessSession):
 
 
 class ClaudeDriver(HarnessDriver):
+    supports_resume = True
+
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:
         return [

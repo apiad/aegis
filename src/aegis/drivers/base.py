@@ -26,6 +26,8 @@ class HarnessSession(abc.ABC):
 class HarnessDriver(abc.ABC):
     """Translates a harness-agnostic Agent into a concrete session."""
 
+    supports_resume: bool = False
+
     @abc.abstractmethod
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]: ...
@@ -33,3 +35,12 @@ class HarnessDriver(abc.ABC):
     @abc.abstractmethod
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> HarnessSession: ...
+
+    def resume(self, agent: Agent, cwd: str,
+               mcp_url: str, handle: str, session_id: str) -> HarnessSession:
+        """Build a session bound to an existing driver-side conversation.
+
+        Default raises — only resume-capable drivers override.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support session resume")
