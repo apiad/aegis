@@ -159,6 +159,7 @@ class AegisApp(App):
         Binding("escape", "interrupt", "Interrupt", priority=True),
         Binding("ctrl+t", "new_tab", "New tab", priority=True),
         Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
+        Binding("ctrl+e", "new_terminal", "New terminal", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
@@ -257,18 +258,23 @@ class AegisApp(App):
         self._refresh_tabbar()
 
     @property
-    def _active(self) -> ConversationPane | None:
+    def _active(self):
         cs = self.query_one(ContentSwitcher)
         if cs.current is None:
             return None
-        return self.query_one(f"#{cs.current}", ConversationPane)
+        for p in self._panes:
+            if p.id == cs.current:
+                return p
+        return None
 
     async def _spawn(self, slug: str, *,
                      handle: str | None = None,
                      opening_prompt: str | None = None,
                      foreground: bool = True) -> ConversationPane:
         agent = self._agents[slug]
-        h = handle or generate_name({p.handle for p in self._panes})
+        h = handle or generate_name(
+            {p.handle for p in self._panes
+             if isinstance(p, ConversationPane)})
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
             slug, h, self._palette, digest=self.queue_digest,
@@ -290,9 +296,11 @@ class AegisApp(App):
             pane._submit(opening_prompt)
         return pane
 
-    async def _close_pane(self, pane: ConversationPane) -> None:
-        """Unified pane teardown — inbox unbind, then close, remove, list-pop."""
-        self.inbox_router.unbind_session(pane.handle)
+    async def _close_pane(self, pane) -> None:
+        """Unified pane teardown — inbox unbind (agent panes only), then
+        close, remove, list-pop."""
+        if isinstance(pane, ConversationPane):
+            self.inbox_router.unbind_session(pane.handle)
         await pane.close()
         if pane in self._panes:
             self._panes.remove(pane)
@@ -319,13 +327,16 @@ class AegisApp(App):
                 if p.id == cs.current:
                     active_handle = p.handle
                     break
-        tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)]
+        # Terminal tabs aren't part of the agent workspace schema yet
+        # (their persistence lands in slice 7). Skip them here.
+        tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)
+                if isinstance(p, ConversationPane)]
         write_workspace_snapshot(self._state_dir, tabs=tabs,
                                  active_handle=active_handle)
 
     def _tick(self) -> None:
         active = self._active
-        if active is not None:
+        if active is not None and hasattr(active, "refresh_metrics"):
             active.refresh_metrics()
 
     def _activate(self, idx: int) -> None:
@@ -377,11 +388,41 @@ class AegisApp(App):
         if slug:
             await self._spawn(slug)
 
+    @work
+    async def action_new_terminal(self) -> None:
+        from aegis.tui.picker import TerminalNamePrompt
+
+        name = await self.push_screen_wait(TerminalNamePrompt())
+        if not name:
+            return
+        await self._spawn_terminal(name)
+
+    async def _spawn_terminal(self, name: str):
+        from aegis.tui.terminal_tab import TerminalTab
+        try:
+            info = await self.terminal_manager.spawn(name=name)
+        except Exception as e:
+            self.notify(f"spawn failed: {e}", timeout=3.0)
+            return None
+        tab = TerminalTab(self.terminal_manager, info, palette=self._palette)
+        self._panes.append(tab)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(tab)
+        cs.current = tab.id
+        self._refresh_tabbar()
+        tab.focus_input()
+        return tab
+
     def on_pane_state_changed(self, message: PaneStateChanged) -> None:
         if message.finished:
             if message.pane is not self._active:
                 message.pane.unseen = True
             self.bell()
+        self._refresh_tabbar()
+
+    def on_terminal_tab_state_changed(self, message) -> None:
+        if message.finished and message.tab is not self._active:
+            message.tab.unseen = True
         self._refresh_tabbar()
 
     async def action_open_dashboard(self) -> None:
@@ -398,12 +439,13 @@ class AegisApp(App):
             self.screen.dismiss()
             return
         active = self._active
-        if active is not None:
+        if active is not None and hasattr(active, "interrupt"):
             active.interrupt()
 
     async def action_quit(self) -> None:
         for pane in list(self._panes):
-            self.inbox_router.unbind_session(pane.handle)
+            if isinstance(pane, ConversationPane):
+                self.inbox_router.unbind_session(pane.handle)
             await pane.close()
         self.queue_digest.stop()
         await self.queue_manager.stop()
@@ -418,6 +460,7 @@ class AegisApp(App):
                         state=p.state.value, active=(p is active),
                         unseen=p.unseen)
             for p in self._panes
+            if isinstance(p, ConversationPane)
         ]
 
     def list_agents(self) -> list[str]:
@@ -431,7 +474,8 @@ class AegisApp(App):
         if from_handle == target_handle:
             return "handoff rejected: cannot hand off to yourself"
         target = next((p for p in self._panes
-                       if p.handle == target_handle), None)
+                       if isinstance(p, ConversationPane)
+                       and p.handle == target_handle), None)
         if target is None:
             return (f"handoff rejected: no session {target_handle!r} "
                     f"(use aegis_list_sessions)")
@@ -450,7 +494,9 @@ class AegisApp(App):
 
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
-        pane = next((p for p in self._panes if p.handle == handle), None)
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
         if pane is not None:
             await self._close_pane(pane)
             self._refresh_tabbar()

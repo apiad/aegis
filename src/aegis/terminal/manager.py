@@ -73,6 +73,10 @@ class _TerminalState:
     next_seq: int = 0
     ready: asyncio.Event = field(default_factory=asyncio.Event)
     osc133_ok: bool = True
+    # Render observers: callables fired from the reader loop on
+    # streaming chunks and command finalization. Signature is
+    # (kind: str, payload: dict) — kind ∈ {"chunk", "command_end"}.
+    render_observers: list = field(default_factory=list)
 
 
 def _now_iso() -> str:
@@ -102,6 +106,32 @@ class TerminalManager:
         if state is None:
             raise TerminalNotFound(name)
         state.subscribers.discard(handle)
+
+    def subscribers(self, name: str) -> list[str]:
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        return sorted(state.subscribers)
+
+    def add_render_observer(self, name: str, callback) -> None:
+        """Register a callback fired on every reader-loop chunk and on
+        every command finalization. Callback signature:
+            (kind: str, payload: dict) -> None
+        where kind ∈ {"chunk", "command_end"}. Used by the TUI tab to
+        stream live output; callback runs in the asyncio loop thread."""
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        state.render_observers.append(callback)
+
+    def remove_render_observer(self, name: str, callback) -> None:
+        state = self._terminals.get(name)
+        if state is None:
+            return
+        try:
+            state.render_observers.remove(callback)
+        except ValueError:
+            pass
 
     async def spawn(
         self,
@@ -266,6 +296,8 @@ class TerminalManager:
                 stripped, events = state.parser.feed(chunk)
                 if state.pending is not None and stripped:
                     state.pending.stdout.extend(stripped)
+                if stripped:
+                    self._fire_observers(state, "chunk", {"data": stripped})
                 for ev in events:
                     self._handle_event(state, ev)
         except asyncio.CancelledError:
@@ -301,10 +333,19 @@ class TerminalManager:
             _append_ledger(state.ledger_path, record)
             if pending.waiter is not None and not pending.waiter.done():
                 pending.waiter.set_result(record)
+            self._fire_observers(state, "command_end", {"record": record})
             if self._notifier is not None:
                 asyncio.create_task(
                     self._notifier(state.info.name, record, sorted(state.subscribers))
                 )
+
+    def _fire_observers(self, state: _TerminalState, kind: str, payload: dict) -> None:
+        for cb in list(state.render_observers):
+            try:
+                cb(kind, payload)
+            except Exception:
+                import traceback
+                traceback.print_exc()
 
     def _finalize_pending_on_eof(self, state: _TerminalState) -> None:
         pending = state.pending
