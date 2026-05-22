@@ -38,6 +38,30 @@ BRIEFING = (
     "callback arrival.\n"
     "  - aegis_task_status(task_id) : inspect a previously-enqueued "
     "task. Use when callback was false or you want to poll mid-flight.\n"
+    "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
+    "shared canvas — a markdown file multiple agents collaboratively "
+    "write to. First open of a name requires ``file`` (the on-disk "
+    "path); subsequent opens just return metadata. Returns "
+    "{name, file, sections, created_at}.\n"
+    "  - aegis_canvas_read(name, section?, from_handle) : read the full "
+    "canvas or one section's body. Returns {content}.\n"
+    "  - aegis_canvas_write_section(name, section, content, from_handle) "
+    ": replace one ## section with content (creates the section if "
+    "missing). Pass your own handle so other subscribers see who wrote "
+    "it (and so you don't get an inbox echo of your own write).\n"
+    "  - aegis_canvas_append_to_section(name, section, text, from_handle) "
+    ": append text to a section (joined with newline). Cheaper than "
+    "write_section for log-style growth.\n"
+    "  - aegis_canvas_subscribe(name, from_handle, sections?) : opt in "
+    "to wake-on-change. When any other agent writes to a watched "
+    "section, you receive a user-message turn tagged "
+    "sender=canvas:<name>. sections=None watches everything; passing a "
+    "list filters to those sections only.\n"
+    "  - aegis_canvas_unsubscribe(name, from_handle) : stop receiving "
+    "notifications.\n"
+    "  - aegis_canvas_list() : see all canvases open in this aegis. Use "
+    "before opening a new one to check whether the work already has a "
+    "home.\n"
     "  - aegis_run_workflow(name, kwargs, from_handle, callback=true) : "
     "invoke a registered workflow (a deterministic Python procedure "
     "that drives a sequence of agent interactions with predicate-"
@@ -64,6 +88,12 @@ BRIEFING = (
     "  > from telegram · <timestamp>\n"
     "      A user message from Alex (or whoever owns the Telegram "
     "chat) — same as anything else they would type.\n"
+    "  > from canvas:<name> · <timestamp>\n"
+    "      A subscriber notification: another agent wrote to a section "
+    "of a canvas you subscribed to. The body carries the section name, "
+    "the writer, line-count diff, and a short preview of the new "
+    "content. Re-read the canvas (aegis_canvas_read) before reacting if "
+    "you need the full state.\n"
     "  > from workflow:<name> · task#<id> · ok|error · <timestamp>\n"
     "      Either (a) the final result of a workflow you invoked via "
     "aegis_run_workflow, tagged with the workflow_run_id returned to "
@@ -91,6 +121,16 @@ BRIEFING = (
     "existing session, and is fire-and-forget. Use aegis_enqueue when "
     "you want a FRESH worker spawned for one task and the result "
     "returned to you.\n\n"
+    "SHARED CANVAS PATTERN. When multiple agents need to shape one "
+    "artifact (a report, a plan, a shared notes file), open a canvas "
+    "with aegis_canvas_open(name, file, from_handle=<your handle>). "
+    "Sections (## headings) are the unit of write and notification — "
+    "decide who owns which sections, hand off accordingly via "
+    "aegis_handoff, and subscribe (aegis_canvas_subscribe) if you want "
+    "to react when collaborators change content. Section ownership is "
+    "by convention only in v1 (any subscriber can write any section); "
+    "the ledger records who wrote what and the inbox notification names "
+    "the writer.\n\n"
     "More aegis tools (vault/file/web/workflow) are planned. Built-in "
     "Claude tools (Read, Edit, Bash, WebFetch, …) are unchanged and "
     "available. Call aegis_meta once at the start to orient, then proceed "
@@ -116,6 +156,33 @@ PRIMING = (
 def aegis_meta() -> str:
     """Orientation briefing: where you are and what aegis offers."""
     return BRIEFING
+
+
+def _canvas_info_to_dict(info) -> dict:
+    return {
+        "name": info.name,
+        "file": info.file,
+        "created_at": info.created_at,
+        "sections": [
+            {"name": s.name, "lines": s.lines,
+             "last_writer": s.last_writer,
+             "updated_at": s.updated_at}
+            for s in info.sections
+        ],
+    }
+
+
+def _write_result_to_dict(res) -> dict:
+    return {
+        "ok": True,
+        "canvas": res.canvas,
+        "section": res.section,
+        "op": res.op,
+        "writer": res.writer,
+        "added": res.added,
+        "removed": res.removed,
+        "timestamp": res.timestamp,
+    }
 
 
 def build_server(bridge: AppBridge) -> FastMCP:
@@ -266,6 +333,141 @@ def build_server(bridge: AppBridge) -> FastMCP:
         else:
             asyncio.create_task(_run_and_callback())
         return {"workflow_run_id": run_id, "status": "running"}
+
+    @server.tool
+    async def aegis_canvas_open(name: str, file: str | None = None,
+                                from_handle: str = "") -> dict:
+        """Open or create a shared canvas — a markdown file multiple
+        agents can collaboratively write to.
+
+        First open of a name requires ``file`` (the on-disk path); the
+        file is created empty if missing. Subsequent opens of the same
+        name (from any agent) just return the metadata; passing a
+        different ``file`` raises an error.
+
+        Returns ``{name, file, sections: [{name, lines, last_writer,
+        updated_at}], created_at}``.
+        """
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            info = await cm.open(name, file)
+        except CanvasError as e:
+            return {"error": f"canvas_open rejected: {e}"}
+        return _canvas_info_to_dict(info)
+
+    @server.tool
+    async def aegis_canvas_read(name: str,
+                                section: str | None = None,
+                                from_handle: str = "") -> dict:
+        """Read a canvas — full file when ``section`` is omitted, or
+        just that section's body. Returns ``{content: <str>}`` on
+        success, ``{error: ...}`` if the canvas/section is missing.
+        """
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            content = await cm.read(name, section)
+        except CanvasError as e:
+            return {"error": f"canvas_read rejected: {e}"}
+        return {"content": content}
+
+    @server.tool
+    async def aegis_canvas_write_section(
+            name: str, section: str, content: str,
+            from_handle: str) -> dict:
+        """Replace one section of the canvas with ``content``. If the
+        section doesn't exist, it's appended to the end of the file.
+
+        ``from_handle`` is your aegis handle (read it from your system
+        prompt) — recorded as the writer in the ledger and used to
+        suppress your own write from your own inbox notifications.
+        """
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            res = await cm.write_section(name, section, content,
+                                         writer=from_handle)
+        except CanvasError as e:
+            return {"error": f"canvas_write_section rejected: {e}"}
+        return _write_result_to_dict(res)
+
+    @server.tool
+    async def aegis_canvas_append_to_section(
+            name: str, section: str, text: str,
+            from_handle: str) -> dict:
+        """Append ``text`` to an existing section (joined with newline);
+        create the section if missing. Cheaper than ``write_section`` for
+        log-style growth.
+        """
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            res = await cm.append_to_section(name, section, text,
+                                             writer=from_handle)
+        except CanvasError as e:
+            return {"error": f"canvas_append_to_section rejected: {e}"}
+        return _write_result_to_dict(res)
+
+    @server.tool
+    async def aegis_canvas_subscribe(name: str, from_handle: str,
+                                     sections: list[str] | None = None
+                                     ) -> dict:
+        """Subscribe to canvas changes. When another agent writes to a
+        watched section, you receive a normal user-message turn with
+        sender ``canvas:<name>`` — same delivery channel as queue
+        callbacks and handoffs.
+
+        ``sections=None`` (default) means all sections. Provide a list
+        to filter — only writes to those sections wake you.
+
+        Subscription lives for your session's lifetime. Re-subscribe
+        after an aegis restart.
+        """
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            subs = cm.subscribe(name, from_handle, sections=sections)
+        except CanvasError as e:
+            return {"error": f"canvas_subscribe rejected: {e}"}
+        return {"ok": True, "subscribers": subs}
+
+    @server.tool
+    async def aegis_canvas_unsubscribe(name: str,
+                                       from_handle: str) -> dict:
+        """Stop receiving notifications for a canvas."""
+        from aegis.canvas.manager import CanvasError
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return {"error": "canvas plane not available"}
+        try:
+            cm.unsubscribe(name, from_handle)
+        except CanvasError as e:
+            return {"error": f"canvas_unsubscribe rejected: {e}"}
+        return {"ok": True}
+
+    @server.tool
+    async def aegis_canvas_list() -> list[dict]:
+        """List all canvases open in this aegis instance.
+
+        Each entry has ``{name, file, sections, created_at}`` — use
+        ``aegis_canvas_open(name)`` to subscribe / write without
+        rebinding the file.
+        """
+        cm = getattr(bridge, "canvas_manager", None)
+        if cm is None:
+            return []
+        return [_canvas_info_to_dict(i) for i in cm.list_canvases()]
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:

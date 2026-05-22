@@ -28,6 +28,7 @@ class AppBridge(Protocol):
 
     queue_manager: object        # QueueManager
     inbox_router: object         # InboxRouter
+    canvas_manager: object       # CanvasManager
 
     def list_sessions(self) -> list[SessionInfo]: ...
     def list_agents(self) -> list[str]: ...

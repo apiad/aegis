@@ -88,7 +88,12 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff",
         "aegis_enqueue", "aegis_task_status",
-        "aegis_run_workflow"}
+        "aegis_run_workflow",
+        "aegis_canvas_open", "aegis_canvas_read",
+        "aegis_canvas_write_section",
+        "aegis_canvas_append_to_section",
+        "aegis_canvas_subscribe", "aegis_canvas_unsubscribe",
+        "aegis_canvas_list"}
 
 
 @pytest.mark.asyncio

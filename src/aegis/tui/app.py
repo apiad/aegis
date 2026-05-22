@@ -105,6 +105,13 @@ class AegisApp(App):
             self._queues, _SessionManagerAdapter(self), self.inbox_router)
         self.queue_digest = QueueDigest(self.queue_manager)
         self.queue_digest.start()
+        # Canvas plane — shared markdown blackboards. Notifier dispatches
+        # write events to subscribers via the inbox router.
+        from aegis.canvas.manager import CanvasManager
+        from aegis.canvas.notify import make_canvas_notifier
+        self.canvas_manager = CanvasManager(
+            state_dir=self._state_dir,
+            notifier=make_canvas_notifier(self.inbox_router))
         self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:

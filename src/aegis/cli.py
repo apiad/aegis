@@ -129,6 +129,15 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
                          inbox=inbox)
     qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
+    # Canvas plane — shared markdown blackboards reachable via MCP.
+    from pathlib import Path
+
+    from aegis.canvas.manager import CanvasManager
+    from aegis.canvas.notify import make_canvas_notifier
+    from aegis.state.workspace import state_dir as _state_dir
+    cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
+                       notifier=make_canvas_notifier(inbox))
+    mgr.attach_canvas_manager(cm)
     mcp.bind(mgr)
     await mcp.start()
     await qm.start()
@@ -264,6 +273,11 @@ def workflow_run_cmd(
         qm = QueueManager(queues, mgr, inbox,
                           state_dir=root / ".aegis" / "state")
         mgr.attach_queue_manager(qm)
+        from aegis.canvas.manager import CanvasManager
+        from aegis.canvas.notify import make_canvas_notifier
+        cm = CanvasManager(state_dir=root / ".aegis" / "state",
+                           notifier=make_canvas_notifier(inbox))
+        mgr.attach_canvas_manager(cm)
         mgr._mcp.bind(mgr)
         await mgr._mcp.start()
         await qm.start()

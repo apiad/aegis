@@ -27,11 +27,15 @@ class SessionManager:
         # pass `self` to the QueueManager (avoids the chicken/egg).
         self.inbox_router = inbox
         self.queue_manager = None
+        self.canvas_manager = None
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
 
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
+
+    def attach_canvas_manager(self, cm) -> None:
+        self.canvas_manager = cm
 
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,
