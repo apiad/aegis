@@ -85,6 +85,9 @@ def run(
                               help="Named agent profile to use."),
     cwd: str = typer.Option(".", "--cwd",
                             help="Working dir for the harness subprocess."),
+    clean: bool = typer.Option(
+        False, "--clean",
+        help="Ignore prior workspace state; start fresh"),
 ) -> None:
     """Run the interactive aegis session (default when no subcommand)."""
     if ctx.invoked_subcommand is not None:
@@ -113,7 +116,8 @@ def run(
         return get_driver(profile.harness).session(
             profile, effective_cwd, mcp_url, handle)
 
-    AegisApp(agents, name, make_session, AegisMCP(), queues=queues).run()
+    AegisApp(agents, name, make_session, AegisMCP(), queues=queues,
+             clean=clean).run()
 
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,

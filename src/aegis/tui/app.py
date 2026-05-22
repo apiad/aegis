@@ -24,6 +24,19 @@ from aegis.tui.widgets import TabBar
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | None":
+    """Return the Workspace to resume, or None for a fresh start.
+
+    None can mean: clean=True, no workspace.json exists, or the file
+    was empty. CorruptWorkspace bubbles up to the caller, which is
+    responsible for printing a clear error and exiting nonzero.
+    """
+    if clean:
+        return None
+    from aegis.state.workspace import load
+    return load(state_dir_path)
+
+
 def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle) -> None:
     """Persist the current tab roster to workspace.json."""
     from aegis.state.workspace import Workspace, save
@@ -71,12 +84,14 @@ class AegisApp(App):
 
     def __init__(self, agents: dict[str, Agent], default_agent: str,
                  make_session: SessionFactory, mcp,
-                 *, queues: "dict | None" = None) -> None:
+                 *, queues: "dict | None" = None,
+                 clean: bool = False) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        self._clean = clean
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
