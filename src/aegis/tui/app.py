@@ -42,7 +42,7 @@ def _pane_to_tab(pane: ConversationPane, order: int) -> WorkspaceTab:
         profile=pane.agent_slug,
         order=order,
         provider=_provider_slug(pane),
-        session_id=getattr(pane._core._session, "session_id", None),
+        session_id=getattr(pane._core, "session_id", None),
         created_at=pane._created_at,
     )
 
