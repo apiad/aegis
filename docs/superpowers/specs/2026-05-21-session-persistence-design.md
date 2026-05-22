@@ -90,13 +90,17 @@ tabs.
 
 ### `sessions/<handle>.jsonl`
 
-Append-only stream of provider events for that tab, written live as
-events arrive. One event per line. Format is the raw provider event
-(stream-json or ACP), wrapped only with an `aegis_ts` field.
+Append-only stream of aegis `Event` records for that tab, written
+live as events arrive. One event per line: a serialized form of the
+`Event` dataclass union from `aegis.events` (type tag + fields),
+wrapped with `aegis_ts` and `v` (schema version) — same envelope as
+the queue/inbox JSONL.
 
 Used for **local transcript redraw** when a tab is reopened — the
 model gets its own memory back through `--resume`; the JSONL is only
-how aegis paints the screen.
+how aegis paints the screen. Protocol-agnostic by construction: every
+driver maps wire payloads to `Event` objects, so the same persistence
+shape covers Claude stream-json, ACP, and whatever comes next.
 
 If a tab is closed and removed from the workspace, its JSONL is left
 on disk (cheap, useful for future `/continue from <transcript>`). A
