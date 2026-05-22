@@ -240,6 +240,29 @@ class WorkflowEngine:
             await self._inbox.deliver(handle, msg)
         return ""
 
+    # ── ask_human ────────────────────────────────────────────────────
+    async def ask_human(self, question: str, *,
+                        options: list[str] | None = None,
+                        timeout: float | None = None) -> str:
+        """Pose ``question`` to the human operator via the host's input
+        bar (TUI) or Telegram (headless), await their reply, return it.
+
+        Routes through ``bridge.workflow_runner.register_human_question``;
+        the runner records the pending question and resolves the future
+        when a matching reply arrives."""
+        runner = self._runner()
+        if runner is None or not hasattr(runner, "register_human_question"):
+            raise RuntimeError(
+                "ask_human: bridge has no workflow_runner")
+        fut: asyncio.Future[str] = (
+            asyncio.get_running_loop().create_future())
+        await runner.register_human_question(
+            host=self.host, workflow_id=self.workflow_id,
+            question=question, options=options, fut=fut)
+        if timeout is None:
+            return await fut
+        return await asyncio.wait_for(fut, timeout=timeout)
+
     # ── drain ────────────────────────────────────────────────────────
     async def drain(self, handle: str | None = None) -> None:
         """Await each touched handle's session to reach state == ready.

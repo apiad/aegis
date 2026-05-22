@@ -189,6 +189,15 @@ def build_server(bridge: AppBridge) -> FastMCP:
     server = FastMCP("aegis")
     server.tool(aegis_meta)
 
+    # Lazily attach a WorkflowRunner so the MCP workflow tools have a
+    # canonical place to track running tasks + pending human questions.
+    if getattr(bridge, "workflow_runner", None) is None:
+        from aegis.workflow.runner import WorkflowRunner
+        try:
+            bridge.workflow_runner = WorkflowRunner(bridge)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — frozen dataclass etc.
+            pass
+
     @server.tool
     async def aegis_list_sessions() -> list[dict]:
         """Live aegis sessions (peers you can hand off to)."""
@@ -287,12 +296,20 @@ def build_server(bridge: AppBridge) -> FastMCP:
         from aegis.queue import InboxMessage
         from aegis.queue.schema import new_ulid, now_iso
         from aegis.workflow import get_workflow, list_workflows
-        from aegis.workflow.runner import run_workflow
+        from aegis.workflow.runner import WorkflowRunner
 
         if get_workflow(name) is None:
             return {
                 "error": (f"unknown workflow: {name!r}. "
                           f"Available: {list_workflows()}")}
+
+        runner: WorkflowRunner = getattr(bridge, "workflow_runner", None)
+        if runner is None:
+            runner = WorkflowRunner(bridge)
+            try:
+                bridge.workflow_runner = runner  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
 
         run_id = new_ulid()
         qm = bridge.queue_manager
@@ -300,19 +317,12 @@ def build_server(bridge: AppBridge) -> FastMCP:
                      if qm is not None else None)
         kw = kwargs or {}
 
-        async def _run_and_callback() -> None:
-            out = await run_workflow(
-                name, kw,
-                bridge=bridge,
-                queue_manager=qm,
-                inbox_router=bridge.inbox_router,
-                caller_handle=from_handle or None,
-                state_dir=state_dir,
-                workflow_run_id=run_id)
+        async def _deliver_callback() -> None:
             if not callback or not from_handle:
                 return
-            ok = out["status"] == "ok"
-            body = out.get("result") if ok else out.get("error", "")
+            st = runner.status(run_id)
+            ok = st.get("status") == "ok"
+            body = st.get("result") if ok else st.get("error", "")
             msg = InboxMessage(
                 sender=f"workflow:{name}",
                 timestamp=now_iso(),
@@ -326,13 +336,46 @@ def build_server(bridge: AppBridge) -> FastMCP:
         # chain inherits active_app context and pane renderer hooks
         # don't trip NoActiveAppError — same lesson as the queue v1
         # adapter's mount path). Otherwise asyncio.create_task is fine.
-        scheduler = getattr(bridge, "run_worker", None)
-        if scheduler is not None:
-            scheduler(_run_and_callback(),
-                      name=f"workflow:{name}:{run_id}", exclusive=False)
+        rw = getattr(bridge, "run_worker", None)
+        if rw is not None:
+            def _sched(coro, *, name):  # noqa: ANN001
+                return rw(coro, name=name, exclusive=False)
         else:
-            asyncio.create_task(_run_and_callback())
-        return {"workflow_run_id": run_id, "status": "running"}
+            _sched = None
+        await runner.start(
+            name, kw,
+            host=from_handle or None,
+            state_dir=state_dir,
+            workflow_id=run_id,
+            scheduler=_sched,
+            done_callback=_deliver_callback)
+        return {
+            "workflow_id": run_id,
+            "workflow_run_id": run_id,
+            "host": from_handle or None,
+            "status": "running",
+        }
+
+    @server.tool
+    async def aegis_workflow_status(workflow_id: str) -> dict:
+        """Inspect a running or completed workflow.
+
+        Returns ``{workflow_id, name, host, status, result?, error?}``;
+        ``status`` is one of ``running``, ``ok``, ``error``, ``cancelled``,
+        or ``unknown``."""
+        runner = getattr(bridge, "workflow_runner", None)
+        if runner is None:
+            return {"workflow_id": workflow_id, "status": "unknown"}
+        return runner.status(workflow_id)
+
+    @server.tool
+    async def aegis_workflow_cancel(workflow_id: str) -> dict:
+        """Cancel a running workflow. Returns ``{ok, status?, error?}``.
+        Idempotent for already-completed runs."""
+        runner = getattr(bridge, "workflow_runner", None)
+        if runner is None:
+            return {"ok": False, "error": "no workflow_runner on bridge"}
+        return await runner.cancel(workflow_id)
 
     @server.tool
     async def aegis_canvas_open(name: str, file: str | None = None,

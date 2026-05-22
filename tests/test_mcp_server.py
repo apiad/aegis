@@ -89,6 +89,7 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_list_agents", "aegis_handoff",
         "aegis_enqueue", "aegis_task_status",
         "aegis_run_workflow",
+        "aegis_workflow_status", "aegis_workflow_cancel",
         "aegis_canvas_open", "aegis_canvas_read",
         "aegis_canvas_write_section",
         "aegis_canvas_append_to_section",
