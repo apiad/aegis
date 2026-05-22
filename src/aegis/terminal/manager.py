@@ -4,12 +4,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import IO
 
 from aegis.terminal.pty import AsyncPty
-from aegis.terminal.parser import OSC133Parser
+from aegis.terminal.parser import CommandEnd, CommandStart, OSC133Parser, PromptStart
 
 
 class TerminalAlreadyExists(Exception):
@@ -32,14 +33,46 @@ class TerminalInfo:
 
 
 @dataclass
+class CommandRecord:
+    seq: int
+    cmd: str
+    writer: str
+    started_at: str
+    finished_at: str | None
+    duration_s: float | None
+    exit: int | None
+    stdout: str
+    stderr: str
+    killed_by_restart: bool = False
+    timed_out: bool = False
+
+
+@dataclass
+class _PendingCommand:
+    cmd: str
+    writer: str
+    started_at: str
+    started_monotonic: float
+    stdout: bytearray = field(default_factory=bytearray)
+    waiter: asyncio.Future | None = None
+
+
+@dataclass
 class _TerminalState:
     info: TerminalInfo
     pty: AsyncPty
     state_dir: Path
+    ledger_path: Path
+    raw_log_path: Path
+    raw_log_fh: IO[bytes] | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     parser: OSC133Parser = field(default_factory=OSC133Parser)
     subscribers: set[str] = field(default_factory=set)
     reader_task: asyncio.Task | None = None
+    pending: _PendingCommand | None = None
+    next_seq: int = 0
+    ready: asyncio.Event = field(default_factory=asyncio.Event)
+    osc133_ok: bool = True
 
 
 def _now_iso() -> str:
@@ -78,9 +111,26 @@ class TerminalManager:
                 cwd=cwd,
                 started_at=_now_iso(),
             )
-            state = _TerminalState(info=info, pty=pty, state_dir=term_dir)
+            ledger_path = term_dir / "ledger.jsonl"
+            raw_log_path = term_dir / "raw.log"
+            state = _TerminalState(
+                info=info,
+                pty=pty,
+                state_dir=term_dir,
+                ledger_path=ledger_path,
+                raw_log_path=raw_log_path,
+            )
+            state.raw_log_fh = open(raw_log_path, "ab")
+            state.next_seq = len(_read_ledger(ledger_path))
             self._terminals[name] = state
             _write_meta(term_dir, info, shell)
+            state.reader_task = asyncio.create_task(self._reader_loop(state))
+            # Wait for the shell to print its first prompt so the initial
+            # PROMPT_COMMAND emission is consumed before any run() races.
+            try:
+                await asyncio.wait_for(state.ready.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                state.osc133_ok = False
             return info
 
     def list(self) -> list[TerminalInfo]:
@@ -98,12 +148,163 @@ class TerminalManager:
             raise TerminalNotFound(name)
         if state.reader_task is not None:
             state.reader_task.cancel()
+            try:
+                await state.reader_task
+            except (asyncio.CancelledError, Exception):
+                pass
         state.pty.close()
         await asyncio.sleep(0)
         state.pty.close(force=True)
+        if state.raw_log_fh is not None:
+            try:
+                state.raw_log_fh.close()
+            except Exception:
+                pass
         if purge:
             import shutil
             shutil.rmtree(state.state_dir, ignore_errors=True)
+
+    async def run(
+        self,
+        name: str,
+        cmd: str,
+        *,
+        writer: str,
+        timeout: float | None = None,
+    ) -> CommandRecord:
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        async with state.lock:
+            loop = asyncio.get_running_loop()
+            waiter: asyncio.Future = loop.create_future()
+            state.pending = _PendingCommand(
+                cmd=cmd,
+                writer=writer,
+                started_at=_now_iso(),
+                started_monotonic=loop.time(),
+                waiter=waiter,
+            )
+            state.pty.write((cmd + "\n").encode("utf-8"))
+            try:
+                if timeout is None:
+                    record = await waiter
+                else:
+                    record = await asyncio.wait_for(waiter, timeout=timeout)
+            except asyncio.TimeoutError:
+                pending = state.pending
+                state.pending = None
+                record = CommandRecord(
+                    seq=state.next_seq,
+                    cmd=cmd,
+                    writer=writer,
+                    started_at=pending.started_at if pending else _now_iso(),
+                    finished_at=_now_iso(),
+                    duration_s=loop.time() - (pending.started_monotonic if pending else loop.time()),
+                    exit=None,
+                    stdout=pending.stdout.decode("utf-8", errors="replace") if pending else "",
+                    stderr="",
+                    timed_out=True,
+                )
+                state.next_seq += 1
+                _append_ledger(state.ledger_path, record)
+            return record
+
+    async def send_keys(self, name: str, keys: str, *, writer: str) -> None:
+        state = self._terminals.get(name)
+        if state is None:
+            raise TerminalNotFound(name)
+        state.pty.write(keys.encode("utf-8"))
+
+    def read(
+        self,
+        name: str,
+        *,
+        last_n: int = 5,
+        since_seq: int | None = None,
+    ) -> list[CommandRecord]:
+        state = self._terminals.get(name)
+        if state is None:
+            term_dir = self.state_dir / name
+            if not (term_dir / "ledger.jsonl").exists():
+                raise TerminalNotFound(name)
+            ledger_path = term_dir / "ledger.jsonl"
+        else:
+            ledger_path = state.ledger_path
+        records = _read_ledger(ledger_path)
+        if since_seq is not None:
+            return [r for r in records if r.seq > since_seq]
+        return records[-last_n:]
+
+    async def _reader_loop(self, state: _TerminalState) -> None:
+        try:
+            while True:
+                chunk = await state.pty.read(4096)
+                if not chunk:
+                    self._finalize_pending_on_eof(state)
+                    break
+                if state.raw_log_fh is not None:
+                    state.raw_log_fh.write(chunk)
+                    state.raw_log_fh.flush()
+                stripped, events = state.parser.feed(chunk)
+                if state.pending is not None and stripped:
+                    state.pending.stdout.extend(stripped)
+                for ev in events:
+                    self._handle_event(state, ev)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
+    def _handle_event(self, state: _TerminalState, ev) -> None:
+        if isinstance(ev, PromptStart):
+            state.ready.set()
+            return
+        if isinstance(ev, CommandStart):
+            return
+        if isinstance(ev, CommandEnd) and state.pending is not None:
+            pending = state.pending
+            state.pending = None
+            loop = asyncio.get_running_loop()
+            record = CommandRecord(
+                seq=state.next_seq,
+                cmd=pending.cmd,
+                writer=pending.writer,
+                started_at=pending.started_at,
+                finished_at=_now_iso(),
+                duration_s=loop.time() - pending.started_monotonic,
+                exit=ev.exit_code,
+                stdout=_decode_capped(pending.stdout),
+                stderr="",
+            )
+            state.next_seq += 1
+            state.info.last_cmd_at = record.finished_at
+            state.info.last_exit = record.exit
+            _append_ledger(state.ledger_path, record)
+            if pending.waiter is not None and not pending.waiter.done():
+                pending.waiter.set_result(record)
+
+    def _finalize_pending_on_eof(self, state: _TerminalState) -> None:
+        pending = state.pending
+        if pending is None or pending.waiter is None or pending.waiter.done():
+            return
+        loop = asyncio.get_running_loop()
+        record = CommandRecord(
+            seq=state.next_seq,
+            cmd=pending.cmd,
+            writer=pending.writer,
+            started_at=pending.started_at,
+            finished_at=_now_iso(),
+            duration_s=loop.time() - pending.started_monotonic,
+            exit=None,
+            stdout=_decode_capped(pending.stdout),
+            stderr="pty closed",
+        )
+        state.next_seq += 1
+        _append_ledger(state.ledger_path, record)
+        pending.waiter.set_result(record)
+        state.pending = None
 
 
 def _build_argv(shell: str, term_dir: Path) -> list[str]:
@@ -129,15 +330,37 @@ def _build_env(shell: str, term_dir: Path, base: dict[str, str]) -> dict[str, st
 
 
 def _write_bash_init(path: Path) -> None:
+    # OSC 133 shell integration. Notes:
+    # - `__aegis_precmd` runs as PROMPT_COMMAND. It captures $? on its
+    #   FIRST line so the user command's exit code is preserved.
+    # - DEBUG trap is filtered (case BASH_COMMAND in __aegis_*) so it
+    #   doesn't fire for our own helper functions, which would otherwise
+    #   reset $? to 0 before precmd reads it.
+    # - We skip the initial D emission (before any user command has run)
+    #   using the __aegis_in_cmd flag.
     path.write_text(
         '# Sourced by aegis-spawned bash for OSC 133 shell integration.\n'
         '[ -f /etc/bashrc ] && . /etc/bashrc\n'
         '[ -f ~/.bashrc ] && . ~/.bashrc\n'
-        '__aegis_prompt_start() { printf "\\033]133;A\\007"; }\n'
-        '__aegis_command_start() { printf "\\033]133;B\\007"; }\n'
-        '__aegis_command_end() { local ec=$?; printf "\\033]133;D;%d\\007" "$ec"; }\n'
-        'PROMPT_COMMAND="__aegis_command_end; __aegis_prompt_start; ${PROMPT_COMMAND}"\n'
-        'trap \'__aegis_command_start\' DEBUG\n'
+        '__aegis_precmd() {\n'
+        '  local ec=$?\n'
+        '  if [ -n "${__aegis_in_cmd:-}" ]; then\n'
+        '    printf "\\033]133;D;%d\\007" "$ec"\n'
+        '  fi\n'
+        '  __aegis_in_cmd=\n'
+        '  printf "\\033]133;A\\007"\n'
+        '}\n'
+        '__aegis_preexec() {\n'
+        '  case "$BASH_COMMAND" in\n'
+        '    __aegis_*) return ;;\n'
+        '  esac\n'
+        '  if [ -z "${__aegis_in_cmd:-}" ]; then\n'
+        '    __aegis_in_cmd=1\n'
+        '    printf "\\033]133;B\\007"\n'
+        '  fi\n'
+        '}\n'
+        'PROMPT_COMMAND=\'__aegis_precmd\'\n'
+        "trap '__aegis_preexec' DEBUG\n"
     )
 
 
@@ -145,8 +368,19 @@ def _write_zsh_init(path: Path) -> None:
     path.write_text(
         '# Sourced by aegis-spawned zsh for OSC 133 shell integration.\n'
         '[ -f ~/.zshrc ] && . ~/.zshrc\n'
-        'precmd() { print -n "\\033]133;D;$?\\007\\033]133;A\\007"; }\n'
-        'preexec() { print -n "\\033]133;B\\007"; }\n'
+        '__aegis_in_cmd=\n'
+        'precmd() {\n'
+        '  local ec=$?\n'
+        '  if [ -n "$__aegis_in_cmd" ]; then\n'
+        '    print -n "\\033]133;D;$ec\\007"\n'
+        '  fi\n'
+        '  __aegis_in_cmd=\n'
+        '  print -n "\\033]133;A\\007"\n'
+        '}\n'
+        'preexec() {\n'
+        '  __aegis_in_cmd=1\n'
+        '  print -n "\\033]133;B\\007"\n'
+        '}\n'
     )
 
 
@@ -159,3 +393,33 @@ def _write_meta(term_dir: Path, info: TerminalInfo, shell: str) -> None:
         "version": 1,
     }
     (term_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+
+
+def _decode_capped(buf: bytearray, cap: int = 64 * 1024) -> str:
+    if len(buf) <= cap:
+        return buf.decode("utf-8", errors="replace")
+    head = buf[: cap // 2]
+    tail = buf[-cap // 2:]
+    omitted = len(buf) - cap
+    return (
+        head.decode("utf-8", errors="replace")
+        + f"\n[… {omitted} bytes truncated …]\n"
+        + tail.decode("utf-8", errors="replace")
+    )
+
+
+def _append_ledger(path: Path, rec: CommandRecord) -> None:
+    with open(path, "a") as f:
+        f.write(json.dumps(asdict(rec)) + "\n")
+
+
+def _read_ledger(path: Path) -> list[CommandRecord]:
+    if not path.exists():
+        return []
+    out: list[CommandRecord] = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        d = json.loads(line)
+        out.append(CommandRecord(**d))
+    return out
