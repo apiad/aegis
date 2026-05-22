@@ -80,6 +80,7 @@ nav:
       - Drivers: drivers.md
       - Queues: queues.md
       - Canvas: canvas.md
+      - Terminals: terminals.md
       - Workflows: workflows.md
       - MCP plane: mcp.md
   - Reference:

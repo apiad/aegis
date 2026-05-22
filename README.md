@@ -45,19 +45,20 @@ integration. Aegis takes the opposite path:
   hosting, model selection — that's the harness's job. Aegis's job is
   the layer *above*: tabs, routing, delegation, persistence, the
   things a single-conversation CLI was never built to do.
-- **It makes them collaborate.** Four composable coordination
+- **It makes them collaborate.** Five composable coordination
   primitives mean a Claude tab can hand off to a Gemini tab, dispatch
-  an OpenCode worker, subscribe to a shared canvas, or kick off a
-  deterministic Python workflow that drives all three.
+  an OpenCode worker, subscribe to a shared canvas, share a live
+  terminal, or kick off a deterministic Python workflow that drives
+  all three.
 
 The harness wars are over. You probably already have your favorite (or
 two, or three). Aegis lets you keep them — and run them as a team.
 
-## Four primitives for agent coordination
+## Five primitives for agent coordination
 
 Each primitive has one verb and lands the same way in the receiving
 agent's transcript: as a `✉` block with a sender tag, timestamp, and a
-short body preview. One delivery channel, four wake patterns.
+short body preview. One delivery channel, five wake patterns.
 
 ### `→` Inbox — send context to a peer
 
@@ -115,6 +116,30 @@ aegis_canvas_write_section(name="report-q3", section="data",
 #     section "data" · written by agent:researcher (+18 / -3 lines)
 #     ──
 #     Q3 numbers came in stronger than projected…
+```
+
+### `▮` Terminal — share a live shell
+
+Spawn a PTY-backed shell that any agent (or Alex) can run commands on,
+send raw keystrokes to, and subscribe to. Command boundaries are
+detected from OSC 133 shell-integration markers; every finalized
+command lands in an append-only JSONL ledger and wakes subscribers
+through the same `✉` channel.
+
+```python
+# PM
+aegis_term_spawn(name="build", from_handle="pm")
+aegis_term_subscribe(name="build", from_handle="pm")
+
+# builder (after a handoff)
+rec = aegis_term_run(name="build", cmd="pytest -q",
+                     from_handle="builder")
+# → PM's transcript:
+#   ✉ from term:build · 14:03:25Z
+#     $ pytest -q  · run by agent:builder
+#     exit 0 · 4.20s
+#     ──
+#     6 passed in 4.18s
 ```
 
 ### `⟳` Workflow — deterministic Python orchestration

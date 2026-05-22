@@ -6,6 +6,25 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 ## [Unreleased]
 
 ### Added
+- **Live terminals.** Fifth coordination primitive: a real PTY-backed
+  shell (bash or zsh) that any agent or Alex can spawn, run commands
+  on, send raw keystrokes to, read history from, and subscribe to.
+  Command boundaries are detected from [OSC 133 shell-integration
+  markers](https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md);
+  every finalized command is appended to a JSONL ledger and fires
+  a `✉ from term:<name>` inbox notification (with cmd / exit code /
+  duration / stdout tail) to every subscriber except the writer.
+  Eight MCP tools (`aegis_term_spawn / list / run / keys / read /
+  subscribe / unsubscribe / close`). TUI surface: `Ctrl+E` opens
+  a `term:<name>` tab with per-command blocks; the input bar has
+  `run` (Enter submits a command) and `raw` (`Ctrl+K` toggles —
+  every keystroke goes straight to the PTY) modes. State at
+  `.aegis/state/terminals/<name>/` (meta.json + ledger.jsonl +
+  raw.log + shell rcfile); `aegis --resume` re-spawns saved
+  terminals as fresh shells over their existing ledger, and any
+  commands that were in flight are marked `killed_by_restart: true`.
+  Spec: `docs/superpowers/specs/2026-05-21-live-terminals-design.md`.
+  Docs: `docs/terminals.md`.
 - **Workflow catalog v1.** Four seed workflows under `aegis.workflows`:
   `brainstorm_to_spec` (interactive Q/A → spec doc), `execute_plan`
   (parse plan markdown → dispatch implementer per task with durable

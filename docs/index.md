@@ -77,10 +77,10 @@ The harness wars are over. You probably already have your favorite (or two, or t
 
 <section class="aegis-section" markdown>
 
-## Four primitives for agent coordination { .aegis-section-h }
+## Five primitives for agent coordination { .aegis-section-h }
 
 <p class="aegis-lead" markdown>
-Multi-agent systems need more than a chat box. Aegis ships **four composable coordination primitives**, each with one verb, each delivered through the same calm `✉` block in the receiving agent's transcript.
+Multi-agent systems need more than a chat box. Aegis ships **five composable coordination primitives**, each with one verb, each delivered through the same calm `✉` block in the receiving agent's transcript.
 </p>
 
 <div class="aegis-primitives" markdown>
@@ -128,6 +128,24 @@ Open a shared markdown file. Multiple agents read, write sections, subscribe. Ea
   section "data" · written by agent:researcher (+18 / -3 lines)
   ──
   Q3 numbers came in stronger than projected…</div>
+</div>
+</div>
+
+<div class="aegis-card" markdown>
+<div class="aegis-card-glyph">▮</div>
+### Terminal · *share a live shell*
+Spawn a PTY-backed shell any agent (or you) can run commands on, send raw keystrokes to, and subscribe to. Command boundaries come from OSC 133 markers; every finalized command wakes subscribers with the cmd, exit code, and a tail of output.
+
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_term_run(name="build", cmd="pytest -q")
+   └ exit 0 · 4.20s
+
+<span class="t-muted">--- in pm's pane ---</span>
+<span class="t-accent">✉</span> from term:build · 14:03:25Z
+  $ pytest -q  · run by agent:builder
+  exit 0 · 4.20s
+  ──
+  6 passed in 4.18s</div>
 </div>
 </div>
 
