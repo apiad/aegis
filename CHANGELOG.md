@@ -5,6 +5,17 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-23
+
+### Fixed
+- `tests/test_cli.py::test_version_flag_prints_and_exits` and
+  `tests/test_cli_clean_flag.py::test_clean_flag_shows_in_help` both
+  failed on CI for the v0.5.0 tag (the former hard-coded the prior
+  version string; the latter assumed no ANSI escapes in Typer/Rich
+  help output, which CI runners trigger via `FORCE_COLOR=1`).
+  v0.5.0 was tagged but never published to PyPI as a result — 0.5.1
+  is the first release of the 0.5.x line.
+
 ## [0.5.0] - 2026-05-23
 
 ### Added
