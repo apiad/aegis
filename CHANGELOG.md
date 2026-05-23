@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-23
+
 ### Added
 - **Live terminals.** Fifth coordination primitive: a real PTY-backed
   shell (bash or zsh) that any agent or Alex can spawn, run commands
