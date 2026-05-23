@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -107,6 +108,23 @@ class _RunningWorkflow:
     status: str = "running"
     result: Any = None
     error: str | None = None
+    started_at: float = field(default_factory=time.monotonic)
+    finished_at: float | None = None
+
+
+@dataclass(frozen=True)
+class WorkflowRow:
+    """Read-only snapshot of one workflow for observability surfaces
+    (the TUI Ctrl+D dashboard, MCP introspection). Computed via
+    :meth:`WorkflowRunner.snapshot`."""
+    id: str
+    name: str
+    host: str | None
+    status: str            # running / ok / error / cancelled
+    elapsed_s: float
+    awaiting_human: bool
+    result_summary: str | None = None
+    error_summary: str | None = None
 
 
 class WorkflowRunner:
@@ -262,6 +280,8 @@ class WorkflowRunner:
             self._safe_append(wid, {"kind": "errored",
                                     "error": f"{type(e).__name__}: {e}"})
         finally:
+            if record is not None and record.finished_at is None:
+                record.finished_at = time.monotonic()
             await _runner_cleanup(engine)
             if done_callback is not None:
                 try:
@@ -302,6 +322,43 @@ class WorkflowRunner:
             host=meta.get("host"),
             workflow_id=workflow_id)
         return workflow_id
+
+    def snapshot(self) -> list[WorkflowRow]:
+        """Per-workflow observability snapshot (running + recently-
+        terminal). Stable, frozen rows so callers can sort/render
+        without locking. Order: running first, then terminal in
+        reverse-finish order."""
+        now = time.monotonic()
+        rows: list[WorkflowRow] = []
+        for wid, r in self._running.items():
+            elapsed = ((r.finished_at or now) - r.started_at)
+            awaiting = (
+                r.status == "running"
+                and r.host is not None
+                and any(pq.workflow_id == wid
+                        for pq in self._questions.get(r.host, deque()))
+            )
+            res_sum = None
+            if r.result is not None:
+                res_sum = str(r.result).splitlines()[0][:80] \
+                    if str(r.result) else None
+            err_sum = (r.error[:80] if r.error else None)
+            rows.append(WorkflowRow(
+                id=wid, name=r.name, host=r.host, status=r.status,
+                elapsed_s=elapsed, awaiting_human=awaiting,
+                result_summary=res_sum, error_summary=err_sum,
+            ))
+        # Running first (preserving insertion order), then terminal by
+        # most-recently-finished first.
+        running = [x for x in rows if x.status == "running"]
+        terminal = [x for x in rows if x.status != "running"]
+        # finished_at lookup via the underlying _running map
+        def _fa(row: WorkflowRow) -> float:
+            r = self._running.get(row.id)
+            return (r.finished_at if r and r.finished_at is not None
+                    else float("inf"))
+        terminal.sort(key=_fa, reverse=True)
+        return running + terminal
 
     def status(self, workflow_id: str) -> dict:
         r = self._running.get(workflow_id)

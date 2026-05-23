@@ -145,6 +145,72 @@ class RecentBand(_Band):
         self._inner.update(t)
 
 
+def _format_elapsed(elapsed_s: float) -> str:
+    """Human-readable elapsed, picking the largest sensible unit."""
+    if elapsed_s < 60:
+        return f"{elapsed_s:.1f}s"
+    if elapsed_s < 3600:
+        return f"{int(elapsed_s // 60)}m{int(elapsed_s % 60):02d}s"
+    h = int(elapsed_s // 3600)
+    m = int((elapsed_s % 3600) // 60)
+    return f"{h}h{m:02d}m"
+
+
+class WorkflowsBand(_Band):
+    """In-flight workflow runs visible alongside queue tasks. Reads
+    ``self.app.workflow_runner.snapshot()`` directly — does not
+    depend on the queue substrate."""
+
+    def refresh_render(self) -> None:
+        runner = getattr(self.app, "workflow_runner", None)
+        pal = self._palette
+        t = Text()
+        t.append("WORKFLOWS\n", style=f"bold {pal.accent}")
+        rows = runner.snapshot() if runner is not None else []
+        if not rows:
+            t.append("  (none)\n", style=pal.muted)
+            self._inner.update(t)
+            return
+        for row in rows:
+            # Status glyph + style
+            if row.status == "running":
+                if row.awaiting_human:
+                    glyph, gstyle = "?", pal.work
+                    state_label = "awaiting reply"
+                else:
+                    glyph, gstyle = "▶", pal.work
+                    state_label = "running"
+            elif row.status == "ok":
+                glyph, gstyle = "✓", pal.ok
+                state_label = "ok"
+            elif row.status == "cancelled":
+                glyph, gstyle = "⊘", pal.muted
+                state_label = "cancelled"
+            else:  # error / anything else
+                glyph, gstyle = "✗", pal.err
+                state_label = row.status
+
+            t.append(f"  {glyph} ", style=gstyle)
+            t.append(row.name, style=pal.ink)
+            # Short id suffix so multiple runs of the same workflow are
+            # distinguishable.
+            short = row.id[-6:] if len(row.id) > 6 else row.id
+            t.append(f" {short}", style=pal.muted)
+            if row.host:
+                t.append("  · ", style=pal.muted)
+                t.append(f"host {row.host}", style=pal.muted)
+            t.append("  · ", style=pal.muted)
+            t.append(state_label, style=gstyle)
+            t.append(f"  · {_format_elapsed(row.elapsed_s)}\n",
+                     style=pal.muted)
+            # On non-running rows, attach a short tail (one line).
+            if row.status == "ok" and row.result_summary:
+                t.append(f"      → {row.result_summary}\n", style=pal.ink)
+            elif row.error_summary:
+                t.append(f"      → {row.error_summary}\n", style=pal.err)
+        self._inner.update(t)
+
+
 class DetailPanel(_Band):
     def refresh_render(self) -> None:
         snap = self._digest.snapshot()
@@ -228,6 +294,7 @@ class QueueDashboard(ModalScreen):
                 with Vertical(id="left"):
                     yield QueuesBand(digest, palette, id="band-queues")
                     yield InFlightBand(digest, palette, id="band-inflight")
+                    yield WorkflowsBand(digest, palette, id="band-workflows")
                     yield QueuedBand(digest, palette, id="band-queued")
                     yield RecentBand(digest, palette, id="band-recent")
                 with Vertical(id="right"):
@@ -239,6 +306,10 @@ class QueueDashboard(ModalScreen):
     def on_mount(self) -> None:
         self._unsub = self.app.queue_digest._manager.subscribe(
             self._on_event)
+        # Refresh elapsed-time fields once a second — workflows don't
+        # publish events through the queue substrate, and the elapsed
+        # column would otherwise freeze between queue events.
+        self._tick_timer = self.set_interval(1.0, self._refresh_bands)
         self._ensure_selection()
         self._refresh_bands()
 
@@ -247,6 +318,13 @@ class QueueDashboard(ModalScreen):
         if unsub is not None:
             unsub()
             self._unsub = None
+        tick = getattr(self, "_tick_timer", None)
+        if tick is not None:
+            try:
+                tick.stop()
+            except Exception:
+                pass
+            self._tick_timer = None
 
     def _on_event(self, _ev) -> None:
         self._ensure_selection()

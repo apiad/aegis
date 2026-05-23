@@ -4,10 +4,10 @@ from aegis.workflow.decorator import (
     get_workflow, list_workflows, workflow,
 )
 from aegis.workflow.engine import WorkflowEngine
-from aegis.workflow.runner import WorkflowRunner, run_workflow
+from aegis.workflow.runner import WorkflowRow, WorkflowRunner, run_workflow
 
 __all__ = [
     "PredicateFailed", "REGISTRY", "SubagentSpawnError",
-    "WorkflowEngine", "WorkflowError", "WorkflowRunner",
+    "WorkflowEngine", "WorkflowError", "WorkflowRow", "WorkflowRunner",
     "get_workflow", "list_workflows", "run_workflow", "workflow",
 ]

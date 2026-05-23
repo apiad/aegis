@@ -154,6 +154,26 @@ workflows = {
 The `default_subagent_profile` key (used by `execute_plan`) defaults
 to `"implementer"`.
 
+## Visibility in the TUI
+
+The `Ctrl+D` dashboard has a `WORKFLOWS` band (below `IN-FLIGHT`)
+showing every workflow run the current process knows about — running
+ones first, then recently-terminal ones in reverse-finish order:
+
+```
+WORKFLOWS
+  ▶ tdd_cycle 0ABCDEF  · host lucid-knuth  · running  · 12.4s
+  ? brainstorm_to_spec 1234AB  · host wry-hopper  · awaiting reply  · 47.2s
+  ✓ review_branch 9988CC  · host lucid-knuth  · ok  · 3m02s
+      → 3 reviews ok, 0 blocked
+  ✗ execute_plan 7766DD  · host brisk-curie  · error  · 1m18s
+      → PredicateFailed: tests still failing
+```
+
+The band reads `bridge.workflow_runner.snapshot()` directly. Elapsed
+time is refreshed once per second; a workflow waiting on
+`engine.ask_human(...)` shows up as `awaiting reply`.
+
 ## When to write a workflow vs. just use queues
 
 - **Just queues**: producer says "do this, tell me when done." No
