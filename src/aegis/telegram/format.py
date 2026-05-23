@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-_MD = r"_*[]()~`>#+-=|{}.!"
+_MD = set(r"_*[]()~`>#+-=|{}.!") | {"\\"}
 
 
 def escape_md(text: str) -> str:
@@ -14,14 +14,26 @@ def status_line(handle: str, state: str, model: str, metrics: str) -> str:
 
 def chunk(text: str, *, label: str, limit: int = 4096,
           max_parts: int = 5) -> list[str]:
-    body = text.strip() or "(no output)"
-    raw = [body[i:i + limit - 40] for i in range(0, len(body), limit - 40)]
+    body = escape_md(text.strip() or "(no output)")
+    safe_label = escape_md(label)
+    slice_size = limit - 60
+    raw: list[str] = []
+    i = 0
+    while i < len(body):
+        end = min(i + slice_size, len(body))
+        # Never end a slice on a lone `\` — it escapes the following
+        # char and the pair must travel together.
+        if end < len(body) and body[end - 1] == "\\":
+            end -= 1
+        raw.append(body[i:end])
+        i = end
     if len(raw) == 1:
         return [raw[0]]
     kept = raw[:max_parts]
-    out = [f"{label} ({i + 1}/{len(kept)})\n{p}" for i, p in enumerate(kept)]
+    out = [f"{safe_label} \\({i + 1}/{len(kept)}\\)\n{p}"
+           for i, p in enumerate(kept)]
     dropped = len(raw) - len(kept)
     if dropped > 0:
-        out[-1] += f"\n… (truncated, {dropped} more chunk"
-        out[-1] += "s)" if dropped != 1 else ")"
+        plural = "s" if dropped != 1 else ""
+        out[-1] += f"\n… \\(truncated, {dropped} more chunk{plural}\\)"
     return out

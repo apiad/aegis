@@ -5,7 +5,7 @@ import logging
 import time
 
 from aegis.core.manager import SessionManager
-from aegis.telegram.format import chunk, escape_md, status_line
+from aegis.telegram.format import chunk, status_line
 from aegis.tui.state import AgentState
 
 log = logging.getLogger("aegis.telegram")
@@ -88,7 +88,7 @@ class TelegramFrontend:
                     pass
                 state["refresher"] = None
             reply = "".join(state["buf"]).strip()
-            for part in chunk(escape_md(reply), label=core.handle):
+            for part in chunk(reply, label=core.handle):
                 await self._bot.send_message(self._chat, part, markdown=True)
             state["buf"].clear()
             state["mid"] = None
