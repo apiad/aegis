@@ -249,7 +249,14 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
         if not log_path.exists():
             return JSONResponse({"records": []})
         lines = log_path.read_text().splitlines()[-tail:]
-        records = [json.loads(line) for line in lines if line.strip()]
+        records = []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
         return JSONResponse({"records": records})
 
     routes = [

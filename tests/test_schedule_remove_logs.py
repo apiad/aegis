@@ -55,10 +55,6 @@ async def test_delete_pushed_schedule_removes_file(tmp_path):
     assert r.status_code == 204, r.text
     assert not dest.exists()
 
-    # Subsequent GET on a name with no file + no scheduler entry → still 200
-    # (entry remains in scheduler memory, but file is gone). The plan only
-    # asserts DELETE removes the file. So we re-build a fresh bridge with
-    # no schedule registered to mirror a hot-reload picking up the deletion.
     fresh = _make_bridge(tmp_path, schedules={}, inline_names=set())
     app2 = build_plane(fresh, RemotePlaneSpec(bind="127.0.0.1:8556"))
     async with _client(app2) as c:
