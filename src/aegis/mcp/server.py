@@ -395,8 +395,10 @@ def build_server(bridge: AppBridge) -> FastMCP:
         If ``target`` is set, the enqueue is forwarded to a configured
         remote aegis (must be a key in ``remotes`` in .aegis.yaml). The
         remote runs the task on its own filesystem and queue. ``callback``
-        is ignored for remote targets in v1 — the remote pings via
-        Telegram on completion.
+        is ignored for remote targets in v1 — there is no wire return
+        channel. Whatever happens when the remote worker finishes is up
+        to the receiving serve's own configuration (its own Telegram
+        bridge, its own commit-and-push, or nothing at all).
 
         If ``target=None`` (default), the task runs on this aegis's local
         QueueManager. ``callback=true`` (default) routes the worker's
@@ -417,8 +419,8 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 remotes[target], queue, payload, from_handle)
             if "error" not in result:
                 result["callback_note"] = (
-                    "wire callbacks not yet implemented; "
-                    "remote will Telegram on completion")
+                    "no wire return channel in v1; completion behavior "
+                    "is whatever the receiving serve is configured to do")
                 result["target"] = target
             return result
 

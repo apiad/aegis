@@ -169,7 +169,7 @@ same tailnet. Lives in `.aegis.yaml`, not `.aegis.py`.
 # .aegis.yaml
 remotes:
   vps:
-    url: http://vps.tail-net.ts.net:8556
+    url: http://100.64.0.5:8556
     token: "<optional bearer>"      # if the peer requires auth
 ```
 

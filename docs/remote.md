@@ -1,12 +1,16 @@
 # Remote plane
 
 A **remote plane** lets one `aegis serve` enqueue work into another
-`aegis serve` over HTTP. Brainstorm on the laptop, hand the expensive
-implementation off to the VPS, and the local agent keeps moving while
-the worker runs on the right machine. Telegram is the return channel.
+`aegis serve` over HTTP. One agent on one machine can hand a task off
+to another machine — typically because the work is long-running, needs
+different hardware, or should run under a different agent profile —
+while the calling agent keeps moving.
 
-The use case in one line: *"opus, handoff this research to
-`vps:implementation` and ping me when done"* — and that just works.
+There is no built-in return channel in v1. The call is *fire and the
+substrate forgets*: the receiver runs the worker on its own queue
+under its own config; whatever happens on completion is up to the
+receiver. See [Completion / return channel](#completion-return-channel)
+below.
 
 ## The two HTTP planes
 
@@ -76,9 +80,8 @@ aegis_enqueue(
 - `target="<name>"`: the substrate looks `<name>` up in the local
   `remotes` config and POSTs the body to that remote's
   `/remote/v1/enqueue`. The returned dict includes `"target":
-  "<name>"` and a `"callback_note"` explaining that wire-level
-  callbacks don't exist yet — the remote will Telegram on
-  completion.
+  "<name>"` and a `"callback_note"` flagging that there's no wire
+  return channel.
 
 `callback` is ignored when `target` is set (the local aegis has no
 inbox channel to deliver into from across the network in v1).
@@ -97,7 +100,7 @@ Inline in `.aegis.yaml`:
 ```yaml
 remotes:
   vps:
-    url: http://vps.tail-net.ts.net:8556
+    url: http://100.64.0.5:8556
     # optional bearer token (otherwise tailnet trust only)
     token: "<secret>"
 ```
@@ -106,7 +109,7 @@ Or split into overlay files at `.aegis/remotes/<name>.yaml`:
 
 ```yaml
 # .aegis/remotes/vps.yaml
-url: http://vps.tail-net.ts.net:8556
+url: http://100.64.0.5:8556
 token: "<secret>"
 ```
 
@@ -166,107 +169,132 @@ fast and let the calling agent decide what to do.
 
 ## Completion / return channel
 
-In v1, completion does not return over the wire. The remote's
-`QueueManager` runs the worker, the worker writes its result to its
-own inbox channel, and on the VPS the existing "VPS-only progress
-pings" convention (`bin/notify-telegram.sh`) surfaces the finish to
-Alex.
+In v1 there is **no built-in return channel** over the wire. The
+calling aegis gets a `task_id` from the POST and that is it — it is
+not notified when the remote task finishes.
 
-The local aegis is **not** notified that the remote task completed.
-The originating opus session is free to keep working or wind down;
-the Telegram ping is what closes the loop, and Alex re-engages by
-opening whatever artifact the remote produced (a commit, a vault
-note, a PR).
+What happens on completion is entirely up to the *receiving* serve's
+own configuration:
 
-A v2 might add `POST /remote/v1/callback` so completion lands in the
-originating agent's inbox. The `/remote/v1/` namespace was chosen so
-that addition is backwards-compatible.
+- If the receiver has a Telegram bridge configured, the worker's
+  final message will land in Telegram on its way out, the same way
+  any other queue completion on that serve does.
+- If the receiver runs in a repo and the worker commits and pushes,
+  the work shows up in git.
+- If the worker writes into a shared filesystem (a vault, a synced
+  folder), it shows up there.
+- If the receiver does nothing on completion, nothing happens on
+  completion.
+
+The remote-plane substrate has no opinion. It accepts the enqueue,
+delegates to the local `QueueManager`, and is done. The calling
+session is free to keep working or wind down; re-engaging with the
+result means opening whatever artifact the receiver naturally
+exposes.
+
+A v2 may add `POST /remote/v1/callback` so completion can land back
+in the originating agent's inbox over the wire. The `/remote/v1/`
+namespace was chosen so that addition is backwards-compatible.
 
 ## Security model
 
-The trust anchor is the tailnet (Headscale / WireGuard). The remote
-plane binds to a tailnet IP; reaching it requires being on the
-tailnet, which requires a Headscale-issued preauth key. Same trust
-model already in use for everything else on `vps.apiad.net`.
+The remote plane has no opinion about your network — bind it where it
+should be reachable from, and only from. A common deployment is a
+private overlay network (Tailscale, Headscale, WireGuard,
+plain VPN); the plane binds to its interface address and only nodes
+on the overlay can reach the port. That makes the network itself the
+trust anchor and keeps the HTTP surface narrow.
 
-Two defense-in-depth knobs are available from day one:
+Two HTTP-layer gates compose on top:
 
 - **Bearer tokens** (`accept_tokens` on the receiver, `token` on the
-  caller). Use when the tailnet has untrusted devices.
-- **IP allowlists** (`accept_from`). Use when you want only specific
-  tailnet IPs to call this serve.
+  caller). Set this when your network has callers you don't fully
+  trust, or when you want different callers to use different
+  secrets.
+- **Source-IP allowlists** (`accept_from`). Set this when you want
+  only specific peer IPs to be able to enqueue.
 
-Tokens, if used, live in `.aegis.yaml` or its overlay files. Gitignore
-the project's `.aegis.yaml` if you check in your repo and the token
-isn't fetched from env at startup — same discipline as any other
-secret-bearing config.
+Both gates compose with **AND** when set. Both empty means "anything
+that reaches the port is trusted" — appropriate when the network
+itself is the trust anchor (small tailnet, plain VPN), inadequate the
+day untrusted devices share the same network.
+
+Tokens, if used, live in `.aegis.yaml` or its overlay files. Treat
+them as secrets — keep them out of version control if the repo is
+shared, or load them from env at startup.
 
 ## Patterns
 
-### Laptop brainstorm → VPS implementation
+### Local brainstorm → remote implementation
 
-The original use case. A long research/implementation task gets
-handed from a local opus session to the VPS, where it can run for
-hours under whatever quota lives there.
+A long research / implementation task gets handed from an interactive
+session on one machine to an `aegis serve` on another, where it can
+run for hours under whatever profile and quota live there.
 
 ```python
-# In an opus session on zion (after brainstorming):
 aegis_enqueue(
     queue="implementation",
     payload=(
-        "Implement the design at "
-        "vault/Atlas/Architecture/2026-05-25-aegis-remote-plane-design.md "
-        "in repos/aegis. Use TDD. Push commits to main as you go. "
-        "Update CHANGELOG when done."
+        "Implement the design at docs/specs/foo.md in this repo. "
+        "Use TDD. Commit and push as you go. Update CHANGELOG."
     ),
     from_handle="lucid-knuth",
-    target="vps",
+    target="builder",
 )
-# → {"task_id": "01J…", "queued_position": 0, "target": "vps",
-#    "callback_note": "wire callbacks not yet implemented; remote will
-#                      Telegram on completion"}
+# → {"task_id": "01J…", "queued_position": 0, "target": "builder",
+#    "callback_note": "no wire return channel in v1; completion
+#                      behavior is whatever the receiving serve is
+#                      configured to do"}
 ```
 
-The local agent can wrap up the conversation. Alex's phone buzzes when
-the VPS worker finishes.
+The calling agent can wrap up the conversation. How you learn the
+work is done depends on what the receiver does on completion — commits
+landing in git, a notification through whatever bridge the receiver
+runs, a file appearing in a synced folder, or simply checking back
+later.
 
 ### Cheap local → expensive remote
 
-A free-tier local model that's fine for routing and clarification
-hands hard subproblems off to a paid model running on the VPS. The
-remote's `.aegis.py` configures `implementation` to use opus with
-`full` permission; the local serve's `.aegis.py` doesn't even know
-opus exists.
+A small fast model on one machine handles routing and clarification
+and hands hard subproblems off to a bigger model running on another.
+The remote's `.aegis.py` configures `implementation` against the
+heavier model with full permissions; the calling serve doesn't even
+need to know that model exists.
 
 ```python
-# .aegis.py (zion) — local agents and the remote definition
+# .aegis.py on the cheap side
 agents = {
     "router": Agent(provider=ClaudeCode(model="haiku",
                                          permission="auto")),
 }
 default_agent = "router"
-
-remotes = {
-    "vps": {"url": "http://vps.tail-net.ts.net:8556"},
-}
 ```
 
-### Multiple machines in a tailnet
+```yaml
+# .aegis.yaml on the cheap side
+remotes:
+  builder:
+    url: http://100.64.0.5:8556
+```
 
-Three machines on the same tailnet — laptop, desktop, VPS — each
-running `aegis serve`. Any agent can hand off to any of the other two:
+### Several machines on one overlay
+
+A handful of machines on the same overlay network — laptop, desktop,
+a beefy box — each running `aegis serve`. Any agent can hand off to
+any other peer it has declared as a remote.
 
 ```yaml
-# .aegis.yaml on laptop
+# .aegis.yaml on the laptop
 remotes:
   desktop: { url: http://100.64.0.3:8556 }
-  vps:     { url: http://vps.tail-net.ts.net:8556 }
+  builder: { url: http://100.64.0.5:8556 }
 remote_plane:
   bind: 100.64.0.4:8556
 ```
 
-The tailnet handles auth via WireGuard; no per-target tokens needed
-until a fourth (less-trusted) device joins.
+When the network itself is trusted (e.g. a personal tailnet with only
+your own devices on it), no per-peer tokens are needed. Add bearer
+tokens or `accept_from` allowlists the moment that stops being true.
 
 ## File layout
 

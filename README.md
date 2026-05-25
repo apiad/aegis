@@ -250,23 +250,23 @@ plan → dispatch implementer per task with durable resume),
   `--strict-mcp-config`, aegis is the *only* MCP server the spawned
   agent sees.
 
-## Remote plane — laptop ↔ VPS handoff
+## Remote plane — cross-machine handoff
 
-`aegis serve` can expose a second HTTP plane — bound to a tailnet IP,
-distinct from the loopback MCP plane — that other `aegis serve`
-instances POST into. One agent on the laptop can hand a long task off
-to the VPS without leaving the substrate:
+`aegis serve` can expose a second HTTP plane — distinct from the
+loopback MCP plane, bound wherever you want it reachable — that other
+`aegis serve` instances POST into. One agent on one machine can hand
+a long task off to another without leaving the substrate:
 
 ```python
-# In an opus session on zion (after brainstorming):
 aegis_enqueue(
     queue="implementation",
-    payload="Implement the design at <path> in repos/aegis with TDD…",
+    payload="Implement the design at <path> with TDD…",
     from_handle="lucid-knuth",
-    target="vps",                # ← new — routes to a remote aegis
+    target="builder",           # ← new — routes to a remote aegis
 )
-# → {task_id: "01J…", target: "vps",
-#    callback_note: "remote will Telegram on completion"}
+# → {task_id: "01J…", target: "builder",
+#    callback_note: "no wire return channel in v1; completion behavior
+#                    is whatever the receiving serve is configured to do"}
 ```
 
 Configuration lives in `.aegis.yaml`. Outbound — the peers this serve
@@ -274,8 +274,8 @@ can call:
 
 ```yaml
 remotes:
-  vps:
-    url: http://vps.tail-net.ts.net:8556
+  builder:
+    url: http://100.64.0.5:8556
     # token: "<optional bearer>"
 ```
 
@@ -283,16 +283,19 @@ Inbound — opt-in receive side; default off:
 
 ```yaml
 remote_plane:
-  bind: 100.64.0.5:8556         # tailnet IP, explicit
+  bind: 100.64.0.5:8556         # the address to listen on
   accept_tokens: []             # optional bearer-token allowlist
   accept_from: []               # optional source-IP allowlist
 ```
 
-Trust anchor is the tailnet (Headscale / WireGuard); bearer tokens
-and IP allowlists are defense-in-depth knobs that compose with AND.
-In v1 there is **no wire callback** — the remote pings Telegram when
-the worker finishes, and the originating agent is free to keep
-working or wind down. Full surface, error model, and patterns in
+Bind the plane wherever it should be reachable from, and only from —
+typically a private overlay network (Tailscale/Headscale/WireGuard/
+VPN) so the network itself is the trust anchor. Bearer-token and
+source-IP gates compose with AND on top. In v1 there is **no wire
+return channel** — the receiving serve runs the worker under its own
+config and whatever it does on completion (commit and push, message
+through its own bridge, write to a shared folder, nothing) is up to
+it. Full surface, error model, and patterns in
 [docs/remote.md](docs/remote.md).
 
 ## Scheduled workflows

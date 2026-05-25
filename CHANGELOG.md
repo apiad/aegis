@@ -10,26 +10,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 ### Added
 - **Remote plane.** Server-to-server enqueue over HTTP. `aegis serve`
   exposes a second HTTP plane (distinct from the loopback MCP plane),
-  bound to a tailnet IP, that other `aegis serve` instances can POST
-  into. `aegis_enqueue` grows an optional `target=` parameter that
-  routes the call to a configured remote's `/remote/v1/enqueue`; the
-  remote enqueues into its own `QueueManager` (recorded with
-  `enqueued_by="remote:<from>"`) and runs the worker on its own
-  filesystem under its own agent profiles. In v1 there is **no
-  wire-level callback** — the remote pings Telegram on completion and
-  the originating agent is free to keep working. Two new top-level
-  sections in `.aegis.yaml`: `remotes` (outbound peers; `url` plus
-  optional `token`; per-name overlay files at `.aegis/remotes/<name>.yaml`
-  with fail-loud collision detection) and `remote_plane` (inbound bind
-  address + optional `accept_tokens` bearer allowlist + optional
-  `accept_from` source-IP allowlist; gates compose with AND; default
-  off). All failure paths return clear, distinguishable error dicts to
-  the calling agent — no silent fallback to local enqueue. Trust
-  anchor is the tailnet (Headscale / WireGuard); tokens and IP
-  allowlists are defense-in-depth knobs. Spec:
-  `docs/superpowers/specs/2026-05-25-aegis-remote-plane-design.md`.
-  Plan: `docs/superpowers/plans/2026-05-25-aegis-remote-plane-plan.md`.
-  Docs: `docs/remote.md`.
+  bound to whatever address you want it reachable from, that other
+  `aegis serve` instances can POST into. `aegis_enqueue` grows an
+  optional `target=` parameter that routes the call to a configured
+  remote's `/remote/v1/enqueue`; the remote enqueues into its own
+  `QueueManager` (recorded with `enqueued_by="remote:<from>"`) and
+  runs the worker on its own filesystem under its own agent profiles.
+  In v1 there is **no wire return channel** — completion behavior is
+  whatever the receiving serve is configured to do on queue
+  completion; the calling aegis is not notified over the wire. Two
+  new top-level sections in `.aegis.yaml`: `remotes` (outbound peers;
+  `url` plus optional `token`; per-name overlay files at
+  `.aegis/remotes/<name>.yaml` with fail-loud collision detection)
+  and `remote_plane` (inbound bind address + optional
+  `accept_tokens` bearer allowlist + optional `accept_from`
+  source-IP allowlist; gates compose with AND; default off). All
+  failure paths return clear, distinguishable error dicts to the
+  calling agent — no silent fallback to local enqueue. Recommended
+  deployment binds the plane to a private overlay network (Tailscale,
+  Headscale, WireGuard, VPN) so the network itself acts as the
+  outermost trust boundary; tokens and IP allowlists are
+  defense-in-depth knobs on top. Docs: `docs/remote.md`.
 
 ## [0.6.0] - 2026-05-25
 
