@@ -27,6 +27,7 @@ from aegis.config import (
     GeminiCLI,
     OpenCode,
 )
+from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 
 
 @dataclass
@@ -52,6 +53,8 @@ class AegisConfig:
     plugin_dirs: list[Path] = field(default_factory=list)
     scheduler: dict[str, Any] = field(default_factory=dict)
     groups: dict[str, Any] = field(default_factory=dict)
+    remotes: dict[str, RemoteSpec] = field(default_factory=dict)
+    remote_plane: RemotePlaneSpec | None = None
     root: Path | None = None
 
 
@@ -82,7 +85,7 @@ def _agent_from_dict(d: dict[str, Any]) -> Agent:
     return Agent(provider=cls(**body))
 
 
-_SECTIONS = ("agents", "queues", "schedules")
+_SECTIONS = ("agents", "queues", "schedules", "remotes")
 
 
 def _collect_overlays(root: Path) -> dict[str, dict[str, Any]]:
@@ -138,6 +141,7 @@ def load_config(root: Path) -> AegisConfig:
         "agents": dict(raw.get("agents") or {}),
         "queues": dict(raw.get("queues") or {}),
         "schedules": dict(raw.get("schedules") or {}),
+        "remotes": dict(raw.get("remotes") or {}),
     }
     overlay = _collect_overlays(root)
     merged: dict[str, dict[str, Any]] = {}
@@ -148,6 +152,10 @@ def load_config(root: Path) -> AegisConfig:
     agents = {k: _agent_from_dict(dict(v))
               for k, v in merged["agents"].items()}
     queues = {k: QueueSpec(**v) for k, v in merged["queues"].items()}
+    remotes = {k: RemoteSpec(**v) for k, v in merged["remotes"].items()}
+
+    rp_raw = raw.get("remote_plane")
+    remote_plane = RemotePlaneSpec(**rp_raw) if rp_raw else None
 
     groups = _resolve_groups(root, raw.get("groups") or {})
 
@@ -163,6 +171,8 @@ def load_config(root: Path) -> AegisConfig:
         plugin_dirs=plugin_dirs,
         scheduler=dict(raw.get("scheduler") or {}),
         groups=groups,
+        remotes=remotes,
+        remote_plane=remote_plane,
         root=root,
     )
 
