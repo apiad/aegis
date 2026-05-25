@@ -22,6 +22,10 @@ def _sender_group_broadcast(group: str, broadcast_id: str) -> str:
     return f"group:{group}/broadcast:{broadcast_id}"
 
 
+def _sender_group_cancel(group: str, broadcast_id: str) -> str:
+    return f"group:{group}/cancel:{broadcast_id}"
+
+
 def _compose_broadcast_body(objective: str, output_format: str,
                             tool_guidance: str, boundaries: str) -> str:
     return (
@@ -75,6 +79,27 @@ class GroupRuntime:
             rec, want={*rec.members}, timeout=timeout, reducer=reducer,
             wait_any=False,
         )
+
+    async def wait_any(self, group: str, *, timeout: float = 600.0,
+                       cancel_losers: bool = True) -> GroupResult:
+        rec = self.tracker.current(group)
+        if rec is None:
+            raise UnknownGroup(f"no open broadcast on {group!r}")
+        result = await self._collect(
+            rec, want={*rec.members}, timeout=timeout, reducer="concat",
+            wait_any=True,
+        )
+        if cancel_losers and result.by_member:
+            winner = next(iter(result.by_member))
+            tag = _sender_group_cancel(group, rec.id)
+            body = f"superseded by {winner}"
+            for handle in rec.members:
+                if handle == winner:
+                    continue
+                await self.inbox.deliver(handle, InboxMessage(
+                    sender=tag, body=body, timestamp=self.now(),
+                ))
+        return result
 
     async def _collect(self, rec: BroadcastRecord, *, want: set[str],
                        timeout: float, reducer: str,
