@@ -133,9 +133,24 @@ def run(
              clean=clean).run()
 
 
+async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
+    """Start the remote plane if `.aegis.yaml` configured it.
+
+    No-op when ``cfg.remote_plane`` is None. Otherwise builds the
+    Starlette app + an asyncio task running uvicorn.
+    """
+    if getattr(cfg, "remote_plane", None) is None:
+        return
+    from aegis.remote import plane as plane_mod
+    app = plane_mod.build_plane(queue_manager, cfg.remote_plane)
+    plane_mod.run_plane_async(app, cfg.remote_plane.bind)
+
+
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
                  stop: asyncio.Event, queues: dict | None = None,
-                 schedules: dict | None = None) -> None:
+                 schedules: dict | None = None,
+                 remotes: dict | None = None,
+                 remote_plane=None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -157,9 +172,14 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     tm = TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals")
     tm.set_notifier(make_terminal_notifier(inbox))
     mgr.attach_terminal_manager(tm)
+    mgr.attach_remotes(remotes or {})
     mcp.bind(mgr)
     await mcp.start()
     await qm.start()
+
+    from aegis.config.yaml_loader import AegisConfig as _AegisConfig
+    await _maybe_start_remote_plane(
+        _AegisConfig(remote_plane=remote_plane), qm)
 
     # Scheduler — only runs when schedules are configured.
     scheduler = None
@@ -250,6 +270,8 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
 
     # Optional .aegis.yaml: load schedules + import plugin workflows.
     schedules: dict = {}
+    remotes: dict = {}
+    remote_plane = None
     if (root / ".aegis.yaml").is_file():
         try:
             from aegis.config.yaml_loader import (
@@ -258,6 +280,8 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             yaml_cfg = _load_yaml(root)
             import_plugins(yaml_cfg)
             schedules = yaml_cfg.schedules
+            remotes = yaml_cfg.remotes
+            remote_plane = yaml_cfg.remote_plane
         except Exception as e:  # noqa: BLE001
             _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
             raise typer.Exit(1)
@@ -269,7 +293,9 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             loop.add_signal_handler(sig, stop.set)
         await _serve(agents=agents, default_agent=default_agent,
                      make_session=make_session, mcp=AegisMCP(),
-                     tg=tg, stop=stop, queues=queues, schedules=schedules)
+                     tg=tg, stop=stop, queues=queues,
+                     schedules=schedules,
+                     remotes=remotes, remote_plane=remote_plane)
 
     asyncio.run(main_async())
 

@@ -8,9 +8,11 @@ The app is a Starlette app; it is mounted onto a uvicorn server by
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Protocol
 
+import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -67,3 +69,17 @@ def build_plane(queue_manager: _QueueManagerLike,
     return Starlette(routes=[
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),
     ])
+
+
+def run_plane_async(app: Starlette, bind: str) -> asyncio.Task:
+    """Run the plane on ``bind`` (``host:port``) as an asyncio task.
+
+    Returns the task; caller is responsible for keeping a reference
+    and (optionally) cancelling on shutdown.
+    """
+    host, _, port_s = bind.rpartition(":")
+    config = uvicorn.Config(
+        app, host=host, port=int(port_s),
+        log_level="info", access_log=False)
+    server = uvicorn.Server(config)
+    return asyncio.create_task(server.serve())
