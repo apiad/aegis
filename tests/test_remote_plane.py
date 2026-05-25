@@ -81,3 +81,90 @@ async def test_enqueue_bad_body_returns_400() -> None:
             "/remote/v1/enqueue", json={"queue": "x"})  # missing fields
     assert resp.status_code == 400
     assert "missing" in resp.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_token_required_when_configured() -> None:
+    qm = _FakeQueueManager(calls=[])
+    spec = RemotePlaneSpec(bind="127.0.0.1:8556", accept_tokens=["good"])
+    app = build_plane(qm, spec)
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            json={"queue": "q", "payload": "p", "from": "zion"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_token_accepted_when_matching() -> None:
+    qm = _FakeQueueManager(calls=[])
+    spec = RemotePlaneSpec(bind="127.0.0.1:8556", accept_tokens=["good"])
+    app = build_plane(qm, spec)
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            headers={"Authorization": "Bearer good"},
+            json={"queue": "q", "payload": "p", "from": "zion"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ip_allowlist_rejects_unlisted() -> None:
+    qm = _FakeQueueManager(calls=[])
+    spec = RemotePlaneSpec(bind="127.0.0.1:8556", accept_from=["10.0.0.1"])
+    app = build_plane(qm, spec)
+    transport = ASGITransport(
+        app=app, client=("192.168.1.1", 12345))
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            json={"queue": "q", "payload": "p", "from": "zion"})
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_ip_allowlist_accepts_listed() -> None:
+    qm = _FakeQueueManager(calls=[])
+    spec = RemotePlaneSpec(bind="127.0.0.1:8556", accept_from=["10.0.0.1"])
+    app = build_plane(qm, spec)
+    transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            json={"queue": "q", "payload": "p", "from": "zion"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_both_gates_must_pass() -> None:
+    qm = _FakeQueueManager(calls=[])
+    spec = RemotePlaneSpec(
+        bind="127.0.0.1:8556",
+        accept_tokens=["good"],
+        accept_from=["10.0.0.1"])
+    app = build_plane(qm, spec)
+
+    # Right IP, wrong token: 401
+    transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            json={"queue": "q", "payload": "p", "from": "zion"})
+        assert resp.status_code == 401
+
+    # Wrong IP, right token: 403
+    transport = ASGITransport(app=app, client=("192.168.1.1", 12345))
+    async with httpx.AsyncClient(
+            transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/remote/v1/enqueue",
+            headers={"Authorization": "Bearer good"},
+            json={"queue": "q", "payload": "p", "from": "zion"})
+        assert resp.status_code == 403

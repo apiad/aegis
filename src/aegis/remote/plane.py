@@ -29,6 +29,21 @@ def build_plane(queue_manager: _QueueManagerLike,
     """Build the Starlette app bound to ``queue_manager`` + ``spec``."""
 
     async def enqueue(request: Request) -> JSONResponse:
+        if spec.accept_from:
+            peer = request.client.host if request.client else None
+            if peer not in spec.accept_from:
+                return JSONResponse(
+                    {"error": f"source ip {peer!r} not in accept_from"},
+                    status_code=403)
+        if spec.accept_tokens:
+            auth = request.headers.get("authorization", "")
+            token = (auth.removeprefix("Bearer ").strip()
+                     if auth.startswith("Bearer ") else "")
+            if token not in spec.accept_tokens:
+                return JSONResponse(
+                    {"error": "missing or invalid bearer token"},
+                    status_code=401)
+
         try:
             body: dict[str, Any] = await request.json()
         except json.JSONDecodeError:
