@@ -214,6 +214,26 @@ class WorkflowEngine:
         in order. Thin wrapper around ``asyncio.gather``."""
         return list(await asyncio.gather(*coros))
 
+    # ── enqueue (fire-and-forget) ────────────────────────────────────
+    async def enqueue(self, queue: str, payload: str,
+                      *, callback: bool = False) -> str:
+        """Drop a task on the named queue and return the task_id.
+
+        With ``callback=True`` this is identical to ``delegate`` —
+        it awaits the worker's reply and returns the final assistant
+        text. With ``callback=False`` (default) it returns
+        immediately with the queued task's id."""
+        if callback:
+            return await self.delegate(queue, payload)
+        handle = f"workflow:{self.name}:{_new_ulid()}"
+        try:
+            task_id, _pos = self._queue.enqueue(
+                queue, payload, enqueued_by=handle, callback=False)
+        except KeyError as e:
+            raise WorkflowError(
+                f"unknown queue: {e.args[0]!r}") from e
+        return task_id
+
     # ── delegate (queue-worker pattern; legacy) ──────────────────────
     async def delegate(self, queue: str, payload: str) -> str:
         """Enqueue a one-shot task on the named queue; await the worker's
