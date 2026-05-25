@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from aegis.remote.config import RemotePlaneSpec
+from aegis.scheduler.push import validate_spec, write_atomic
 
 
 class _QueueManagerLike(Protocol):
@@ -141,7 +142,6 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
         except json.JSONDecodeError:
             return JSONResponse({"error": "invalid JSON body"}, status_code=400)
         pushed_from = request.headers.get("X-Pushed-From", "peer:unknown")
-        from aegis.scheduler.push import validate_spec, write_atomic
         try:
             validate_spec(body, workflow_registry=bridge.workflow_registry)
         except ValueError as e:

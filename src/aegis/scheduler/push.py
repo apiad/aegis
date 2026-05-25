@@ -26,12 +26,12 @@ def validate_spec(spec: dict, *, workflow_registry) -> None:
         try:
             _validate_cron(spec["cron"], spec.get("timezone", "UTC"),
                            datetime.now(timezone.utc))
-        except Exception as e:
+        except ValueError as e:
             raise ValueError(f"invalid cron: {e}")
     elif "fire_at" in spec:
         try:
             datetime.fromisoformat(spec["fire_at"].replace("Z", "+00:00"))
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
             raise ValueError(f"invalid fire_at: {e}")
     else:
         raise ValueError("spec must have 'cron' or 'fire_at'")
@@ -66,7 +66,6 @@ def write_atomic(state_root: Path, name: str, spec: dict,
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     body = (f"# pushed_from: {pushed_from} at {now}\n"
-            f"# pushed_at: {now}\n"
             f"{serialized}")
 
     tmp = tempfile.NamedTemporaryFile(

@@ -87,7 +87,7 @@ async def test_push_rejects_callback_true_on_enqueue_workflow(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_push_is_atomic(tmp_path):
+async def test_push_cleans_up_tempfile(tmp_path):
     bridge = _make_bridge(tmp_path)
     app = build_plane(bridge, RemotePlaneSpec(bind="127.0.0.1:8556"))
     body = {"workflow": "enqueue",
