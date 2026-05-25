@@ -21,8 +21,15 @@ async def _build_client(spec: RemoteSpec) -> httpx.AsyncClient:
 
 
 async def remote_enqueue(spec: RemoteSpec, queue: str, payload: str,
-                         from_: str) -> dict:
+                         from_: str, *,
+                         callback_to: str | None = None,
+                         callback_handle: str | None = None) -> dict:
     """POST one enqueue to the remote plane at ``spec.url``.
+
+    ``callback_to`` and ``callback_handle`` are optional hints that tell the
+    receiving serve to POST the worker's final result back to the caller's
+    inbox. When omitted (or ``None``), the receiving serve applies its own
+    default completion behavior (fire-and-forget).
 
     Returns the parsed response dict on success, augmented with
     ``target_url`` for caller debugging. On any failure, returns
@@ -32,9 +39,12 @@ async def remote_enqueue(spec: RemoteSpec, queue: str, payload: str,
     client = await _build_client(spec)
     try:
         try:
-            resp = await client.post(
-                "/remote/v1/enqueue",
-                json={"queue": queue, "payload": payload, "from": from_})
+            body: dict = {"queue": queue, "payload": payload, "from": from_}
+            if callback_to is not None:
+                body["callback_to"] = callback_to
+            if callback_handle is not None:
+                body["callback_handle"] = callback_handle
+            resp = await client.post("/remote/v1/enqueue", json=body)
         except httpx.ConnectError as e:
             return {"error": f"remote unreachable (connection refused): {e}"}
         except httpx.TimeoutException as e:

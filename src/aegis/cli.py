@@ -191,6 +191,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     tm.set_notifier(make_terminal_notifier(inbox))
     mgr.attach_terminal_manager(tm)
     mgr.attach_remotes(remotes or {})
+    mgr.attach_remote_plane(remote_plane)
     mcp.bind(mgr)
     await mcp.start()
     await qm.start()

@@ -394,11 +394,17 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
         If ``target`` is set, the enqueue is forwarded to a configured
         remote aegis (must be a key in ``remotes`` in .aegis.yaml). The
-        remote runs the task on its own filesystem and queue. ``callback``
-        is ignored for remote targets in v1 — there is no wire return
-        channel. Whatever happens when the remote worker finishes is up
-        to the receiving serve's own configuration (its own Telegram
-        bridge, its own commit-and-push, or nothing at all).
+        remote runs the task on its own filesystem and queue.
+
+        When ``target`` is set and ``callback=true``, the receiving serve
+        will POST the worker's final message back to your inbox via the
+        configured ``remote_plane`` on this serve. This requires both:
+        (a) the target peer's ``peer_name`` field set in your ``remotes``
+        mapping (so the receiver knows which configured remote to call
+        back), and (b) a ``remote_plane`` block on your own ``.aegis.yaml``
+        (so the callback POST has somewhere to land). ``callback=false``
+        keeps v0.7 fire-and-forget semantics — completion behavior is
+        whatever the receiving serve is configured to do.
 
         If ``target=None`` (default), the task runs on this aegis's local
         QueueManager. ``callback=true`` (default) routes the worker's
@@ -414,14 +420,27 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 return {"error":
                         f"unknown target {target!r}; "
                         f"known: {sorted(remotes)}"}
+            if callback and getattr(bridge, "remote_plane", None) is None:
+                return {"error":
+                        "callback=true on a remote target requires "
+                        "remote_plane to be configured on this serve"}
+            spec = remotes[target]
+            callback_to = spec.peer_name if callback else None
+            callback_handle = from_handle if callback else None
             from aegis.remote.client import remote_enqueue
             result = await remote_enqueue(
-                remotes[target], queue, payload, from_handle)
+                spec, queue, payload, from_handle,
+                callback_to=callback_to, callback_handle=callback_handle)
             if "error" not in result:
-                result["callback_note"] = (
-                    "no wire return channel in v1; completion behavior "
-                    "is whatever the receiving serve is configured to do")
                 result["target"] = target
+                if callback:
+                    result["callback_note"] = (
+                        "callback will deliver to your inbox when the remote "
+                        "task terminates")
+                else:
+                    result["callback_note"] = (
+                        "fire-and-forget — completion behavior is whatever the "
+                        "receiving serve is configured to do")
             return result
 
         try:

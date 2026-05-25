@@ -30,6 +30,7 @@ class SessionManager:
         self.canvas_manager = None
         self.terminal_manager = None
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
+        self.remote_plane = None  # populated by cli.serve from loaded YAML
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
         from aegis.groups.bridge import make_groups_bridge
@@ -41,6 +42,9 @@ class SessionManager:
 
     def attach_remotes(self, remotes: dict) -> None:
         self.remotes = remotes
+
+    def attach_remote_plane(self, remote_plane) -> None:
+        self.remote_plane = remote_plane
 
     def attach_canvas_manager(self, cm) -> None:
         self.canvas_manager = cm

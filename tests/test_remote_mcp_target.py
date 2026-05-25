@@ -105,7 +105,7 @@ async def test_aegis_enqueue_with_target_routes_remote(monkeypatch) -> None:
     server = build_server(bridge)
     result = await _call(server, "aegis_enqueue",
                          queue="implementation", payload="build it",
-                         from_handle="h", target="vps")
+                         from_handle="h", target="vps", callback=False)
 
     assert result["task_id"] == "local-tid"
     assert local_qm.enqueue_calls == []

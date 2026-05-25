@@ -98,3 +98,63 @@ async def test_remote_enqueue_sends_bearer_token(monkeypatch) -> None:
 
     result = await remote_enqueue(spec, "q", "p", "zion")
     assert "task_id" in result
+
+
+@pytest.mark.asyncio
+async def test_remote_enqueue_carries_callback_hints(monkeypatch):
+    """When callback_to and callback_handle are set, they land in the POST
+    body alongside queue/payload/from."""
+    from aegis.remote.client import remote_enqueue
+    from aegis.remote.config import RemoteSpec
+
+    captured = {}
+
+    class _StubResp:
+        status_code = 200
+        def json(self): return {"task_id": "t", "queued_position": 0}
+
+    class _StubClient:
+        async def aclose(self): pass
+        async def post(self, url, json=None):
+            captured["url"] = url
+            captured["body"] = json
+            return _StubResp()
+
+    async def _factory(spec): return _StubClient()
+    monkeypatch.setattr("aegis.remote.client._build_client", _factory)
+
+    spec = RemoteSpec(url="http://x:8556")
+    result = await remote_enqueue(spec, "impl", "do it", "h",
+                                   callback_to="laptop",
+                                   callback_handle="lucid-knuth")
+    assert result["task_id"] == "t"
+    assert captured["body"]["callback_to"] == "laptop"
+    assert captured["body"]["callback_handle"] == "lucid-knuth"
+    assert captured["body"]["queue"] == "impl"
+
+
+@pytest.mark.asyncio
+async def test_remote_enqueue_omits_callback_hints_when_unset(monkeypatch):
+    """When callback_to / callback_handle are None, they're not in the body."""
+    from aegis.remote.client import remote_enqueue
+    from aegis.remote.config import RemoteSpec
+
+    captured = {}
+
+    class _StubResp:
+        status_code = 200
+        def json(self): return {"task_id": "t", "queued_position": 0}
+
+    class _StubClient:
+        async def aclose(self): pass
+        async def post(self, url, json=None):
+            captured["body"] = json
+            return _StubResp()
+
+    async def _factory(spec): return _StubClient()
+    monkeypatch.setattr("aegis.remote.client._build_client", _factory)
+
+    spec = RemoteSpec(url="http://x:8556")
+    await remote_enqueue(spec, "impl", "do it", "h")
+    assert "callback_to" not in captured["body"]
+    assert "callback_handle" not in captured["body"]
