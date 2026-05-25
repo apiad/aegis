@@ -56,7 +56,18 @@ async def _aegis_group_wait_any_impl(bridge, *, group: str,
 
 
 async def _aegis_group_spawn_mixed_impl(bridge, *, group: str,
-                                        profiles: list[str]) -> dict:
+                                        profiles: list[str] | None = None,
+                                        preset: str | None = None) -> dict:
+    if preset is not None:
+        cfg = getattr(bridge, "config", None) or {}
+        presets = (cfg.get("groups") or {}).get("presets") or {}
+        if preset not in presets:
+            raise KeyError(
+                f"unknown group preset {preset!r}; "
+                f"known: {sorted(presets)}")
+        profiles = list(presets[preset].get("profiles") or [])
+    if not profiles:
+        raise ValueError("must pass either `profiles` or `preset`")
     handles = await bridge.groups.spawn_mixed(
         group=group, profiles=profiles)
     return {"handles": list(handles), "group": group}
@@ -844,14 +855,18 @@ def build_server(bridge: AppBridge) -> FastMCP:
             cancel_losers=cancel_losers)
 
     @server.tool
-    async def aegis_group_spawn_mixed(group: str,
-                                       profiles: list[str]) -> dict:
+    async def aegis_group_spawn_mixed(
+            group: str,
+            profiles: list[str] | None = None,
+            preset: str | None = None) -> dict:
         """Spawn one member per profile string into ``group``. Profiles
-        may repeat; each entry gets its own session. Returns the list of
-        handles in the same order as ``profiles``.
+        may repeat; each entry gets its own session. ``preset`` looks up
+        a named profile list from ``.aegis.yaml`` ``groups.presets``;
+        exactly one of ``profiles`` or ``preset`` must be given. Returns
+        the list of handles in the same order as the resolved profiles.
         """
         return await _aegis_group_spawn_mixed_impl(
-            bridge, group=group, profiles=profiles)
+            bridge, group=group, profiles=profiles, preset=preset)
 
     @server.tool
     async def aegis_group_status(group: str) -> dict:
