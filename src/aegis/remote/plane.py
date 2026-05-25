@@ -214,6 +214,44 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             "pushed_at": pa,
         })
 
+    async def schedule_remove(request: Request) -> Response:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        name = request.path_params["name"]
+        sched = getattr(bridge, "scheduler", None)
+        entry = sched.get(name) if sched is not None else None
+        if entry is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        file_path = _schedule_file_path(name)
+        source, _, _ = classify_source(
+            file_path, bridge.inline_schedule_names(), name)
+        if source != "pushed":
+            return JSONResponse(
+                {"error": f"cannot remove {source!r}-source schedule"},
+                status_code=409)
+        file_path.unlink()
+        return Response(status_code=204)
+
+    async def schedule_logs(request: Request) -> JSONResponse:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        name = request.path_params["name"]
+        try:
+            tail = int(request.query_params.get("tail", "50"))
+        except ValueError:
+            return JSONResponse({"error": "invalid tail"}, status_code=400)
+        log_path = (bridge.state_root / ".aegis" / "state"
+                    / "schedules" / f"{name}.jsonl")
+        if not log_path.exists():
+            return JSONResponse({"records": []})
+        lines = log_path.read_text().splitlines()[-tail:]
+        records = [json.loads(line) for line in lines if line.strip()]
+        return JSONResponse({"records": records})
+
     routes = [
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),
         Route("/remote/v1/callback", callback, methods=["POST"]),
@@ -225,6 +263,12 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             Route("/remote/v1/schedule", schedule_list, methods=["GET"]))
         routes.append(
             Route("/remote/v1/schedule/{name}", schedule_show, methods=["GET"]))
+        routes.append(
+            Route("/remote/v1/schedule/{name}", schedule_remove,
+                  methods=["DELETE"]))
+        routes.append(
+            Route("/remote/v1/schedule/{name}/logs", schedule_logs,
+                  methods=["GET"]))
     return Starlette(routes=routes)
 
 
