@@ -56,6 +56,7 @@ class AegisConfig:
     remotes: dict[str, RemoteSpec] = field(default_factory=dict)
     remote_plane: RemotePlaneSpec | None = None
     root: Path | None = None
+    inline_schedule_names: set[str] = field(default_factory=set)
 
 
 _PROVIDERS: dict[str, type] = {
@@ -174,6 +175,7 @@ def load_config(root: Path) -> AegisConfig:
         remotes=remotes,
         remote_plane=remote_plane,
         root=root,
+        inline_schedule_names=set(inline["schedules"].keys()),
     )
 
 

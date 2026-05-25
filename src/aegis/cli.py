@@ -147,21 +147,6 @@ class _PlaneBridge:
         return set(self._inline_schedule_names)
 
 
-def _read_inline_schedule_names(root: Path) -> set[str]:
-    """Read raw inline schedule names from ``<root>/.aegis.yaml``."""
-    cfg_path = root / ".aegis.yaml"
-    if not cfg_path.exists():
-        return set()
-    try:
-        from ruamel.yaml import YAML
-        yaml = YAML(typ="safe")
-        with cfg_path.open() as f:
-            raw = yaml.load(f) or {}
-        return set((raw.get("schedules") or {}).keys())
-    except Exception:  # noqa: BLE001 — best-effort introspection
-        return set()
-
-
 async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None":
     """Start the remote plane if `.aegis.yaml` configured it.
 
@@ -184,7 +169,7 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None"
         inbox_router=getattr(queue_manager, "_inbox", None),
         workflow_registry=SimpleNamespace(get=get_workflow),
         state_root=root,
-        _inline_schedule_names=_read_inline_schedule_names(root),
+        _inline_schedule_names=set(getattr(cfg, "inline_schedule_names", set())),
     )
     app = plane_mod.build_plane(bridge, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
@@ -200,7 +185,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
                  stop: asyncio.Event, queues: dict | None = None,
                  schedules: dict | None = None,
                  remotes: dict | None = None,
-                 remote_plane=None) -> None:
+                 remote_plane=None,
+                 inline_schedule_names: set[str] | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -230,7 +216,11 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
     from aegis.config.yaml_loader import AegisConfig as _AegisConfig
     plane_bridge = await _maybe_start_remote_plane(
-        _AegisConfig(remote_plane=remote_plane, remotes=remotes or {}), qm)
+        _AegisConfig(
+            remote_plane=remote_plane,
+            remotes=remotes or {},
+            inline_schedule_names=set(inline_schedule_names or set()),
+        ), qm)
 
     # Scheduler — only runs when schedules are configured.
     scheduler = None
@@ -325,6 +315,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
     schedules: dict = {}
     remotes: dict = {}
     remote_plane = None
+    inline_schedule_names: set[str] = set()
     if (root / ".aegis.yaml").is_file():
         try:
             from aegis.config.yaml_loader import (
@@ -335,6 +326,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             schedules = yaml_cfg.schedules
             remotes = yaml_cfg.remotes
             remote_plane = yaml_cfg.remote_plane
+            inline_schedule_names = yaml_cfg.inline_schedule_names
         except Exception as e:  # noqa: BLE001
             _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
             raise typer.Exit(1)
@@ -348,7 +340,8 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
                      make_session=make_session, mcp=AegisMCP(),
                      tg=tg, stop=stop, queues=queues,
                      schedules=schedules,
-                     remotes=remotes, remote_plane=remote_plane)
+                     remotes=remotes, remote_plane=remote_plane,
+                     inline_schedule_names=inline_schedule_names)
 
     asyncio.run(main_async())
 
