@@ -291,12 +291,23 @@ remote_plane:
 Bind the plane wherever it should be reachable from, and only from —
 typically a private overlay network (Tailscale/Headscale/WireGuard/
 VPN) so the network itself is the trust anchor. Bearer-token and
-source-IP gates compose with AND on top. In v1 there is **no wire
-return channel** — the receiving serve runs the worker under its own
+source-IP gates compose with AND on top. By default the call is
+fire-and-forget: the receiving serve runs the worker under its own
 config and whatever it does on completion (commit and push, message
 through its own bridge, write to a shared folder, nothing) is up to
-it. Full surface, error model, and patterns in
-[docs/remote.md](docs/remote.md).
+it.
+
+Since v0.8.0, `aegis_enqueue(target=…, callback=True)` opts in to a
+**wire callback** that delivers the remote worker's final message
+back to the originating agent's inbox as a normal `✉ from
+queue:<peer>:<name>` envelope (symmetric peers config required —
+both sides define each other in `remotes:`). A small
+`/remote/v1/schedule/*` control plane (with `aegis_schedule_*` MCP
+tools and `aegis schedule push --to <peer>` / `--remote <peer>` CLI
+verbs) lets one serve push schedules into a peer and inspect or
+remove them remotely — useful for self-scheduling future work or
+managing a fleet from one host. Full surface, error model, and
+patterns in [docs/remote.md](docs/remote.md).
 
 ## Scheduled workflows
 

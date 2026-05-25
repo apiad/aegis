@@ -5,6 +5,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-25
+
+### Added
+- **Wire callbacks for remote queues.** `aegis_enqueue(target=…, callback=True)` now actually delivers the worker's final message to the originating agent's inbox once the remote task terminates. Symmetric peers config (both sides define each other in `remotes:`); RemoteSpec gains an optional `peer_name` field that controls the `callback_to` round-trip. Best-effort, no retry, log+drop on miss; receiver's queue JSONL records every callback attempt.
+- **Remote schedule control plane.** Five new endpoints under `/remote/v1/schedule` (PUT push, GET list/show, DELETE remove, GET logs); five matching `aegis_schedule_*` MCP tools (push/list/show/remove/logs, each with optional `target=` for cross-host); CLI `aegis schedule push --to <peer>` and `--remote <peer>` flag on inspection verbs. Pushed schedules land in the receiver's `.aegis/schedules/<name>.yaml` overlay folder with a `# pushed_from:` provenance comment; the v0.6 hot-reload watcher picks them up and they become indistinguishable from native schedules. Source classification (`inline` / `overlay` / `pushed`) is surfaced in list + show responses.
+
+Spec: `docs/superpowers/specs/2026-05-25-aegis-remote-callbacks-schedule-control-design.md`.
+
 ## [0.7.1] - 2026-05-25
 
 ### Changed

@@ -6,11 +6,12 @@ to another machine — typically because the work is long-running, needs
 different hardware, or should run under a different agent profile —
 while the calling agent keeps moving.
 
-There is no built-in return channel in v1. The call is *fire and the
-substrate forgets*: the receiver runs the worker on its own queue
-under its own config; whatever happens on completion is up to the
-receiver. See [Completion / return channel](#completion-return-channel)
-below.
+By default the call is fire-and-forget: the receiver runs the worker
+on its own queue under its own config and the calling agent is not
+notified over the wire. As of v0.8.0 the caller can **opt in to a
+wire callback** that delivers the worker's final message back to the
+originating agent's inbox once the remote task terminates. See
+[Callbacks](#callbacks) below.
 
 ## The two HTTP planes
 
@@ -80,11 +81,14 @@ aegis_enqueue(
 - `target="<name>"`: the substrate looks `<name>` up in the local
   `remotes` config and POSTs the body to that remote's
   `/remote/v1/enqueue`. The returned dict includes `"target":
-  "<name>"` and a `"callback_note"` flagging that there's no wire
-  return channel.
+  "<name>"`.
 
-`callback` is ignored when `target` is set (the local aegis has no
-inbox channel to deliver into from across the network in v1).
+When `target` is set and `callback=True` (the default), the substrate
+attaches `callback_to` + `callback_handle` hints to the wire enqueue
+so the receiving serve will POST the worker's final message back to
+the originating agent's inbox on completion. Pass `callback=False`
+to keep the legacy fire-and-forget behavior. See
+[Callbacks](#callbacks) below.
 
 ## Configuration
 
@@ -169,16 +173,13 @@ fast and let the calling agent decide what to do.
 
 ## Completion / return channel
 
-In v1 there is **no built-in return channel** over the wire. The
-calling aegis gets a `task_id` from the POST and that is it — it is
-not notified when the remote task finishes.
-
-What happens on completion is entirely up to the *receiving* serve's
-own configuration:
+The default completion model is *fire-and-forget*: the calling aegis
+gets a `task_id` back from the POST and is not notified when the
+remote task finishes. What happens on completion is then entirely up
+to the *receiving* serve's own configuration:
 
 - If the receiver has a Telegram bridge configured, the worker's
-  final message will land in Telegram on its way out, the same way
-  any other queue completion on that serve does.
+  final message will land in Telegram on its way out.
 - If the receiver runs in a repo and the worker commits and pushes,
   the work shows up in git.
 - If the worker writes into a shared filesystem (a vault, a synced
@@ -186,15 +187,114 @@ own configuration:
 - If the receiver does nothing on completion, nothing happens on
   completion.
 
-The remote-plane substrate has no opinion. It accepts the enqueue,
-delegates to the local `QueueManager`, and is done. The calling
-session is free to keep working or wind down; re-engaging with the
-result means opening whatever artifact the receiver naturally
-exposes.
+For the opt-in **wire callback** path — final-message delivery back
+to the originating agent's inbox — see [Callbacks](#callbacks).
 
-A v2 may add `POST /remote/v1/callback` so completion can land back
-in the originating agent's inbox over the wire. The `/remote/v1/`
-namespace was chosen so that addition is backwards-compatible.
+## Callbacks
+
+When `aegis_enqueue(target="<peer>", callback=True)` is invoked, the
+substrate attaches `callback_to` + `callback_handle` hints to the
+wire enqueue body. On worker termination the receiving serve POSTs
+the worker's final message to `POST /remote/v1/callback` on the
+caller's plane; the caller's inbox router delivers it to the
+originating agent as a normal `✉ from queue:<peer>:<name>` envelope.
+
+```python
+# zion: agent dispatches and keeps working
+aegis_enqueue(
+    queue="implementation",
+    payload="Implement the design at docs/specs/foo.md…",
+    from_handle="lucid-knuth",
+    target="vps",
+    callback=True,
+)
+# → {"task_id": "01J…", "target": "vps", …}
+
+# …later, in lucid-knuth's transcript on zion:
+#   ✉ from queue:vps:impl · task#01J… · ok · 17:46:11Z
+#     Done. Implemented in branch feat/foo, pushed, CHANGELOG updated.
+```
+
+**Symmetric config required.** Both sides must define each other in
+their `remotes:` block (see [Configuration](#configuration)). The
+caller's `peer_name` for the target is what gets sent as
+`callback_to`; the receiver looks that name up in its own
+`remotes:` to find the URL to POST the callback to.
+
+**Best-effort, no retry.** A callback that can't reach the caller
+(network drop, caller restarted, auth rejected) is logged and
+dropped — every callback attempt is recorded in the receiver's queue
+JSONL with its outcome. Pass `callback=False` if you want the
+fire-and-forget behavior explicitly.
+
+## Remote schedules
+
+A small control plane lets one serve **push** a schedule into a peer
+and then inspect or remove it remotely. The substrate of v0.6's
+schedule hot-reload watcher picks the pushed file up the moment it
+lands; once seeded it behaves identically to an inline or overlay
+schedule.
+
+### HTTP endpoints
+
+```
+PUT    /remote/v1/schedule/<name>          # push a schedule body
+GET    /remote/v1/schedule                 # list (with source classification)
+GET    /remote/v1/schedule/<name>          # show one
+DELETE /remote/v1/schedule/<name>          # remove a pushed/overlay schedule
+GET    /remote/v1/schedule/<name>/logs     # JSONL tail
+```
+
+The PUT body is the same schedule shape used in `.aegis.yaml`. The
+receiver writes it to `.aegis/schedules/<name>.yaml` with a
+`# pushed_from: <caller>` provenance comment on the first line.
+
+### MCP tools
+
+```
+aegis_schedule_push   (name, spec_body,        target=None)
+aegis_schedule_list   (                        target=None)
+aegis_schedule_show   (name,                   target=None)
+aegis_schedule_remove (name,                   target=None)
+aegis_schedule_logs   (name, tail=50,          target=None)
+```
+
+`target=None` operates on the local scheduler; `target="<peer>"`
+routes through the remote-plane client. Same dict shapes either way.
+
+### CLI verbs
+
+```bash
+aegis schedule push <name> <file.yaml> --to vps     # push to a peer
+aegis schedule list   --remote vps                  # inspect a peer
+aegis schedule show   morning-briefing --remote vps
+aegis schedule remove ci-watch --remote vps
+aegis schedule logs   nightly --remote vps -n 100
+```
+
+`--to` is push-only and required for `schedule push` when targeting
+a peer; `--remote` is the inspection flag on the read/remove verbs.
+
+### Source classification
+
+`list` and `show` responses tag each schedule with a `source` field:
+
+| source    | meaning                                                    |
+|-----------|------------------------------------------------------------|
+| `inline`  | declared in the receiver's `.aegis.yaml` `schedules:` table |
+| `overlay` | hand-written file under `.aegis/schedules/<name>.yaml`     |
+| `pushed`  | overlay file with a `# pushed_from:` provenance comment     |
+
+`DELETE` refuses to remove `inline` schedules (the receiver's own
+config owns those); `overlay` and `pushed` are removable.
+
+### Self-scheduling
+
+An agent can push its *own* future task into the local serve (or a
+peer) — useful when finishing the current turn requires kicking
+something off later. The standard pattern: build a `fire_at` body
+~N seconds ahead, push, exit. The substrate's hot-reload picks it
+up and fires it without further intervention.
 
 ## Security model
 
@@ -300,23 +400,27 @@ tokens or `accept_from` allowlists the moment that stops being true.
 
 ```
 src/aegis/remote/
-  config.py       # RemoteSpec, RemotePlaneSpec dataclasses
-  plane.py        # Starlette app + build_plane / run_plane_async
-  client.py       # httpx client + remote_enqueue() + normalized errors
+  config.py             # RemoteSpec, RemotePlaneSpec dataclasses
+  plane.py              # Starlette app + build_plane / run_plane_async
+  client.py             # httpx client: remote_enqueue, remote_callback,
+                        # remote_schedule_push/list/show/remove/logs
+  callback_observer.py  # receiver-side worker-completion observer
+src/aegis/scheduler/
+  push.py               # PUT/GET/DELETE handlers + source classification
 ```
 
 The `aegis_enqueue` MCP tool routes to `remote.client.remote_enqueue`
 when `target=` is set; `cli.serve()` mounts the plane via
 `build_plane(queue_manager, cfg.remote_plane)` when `remote_plane` is
-configured.
+configured. The `aegis_schedule_*` tools and `aegis schedule` CLI
+verbs use the same client module when given a `target=`/`--to`/
+`--remote` peer.
 
 ## Future extensions (not built)
 
 These are noted to confirm the `/remote/v1/` namespace leaves room
 for them without breaking changes:
 
-- **Wire-level completion callbacks** — `POST /remote/v1/callback`;
-  symmetric design where both ends run the plane.
 - **Status query** — `GET /remote/v1/task/<id>`.
 - **Cancel** — `POST /remote/v1/task/<id>/cancel`.
 - **Cross-host `aegis_handoff`** — handoff to a live remote handle.

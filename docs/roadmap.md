@@ -67,7 +67,27 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
-### v0.7.0 (current)
+### v0.8.0 (current)
+- **Wire callbacks for remote queues.**
+  `aegis_enqueue(target="<peer>", callback=True)` now delivers the
+  remote worker's final message back to the originating agent's
+  inbox over the wire. Symmetric peers config (both sides define
+  each other in `remotes:`); `RemoteSpec` gains an optional
+  `peer_name` field that controls the `callback_to` round-trip.
+  Best-effort, no retry — every callback attempt is recorded in the
+  receiver's queue JSONL.
+- **Remote schedule control plane.** Five new endpoints under
+  `/remote/v1/schedule` (PUT push, GET list/show, DELETE remove, GET
+  logs); five matching `aegis_schedule_*` MCP tools with optional
+  `target=` for cross-host; CLI `aegis schedule push --to <peer>`
+  and a `--remote <peer>` flag on inspection verbs. Pushed schedules
+  land in the receiver's `.aegis/schedules/<name>.yaml` overlay
+  folder with a `# pushed_from:` provenance comment and become
+  indistinguishable from native schedules under the v0.6 hot-reload
+  watcher. Source classification (`inline` / `overlay` / `pushed`)
+  is surfaced in list + show responses.
+
+### v0.7.0
 - **Remote plane.** Server-to-server enqueue over HTTP. `aegis serve`
   exposes a second HTTP plane (distinct from the loopback MCP plane)
   that other `aegis serve` instances can POST into; `aegis_enqueue`

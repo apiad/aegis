@@ -171,11 +171,19 @@ remotes:
   vps:
     url: http://100.64.0.5:8556
     token: "<optional bearer>"      # if the peer requires auth
+    peer_name: zion                 # how the peer knows *us*
 ```
 
 Per-remote overlay files at `.aegis/remotes/<name>.yaml` (body is the
 remote body — `url:` directly). Name collisions between inline and
 overlay are fail-loud.
+
+`peer_name` (optional, v0.8.0+) is the name this caller goes by in
+the *peer's* `remotes:` block. It's used as the `callback_to` value
+when calling `aegis_enqueue(target="<peer>", callback=True)` — the
+peer will then look that name up in its own outbound remotes to
+route the callback back. Required for callback delivery; ignored
+for fire-and-forget enqueues.
 
 **Inbound** — opt-in section that turns on the receive side:
 
@@ -190,6 +198,35 @@ Default off (key absent or empty block). Gates compose with AND — both
 empty means "anything that reaches the port is trusted." See
 [Remote plane](remote.md) for the full surface, error model, and
 patterns.
+
+**Symmetric deployment** — two hosts that each enqueue into the
+other with callbacks both need to define each other in their
+`remotes:` block. Each side's `peer_name` is *its own* name in the
+other's eyes:
+
+```yaml
+# zion's .aegis.yaml
+remotes:
+  vps:
+    url: http://100.64.0.5:8556
+    peer_name: zion          # zion is "zion" to vps
+remote_plane:
+  bind: 100.64.0.4:8556
+```
+
+```yaml
+# vps's .aegis.yaml
+remotes:
+  zion:
+    url: http://100.64.0.4:8556
+    peer_name: vps           # vps is "vps" to zion
+remote_plane:
+  bind: 100.64.0.5:8556
+```
+
+With this shape either side can call
+`aegis_enqueue(target="<peer>", callback=True)` and the worker's
+final message will flow back into the calling agent's inbox.
 
 ## Worked example
 
