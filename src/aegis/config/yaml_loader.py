@@ -51,6 +51,7 @@ class AegisConfig:
     workflows: list[str] = field(default_factory=list)
     plugin_dirs: list[Path] = field(default_factory=list)
     scheduler: dict[str, Any] = field(default_factory=dict)
+    groups: dict[str, Any] = field(default_factory=dict)
     root: Path | None = None
 
 
@@ -148,6 +149,8 @@ def load_config(root: Path) -> AegisConfig:
               for k, v in merged["agents"].items()}
     queues = {k: QueueSpec(**v) for k, v in merged["queues"].items()}
 
+    groups = _resolve_groups(root, raw.get("groups") or {})
+
     plugin_dirs_raw = raw.get("plugin_dirs") or [".aegis/plugins"]
     plugin_dirs = [root / Path(p) for p in plugin_dirs_raw]
 
@@ -159,8 +162,39 @@ def load_config(root: Path) -> AegisConfig:
         workflows=list(raw.get("workflows") or []),
         plugin_dirs=plugin_dirs,
         scheduler=dict(raw.get("scheduler") or {}),
+        groups=groups,
         root=root,
     )
+
+
+def _resolve_groups(root: Path, inline: dict[str, Any]) -> dict[str, Any]:
+    """Merge inline `groups:` block with `.aegis/groups/*.yaml` overlays.
+
+    Inline shape: {defaults: {...}, presets: {name: {...}}}.
+    Overlay: each file's body is a single preset's body, keyed by stem.
+    Preset-name collisions between inline and overlay fail loud.
+    """
+    yaml = YAML(typ="safe")
+    if not isinstance(inline, dict):
+        raise ConfigError("groups: top level must be a mapping")
+    defaults = dict(inline.get("defaults") or {})
+    presets_inline = dict(inline.get("presets") or {})
+
+    presets_overlay: dict[str, Any] = {}
+    folder = root / ".aegis" / "groups"
+    if folder.is_dir():
+        for path in sorted(folder.glob("*.yaml")):
+            body = yaml.load(path.read_text()) or {}
+            if not isinstance(body, dict):
+                raise ConfigError(
+                    f"overlay {path} must be a mapping at top level")
+            presets_overlay[path.stem] = body
+
+    presets = _merge_or_die("groups/presets", presets_inline,
+                            presets_overlay)
+    if not defaults and not presets:
+        return {}
+    return {"defaults": defaults, "presets": presets}
 
 
 def import_plugins(cfg: AegisConfig) -> None:
