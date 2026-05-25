@@ -25,10 +25,14 @@ After this lands, the external substrate is retired.
    of a schedule is `(workflow, args)`; the currency of a queue stays
    `(prompt, agent)`. The two substrates compose through built-in
    workflows — schedules never duplicate queue concerns.
-2. **Declarative config.** Move all static configuration (agents,
-   queues, schedules, workflow registration) into `.aegis.yaml`. Allow
-   user-space Python side effects via `.aegis/plugins/*.py`
-   auto-import.
+2. **Declarative config with drop-in overlays.** Move all static
+   configuration (agents, queues, schedules, workflow registration)
+   into `.aegis.yaml`, and additionally support per-section overlay
+   folders (`.aegis/{agents,queues,schedules}/*.yaml`) so any single
+   entry can live in its own file — drop a file to add, `mv` to
+   retire, no edits to a central config. Allow user-space Python
+   side effects via `.aegis/plugins/*.py` auto-import (same drop-in
+   ergonomic, already present).
 3. **Hot-reload for data.** Edits to `.aegis.yaml` (and only
    `.aegis.yaml`) take effect live; Python code changes
    (`.aegis/plugins/`, built-in workflow source) require an `aegis
@@ -96,8 +100,12 @@ schedules; the workflow plane is the only place they meet.
 ## File layout
 
 ```
-.aegis.yaml                          # all declarative config (single source of truth)
-.aegis/plugins/*.py                  # auto-imported at boot; do whatever
+.aegis.yaml                          # base config — may contain inline entries
+                                     #   in any section (agents/queues/schedules/…)
+.aegis/agents/<name>.yaml            # optional drop-in overlay, one agent per file
+.aegis/queues/<name>.yaml            # optional drop-in overlay, one queue per file
+.aegis/schedules/<name>.yaml         # optional drop-in overlay, one schedule per file
+.aegis/plugins/<name>.py             # auto-imported at boot; do whatever
                                      #   (today: register @workflow; later: hooks,
                                      #   MCP tools, theme overrides, …)
 .aegis/state/schedules/<name>.jsonl  # per-schedule lifecycle log
@@ -109,6 +117,52 @@ schedules; the workflow plane is the only place they meet.
 `enqueue`, `tdd_step`). Each is opt-in via the `workflows:` list in
 `.aegis.yaml` — unlisted built-ins stay dormant so the surface area
 never expands without intent.
+
+### Overlay merge model
+
+Aegis collects declarative config from two sources at boot (and on
+every reload):
+
+1. **Inline entries** under `agents:` / `queues:` / `schedules:` in
+   `.aegis.yaml`.
+2. **Drop-in files** in the per-section overlay folders
+   (`.aegis/{agents,queues,schedules}/*.yaml`). Each file's stem is
+   the entry key; the file body is the entry contents directly (not
+   re-keyed under the name inside the file).
+
+The in-memory config is `inline + overlay`. **Conflict resolution is
+fail-loud:** if the same entry key (e.g. `agents.claude`) appears in
+both the inline section and an overlay file, boot aborts (or reload
+is rejected with the conflict logged). One source of truth per
+entry.
+
+Overlay folders are optional. An empty `.aegis/schedules/` is fine;
+inline `schedules:` in `.aegis.yaml` is fine; mixing both for
+*different* keys is fine. The folders simply give a per-file
+ergonomic for entries that benefit from it — most notably schedules,
+which are PR-friendly per-file, `mv`-able to retire, and `cp`-able to
+clone.
+
+Example schedule file:
+
+```yaml
+# .aegis/schedules/end-of-day.yaml
+workflow: prompt
+args:
+  agent: claude
+  text: |
+    You are running the 10 PM end-of-day routine. Three outputs...
+cron: "0 2 * * *"
+timezone: America/Havana
+lifecycle: forever
+on_overlap: skip
+timeout: 1800
+notify:
+  on_failure: true
+```
+
+This matches the muscle memory of authoring jobs in `vault/+/jobs/`
+today — one file per routine, drop in to activate, `mv` to retire.
 
 ## `.aegis.yaml` shape
 
@@ -284,17 +338,31 @@ failed:interrupted, failed:killed}`.
 
 ## Hot reload
 
-A filesystem watcher on `.aegis.yaml`. On change:
+A filesystem watcher monitors:
 
-1. Parse the new YAML in isolation.
-2. Validate: agent / queue / workflow references resolve; cron strings
-   parse; lifecycle / on_overlap / notify values are in their enums.
-3. **Atomic swap.** Either the whole new config replaces the in-memory
-   snapshot, or the reload is rejected entirely. Never a partial
-   reload.
-4. On reject: write `reload_failed` to a top-level
+- `.aegis.yaml`
+- `.aegis/agents/`, `.aegis/queues/`, `.aegis/schedules/` (recursive
+  on `*.yaml`)
+
+Any add / edit / remove in those paths triggers a reload. On change:
+
+1. Re-collect all overlay files + parse the new `.aegis.yaml` in
+   isolation.
+2. Merge inline + overlay sources. Reject on key conflict (same entry
+   appears in two sources).
+3. Validate: agent / queue / workflow references resolve; cron
+   strings parse; lifecycle / on_overlap / notify values are in their
+   enums.
+4. **Atomic swap.** Either the whole new config replaces the
+   in-memory snapshot, or the reload is rejected entirely. Never a
+   partial reload.
+5. On reject: write `reload_failed` to a top-level
    `.aegis/state/aegis_events.jsonl` with the validation error, beep
    the dashboard, keep the prior in-memory snapshot.
+
+A newly-dropped `.aegis/schedules/foo.yaml` makes `foo` live on the
+next tick. `mv .aegis/schedules/foo.yaml /tmp/` retires it (in-flight
+fire completes, no new fires queued).
 
 For each schedule that exists in both old and new:
 - If `cron`/`fire_at`/`timezone` changed, recompute `next_fire`.
@@ -402,8 +470,11 @@ targets:
 - Backfill-once on boot replay.
 - Plugin discovery (positive: registered; negative: import error
   blocks boot).
+- Overlay merge: inline-only, overlay-only, mixed (different keys);
+  conflict (same key both sides) → boot aborts.
 - YAML reload — atomic swap on success, full reject on validation
-  failure.
+  failure; watcher fires on adds / edits / removes in every watched
+  path including overlay folders.
 - JSONL append + boot replay round-trip (including a corrupted tail
   line).
 - `notify.on_failure` / `on_success` plumbing (the notifier is
@@ -435,10 +506,11 @@ spawns. Each fire returns a fixture string.
      `systemctl --user enable --now aegis.service`.
 3. **Author daily routines as aegis schedules.** Alex translates
    `vault/+/jobs/end-of-day.md`, `briefing.md`, `weekly.md`,
-   `claude-private-tick.md`, etc. into `.aegis.yaml` entries by hand
-   (no migration tool — the bodies are different enough that
-   automated conversion would mis-encode lifecycle and on_overlap
-   intent).
+   `claude-private-tick.md`, etc. into per-file overlays at
+   `.aegis/schedules/<name>.yaml` (one file per routine, matching the
+   `vault/+/jobs/` muscle memory). No migration tool — the bodies are
+   different enough that automated conversion would mis-encode
+   lifecycle and on_overlap intent.
 4. **Run both substrates in parallel for ~3 days.** Both fire the
    same routines; outputs are compared.
 5. **Disarm the external substrate.** `vault/+/jobs/*.md` get
@@ -455,10 +527,13 @@ fine for a laptop — the daily routines live on the VPS.
 Vertical slices — each ships to `main`, the dashboard reflects it
 incrementally, each is end-to-end testable on its own.
 
-1. **VS1: Config migration.** `.aegis.yaml` parser; plugin auto-import
-   from `.aegis/plugins/*.py`; `aegis serve` boots from YAML.
+1. **VS1: Config migration.** `.aegis.yaml` parser + per-section
+   overlay collector (`.aegis/{agents,queues,schedules}/*.yaml`) with
+   merge + fail-loud conflict; plugin auto-import from
+   `.aegis/plugins/*.py`; `aegis serve` boots from the merged config.
    `.aegis.py` removed. No scheduler yet. End-to-end test: existing
-   queue tests pass against YAML config.
+   queue tests pass against YAML config; same tests pass when the
+   queue is moved to `.aegis/queues/tasks.yaml`.
 2. **VS2: Built-in workflows.** `prompt(agent, text)` and
    `enqueue(queue, payload, callback)` shipped in
    `src/aegis/workflows/builtins/`. Registered via YAML `workflows:`
