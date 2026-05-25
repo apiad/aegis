@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- META kind=spec title="Aegis Remote Plane — Wire Callbacks + Schedule Control" status=draft date=2026-05-25 source="docs/superpowers/specs/2026-05-25-aegis-remote-callbacks-schedule-control-design.md" -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remote Callbacks + Schedule Control — Design</title>
+<style>
+  :root {
+    --ivory:#FAF9F5; --slate:#141413; --clay:#D97757; --oat:#E3DACC;
+    --olive:#788C5D; --rust:#B04A3F; --blue:#4A6FA5;
+    --g150:#F0EEE6; --g300:#D1CFC5; --g500:#87867F; --g700:#3D3D3A;
+    --serif:ui-serif,Georgia,'Times New Roman',serif;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ivory);color:var(--g700);font-family:var(--sans);
+    font-size:15px;line-height:1.6;padding:40px 24px 80px}
+  .page{max-width:920px;margin:0 auto}
+  header.doc{border:1.5px solid var(--g300);border-radius:12px;
+    padding:24px 28px;background:#fff;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--g500);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+  h1{font-family:var(--serif);font-weight:500;font-size:28px;
+    line-height:1.25;color:var(--slate);margin-bottom:12px}
+  .meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    font-size:13px;color:var(--g500)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase;
+    letter-spacing:.05em}
+  .badge-ok{background:#E7EEDF;color:var(--olive)}
+  .badge-warn{background:#F6E9D8;color:var(--clay)}
+  .badge-bad{background:#F3DEDB;color:var(--rust)}
+  nav.toc{background:var(--g150);border-radius:10px;padding:14px 20px;
+    margin-bottom:30px;font-size:14px}
+  nav.toc a{color:var(--g700);text-decoration:none;margin-right:18px;
+    white-space:nowrap;line-height:2}
+  nav.toc a:hover{color:var(--clay);text-decoration:underline}
+  section{background:#fff;border:1.5px solid var(--g300);border-radius:12px;
+    padding:22px 28px;margin-bottom:20px}
+  h2{font-family:var(--serif);font-weight:500;font-size:21px;
+    color:var(--slate);margin-bottom:14px}
+  h3{font-size:15px;font-weight:600;color:var(--g700);margin:16px 0 8px}
+  p{margin-bottom:12px}
+  ul,ol{margin:0 0 12px 24px}  li{margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--g300)}
+  th{font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--g500);background:var(--g150)}
+  code{font-family:var(--mono);font-size:13px;background:var(--g150);
+    padding:1px 5px;border-radius:4px}
+  pre{background:var(--slate);color:var(--ivory);font-family:var(--mono);
+    font-size:13px;line-height:1.5;padding:16px 18px;border-radius:8px;
+    overflow-x:auto;margin:6px 0 14px}
+  pre code{background:none;padding:0;color:inherit;font-size:13px}
+  details{border:1px solid var(--g300);border-radius:8px;padding:10px 16px;
+    margin:6px 0 14px;background:var(--g150)}
+  details summary{cursor:pointer;font-weight:600;color:var(--g700)}
+  details[open] summary{margin-bottom:10px}
+  footer{margin-top:30px;font-size:12px;color:var(--g500);
+    font-family:var(--mono);text-align:center}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="doc">
+    <div class="kicker">Design Spec</div>
+    <h1>Aegis Remote Plane — Wire Callbacks + Schedule Control</h1>
+    <div class="meta">
+      <span class="badge badge-warn">draft</span>
+      <span>2026-05-25</span>
+      <span>Builds on: <a href="2026-05-25-aegis-remote-plane-design.html">2026-05-25-aegis-remote-plane-design</a></span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#motivation">Motivation</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#callbacks">Wire callbacks</a>
+    <a href="#schedule">Schedule control plane</a>
+    <a href="#mcp">MCP surface</a>
+    <a href="#cli">CLI surface</a>
+    <a href="#config">Configuration</a>
+    <a href="#impl">Implementation</a>
+    <a href="#testing">Testing</a>
+    <a href="#deferred">Deferred / non-goals</a>
+  </nav>
+
+  <section id="motivation">
+    <h2>Motivation</h2>
+    <p>The v0.7 remote plane shipped with <code>aegis_enqueue(target=…)</code> and a single <code>POST /remote/v1/enqueue</code> endpoint. Two limitations are becoming the next thing in the way:</p>
+    <ul>
+      <li><strong>No wire return channel.</strong> <code>callback=true</code> is silently ignored for remote targets. An agent that enqueues a long task to a peer has no way to learn it finished short of the receiver doing something on its own (commits, its own bridge, a shared folder).</li>
+      <li><strong>No way to arm a recurring task on a remote.</strong> The v0.6 scheduler is per-serve: schedules declared in a serve's own <code>.aegis.yaml</code> tick on that serve. To get a scheduled task running on a peer, you have to SSH in and edit its config — exactly the kind of out-of-band step the substrate was meant to obviate.</li>
+    </ul>
+    <p>This design ships both as <strong>two independent extensions</strong> on top of the v0.7 remote plane. The two features are orthogonal — ship A without B or B without A. They share only the trust model (<code>remotes:</code> outbound, <code>remote_plane.{accept_tokens,accept_from}</code> inbound) and the URL prefix.</p>
+  </section>
+
+  <section id="architecture">
+    <h2>Architecture overview</h2>
+    <pre><code>   ┌────────────────────────────────┐                ┌────────────────────────────────┐
+   │ caller (e.g. zion)             │                │ receiver (e.g. vps)            │
+   │                                │                │                                │
+   │  remote_plane (tailnet IP)     │                │  remote_plane (tailnet IP)     │
+   │    POST /remote/v1/enqueue ──▶ │ ────────────── │ ───▶ enqueue handler           │
+   │    POST /remote/v1/callback ◀──│ ◀──────────────│ ◀─── QueueManager observer     │
+   │    PUT  /remote/v1/schedule ──▶│ ────────────── │ ───▶ schedule push handler     │
+   │    GET  /remote/v1/schedule    │                │                                │
+   │                                │                │                                │
+   │  QueueManager                  │                │  QueueManager                  │
+   │  InboxRouter ◀── callback POST │                │  scheduler + hot reload        │
+   └────────────────────────────────┘                └────────────────────────────────┘</code></pre>
+    <p>Both sides now run the remote plane (the v0.7 spec already permitted this; this design promotes it from optional to "required if you want callbacks"). The two HTTP planes stay distinct: the MCP plane is loopback and unchanged; the remote plane gains the new endpoints alongside the existing <code>/enqueue</code>.</p>
+    <p>No new persistent state machinery on either side:</p>
+    <ul>
+      <li>Callbacks ride the existing <code>QueueManager</code> completion event on the receiver and the existing <code>InboxRouter</code> delivery on the caller.</li>
+      <li>Schedule pushes land as files in the receiver's already-watched <code>.aegis/schedules/</code> folder; the v0.6 hot-reload watcher picks them up; the existing scheduler runtime owns the rest.</li>
+    </ul>
+  </section>
+
+  <section id="callbacks">
+    <h2>Feature A — Wire callbacks</h2>
+
+    <h3>Wire shape: <code>/enqueue</code> body grows callback hints</h3>
+    <p>The existing <code>POST /remote/v1/enqueue</code> body grows two optional fields:</p>
+    <pre><code>POST /remote/v1/enqueue
+Body:
+  {
+    "queue":            "implementation",
+    "payload":          "&lt;full prompt&gt;",
+    "from":             "zion",                # existing — caller's identity for receiver audit
+    "callback_to":      "zion",                # optional — name the receiver should look up in its `remotes`
+    "callback_handle":  "lucid-knuth"          # optional — originating agent handle, round-tripped
+  }</code></pre>
+    <p><code>callback_to</code> is <strong>the receiver's name for the caller</strong> — the key the receiver expects to find in <em>its own</em> <code>remotes</code> map. Usually the same string as <code>from</code>, but kept separate so peer-name asymmetries (zion calls vps <code>vps</code>; vps calls zion <code>laptop</code>) don't break the round-trip.</p>
+    <p>When both fields are present, the receiver attaches them to the task record at enqueue time so the completion observer can find them later. When either is missing, callbacks are off for that task — same behavior as v0.7 fire-and-forget enqueue.</p>
+
+    <h3>Callback endpoint</h3>
+    <pre><code>POST /remote/v1/callback
+Authorization: Bearer &lt;token&gt;   # when remotes[from_peer].token is set
+Content-Type: application/json
+Body:
+  {
+    "task_id":      "01J…",
+    "queue":        "implementation",
+    "from_peer":    "vps",                    # peer name in caller's `remotes`
+    "to_handle":    "lucid-knuth",
+    "status":       "ok" | "failed" | "interrupted",
+    "result_text":  "&lt;worker's final assistant message&gt;",
+    "started_at":   "&lt;iso&gt;",
+    "ended_at":     "&lt;iso&gt;"
+  }
+Response 204                                  # acknowledged
+Response 4xx with {"error": "..."}            # auth / shape rejection</code></pre>
+    <p>The caller's plane verifies auth, locates the active session for <code>to_handle</code>, and hands the payload to its <code>InboxRouter</code> to construct an envelope:</p>
+    <pre><code>✉ from queue:vps:implementation · task#01J… · ok · 17:46:11Z
+  PR pushed to feat/rate-limit, commit abc1234…</code></pre>
+    <p>Same shape as today's local queue callback envelope, just with the peer name prefixed on the queue tag.</p>
+
+    <h3>Round-trip walkthrough</h3>
+    <ol>
+      <li>Agent calls <code>aegis_enqueue(queue="impl", payload="…", from_handle="lucid-knuth", callback=True, target="vps")</code>.</li>
+      <li>Caller's MCP server resolves <code>target="vps"</code> to its <code>remotes.vps</code> entry, POSTs <code>/remote/v1/enqueue</code> with <code>{queue, payload, from: "zion", callback_to: "zion", callback_handle: "lucid-knuth"}</code>.</li>
+      <li>Receiver enqueues into its local <code>QueueManager</code>; records <code>callback_to</code> + <code>callback_handle</code> on the task.</li>
+      <li>Worker runs. On termination (any of <code>ok</code>/<code>failed</code>/<code>interrupted</code>), the receiver's completion event fires; a new observer collects <code>result_text</code>, looks up <code>remotes[callback_to]</code> for URL + token, POSTs <code>/remote/v1/callback</code>.</li>
+      <li>Caller's plane validates auth, hands <code>result_text</code> to <code>InboxRouter</code> for <code>to_handle</code>, mounts the <code>✉</code> block in the originating session's transcript.</li>
+    </ol>
+
+    <h3>Failure model</h3>
+    <p>All miss modes are loud on the receiver side (JSONL audit) and silent on the caller side (the caller never knows the callback was attempted).</p>
+    <table>
+      <thead><tr><th>Condition</th><th>Receiver action</th></tr></thead>
+      <tbody>
+        <tr><td><code>callback_to</code> not in receiver's <code>remotes</code></td><td><code>callback_dropped: unknown_peer</code>; no POST</td></tr>
+        <tr><td>Caller's plane unreachable / timeout</td><td><code>callback_dropped: unreachable</code>; no retry</td></tr>
+        <tr><td>Caller responds 401</td><td><code>callback_dropped: auth_rejected</code></td></tr>
+        <tr><td>Caller responds 5xx</td><td><code>callback_dropped: 5xx</code></td></tr>
+        <tr><td>Caller responds 200 but <code>to_handle</code> closed</td><td>caller-side <code>InboxRouter</code> writes to per-handle JSONL; no UI surfacing</td></tr>
+        <tr><td>Hints not set on the original enqueue</td><td>no callback attempted (v0.7 fire-and-forget behavior)</td></tr>
+      </tbody>
+    </table>
+    <p>Audit lands in the receiver's <code>.aegis/state/queues/&lt;queue&gt;.jsonl</code> as a <code>callback_attempted</code> record next to the existing <code>task_done</code> record. Timeouts mirror v0.7 outbound: 5s connect, 10s read.</p>
+  </section>
+
+  <section id="schedule">
+    <h2>Feature B — Schedule control plane</h2>
+    <p>Five endpoints, all under <code>/remote/v1/schedule</code>. Same auth gates as <code>/enqueue</code> and <code>/callback</code>.</p>
+
+    <h3>Push (create or replace)</h3>
+    <pre><code>PUT /remote/v1/schedule/&lt;name&gt;
+Authorization: Bearer &lt;token&gt;
+Content-Type: application/json
+Body:
+  {
+    "workflow":      "enqueue",
+    "args":          { "queue": "impl", "payload": "..." },
+    "cron":          "0 2 * * *",
+    "lifecycle":     "forever",
+    "on_overlap":    "skip",
+    "timezone":      "UTC",
+    "enabled":       true,
+    "notify":        false
+  }
+Response 200: {"name": "&lt;name&gt;", "written_to": ".aegis/schedules/&lt;name&gt;.yaml"}
+Response 4xx with {"error": "..."}</code></pre>
+    <p>PUT semantics — same name pushed twice writes twice; last write wins. Receiver-side validation runs <strong>before</strong> the file write:</p>
+    <ul>
+      <li>cron parse must succeed;</li>
+      <li>workflow must be in the receiver's workflow registry;</li>
+      <li>args must satisfy the workflow's declared signature;</li>
+      <li>lifecycle must be one of <code>forever</code> / <code>once</code> / <code>{fires: N}</code> / <code>{until: &lt;iso&gt;}</code>;</li>
+      <li>if <code>args.callback == true</code> and the workflow is <code>enqueue</code>, this is rejected — scheduler-triggered remote enqueues with callback are an explicit non-goal.</li>
+    </ul>
+    <p>On success, the receiver writes <code>.aegis/schedules/&lt;name&gt;.yaml</code> atomically (tempfile + rename) using ruamel.yaml's comment-preserving serializer, prefixed with a provenance comment:</p>
+    <pre><code># pushed_from: peer:zion at 2026-05-25T16:32:11Z
+workflow: enqueue
+cron: "0 2 * * *"
+args:
+  queue: impl
+  payload: "..."
+lifecycle: forever</code></pre>
+    <p>The existing v0.6 hot-reload watcher picks up the new file within ~1s. The schedule joins the running table on the next reload pass.</p>
+
+    <h3>List / Show / Remove / Logs</h3>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /remote/v1/schedule</code></td><td>list all schedules — each entry carries name, source, runtime summary</td></tr>
+        <tr><td><code>GET /remote/v1/schedule/&lt;name&gt;</code></td><td>show one — full spec + runtime + provenance, or 404</td></tr>
+        <tr><td><code>DELETE /remote/v1/schedule/&lt;name&gt;</code></td><td>remove a pushed schedule; 404 if missing, 409 if source ≠ pushed</td></tr>
+        <tr><td><code>GET /remote/v1/schedule/&lt;name&gt;/logs?tail=N</code></td><td>tail of <code>.aegis/state/schedules/&lt;name&gt;.jsonl</code></td></tr>
+      </tbody>
+    </table>
+    <p>List response <code>source</code> field distinguishes:</p>
+    <ul>
+      <li><code>inline</code> — declared in <code>.aegis.yaml</code>'s <code>schedules:</code> section;</li>
+      <li><code>overlay</code> — written to <code>.aegis/schedules/&lt;name&gt;.yaml</code> by a human;</li>
+      <li><code>pushed</code> — written to <code>.aegis/schedules/&lt;name&gt;.yaml</code> by a PUT.</li>
+    </ul>
+    <p>Detected from the leading <code># pushed_from:</code> comment. Only <code>source: "pushed"</code> entries are removable via DELETE.</p>
+
+    <h3>Receiver-side mechanics</h3>
+    <ul>
+      <li><strong>Atomic write.</strong> ruamel.yaml dump → tempfile → <code>rename()</code> into <code>.aegis/schedules/</code>. The hot-reload watcher only ever sees fully-formed files.</li>
+      <li><strong>Validation reuses the existing scheduler validator.</strong> Same code path that boot-time <code>.aegis.yaml</code> parsing uses; no duplication.</li>
+      <li><strong>Provenance.</strong> First two lines of every pushed file are a <code># pushed_from:</code> + <code># pushed_at:</code> comment pair. Preserved by ruamel across operator hand-edits.</li>
+      <li><strong>No new state file.</strong> Durability is the existing schedule JSONL audit; the only new bytes on disk are pushed YAML files in the already-watched overlay folder.</li>
+    </ul>
+  </section>
+
+  <section id="mcp">
+    <h2>MCP surface</h2>
+
+    <h3><code>aegis_enqueue</code> — semantics change, signature unchanged</h3>
+    <p>Tool signature stays as v0.7. Docstring rewritten to reflect that <code>callback=true</code> now works for remote targets when both sides are configured. <code>callback=true</code> on a remote target with no <code>remote_plane.bind</code> on this serve becomes an explicit error at MCP-tool-call time.</p>
+    <p>The returned <code>callback_note</code> string becomes one of:</p>
+    <ul>
+      <li><code>"callback will deliver to your inbox when the remote task terminates"</code> (callback=true, both sides configured);</li>
+      <li><code>"fire-and-forget — completion behavior is whatever the receiving serve is configured to do"</code> (callback=false).</li>
+    </ul>
+
+    <h3>Five new schedule tools</h3>
+    <table>
+      <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>aegis_schedule_push(name, spec, *, target=None, from_handle)</code></td><td>local: write <code>.aegis/schedules/&lt;name&gt;.yaml</code>; remote: PUT the named peer</td></tr>
+        <tr><td><code>aegis_schedule_list(*, target=None, from_handle)</code></td><td>summary rows for every schedule on the targeted serve</td></tr>
+        <tr><td><code>aegis_schedule_show(name, *, target=None, from_handle)</code></td><td>full spec + runtime + provenance for one schedule</td></tr>
+        <tr><td><code>aegis_schedule_remove(name, *, target=None, from_handle)</code></td><td>pushed-only; refuses inline/overlay</td></tr>
+        <tr><td><code>aegis_schedule_logs(name, *, target=None, tail=50, from_handle)</code></td><td>tail of the schedule's JSONL audit</td></tr>
+      </tbody>
+    </table>
+    <p>All five accept <code>target=None</code> (operate on this serve) or <code>target="&lt;peer&gt;"</code> (route through the named peer's HTTP endpoint via the same client used by <code>aegis_enqueue(target=...)</code>). Cross-host <code>/run</code>, <code>/enable</code>, <code>/disable</code> are explicit non-goals; the MCP surface stays 1:1 with the HTTP surface.</p>
+
+    <h3>Self-scheduling</h3>
+    <p><code>target=None</code> means an agent can write a schedule into its <strong>own</strong> serve's substrate. Use case: an agent decides "I should re-run this analysis every Sunday at 6am" and calls <code>aegis_schedule_push(name="weekly-analysis", spec={workflow: "prompt", cron: "0 6 * * 0", args: {...}})</code>. The schedule joins the local scheduler table within ~1s via hot reload. No human-in-the-loop required. The operator can always <code>aegis schedule remove weekly-analysis</code> to revoke it; the provenance stamp lets <code>aegis schedule list</code> show at a glance which schedules were agent-written vs operator-written vs peer-pushed.</p>
+  </section>
+
+  <section id="cli">
+    <h2>CLI surface</h2>
+    <p>Five new verbs / flags on the existing <code>aegis schedule</code> subapp.</p>
+    <pre><code># Push (resolve spec from local config or file).
+aegis schedule push --to vps --name nightly-build
+aegis schedule push --to vps --file my-schedule.yaml
+aegis schedule push --to vps --file my-schedule.json --name override-name
+
+# Read (--remote flag on existing inspection verbs).
+aegis schedule list --remote vps
+aegis schedule show --remote vps nightly-build
+aegis schedule logs --remote vps nightly-build --tail 50
+
+# Remove.
+aegis schedule remove --remote vps nightly-build</code></pre>
+    <p><code>push</code> resolves the spec from one of:</p>
+    <ul>
+      <li><code>--name &lt;n&gt;</code> (no <code>--file</code>): read <code>&lt;n&gt;</code> from the local scheduler config (inline <code>.aegis.yaml</code> <code>schedules.&lt;n&gt;</code> or <code>.aegis/schedules/&lt;n&gt;.yaml</code>), serialize to JSON, PUT.</li>
+      <li><code>--file &lt;p&gt;</code>: read the file (YAML or JSON, auto-detected by extension), PUT under the file's stem name unless <code>--name</code> overrides.</li>
+      <li>both: <code>--file</code> provides the spec; <code>--name</code> provides the remote name.</li>
+    </ul>
+    <p>No local state is retained after a successful push. "What's on the remote" is always a live GET to that remote; never a cached view. All five verbs print receiver-side errors verbatim (4xx body → stderr → non-zero exit).</p>
+  </section>
+
+  <section id="config">
+    <h2>Configuration</h2>
+    <p>The recommended config has <em>both</em> sides naming each other and <em>both</em> sides carrying a token if any. <code>remotes</code> and <code>remote_plane</code> are already present in v0.7; this design doesn't change either schema. It does change the <strong>deployment shape</strong>:</p>
+    <ul>
+      <li>v0.7: one side outbound (<code>remotes</code> only), other side inbound (<code>remote_plane</code> only) is a valid shape.</li>
+      <li>v0.7 + callbacks: any peer that wants to <em>receive</em> callbacks must also have <code>remote_plane.bind</code> set.</li>
+    </ul>
+    <pre><code># .aegis.yaml on zion
+remotes:
+  vps:
+    url: http://100.64.0.5:8556
+    token: "&lt;secret-for-zion-calling-vps&gt;"
+remote_plane:
+  bind: 100.64.0.4:8556
+  accept_tokens: ["&lt;secret-for-vps-calling-zion&gt;"]</code></pre>
+    <pre><code># .aegis.yaml on vps
+remotes:
+  zion:
+    url: http://100.64.0.4:8556
+    token: "&lt;secret-for-vps-calling-zion&gt;"
+remote_plane:
+  bind: 100.64.0.5:8556
+  accept_tokens: ["&lt;secret-for-zion-calling-vps&gt;"]</code></pre>
+    <p>Tokens are independent per direction. Same <code>remotes:</code> overlay folder mechanism as v0.7.</p>
+  </section>
+
+  <section id="impl">
+    <h2>Implementation sketch</h2>
+    <table>
+      <thead><tr><th>Module</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/aegis/remote/plane.py</code></td><td>Three new endpoints (<code>/callback</code>, <code>/schedule/...</code>); existing <code>/enqueue</code> body grows optional <code>callback_to</code> + <code>callback_handle</code> fields.</td></tr>
+        <tr><td><code>src/aegis/remote/client.py</code></td><td>Three new outbound paths (<code>remote_callback</code>, <code>remote_schedule_*</code>).</td></tr>
+        <tr><td><code>src/aegis/remote/config.py</code></td><td>No schema change — existing fields cover both new features.</td></tr>
+        <tr><td><code>src/aegis/queue/manager.py</code></td><td>Completion observer hooks the new callback observer; task record grows <code>callback_to</code> / <code>callback_handle</code> fields.</td></tr>
+        <tr><td><code>src/aegis/mcp/server.py</code></td><td><code>aegis_enqueue</code> docstring + callback routing; five new <code>aegis_schedule_*</code> MCP tools.</td></tr>
+        <tr><td><code>src/aegis/scheduler/push.py</code> (new)</td><td>Receiver-side PUT/GET/DELETE handlers. Reuses the existing <code>cron.parse</code> + <code>lifecycle.parse</code> + workflow-registry validators.</td></tr>
+        <tr><td><code>src/aegis/cli_schedule.py</code></td><td>Five new verbs / <code>--remote</code> flags.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>State changes:</strong> none new on disk. Callbacks ride the existing queue JSONL audit (new <code>callback_attempted</code> record). Pushed schedules land in <code>.aegis/schedules/&lt;name&gt;.yaml</code> and ride the existing schedule JSONL at <code>.aegis/state/schedules/&lt;name&gt;.jsonl</code>.</p>
+  </section>
+
+  <section id="testing">
+    <h2>Testing</h2>
+    <p>Mirrors the v0.7 shape:</p>
+    <ul>
+      <li><strong>Unit.</strong> Plane endpoint shape validation (auth, body, error paths). Receiver-side schedule validator (cron, lifecycle, workflow registry, args type-check). Client error normalization for the three new outbound paths. Provenance comment round-trips through ruamel.</li>
+      <li><strong>Plane endpoint tests.</strong> Auth gating on <code>/callback</code> and <code>/schedule/*</code> (token mismatch, IP allowlist, both combined). PUT-then-GET symmetry. PUT-then-DELETE-then-GET → 404. DELETE of inline → 409. GET of non-existent → 404.</li>
+      <li><strong>Hermetic integration.</strong> Two <code>aegis serve</code> instances in the same test process on loopback ports, configured as each other's peers.
+        <ul>
+          <li>Callback round-trip: <code>aegis_enqueue(target=B, callback=true)</code> on A; worker on B produces a result; A's pane mounts the <code>✉</code> block with the right tag and body. Plus three failure modes (<code>callback_to</code> unknown, A's plane down, A's session closed).</li>
+          <li>Schedule push cycle: A pushes a schedule onto B; the file lands at <code>.aegis/schedules/&lt;name&gt;.yaml</code> on B's tempdir; B's hot reload picks it up; B fires it (FakeClock); A reads logs back; A deletes it; the file disappears; B drops the schedule.</li>
+        </ul>
+      </li>
+      <li><strong>Live (<code>@pytest.mark.live</code>).</strong> Opt-in real-peer round-trip: one callback cycle + one schedule push-fire-logs-remove cycle. Auto-skip when the peer is unreachable, same convention v0.7 uses.</li>
+    </ul>
+  </section>
+
+  <section id="deferred">
+    <h2>Non-goals (explicit)</h2>
+    <ul>
+      <li><strong>HTTP-level <code>/run</code>, <code>/enable</code>, <code>/disable</code>.</strong> Operators can toggle locally; agents on the same machine can MCP-push a replacement. Cross-host toggling waits for a real need.</li>
+      <li><strong>Cross-host <code>aegis_handoff</code> to a live remote handle.</strong> Still semantically harder than enqueue. Not unlocked by this work.</li>
+      <li><strong>Callbacks for scheduler-triggered remote enqueues.</strong> Setting <code>callback=true</code> on a scheduled <code>enqueue</code> workflow is an explicit validation error — no live inbox to deliver to.</li>
+      <li><strong>Per-callback retry / persistent queue.</strong> Best-effort POST, one attempt, log + drop on miss. Substrate-level callback durability is out of scope.</li>
+      <li><strong>Schema migration for pushed schedules.</strong> A pushed spec is the v0.6 schedule-entry shape serialized to JSON. No version field, no migration path.</li>
+      <li><strong>Multi-peer broadcast push.</strong> <code>push --to vps,desktop</code> is noise on top of two <code>push --to &lt;peer&gt;</code> calls.</li>
+    </ul>
+
+    <details>
+      <summary>Future extensions (noted, not built)</summary>
+      <p>The <code>/remote/v1/</code> namespace is designed so these can land without breaking changes:</p>
+      <ul>
+        <li><code>POST /remote/v1/schedule/&lt;name&gt;/run</code> / <code>enable</code> / <code>disable</code> — same payload-light shape as DELETE; probably v0.9 or whenever an agent needs cross-host toggling.</li>
+        <li><code>GET /remote/v1/task/&lt;id&gt;</code> (status query) and <code>POST /remote/v1/task/&lt;id&gt;/cancel</code> — useful but standalone.</li>
+        <li><code>aegis_handoff(target_handle=…, target="&lt;peer&gt;")</code> — cross-host handoff. Deferred until use case appears.</li>
+        <li><code>aegis_schedule_subscribe(name, target=…)</code> — wire-level notification when a remote schedule fires/completes; would compose on top of the callback plumbing this round delivers.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>Open questions</summary>
+      <ol>
+        <li><strong><code>callback_to</code> default.</strong> Two options: (a) caller specifies the receiver's name-for-it explicitly in <code>remotes.vps.peer_name: "laptop"</code> config; (b) caller passes its own <code>from</code> as <code>callback_to</code> and trusts the receiver to find a matching <code>remotes:</code> entry. Lean (a) — explicit beats implicit; the v0.7 spec already has the operator naming the peer in <code>remotes:</code> so the symmetry is natural.</li>
+        <li><strong><code>pushed_from</code> in self-pushes.</strong> When an agent pushes locally (<code>target=None</code>), the provenance stamp is <code># pushed_from: agent:&lt;handle&gt;</code>. When the same agent pushes to a peer, the receiver stamps <code># pushed_from: peer:&lt;this-peer's-name-in-receiver's-view&gt;</code>. The originating agent's handle is <em>not</em> round-tripped to the receiver — receiver doesn't trust the caller's handle namespace. Worth flagging in case we want a richer audit later (e.g., <code>peer:zion:agent:lucid-knuth</code>).</li>
+        <li><strong><code>callback_handle</code> reuse for spawned-tab callbacks.</strong> Today a callback delivers to the handle that originated the enqueue. If that handle has spawned other tabs and the originator wants the callback to land on a different tab, no current mechanism. Out of scope for v1.</li>
+      </ol>
+    </details>
+  </section>
+
+  <footer>single self-contained file · no external dependencies · companion to the canonical <code>.md</code></footer>
+
+</div>
+</body>
+</html>
