@@ -5,6 +5,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-25
+
+### Changed
+- **Remote-plane public surface rewritten** to drop the
+  Telegram-as-default-return-channel framing that crept in from the
+  design spec. The remote plane has no built-in return channel; the
+  `callback_note` string returned to the calling agent now reads
+  *"no wire return channel in v1; completion behavior is whatever
+  the receiving serve is configured to do"*. README, docs/remote.md,
+  docs/index.md, docs/roadmap.md, docs/configuration.md, and the
+  `aegis_enqueue` docstring rewritten in the same voice. Example
+  URLs are now neutral tailnet IPs.
+- No code-behavior changes — only one user-visible string (the
+  `callback_note`) and the `aegis_enqueue` docstring. The wire
+  protocol, queue semantics, and config schema are unchanged from
+  0.7.0.
+
 ## [0.7.0] - 2026-05-25
 
 ### Added
