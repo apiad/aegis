@@ -60,7 +60,8 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
     - a plain queue-manager-like object (duck-typing back-compat for
       existing tests that pass ``_FakeQueueManager`` directly).
     """
-    if hasattr(bridge, "queue_manager"):
+    is_bridge = hasattr(bridge, "queue_manager")
+    if is_bridge:
         queue_manager = bridge.queue_manager
         inbox_router = bridge.inbox_router
     else:
@@ -126,10 +127,38 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
         await inbox_router.deliver(body["to_handle"], msg)
         return Response(status_code=204)
 
-    return Starlette(routes=[
+    async def schedule_push(request: Request) -> JSONResponse:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        name = request.path_params["name"]
+        if not name or "/" in name or name.startswith("."):
+            return JSONResponse({"error": "invalid schedule name"},
+                                status_code=400)
+        try:
+            body: dict[str, Any] = await request.json()
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        pushed_from = request.headers.get("X-Pushed-From", "peer:unknown")
+        from aegis.scheduler.push import validate_spec, write_atomic
+        try:
+            validate_spec(body, workflow_registry=bridge.workflow_registry)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        dest = write_atomic(bridge.state_root, name, body, pushed_from)
+        return JSONResponse(
+            {"name": name,
+             "written_to": str(dest.relative_to(bridge.state_root))})
+
+    routes = [
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),
         Route("/remote/v1/callback", callback, methods=["POST"]),
-    ])
+    ]
+    if is_bridge:
+        routes.append(
+            Route("/remote/v1/schedule/{name}", schedule_push, methods=["PUT"]))
+    return Starlette(routes=routes)
 
 
 def run_plane_async(app: Starlette, bind: str) -> asyncio.Task:

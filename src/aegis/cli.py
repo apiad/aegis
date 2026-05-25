@@ -138,6 +138,8 @@ def run(
 class _PlaneBridge:
     queue_manager: object
     inbox_router: object
+    workflow_registry: object = None
+    state_root: object = None
 
 
 async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
@@ -149,11 +151,16 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
     """
     if getattr(cfg, "remote_plane", None) is None:
         return
+    from types import SimpleNamespace
+
     from aegis.remote import plane as plane_mod
     from aegis.remote.callback_observer import install_callback_observer
+    from aegis.workflow.decorator import get_workflow
     bridge = _PlaneBridge(
         queue_manager=queue_manager,
         inbox_router=getattr(queue_manager, "_inbox", None),
+        workflow_registry=SimpleNamespace(get=get_workflow),
+        state_root=Path.cwd(),
     )
     app = plane_mod.build_plane(bridge, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
