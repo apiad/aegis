@@ -77,10 +77,10 @@ The harness wars are over. You probably already have your favorite (or two, or t
 
 <section class="aegis-section" markdown>
 
-## Five primitives for agent coordination { .aegis-section-h }
+## Six primitives for agent coordination { .aegis-section-h }
 
 <p class="aegis-lead" markdown>
-Multi-agent systems need more than a chat box. Aegis ships **five composable coordination primitives**, each with one verb, each delivered through the same calm `✉` block in the receiving agent's transcript.
+Multi-agent systems need more than a chat box. Aegis ships **six composable coordination primitives**, each with one verb, each delivered through the same calm `✉` block in the receiving agent's transcript.
 </p>
 
 <div class="aegis-primitives" markdown>
@@ -150,6 +150,24 @@ Spawn a PTY-backed shell any agent (or you) can run commands on, send raw keystr
 </div>
 
 <div class="aegis-card" markdown>
+<div class="aegis-card-glyph">▣</div>
+### Groups · *broadcast and gather*
+Form a named committee of agents that share one inbox-fanout channel. Send one structured four-field question; collect N parallel replies; reduce them into a single result. Use for multi-lens reviews, fastest-answer races, cross-provider consensus, or generate-and-pick.
+
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_group_spawn_mixed(name="audit", profiles=["sec","style","logic"])
+<span class="t-accent">⏺</span> aegis_group_broadcast(name="audit", objective="audit PR #214", …)
+<span class="t-accent">⏺</span> aegis_group_wait_all(name="audit", reducer="join_by_handle")
+   └ <span class="t-success">3/3 replied · 92s · join_by_handle</span>
+
+<span class="t-muted">--- result.reduced ---</span>
+{"sec":     "no obvious issues; rate-limiter uses a safe defaults table…",
+ "style":   "two nits in worker.py (naming, double-blank line)…",
+ "logic":   "the retry guard mis-counts attempts on connection-reset…"}</div>
+</div>
+</div>
+
+<div class="aegis-card" markdown>
 <div class="aegis-card-glyph">⟳</div>
 ### Workflow · *deterministic Python orchestration*
 When the dance has to be reliable — TDD loops, bug triage, multi-step plans — wrap it in a workflow. Plain Python, calls agents, runs bash predicates, retries with feedback. Top of the stack; spans agents.
@@ -183,7 +201,7 @@ The TUI is calm and dense. The metrics are honest. The substrate persists.
 - **Session persistence.** `aegis` reopens the last workspace by default — agent tabs, terminal tabs, profiles, order, with each underlying session genuinely resumed. `aegis --clean` opts out.
 - **Workflow catalog.** The `aegis.workflows` package ships seed workflows you import to register: `brainstorm_to_spec`, `execute_plan`, `review_branch`, `tdd_cycle`. The engine offers `ask_human` for host-tab dialogue, explicit checkpoints with durable resume, `spawn`/`close` for subagents, `bash_predicate` for retry-with-feedback loops, and `parallel` for fan-out joins.
 - **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP plane without a TUI. Add a Telegram token and drive your agent team from your phone.
-- **MCP plane.** Every spawned agent is injected with the aegis MCP server. Orientation (`aegis_meta`), session listing, handoff, queue dispatch, canvas ops, terminal ops, workflow invocation — one consistent surface across providers.
+- **MCP plane.** Every spawned agent is injected with the aegis MCP server. Orientation (`aegis_meta`), session listing, handoff, queue dispatch, canvas ops, terminal ops, group broadcast/gather, workflow invocation — one consistent surface across providers.
 
 </section>
 

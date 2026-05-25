@@ -7,7 +7,7 @@ writer wakes up with an inbox message carrying the cmd, exit code, and
 output tail — same `✉` channel queues, handoffs, and canvas writes
 already use.
 
-Aegis has five coordination primitives now:
+Aegis has six coordination primitives now:
 
 | Primitive | Verb | Wake trigger |
 |---|---|---|
@@ -16,6 +16,7 @@ Aegis has five coordination primitives now:
 | Canvas | "wake — shared state changed" | Subscriber writes |
 | Workflow | "run this orchestration, callback when done" | Workflow returns |
 | **Terminal** | "wake — command finished here" | Command exits |
+| Groups | "fan this out to a committee, gather replies" | Members reply |
 
 ## The model
 

@@ -45,20 +45,20 @@ integration. Aegis takes the opposite path:
   hosting, model selection — that's the harness's job. Aegis's job is
   the layer *above*: tabs, routing, delegation, persistence, the
   things a single-conversation CLI was never built to do.
-- **It makes them collaborate.** Five composable coordination
+- **It makes them collaborate.** Six composable coordination
   primitives mean a Claude tab can hand off to a Gemini tab, dispatch
   an OpenCode worker, subscribe to a shared canvas, share a live
-  terminal, or kick off a deterministic Python workflow that drives
-  all three.
+  terminal, fan a question out to a committee, or kick off a
+  deterministic Python workflow that drives all three.
 
 The harness wars are over. You probably already have your favorite (or
 two, or three). Aegis lets you keep them — and run them as a team.
 
-## Five primitives for agent coordination
+## Six primitives for agent coordination
 
 Each primitive has one verb and lands the same way in the receiving
 agent's transcript: as a `✉` block with a sender tag, timestamp, and a
-short body preview. One delivery channel, five wake patterns.
+short body preview. One delivery channel, six wake patterns.
 
 ### `→` Inbox — send context to a peer
 
@@ -142,6 +142,47 @@ rec = aegis_term_run(name="build", cmd="pytest -q",
 #     6 passed in 4.18s
 ```
 
+### `▣` Groups — broadcast and gather
+
+Form a named committee of agents that share one inbox-fanout channel
+and one in-flight broadcast slot. Send one structured four-field
+question — `objective`, `output_format`, `tool_guidance`,
+`boundaries` — collect N parallel answers, reduce them into a single
+result. Use when the same question has multiple useful perspectives,
+or when you want to *race* providers and keep the fastest.
+
+```python
+# spawn three reviewers with different lenses
+aegis_group_spawn_mixed(name="audit", from_handle="pm",
+    profiles=["sec_reviewer", "style_reviewer", "logic_reviewer"])
+
+aegis_group_broadcast(name="audit",
+    objective="audit PR #214 (branch feat/rate-limit)",
+    output_format="bullet list, each item severity-tagged (high/med/low)",
+    tool_guidance="prefer Read + Grep; avoid Bash and Edit",
+    boundaries="report only — no patches, no commits")
+
+# collect every reply, keyed by reviewer
+result = aegis_group_wait_all(name="audit",
+                              timeout=300,
+                              reducer="join_by_handle")
+# → result.reduced = {"sec_reviewer": "…", "style_reviewer": "…",
+#                     "logic_reviewer": "…"}
+```
+
+Switching to `aegis_group_wait_any` returns on the first reply and (by
+default) sends a passive `cancel` envelope to the losers — useful when
+the cheapest acceptable answer wins. Built-in reducers: `concat`,
+`join_by_handle`, `last_wins`, `majority_vote`; custom reducers
+register one function. Groups also have YAML presets in
+`.aegis.yaml` (`groups.presets.<name>.profiles: […]`) and a dedicated
+TUI tab with Members / Current broadcast / Recent broadcasts panels.
+
+**Reach for it when:** multi-lens code audit, fastest-answer racing,
+cross-provider consensus, generate-and-pick (N candidates → one),
+role-persona panels (PM / eng / UX react to the same proposal). Full
+walk-through in [docs/groups.md](docs/groups.md).
+
 ### `⟳` Workflow — deterministic Python orchestration
 
 When the dance has to be **reliable** — TDD loops, bug triage,
@@ -204,9 +245,10 @@ plan → dispatch implementer per task with durable resume),
   phone.
 - **MCP plane.** Every spawned agent is injected with the aegis MCP
   server: orientation (`aegis_meta`), session listing, handoff, queue
-  dispatch, canvas ops, terminal ops, workflow invocation. One
-  consistent surface across providers. With `--strict-mcp-config`,
-  aegis is the *only* MCP server the spawned agent sees.
+  dispatch, canvas ops, terminal ops, group broadcast/gather, workflow
+  invocation. One consistent surface across providers. With
+  `--strict-mcp-config`, aegis is the *only* MCP server the spawned
+  agent sees.
 
 ## Scheduled workflows
 
@@ -349,6 +391,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Queues](https://apiad.github.io/aegis/queues/) — inter-agent delegation
 - [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
 - [Terminals](https://apiad.github.io/aegis/terminals/) — shared live PTY
+- [Groups](https://apiad.github.io/aegis/groups/) — broadcast-and-gather committees
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)
