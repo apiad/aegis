@@ -13,6 +13,18 @@ class SessionInfo:
     unseen: bool
 
 
+class GroupsBridge(Protocol):
+    """Concrete surface for the aegis_group_* MCP tools."""
+
+    async def spawn(self, *, profile: str, group: str,
+                    handle: str | None = None) -> str: ...
+    async def broadcast(self, group: str, *, sender: str,
+                        objective: str, output_format: str,
+                        tool_guidance: str, boundaries: str) -> str: ...
+    async def wait_all(self, group: str, *, timeout: float = 600.0,
+                       reducer: str = "concat"): ...
+
+
 @runtime_checkable
 class AppBridge(Protocol):
     """Surface the MCP server consumes. Implementors today:
@@ -30,6 +42,7 @@ class AppBridge(Protocol):
     inbox_router: object         # InboxRouter
     canvas_manager: object       # CanvasManager
     terminal_manager: object     # TerminalManager
+    groups: object               # GroupsBridge
 
     def list_sessions(self) -> list[SessionInfo]: ...
     def list_agents(self) -> list[str]: ...

@@ -3,10 +3,48 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+from dataclasses import asdict
 
 from fastmcp import FastMCP
 
 from aegis.mcp.bridge import AppBridge
+
+
+async def _aegis_group_spawn_impl(bridge, *, profile: str, group: str,
+                                  handle: str | None = None) -> dict:
+    h = await bridge.groups.spawn(profile=profile, group=group,
+                                   handle=handle)
+    return {"handle": h, "group": group}
+
+
+async def _aegis_group_broadcast_impl(bridge, *, group: str, sender: str,
+                                      objective: str, output_format: str,
+                                      tool_guidance: str,
+                                      boundaries: str) -> dict:
+    bid = await bridge.groups.broadcast(
+        group, sender=sender, objective=objective,
+        output_format=output_format, tool_guidance=tool_guidance,
+        boundaries=boundaries,
+    )
+    return {"broadcast_id": bid}
+
+
+def _group_result_to_dict(result) -> dict:
+    return {
+        "broadcast_id": result.broadcast_id,
+        "by_member": {h: asdict(mr) for h, mr in result.by_member.items()},
+        "combined":  result.combined,
+        "errors":    dict(result.errors),
+        "timeouts":  list(result.timeouts),
+    }
+
+
+async def _aegis_group_wait_all_impl(bridge, *, group: str,
+                                     timeout: float = 600.0,
+                                     reducer: str = "concat") -> dict:
+    result = await bridge.groups.wait_all(group, timeout=timeout,
+                                           reducer=reducer)
+    return _group_result_to_dict(result)
 
 BRIEFING = (
     "You are running inside aegis — a meta-harness for coding agents. "
@@ -715,6 +753,50 @@ def build_server(bridge: AppBridge) -> FastMCP:
         except TerminalNotFound:
             return {"error": f"term_close rejected: unknown terminal {name!r}"}
         return {"ok": True}
+
+    @server.tool
+    async def aegis_group_spawn(profile: str, group: str,
+                                 handle: str | None = None) -> dict:
+        """Spawn a new agent into a group. Creates the group implicitly
+        if it doesn't exist. Returns ``{handle, group}``.
+
+        Profile must resolve in the loaded ``.aegis.yaml`` agents list.
+        """
+        return await _aegis_group_spawn_impl(bridge, profile=profile,
+                                              group=group, handle=handle)
+
+    @server.tool
+    async def aegis_group_broadcast(from_handle: str, group: str,
+                                    objective: str, output_format: str,
+                                    tool_guidance: str,
+                                    boundaries: str) -> dict:
+        """Broadcast a four-field message to every member of a group.
+
+        Required fields: ``objective``, ``output_format``, ``tool_guidance``,
+        ``boundaries``. The four are composed into the next user-message
+        turn for every group member. ``from_handle`` is your own aegis
+        handle. Returns ``{broadcast_id}`` — pass it to
+        ``aegis_group_wait_all`` / ``aegis_group_wait_any`` to collect.
+
+        Only one in-flight broadcast per group; a second call before the
+        first completes raises BroadcastInFlight.
+        """
+        from aegis.queue import sender_agent
+        return await _aegis_group_broadcast_impl(
+            bridge, group=group, sender=sender_agent(from_handle),
+            objective=objective, output_format=output_format,
+            tool_guidance=tool_guidance, boundaries=boundaries,
+        )
+
+    @server.tool
+    async def aegis_group_wait_all(group: str, timeout: float = 600.0,
+                                    reducer: str = "concat") -> dict:
+        """Block until every member of ``group`` posts one
+        post-broadcast turn, or until ``timeout`` seconds elapse.
+        Returns the ``GroupResult`` bundle as a JSON-serialisable dict.
+        """
+        return await _aegis_group_wait_all_impl(
+            bridge, group=group, timeout=timeout, reducer=reducer)
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:
