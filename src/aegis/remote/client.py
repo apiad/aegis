@@ -52,3 +52,20 @@ async def remote_enqueue(spec: RemoteSpec, queue: str, payload: str,
         return {"error": f"remote returned {resp.status_code}: {err}"}
     finally:
         await client.aclose()
+
+
+async def remote_callback(spec: RemoteSpec, body: dict) -> dict:
+    """POST /remote/v1/callback. Best-effort, no retry."""
+    try:
+        async with await _build_client(spec) as client:
+            r = await client.post("/remote/v1/callback", json=body,
+                                  timeout=httpx.Timeout(10.0, connect=5.0))
+    except httpx.TimeoutException:
+        return {"error": "callback_dropped: timeout"}
+    except httpx.RequestError as e:
+        return {"error": f"callback_dropped: unreachable ({e})"}
+    if r.status_code == 204 or r.status_code == 200:
+        return {"ok": True}
+    if r.status_code == 401:
+        return {"error": "callback_dropped: auth_rejected"}
+    return {"error": f"callback_dropped: {r.status_code}"}

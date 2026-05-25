@@ -137,13 +137,20 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
     """Start the remote plane if `.aegis.yaml` configured it.
 
     No-op when ``cfg.remote_plane`` is None. Otherwise builds the
-    Starlette app + an asyncio task running uvicorn.
+    Starlette app + an asyncio task running uvicorn. Also installs the
+    callback observer when ``cfg.remotes`` is non-empty.
     """
     if getattr(cfg, "remote_plane", None) is None:
         return
     from aegis.remote import plane as plane_mod
+    from aegis.remote.callback_observer import install_callback_observer
     app = plane_mod.build_plane(queue_manager, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
+    remotes = getattr(cfg, "remotes", None) or {}
+    if remotes:
+        self_name = getattr(cfg.remote_plane, "peer_name", None) or "this-serve"
+        install_callback_observer(
+            queue_manager, remotes=remotes, self_peer_name=self_name)
 
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
@@ -179,7 +186,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
     from aegis.config.yaml_loader import AegisConfig as _AegisConfig
     await _maybe_start_remote_plane(
-        _AegisConfig(remote_plane=remote_plane), qm)
+        _AegisConfig(remote_plane=remote_plane, remotes=remotes or {}), qm)
 
     # Scheduler — only runs when schedules are configured.
     scheduler = None
