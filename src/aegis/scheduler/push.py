@@ -46,6 +46,34 @@ def validate_spec(spec: dict, *, workflow_registry) -> None:
         raise ValueError(f"invalid lifecycle: {lc!r}")
 
 
+def classify_source(file_path: Path | None, inline_names: set[str],
+                    name: str) -> tuple[str, str | None, str | None]:
+    """Return (source, pushed_from, pushed_at) for a schedule.
+
+    source ∈ {"inline", "overlay", "pushed"}.
+    pushed_from / pushed_at are None unless source == "pushed".
+    """
+    if name in inline_names:
+        return ("inline", None, None)
+    if file_path is None or not file_path.exists():
+        return ("inline", None, None)
+    first_two = file_path.read_text().splitlines()[:2]
+    pf: str | None = None
+    pa: str | None = None
+    for line in first_two:
+        if line.startswith("# pushed_from:"):
+            rest = line[len("# pushed_from:"):].strip()
+            if " at " in rest:
+                pf, pa = rest.rsplit(" at ", 1)
+            else:
+                pf = rest
+        elif line.startswith("# pushed_at:"):
+            pa = line[len("# pushed_at:"):].strip()
+    if pf is not None:
+        return ("pushed", pf.strip(), (pa or "").strip())
+    return ("overlay", None, None)
+
+
 def write_atomic(state_root: Path, name: str, spec: dict,
                  pushed_from: str) -> Path:
     """Serialize spec to YAML with a provenance header; atomic rename

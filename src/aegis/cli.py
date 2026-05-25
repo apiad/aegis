@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
@@ -140,27 +140,51 @@ class _PlaneBridge:
     inbox_router: object
     workflow_registry: object = None
     state_root: object = None
+    scheduler: object = None
+    _inline_schedule_names: set = field(default_factory=set)
+
+    def inline_schedule_names(self) -> set:
+        return set(self._inline_schedule_names)
 
 
-async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
+def _read_inline_schedule_names(root: Path) -> set[str]:
+    """Read raw inline schedule names from ``<root>/.aegis.yaml``."""
+    cfg_path = root / ".aegis.yaml"
+    if not cfg_path.exists():
+        return set()
+    try:
+        from ruamel.yaml import YAML
+        yaml = YAML(typ="safe")
+        with cfg_path.open() as f:
+            raw = yaml.load(f) or {}
+        return set((raw.get("schedules") or {}).keys())
+    except Exception:  # noqa: BLE001 — best-effort introspection
+        return set()
+
+
+async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None":
     """Start the remote plane if `.aegis.yaml` configured it.
 
     No-op when ``cfg.remote_plane`` is None. Otherwise builds the
     Starlette app + an asyncio task running uvicorn. Also installs the
     callback observer when ``cfg.remotes`` is non-empty.
+
+    Returns the bridge so the caller can attach a scheduler later.
     """
     if getattr(cfg, "remote_plane", None) is None:
-        return
+        return None
     from types import SimpleNamespace
 
     from aegis.remote import plane as plane_mod
     from aegis.remote.callback_observer import install_callback_observer
     from aegis.workflow.decorator import get_workflow
+    root = Path.cwd()
     bridge = _PlaneBridge(
         queue_manager=queue_manager,
         inbox_router=getattr(queue_manager, "_inbox", None),
         workflow_registry=SimpleNamespace(get=get_workflow),
-        state_root=Path.cwd(),
+        state_root=root,
+        _inline_schedule_names=_read_inline_schedule_names(root),
     )
     app = plane_mod.build_plane(bridge, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
@@ -169,6 +193,7 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
         self_name = getattr(cfg.remote_plane, "peer_name", None) or "this-serve"
         install_callback_observer(
             queue_manager, remotes=remotes, self_peer_name=self_name)
+    return bridge
 
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
@@ -204,7 +229,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     await qm.start()
 
     from aegis.config.yaml_loader import AegisConfig as _AegisConfig
-    await _maybe_start_remote_plane(
+    plane_bridge = await _maybe_start_remote_plane(
         _AegisConfig(remote_plane=remote_plane, remotes=remotes or {}), qm)
 
     # Scheduler — only runs when schedules are configured.
@@ -225,6 +250,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
         scheduler = Scheduler(
             schedules=schedules, state_dir=_state_dir(Path.cwd()),
             run_workflow=_scheduler_run_workflow)
+        if plane_bridge is not None:
+            plane_bridge.scheduler = scheduler
         await scheduler.start()
 
         # Hot reload: re-read .aegis.yaml on filesystem change and

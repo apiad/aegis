@@ -23,6 +23,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 
 from aegis.scheduler.clock import Clock, SystemClock
@@ -304,6 +305,30 @@ class Scheduler:
                     timeout=self.cfg.tick_seconds)
             except asyncio.TimeoutError:
                 pass
+
+    # ── inspection ─────────────────────────────────────────────────
+    def snapshot(self) -> list[SimpleNamespace]:
+        """Return a list of inspection entries (one per loaded schedule)."""
+        return [self._entry_view(name) for name in self.schedules]
+
+    def get(self, name: str) -> SimpleNamespace | None:
+        """Return one inspection entry, or None if unknown."""
+        if name not in self.schedules:
+            return None
+        return self._entry_view(name)
+
+    def _entry_view(self, name: str) -> SimpleNamespace:
+        spec = self.schedules[name]
+        st = self._state.get(name)
+        return SimpleNamespace(
+            name=name,
+            spec=spec,
+            next_fire=st.next_fire if st else None,
+            last_completed_at=st.last_completed_at if st else None,
+            fire_count=st.fire_count if st else 0,
+            in_flight=st.in_flight if st else False,
+            enabled=spec.get("enabled", True),
+        )
 
     async def stop(self) -> None:
         if self._stopped is None:
