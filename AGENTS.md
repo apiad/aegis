@@ -6,8 +6,11 @@
     aegis serve                   # headless: MCP plane + optional Telegram
 
 `aegis` and `aegis serve` both resolve the project root via
-`find_project_root()` (closest ancestor containing `.aegis.py`); the harness
-subprocess is rooted there unless `--cwd` overrides.
+`find_project_root()` (closest ancestor containing `.aegis.py` or
+`.aegis.yaml`); the harness subprocess is rooted there unless `--cwd`
+overrides. `.aegis.py` carries imperative agent + queue setup;
+`.aegis.yaml` (plus drop-in overlays under `.aegis/schedules/`) carries
+declarative scheduler entries — both loaders coexist and merge.
 
 ## Package management
 
@@ -97,6 +100,22 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   entry for CLI (`aegis workflow run`) and MCP (`aegis_run_workflow`),
   with auto-drain + auto-close in finally. Compose on the v1 queue
   for delegation; no second agent-spawn plane.
+- `src/aegis/scheduler/` - cron-style scheduled workflow execution.
+  `clock.py` (SystemClock + FakeClock); `cron.py` (croniter +
+  zoneinfo, UTC-normalized `next_fire`); `lifecycle.py` (`is_exhausted`
+  predicate for `forever` / `once` / `{fires: N}` / `{until: <iso>}`);
+  `scheduler.py` (single-asyncio tick loop, JSONL audit under
+  `.aegis/state/schedules/<name>.jsonl`, atomic `schedules.snapshot.json`,
+  `replace_schedules` for hot reload, `fire_now` for manual dispatch,
+  `on_overlap: skip|queue|kill`); `replay.py` (boot replay rebuilds
+  fire_count + closes dangling `fire_requested` as `failed:interrupted`);
+  `notify.py` (`Notifier` + `maybe_notify` hook); `reload.py`
+  (`ReloadWatcher` — watchdog Observer + async debounced reload,
+  exceptions swallowed and logged). Built-in workflows in
+  `src/aegis/workflows/{prompt,enqueue}.py` register on import.
+  `src/aegis/cli_schedule.py` mounts the `aegis schedule` subapp;
+  `src/aegis/config/edit.py` does comment-preserving YAML edits via
+  ruamel + atomic tempfile rename.
 - `examples/` - shipped workflows (`tdd_step.py`). Import in your
   `.aegis.py` to register them.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,

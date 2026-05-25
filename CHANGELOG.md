@@ -5,6 +5,37 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+- **Scheduler substrate.** Cron-style scheduled workflow execution
+  inside `aegis serve`. Declarative in `.aegis.yaml` under a top-level
+  `schedules:` section; drop-in overlays under `.aegis/schedules/<name>.yaml`
+  merge into the table with fail-loud conflict detection. Each entry
+  declares `workflow`, `args`, a trigger (`cron` or `fire_at`), a
+  `lifecycle` (`forever`, `once`, `{fires: N}`, `{until: <iso>}`),
+  `on_overlap` (`skip` / `queue` / `kill`), and optional `notify` /
+  `timeout` / `enabled` knobs. A single asyncio tick loop walks the
+  table every 60 s, dispatches eligible entries through the workflow
+  runner, and appends lifecycle events (`fire_requested` /
+  `fire_completed` / `fire_failed`) to `.aegis/state/schedules/<name>.jsonl`.
+  A derived snapshot at `.aegis/state/schedules.snapshot.json` carries
+  the next-fire-time + in-flight flag per schedule for dashboards.
+  On-boot replay rebuilds `fire_count` from the JSONL, closes dangling
+  `fire_requested` records as `failed:interrupted`, and flags
+  past-due fires for a single backfill.
+- **Built-in workflows.** `prompt(agent, text)` spawns an agent, sends
+  one message, closes; `enqueue(queue, payload, callback=false)` is
+  the canonical scheduler→queue handoff.
+- **`aegis schedule` CLI.** `list / show / run / enable / disable / logs`.
+  `enable` / `disable` go through a comment-preserving ruamel.yaml
+  editor so operator-curated YAML survives automation.
+- **Hot reload.** A watchdog observer over `.aegis.yaml` and the
+  overlay folders re-reads the config on every edit and atomic-swaps
+  the running scheduler's schedule table. Parse errors keep the prior
+  config intact and append a `reload_failed` record to
+  `.aegis/state/aegis_events.jsonl`.
+
+Spec: `docs/superpowers/specs/2026-05-25-aegis-scheduler-design.md`.
+
 ## [0.5.1] - 2026-05-23
 
 ### Fixed

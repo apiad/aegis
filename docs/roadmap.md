@@ -67,6 +67,22 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
+### v0.6.0 (current)
+- **Scheduler substrate.** Cron-style scheduled workflow execution
+  alongside QueueManager + InboxRouter. Declarative
+  `.aegis.yaml` with drop-in overlays at `.aegis/schedules/<name>.yaml`;
+  triggers (`cron`, `fire_at`), lifecycles (`forever`, `once`,
+  `{fires: N}`, `{until}`), overlap policies (`skip`, `queue`, `kill`),
+  and notify hooks. JSONL audit + snapshot per schedule. On-boot
+  replay closes dangling fire-requested records. Hot reload via
+  filesystem watcher: edit `.aegis.yaml` and the running scheduler
+  atomic-swaps without restart.
+- **Built-in workflows.** `prompt` (one-shot agent message) and
+  `enqueue` (scheduler → queue handoff).
+- **`aegis schedule` CLI.** `list / show / run / enable / disable /
+  logs`; `enable`/`disable` go through a comment-preserving YAML
+  editor.
+
 ## Next
 
 - **Auto-checkpoint primitives.** Promote heavy primitives

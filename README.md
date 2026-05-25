@@ -208,6 +208,50 @@ plan → dispatch implementer per task with durable resume),
   consistent surface across providers. With `--strict-mcp-config`,
   aegis is the *only* MCP server the spawned agent sees.
 
+## Scheduled workflows
+
+Aegis runs a cron-style scheduler alongside QueueManager and the inbox
+router. Schedules are declared in `.aegis.yaml` and can be split into
+drop-in overlays under `.aegis/schedules/<name>.yaml`. Each entry names
+a workflow (built-in or registered), a trigger (`cron` or `fire_at`),
+a lifecycle (`forever` / `once` / `{fires: N}` / `{until: <iso>}`),
+and an overlap policy (`skip` / `queue` / `kill`).
+
+```yaml
+# .aegis.yaml
+schedules:
+  morning-briefing:
+    workflow: prompt
+    cron: "0 6 * * *"
+    timezone: America/Havana
+    args: { agent: default, message: "Write today's briefing." }
+  ci-watch:
+    workflow: enqueue
+    cron: "*/5 * * * *"
+    lifecycle: forever
+    on_overlap: skip
+    args: { queue: ci, payload: "Check CI status and report failures." }
+```
+
+Two workflows ship in-tree: `prompt` (one-shot agent message) and
+`enqueue` (scheduler → queue handoff).
+
+The substrate writes a JSONL audit log per schedule under
+`.aegis/state/schedules/<name>.jsonl` plus a derived
+`schedules.snapshot.json` for dashboards. On boot it replays each log
+to rebuild fire counts and closes any dangling `fire_requested` record
+as `failed:interrupted`. Editing `.aegis.yaml` or any overlay file
+hot-swaps the schedule table without a restart — entries that didn't
+change keep their state.
+
+```bash
+aegis schedule list                # current schedules + next fire
+aegis schedule show morning-briefing
+aegis schedule run morning-briefing   # force-fire once
+aegis schedule disable morning-briefing  # comment-preserving YAML edit
+aegis schedule logs morning-briefing -n 50
+```
+
 ## Install
 
 ```bash
