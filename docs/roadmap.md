@@ -82,6 +82,17 @@
 - **`aegis schedule` CLI.** `list / show / run / enable / disable /
   logs`; `enable`/`disable` go through a comment-preserving YAML
   editor.
+- **Agent groups.** Sixth coordination primitive. Named committees
+  with one in-flight broadcast slot, four-field broadcast contract
+  (`objective` / `output_format` / `tool_guidance` / `boundaries`),
+  `wait_all` + `wait_any` waiters with passive loser cancel, four
+  built-in reducers (`concat`, `join_by_handle`, `last_wins`,
+  `majority_vote`). Nine `aegis_group_*` MCP tools, mirror surface
+  on `WorkflowEngine` plus `engine.ephemeral_group()` context
+  manager, `.aegis.yaml` `groups:` + `.aegis/groups/<name>.yaml`
+  overlays with preset-name fail-loud merge,
+  `aegis_group_spawn_mixed(preset=...)` factory. Per-group JSONL
+  audit at `.aegis/state/groups/<name>.jsonl` with on-boot replay.
 
 ## Next
 

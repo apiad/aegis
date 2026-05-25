@@ -119,6 +119,32 @@ Routing inside the chat:
 
 A systemd unit template lives at `scripts/aegis-serve.service`.
 
+## Groups
+
+Optional. Declarative shapes for agent committees. Inline form:
+
+```yaml
+groups:
+  defaults:
+    broadcast_timeout: 300
+    default_reducer: join_by_handle
+  presets:
+    code_audit:
+      profiles: [sec, style, logic]
+```
+
+Per-preset overlays live at `.aegis/groups/<name>.yaml` (file body is
+the preset body — `profiles: [...]` directly). Inline + overlay
+collisions on a preset name are fail-loud.
+
+Presets become callable via the MCP plane:
+
+```
+aegis_group_spawn_mixed(group="rev", preset="code_audit")
+```
+
+See [Groups](groups.md) for the full surface.
+
 ## Workflows
 
 To make Python workflows visible to `aegis workflow run` and to the

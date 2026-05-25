@@ -5,7 +5,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-25
+
 ### Added
+- **Agent groups.** Sixth coordination primitive: named committees
+  of agents with one in-flight broadcast slot, a four-field broadcast
+  contract (`objective`, `output_format`, `tool_guidance`,
+  `boundaries`), `wait_all` and `wait_any` waiters (the latter with
+  passive loser cancellation via `group:<name>/cancel:<id>` inbox
+  envelopes), four built-in reducers (`concat`, `join_by_handle`,
+  `last_wins`, `majority_vote`) plus `register_reducer` for custom
+  reductions, append-only JSONL audit per group under
+  `.aegis/state/groups/<name>.jsonl` with on-boot replay that ignores
+  torn trailing lines. Nine MCP tools (`aegis_group_spawn`,
+  `aegis_group_spawn_mixed`, `aegis_group_broadcast`,
+  `aegis_group_wait_all`, `aegis_group_wait_any`, `aegis_group_status`,
+  `aegis_group_dissolve`, `aegis_group_rename`,
+  `aegis_group_move_member`). Mirror surface on `WorkflowEngine`
+  (`spawn_group` / `broadcast` / `wait_all` / `wait_any` /
+  `dissolve_group` / `rename_group` / `move_member`) plus the
+  `engine.ephemeral_group(profiles=[…])` context manager for
+  one-shot committees. YAML configuration: `groups:` section in
+  `.aegis.yaml` with `defaults:` and `presets:`, drop-in overlays at
+  `.aegis/groups/<name>.yaml`, preset-name collisions fail loud.
+  `aegis_group_spawn_mixed(preset=...)` resolves presets from
+  config. TUI surface: `GroupTabState` with aggregate-state emoji
+  (`✓` / `⏳` / `⚠` / `⛔`) and `GroupDashboard` render with three
+  panels (Members, Current broadcast, Recent broadcasts).
 - **Scheduler substrate.** Cron-style scheduled workflow execution
   inside `aegis serve`. Declarative in `.aegis.yaml` under a top-level
   `schedules:` section; drop-in overlays under `.aegis/schedules/<name>.yaml`

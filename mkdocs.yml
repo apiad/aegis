@@ -82,6 +82,7 @@ nav:
       - Canvas: canvas.md
       - Terminals: terminals.md
       - Workflows: workflows.md
+      - Groups: groups.md
       - MCP plane: mcp.md
   - Reference:
       - Architecture: architecture.md

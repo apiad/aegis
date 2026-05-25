@@ -116,6 +116,27 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `src/aegis/cli_schedule.py` mounts the `aegis schedule` subapp;
   `src/aegis/config/edit.py` does comment-preserving YAML edits via
   ruamel + atomic tempfile rename.
+- `src/aegis/groups/` - agent-group substrate (sixth coordination
+  primitive). `models.py` (`Group`, `MemberRef`, `MemberResult`,
+  `GroupResult`, `BroadcastRecord`); `registry.py` (in-memory map +
+  in-flight broadcast tracker; emits persistence events on every
+  mutation; auto-dissolves a group that drops to zero members);
+  `runtime.py` (`broadcast` / `wait_all` / `wait_any`, the last with
+  passive loser cancel via `group:<name>/cancel:<id>` inbox tags);
+  `reducers.py` (`concat`, `join_by_handle`, `last_wins`,
+  `majority_vote` + `register_reducer`); `persistence.py` (per-group
+  append-only JSONL log at `.aegis/state/groups/<name>.jsonl`,
+  torn-trailing-line tolerant, replays on boot); `wiring.py`
+  (`spawn_many` / `spawn_group` sugars); `bridge.py` (`_GroupsBridge`
+  surface). MCP surface: nine `aegis_group_*` tools. Mirror methods
+  on `WorkflowEngine` + `engine.ephemeral_group()` context manager.
+  YAML config at `.aegis.yaml` `groups:` + overlays under
+  `.aegis/groups/<name>.yaml`; `aegis_group_spawn_mixed(preset=...)`
+  resolves named presets.
+- `src/aegis/tui/groups/` - TUI surface for groups. `state.py`
+  (`GroupTabState` + aggregate-state emoji); `dashboard.py`
+  (`GroupDashboard` widget with `render_dashboard` pure function —
+  Members / Current broadcast / Recent broadcasts panels).
 - `examples/` - shipped workflows (`tdd_step.py`). Import in your
   `.aegis.py` to register them.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,
