@@ -3,5 +3,6 @@
 See docs/superpowers/specs/2026-05-25-aegis-remote-plane-design.md.
 """
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
+from aegis.remote.plane import build_plane
 
-__all__ = ["RemoteSpec", "RemotePlaneSpec"]
+__all__ = ["RemoteSpec", "RemotePlaneSpec", "build_plane"]
