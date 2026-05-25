@@ -213,6 +213,7 @@ class AegisApp(App):
         self.groups = make_groups_bridge(
             session_manager=_GroupSessionAdapter(self),
             inbox_router=self.inbox_router)
+        self.remotes: dict = {}  # populated later from loaded YAML
         self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:

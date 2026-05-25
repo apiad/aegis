@@ -52,6 +52,7 @@ class AppBridge(Protocol):
     canvas_manager: object       # CanvasManager
     terminal_manager: object     # TerminalManager
     groups: object               # GroupsBridge
+    remotes: object              # dict[str, RemoteSpec]; empty when none configured
 
     def list_sessions(self) -> list[SessionInfo]: ...
     def list_agents(self) -> list[str]: ...

@@ -29,6 +29,7 @@ class SessionManager:
         self.queue_manager = None
         self.canvas_manager = None
         self.terminal_manager = None
+        self.remotes: dict = {}  # populated by cli.serve from loaded YAML
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
         from aegis.groups.bridge import make_groups_bridge
@@ -37,6 +38,9 @@ class SessionManager:
 
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
+
+    def attach_remotes(self, remotes: dict) -> None:
+        self.remotes = remotes
 
     def attach_canvas_manager(self, cm) -> None:
         self.canvas_manager = cm

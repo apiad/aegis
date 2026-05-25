@@ -388,18 +388,40 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,
-                            callback: bool = True) -> dict:
+                            callback: bool = True,
+                            target: str | None = None) -> dict:
         """Enqueue a task on a named queue. Returns task_id + queued_position.
 
-        If callback=true (default), the worker's final result lands in your
-        inbox as a normal user message when it completes; you can keep
-        working between enqueue and the callback arrival. If callback=false,
-        the result is dropped — use aegis_task_status to poll instead.
+        If ``target`` is set, the enqueue is forwarded to a configured
+        remote aegis (must be a key in ``remotes`` in .aegis.yaml). The
+        remote runs the task on its own filesystem and queue. ``callback``
+        is ignored for remote targets in v1 — the remote pings via
+        Telegram on completion.
 
-        from_handle is your own aegis handle (read it from your system
-        prompt). Unknown queue returns {"error": "enqueue rejected: …"}.
+        If ``target=None`` (default), the task runs on this aegis's local
+        QueueManager. ``callback=true`` (default) routes the worker's
+        final result into your inbox; ``callback=false`` drops it.
+
+        from_handle is your own aegis handle (read from your system prompt).
+        Unknown queue/target returns ``{"error": "..."}``.
         """
         from aegis.queue import sender_agent
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_enqueue
+            result = await remote_enqueue(
+                remotes[target], queue, payload, from_handle)
+            if "error" not in result:
+                result["callback_note"] = (
+                    "wire callbacks not yet implemented; "
+                    "remote will Telegram on completion")
+                result["target"] = target
+            return result
+
         try:
             tid, pos = bridge.queue_manager.enqueue(
                 queue, payload,

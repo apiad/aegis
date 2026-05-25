@@ -16,6 +16,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        remotes = {}
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -34,6 +35,7 @@ def test_appbridge_requires_full_surface():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        remotes = {}
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -46,6 +48,7 @@ def test_appbridge_requires_full_surface():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        remotes = {}
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
