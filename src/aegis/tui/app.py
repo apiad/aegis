@@ -209,6 +209,10 @@ class AegisApp(App):
             state_dir=self._state_dir / "terminals")
         self.terminal_manager.set_notifier(
             make_terminal_notifier(self.inbox_router))
+        from aegis.groups.bridge import make_groups_bridge
+        self.groups = make_groups_bridge(
+            session_manager=_GroupSessionAdapter(self),
+            inbox_router=self.inbox_router)
         self._mcp.bind(self)
 
     def compose(self) -> ComposeResult:
@@ -537,6 +541,30 @@ class AegisApp(App):
         if pane is not None:
             await self._close_pane(pane)
             self._refresh_tabbar()
+
+
+class _GroupSessionAdapter:
+    """SessionManager-shaped facade over AegisApp for groups wiring.
+
+    GroupWiring needs ``async spawn(profile, handle) -> handle`` and
+    ``get(handle) -> session-with-add_event_observer``. AegisApp already
+    has both pieces — this adapter unifies them under one surface.
+    """
+
+    def __init__(self, app: "AegisApp") -> None:
+        self._app = app
+
+    async def spawn(self, *, profile: str,
+                    handle: str | None = None) -> str:
+        sess = _SessionManagerAdapter(self._app).spawn(
+            profile, handle=handle)
+        return sess.handle
+
+    def get(self, handle: str):
+        for p in self._app._panes:
+            if p.handle == handle:
+                return p._core
+        return None
 
 
 class _SessionFocusAdapter:

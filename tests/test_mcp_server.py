@@ -98,7 +98,9 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_term_spawn", "aegis_term_list", "aegis_term_run",
         "aegis_term_keys", "aegis_term_read",
         "aegis_term_subscribe", "aegis_term_unsubscribe",
-        "aegis_term_close"}
+        "aegis_term_close",
+        "aegis_group_spawn", "aegis_group_broadcast",
+        "aegis_group_wait_all"}
 
 
 @pytest.mark.asyncio

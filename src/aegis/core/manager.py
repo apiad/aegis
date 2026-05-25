@@ -31,6 +31,9 @@ class SessionManager:
         self.terminal_manager = None
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
+        from aegis.groups.bridge import make_groups_bridge
+        self.groups = make_groups_bridge(
+            session_manager=self, inbox_router=inbox)
 
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
