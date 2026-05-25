@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
@@ -133,6 +134,12 @@ def run(
              clean=clean).run()
 
 
+@dataclass
+class _PlaneBridge:
+    queue_manager: object
+    inbox_router: object
+
+
 async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
     """Start the remote plane if `.aegis.yaml` configured it.
 
@@ -144,7 +151,11 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> None:
         return
     from aegis.remote import plane as plane_mod
     from aegis.remote.callback_observer import install_callback_observer
-    app = plane_mod.build_plane(queue_manager, cfg.remote_plane)
+    bridge = _PlaneBridge(
+        queue_manager=queue_manager,
+        inbox_router=getattr(queue_manager, "_inbox", None),
+    )
+    app = plane_mod.build_plane(bridge, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
     remotes = getattr(cfg, "remotes", None) or {}
     if remotes:

@@ -1,7 +1,8 @@
 """Receiver-side HTTP plane for the aegis remote API.
 
-Exposes a single endpoint, ``POST /remote/v1/enqueue``, that other
-aegis instances call to enqueue work into this aegis's QueueManager.
+Exposes endpoints that other aegis instances call:
+  - ``POST /remote/v1/enqueue``  — enqueue work into this aegis's QueueManager.
+  - ``POST /remote/v1/callback`` — deliver a task result to a local InboxRouter.
 
 The app is a Starlette app; it is mounted onto a uvicorn server by
 ``aegis serve`` when ``.aegis.yaml`` has a ``remote_plane`` block.
@@ -15,7 +16,7 @@ from typing import Any, Protocol
 import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from aegis.remote.config import RemotePlaneSpec
@@ -28,25 +29,49 @@ class _QueueManagerLike(Protocol):
                 callback_handle: str | None) -> tuple[str, int]: ...
 
 
-def build_plane(queue_manager: _QueueManagerLike,
-                spec: RemotePlaneSpec) -> Starlette:
-    """Build the Starlette app bound to ``queue_manager`` + ``spec``."""
+def _check_auth(request: Request, spec: RemotePlaneSpec) -> dict | None:
+    """Return None on auth success; else an {error: ..., _status: N} dict.
+
+    Caller should pop ``_status`` and use it as the HTTP response code
+    before returning JSON with the remaining keys.
+    """
+    if spec.accept_from:
+        peer = request.client.host if request.client else None
+        if peer not in spec.accept_from:
+            return {"error": f"source ip {peer!r} not in accept_from",
+                    "_status": 403}
+    if spec.accept_tokens:
+        auth = request.headers.get("authorization", "")
+        token = (auth.removeprefix("Bearer ").strip()
+                 if auth.startswith("Bearer ") else "")
+        if token not in spec.accept_tokens:
+            return {"error": "missing or invalid bearer token",
+                    "_status": 401}
+    return None
+
+
+def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
+    """Build the Starlette app bound to ``bridge`` (or a bare queue_manager)
+    and ``spec``.
+
+    ``bridge`` may be either:
+    - an object with ``.queue_manager`` and ``.inbox_router`` attributes
+      (the preferred bridge shape), or
+    - a plain queue-manager-like object (duck-typing back-compat for
+      existing tests that pass ``_FakeQueueManager`` directly).
+    """
+    if hasattr(bridge, "queue_manager"):
+        queue_manager = bridge.queue_manager
+        inbox_router = bridge.inbox_router
+    else:
+        queue_manager = bridge
+        inbox_router = None
 
     async def enqueue(request: Request) -> JSONResponse:
-        if spec.accept_from:
-            peer = request.client.host if request.client else None
-            if peer not in spec.accept_from:
-                return JSONResponse(
-                    {"error": f"source ip {peer!r} not in accept_from"},
-                    status_code=403)
-        if spec.accept_tokens:
-            auth = request.headers.get("authorization", "")
-            token = (auth.removeprefix("Bearer ").strip()
-                     if auth.startswith("Bearer ") else "")
-            if token not in spec.accept_tokens:
-                return JSONResponse(
-                    {"error": "missing or invalid bearer token"},
-                    status_code=401)
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
 
         try:
             body: dict[str, Any] = await request.json()
@@ -70,8 +95,40 @@ def build_plane(queue_manager: _QueueManagerLike,
                 status_code=404)
         return JSONResponse({"task_id": tid, "queued_position": pos})
 
+    async def callback(request: Request) -> Response:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        if inbox_router is None:
+            return JSONResponse(
+                {"error": "callback endpoint requires inbox_router; "
+                 "this plane is misconfigured"},
+                status_code=500)
+        try:
+            body: dict[str, Any] = await request.json()
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+        missing = [k for k in ("task_id", "queue", "from_peer", "to_handle",
+                               "status", "result_text") if k not in body]
+        if missing:
+            return JSONResponse(
+                {"error": f"missing required fields: {missing}"}, status_code=400)
+        from aegis.queue.schema import InboxMessage, now_iso
+        sender = f"queue:{body['from_peer']}:{body['queue']}"
+        msg = InboxMessage(
+            sender=sender,
+            timestamp=now_iso(),
+            body=body["result_text"],
+            task_id=body["task_id"],
+            status=body["status"],
+        )
+        await inbox_router.deliver(body["to_handle"], msg)
+        return Response(status_code=204)
+
     return Starlette(routes=[
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),
+        Route("/remote/v1/callback", callback, methods=["POST"]),
     ])
 
 
