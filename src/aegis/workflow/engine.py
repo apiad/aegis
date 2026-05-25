@@ -462,6 +462,46 @@ class _EphemeralGroupHandle:
         return await self.runtime.wait_any(self.name, **kw)
 
 
+def _attach_group_methods(cls):
+    async def spawn_group(self, name, profiles):
+        return await self._groups_wiring.spawn_group(name, profiles)
+
+    async def broadcast(self, group, *, objective, output_format,
+                        tool_guidance, boundaries):
+        return await self._groups_runtime.broadcast(
+            group, sender="workflow",
+            objective=objective, output_format=output_format,
+            tool_guidance=tool_guidance, boundaries=boundaries,
+        )
+
+    async def wait_all(self, group, *, timeout=600.0, reducer="concat"):
+        return await self._groups_runtime.wait_all(
+            group, timeout=timeout, reducer=reducer)
+
+    async def wait_any(self, group, *, timeout=600.0, cancel_losers=True):
+        return await self._groups_runtime.wait_any(
+            group, timeout=timeout, cancel_losers=cancel_losers)
+
+    async def dissolve_group(self, group):
+        return self._groups_runtime.registry.dissolve(group)
+
+    async def rename_group(self, old, new):
+        return self._groups_runtime.registry.rename(old, new)
+
+    async def move_member(self, handle, *, from_group, to_group):
+        return self._groups_runtime.registry.move_member(
+            handle, from_group=from_group, to_group=to_group)
+
+    cls.spawn_group = spawn_group
+    cls.broadcast = broadcast
+    cls.wait_all = wait_all
+    cls.wait_any = wait_any
+    cls.dissolve_group = dissolve_group
+    cls.rename_group = rename_group
+    cls.move_member = move_member
+    return cls
+
+
 def _attach_ephemeral_group(cls):
     @contextlib.asynccontextmanager
     async def ephemeral_group(self, *, profiles: list[str]):
@@ -483,4 +523,5 @@ def _attach_ephemeral_group(cls):
     return cls
 
 
+_attach_group_methods(WorkflowEngine)
 _attach_ephemeral_group(WorkflowEngine)
