@@ -182,14 +182,16 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             status = err.pop("_status", 401)
             return JSONResponse(err, status_code=status)
         name = request.path_params["name"]
-        ok, error = remove_schedule(
+        result = remove_schedule(
             getattr(bridge, "scheduler", None),
             bridge.state_root, bridge.inline_schedule_names(), name)
-        if error == "not found":
+        if result.status == "ok":
+            return Response(status_code=204)
+        if result.status == "not_found":
             return JSONResponse({"error": "not found"}, status_code=404)
-        if error is not None:
-            return JSONResponse({"error": error}, status_code=409)
-        return Response(status_code=204)
+        return JSONResponse(
+            {"error": f"cannot remove {result.source!r}-source schedule"},
+            status_code=409)
 
     async def schedule_logs(request: Request) -> JSONResponse:
         err = _check_auth(request, spec)

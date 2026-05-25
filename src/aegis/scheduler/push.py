@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,18 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from aegis.scheduler.cron import next_fire as _validate_cron
+
+
+@dataclass
+class RemoveResult:
+    """Outcome of ``remove_schedule``.
+
+    ``status`` is one of ``"ok"``, ``"not_found"``, ``"wrong_source"``.
+    ``source`` is set only when ``status == "wrong_source"`` (the actual
+    classification, e.g. ``"inline"`` or ``"overlay"``).
+    """
+    status: str
+    source: str | None = None
 
 
 def validate_spec(spec: dict, *, workflow_registry) -> None:
@@ -177,30 +190,21 @@ def show_payload(scheduler, state_root: Path, inline_names: set[str],
 
 
 def remove_schedule(scheduler, state_root: Path, inline_names: set[str],
-                    name: str) -> tuple[str | None, str | None]:
-    """Attempt to remove a pushed schedule.
-
-    Returns ``(ok_source, error)``:
-      - ``("pushed", None)`` on successful unlink.
-      - ``(None, "not found")`` if the scheduler doesn't know ``name``.
-      - ``(None, "cannot remove '<source>'-source schedule")`` if the
-        schedule is inline/overlay (not pushed).
-    """
+                    name: str) -> RemoveResult:
+    """Attempt to remove a pushed schedule."""
     entry = scheduler.get(name) if scheduler is not None else None
     if entry is None:
-        return (None, "not found")
+        return RemoveResult(status="not_found")
     file_path = _schedule_file_path(state_root, name)
     source, _, _ = classify_source(file_path, inline_names, name)
     if source != "pushed":
-        return (None, f"cannot remove {source!r}-source schedule")
+        return RemoveResult(status="wrong_source", source=source)
     file_path.unlink()
-    return ("pushed", None)
+    return RemoveResult(status="ok")
 
 
 def logs_payload(state_root: Path, name: str, *, tail: int = 50) -> dict:
-    """Return ``{records: [...]}`` — last ``tail`` JSON-decoded lines of
-    ``.aegis/state/schedules/<name>.jsonl`` (or empty list on missing
-    file). Malformed JSON lines are skipped."""
+    """Tail the schedule's JSONL log; empty list when the file is missing."""
     log_path = (state_root / ".aegis" / "state" / "schedules"
                 / f"{name}.jsonl")
     if not log_path.exists():

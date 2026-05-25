@@ -143,7 +143,7 @@ async def test_schedule_push_remote_routes_through_client(tmp_path,
         return {"name": name, "written_to": f"schedules/{name}.yaml"}
 
     monkeypatch.setattr(
-        "aegis.remote.client.remote_schedule_push", _fake_push)
+        "aegis.mcp.server.remote_schedule_push", _fake_push)
 
     bridge = _FakeBridge(
         state_root=tmp_path,

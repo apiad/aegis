@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace as _SN
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -217,7 +218,6 @@ class AegisApp(App):
         # Scheduler-context stubs to satisfy AppBridge. The TUI does not
         # run a scheduler; the aegis_schedule_* MCP tools will gracefully
         # return errors when scheduler is None.
-        from types import SimpleNamespace as _SN
         self.scheduler = None
         self.state_root: Path = Path.cwd()
         self.workflow_registry = _SN(get=lambda _: None)

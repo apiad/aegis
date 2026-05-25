@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 from aegis.core.session import AgentSession
 from aegis.mcp.bridge import SessionInfo
@@ -34,8 +33,8 @@ class SessionManager:
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
         self.remote_plane = None  # populated by cli.serve from loaded YAML
         self.scheduler = None  # populated by cli.serve if schedules configured
-        self.state_root: Path = Path.cwd()
-        self.workflow_registry = SimpleNamespace(get=lambda _: None)
+        self.state_root: Path | None = None
+        self.workflow_registry = None
         self._inline_schedule_names: set[str] = set()
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
