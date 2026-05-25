@@ -114,19 +114,32 @@ has no wire callback channel), `enqueued_by` recorded as
 
 ## Configuration
 
+Two new top-level sections in `.aegis.yaml`: `remotes` (outbound) and
+`remote_plane` (inbound). Both follow the existing
+inline-plus-overlay-folder pattern used by `agents`, `queues`, and
+`schedules` (see `src/aegis/config/yaml_loader.py`).
+
 ### Outbound — `remotes` (caller side)
 
-In `.aegis.py`:
+Inline in `.aegis.yaml`:
 
-```python
-remotes = {
-    "vps": {
-        "url":   "http://vps.tail-net.ts.net:8556",
-        # optional:
-        # "token": "<bearer>",
-    },
-}
+```yaml
+remotes:
+  vps:
+    url: http://vps.tail-net.ts.net:8556
+    # optional:
+    # token: "<bearer>"
 ```
+
+Or as drop-in overlay `.aegis/remotes/vps.yaml`:
+
+```yaml
+url: http://vps.tail-net.ts.net:8556
+# token: "<bearer>"
+```
+
+(Same fail-loud rule as the other sections: a name appearing in both
+inline and an overlay aborts boot.)
 
 - `url` is the full base URL of the remote plane. Scheme `http` is
   fine over the tailnet (WireGuard already encrypts); `https` is
@@ -139,19 +152,20 @@ no implicit SSH alias resolution.
 
 ### Inbound — `remote_plane` (callee side)
 
-In `.aegis.py`:
+Inline in `.aegis.yaml`:
 
-```python
-remote_plane = {
-    "bind":          "100.64.0.x:8556",   # tailnet IP, explicit
-    "accept_tokens": [],                  # optional allowlist
-    "accept_from":   [],                  # optional IP allowlist
-}
+```yaml
+remote_plane:
+  bind: 100.64.0.x:8556          # tailnet IP, explicit
+  accept_tokens: []              # optional allowlist
+  accept_from: []                # optional IP allowlist
 ```
 
+- This is a single block, not a multi-entry section, so it lives
+  inline in `.aegis.yaml` with no overlay-folder equivalent.
 - `bind` is the address the remote plane listens on. Default off
-  (key absent) — opt-in only. Binding to `0.0.0.0` is permitted but
-  warned about at boot.
+  (key absent or empty block) — opt-in only. Binding to `0.0.0.0` is
+  permitted but warned about at boot.
 - `accept_tokens`: when non-empty, requests must present a matching
   bearer token. Empty list (or key absent) means tailnet-trust only.
 - `accept_from`: when non-empty, only requests from listed source IPs
@@ -252,8 +266,9 @@ any aegis on the tailnet. Mitigations beyond v1 (not built now):
 - Audit log of every remote enqueue (already covered by the queue's
   JSONL lifecycle log, with `enqueued_by="remote:<from>"`).
 
-Operational note: tokens, if used, live in `.aegis.py`. `.aegis.py` must
-remain gitignored (already the case in the workspace topology).
+Operational note: tokens, if used, live in `.aegis.yaml` or its
+overlay files. These must be gitignored at the project level — same
+discipline as any other secret-bearing config.
 
 ## Implementation sketch
 
@@ -268,18 +283,22 @@ New module `src/aegis/remote/`:
   is set. Owns retry policy (none in v1 — fail fast), timeouts
   (fixed in v1: 5s connect, 10s read; not configurable), and error
   normalization.
-- `config.py` — pydantic models for `remotes` and `remote_plane`
-  blocks in `.aegis.py`. Validation: URLs well-formed, target names
+- `config.py` — dataclasses (matching the style of `QueueSpec` /
+  `AegisConfig` in `yaml_loader.py`) for the `remotes` and
+  `remote_plane` blocks. Validation: URLs well-formed, target names
   unique, bind addresses parseable.
 
 Existing modules touched:
 
+- `src/aegis/config/yaml_loader.py` — add `remotes` to `_SECTIONS`
+  so it picks up overlays under `.aegis/remotes/*.yaml`; add fields
+  to `AegisConfig` for `remotes: dict[str, RemoteSpec]` and
+  `remote_plane: RemotePlaneSpec | None`; parse from `raw` in
+  `load_config`.
 - `src/aegis/cli.py:serve` — start `remote.plane` alongside the
   existing MCP runtime if `remote_plane.bind` is configured.
 - `src/aegis/mcp/server.py:aegis_enqueue` — grow `target` param,
   route to `remote.client` when set.
-- `src/aegis/config/__init__.py` — wire `remotes` and `remote_plane`
-  into the loaded config.
 
 State changes: none beyond what the existing QueueManager already
 records. The remote enqueue lands as a normal task in the receiver's
