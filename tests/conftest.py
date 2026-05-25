@@ -231,3 +231,36 @@ def make_dashboard_app():
         return app, fake
 
     return _factory
+
+
+@pytest.fixture
+async def live_session_manager(tmp_path):
+    """Real SessionManager wired against the live claude-code driver.
+
+    Spawns no agents — the test does that via ``sm.groups.spawn``. Cleans
+    up sessions + MCP server on teardown. Used only by ``-m live`` tests.
+    """
+    from aegis.config import Agent
+    from aegis.core.manager import SessionManager
+    from aegis.drivers import get_driver
+    from aegis.mcp import AegisMCP
+    from aegis.queue import InboxRouter
+
+    agent = Agent(harness="claude-code", model="sonnet",
+                  effort="low", permission="full")
+    agents = {"default": agent}
+    inbox = InboxRouter(state_dir=tmp_path)
+    mcp = AegisMCP()
+
+    def make_session(profile, mcp_url, handle):
+        return get_driver(profile.harness).session(
+            profile, str(tmp_path), mcp_url, handle)
+
+    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox)
+    mcp.bind(mgr)
+    await mcp.start()
+    try:
+        yield mgr
+    finally:
+        await mgr.close_all()
+        await mcp.stop()
