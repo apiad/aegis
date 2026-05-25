@@ -1,7 +1,17 @@
 """GroupRegistry — in-memory CRUD for groups + members."""
 from __future__ import annotations
 
+from typing import Any
+
 from aegis.groups.models import Group, MemberRef
+from aegis.groups.persistence import (
+    event_created,
+    event_dissolved,
+    event_member_added,
+    event_member_removed,
+    event_renamed,
+)
+from aegis.queue.schema import now_iso
 
 
 class GroupExists(Exception):
@@ -13,14 +23,21 @@ class UnknownGroup(Exception):
 
 
 class GroupRegistry:
-    def __init__(self) -> None:
+    def __init__(self, log=None) -> None:
         self._groups: dict[str, Group] = {}
+        self._log = log
 
-    def create(self, name: str) -> Group:
+    def _emit(self, group: str, rec: dict[str, Any]) -> None:
+        if self._log is not None:
+            self._log.write(group, rec)
+
+    def create(self, name: str, *, sender: str = "system",
+               at: str = "") -> Group:
         if name in self._groups:
             raise GroupExists(name)
         g = Group(name=name)
         self._groups[name] = g
+        self._emit(name, event_created(name, sender, at or now_iso()))
         return g
 
     def get(self, name: str) -> Group:
@@ -31,17 +48,26 @@ class GroupRegistry:
     def names(self) -> list[str]:
         return sorted(self._groups)
 
-    def add_member(self, group: str, ref: MemberRef) -> None:
+    def add_member(self, group: str, ref: MemberRef, *,
+                   sender: str = "system", at: str = "") -> None:
         g = self._groups.get(group)
         if g is None:
-            g = self.create(group)
+            g = self.create(group, sender=sender, at=at)
         g.members[ref.handle] = ref
+        self._emit(group, event_member_added(
+            ref.handle, ref.profile, sender, at or now_iso()))
 
-    def remove_member(self, group: str, handle: str) -> None:
+    def remove_member(self, group: str, handle: str, *,
+                      reason: str = "closed-by-user",
+                      at: str = "") -> None:
         g = self.get(group)
-        g.members.pop(handle, None)
+        if handle in g.members:
+            g.members.pop(handle)
+            self._emit(group, event_member_removed(
+                handle, reason, at or now_iso()))
         if not g.members:
             self._groups.pop(group, None)
+            self._emit(group, event_dissolved("empty", at or now_iso()))
 
     def move_member(self, handle: str, *, from_group: str,
                     to_group: str) -> None:
@@ -49,15 +75,18 @@ class GroupRegistry:
         self.add_member(to_group, ref)
         self.remove_member(from_group, handle)
 
-    def dissolve(self, group: str) -> None:
+    def dissolve(self, group: str, *, reason: str = "dissolved",
+                 at: str = "") -> None:
         if group not in self._groups:
             raise UnknownGroup(group)
         del self._groups[group]
+        self._emit(group, event_dissolved(reason, at or now_iso()))
 
-    def rename(self, old: str, new: str) -> None:
+    def rename(self, old: str, new: str, *, at: str = "") -> None:
         if new in self._groups:
             raise GroupExists(new)
         g = self.get(old)
         renamed = Group(name=new, members=dict(g.members))
         self._groups[new] = renamed
         del self._groups[old]
+        self._emit(old, event_renamed(old, new, at or now_iso()))

@@ -26,3 +26,17 @@ def test_writes_events_one_per_line(tmp_path: Path):
     assert parsed[1]["kind"] == "member_added"
     assert parsed[2]["kind"] == "broadcast_started"
     assert parsed[2]["broadcast_id"] == "br-1"
+
+
+def test_registry_writes_events_via_log(tmp_path: Path):
+    from aegis.groups.models import MemberRef
+    from aegis.groups.registry import GroupRegistry
+
+    log = PersistedGroupLog(tmp_path)
+    reg = GroupRegistry(log=log)
+    reg.add_member("rev", MemberRef("ada", "sec"), sender="agent:host")
+    reg.remove_member("rev", "ada", reason="closed-by-user")
+    lines = log.read("rev")
+    kinds = [r["kind"] for r in lines]
+    assert kinds == ["created", "member_added", "member_removed",
+                     "dissolved"]

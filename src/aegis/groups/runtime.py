@@ -12,6 +12,11 @@ from aegis.groups.models import (
     GroupResult,
     MemberResult,
 )
+from aegis.groups.persistence import (
+    event_broadcast_completed,
+    event_broadcast_started,
+    event_member_result,
+)
 from aegis.groups.reducers import get_reducer
 from aegis.groups.registry import GroupRegistry, UnknownGroup
 from aegis.queue.inbox import InboxRouter
@@ -44,10 +49,15 @@ class GroupRuntime:
     now: Callable[[], str] = now_iso
     new_id: Callable[[], str] = new_ulid
     tracker: BroadcastTracker = None  # type: ignore[assignment]
+    log: Any = None
 
     def __post_init__(self) -> None:
         if self.tracker is None:
             self.tracker = BroadcastTracker()
+
+    def _emit(self, group: str, rec: dict[str, Any]) -> None:
+        if self.log is not None:
+            self.log.write(group, rec)
 
     async def broadcast(self, group: str, *, sender: str, objective: str,
                         output_format: str, tool_guidance: str,
@@ -60,6 +70,9 @@ class GroupRuntime:
             started_at=self.now(), members=tuple(sorted(g.members)),
         )
         self.tracker.open(rec)
+        self._emit(group, event_broadcast_started(
+            rec.id, objective, output_format, tool_guidance, boundaries,
+            sender, rec.members))
         body = _compose_broadcast_body(objective, output_format,
                                        tool_guidance, boundaries)
         tag = _sender_group_broadcast(group, rec.id)
@@ -124,9 +137,14 @@ class GroupRuntime:
                 handle=handle, text=text, turn_ms=0,
                 tokens_in=0, tokens_out=0, status="done",
             )
+            self._emit(rec.group, event_member_result(
+                rec.id, handle, "done", text[:200], 0, 0, 0))
         timeouts = sorted(want)
         combined: Any = get_reducer(reducer)(by_member, order)
         self.tracker.close(rec.group, rec.id)
+        mode = "wait_any" if wait_any else "wait_all"
+        self._emit(rec.group, event_broadcast_completed(
+            rec.id, mode, reducer, self.now()))
         return GroupResult(
             broadcast_id=rec.id, by_member=by_member, combined=combined,
             errors={}, timeouts=timeouts,

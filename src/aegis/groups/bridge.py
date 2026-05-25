@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 
+from aegis.groups.persistence import PersistedGroupLog
 from aegis.groups.registry import GroupRegistry
 from aegis.groups.runtime import GroupRuntime
 from aegis.groups.wiring import GroupWiring
@@ -39,11 +41,13 @@ class _GroupsBridge:
             group, timeout=timeout, cancel_losers=cancel_losers)
 
 
-def make_groups_bridge(*, session_manager, inbox_router) -> _GroupsBridge:
-    registry = GroupRegistry()
+def make_groups_bridge(*, session_manager, inbox_router,
+                       state_dir: Path | None = None) -> _GroupsBridge:
+    log = PersistedGroupLog(state_dir) if state_dir is not None else None
+    registry = GroupRegistry(log=log)
     bus: asyncio.Queue = asyncio.Queue()
     runtime = GroupRuntime(registry=registry, inbox=inbox_router,
-                           member_bus=bus)
+                           member_bus=bus, log=log)
     wiring = GroupWiring(session_manager=session_manager, registry=registry,
                          inbox=inbox_router, member_bus=bus)
     return _GroupsBridge(runtime=runtime, wiring=wiring)
