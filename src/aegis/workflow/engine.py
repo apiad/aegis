@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.config import find_project_root
@@ -60,6 +63,8 @@ class WorkflowEngine:
                  caller_handle: str | None = None,
                  # Plumbing:
                  bridge=None, queue_manager=None, inbox_router=None,
+                 groups_runtime=None, groups_wiring=None,
+                 session_manager=None,
                  state_dir: Path | None = None,
                  now: Callable[[], str] = now_iso,
                  drain_timeout: float = 30.0) -> None:
@@ -84,6 +89,9 @@ class WorkflowEngine:
         self._bridge = bridge
         self._queue = queue_manager
         self._inbox = inbox_router
+        self._groups_runtime = groups_runtime
+        self._groups_wiring = groups_wiring
+        self._session_manager = session_manager
         self._state_dir = state_dir
         self._now = now
         self._drain_timeout = drain_timeout
@@ -436,3 +444,43 @@ class _BashResult(subprocess.CompletedProcess):
             return self[key]
         except KeyError:
             return default
+
+
+@dataclass
+class _EphemeralGroupHandle:
+    name: str
+    runtime: object
+
+    async def broadcast(self, **kw) -> str:
+        return await self.runtime.broadcast(
+            self.name, sender="workflow", **kw)
+
+    async def wait_all(self, **kw):
+        return await self.runtime.wait_all(self.name, **kw)
+
+    async def wait_any(self, **kw):
+        return await self.runtime.wait_any(self.name, **kw)
+
+
+def _attach_ephemeral_group(cls):
+    @contextlib.asynccontextmanager
+    async def ephemeral_group(self, *, profiles: list[str]):
+        """Spawn N agents into a fresh group with a generated name, yield
+        a handle, dissolve on exit. Workflow-only — not exposed over MCP.
+        """
+        name = f"ephemeral-{secrets.token_hex(4)}"
+        await self._groups_wiring.spawn_group(name, profiles)
+        try:
+            yield _EphemeralGroupHandle(
+                name=name, runtime=self._groups_runtime)
+        finally:
+            try:
+                self._groups_runtime.registry.dissolve(name)
+            except Exception:
+                pass
+
+    cls.ephemeral_group = ephemeral_group
+    return cls
+
+
+_attach_ephemeral_group(WorkflowEngine)
