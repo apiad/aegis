@@ -101,9 +101,9 @@ have these invariants:
 - **Heterogeneous membership.** A group may contain agents of mixed
   profiles (`{architect: opus, editor: sonnet, qa: haiku}`).
 - **Membership by reference, not duplication.** Spawn takes existing
-  `.aegis.py` profile names — `Group(["security_reviewer",
-  "style_reviewer", "logic_reviewer"])` instantiates three named
-  profiles without cloning their config.
+  agent profile names from `.aegis.yaml` —
+  `Group(["security_reviewer", "style_reviewer", "logic_reviewer"])`
+  instantiates three named profiles without cloning their config.
 - **Empty-group lifecycle.** When the last member is removed, the
   group is auto-closed and its name freed. Recreating with the same
   name later is allowed (clean slate; no historical link).
@@ -138,8 +138,9 @@ spawn_group(name: str, profiles: list[str]) -> list[handle]
 ```
 
 Both desugar to N atomic `spawn(profile, group=name)` calls. Profile
-names must resolve in the loaded `.aegis.py`; unknown profile errors
-fail-loud at the API boundary.
+names must resolve in the loaded `.aegis.yaml` (inline `agents:` or
+overlay `.aegis/agents/<name>.yaml`); unknown profile errors fail-loud
+at the API boundary.
 
 Plus a workflow-only **ephemeral** form for batch patterns
 (Anthropic-research-system style):
@@ -317,8 +318,10 @@ queue callbacks. Inbox headers:
 ## Workflow Python API
 
 Mirrors MCP one-to-one on `engine`. The same primitives Alex writes
-in `.aegis.py` workflows are the same primitives any agent calls over
-MCP — one logical model, two surfaces.
+in user workflows (Python files dropped into `.aegis/plugins/` and
+opted in via the `workflows:` list in `.aegis.yaml`) are the same
+primitives any agent calls over MCP — one logical model, two
+surfaces.
 
 ```python
 @workflow
@@ -437,32 +440,41 @@ tests/test_group_tui_smoke.py
 tests/test_group_live.py        # one live smoke (3-member roundtrip)
 ```
 
-## Configuration shape (`.aegis.py`)
+## Configuration shape (`.aegis.yaml`)
 
-Groups are runtime constructs — they aren't declared in `.aegis.py`
-the way queues are. But a couple of optional knobs help:
+Groups are runtime constructs — they aren't declared in `.aegis.yaml`
+the way queues and agents are. But a couple of optional knobs help,
+either inline under a top-level `groups:` section or as per-file
+overlays under `.aegis/groups/<preset>.yaml` (same drop-in pattern
+queues and schedules use):
 
-```python
-groups = {
-    "defaults": {
-        "broadcast_timeout": 600,        # seconds
-        "default_reducer": "concat",
-    },
-    "presets": {
-        # Optional named factories: my_app.workflows:audit_team -> spawn_group
-        "code_audit": {
-            "profiles": ["security_reviewer", "style_reviewer", "logic_reviewer"],
-        },
-        "best_of_5": {
-            "profiles": ["opus", "opus", "opus", "opus", "opus"],
-        },
-    },
-}
+```yaml
+# .aegis.yaml
+groups:
+  defaults:
+    broadcast_timeout: 600          # seconds
+    default_reducer: concat
+
+  presets:
+    code_audit:
+      profiles: [security_reviewer, style_reviewer, logic_reviewer]
+    best_of_5:
+      profiles: [opus, opus, opus, opus, opus]
+```
+
+Or, equivalently as overlays:
+
+```yaml
+# .aegis/groups/code_audit.yaml
+profiles: [security_reviewer, style_reviewer, logic_reviewer]
 ```
 
 A preset can be invoked via `aegis_group_spawn_mixed(name,
 preset="code_audit")` as a shortcut. Presets are pure config sugar —
-no schema validation beyond profile-existence checks.
+no schema validation beyond profile-existence checks. Inline +
+overlay conflict resolution follows the `.aegis.yaml` rule
+established by the scheduler spec: **fail-loud on duplicate keys**;
+one source of truth per entry.
 
 ## Testing
 
