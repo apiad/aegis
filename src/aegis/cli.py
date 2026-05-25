@@ -22,6 +22,9 @@ from aegis.tui.app import pick_workspace_to_resume
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
 
+from aegis.cli_schedule import app as _schedule_app  # noqa: E402
+app.add_typer(_schedule_app, name="schedule")
+
 
 def _version_callback(value: bool) -> None:
     if value:
