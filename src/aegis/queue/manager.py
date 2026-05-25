@@ -105,13 +105,16 @@ class QueueManager:
         append_record(path, event)
 
     def enqueue(self, queue: str, payload: str, *,
-                enqueued_by: str, callback: bool) -> tuple[str, int]:
+                enqueued_by: str, callback: bool = False,
+                callback_to: str | None = None,
+                callback_handle: str | None = None) -> tuple[str, int]:
         if queue not in self._queues:
             raise KeyError(queue)
         task = Task(
             id=new_ulid(), queue=queue, payload=payload,
             enqueued_by=enqueued_by, enqueued_at=self._now(),
-            callback=callback, status="pending")
+            callback=callback, status="pending",
+            callback_to=callback_to, callback_handle=callback_handle)
         self._pending[queue].append(task)
         self._all[task.id] = task
         position = len(self._pending[queue])

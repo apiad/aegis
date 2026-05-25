@@ -15,7 +15,8 @@ from aegis.remote.plane import build_plane
 class _FakeQM:
     raise_on: str | None = None
 
-    def enqueue(self, queue, payload, *, enqueued_by, callback):
+    def enqueue(self, queue, payload, *, enqueued_by, callback,
+                callback_to=None, callback_handle=None):
         if self.raise_on and queue == self.raise_on:
             raise KeyError(queue)
         return ("tid-01J", 0)

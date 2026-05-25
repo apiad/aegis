@@ -29,7 +29,8 @@ async def _call(server, name, **kwargs):
 class _FakeQM:
     enqueue_calls: list[Any] = field(default_factory=list)
 
-    def enqueue(self, queue, payload, *, enqueued_by, callback):
+    def enqueue(self, queue, payload, *, enqueued_by, callback,
+                callback_to=None, callback_handle=None):
         self.enqueue_calls.append((queue, payload, enqueued_by, callback))
         return ("local-tid", 0)
 

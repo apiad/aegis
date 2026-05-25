@@ -63,6 +63,8 @@ class Task:
     result: str | None = None
     error: str | None = None
     completed_at: str | None = None
+    callback_to: str | None = None
+    callback_handle: str | None = None
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,9 @@ from aegis.remote.config import RemotePlaneSpec
 
 class _QueueManagerLike(Protocol):
     def enqueue(self, queue: str, payload: str, *,
-                enqueued_by: str, callback: bool) -> tuple[str, int]: ...
+                enqueued_by: str, callback: bool,
+                callback_to: str | None,
+                callback_handle: str | None) -> tuple[str, int]: ...
 
 
 def build_plane(queue_manager: _QueueManagerLike,
@@ -59,7 +61,9 @@ def build_plane(queue_manager: _QueueManagerLike,
             tid, pos = queue_manager.enqueue(
                 body["queue"], body["payload"],
                 enqueued_by=f"remote:{body['from']}",
-                callback=False)
+                callback=False,
+                callback_to=body.get("callback_to"),
+                callback_handle=body.get("callback_handle"))
         except KeyError as e:
             return JSONResponse(
                 {"error": f"unknown queue {e.args[0]!r}"},
