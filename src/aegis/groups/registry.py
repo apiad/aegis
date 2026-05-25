@@ -5,6 +5,7 @@ from typing import Any
 
 from aegis.groups.models import Group, MemberRef
 from aegis.groups.persistence import (
+    event_broadcast_completed,
     event_created,
     event_dissolved,
     event_member_added,
@@ -81,6 +82,42 @@ class GroupRegistry:
             raise UnknownGroup(group)
         del self._groups[group]
         self._emit(group, event_dissolved(reason, at or now_iso()))
+
+    def start(self, *, live_handles: set[str]) -> None:
+        if self._log is None:
+            return
+        for group in self._log.all_groups():
+            records = self._log.read(group)
+            members: dict[str, MemberRef] = {}
+            for rec in records:
+                k = rec["kind"]
+                if k == "member_added":
+                    members[rec["handle"]] = MemberRef(
+                        handle=rec["handle"], profile=rec["profile"])
+                elif k == "member_removed":
+                    members.pop(rec["handle"], None)
+            in_flight = self._in_flight_broadcasts(records)
+            self._groups[group] = Group(name=group, members=members)
+            for handle in list(members):
+                if handle not in live_handles:
+                    members.pop(handle)
+                    self._emit(group, event_member_removed(
+                        handle, "lost-on-restart", now_iso()))
+            if not members:
+                self._groups.pop(group, None)
+                self._emit(group, event_dissolved(
+                    "empty-on-restart", now_iso()))
+            for bid in in_flight:
+                self._emit(group, event_broadcast_completed(
+                    bid, "failed:interrupted", "concat", now_iso()))
+
+    @staticmethod
+    def _in_flight_broadcasts(records: list[dict]) -> list[str]:
+        started = {r["broadcast_id"] for r in records
+                   if r["kind"] == "broadcast_started"}
+        completed = {r["broadcast_id"] for r in records
+                     if r["kind"] == "broadcast_completed"}
+        return sorted(started - completed)
 
     def rename(self, old: str, new: str, *, at: str = "") -> None:
         if new in self._groups:

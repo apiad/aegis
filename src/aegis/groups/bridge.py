@@ -50,4 +50,8 @@ def make_groups_bridge(*, session_manager, inbox_router,
                            member_bus=bus, log=log)
     wiring = GroupWiring(session_manager=session_manager, registry=registry,
                          inbox=inbox_router, member_bus=bus)
+    if log is not None:
+        live = (set(session_manager.live_handles())
+                if hasattr(session_manager, "live_handles") else set())
+        registry.start(live_handles=live)
     return _GroupsBridge(runtime=runtime, wiring=wiring)

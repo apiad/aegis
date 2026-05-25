@@ -116,6 +116,9 @@ class SessionManager:
     def list_agents(self) -> list[str]:
         return sorted(self._agents)
 
+    def live_handles(self) -> set[str]:
+        return {s.handle for s in self._sessions}
+
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str:
         if from_handle == target_handle:
