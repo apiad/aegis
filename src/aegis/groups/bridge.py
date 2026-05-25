@@ -40,6 +40,10 @@ class _GroupsBridge:
         return await self.runtime.wait_any(
             group, timeout=timeout, cancel_losers=cancel_losers)
 
+    async def spawn_mixed(self, *, group: str,
+                          profiles: list[str]) -> list[str]:
+        return await self.wiring.spawn_group(group, profiles)
+
 
 def make_groups_bridge(*, session_manager, inbox_router,
                        state_dir: Path | None = None) -> _GroupsBridge:

@@ -54,6 +54,13 @@ async def _aegis_group_wait_any_impl(bridge, *, group: str,
         group, timeout=timeout, cancel_losers=cancel_losers)
     return _group_result_to_dict(result)
 
+
+async def _aegis_group_spawn_mixed_impl(bridge, *, group: str,
+                                        profiles: list[str]) -> dict:
+    handles = await bridge.groups.spawn_mixed(
+        group=group, profiles=profiles)
+    return {"handles": list(handles), "group": group}
+
 BRIEFING = (
     "You are running inside aegis — a meta-harness for coding agents. "
     "aegis drives this Claude Code process via stream-json and re-renders "
@@ -816,6 +823,16 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return await _aegis_group_wait_any_impl(
             bridge, group=group, timeout=timeout,
             cancel_losers=cancel_losers)
+
+    @server.tool
+    async def aegis_group_spawn_mixed(group: str,
+                                       profiles: list[str]) -> dict:
+        """Spawn one member per profile string into ``group``. Profiles
+        may repeat; each entry gets its own session. Returns the list of
+        handles in the same order as ``profiles``.
+        """
+        return await _aegis_group_spawn_mixed_impl(
+            bridge, group=group, profiles=profiles)
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:
