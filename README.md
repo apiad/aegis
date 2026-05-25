@@ -250,6 +250,51 @@ plan → dispatch implementer per task with durable resume),
   `--strict-mcp-config`, aegis is the *only* MCP server the spawned
   agent sees.
 
+## Remote plane — laptop ↔ VPS handoff
+
+`aegis serve` can expose a second HTTP plane — bound to a tailnet IP,
+distinct from the loopback MCP plane — that other `aegis serve`
+instances POST into. One agent on the laptop can hand a long task off
+to the VPS without leaving the substrate:
+
+```python
+# In an opus session on zion (after brainstorming):
+aegis_enqueue(
+    queue="implementation",
+    payload="Implement the design at <path> in repos/aegis with TDD…",
+    from_handle="lucid-knuth",
+    target="vps",                # ← new — routes to a remote aegis
+)
+# → {task_id: "01J…", target: "vps",
+#    callback_note: "remote will Telegram on completion"}
+```
+
+Configuration lives in `.aegis.yaml`. Outbound — the peers this serve
+can call:
+
+```yaml
+remotes:
+  vps:
+    url: http://vps.tail-net.ts.net:8556
+    # token: "<optional bearer>"
+```
+
+Inbound — opt-in receive side; default off:
+
+```yaml
+remote_plane:
+  bind: 100.64.0.5:8556         # tailnet IP, explicit
+  accept_tokens: []             # optional bearer-token allowlist
+  accept_from: []               # optional source-IP allowlist
+```
+
+Trust anchor is the tailnet (Headscale / WireGuard); bearer tokens
+and IP allowlists are defense-in-depth knobs that compose with AND.
+In v1 there is **no wire callback** — the remote pings Telegram when
+the worker finishes, and the originating agent is free to keep
+working or wind down. Full surface, error model, and patterns in
+[docs/remote.md](docs/remote.md).
+
 ## Scheduled workflows
 
 Aegis runs a cron-style scheduler alongside QueueManager and the inbox
@@ -392,6 +437,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
 - [Terminals](https://apiad.github.io/aegis/terminals/) — shared live PTY
 - [Groups](https://apiad.github.io/aegis/groups/) — broadcast-and-gather committees
+- [Remote plane](https://apiad.github.io/aegis/remote/) — laptop ↔ VPS enqueue over HTTP
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)

@@ -157,6 +157,40 @@ from examples.tdd_step import tdd_step    # noqa: F401 — registers
 
 See [Workflows](workflows.md) for writing your own.
 
+## Remote plane
+
+Optional. Lets this `aegis serve` enqueue work into another `aegis
+serve` over HTTP and/or accept incoming enqueues from peers on the
+same tailnet. Lives in `.aegis.yaml`, not `.aegis.py`.
+
+**Outbound** — the list of remotes this serve can call:
+
+```yaml
+# .aegis.yaml
+remotes:
+  vps:
+    url: http://vps.tail-net.ts.net:8556
+    token: "<optional bearer>"      # if the peer requires auth
+```
+
+Per-remote overlay files at `.aegis/remotes/<name>.yaml` (body is the
+remote body — `url:` directly). Name collisions between inline and
+overlay are fail-loud.
+
+**Inbound** — opt-in section that turns on the receive side:
+
+```yaml
+remote_plane:
+  bind: 100.64.0.5:8556         # tailnet IP, explicit
+  accept_tokens: []             # optional bearer-token allowlist
+  accept_from: []               # optional source-IP allowlist
+```
+
+Default off (key absent or empty block). Gates compose with AND — both
+empty means "anything that reaches the port is trusted." See
+[Remote plane](remote.md) for the full surface, error model, and
+patterns.
+
 ## Worked example
 
 A full `.aegis.py` mixing everything:

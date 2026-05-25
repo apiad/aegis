@@ -67,7 +67,21 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
-### v0.6.0 (current)
+### v0.7.0 (current)
+- **Remote plane.** Server-to-server enqueue over HTTP. `aegis serve`
+  exposes a second tailnet-bound plane (distinct from the loopback MCP
+  plane); `aegis_enqueue` grows a `target=` parameter that POSTs the
+  task to a configured remote's `/remote/v1/enqueue`. The remote runs
+  the worker on its own filesystem under its own agent profiles and
+  pings Telegram on completion (no wire-level callback in v1). Two
+  new `.aegis.yaml` sections — `remotes` (outbound peers, with
+  optional bearer tokens) and `remote_plane` (inbound bind + token /
+  IP allowlists). Trust anchor: the tailnet (Headscale / WireGuard);
+  gates compose with AND for defense in depth. All failure paths are
+  loud and distinguishable — no silent fallback to local enqueue.
+  See [Remote plane](remote.md).
+
+### v0.6.0
 - **Scheduler substrate.** Cron-style scheduled workflow execution
   alongside QueueManager + InboxRouter. Declarative
   `.aegis.yaml` with drop-in overlays at `.aegis/schedules/<name>.yaml`;
