@@ -147,7 +147,21 @@ class Scheduler:
             return self._compute_next(entry, now)
         return datetime.max.replace(tzinfo=now.tzinfo)
 
-    async def _fire(self, name: str, entry: dict) -> None:
+    def fire_now(self, name: str) -> None:
+        """Manually dispatch a schedule outside the tick cadence.
+
+        Used by the TUI `F` action and the `aegis schedule run` CLI to
+        force a fire. Records ``manual=True`` in the JSONL so audit
+        trails distinguish operator-triggered fires from cron-triggered
+        ones.
+        """
+        entry = self.schedules.get(name)
+        if entry is None:
+            raise KeyError(f"unknown schedule: {name!r}")
+        asyncio.create_task(self._fire(name, entry, manual=True))
+
+    async def _fire(self, name: str, entry: dict, *,
+                    manual: bool = False) -> None:
         st = self._state[name]
         st.in_flight = True
         task_id = uuid.uuid4().hex
@@ -156,7 +170,7 @@ class Scheduler:
             "schedule": name,
             "event": "fire_requested",
             "task_id": task_id,
-            "manual": False,
+            "manual": manual,
             "backfilled": False,
         })
         try:

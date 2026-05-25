@@ -202,6 +202,32 @@ async def test_fire_at_one_shot(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fire_now_marks_manual(tmp_path: Path) -> None:
+    """fire_now bypasses the cron gate and tags the JSONL as manual."""
+    calls: list[str] = []
+
+    async def fake_run(name, args):
+        calls.append(name)
+        return "ok"
+
+    clock = FakeClock(datetime(2026, 5, 25, 12, 0, tzinfo=timezone.utc))
+    sched = Scheduler(
+        schedules={"eod": _entry()},  # next_fire is far in the future
+        state_dir=tmp_path,
+        run_workflow=fake_run,
+        clock=clock,
+    )
+    sched.fire_now("eod")
+    await asyncio.sleep(0.05)
+    assert calls == ["prompt"]
+    log = tmp_path / "schedules" / "eod.jsonl"
+    requested = next(
+        json.loads(line) for line in log.read_text().splitlines()
+        if json.loads(line)["event"] == "fire_requested")
+    assert requested["manual"] is True
+
+
+@pytest.mark.asyncio
 async def test_start_stop_lifecycle(tmp_path: Path) -> None:
     """Start + immediate stop. Tick loop must not deadlock."""
     async def fake_run(name, args):
