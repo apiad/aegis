@@ -86,7 +86,6 @@ class Pair:
             pushed_from="peer:a")
 
     async def reload_b(self) -> None:
-        """Re-load schedules from disk and swap them into scheduler_b."""
         assert self.scheduler_b is not None and self.state_root_b is not None
         cfg = load_config(self.state_root_b)
         self.scheduler_b.replace_schedules(cfg.schedules)
@@ -105,9 +104,7 @@ class Pair:
         assert self.clock_b is not None and self.scheduler_b is not None
         self.clock_b.advance(seconds=seconds)
         await self.scheduler_b.tick()
-        # Let any dispatched fire tasks complete.
-        tasks = [t for t in self.scheduler_b._fire_tasks.values()
-                 if not t.done()]
+        tasks = self.scheduler_b.pending_fire_tasks()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 

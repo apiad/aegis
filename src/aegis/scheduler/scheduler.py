@@ -140,6 +140,14 @@ class Scheduler:
         task = asyncio.create_task(self._fire(name, entry))
         self._fire_tasks[name] = task
 
+    def pending_fire_tasks(self) -> list[asyncio.Task]:
+        """Return in-flight fire tasks (not yet done).
+
+        Exposed for tests that need to await dispatched fires after a
+        manual ``tick()`` — avoids reaching into ``_fire_tasks``.
+        """
+        return [t for t in self._fire_tasks.values() if not t.done()]
+
     def _advance_next(self, entry: dict, now: datetime) -> datetime:
         """Next fire after dispatch. For cron, compute strictly after
         ``now``. For ``fire_at`` (no cron), park at datetime.max so the

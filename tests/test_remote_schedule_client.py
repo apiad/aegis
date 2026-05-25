@@ -1,9 +1,4 @@
-"""Unit tests for the outbound schedule client functions.
-
-Uses the project standard ASGITransport pattern (no pytest-httpx). Each
-test builds a tiny Starlette stub app that records the incoming request
-and emits the expected response shape.
-"""
+"""Unit tests for the outbound schedule client functions."""
 from __future__ import annotations
 
 import json
