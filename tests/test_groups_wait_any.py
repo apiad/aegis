@@ -51,3 +51,22 @@ async def test_wait_any_returns_first_finisher_and_marks_others_canceled():
     for loser in ("a", "c"):
         kinds = [m.sender for m in sessions[loser].delivered]
         assert any("group:g/cancel:br-1" in s for s in kinds)
+
+
+@pytest.mark.asyncio
+async def test_wait_any_cancel_losers_false_skips_envelope():
+    reg = GroupRegistry()
+    reg.add_member("g", MemberRef("a", "p"))
+    reg.add_member("g", MemberRef("b", "p"))
+    bus: asyncio.Queue = asyncio.Queue()
+    router = InboxRouter()
+    sessions = {h: _FS(h, bus) for h in ("a", "b")}
+    for h, s in sessions.items():
+        router.bind_session(h, s)
+    rt = GroupRuntime(registry=reg, inbox=router, member_bus=bus,
+                      now=lambda: "T", new_id=lambda: "br-1")
+    await rt.broadcast("g", sender="x", objective="o",
+                       output_format="f", tool_guidance="t", boundaries="b")
+    asyncio.create_task(sessions["a"].finish_turn("won"))
+    await rt.wait_any("g", timeout=2, cancel_losers=False)
+    assert all("cancel" not in m.sender for m in sessions["b"].delivered)
