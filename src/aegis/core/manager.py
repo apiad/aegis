@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
 
 from aegis.core.session import AgentSession
 from aegis.mcp.bridge import SessionInfo
@@ -31,6 +33,10 @@ class SessionManager:
         self.terminal_manager = None
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
         self.remote_plane = None  # populated by cli.serve from loaded YAML
+        self.scheduler = None  # populated by cli.serve if schedules configured
+        self.state_root: Path = Path.cwd()
+        self.workflow_registry = SimpleNamespace(get=lambda _: None)
+        self._inline_schedule_names: set[str] = set()
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
         from aegis.groups.bridge import make_groups_bridge
@@ -51,6 +57,17 @@ class SessionManager:
 
     def attach_terminal_manager(self, tm) -> None:
         self.terminal_manager = tm
+
+    def attach_scheduler_context(self, *, scheduler, state_root,
+                                 workflow_registry,
+                                 inline_schedule_names: set[str]) -> None:
+        self.scheduler = scheduler
+        self.state_root = state_root
+        self.workflow_registry = workflow_registry
+        self._inline_schedule_names = set(inline_schedule_names)
+
+    def inline_schedule_names(self) -> set[str]:
+        return set(self._inline_schedule_names)
 
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,

@@ -53,6 +53,11 @@ class AppBridge(Protocol):
     terminal_manager: object     # TerminalManager
     groups: object               # GroupsBridge
     remotes: object              # dict[str, RemoteSpec]; empty when none configured
+    scheduler: object            # Scheduler | None
+    state_root: object           # Path — workspace root
+    workflow_registry: object    # has .get(name) -> WorkflowFn | None
+
+    def inline_schedule_names(self) -> set[str]: ...
 
     def list_sessions(self) -> list[SessionInfo]: ...
     def list_agents(self) -> list[str]: ...

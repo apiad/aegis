@@ -1,7 +1,13 @@
-"""Receiver-side schedule push: validate, write atomically with provenance."""
+"""Receiver-side schedule push: validate, write atomically with provenance.
+
+Also hosts shared read-side helpers (list/show/remove/logs payload
+builders) reused by both the HTTP plane and the MCP server, so the two
+layers stay 1:1 without one importing from the other.
+"""
 from __future__ import annotations
 
 import io
+import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -105,3 +111,107 @@ def write_atomic(state_root: Path, name: str, spec: dict,
     finally:
         tmp.close()
     return dest
+
+
+# ── shared read-side helpers (HTTP plane + MCP server) ────────────────
+
+def _schedule_file_path(state_root: Path, name: str) -> Path:
+    return state_root / ".aegis" / "schedules" / f"{name}.yaml"
+
+
+def _iso(dt):
+    if dt is None:
+        return None
+    try:
+        return dt.isoformat()
+    except AttributeError:
+        return dt
+
+
+def list_payload(scheduler, state_root: Path,
+                 inline_names: set[str]) -> dict:
+    """Build the `{schedules: [...]}` payload — same shape as
+    `GET /remote/v1/schedule`."""
+    if scheduler is None:
+        return {"schedules": []}
+    rows = []
+    for entry in scheduler.snapshot():
+        source, _, _ = classify_source(
+            _schedule_file_path(state_root, entry.name), inline_names,
+            entry.name)
+        rows.append({
+            "name": entry.name,
+            "source": source,
+            "next_fire": _iso(entry.next_fire),
+            "fire_count": entry.fire_count,
+            "in_flight": entry.in_flight,
+            "enabled": entry.enabled,
+            "workflow": entry.spec.get("workflow"),
+            "cron": entry.spec.get("cron"),
+        })
+    return {"schedules": rows}
+
+
+def show_payload(scheduler, state_root: Path, inline_names: set[str],
+                 name: str) -> dict | None:
+    """Build the schedule-show payload; return None if unknown."""
+    entry = scheduler.get(name) if scheduler is not None else None
+    if entry is None:
+        return None
+    source, pf, pa = classify_source(
+        _schedule_file_path(state_root, name), inline_names, name)
+    return {
+        "name": name,
+        "source": source,
+        "spec": entry.spec,
+        "runtime": {
+            "next_fire": _iso(entry.next_fire),
+            "last_fire": _iso(entry.last_completed_at),
+            "fire_count": entry.fire_count,
+            "in_flight": entry.in_flight,
+            "enabled": entry.enabled,
+        },
+        "pushed_from": pf,
+        "pushed_at": pa,
+    }
+
+
+def remove_schedule(scheduler, state_root: Path, inline_names: set[str],
+                    name: str) -> tuple[str | None, str | None]:
+    """Attempt to remove a pushed schedule.
+
+    Returns ``(ok_source, error)``:
+      - ``("pushed", None)`` on successful unlink.
+      - ``(None, "not found")`` if the scheduler doesn't know ``name``.
+      - ``(None, "cannot remove '<source>'-source schedule")`` if the
+        schedule is inline/overlay (not pushed).
+    """
+    entry = scheduler.get(name) if scheduler is not None else None
+    if entry is None:
+        return (None, "not found")
+    file_path = _schedule_file_path(state_root, name)
+    source, _, _ = classify_source(file_path, inline_names, name)
+    if source != "pushed":
+        return (None, f"cannot remove {source!r}-source schedule")
+    file_path.unlink()
+    return ("pushed", None)
+
+
+def logs_payload(state_root: Path, name: str, *, tail: int = 50) -> dict:
+    """Return ``{records: [...]}`` — last ``tail`` JSON-decoded lines of
+    ``.aegis/state/schedules/<name>.jsonl`` (or empty list on missing
+    file). Malformed JSON lines are skipped."""
+    log_path = (state_root / ".aegis" / "state" / "schedules"
+                / f"{name}.jsonl")
+    if not log_path.exists():
+        return {"records": []}
+    lines = log_path.read_text().splitlines()[-tail:]
+    records = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return {"records": records}

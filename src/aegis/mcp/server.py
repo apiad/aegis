@@ -938,6 +938,121 @@ def build_server(bridge: AppBridge) -> FastMCP:
             to_group=to_group)
 
     @server.tool
+    async def aegis_schedule_push(name: str, spec: dict, from_handle: str,
+                                   target: str | None = None) -> dict:
+        """Push a schedule into a scheduler. ``target=None`` writes
+        locally into this serve's ``.aegis/schedules/``; ``target='<peer>'``
+        routes through the matching remote.
+
+        On success, returns ``{name, written_to}`` (local) or whatever
+        the receiving plane returns (remote). Unknown target,
+        validation failure, or no scheduler attached → ``{"error": ...}``.
+        """
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_schedule_push
+            return await remote_schedule_push(
+                remotes[target], name=name, spec_body=spec,
+                pushed_from=f"agent:{from_handle}")
+        from aegis.scheduler.push import validate_spec, write_atomic
+        try:
+            validate_spec(spec, workflow_registry=bridge.workflow_registry)
+        except ValueError as e:
+            return {"error": str(e)}
+        dest = write_atomic(bridge.state_root, name, spec,
+                            pushed_from=f"agent:{from_handle}")
+        return {"name": name,
+                "written_to": str(dest.relative_to(bridge.state_root))}
+
+    @server.tool
+    async def aegis_schedule_list(from_handle: str,
+                                   target: str | None = None) -> dict:
+        """List schedules on this serve (or a remote peer). Same shape
+        as the HTTP ``GET /remote/v1/schedule`` endpoint:
+        ``{schedules: [{name, source, next_fire, fire_count, in_flight,
+        enabled, workflow, cron}, ...]}``.
+        """
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_schedule_list
+            return await remote_schedule_list(remotes[target])
+        from aegis.scheduler.push import list_payload
+        return list_payload(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names())
+
+    @server.tool
+    async def aegis_schedule_show(name: str, from_handle: str,
+                                   target: str | None = None) -> dict:
+        """Inspect one schedule. Returns the full spec + runtime fields
+        + ``pushed_from``/``pushed_at`` provenance, or
+        ``{"error": "not found"}`` on miss.
+        """
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_schedule_show
+            return await remote_schedule_show(remotes[target], name)
+        from aegis.scheduler.push import show_payload
+        payload = show_payload(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names(), name)
+        if payload is None:
+            return {"error": "not found"}
+        return payload
+
+    @server.tool
+    async def aegis_schedule_remove(name: str, from_handle: str,
+                                     target: str | None = None) -> dict:
+        """Remove a pushed schedule. Refuses inline/overlay-sourced
+        entries. Returns ``{ok: True}`` on success or
+        ``{"error": ...}`` otherwise.
+        """
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_schedule_remove
+            return await remote_schedule_remove(remotes[target], name)
+        from aegis.scheduler.push import remove_schedule
+        ok, error = remove_schedule(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names(), name)
+        if error is not None:
+            return {"error": error}
+        return {"ok": True}
+
+    @server.tool
+    async def aegis_schedule_logs(name: str, from_handle: str,
+                                   target: str | None = None,
+                                   tail: int = 50) -> dict:
+        """Tail the JSONL lifecycle log for a schedule. Returns
+        ``{records: [...]}`` (empty list if no log file)."""
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error":
+                        f"unknown target {target!r}; "
+                        f"known: {sorted(remotes)}"}
+            from aegis.remote.client import remote_schedule_logs
+            return await remote_schedule_logs(remotes[target], name, tail=tail)
+        from aegis.scheduler.push import logs_payload
+        return logs_payload(bridge.state_root, name, tail=tail)
+
+    @server.tool
     async def aegis_task_status(task_id: str) -> dict:
         """Inspect a previously-enqueued task by its task_id.
 

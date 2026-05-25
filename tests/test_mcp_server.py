@@ -103,7 +103,10 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_group_wait_all", "aegis_group_wait_any",
         "aegis_group_spawn_mixed",
         "aegis_group_status", "aegis_group_dissolve",
-        "aegis_group_rename", "aegis_group_move_member"}
+        "aegis_group_rename", "aegis_group_move_member",
+        "aegis_schedule_push", "aegis_schedule_list",
+        "aegis_schedule_show", "aegis_schedule_remove",
+        "aegis_schedule_logs"}
 
 
 @pytest.mark.asyncio

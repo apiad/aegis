@@ -20,7 +20,10 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from aegis.remote.config import RemotePlaneSpec
-from aegis.scheduler.push import classify_source, validate_spec, write_atomic
+from aegis.scheduler.push import (
+    list_payload, logs_payload, remove_schedule, show_payload,
+    validate_spec, write_atomic,
+)
 
 
 class _QueueManagerLike(Protocol):
@@ -151,41 +154,14 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             {"name": name,
              "written_to": str(dest.relative_to(bridge.state_root))})
 
-    def _schedule_file_path(name: str):
-        return bridge.state_root / ".aegis" / "schedules" / f"{name}.yaml"
-
-    def _iso(dt):
-        if dt is None:
-            return None
-        try:
-            return dt.isoformat()
-        except AttributeError:
-            return dt
-
     async def schedule_list(request: Request) -> JSONResponse:
         err = _check_auth(request, spec)
         if err:
             status = err.pop("_status", 401)
             return JSONResponse(err, status_code=status)
-        sched = getattr(bridge, "scheduler", None)
-        if sched is None:
-            return JSONResponse({"schedules": []})
-        inline = bridge.inline_schedule_names()
-        rows = []
-        for entry in sched.snapshot():
-            source, _, _ = classify_source(
-                _schedule_file_path(entry.name), inline, entry.name)
-            rows.append({
-                "name": entry.name,
-                "source": source,
-                "next_fire": _iso(entry.next_fire),
-                "fire_count": entry.fire_count,
-                "in_flight": entry.in_flight,
-                "enabled": entry.enabled,
-                "workflow": entry.spec.get("workflow"),
-                "cron": entry.spec.get("cron"),
-            })
-        return JSONResponse({"schedules": rows})
+        return JSONResponse(list_payload(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names()))
 
     async def schedule_show(request: Request) -> JSONResponse:
         err = _check_auth(request, spec)
@@ -193,26 +169,12 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             status = err.pop("_status", 401)
             return JSONResponse(err, status_code=status)
         name = request.path_params["name"]
-        sched = getattr(bridge, "scheduler", None)
-        entry = sched.get(name) if sched is not None else None
-        if entry is None:
+        payload = show_payload(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names(), name)
+        if payload is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        source, pf, pa = classify_source(
-            _schedule_file_path(name), bridge.inline_schedule_names(), name)
-        return JSONResponse({
-            "name": name,
-            "source": source,
-            "spec": entry.spec,
-            "runtime": {
-                "next_fire": _iso(entry.next_fire),
-                "last_fire": _iso(entry.last_completed_at),
-                "fire_count": entry.fire_count,
-                "in_flight": entry.in_flight,
-                "enabled": entry.enabled,
-            },
-            "pushed_from": pf,
-            "pushed_at": pa,
-        })
+        return JSONResponse(payload)
 
     async def schedule_remove(request: Request) -> Response:
         err = _check_auth(request, spec)
@@ -220,18 +182,13 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             status = err.pop("_status", 401)
             return JSONResponse(err, status_code=status)
         name = request.path_params["name"]
-        sched = getattr(bridge, "scheduler", None)
-        entry = sched.get(name) if sched is not None else None
-        if entry is None:
+        ok, error = remove_schedule(
+            getattr(bridge, "scheduler", None),
+            bridge.state_root, bridge.inline_schedule_names(), name)
+        if error == "not found":
             return JSONResponse({"error": "not found"}, status_code=404)
-        file_path = _schedule_file_path(name)
-        source, _, _ = classify_source(
-            file_path, bridge.inline_schedule_names(), name)
-        if source != "pushed":
-            return JSONResponse(
-                {"error": f"cannot remove {source!r}-source schedule"},
-                status_code=409)
-        file_path.unlink()
+        if error is not None:
+            return JSONResponse({"error": error}, status_code=409)
         return Response(status_code=204)
 
     async def schedule_logs(request: Request) -> JSONResponse:
@@ -244,20 +201,7 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             tail = int(request.query_params.get("tail", "50"))
         except ValueError:
             return JSONResponse({"error": "invalid tail"}, status_code=400)
-        log_path = (bridge.state_root / ".aegis" / "state"
-                    / "schedules" / f"{name}.jsonl")
-        if not log_path.exists():
-            return JSONResponse({"records": []})
-        lines = log_path.read_text().splitlines()[-tail:]
-        records = []
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        return JSONResponse({"records": records})
+        return JSONResponse(logs_payload(bridge.state_root, name, tail=tail))
 
     routes = [
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),

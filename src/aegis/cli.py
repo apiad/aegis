@@ -226,8 +226,11 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     scheduler = None
     reload_watcher = None
     if schedules:
+        from types import SimpleNamespace as _SN
+
         from aegis.scheduler import Scheduler
         from aegis.scheduler.reload import ReloadWatcher
+        from aegis.workflow.decorator import get_workflow as _get_wf
         from aegis.workflow.runner import run_workflow as _rw
 
         async def _scheduler_run_workflow(name: str, args: dict):
@@ -242,6 +245,10 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
             run_workflow=_scheduler_run_workflow)
         if plane_bridge is not None:
             plane_bridge.scheduler = scheduler
+        mgr.attach_scheduler_context(
+            scheduler=scheduler, state_root=Path.cwd(),
+            workflow_registry=_SN(get=_get_wf),
+            inline_schedule_names=set(inline_schedule_names or set()))
         await scheduler.start()
 
         # Hot reload: re-read .aegis.yaml on filesystem change and

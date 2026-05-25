@@ -17,6 +17,10 @@ def test_appbridge_is_runtime_checkable_protocol():
         terminal_manager = object()
         groups = object()
         remotes = {}
+        scheduler = None
+        state_root = object()
+        workflow_registry = object()
+        def inline_schedule_names(self): return set()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -36,6 +40,10 @@ def test_appbridge_requires_full_surface():
         terminal_manager = object()
         groups = object()
         remotes = {}
+        scheduler = None
+        state_root = object()
+        workflow_registry = object()
+        def inline_schedule_names(self): return set()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
@@ -49,6 +57,10 @@ def test_appbridge_requires_full_surface():
         terminal_manager = object()
         groups = object()
         remotes = {}
+        scheduler = None
+        state_root = object()
+        workflow_registry = object()
+        def inline_schedule_names(self): return set()
         def list_sessions(self): return []
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
