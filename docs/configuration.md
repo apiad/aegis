@@ -190,9 +190,24 @@ for fire-and-forget enqueues.
 ```yaml
 remote_plane:
   bind: 100.64.0.5:8556         # tailnet IP, explicit
+  peer_name: zion               # this serve's own name (see below)
   accept_tokens: []             # optional bearer-token allowlist
   accept_from: []               # optional source-IP allowlist
 ```
+
+`peer_name` (v0.8.1+) is **this serve's identity** as seen by its
+peers. It populates the `from_peer` field of outbound callback POSTs
+so the receiver can match it against its own `remotes:` map. Required
+when this serve also has `remotes:` configured (i.e. might send
+callbacks); receiver-only deployments may leave it unset.
+
+Convention: the `peer_name` here must equal the value you use in
+every peer's `remotes.<this-serve>.peer_name` — it's the single
+identity by which the rest of the tailnet knows you. If `remotes` is
+set but `remote_plane.peer_name` is not, the serve still boots but
+the outbound callback observer is not installed; any
+`aegis_enqueue(target=…, callback=True)` then returns a loud error
+at call time. Fire-and-forget enqueues continue to work unchanged.
 
 Default off (key absent or empty block). Gates compose with AND — both
 empty means "anything that reaches the port is trusted." See
@@ -212,6 +227,7 @@ remotes:
     peer_name: zion          # zion is "zion" to vps
 remote_plane:
   bind: 100.64.0.4:8556
+  peer_name: zion            # same identity, claimed on outbound callbacks
 ```
 
 ```yaml
@@ -222,6 +238,7 @@ remotes:
     peer_name: vps           # vps is "vps" to zion
 remote_plane:
   bind: 100.64.0.5:8556
+  peer_name: vps             # same identity, claimed on outbound callbacks
 ```
 
 With this shape either side can call

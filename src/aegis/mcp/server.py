@@ -412,7 +412,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,
-                            callback: bool = True,
+                            callback: bool | None = None,
                             target: str | None = None) -> dict:
         """Enqueue a task on a named queue. Returns task_id + queued_position.
 
@@ -420,19 +420,20 @@ def build_server(bridge: AppBridge) -> FastMCP:
         remote aegis (must be a key in ``remotes`` in .aegis.yaml). The
         remote runs the task on its own filesystem and queue.
 
-        When ``target`` is set and ``callback=true``, the receiving serve
-        will POST the worker's final message back to your inbox via the
-        configured ``remote_plane`` on this serve. This requires both:
-        (a) the target peer's ``peer_name`` field set in your ``remotes``
-        mapping (so the receiver knows which configured remote to call
-        back), and (b) a ``remote_plane`` block on your own ``.aegis.yaml``
-        (so the callback POST has somewhere to land). ``callback=false``
-        keeps v0.7 fire-and-forget semantics — completion behavior is
-        whatever the receiving serve is configured to do.
+        ``callback`` semantics depend on ``target``:
 
-        If ``target=None`` (default), the task runs on this aegis's local
-        QueueManager. ``callback=true`` (default) routes the worker's
-        final result into your inbox; ``callback=false`` drops it.
+        - ``target=None`` (local queue) — ``callback`` defaults to True;
+          the worker's final result is routed into your inbox.
+        - ``target="<peer>"`` (remote queue) — ``callback`` defaults to
+          False (v0.7 fire-and-forget compatibility). Pass
+          ``callback=True`` to request a wire-level callback that
+          delivers the worker's final message to your inbox once the
+          remote task terminates. This requires: (a) the target peer's
+          ``peer_name`` field set in your ``remotes`` mapping (so the
+          receiver knows which configured remote to call back),
+          (b) a ``remote_plane`` block with its own ``peer_name`` set on
+          your own ``.aegis.yaml`` (so the callback POST has somewhere
+          to land *and* the receiver can match its ``remotes`` map).
 
         from_handle is your own aegis handle (read from your system prompt).
         Unknown queue/target returns ``{"error": "..."}``.
@@ -444,20 +445,34 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 return {"error":
                         f"unknown target {target!r}; "
                         f"known: {sorted(remotes)}"}
-            if callback and getattr(bridge, "remote_plane", None) is None:
-                return {"error":
-                        "callback=true on a remote target requires "
-                        "remote_plane to be configured on this serve"}
+            effective_callback = bool(callback)  # default False for remote
             spec = remotes[target]
-            callback_to = spec.peer_name if callback else None
-            callback_handle = from_handle if callback else None
+            if effective_callback:
+                if getattr(bridge, "remote_plane", None) is None:
+                    return {"error":
+                            "callback=true on a remote target requires "
+                            "remote_plane to be configured on this serve"}
+                if not getattr(bridge.remote_plane, "peer_name", None):
+                    return {"error":
+                            "callback=true on a remote target requires "
+                            "remote_plane.peer_name to be set on this "
+                            "serve (so the receiver knows who to call "
+                            "back)"}
+                if not spec.peer_name:
+                    return {"error":
+                            f"callback=true on a remote target requires "
+                            f"remotes[{target!r}].peer_name to be set "
+                            f"(the receiver's name for this serve in "
+                            f"its own `remotes:` mapping)"}
+            callback_to = spec.peer_name if effective_callback else None
+            callback_handle = from_handle if effective_callback else None
             from aegis.remote.client import remote_enqueue
             result = await remote_enqueue(
                 spec, queue, payload, from_handle,
                 callback_to=callback_to, callback_handle=callback_handle)
             if "error" not in result:
                 result["target"] = target
-                if callback:
+                if effective_callback:
                     result["callback_note"] = (
                         "callback will deliver to your inbox when the remote "
                         "task terminates")
@@ -466,12 +481,14 @@ def build_server(bridge: AppBridge) -> FastMCP:
                         "fire-and-forget — completion behavior is whatever the "
                         "receiving serve is configured to do")
             return result
+        # local path: callback defaults to True
+        effective_local_callback = True if callback is None else bool(callback)
 
         try:
             tid, pos = bridge.queue_manager.enqueue(
                 queue, payload,
                 enqueued_by=sender_agent(from_handle),
-                callback=callback)
+                callback=effective_local_callback)
         except KeyError as e:
             return {"error": f"enqueue rejected: unknown queue {e.args[0]!r}"}
         return {"task_id": tid, "queued_position": pos}

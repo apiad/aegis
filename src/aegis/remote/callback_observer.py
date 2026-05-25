@@ -25,6 +25,13 @@ def install_callback_observer(
     eligible. Best-effort POST, no retry. `self_peer_name` is what we
     identify ourselves as in the callback body's `from_peer` field.
     """
+    # Hold strong references to in-flight callback tasks. Without this, Python
+    # may garbage-collect the Task object before its coroutine completes; see
+    # https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+    # ("Save a reference to the result of this function, to avoid a task
+    #  disappearing mid-execution.").
+    _inflight: set[asyncio.Task] = set()
+
     def _observer(ev: QueueEvent) -> None:
         if not isinstance(ev, QueueCompleted):
             return
@@ -60,7 +67,9 @@ def install_callback_observer(
             "ended_at":    ev.completed_at or "",
         }
         # Fire-and-forget — observer must not block QueueManager.
-        asyncio.create_task(_fire(qm, task.queue, task.id, spec, body))
+        t = asyncio.create_task(_fire(qm, task.queue, task.id, spec, body))
+        _inflight.add(t)
+        t.add_done_callback(_inflight.discard)
 
     qm.subscribe(_observer)
 

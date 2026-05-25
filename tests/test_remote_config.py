@@ -115,3 +115,65 @@ def test_remote_spec_peer_name_defaults_to_none():
     from aegis.remote.config import RemoteSpec
     spec = RemoteSpec(url="http://1.2.3.4:8556")
     assert spec.peer_name is None
+
+
+def test_remote_plane_spec_accepts_peer_name() -> None:
+    p = RemotePlaneSpec(bind="100.64.0.1:8556", peer_name="zion")
+    assert p.peer_name == "zion"
+
+
+def test_remote_plane_spec_rejects_empty_peer_name() -> None:
+    with pytest.raises(ValueError, match="peer_name"):
+        RemotePlaneSpec(bind="100.64.0.1:8556", peer_name="   ")
+
+
+def test_load_succeeds_with_remotes_but_no_remote_plane_peer_name(
+        tmp_path: Path) -> None:
+    """v0.8.1: fire-and-forget-only deployments (remotes set, no
+    peer_name on remote_plane) must boot — callbacks are simply disabled.
+    The MCP-tool check loudly rejects callback=True at call time."""
+    from aegis.config.yaml_loader import load_config
+
+    _write(tmp_path / ".aegis.yaml", """
+remote_plane:
+  bind: 100.64.0.1:8556
+remotes:
+  vps:
+    url: http://vps:8556
+""")
+    cfg = load_config(tmp_path)
+    assert cfg.remote_plane is not None
+    assert cfg.remote_plane.peer_name is None
+    assert "vps" in cfg.remotes
+
+
+def test_load_succeeds_when_only_remote_plane_set_without_peer_name(
+        tmp_path: Path) -> None:
+    """Receiver-only deployments (remote_plane configured, no remotes)
+    don't need peer_name — they never send outbound callbacks."""
+    from aegis.config.yaml_loader import load_config
+
+    _write(tmp_path / ".aegis.yaml", """
+remote_plane:
+  bind: 100.64.0.1:8556
+""")
+    cfg = load_config(tmp_path)
+    assert cfg.remote_plane is not None
+    assert cfg.remote_plane.peer_name is None
+
+
+def test_load_succeeds_when_remotes_and_peer_name_both_set(
+        tmp_path: Path) -> None:
+    from aegis.config.yaml_loader import load_config
+
+    _write(tmp_path / ".aegis.yaml", """
+remote_plane:
+  bind: 100.64.0.1:8556
+  peer_name: zion
+remotes:
+  vps:
+    url: http://vps:8556
+""")
+    cfg = load_config(tmp_path)
+    assert cfg.remote_plane.peer_name == "zion"
+    assert "vps" in cfg.remotes

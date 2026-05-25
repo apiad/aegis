@@ -5,6 +5,49 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-25
+
+### Fixed
+
+Three issues in the v0.8.0 wire-callback path that together prevented
+callbacks from working in any documented configuration:
+
+- **`RemotePlaneSpec` now carries a `peer_name` field.** v0.8.0
+  `cli.py` read it via `getattr(..., None) or "this-serve"`, but the
+  dataclass had no such field — so every outbound callback identified
+  the sender as the literal string `"this-serve"`, which no real
+  receiver's `remotes:` map names. Round-trip was 100% miss.
+- **`aegis_enqueue(target=…)` now defaults `callback` to False**
+  (matching v0.7 fire-and-forget semantics). v0.8.0 made it default
+  True, which silently broke pre-existing agent prompts that called
+  the tool against a remote target without specifying callback —
+  those calls began returning an error when this serve had no
+  `remote_plane` configured. The signature also widened from
+  `callback: bool = True` to `callback: bool | None = None` so the
+  default can be context-sensitive (True for local, False for
+  remote).
+- **Loud rejection at MCP-tool boundary** when `callback=True` is
+  set on a remote target and any of `remote_plane.peer_name` /
+  `remotes[target].peer_name` / `remote_plane` block is missing.
+  v0.8.0 silently sent `callback_to=None` on the wire in those cases
+  and the receiver's observer dropped without error.
+
+Also:
+
+- **Callback observer now holds a strong reference** to every
+  in-flight `asyncio.create_task` and discards on completion via
+  `add_done_callback(set.discard)`. v0.8.0 fire-and-forget tasks
+  could be garbage-collected mid-await under burst load, dropping
+  callbacks without a log line. (Python docs explicitly warn about
+  this pattern.)
+
+Deployment behavior: fire-and-forget enqueues continue to work
+unchanged. Callback-using deployments need `remote_plane.peer_name`
+set in `.aegis.yaml` on the caller's side (and the matching
+`remotes.<peer>.peer_name` on the caller's side already; symmetric
+on the receiver). The MCP-tool error returned when something is
+missing now points at the exact missing field.
+
 ## [0.8.0] - 2026-05-25
 
 ### Added

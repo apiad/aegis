@@ -61,7 +61,8 @@ async def test_aegis_enqueue_remote_callback_passes_hints(monkeypatch):
         qm=_FakeQM(),
         remotes={"vps": RemoteSpec(url="http://1.2.3.4:8556",
                                     peer_name="laptop")},
-        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556"))
+        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556",
+                                      peer_name="zion"))
     captured = {}
     async def fake_remote_enqueue(spec, queue, payload, from_,
                                    *, callback_to=None, callback_handle=None):
@@ -104,6 +105,66 @@ async def test_aegis_enqueue_callback_true_no_remote_plane_errors():
 
 
 @pytest.mark.asyncio
+async def test_aegis_enqueue_remote_default_is_fire_and_forget(monkeypatch):
+    """v0.8.1: when callback is unspecified for a remote target, the
+    default is fire-and-forget — no callback hints on the wire."""
+    bridge = _FakeBridge(
+        qm=_FakeQM(),
+        remotes={"vps": RemoteSpec(url="http://1.2.3.4:8556",
+                                    peer_name="laptop")},
+        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556",
+                                      peer_name="zion"))
+    captured = {}
+    async def fake_remote_enqueue(spec, queue, payload, from_,
+                                   *, callback_to=None, callback_handle=None):
+        captured.update(callback_to=callback_to,
+                        callback_handle=callback_handle)
+        return {"task_id": "01J", "queued_position": 0}
+    monkeypatch.setattr("aegis.remote.client.remote_enqueue",
+                        fake_remote_enqueue)
+    server = build_server(bridge)
+    result = await _call(server, "aegis_enqueue",
+                         queue="impl", payload="x",
+                         from_handle="h", target="vps")  # no callback kwarg
+    assert captured.get("callback_to") is None
+    assert captured.get("callback_handle") is None
+    assert "fire-and-forget" in result["callback_note"]
+
+
+@pytest.mark.asyncio
+async def test_aegis_enqueue_callback_true_remote_missing_remote_plane_peer_name():
+    """v0.8.1: callback=True + remote_plane has no peer_name → loud error."""
+    bridge = _FakeBridge(
+        qm=_FakeQM(),
+        remotes={"vps": RemoteSpec(url="http://1.2.3.4:8556",
+                                    peer_name="laptop")},
+        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556"))  # no peer_name
+    server = build_server(bridge)
+    result = await _call(server, "aegis_enqueue",
+                         queue="impl", payload="x",
+                         from_handle="h", callback=True, target="vps")
+    assert "error" in result
+    assert "remote_plane.peer_name" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_aegis_enqueue_callback_true_remote_missing_target_peer_name():
+    """v0.8.1: callback=True + remotes[target].peer_name unset → loud error."""
+    bridge = _FakeBridge(
+        qm=_FakeQM(),
+        remotes={"vps": RemoteSpec(url="http://1.2.3.4:8556")},  # no peer_name
+        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556",
+                                      peer_name="zion"))
+    server = build_server(bridge)
+    result = await _call(server, "aegis_enqueue",
+                         queue="impl", payload="x",
+                         from_handle="h", callback=True, target="vps")
+    assert "error" in result
+    assert "peer_name" in result["error"]
+    assert "vps" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_aegis_enqueue_callback_false_remote_omits_hints(monkeypatch):
     """callback=false on a remote target sends no callback hints (v0.7
     behavior preserved)."""
@@ -111,7 +172,8 @@ async def test_aegis_enqueue_callback_false_remote_omits_hints(monkeypatch):
         qm=_FakeQM(),
         remotes={"vps": RemoteSpec(url="http://1.2.3.4:8556",
                                     peer_name="laptop")},
-        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556"))
+        remote_plane=RemotePlaneSpec(bind="127.0.0.1:8556",
+                                      peer_name="zion"))
     captured = {}
     async def fake_remote_enqueue(spec, queue, payload, from_,
                                    *, callback_to=None, callback_handle=None):

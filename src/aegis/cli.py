@@ -174,10 +174,17 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None"
     app = plane_mod.build_plane(bridge, cfg.remote_plane)
     plane_mod.run_plane_async(app, cfg.remote_plane.bind)
     remotes = getattr(cfg, "remotes", None) or {}
-    if remotes:
-        self_name = getattr(cfg.remote_plane, "peer_name", None) or "this-serve"
+    if remotes and cfg.remote_plane.peer_name:
         install_callback_observer(
-            queue_manager, remotes=remotes, self_peer_name=self_name)
+            queue_manager, remotes=remotes,
+            self_peer_name=cfg.remote_plane.peer_name)
+    elif remotes:
+        import logging
+        logging.getLogger(__name__).info(
+            "remote_plane.peer_name not set; outbound callback observer "
+            "not installed. aegis_enqueue(target=..., callback=True) "
+            "will return an error at call time. Set "
+            "remote_plane.peer_name in .aegis.yaml to enable callbacks.")
     return bridge
 
 

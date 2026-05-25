@@ -71,24 +71,30 @@ aegis_enqueue(
     queue:       str,
     payload:     str,
     from_handle: str,
-    callback:    bool         = True,
-    target:      str | None   = None,   # ← new
+    callback:    bool | None  = None,   # default depends on target (see below)
+    target:      str | None   = None,
 ) -> dict
 ```
 
-- `target=None` (default): the existing local-enqueue path; nothing
-  changes.
+- `target=None` (default): the existing local-enqueue path. `callback`
+  defaults to **True** — worker's final result is routed into the
+  caller's inbox.
 - `target="<name>"`: the substrate looks `<name>` up in the local
   `remotes` config and POSTs the body to that remote's
-  `/remote/v1/enqueue`. The returned dict includes `"target":
-  "<name>"`.
+  `/remote/v1/enqueue`. `callback` defaults to **False** (v0.7
+  fire-and-forget compatibility). Pass `callback=True` explicitly to
+  request a wire-level callback — see [Callbacks](#callbacks).
 
-When `target` is set and `callback=True` (the default), the substrate
-attaches `callback_to` + `callback_handle` hints to the wire enqueue
-so the receiving serve will POST the worker's final message back to
-the originating agent's inbox on completion. Pass `callback=False`
-to keep the legacy fire-and-forget behavior. See
-[Callbacks](#callbacks) below.
+`aegis_enqueue` with `target` set and explicit `callback=True` will
+loudly reject the call when any of the following is missing:
+
+- `remote_plane.peer_name` on the caller's serve;
+- `remotes[<target>].peer_name` on the caller's serve;
+- `remote_plane` block on the caller's serve at all.
+
+There is no silent fallback to fire-and-forget; if you ask for a
+callback and the symmetric-peer config isn't complete, the substrate
+tells you so.
 
 ## Configuration
 
@@ -132,6 +138,8 @@ The opt-in section that turns on the receive side. Default off
 ```yaml
 remote_plane:
   bind: 100.64.0.5:8556          # tailnet IP, explicit
+  peer_name: zion                # this serve's identity on outbound callbacks
+                                  # — required when `remotes` is also configured
   accept_tokens: []              # optional bearer-token allowlist
   accept_from: []                # optional source-IP allowlist
 ```
