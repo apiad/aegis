@@ -103,3 +103,15 @@ def test_load_remote_plane_absent_is_none(tmp_path: Path) -> None:
     _write(tmp_path / ".aegis.yaml", "")
     cfg = load_config(tmp_path)
     assert cfg.remote_plane is None
+
+
+def test_remote_spec_accepts_peer_name():
+    from aegis.remote.config import RemoteSpec
+    spec = RemoteSpec(url="http://1.2.3.4:8556", peer_name="laptop")
+    assert spec.peer_name == "laptop"
+
+
+def test_remote_spec_peer_name_defaults_to_none():
+    from aegis.remote.config import RemoteSpec
+    spec = RemoteSpec(url="http://1.2.3.4:8556")
+    assert spec.peer_name is None

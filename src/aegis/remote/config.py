@@ -10,6 +10,7 @@ class RemoteSpec:
     """Outbound remote target — one entry in the `remotes` mapping."""
     url: str
     token: str | None = None
+    peer_name: str | None = None
 
     def __post_init__(self) -> None:
         parsed = urlparse(self.url)
