@@ -61,6 +61,25 @@ async def _aegis_group_spawn_mixed_impl(bridge, *, group: str,
         group=group, profiles=profiles)
     return {"handles": list(handles), "group": group}
 
+
+async def _aegis_group_status_impl(bridge, *, group: str) -> dict:
+    return await bridge.groups.status(group)
+
+
+async def _aegis_group_dissolve_impl(bridge, *, group: str) -> dict:
+    return await bridge.groups.dissolve(group)
+
+
+async def _aegis_group_rename_impl(bridge, *, old: str, new: str) -> dict:
+    return await bridge.groups.rename(old, new)
+
+
+async def _aegis_group_move_member_impl(bridge, *, handle: str,
+                                        from_group: str,
+                                        to_group: str) -> dict:
+    return await bridge.groups.move_member(
+        handle, from_group=from_group, to_group=to_group)
+
 BRIEFING = (
     "You are running inside aegis — a meta-harness for coding agents. "
     "aegis drives this Claude Code process via stream-json and re-renders "
@@ -833,6 +852,32 @@ def build_server(bridge: AppBridge) -> FastMCP:
         """
         return await _aegis_group_spawn_mixed_impl(
             bridge, group=group, profiles=profiles)
+
+    @server.tool
+    async def aegis_group_status(group: str) -> dict:
+        """Snapshot of ``group``: name, members (handle+profile), and the
+        current in-flight broadcast if any.
+        """
+        return await _aegis_group_status_impl(bridge, group=group)
+
+    @server.tool
+    async def aegis_group_dissolve(group: str) -> dict:
+        """Tear down ``group`` (does not close member sessions)."""
+        return await _aegis_group_dissolve_impl(bridge, group=group)
+
+    @server.tool
+    async def aegis_group_rename(old: str, new: str) -> dict:
+        """Rename a group from ``old`` to ``new``."""
+        return await _aegis_group_rename_impl(
+            bridge, old=old, new=new)
+
+    @server.tool
+    async def aegis_group_move_member(handle: str, from_group: str,
+                                       to_group: str) -> dict:
+        """Move a member from ``from_group`` to ``to_group``."""
+        return await _aegis_group_move_member_impl(
+            bridge, handle=handle, from_group=from_group,
+            to_group=to_group)
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:

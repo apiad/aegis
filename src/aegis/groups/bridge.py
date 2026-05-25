@@ -44,6 +44,37 @@ class _GroupsBridge:
                           profiles: list[str]) -> list[str]:
         return await self.wiring.spawn_group(group, profiles)
 
+    async def status(self, group: str) -> dict:
+        g = self.runtime.registry.get(group)
+        rec = self.runtime.tracker.current(group)
+        return {
+            "name": g.name,
+            "members": [
+                {"handle": h, "profile": m.profile}
+                for h, m in g.members.items()
+            ],
+            "current_broadcast": (
+                {"id": rec.id, "objective": rec.objective,
+                 "started_at": rec.started_at,
+                 "members": list(rec.members)}
+                if rec else None
+            ),
+        }
+
+    async def dissolve(self, group: str) -> dict:
+        self.runtime.registry.dissolve(group)
+        return {"dissolved": group}
+
+    async def rename(self, old: str, new: str) -> dict:
+        self.runtime.registry.rename(old, new)
+        return {"old": old, "new": new}
+
+    async def move_member(self, handle: str, *, from_group: str,
+                          to_group: str) -> dict:
+        self.runtime.registry.move_member(
+            handle, from_group=from_group, to_group=to_group)
+        return {"handle": handle, "from": from_group, "to": to_group}
+
 
 def make_groups_bridge(*, session_manager, inbox_router,
                        state_dir: Path | None = None) -> _GroupsBridge:
