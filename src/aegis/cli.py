@@ -131,7 +131,8 @@ def run(
 
 
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
-                 stop: asyncio.Event, queues: dict | None = None) -> None:
+                 stop: asyncio.Event, queues: dict | None = None,
+                 schedules: dict | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -156,6 +157,25 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     mcp.bind(mgr)
     await mcp.start()
     await qm.start()
+
+    # Scheduler — only runs when schedules are configured.
+    scheduler = None
+    if schedules:
+        from aegis.scheduler import Scheduler
+        from aegis.workflow.runner import run_workflow as _rw
+
+        async def _scheduler_run_workflow(name: str, args: dict):
+            result = await _rw(name, args, bridge=mgr,
+                               queue_manager=qm, inbox_router=inbox)
+            if result.get("status") == "ok":
+                return result.get("result")
+            raise RuntimeError(result.get("error", "workflow failed"))
+
+        scheduler = Scheduler(
+            schedules=schedules, state_dir=_state_dir(Path.cwd()),
+            run_workflow=_scheduler_run_workflow)
+        await scheduler.start()
+
     tasks = []
     if tg is not None:
         from aegis.telegram.bot import BotClient
@@ -169,6 +189,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     finally:
         for t in tasks:
             t.cancel()
+        if scheduler is not None:
+            await scheduler.stop()
         await qm.stop()
         await mgr.close_all()
         await mcp.stop()
@@ -201,6 +223,20 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
         _console.print("[yellow]No telegram_token/chat_id — "
                        "headless MCP-only.[/yellow]")
 
+    # Optional .aegis.yaml: load schedules + import plugin workflows.
+    schedules: dict = {}
+    if (root / ".aegis.yaml").is_file():
+        try:
+            from aegis.config.yaml_loader import (
+                import_plugins, load_config as _load_yaml,
+            )
+            yaml_cfg = _load_yaml(root)
+            import_plugins(yaml_cfg)
+            schedules = yaml_cfg.schedules
+        except Exception as e:  # noqa: BLE001
+            _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
+            raise typer.Exit(1)
+
     async def main_async():
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
@@ -208,7 +244,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             loop.add_signal_handler(sig, stop.set)
         await _serve(agents=agents, default_agent=default_agent,
                      make_session=make_session, mcp=AegisMCP(),
-                     tg=tg, stop=stop, queues=queues)
+                     tg=tg, stop=stop, queues=queues, schedules=schedules)
 
     asyncio.run(main_async())
 
