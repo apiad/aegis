@@ -147,6 +147,46 @@ class Scheduler:
             return self._compute_next(entry, now)
         return datetime.max.replace(tzinfo=now.tzinfo)
 
+    def replace_schedules(
+        self, new_schedules: dict[str, dict[str, Any]],
+    ) -> None:
+        """Atomic-swap the loaded schedule table.
+
+        New entries get fresh ``next_fire`` computed from the current
+        clock. Existing entries keep their fire_count + next_fire (so
+        a reload that only touches an unrelated entry doesn't reset
+        the world). Removed entries are dropped from state.
+
+        Concurrency: callers serialize via the reload watcher's
+        debounce — no internal lock.
+        """
+        new_state: dict[str, _SchedState] = {}
+        now = self.clock.now()
+        for name, entry in new_schedules.items():
+            prior = self._state.get(name)
+            if prior is not None and self.schedules.get(name) == entry:
+                new_state[name] = prior
+                continue
+            # New or changed: recompute next_fire from scratch.
+            if "fire_at" in entry:
+                dt = datetime.fromisoformat(entry["fire_at"])
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=now.tzinfo)
+                nxt = dt
+            elif "cron" in entry:
+                nxt = self._compute_next(entry, now)
+            else:
+                nxt = datetime.max.replace(tzinfo=now.tzinfo)
+            fire_count = prior.fire_count if prior is not None else 0
+            new_state[name] = _SchedState(
+                next_fire=nxt, fire_count=fire_count)
+        self.schedules = dict(new_schedules)
+        self._state = new_state
+        # Drop deferred queues for removed entries.
+        for k in list(self._deferred):
+            if k not in self._state:
+                del self._deferred[k]
+
     def fire_now(self, name: str) -> None:
         """Manually dispatch a schedule outside the tick cadence.
 

@@ -163,8 +163,10 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
     # Scheduler — only runs when schedules are configured.
     scheduler = None
+    reload_watcher = None
     if schedules:
         from aegis.scheduler import Scheduler
+        from aegis.scheduler.reload import ReloadWatcher
         from aegis.workflow.runner import run_workflow as _rw
 
         async def _scheduler_run_workflow(name: str, args: dict):
@@ -179,6 +181,24 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
             run_workflow=_scheduler_run_workflow)
         await scheduler.start()
 
+        # Hot reload: re-read .aegis.yaml on filesystem change and
+        # atomic-swap into the running scheduler. Parse errors keep
+        # the old config intact.
+        root = Path.cwd()
+
+        def _on_reload() -> None:
+            from aegis.config.yaml_loader import (
+                import_plugins, load_config as _load_yaml,
+            )
+            cfg = _load_yaml(root)
+            import_plugins(cfg)
+            scheduler.replace_schedules(cfg.schedules)
+
+        events_log = _state_dir(root) / "aegis_events.jsonl"
+        reload_watcher = ReloadWatcher(
+            root, on_reload=_on_reload, events_log=events_log)
+        await reload_watcher.start()
+
     tasks = []
     if tg is not None:
         from aegis.telegram.bot import BotClient
@@ -192,6 +212,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     finally:
         for t in tasks:
             t.cancel()
+        if reload_watcher is not None:
+            await reload_watcher.stop()
         if scheduler is not None:
             await scheduler.stop()
         await qm.stop()
