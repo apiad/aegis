@@ -172,6 +172,47 @@ observe, and inject into — replaces the Bash-as-tool-call pattern. The
 `sender: terminal:<name>` slot is already reserved in the inbox tag
 schema. Standalone.
 
+## Time-sensitive (June 2026 billing changes)
+
+### ⚠️ Before June 15 — migrate Claude driver from `claude -p` to REPL mode
+
+Anthropic splits interactive vs programmatic billing on June 15. `claude -p`
+(current driver) hits the new metered credit pool (full API rates). Interactive
+REPL mode stays on the subscription bucket unchanged.
+
+Change: strip `-p` from spawn argv; write prompts to `proc.stdin` instead of
+passing as a CLI argument. Output stream-JSON protocol is identical. The VS Code
+Claude extension already works this way.
+
+See `vault/Atlas/Architecture/2026-05-25-aegis-harness-roadmap.md`.
+
+### ⚠️ Before June 18 — add `GEMINI_API_KEY` support to Gemini agent profile
+
+Gemini CLI's personal OAuth dies June 18 for Google AI Pro/Ultra accounts.
+Fix: add optional `api_key` field to GeminiCLI agent profile config; inject
+`GEMINI_API_KEY=<value>` into the subprocess env at spawn time. User gets an
+API key from Google AI Studio (free tier available) and puts it in `.aegis.py`.
+No driver changes, no ACP changes — the subprocess just picks up the env var.
+
+### 5. Copilot ACP driver (after June 1 billing transition is confirmed)
+
+GitHub Copilot CLI supports ACP since Jan 2026: `copilot --acp` (stdio).
+Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
+Auth goes through `gh auth login` (no separate token management).
+
+### 6. OpenAI Codex JSON-RPC driver
+
+Codex CLI exposes a bidirectional JSON-RPC app server (`codex exec --json`).
+Different from ACP but documented and stable. Needs a custom `CodexDriver`
+implementing `HarnessSession` over JSON-RPC. Auth: `OPENAI_API_KEY` env var.
+No deadline pressure.
+
+### 7. Antigravity CLI (Gemini replacement, after June 18)
+
+Google's closed-source replacement for Gemini CLI. Probe for ACP support after
+it ships (`agy --help | grep acp`). If ACP confirmed: three-line shim identical
+to `GeminiDriver`. If not: probe stream-JSON and write a parser.
+
 ## Watching
 
 - **VPS job-crawler dispatched the plan job (2026-05-20-aegis-task-queue-plan)
