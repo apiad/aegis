@@ -33,6 +33,11 @@ class _GroupsBridge:
         return await self.runtime.wait_all(group, timeout=timeout,
                                             reducer=reducer)
 
+    async def wait_any(self, group: str, *, timeout: float = 600.0,
+                       cancel_losers: bool = True):
+        return await self.runtime.wait_any(
+            group, timeout=timeout, cancel_losers=cancel_losers)
+
 
 def make_groups_bridge(*, session_manager, inbox_router) -> _GroupsBridge:
     registry = GroupRegistry()

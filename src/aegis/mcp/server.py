@@ -46,6 +46,14 @@ async def _aegis_group_wait_all_impl(bridge, *, group: str,
                                            reducer=reducer)
     return _group_result_to_dict(result)
 
+
+async def _aegis_group_wait_any_impl(bridge, *, group: str,
+                                     timeout: float = 600.0,
+                                     cancel_losers: bool = True) -> dict:
+    result = await bridge.groups.wait_any(
+        group, timeout=timeout, cancel_losers=cancel_losers)
+    return _group_result_to_dict(result)
+
 BRIEFING = (
     "You are running inside aegis — a meta-harness for coding agents. "
     "aegis drives this Claude Code process via stream-json and re-renders "
@@ -797,6 +805,17 @@ def build_server(bridge: AppBridge) -> FastMCP:
         """
         return await _aegis_group_wait_all_impl(
             bridge, group=group, timeout=timeout, reducer=reducer)
+
+    @server.tool
+    async def aegis_group_wait_any(group: str, timeout: float = 600.0,
+                                    cancel_losers: bool = True) -> dict:
+        """Block until the first member of ``group`` posts one
+        post-broadcast turn. Surviving members receive an inbox
+        cancel signal unless ``cancel_losers=False``.
+        """
+        return await _aegis_group_wait_any_impl(
+            bridge, group=group, timeout=timeout,
+            cancel_losers=cancel_losers)
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:
