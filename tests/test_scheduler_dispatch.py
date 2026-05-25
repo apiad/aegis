@@ -171,6 +171,37 @@ async def test_snapshot_written_after_tick(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fire_at_one_shot(tmp_path: Path) -> None:
+    """A schedule with fire_at + lifecycle=once fires once; subsequent
+    ticks do not re-fire."""
+    calls: list[str] = []
+
+    async def fake_run(name, args):
+        calls.append(name)
+        return "ok"
+
+    clock = FakeClock(datetime(2026, 5, 25, 13, 59, tzinfo=timezone.utc))
+    sched = Scheduler(
+        schedules={"oneoff": {
+            "workflow": "prompt", "args": {"agent": "c", "text": "x"},
+            "fire_at": "2026-05-25T14:00:00+00:00",
+            "lifecycle": "once", "on_overlap": "skip",
+            "timeout": 60, "enabled": True,
+        }},
+        state_dir=tmp_path, run_workflow=fake_run, clock=clock,
+    )
+    clock.advance(minutes=2)  # past 14:00
+    await sched.tick()
+    await asyncio.sleep(0.05)
+    assert len(calls) == 1
+
+    clock.advance(hours=1)
+    await sched.tick()
+    await asyncio.sleep(0.05)
+    assert len(calls) == 1  # lifecycle:once exhausted
+
+
+@pytest.mark.asyncio
 async def test_start_stop_lifecycle(tmp_path: Path) -> None:
     """Start + immediate stop. Tick loop must not deadlock."""
     async def fake_run(name, args):

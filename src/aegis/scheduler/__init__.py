@@ -6,8 +6,10 @@ entries to ``runner.run_workflow``, and logs lifecycle events to
 ``.aegis/state/schedules/<name>.jsonl``.
 """
 from aegis.scheduler.clock import Clock, FakeClock, SystemClock
+from aegis.scheduler.notify import Notifier
 from aegis.scheduler.scheduler import Scheduler, SchedulerConfig
 
 __all__ = [
-    "Clock", "FakeClock", "Scheduler", "SchedulerConfig", "SystemClock",
+    "Clock", "FakeClock", "Notifier", "Scheduler", "SchedulerConfig",
+    "SystemClock",
 ]

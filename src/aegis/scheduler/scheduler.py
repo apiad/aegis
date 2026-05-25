@@ -27,6 +27,9 @@ from typing import Any, Awaitable, Callable
 
 from aegis.scheduler.clock import Clock, SystemClock
 from aegis.scheduler.cron import next_fire as compute_next_fire
+from aegis.scheduler.lifecycle import is_exhausted
+from aegis.scheduler.notify import Notifier, maybe_notify
+from aegis.scheduler.replay import replay_state
 
 logger = logging.getLogger(__name__)
 
@@ -68,24 +71,31 @@ class Scheduler:
         run_workflow: RunWorkflow,
         clock: Clock | None = None,
         cfg: SchedulerConfig | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         self.schedules = dict(schedules)
         self.state_dir = Path(state_dir)
         self.run_workflow = run_workflow
         self.clock = clock or SystemClock()
         self.cfg = cfg or SchedulerConfig()
+        self.notifier = notifier
         self._state: dict[str, _SchedState] = {}
+        self._fire_tasks: dict[str, asyncio.Task] = {}
+        self._deferred: dict[str, list[dict]] = {}
         self._task: asyncio.Task | None = None
         self._stopped: asyncio.Event | None = None
         self._init_state()
 
     # ── state ──────────────────────────────────────────────────────
     def _init_state(self) -> None:
-        """Compute initial next_fire for every entry."""
+        """Replay JSONL logs to rebuild fire_count + next_fire."""
         now = self.clock.now()
-        for name, entry in self.schedules.items():
+        replay = replay_state(self.state_dir, schedules=self.schedules,
+                              now=now)
+        for name, slot in replay.items():
             self._state[name] = _SchedState(
-                next_fire=self._compute_next(entry, now))
+                next_fire=slot["next_fire"],
+                fire_count=slot["fire_count"])
 
     def _compute_next(self, entry: dict, after: datetime) -> datetime:
         tz = entry.get("timezone", self.cfg.default_timezone)
@@ -101,13 +111,41 @@ class Scheduler:
                 continue
             if not entry.get("enabled", True):
                 continue
-            if st.in_flight and entry.get("on_overlap", "skip") == "skip":
+            if is_exhausted(entry.get("lifecycle", "forever"),
+                            fire_count=st.fire_count, now=now):
                 continue
             if st.next_fire > now:
                 continue
-            asyncio.create_task(self._fire(name, entry))
-            st.next_fire = self._compute_next(entry, now)
+            if st.in_flight:
+                policy = entry.get("on_overlap", "skip")
+                if policy == "skip":
+                    st.next_fire = self._advance_next(entry, now)
+                    continue
+                if policy == "queue":
+                    self._deferred.setdefault(name, []).append(entry)
+                    st.next_fire = self._advance_next(entry, now)
+                    continue
+                if policy == "kill":
+                    prior = self._fire_tasks.get(name)
+                    if prior is not None and not prior.done():
+                        prior.cancel()
+                # fall through to fire a new task
+            self._dispatch(name, entry)
+            st.next_fire = self._advance_next(entry, now)
         self._write_snapshot()
+
+    def _dispatch(self, name: str, entry: dict) -> None:
+        """Spawn a _fire task and track it for on_overlap=kill."""
+        task = asyncio.create_task(self._fire(name, entry))
+        self._fire_tasks[name] = task
+
+    def _advance_next(self, entry: dict, now: datetime) -> datetime:
+        """Next fire after dispatch. For cron, compute strictly after
+        ``now``. For ``fire_at`` (no cron), park at datetime.max so the
+        entry won't refire — lifecycle handles exhaustion separately."""
+        if "cron" in entry:
+            return self._compute_next(entry, now)
+        return datetime.max.replace(tzinfo=now.tzinfo)
 
     async def _fire(self, name: str, entry: dict) -> None:
         st = self._state[name]
@@ -133,6 +171,16 @@ class Scheduler:
                 "result_excerpt": str(result)[:500] if result else "",
             })
             st.last_status = "ok"
+        except asyncio.CancelledError:
+            self._append_jsonl(name, {
+                "ts": self.clock.now().isoformat(),
+                "schedule": name,
+                "event": "fire_failed",
+                "task_id": task_id,
+                "status": "failed:killed",
+            })
+            st.last_status = "failed:killed"
+            raise
         except Exception as e:  # noqa: BLE001 — any error becomes failed:crash
             self._append_jsonl(name, {
                 "ts": self.clock.now().isoformat(),
@@ -148,6 +196,13 @@ class Scheduler:
             st.fire_count += 1
             st.last_completed_at = self.clock.now()
             st.in_flight = False
+            maybe_notify(self.notifier, entry, schedule=name,
+                         status=st.last_status or "unknown")
+            # Drain one deferred (queued) fire if any.
+            deferred = self._deferred.get(name)
+            if deferred:
+                next_entry = deferred.pop(0)
+                self._dispatch(name, next_entry)
 
     # ── persistence ────────────────────────────────────────────────
     def _append_jsonl(self, name: str, record: dict) -> None:
