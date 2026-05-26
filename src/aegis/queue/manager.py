@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from aegis.budget.cost import compute as _compute_cost
+from aegis.budget.evaluator import evaluate_budgets
 from aegis.budget.prices import UnknownPriceError
 from aegis.events import AssistantText
 from aegis.queue.events import (
@@ -118,12 +121,62 @@ class QueueManager:
         path = Path(self._state_dir) / "queues" / f"{queue}.jsonl"
         append_record(path, event)
 
+    def _load_recent_jsonl(self, queue: str, max_age) -> list[dict]:
+        """Read this queue's JSONL, return terminal records within max_age."""
+        if self._state_dir is None:
+            return []
+        path = Path(self._state_dir) / "queues" / f"{queue}.jsonl"
+        if not path.exists():
+            return []
+        cutoff = datetime.now(timezone.utc) - max_age
+        out: list[dict] = []
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("event") not in ("completed", "failed"):
+                continue
+            ts_str = rec.get("completed_at", "")
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            try:
+                ts = datetime.fromisoformat(ts_str)
+            except (ValueError, TypeError):
+                continue
+            if ts >= cutoff:
+                out.append(rec)
+        return out
+
     def enqueue(self, queue: str, payload: str, *,
                 enqueued_by: str, callback: bool = False,
                 callback_to: str | None = None,
-                callback_handle: str | None = None) -> tuple[str, int]:
+                callback_handle: str | None = None) -> tuple[str, int] | dict:
         if queue not in self._queues:
             raise KeyError(queue)
+        q = self._queues[queue]
+        if q.budgets:
+            tail = self._load_recent_jsonl(
+                queue, max_age=max(b.window for b in q.budgets))
+            decision = evaluate_budgets(
+                tail, q.budgets, datetime.now(timezone.utc))
+            if not decision.allowed:
+                return {
+                    "error": f"queue {queue!r} over budget",
+                    "queue": queue,
+                    "blocked_by": [
+                        {"constraint": c.constraint,
+                         "limit": str(c.limit),
+                         "spent": str(c.spent),
+                         "window": c.window_str,
+                         "unblock_at": c.unblock_at.isoformat().replace(
+                             "+00:00", "Z") if c.unblock_at else None}
+                        for c in decision.blocked_by],
+                    "unblock_at": decision.unblock_at.isoformat().replace(
+                        "+00:00", "Z") if decision.unblock_at else None,
+                }
         task = Task(
             id=new_ulid(), queue=queue, payload=payload,
             enqueued_by=enqueued_by, enqueued_at=self._now(),

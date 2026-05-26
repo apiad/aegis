@@ -485,12 +485,15 @@ def build_server(bridge: AppBridge) -> FastMCP:
         effective_local_callback = True if callback is None else bool(callback)
 
         try:
-            tid, pos = bridge.queue_manager.enqueue(
+            result = bridge.queue_manager.enqueue(
                 queue, payload,
                 enqueued_by=sender_agent(from_handle),
                 callback=effective_local_callback)
         except KeyError as e:
             return {"error": f"enqueue rejected: unknown queue {e.args[0]!r}"}
+        if isinstance(result, dict):
+            return result
+        tid, pos = result
         return {"task_id": tid, "queued_position": pos}
 
     @server.tool

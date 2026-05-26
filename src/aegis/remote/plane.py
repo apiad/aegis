@@ -30,7 +30,7 @@ class _QueueManagerLike(Protocol):
     def enqueue(self, queue: str, payload: str, *,
                 enqueued_by: str, callback: bool,
                 callback_to: str | None,
-                callback_handle: str | None) -> tuple[str, int]: ...
+                callback_handle: str | None) -> tuple[str, int] | dict: ...
 
 
 def _check_auth(request: Request, spec: RemotePlaneSpec) -> dict | None:
@@ -88,7 +88,7 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
                 {"error": f"missing required fields: {missing}"},
                 status_code=400)
         try:
-            tid, pos = queue_manager.enqueue(
+            result = queue_manager.enqueue(
                 body["queue"], body["payload"],
                 enqueued_by=f"remote:{body['from']}",
                 callback=False,
@@ -98,6 +98,9 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             return JSONResponse(
                 {"error": f"unknown queue {e.args[0]!r}"},
                 status_code=404)
+        if isinstance(result, dict):
+            return JSONResponse(result, status_code=429)
+        tid, pos = result
         return JSONResponse({"task_id": tid, "queued_position": pos})
 
     async def callback(request: Request) -> Response:
