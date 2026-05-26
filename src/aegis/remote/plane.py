@@ -208,6 +208,86 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
             return JSONResponse({"error": "invalid tail"}, status_code=400)
         return JSONResponse(logs_payload(bridge.state_root, name, tail=tail))
 
+    async def budget_list(request: Request) -> JSONResponse:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        from datetime import datetime, timezone
+        from aegis.budget.evaluator import evaluate_budgets
+
+        qm = bridge.queue_manager
+        now = datetime.now(timezone.utc)
+        rows = []
+        for name, q in qm._queues.items():
+            if not q.budgets:
+                rows.append({"name": name, "budgets_count": 0,
+                              "status": "no-budget", "binding": None,
+                              "unblock_at": None})
+                continue
+            tail = qm._load_recent_jsonl(
+                name, max_age=max(b.window for b in q.budgets))
+            d = evaluate_budgets(tail, q.budgets, now)
+            if d.allowed:
+                tightest = min(
+                    d.checks,
+                    key=lambda c: (c.headroom / c.limit) if c.limit > 0 else 0)
+                binding = (f"${tightest.spent} of ${tightest.limit} "
+                            f"/ {tightest.window_str}"
+                            if tightest.constraint == "usd"
+                            else f"{tightest.spent} of {tightest.limit} "
+                                  f"{tightest.constraint} / {tightest.window_str}")
+                rows.append({"name": name, "budgets_count": len(q.budgets),
+                              "status": "ok", "binding": binding,
+                              "unblock_at": None})
+            else:
+                c = d.blocked_by[0]
+                binding = (f"${c.spent} of ${c.limit} / {c.window_str}"
+                            if c.constraint == "usd"
+                            else f"{c.spent} of {c.limit} "
+                                  f"{c.constraint} / {c.window_str}")
+                rows.append({"name": name, "budgets_count": len(q.budgets),
+                              "status": "blocked", "binding": binding,
+                              "unblock_at": d.unblock_at.isoformat().replace(
+                                  "+00:00", "Z") if d.unblock_at else None})
+        return JSONResponse({"queues": rows})
+
+    async def budget_show(request: Request) -> JSONResponse:
+        err = _check_auth(request, spec)
+        if err:
+            status = err.pop("_status", 401)
+            return JSONResponse(err, status_code=status)
+        name = request.path_params["queue"]
+        qm = bridge.queue_manager
+        if name not in qm._queues:
+            return JSONResponse({"error": "unknown queue"}, status_code=404)
+        q = qm._queues[name]
+        from datetime import datetime, timezone
+        from aegis.budget.evaluator import evaluate_budgets
+        now = datetime.now(timezone.utc)
+        if not q.budgets:
+            return JSONResponse({"name": name, "allowed": True, "checks": [],
+                                  "blocked_by": [], "unblock_at": None})
+        tail = qm._load_recent_jsonl(
+            name, max_age=max(b.window for b in q.budgets))
+        d = evaluate_budgets(tail, q.budgets, now)
+
+        def _ser(c):
+            return {"constraint": c.constraint, "limit": str(c.limit),
+                    "spent": str(c.spent), "window": c.window_str,
+                    "window_start": c.window_start.isoformat().replace(
+                        "+00:00", "Z"),
+                    "allowed": c.allowed, "headroom": str(c.headroom),
+                    "unblock_at": c.unblock_at.isoformat().replace(
+                        "+00:00", "Z") if c.unblock_at else None}
+        return JSONResponse({
+            "name": name, "allowed": d.allowed,
+            "checks": [_ser(c) for c in d.checks],
+            "blocked_by": [_ser(c) for c in d.blocked_by],
+            "unblock_at": d.unblock_at.isoformat().replace("+00:00", "Z")
+                           if d.unblock_at else None,
+        })
+
     routes = [
         Route("/remote/v1/enqueue", enqueue, methods=["POST"]),
         Route("/remote/v1/callback", callback, methods=["POST"]),
@@ -225,6 +305,9 @@ def build_plane(bridge, spec: RemotePlaneSpec) -> Starlette:
         routes.append(
             Route("/remote/v1/schedule/{name}/logs", schedule_logs,
                   methods=["GET"]))
+    routes.append(Route("/remote/v1/budget", budget_list, methods=["GET"]))
+    routes.append(
+        Route("/remote/v1/budget/{queue}", budget_show, methods=["GET"]))
     return Starlette(routes=routes)
 
 
