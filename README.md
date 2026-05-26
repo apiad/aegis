@@ -470,15 +470,26 @@ telegram_token = "…"        # or set AEGIS_TELEGRAM_TOKEN
 telegram_chat_id = 123456   # the single allowed chat
 ```
 
-Routing inside the chat:
+v0.10 ships a full **substrate command surface** alongside the original
+session-spawn verbs:
 
-- `/new [agent]` — spawn a new session
-- `/close [handle]` — close a session
-- `/interrupt` — interrupt the active turn
-- `/<handle> text…` — one-shot to a specific session
-- bare text — sent to the active session
+| Command | Action |
+|---|---|
+| `/new [agent]` | Spawn a new session |
+| `/close [handle]` | Close a session |
+| `/interrupt` | Interrupt the active turn |
+| `/queue list` | Per-queue depth + in-flight (local) |
+| `/queue show <name>` | Full queue detail (local) |
+| `/schedule list [@peer]` | All schedules with next fire |
+| `/schedule show <name> [@peer]` | Full schedule detail |
+| `/schedule run <name>` | Force-fire a schedule now (local) |
+| `/budget list [@peer]` | Budget state per queue |
+| `/budget show <queue> [@peer]` | Per-constraint budget detail |
+| `/peers` | Remotes with reachability probe |
+| `/help [command]` | Registry-driven help |
 
 A systemd unit template lives at `scripts/aegis-serve.service`.
+Full setup, output examples, and FAQ: [docs/telegram.md](docs/telegram.md).
 
 ## Docs
 
@@ -495,6 +506,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Remote plane](https://apiad.github.io/aegis/remote/) — laptop ↔ VPS enqueue over HTTP
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [Budgets](https://apiad.github.io/aegis/budget/)
+- [Telegram](https://apiad.github.io/aegis/telegram/) — substrate commands from the phone
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)
 - [Roadmap](https://apiad.github.io/aegis/roadmap/)

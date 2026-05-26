@@ -139,15 +139,28 @@ Run with:
 aegis serve
 ```
 
-Routing inside the chat:
+All commands available in the chat (v0.10):
 
 | Command | Action |
 |---|---|
 | `/new [agent]` | Spawn a new session (defaults to `default_agent`) |
 | `/close [handle]` | Close a session (default: the active one) |
 | `/interrupt` | Interrupt the active turn |
+| `/agents` | List configured agent profiles |
+| `/sessions` | List open sessions |
 | `/<handle> text…` | One-shot to a specific session (doesn't move the sticky pointer) |
 | bare text | Sent to the active session, with `auto_add_to_telegram_prompt` appended |
+| `/queue list` | Per-queue depth + in-flight + last task (local only) |
+| `/queue show <name>` | Full detail on one queue (local only) |
+| `/schedule list [@peer]` | All schedules with next fire time |
+| `/schedule show <name> [@peer]` | Full detail on one schedule |
+| `/schedule run <name>` | Force-fire a schedule now (local only) |
+| `/budget list [@peer]` | Budget state for every queue |
+| `/budget show <queue> [@peer]` | Per-constraint budget detail for one queue |
+| `/peers` | Configured remotes with live reachability probe |
+| `/help [command]` | Registry-driven help |
+
+See [Telegram](telegram.md) for setup, output examples, `@<peer>` cross-host syntax, and FAQ.
 
 A systemd unit template lives at `scripts/aegis-serve.service`.
 

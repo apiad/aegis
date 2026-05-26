@@ -5,6 +5,36 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-26
+
+### Added
+- **Telegram substrate command surface.** Nine new chat commands
+  reach every existing substrate from the phone:
+  - `/queue list` + `/queue show <name>` — local-only (no cross-host
+    queue endpoint yet).
+  - `/schedule list [@peer]` + `/schedule show <name> [@peer]` +
+    `/schedule run <name>` (local-only fire-now).
+  - `/budget list [@peer]` + `/budget show <queue> [@peer]`.
+  - `/peers` — list configured remotes with reachability probe.
+  - `/help` + `/help <name>` — registry-driven.
+- **Command registry** in `src/aegis/telegram/commands.py`. The five
+  existing verbs (`/new`, `/close`, `/interrupt`, `/agents`,
+  `/sessions`) migrated into the same registry; single source of
+  truth for `/help`.
+- **`@<peer>` cross-host syntax** parsed by the dispatcher. Each
+  handler decides whether to honor it; commands that don't support
+  cross-host return a clear error.
+- **Plain-text output by default; tabular data in fenced code
+  blocks** for proper monospace alignment on mobile. No
+  MarkdownV2-escape gymnastics in any new command.
+
+### Changed
+- `TelegramFrontend.__init__` grows `bridge` and `cfg` positional
+  params. Existing `aegis serve` wire-up updated; no external API
+  change.
+
+Spec: `docs/superpowers/specs/2026-05-26-aegis-telegram-substrate-commands-design.md`.
+
 ## [0.9.0] - 2026-05-26
 
 ### Added

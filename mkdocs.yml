@@ -86,6 +86,7 @@ nav:
       - Remote plane: remote.md
       - MCP plane: mcp.md
       - Budgets: budget.md
+      - Telegram: telegram.md
   - Reference:
       - Architecture: architecture.md
       - API: api.md

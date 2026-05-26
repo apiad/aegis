@@ -67,7 +67,17 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
-### v0.9.0 (current)
+### v0.10.0 (current)
+- **Telegram substrate commands.** Nine new chat commands —
+  `/queue list/show`, `/schedule list/show/run`, `/budget list/show`,
+  `/peers`, `/help` — wired through a command registry. Cross-host
+  via `@<peer>` syntax where the substrate already supports it
+  (schedule + budget); queue + schedule-run are local-only this
+  round. Existing five verbs (`/new`, `/close`, `/interrupt`,
+  `/agents`, `/sessions`) migrated into the same registry; `/help`
+  is now registry-driven.
+
+### v0.9.0
 - **Per-queue budgets.** Multi-window per-queue USD / output-token
   ceilings, all-must-allow, enforcement at enqueue time with a
   structured rejection naming the binding constraint and an
