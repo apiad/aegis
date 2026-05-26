@@ -67,7 +67,25 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
-### v0.10.0 (current)
+### v0.11.0 (current)
+- **Telegram renderer + correctness.** Worker replies now render
+  through Telegram's HTML parse mode — fenced code, bold, italic,
+  blockquotes, and links display natively instead of as literal
+  backslashes. Greedy chunker; replies exceeding three parts spill
+  to a `.md` attachment with a 500-char peek caption via a new
+  `sendDocument` primitive. The status message becomes a live
+  per-turn ticker that edits on tool-use boundaries instead of every
+  2s — tool-call activity is visible in real time and the silent
+  long-turn freeze (Telegram's rate-limit footgun) is gone. Multi-
+  observer migration: TUI and Telegram both register via
+  `add_event_observer` / `add_state_observer` / `add_inbox_observer`,
+  so two frontends can observe the same session without clobbering.
+  New `add_close_observer` on `AgentSession`; `_active` clears on
+  every session-close path. Telegram update offset persists across
+  restart. Tactical fixes: `send_message=None` guard, refresh-loop
+  exceptions caught and logged.
+
+### v0.10.0
 - **Telegram substrate commands.** Nine new chat commands —
   `/queue list/show`, `/schedule list/show/run`, `/budget list/show`,
   `/peers`, `/help` — wired through a command registry. Cross-host
