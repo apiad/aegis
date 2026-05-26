@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 
@@ -10,9 +11,12 @@ from aegis.queue.schema import InboxMessage, render_inbox_header
 from aegis.tui.metrics import SessionMetrics
 from aegis.tui.state import AgentState
 
+log = logging.getLogger("aegis.core.session")
+
 EventCb = Callable[["AgentSession", Event], None]
 StateCb = Callable[["AgentSession", AgentState, bool], None]
 InboxCb = Callable[["AgentSession", InboxMessage], None]
+CloseCb = Callable[["AgentSession", str], None]
 
 
 def _render_batch(batch: list[InboxMessage]) -> str:
@@ -52,8 +56,11 @@ class AgentSession:
         # immediately) or mid-turn (buffers for chain). Lets frontends
         # surface "received from <sender>" before the agent reacts.
         self.on_inbox: InboxCb | None = None
+        self.on_close: CloseCb | None = None
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
+        self._extra_inbox_observers: list[InboxCb] = []
+        self._extra_close_observers: list[CloseCb] = []
         # Captured by _run_turn's except clause for postmortem inspection.
         # None until a harness error occurs; replaced on each new error.
         self.last_error: Exception | None = None
@@ -69,6 +76,26 @@ class AgentSession:
     def add_state_observer(self, cb: StateCb) -> None:
         """Subscribe an additional state callback. Fires after on_state."""
         self._extra_state_observers.append(cb)
+
+    def add_inbox_observer(self, cb: InboxCb) -> None:
+        """Subscribe an additional inbox callback. Fires after on_inbox."""
+        self._extra_inbox_observers.append(cb)
+
+    def add_close_observer(self, cb: CloseCb) -> None:
+        """Subscribe an additional close callback. Fires after on_close."""
+        self._extra_close_observers.append(cb)
+
+    def _emit_close(self, reason: str) -> None:
+        if self.on_close is not None:
+            try:
+                self.on_close(self, reason)
+            except Exception:
+                log.exception("on_close raised; continuing")
+        for cb in self._extra_close_observers:
+            try:
+                cb(self, reason)
+            except Exception:
+                log.exception("close observer raised; continuing")
 
     def _emit_state(self, state: AgentState, *, finished: bool) -> None:
         self.state = state
@@ -88,7 +115,15 @@ class AgentSession:
         """Push an inbox message at this session. Wake if idle; buffer
         if mid-turn; the turn-end hook will chain a follow-up turn."""
         if self.on_inbox is not None:
-            self.on_inbox(self, msg)
+            try:
+                self.on_inbox(self, msg)
+            except Exception:
+                log.exception("on_inbox raised; continuing")
+        for cb in self._extra_inbox_observers:
+            try:
+                cb(self, msg)
+            except Exception:
+                log.exception("inbox observer raised; continuing")
         self._inbox_buffer.append(msg)
         if self.state is AgentState.working:
             return
@@ -171,7 +206,7 @@ class AgentSession:
         self.metrics.cancel_turn(self._now())
         self._emit_state(AgentState.ready, finished=False)
 
-    async def close(self) -> None:
+    async def close(self, reason: str = "explicit") -> None:
         if self._task is not None and not self._task.done():
             self._task.cancel()
             try:
@@ -180,3 +215,4 @@ class AgentSession:
                 pass
         if self._started:
             await self._session.close()
+        self._emit_close(reason)
