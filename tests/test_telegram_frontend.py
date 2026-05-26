@@ -43,7 +43,7 @@ def mgr():
 
 
 def fe(bot, m):
-    return TelegramFrontend(bot, m, chat_id=99,
+    return TelegramFrontend(bot, m, None, None, chat_id=99,
                             auto_prompt="BE BRIEF",
                             refresh_interval=0.0)
 
@@ -111,7 +111,7 @@ async def test_mid_turn_refresher_edits_status_repeatedly():
     b = FakeBot()
     m = SessionManager({"default": 1}, "default",
                        lambda p, u, h: SlowHarness(), mcp=None)
-    f = TelegramFrontend(b, m, chat_id=99, auto_prompt="",
+    f = TelegramFrontend(b, m, None, None, chat_id=99, auto_prompt="",
                          refresh_interval=0.01)
     await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
     core = m.list_sessions()[0]
@@ -166,3 +166,29 @@ async def test_underscore_handle_switches_sticky():
     alias = "/" + h1.replace("-", "_")
     await f.handle_update({"message": {"chat": {"id": 99}, "text": alias}})
     assert f._active == h1
+
+
+def test_frontend_ctor_accepts_bridge_and_cfg():
+    """v0.10: TelegramFrontend gains bridge + cfg constructor params."""
+    from aegis.telegram.frontend import TelegramFrontend
+
+    class _FakeBot:
+        async def send_message(self, *a, **k): return 1
+        async def edit_message(self, *a, **k): return None
+
+    class _FakeBridge:
+        queue_manager = None
+        scheduler = None
+
+    class _FakeCfg:
+        remotes = {}
+
+    class _FakeMgr:
+        def list_sessions(self): return []
+        def list_agents(self): return []
+
+    fe = TelegramFrontend(
+        _FakeBot(), _FakeMgr(), _FakeBridge(), _FakeCfg(),
+        chat_id=12345, auto_prompt="")
+    assert fe._bridge is not None
+    assert fe._cfg is not None

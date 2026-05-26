@@ -281,10 +281,25 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
     tasks = []
     if tg is not None:
+        from types import SimpleNamespace as _SN2
+
         from aegis.telegram.bot import BotClient
         from aegis.telegram.frontend import TelegramFrontend
         bot = BotClient(tg.token)
-        fe = TelegramFrontend(bot, mgr, chat_id=tg.chat_id,
+        # Telegram needs read access to queue_manager + scheduler + cfg.remotes.
+        # If remote_plane is not configured, the regular _PlaneBridge wasn't
+        # built — construct a minimal one with just the fields Telegram needs.
+        if plane_bridge is None:
+            tg_bridge = _SN2(
+                queue_manager=qm, scheduler=scheduler,
+                inbox_router=None, workflow_registry=None,
+                state_root=None,
+            )
+        else:
+            tg_bridge = plane_bridge
+        tg_cfg = _SN2(remotes=remotes or {})
+        fe = TelegramFrontend(bot, mgr, tg_bridge, tg_cfg,
+                              chat_id=tg.chat_id,
                               auto_prompt=tg.auto_prompt)
         tasks.append(asyncio.create_task(fe.run(bot)))
     try:

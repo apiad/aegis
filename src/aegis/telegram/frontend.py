@@ -12,11 +12,14 @@ log = logging.getLogger("aegis.telegram")
 
 
 class TelegramFrontend:
-    def __init__(self, bot, manager: SessionManager, *, chat_id: int,
+    def __init__(self, bot, manager: SessionManager,
+                 bridge, cfg, *, chat_id: int,
                  auto_prompt: str,
                  refresh_interval: float = 2.0) -> None:
         self._bot = bot
         self._m = manager
+        self._bridge = bridge
+        self._cfg = cfg
         self._chat = chat_id
         self._auto = auto_prompt
         self._refresh = refresh_interval
