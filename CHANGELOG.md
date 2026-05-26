@@ -5,6 +5,29 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-26
+
+### Telegram renderer + correctness (buckets B+D from the v0.10 critique)
+
+- Replace MarkdownV2-escape-everything render path with HTML parse mode.
+  Worker replies with fenced code, bold, italic, blockquotes, links now
+  render natively instead of as literal backslashes.
+- Greedy chunker; replies >3 parts spill to a `.md` attachment with a
+  500-char peek caption (uses new `sendDocument`).
+- Status message becomes a live per-turn ticker — edits on tool-use
+  boundaries instead of every 2s. Tool-call activity is now visible.
+- Multi-observer migration: TUI and Telegram both register via
+  `add_event_observer` / `add_state_observer`; two frontends can
+  observe the same session without clobbering.
+- New `add_close_observer` on `AgentSession`; `_active` clears on any
+  session-close path.
+- Telegram update offset persists across restart.
+- Tactical fixes: send_message=None guard, refresh-loop exceptions
+  caught and logged.
+
+### New dependency
+- `markdown-it-py>=3.0`
+
 ## [0.10.0] - 2026-05-26
 
 ### Added

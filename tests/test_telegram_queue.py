@@ -30,7 +30,10 @@ def _task(tid="t1", queue="impl", status="pending", payload="x"):
 
 def _make_frontend(queues=None, pending=None, inflight=None, tmp_path=None,
                    remotes=None):
+    import tempfile
+    from pathlib import Path
     from aegis.telegram.frontend import TelegramFrontend
+    state_dir = Path(tmp_path) if tmp_path else Path(tempfile.mkdtemp())
 
     class _Bot:
         sent: list[str] = []
@@ -65,7 +68,7 @@ def _make_frontend(queues=None, pending=None, inflight=None, tmp_path=None,
     fe = TelegramFrontend(
         bot, _Mgr(),
         _Bridge(_QM(queues, pending, inflight, tmp_path)),
-        _Cfg(remotes), chat_id=42, auto_prompt="")
+        _Cfg(remotes), chat_id=42, auto_prompt="", state_dir=state_dir)
     return fe, bot
 
 

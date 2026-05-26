@@ -14,7 +14,10 @@ def _clean_registry():
 
 
 def _make_frontend():
+    import tempfile
+    from pathlib import Path
     from aegis.telegram.frontend import TelegramFrontend
+    state_dir = Path(tempfile.mkdtemp())
 
     class _Bot:
         sent: list[str] = []
@@ -32,7 +35,7 @@ def _make_frontend():
 
     bot = _Bot()
     fe = TelegramFrontend(bot, _Mgr(), _Bridge(), _Cfg(),
-                          chat_id=42, auto_prompt="")
+                          chat_id=42, auto_prompt="", state_dir=state_dir)
     return fe, bot
 
 
