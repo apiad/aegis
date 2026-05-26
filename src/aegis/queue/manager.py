@@ -13,6 +13,8 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from aegis.budget.cost import compute as _compute_cost
+from aegis.budget.prices import UnknownPriceError
 from aegis.events import AssistantText
 from aegis.queue.events import (
     QueueCompleted,
@@ -34,6 +36,18 @@ from aegis.queue.schema import (
 )
 from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
+
+
+def _adapt_metrics(metrics):
+    """Map SessionMetrics committed counters to cost.compute's expected
+    attribute names. Returns a lightweight object — duck-typed."""
+    class _M:
+        input_tokens     = int(getattr(metrics, "c_in", 0) or 0)
+        output_tokens    = int(getattr(metrics, "c_out", 0) or 0)
+        cache_hit_tokens = int(getattr(metrics, "c_cached", 0) or 0)
+        cache_write_tokens = 0
+        thinking_tokens  = 0
+    return _M
 
 
 def _handle_of(sender_tag: str) -> str:
@@ -219,10 +233,22 @@ class QueueManager:
         self._all[task.id] = completed
         self._inflight[task.queue] = [
             t for t in self._inflight[task.queue] if t.id != task.id]
+        q = self._queues[task.queue]
+        try:
+            metrics = getattr(session, "metrics", None)
+            cost_dict = _compute_cost(
+                _adapt_metrics(metrics),
+                provider=q.provider, model=q.model,
+            ).as_dict()
+        except UnknownPriceError as e:
+            cost_dict = {"error": "unknown_model", "detail": str(e)}
+        except Exception as e:  # noqa: BLE001 — don't let cost break finalizer
+            cost_dict = {"error": "compute_failed", "detail": str(e)}
         self._log(task.queue, {
             "event": status, "task_id": task.id,
             "result": result, "error": error,
-            "completed_at": completed.completed_at})
+            "completed_at": completed.completed_at,
+            "cost": cost_dict})
         self._emit(QueueCompleted(
             task_id=task.id, queue=task.queue,
             outcome="completed" if ok else "failed",
