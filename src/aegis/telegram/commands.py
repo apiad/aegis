@@ -434,6 +434,181 @@ register(Command(
 ))
 
 
+async def _cmd_budget_list(ctx: CmdContext, args: list[str]) -> None:
+    if ctx.target is not None:
+        remotes = getattr(ctx.cfg, "remotes", {}) or {}
+        if ctx.target not in remotes:
+            await ctx.reply(f"unknown peer {ctx.target!r}; "
+                             f"known: {sorted(remotes)}")
+            return
+        from aegis.remote.client import remote_budget_list
+        result = await remote_budget_list(remotes[ctx.target])
+        if "error" in result:
+            await ctx.reply(f"▸ remote error: {result['error']}")
+            return
+        rows = result.get("queues", [])
+        await ctx.reply(_fmt_budget_list(rows))
+        return
+
+    qm = getattr(ctx.bridge, "queue_manager", None)
+    if qm is None:
+        await ctx.reply("no queue manager on this serve")
+        return
+    queues = getattr(qm, "_queues", {})
+    if not queues:
+        await ctx.reply("no queues configured")
+        return
+    from datetime import datetime, timezone
+    from aegis.budget.evaluator import evaluate_budgets
+    now = datetime.now(timezone.utc)
+    rows = []
+    for name, q in queues.items():
+        budgets = getattr(q, "budgets", []) or []
+        if not budgets:
+            rows.append({"name": name, "budgets_count": 0,
+                          "status": "no-budget", "binding": None})
+            continue
+        tail = qm._load_recent_jsonl(
+            name, max_age=max(b.window for b in budgets))
+        d = evaluate_budgets(tail, budgets, now)
+        if d.allowed:
+            rows.append({"name": name, "budgets_count": len(budgets),
+                          "status": "ok", "binding": None})
+        else:
+            c = d.blocked_by[0]
+            binding = (f"${c.spent} of ${c.limit} / {c.window_str}"
+                        if c.constraint == "usd"
+                        else f"{c.spent}/{c.limit} {c.constraint}/{c.window_str}")
+            rows.append({"name": name, "budgets_count": len(budgets),
+                          "status": "blocked", "binding": binding,
+                          "unblock_at": d.unblock_at.isoformat().replace(
+                              "+00:00", "Z") if d.unblock_at else None})
+    await ctx.reply(_fmt_budget_list(rows))
+
+
+def _fmt_budget_list(rows: list[dict]) -> str:
+    if not rows:
+        return "no queues"
+    lines = ["```",
+             f"{'QUEUE':<14} {'BUDGETS':<8} {'STATUS':<28} UNBLOCKS"]
+    for r in rows:
+        name = r.get("name", "?")
+        count = r.get("budgets_count", 0)
+        status_raw = r.get("status", "?")
+        if status_raw == "blocked":
+            status = f"⛔ {r.get('binding') or 'over'}"
+            unblock = r.get("unblock_at") or "—"
+        elif status_raw == "ok":
+            status = f"✓ {r.get('binding') or 'within budget'}"
+            unblock = "—"
+        elif status_raw == "no-budget":
+            status = "— no budget"
+            unblock = "—"
+        else:
+            status = status_raw
+            unblock = r.get("unblock_at") or "—"
+        lines.append(f"{name:<14} {count:<8} {status:<28} {unblock}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
+register(Command(
+    name="budget list",
+    summary="/budget list [@peer] — per-queue budget status",
+    detail=(
+        "/budget list [@<peer>]\n\n"
+        "Summarize each queue's budget headroom. Shows the binding "
+        "(tightest) constraint per queue, status (ok / blocked / "
+        "no-budget), and unblock ETA for blocked queues."
+    ),
+    handler=_cmd_budget_list,
+))
+
+
+async def _cmd_budget_show(ctx: CmdContext, args: list[str]) -> None:
+    if not args:
+        await ctx.reply("usage: /budget show <queue> [@peer]")
+        return
+    queue = args[0]
+
+    if ctx.target is not None:
+        remotes = getattr(ctx.cfg, "remotes", {}) or {}
+        if ctx.target not in remotes:
+            await ctx.reply(f"unknown peer {ctx.target!r}; "
+                             f"known: {sorted(remotes)}")
+            return
+        from aegis.remote.client import remote_budget_show
+        result = await remote_budget_show(remotes[ctx.target], queue)
+        if "error" in result:
+            await ctx.reply(f"▸ remote error: {result['error']}")
+            return
+        await ctx.reply(_fmt_budget_show(result))
+        return
+
+    qm = getattr(ctx.bridge, "queue_manager", None)
+    if qm is None:
+        await ctx.reply("no queue manager on this serve")
+        return
+    queues = getattr(qm, "_queues", {})
+    if queue not in queues:
+        await ctx.reply(f"unknown queue {queue!r}")
+        return
+    q = queues[queue]
+    budgets = getattr(q, "budgets", []) or []
+    if not budgets:
+        await ctx.reply(f"queue {queue!r} has no budgets configured")
+        return
+    from datetime import datetime, timezone
+    from aegis.budget.evaluator import evaluate_budgets
+    tail = qm._load_recent_jsonl(
+        queue, max_age=max(b.window for b in budgets))
+    d = evaluate_budgets(tail, budgets, datetime.now(timezone.utc))
+    payload = {
+        "name": queue, "allowed": d.allowed,
+        "checks": [{"constraint": c.constraint, "limit": str(c.limit),
+                      "spent": str(c.spent), "window": c.window_str,
+                      "allowed": c.allowed, "headroom": str(c.headroom)}
+                     for c in d.checks],
+        "blocked_by": [{"constraint": c.constraint, "window": c.window_str}
+                        for c in d.blocked_by],
+        "unblock_at": (d.unblock_at.isoformat().replace("+00:00", "Z")
+                        if d.unblock_at else None),
+    }
+    await ctx.reply(_fmt_budget_show(payload))
+
+
+def _fmt_budget_show(payload: dict) -> str:
+    name = payload.get("name", "?")
+    lines = ["```", f"budget for queue {name!r}", ""]
+    lines.append(f"{'CONSTRAINT':<16} {'LIMIT':<10} {'SPENT':<10} "
+                  f"{'WINDOW':<8} {'HEADROOM':<10} STATUS")
+    for c in payload.get("checks", []):
+        status = "✓" if c.get("allowed") else "⛔"
+        lines.append(f"{c['constraint']:<16} {c['limit']:<10} "
+                      f"{c['spent']:<10} {c['window']:<8} "
+                      f"{c['headroom']:<10} {status}")
+    if not payload.get("allowed", True):
+        n = len(payload.get("blocked_by", []))
+        unblock = payload.get("unblock_at") or "—"
+        lines.append("")
+        lines.append(f"blocked by {n} budget(s); unblocks at {unblock}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
+register(Command(
+    name="budget show",
+    summary="/budget show <queue> [@peer] — full Decision per BudgetCheck",
+    detail=(
+        "/budget show <queue> [@<peer>]\n\n"
+        "Print every budget on a queue with spent / limit / headroom "
+        "/ window / status. Blocked queues also include the "
+        "unblock_at ETA."
+    ),
+    handler=_cmd_budget_show,
+))
+
+
 async def _cmd_schedule_run(ctx: CmdContext, args: list[str]) -> None:
     if ctx.target is not None:
         await ctx.reply(
