@@ -1079,6 +1079,65 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return logs_payload(bridge.state_root, name, tail=tail)
 
     @server.tool
+    async def aegis_budget_status(from_handle: str,
+                                   queue: str | None = None,
+                                   target: str | None = None) -> dict:
+        """Inspect per-queue budgets on this serve or a remote peer.
+
+        queue=None: summary across all queues on the targeted serve.
+        queue="<name>": full Decision for that queue.
+        target=None local; target="<peer>" routes through /remote/v1/budget.
+        """
+        if target is not None:
+            remotes = getattr(bridge, "remotes", {}) or {}
+            if target not in remotes:
+                return {"error": f"unknown target {target!r}"}
+            from aegis.remote.client import (remote_budget_list,
+                                              remote_budget_show)
+            spec = remotes[target]
+            if queue is None:
+                return await remote_budget_list(spec)
+            return await remote_budget_show(spec, queue)
+
+        # Local path.
+        from datetime import datetime, timezone
+        from aegis.budget.evaluator import evaluate_budgets
+        qm = bridge.queue_manager
+        now = datetime.now(timezone.utc)
+
+        def _ser(c):
+            return {"constraint": c.constraint, "limit": str(c.limit),
+                    "spent": str(c.spent), "window": c.window_str,
+                    "allowed": c.allowed, "headroom": str(c.headroom)}
+
+        if queue is None:
+            rows = []
+            for name, q in qm._queues.items():
+                if not q.budgets:
+                    rows.append({"name": name, "budgets_count": 0,
+                                  "status": "no-budget"})
+                    continue
+                tail = qm._load_recent_jsonl(
+                    name, max_age=max(b.window for b in q.budgets))
+                d = evaluate_budgets(tail, q.budgets, now)
+                rows.append({"name": name, "budgets_count": len(q.budgets),
+                              "status": "ok" if d.allowed else "blocked"})
+            return {"queues": rows}
+
+        if queue not in qm._queues:
+            return {"error": f"unknown queue {queue!r}"}
+        q = qm._queues[queue]
+        if not q.budgets:
+            return {"name": queue, "allowed": True, "checks": [],
+                    "blocked_by": [], "unblock_at": None}
+        tail = qm._load_recent_jsonl(
+            queue, max_age=max(b.window for b in q.budgets))
+        d = evaluate_budgets(tail, q.budgets, now)
+        return {"name": queue, "allowed": d.allowed,
+                "checks": [_ser(c) for c in d.checks],
+                "blocked_by": [_ser(c) for c in d.blocked_by]}
+
+    @server.tool
     async def aegis_task_status(task_id: str) -> dict:
         """Inspect a previously-enqueued task by its task_id.
 

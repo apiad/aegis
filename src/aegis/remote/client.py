@@ -116,6 +116,22 @@ async def _schedule_request(spec: RemoteSpec, method: str, path: str,
         await client.aclose()
 
 
+async def remote_budget_list(spec: RemoteSpec) -> dict:
+    async with await _build_client(spec) as client:
+        r = await client.get("/remote/v1/budget")
+    if r.status_code == 200:
+        return r.json()
+    return _normalize_err("budget list", r)
+
+
+async def remote_budget_show(spec: RemoteSpec, queue: str) -> dict:
+    async with await _build_client(spec) as client:
+        r = await client.get(f"/remote/v1/budget/{queue}")
+    if r.status_code == 200:
+        return r.json()
+    return _normalize_err("budget show", r)
+
+
 async def remote_schedule_push(spec: RemoteSpec, *, name: str,
                                spec_body: dict, pushed_from: str) -> dict:
     return await _schedule_request(
