@@ -3,7 +3,9 @@ from __future__ import annotations
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-_MD = MarkdownIt("commonmark", {"breaks": False, "html": False}).enable("strikethrough")
+_MD = (MarkdownIt("commonmark", {"breaks": False, "html": False})
+       .enable("strikethrough")
+       .enable("table"))
 # Disable URL percent-encoding — we HTML-escape attrs ourselves; double-encoding
 # would mangle the user-visible href.
 _MD.normalizeLink = lambda url: url
@@ -49,6 +51,9 @@ def _render_inline(tokens: list[Token]) -> str:
             parts.append(f"<code>{_esc_text(t.content)}</code>")
         elif t.type == "softbreak" or t.type == "hardbreak":
             parts.append("\n")
+        elif t.type == "image":
+            alt = t.content or ""
+            parts.append(f"[image: {_esc_text(alt)}]")
         elif t.type.endswith("_open"):
             tag = t.tag
             if tag in _INLINE_TAGS:
@@ -67,7 +72,7 @@ def _render_inline(tokens: list[Token]) -> str:
     return "".join(parts)
 
 
-def _walk_tokens(tokens: list[Token]) -> str:
+def _walk_tokens(tokens: list[Token], md_source: str) -> str:
     out: list[str] = []
     i = 0
     n = len(tokens)
@@ -118,8 +123,19 @@ def _walk_tokens(tokens: list[Token]) -> str:
                         break
                 inner.append(tokens[j])
                 j += 1
-            inside = _walk_tokens(inner).rstrip("\n")
+            inside = _walk_tokens(inner, md_source).rstrip("\n")
             out.append(f"<blockquote>{inside}</blockquote>\n\n")
+            i = j + 1
+            continue
+        if t.type == "table_open":
+            src_start = t.map[0] if t.map else None
+            src_end = t.map[1] if t.map else None
+            j = i
+            while j < n and tokens[j].type != "table_close":
+                j += 1
+            if src_start is not None and src_end is not None:
+                src = "\n".join(md_source.splitlines()[src_start:src_end])
+                out.append(f"<pre>{_esc_text(src)}</pre>\n\n")
             i = j + 1
             continue
         if t.type == "bullet_list_open" or t.type == "ordered_list_open":
@@ -165,4 +181,4 @@ def _walk_tokens(tokens: list[Token]) -> str:
 
 def render(md: str) -> str:
     tokens = _MD.parse(md)
-    return _walk_tokens(tokens).rstrip()
+    return _walk_tokens(tokens, md).rstrip()

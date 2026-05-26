@@ -76,3 +76,17 @@ def test_horizontal_rule():
 def test_mixed_block_and_inline():
     md = "Plain.\n\n## Heading\n\nBody with **bold**."
     assert render(md) == "Plain.\n\n<b>Heading</b>\n\nBody with <b>bold</b>."
+
+
+def test_table_renders_as_pre():
+    md = "| h1 | h2 |\n|----|----|\n| a  | b  |"
+    out = render(md)
+    assert out.startswith("<pre>")
+    assert "h1" in out and "h2" in out and "a" in out and "b" in out
+    assert out.endswith("</pre>")
+
+
+def test_image_renders_as_placeholder():
+    md = "![alt text](https://example.com/img.png)"
+    out = render(md)
+    assert "[image: alt text]" in out
