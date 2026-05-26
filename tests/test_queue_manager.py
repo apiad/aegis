@@ -85,8 +85,10 @@ class StubSessionManager:
         self._sessions = [s for s in self._sessions if s.handle != handle]
 
 
-def _q(name="impl", profile="claude-impl", cap=2):
-    return Queue(name=name, agent_profile=profile, max_parallel=cap)
+def _q(name="impl", profile="claude-impl", cap=2,
+       provider="", model=""):
+    return Queue(name=name, agent_profile=profile, max_parallel=cap,
+                 provider=provider, model=model)
 
 
 async def test_enqueue_returns_id_and_position():

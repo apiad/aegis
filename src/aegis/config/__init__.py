@@ -223,9 +223,10 @@ def load_queues(path: Path) -> "dict[str, object]":
     if not isinstance(queues_raw, dict):
         raise ConfigError(f"{path}: `queues` must be a dict.")
 
-    agents = namespace.get("agents")
-    agent_names: set[str] = (
-        set(agents) if isinstance(agents, dict) else set())
+    agents_raw = namespace.get("agents")
+    agents: dict[str, Agent] = (
+        dict(agents_raw) if isinstance(agents_raw, dict) else {})
+    agent_names: set[str] = set(agents)
 
     out: dict[str, Queue] = {}
     for name, cfg in queues_raw.items():
@@ -250,6 +251,8 @@ def load_queues(path: Path) -> "dict[str, object]":
             raise ConfigError(
                 f"{path}: queues[{name!r}].max_parallel must be an int "
                 f">= 1 (got {cap!r}).")
+        agent = agents[agent_ref]
         out[name] = Queue(name=name, agent_profile=agent_ref,
-                          max_parallel=cap)
+                          max_parallel=cap,
+                          provider=agent.harness, model=agent.model)
     return out

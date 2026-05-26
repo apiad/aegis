@@ -48,6 +48,8 @@ class Queue:
     name: str
     agent_profile: str
     max_parallel: int
+    provider: str = ""   # populated from agent_profile at config-load
+    model: str = ""      # populated from agent_profile at config-load
 
 
 @dataclass(frozen=True)
