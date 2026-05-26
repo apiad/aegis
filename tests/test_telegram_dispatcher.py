@@ -99,17 +99,17 @@ async def test_dispatcher_only_first_at_token_taken():
 
 @pytest.mark.asyncio
 async def test_dispatcher_longest_prefix_match():
-    """`/queue list` resolves before `/queue` when both registered."""
-    async def _list(ctx, args): await ctx.reply("LIST")
+    """`/test sub` resolves before `/test` when both registered."""
+    async def _sub(ctx, args): await ctx.reply("SUB")
     async def _bare(ctx, args): await ctx.reply("BARE")
 
     fe, bot = _make_frontend([
-        Command(name="queue list", summary="x", detail="x", handler=_list),
-        Command(name="queue",      summary="x", detail="x", handler=_bare),
+        Command(name="test sub", summary="x", detail="x", handler=_sub),
+        Command(name="test",     summary="x", detail="x", handler=_bare),
     ])
-    await fe._command("/queue list")
-    assert "LIST" in bot.sent[-1]
-    await fe._command("/queue")
+    await fe._command("/test sub")
+    assert "SUB" in bot.sent[-1]
+    await fe._command("/test")
     assert "BARE" in bot.sent[-1]
 
 

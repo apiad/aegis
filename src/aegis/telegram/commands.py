@@ -609,6 +609,131 @@ register(Command(
 ))
 
 
+async def _cmd_queue_list(ctx: CmdContext, args: list[str]) -> None:
+    if ctx.target is not None:
+        await ctx.reply(
+            "▸ /queue list not yet supported cross-host "
+            "(local only). Drop @<peer>.")
+        return
+    qm = getattr(ctx.bridge, "queue_manager", None)
+    if qm is None:
+        await ctx.reply("no queue manager on this serve")
+        return
+    queues = getattr(qm, "_queues", {})
+    if not queues:
+        await ctx.reply("no queues configured")
+        return
+    lines = ["```",
+             f"{'QUEUE':<14} {'AGENT':<14} {'DEPTH':<6} {'IN-FLIGHT':<10} LAST"]
+    for name in sorted(queues):
+        q = queues[name]
+        depth = len(getattr(qm, "_pending", {}).get(name, []))
+        in_flight = len(getattr(qm, "_inflight", {}).get(name, []))
+        agent = getattr(q, "agent_profile", "?")
+        all_tasks = getattr(qm, "_all", {})
+        recent = sorted(
+            (t for t in all_tasks.values() if t.queue == name
+             and t.status in ("completed", "failed")),
+            key=lambda t: getattr(t, "completed_at", "") or "",
+            reverse=True,
+        )
+        if recent:
+            last = recent[0]
+            marker = "✓" if last.status == "completed" else "✗"
+            last_str = f"{marker} task#{last.id[:8]}"
+        else:
+            last_str = "— none"
+        lines.append(
+            f"{name:<14} {agent:<14} {depth:<6} {in_flight:<10} {last_str}")
+    lines.append("```")
+    await ctx.reply("\n".join(lines))
+
+
+register(Command(
+    name="queue list",
+    summary="/queue list — per-queue depth + in-flight + last task",
+    detail=(
+        "/queue list\n\n"
+        "Local-only in v0.10 (no cross-host queue endpoint yet). "
+        "Shows each queue's bound agent profile, pending depth, "
+        "in-flight count, and last terminal task."
+    ),
+    handler=_cmd_queue_list,
+))
+
+
+async def _cmd_queue_show(ctx: CmdContext, args: list[str]) -> None:
+    if ctx.target is not None:
+        await ctx.reply(
+            "▸ /queue show not yet supported cross-host "
+            "(local only). Drop @<peer>.")
+        return
+    if not args:
+        await ctx.reply("usage: /queue show <name>")
+        return
+    name = args[0]
+    qm = getattr(ctx.bridge, "queue_manager", None)
+    if qm is None:
+        await ctx.reply("no queue manager on this serve")
+        return
+    queues = getattr(qm, "_queues", {})
+    if name not in queues:
+        await ctx.reply(f"unknown queue {name!r}")
+        return
+    q = queues[name]
+    pending = getattr(qm, "_pending", {}).get(name, [])
+    inflight = getattr(qm, "_inflight", {}).get(name, [])
+    lines = ["```",
+             f"queue: {name}  (agent: {q.agent_profile}, "
+             f"max_parallel: {q.max_parallel})", ""]
+    if inflight:
+        lines.append("IN-FLIGHT")
+        for t in inflight:
+            handle = getattr(t, "worker_handle", "?") or "?"
+            payload = (t.payload or "")[:60]
+            lines.append(f"  ⏳ task#{t.id[:8]}  worker:{handle}  "
+                          f"payload={payload!r}")
+        lines.append("")
+    if pending:
+        lines.append("PENDING")
+        for t in pending:
+            payload = (t.payload or "")[:60]
+            lines.append(f"  ○ task#{t.id[:8]}  enqueued {t.enqueued_at}  "
+                          f"by {t.enqueued_by}  payload={payload!r}")
+        lines.append("")
+    all_tasks = getattr(qm, "_all", {})
+    recent = sorted(
+        (t for t in all_tasks.values() if t.queue == name
+         and t.status in ("completed", "failed")),
+        key=lambda t: getattr(t, "completed_at", "") or "",
+        reverse=True,
+    )[:10]
+    if recent:
+        lines.append("RECENT")
+        for t in recent:
+            marker = "✓" if t.status == "completed" else "✗"
+            lines.append(f"  {marker} task#{t.id[:8]}  {t.status}  "
+                          f"{getattr(t, 'completed_at', '?')}")
+    if not (inflight or pending or recent):
+        lines.append("  (no tasks)")
+    lines.append("```")
+    await ctx.reply("\n".join(lines))
+
+
+register(Command(
+    name="queue show",
+    summary="/queue show <name> — pending + in-flight + recent",
+    detail=(
+        "/queue show <name>\n\n"
+        "Local-only in v0.10. Shows the queue's pending tasks "
+        "(awaiting dispatch), in-flight tasks (active workers), and "
+        "up to 10 most-recent terminal tasks. Payloads are truncated "
+        "to 60 characters."
+    ),
+    handler=_cmd_queue_show,
+))
+
+
 async def _cmd_schedule_run(ctx: CmdContext, args: list[str]) -> None:
     if ctx.target is not None:
         await ctx.reply(

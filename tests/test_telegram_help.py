@@ -67,10 +67,8 @@ async def test_help_for_unknown_command_errors():
 @pytest.mark.asyncio
 async def test_help_for_resource_filters_by_prefix():
     """`/help queue` lists every command whose name starts with `queue `."""
-    register(Command(name="queue list",  summary="list queues",
-                      detail="queue list detail", handler=_noop_handler()))
-    register(Command(name="queue show",  summary="show queue",
-                      detail="queue show detail", handler=_noop_handler()))
+    # queue list and queue show are registered by the real commands module;
+    # no need to re-register them here.
     fe, bot = _make_frontend()
     await fe._command("/help queue")
     out = bot.sent[-1]
