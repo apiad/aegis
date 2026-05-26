@@ -5,6 +5,39 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-26
+
+### Added
+- **Per-queue budgets.** Each queue may declare one or more
+  `(constraint, window)` ceilings (USD or output-token) over a
+  rolling window. New `aegis_enqueue` calls are rejected with a
+  structured error when admitting the task would push the queue
+  over any of the declared budgets; ALL budgets must allow. Rejection
+  names every blocked constraint and an `unblock_at` ETA.
+- **Cost accounting.** Existing per-queue JSONL audit now carries a
+  `cost` field on every `completed` and `failed` record:
+  `{usd, input_tokens, output_tokens, cache_hit_tokens,
+  cache_write_tokens, thinking_tokens}` computed from
+  `SessionMetrics` (committed c_in/c_out/c_cached counters) +
+  a static per-(provider, model) price table at
+  `src/aegis/budget/prices.py`. Unknown models record
+  `cost: {error: "unknown_model"}` without crashing the finalizer.
+  Failed workers count toward budget — they burned tokens too.
+- **`BudgetExceeded` typed exception** for the workflow engine:
+  `engine.enqueue` raises with the full Decision attached so
+  workflow Python can choose a retry strategy.
+- **`aegis_budget_status` MCP tool** with `target=None` local and
+  `target="<peer>"` cross-host via the new `GET /remote/v1/budget`
+  and `GET /remote/v1/budget/<queue>` HTTP endpoints.
+- **`aegis budget` CLI** — `list` (one-line summary per queue) and
+  `show <queue>` (full Decision with per-budget rows). `--remote
+  <peer>` on both.
+
+The TUI strip + dashboard band described in the spec are
+**deferred to v0.9.1**.
+
+Spec: `docs/superpowers/specs/2026-05-25-aegis-per-queue-budgets-design.md`.
+
 ## [0.8.1] - 2026-05-25
 
 ### Fixed

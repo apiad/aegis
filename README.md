@@ -309,6 +309,47 @@ remove them remotely — useful for self-scheduling future work or
 managing a fleet from one host. Full surface, error model, and
 patterns in [docs/remote.md](docs/remote.md).
 
+## Per-queue budgets
+
+Declare rolling USD or output-token ceilings on any queue. The
+substrate enforces them at enqueue time — if admitting the task would
+push the queue over any configured ceiling, the enqueue is rejected
+immediately with a structured error that names the blocking constraint
+and gives an ETA for when the queue will unblock.
+
+```python
+# .aegis.py
+queues = {
+    "impl": {
+        "agent": "opus",
+        "max_parallel": 2,
+        "budgets": [
+            {"usd": 1.00,             "window": "1h"},
+            {"usd": 10.00,            "window": "24h"},
+            {"output_tokens": 500000, "window": "1h"},   # runaway belt
+            {"usd": 50.00,            "window": "7d"},
+        ],
+    },
+    "fast": {
+        "agent": "haiku-fast",
+        "max_parallel": 4,
+        # no budgets: key → no caps; behaves as before
+    },
+}
+```
+
+All-must-allow: a task is admitted only if every budget entry is
+under its ceiling. When rejected, the error names every blocking
+constraint, how much was spent vs the limit, and an `unblock_at` ETA.
+
+Budget state is visible via `aegis budget list/show` (with `--remote
+<peer>` for cross-host), the `aegis_budget_status` MCP tool, and the
+read-only `GET /remote/v1/budget` endpoints on the remote plane. No
+alerts — observability is pull-only; the rejection at enqueue time is
+the only loud signal.
+
+See [docs/budget.md](docs/budget.md) for the full model.
+
 ## Scheduled workflows
 
 Aegis runs a cron-style scheduler alongside QueueManager and the inbox
@@ -453,6 +494,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Groups](https://apiad.github.io/aegis/groups/) — broadcast-and-gather committees
 - [Remote plane](https://apiad.github.io/aegis/remote/) — laptop ↔ VPS enqueue over HTTP
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
+- [Budgets](https://apiad.github.io/aegis/budget/)
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)
 - [Roadmap](https://apiad.github.io/aegis/roadmap/)

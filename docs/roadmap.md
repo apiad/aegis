@@ -67,7 +67,17 @@
   join). `aegis_run_workflow` became non-blocking, joined by
   `aegis_workflow_status` and `aegis_workflow_cancel`.
 
-### v0.8.0 (current)
+### v0.9.0 (current)
+- **Per-queue budgets.** Multi-window per-queue USD / output-token
+  ceilings, all-must-allow, enforcement at enqueue time with a
+  structured rejection naming the binding constraint and an
+  `unblock_at` ETA. Cost computed from existing SessionMetrics via a
+  static per-(provider, model) price table at
+  `src/aegis/budget/prices.py`. Inspection via `aegis budget
+  list/show`, `aegis_budget_status` MCP tool, and `GET
+  /remote/v1/budget` on the plane. TUI surface deferred to v0.9.1.
+
+### v0.8.0
 - **Wire callbacks for remote queues.**
   `aegis_enqueue(target="<peer>", callback=True)` now delivers the
   remote worker's final message back to the originating agent's

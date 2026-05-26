@@ -92,6 +92,38 @@ the substrate spawns a worker of that profile to run the payload.
 Validation is fail-loud at boot: unknown agent refs or non-positive
 caps cause `aegis` to abort with a clear error.
 
+### Budgets (optional)
+
+Add a `budgets:` list to cap rolling USD spend or output-token volume
+on a queue. All entries must allow for the enqueue to be admitted:
+
+```python
+queues = {
+    "impl": {
+        "agent": "opus",
+        "max_parallel": 2,
+        "budgets": [
+            {"usd": 1.00,             "window": "1h"},
+            {"usd": 10.00,            "window": "24h"},
+            {"output_tokens": 500000, "window": "1h"},   # runaway belt
+            {"usd": 50.00,            "window": "7d"},
+        ],
+    },
+    "fast": {
+        "agent": "haiku-fast",
+        "max_parallel": 4,
+        # no budgets: key → no caps
+    },
+}
+```
+
+Each entry carries exactly one constraint (`usd` or `output_tokens`)
+and a `window` string (`30m`, `1h`, `5h`, `24h`, `7d`, `1w`, `30d`).
+When a queue exceeds any budget, new enqueues are rejected with a
+structured error naming every blocking constraint and an `unblock_at`
+ETA. See [Budgets](budget.md) for the full model, rejection shape, and
+observability surface.
+
 ## Headless / Telegram
 
 ```python
