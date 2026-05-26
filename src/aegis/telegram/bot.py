@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -62,6 +63,37 @@ class BotClient:
         if parse_mode is not None:
             params["parse_mode"] = parse_mode
         await self._call("editMessageText", **params)
+
+    async def send_document(self, chat_id: int, path: Path, *,
+                            caption: str | None = None,
+                            parse_mode: str | None = None) -> int | None:
+        url = self._url("sendDocument")
+        data: dict[str, str] = {"chat_id": str(chat_id)}
+        if caption is not None:
+            data["caption"] = caption
+        if parse_mode is not None:
+            data["parse_mode"] = parse_mode
+        for attempt in range(5):
+            try:
+                with path.open("rb") as fp:
+                    files = {"document": (path.name, fp, "text/markdown")}
+                    r = await self._http.post(url, data=data, files=files)
+            except httpx.HTTPError as e:
+                wait = min(2 ** attempt, 30)
+                log.warning("telegram sendDocument network error: %s (retry %ss)", e, wait)
+                await asyncio.sleep(wait)
+                continue
+            if r.status_code == 429:
+                ra = r.json().get("parameters", {}).get("retry_after", 1)
+                await asyncio.sleep(ra)
+                continue
+            body = r.json()
+            if not body.get("ok"):
+                log.warning("telegram sendDocument !ok: %s", body)
+                return None
+            return body["result"]["message_id"]
+        log.error("telegram sendDocument gave up after retries")
+        return None
 
     async def aclose(self) -> None:
         await self._http.aclose()
