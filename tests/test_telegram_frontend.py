@@ -202,6 +202,50 @@ async def test_ticker_edits_on_tool_use(tmp_path):
     assert any("done" in s[1] for s in b.sent)
 
 
+class OverflowHarness:
+    def __init__(self):
+        self.sent: list[str] = []
+
+    async def start(self): ...
+    async def send(self, t):
+        self.sent.append(t)
+    async def close(self): ...
+
+    async def events(self):
+        from aegis.events import AssistantText, Result
+        # Five 4k paragraphs — chunker emits 5 parts, which exceeds max_parts=3,
+        # forcing spillover.
+        big = "\n\n".join(f"para{i}-" + "x" * 3500 for i in range(5))
+        yield AssistantText(text=big)
+        yield Result(duration_ms=10, is_error=False)
+
+
+@pytest.mark.asyncio
+async def test_overflow_replies_as_send_document(tmp_path):
+    b = FakeBot()
+    m = SessionManager({"default": 1}, "default",
+                       lambda p, u, h: OverflowHarness(), mcp=None)
+    f = TelegramFrontend(b, m, None, None, chat_id=99, auto_prompt="",
+                         state_dir=tmp_path)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    core = m.list_sessions()[0]
+    core = m.get(core.handle)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "go"}})
+    from aegis.tui.state import AgentState
+    for _ in range(80):
+        await asyncio.sleep(0.005)
+        if core.state is not AgentState.working:
+            break
+    assert len(b.documents) == 1
+    chat_id, path, caption, parse_mode = b.documents[0]
+    assert chat_id == 99
+    assert parse_mode == "HTML"
+    assert path.parent.name == "overflow"
+    assert path.name.startswith("aegis-reply-")
+    assert path.suffix == ".md"
+    assert "📎" in caption
+
+
 @pytest.mark.asyncio
 async def test_envelope_shows_on_ticker(tmp_path):
     from aegis.queue.schema import InboxMessage
