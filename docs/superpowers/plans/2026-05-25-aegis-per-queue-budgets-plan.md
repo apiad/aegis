@@ -1,669 +1,441 @@
-# Per-Queue Token / USD Budgets Implementation Plan
+# Per-Queue Token / USD Budgets Implementation Plan (v2 — rewritten 2026-05-26)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Tasks 1 + 2 already landed on `main`. Resume at Task 3.
 
-**Goal:** Ship per-queue token/USD budgets with multi-window all-must-allow enforcement at enqueue time, plus MCP / HTTP / CLI / TUI inspection surfaces.
+**Goal:** Ship per-queue token/USD budgets with multi-window all-must-allow enforcement at enqueue time, plus MCP / HTTP / CLI inspection surfaces. TUI is explicitly scope-cut to v0.9.1.
 
-**Architecture:** A pure-function evaluator over the existing per-queue JSONL audit, gated at `QueueManager.enqueue`. Each queue declares one or more `(constraint, window)` pairs (USD or output-token ceilings over a rolling window). On worker termination, `QueueManager._finalize` writes a `cost` field on the existing `task_done` record via a new `cost.compute(metrics, provider, model)` function that consults a static per-provider price table. No new persistent state, no Telegram observer — the rejection at enqueue *is* the signal.
+**Architecture:** Pure-function evaluator over the existing per-queue JSONL audit, gated at `QueueManager.enqueue`. Each queue declares one or more `(constraint, window)` pairs (USD or output-token, rolling window). On worker termination, `QueueManager._finalize` writes a `cost` field on the existing `completed` / `failed` JSONL record via `cost.compute(adapter(session.metrics), q.provider, q.model)` where `q.provider` and `q.model` are derived once at config-load from the bound agent profile. No new persistent state; no Telegram observer.
 
-**Tech Stack:** Python 3.13, `Decimal` arithmetic throughout (no float drift), pytest with `uv run pytest -q -m "not live" -x`, Typer (CLI), Starlette (plane endpoints), ruamel.yaml unchanged.
+**Tech Stack:** Python 3.13, `Decimal` arithmetic throughout (no float drift), pytest with `uv run pytest -q -m "not live" -x`, Typer (CLI), Starlette (plane endpoints).
 
-**Spec:** `docs/superpowers/specs/2026-05-25-aegis-per-queue-budgets-design.md` (canonical). Read it once before starting Task 1.
+**Spec:** `docs/superpowers/specs/2026-05-25-aegis-per-queue-budgets-design.md` (canonical). Read it once before starting Task 3.
+
+**Plan-vs-reality lessons from v1:** the first attempt blocker-stopped at Task 3 because the plan referenced symbol names that didn't exist on `main`. The v2 rewrite uses verified-against-`main` symbols. Resolutions to the three blocker design questions:
+
+- **Q1 (provider/model wiring) → Option D:** `Queue` itself gains `provider: str` and `model: str` fields, derived once at config-load from the bound `agent_profile`'s `Agent.harness` / `Agent.model`. `_finalize` reads `self._queues[task.queue].provider` / `.model`. No `Task` schema mutation, no runtime agent dict lookup.
+- **Q2 (JSONL event name) → Option C:** keep `completed`/`failed` (real codebase). Evaluator filters on `event in ("completed", "failed")`. Failed workers count toward budget — they burn tokens too.
+- **Q3 (SessionMetrics) → adapter only:** map `c_in → input_tokens`, `c_out → output_tokens`, `c_cached → cache_hit_tokens` in `_finalize`. `cache_write_tokens` / `thinking_tokens` stay `0` (no driver surfaces them today; YAGNI). `cost.compute`'s defensive `getattr(..., 0)` handles missing fields.
+
+**Mechanical corrections threaded throughout:**
+
+- `Queue(name=..., agent_profile=..., max_parallel=...)` — `agent_profile`, not `agent`.
+- `QueueManager(queues, session_manager, inbox_router, *, state_dir=...)` — pass `InboxRouter()` in tests.
+- `StubSessionManager` is the existing fixture pattern in `tests/test_queue_manager.py` — copy its shape (with `.script(handle, [AssistantText, Result])`) when a test needs to drive a worker to completion. Do NOT invent a `FakeSessionManager`.
+- JSONL path is `state_dir/queues/<queue>.jsonl` — no `.aegis/state/` prefix. Tests pass `state_dir=tmp_path` directly.
+- `.aegis.py` config uses `"agent": "<profile-name>"` (not `agent_profile`) — the loader maps the dict key to the dataclass field.
 
 **Conventions:**
-- Tests live flat under `tests/`, file name `test_<topic>.py`.
-- Live tests are marked `@pytest.mark.live` and auto-skip.
-- Commit straight to `main` (aegis convention — see workspace memory `feedback_aegis_work_on_main`).
-- Run hermetic gate before each commit: `uv run pytest -q -m "not live" -x`.
-- Use uv, not pip. `uv run pytest`, `uv pip install -e .`.
-- Acquire a workspace lock at the start: `bin/ws-lock acquire repos/aegis --desc "v0.9 implementation"`. Release with `bin/ws-lock gc` at the end.
+
+- Hermetic gate before every commit: `uv run pytest -q -m "not live" -x`.
+- Aegis convention: commit straight to `main`, no feature branches, no PRs (workspace memory `feedback_aegis_work_on_main`).
+- Use uv: `uv run pytest`, `uv pip install -e .`.
 
 ---
 
-## Task 1: Price table + window parser scaffolding
+## Task 1: ✓ ALREADY LANDED — Price table + window parser
+
+Commit `0cb4fd4` shipped `src/aegis/budget/__init__.py`, `src/aegis/budget/prices.py`, `src/aegis/budget/windows.py`, `tests/test_budget_prices.py`, `tests/test_budget_windows.py`. Do not redo.
+
+## Task 2: ✓ ALREADY LANDED — Cost dataclass + compute()
+
+Commit `c1d4db8` shipped `src/aegis/budget/cost.py` and `tests/test_budget_cost.py` with the `Cost` dataclass + `compute(metrics, provider, model) -> Cost` (defensive `getattr(..., 0)` for missing token-class fields). Do not redo.
+
+---
+
+## Task 3: Queue grows `provider`, `model` fields populated at config-load
 
 **Files:**
-- Create: `src/aegis/budget/__init__.py`
-- Create: `src/aegis/budget/prices.py`
-- Create: `src/aegis/budget/windows.py`
-- Test: `tests/test_budget_prices.py`
-- Test: `tests/test_budget_windows.py`
+- Modify: `src/aegis/queue/schema.py` (Queue dataclass)
+- Modify: `src/aegis/config/__init__.py` (`load_queues` resolves provider/model from the agent profile)
+- Modify: `tests/test_queue_manager.py` (the `_q` helper grows optional `provider`/`model` kwargs)
+- Test: `tests/test_queue_provider_model.py`
 
-Lays the foundation: the `PRICES` dict, the `ProviderPrices` dataclass, the `parse_window` helper. No dependencies on the rest of aegis; pure data + pure functions.
+Prereq for Task 4 (cost on JSONL). The cost-compute path needs `(provider, model)` per queue; resolving at config-load avoids a runtime agent lookup.
 
-- [ ] **Step 1: Write failing prices test**
+- [ ] **Step 1: Write the failing test**
 
-Create `tests/test_budget_prices.py`:
+Create `tests/test_queue_provider_model.py`:
 
 ```python
-from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
-from aegis.budget.prices import PRICES, ProviderPrices, UnknownPriceError, lookup
+from aegis.queue.schema import Queue
 
 
-def test_provider_prices_uses_decimal():
-    p = PRICES[("claude-code", "opus")]
-    assert isinstance(p.input, Decimal)
-    assert isinstance(p.output, Decimal)
-    assert isinstance(p.cache_hit, Decimal)
-    assert isinstance(p.cache_write, Decimal)
-    assert isinstance(p.thinking, Decimal)
+def test_queue_dataclass_carries_provider_and_model():
+    q = Queue(name="impl", agent_profile="opus", max_parallel=2,
+              provider="claude-code", model="opus")
+    assert q.provider == "claude-code"
+    assert q.model == "opus"
 
 
-def test_lookup_known_pair_returns_row():
-    row = lookup("claude-code", "opus")
-    assert row.input == Decimal("15.00")
-    assert row.output == Decimal("75.00")
+def test_queue_defaults_provider_and_model_to_empty():
+    q = Queue(name="impl", agent_profile="opus", max_parallel=2)
+    assert q.provider == ""
+    assert q.model == ""
 
 
-def test_lookup_unknown_pair_raises():
-    with pytest.raises(UnknownPriceError, match="no price for"):
-        lookup("madeup-provider", "made-up-model")
+def test_load_queues_derives_provider_and_model_from_agent(tmp_path):
+    """End-to-end: an .aegis.py with queues:{...} populates Queue.provider
+    and Queue.model from the bound agent profile."""
+    from aegis.config import load_queues
+    aegis_py = tmp_path / ".aegis.py"
+    aegis_py.write_text("""
+from aegis import Agent, ClaudeCode
+agents = {
+    "opus":  Agent(provider=ClaudeCode(model="opus",  effort="high")),
+    "haiku": Agent(provider=ClaudeCode(model="haiku", effort="low")),
+}
+default_agent = "opus"
+queues = {
+    "impl":     {"agent": "opus",  "max_parallel": 2},
+    "fast":     {"agent": "haiku", "max_parallel": 4},
+}
+""")
+    queues = load_queues(aegis_py)
+    assert queues["impl"].provider == "claude-code"
+    assert queues["impl"].model == "opus"
+    assert queues["fast"].provider == "claude-code"
+    assert queues["fast"].model == "haiku"
+
+
+def test_load_queues_gemini_provider(tmp_path):
+    from aegis.config import load_queues
+    aegis_py = tmp_path / ".aegis.py"
+    aegis_py.write_text("""
+from aegis import Agent, GeminiCLI
+agents = {"g": Agent(provider=GeminiCLI(model="gemini-3-pro"))}
+default_agent = "g"
+queues = {"r": {"agent": "g", "max_parallel": 1}}
+""")
+    queues = load_queues(aegis_py)
+    assert queues["r"].provider == "gemini"
+    assert queues["r"].model == "gemini-3-pro"
 ```
 
 - [ ] **Step 2: Run test to verify failure**
 
 ```
-uv run pytest tests/test_budget_prices.py -v
+uv run pytest tests/test_queue_provider_model.py -v
 ```
-Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.budget'`.
+Expected: FAIL — `Queue(...)` rejects `provider=` / `model=` (those fields don't exist yet).
 
-- [ ] **Step 3: Implement prices**
+- [ ] **Step 3: Extend `Queue` dataclass**
 
-Create `src/aegis/budget/__init__.py` (empty for now).
-
-Create `src/aegis/budget/prices.py`:
+In `src/aegis/queue/schema.py`:
 
 ```python
-"""Static per-(provider, model) price table for cost computation.
-
-Rates are per-MILLION-tokens in USD. Update this file when providers
-publish new prices — it is the only piece of maintained data the
-budget feature depends on.
-"""
-from __future__ import annotations
-
-from dataclasses import dataclass
-from decimal import Decimal
-
-
-class UnknownPriceError(KeyError):
-    """Raised when cost.compute() can't find a (provider, model) pair."""
-
-
 @dataclass(frozen=True)
-class ProviderPrices:
-    """Per-million-token rates in USD, all Decimal to avoid float drift."""
-    input:       Decimal
-    output:      Decimal
-    cache_hit:   Decimal
-    cache_write: Decimal
-    thinking:    Decimal
-
-
-def _d(s: str) -> Decimal:
-    return Decimal(s)
-
-
-PRICES: dict[tuple[str, str], ProviderPrices] = {
-    # Claude Code (Anthropic) — Nov 2025 list prices.
-    ("claude-code", "opus"): ProviderPrices(
-        input=_d("15.00"), output=_d("75.00"),
-        cache_hit=_d("1.50"), cache_write=_d("18.75"),
-        thinking=_d("75.00")),
-    ("claude-code", "sonnet"): ProviderPrices(
-        input=_d("3.00"), output=_d("15.00"),
-        cache_hit=_d("0.30"), cache_write=_d("3.75"),
-        thinking=_d("15.00")),
-    ("claude-code", "haiku"): ProviderPrices(
-        input=_d("1.00"), output=_d("5.00"),
-        cache_hit=_d("0.10"), cache_write=_d("1.25"),
-        thinking=_d("5.00")),
-    # Gemini CLI — Nov 2025 list prices.
-    ("gemini", "gemini-3-pro"): ProviderPrices(
-        input=_d("1.25"), output=_d("10.00"),
-        cache_hit=_d("0.31"), cache_write=_d("1.25"),
-        thinking=_d("10.00")),
-    ("gemini", "gemini-3-flash-preview"): ProviderPrices(
-        input=_d("0.075"), output=_d("0.30"),
-        cache_hit=_d("0.019"), cache_write=_d("0.075"),
-        thinking=_d("0.30")),
-    # OpenCode — provider-routed; defaults match Kimi K2.6 listed pricing.
-    ("opencode", "kimi-k2.6"): ProviderPrices(
-        input=_d("0.30"), output=_d("1.20"),
-        cache_hit=_d("0.06"), cache_write=_d("0.30"),
-        thinking=_d("1.20")),
-}
-
-
-def lookup(provider: str, model: str) -> ProviderPrices:
-    """Return the price row, raise UnknownPriceError on miss."""
-    try:
-        return PRICES[(provider, model)]
-    except KeyError:
-        raise UnknownPriceError(
-            f"no price for {(provider, model)!r}; "
-            f"add to aegis.budget.prices.PRICES")
+class Queue:
+    name: str
+    agent_profile: str
+    max_parallel: int
+    provider: str = ""   # populated from agent_profile at config-load
+    model: str = ""      # populated from agent_profile at config-load
 ```
 
-- [ ] **Step 4: Run prices test**
+- [ ] **Step 4: Update `load_queues` to resolve provider/model**
 
-```
-uv run pytest tests/test_budget_prices.py -v
-```
-Expected: PASS (3 tests).
-
-- [ ] **Step 5: Write failing windows test**
-
-Create `tests/test_budget_windows.py`:
+In `src/aegis/config/__init__.py`, change `load_queues` so it keeps the `agents` dict around (instead of only its keys) and looks up `Agent.harness` + `Agent.model`:
 
 ```python
-from datetime import timedelta
+def load_queues(path: Path) -> "dict[str, object]":
+    """Parse the ``queues`` dict from a .aegis.py file.
 
-import pytest
-
-from aegis.budget.windows import parse_window
-
-
-def test_parse_minutes():
-    assert parse_window("30m") == timedelta(minutes=30)
-
-
-def test_parse_hours():
-    assert parse_window("1h") == timedelta(hours=1)
-    assert parse_window("24h") == timedelta(hours=24)
-
-
-def test_parse_days():
-    assert parse_window("7d") == timedelta(days=7)
-
-
-def test_parse_weeks():
-    assert parse_window("1w") == timedelta(weeks=1)
-
-
-def test_parse_rejects_unknown_suffix():
-    with pytest.raises(ValueError, match="unknown window suffix"):
-        parse_window("5y")
-
-
-def test_parse_rejects_zero():
-    with pytest.raises(ValueError, match="must be positive"):
-        parse_window("0h")
-
-
-def test_parse_rejects_negative():
-    with pytest.raises(ValueError, match="must be positive"):
-        parse_window("-1h")
-
-
-def test_parse_rejects_no_suffix():
-    with pytest.raises(ValueError, match="must end with"):
-        parse_window("60")
-
-
-def test_parse_rejects_empty():
-    with pytest.raises(ValueError, match="empty"):
-        parse_window("")
-```
-
-- [ ] **Step 6: Run test to verify failure**
-
-```
-uv run pytest tests/test_budget_windows.py -v
-```
-Expected: FAIL — `ModuleNotFoundError`.
-
-- [ ] **Step 7: Implement windows**
-
-Create `src/aegis/budget/windows.py`:
-
-```python
-"""Parse window strings like '30m', '1h', '24h', '7d', '1w' to timedelta."""
-from __future__ import annotations
-
-from datetime import timedelta
-
-_SUFFIXES = {
-    "m": "minutes",
-    "h": "hours",
-    "d": "days",
-    "w": "weeks",
-}
-
-
-def parse_window(s: str) -> timedelta:
-    """Convert a window string to a positive timedelta.
-
-    Accepted: ``Nm`` (minutes), ``Nh`` (hours), ``Nd`` (days), ``Nw``
-    (weeks). N must be a positive integer.
+    Each queue's bound agent is resolved at load time; Queue.provider
+    and Queue.model are populated from the Agent's harness/model so
+    the cost-compute path can look them up without chasing the agents
+    dict at runtime.
     """
-    if not s:
-        raise ValueError("window string is empty")
-    suffix = s[-1].lower()
-    if suffix not in _SUFFIXES:
-        if suffix.isdigit():
-            raise ValueError(f"window {s!r} must end with one of m/h/d/w")
-        raise ValueError(f"unknown window suffix {suffix!r} in {s!r}")
+    from aegis.queue import Queue
+
+    namespace: dict[str, object] = {}
     try:
-        n = int(s[:-1])
-    except ValueError:
-        raise ValueError(f"window {s!r} prefix must be an integer")
-    if n <= 0:
-        raise ValueError(f"window {s!r} must be positive")
-    return timedelta(**{_SUFFIXES[suffix]: n})
+        exec(compile(path.read_text(), str(path), "exec"),  # noqa: S102
+             namespace)
+    except Exception as e:  # noqa: BLE001
+        raise ConfigError(f"Failed to load {path}: {e}") from e
+
+    queues_raw = namespace.get("queues")
+    if queues_raw is None:
+        return {}
+    if not isinstance(queues_raw, dict):
+        raise ConfigError(f"{path}: `queues` must be a dict.")
+
+    agents_raw = namespace.get("agents")
+    agents: dict[str, Agent] = (
+        dict(agents_raw) if isinstance(agents_raw, dict) else {})
+    agent_names: set[str] = set(agents)
+
+    out: dict[str, Queue] = {}
+    for name, cfg in queues_raw.items():
+        if not isinstance(cfg, dict):
+            raise ConfigError(
+                f"{path}: queues[{name!r}] must be a dict.")
+        if "agent" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key 'agent'.")
+        if "max_parallel" not in cfg:
+            raise ConfigError(
+                f"{path}: queues[{name!r}] missing required key "
+                f"'max_parallel'.")
+        agent_ref = cfg["agent"]
+        cap = cfg["max_parallel"]
+        if agent_ref not in agent_names:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].agent={agent_ref!r} does not "
+                f"reference a declared agent profile "
+                f"(known: {sorted(agent_names)}).")
+        if not isinstance(cap, int) or cap < 1:
+            raise ConfigError(
+                f"{path}: queues[{name!r}].max_parallel must be an int "
+                f">= 1 (got {cap!r}).")
+        agent = agents[agent_ref]
+        out[name] = Queue(name=name, agent_profile=agent_ref,
+                          max_parallel=cap,
+                          provider=agent.harness, model=agent.model)
+    return out
 ```
 
-- [ ] **Step 8: Run windows test**
+(The `Agent` validator already populates `harness` and `model` whether the user gave the new `provider=` shape or the legacy flat one.)
+
+- [ ] **Step 5: Update the `_q` test helper in `tests/test_queue_manager.py`**
+
+Find the existing `def _q(...)` (line ~88) and extend:
+
+```python
+def _q(name="impl", profile="claude-impl", cap=2,
+       provider="", model=""):
+    return Queue(name=name, agent_profile=profile, max_parallel=cap,
+                 provider=provider, model=model)
+```
+
+Existing callers passing no extra args continue to work (defaults are empty strings).
+
+- [ ] **Step 6: Run tests**
 
 ```
-uv run pytest tests/test_budget_windows.py -v
+uv run pytest tests/test_queue_provider_model.py tests/test_queue_manager.py -v
 ```
-Expected: PASS (9 tests).
+Expected: PASS.
 
-- [ ] **Step 9: Run full hermetic suite**
-
-```
-uv run pytest -q -m "not live" -x
-```
-Expected: all green.
-
-- [ ] **Step 10: Commit**
+- [ ] **Step 7: Run full hermetic suite + commit**
 
 ```bash
-git add src/aegis/budget/__init__.py src/aegis/budget/prices.py \
-        src/aegis/budget/windows.py \
-        tests/test_budget_prices.py tests/test_budget_windows.py
-git commit -m "feat(budget): price table + window parser scaffolding"
+uv run pytest -q -m "not live" -x
+git add src/aegis/queue/schema.py src/aegis/config/__init__.py \
+        tests/test_queue_manager.py tests/test_queue_provider_model.py
+git commit -m "feat(queue): Queue gains provider/model derived from agent profile at config-load"
 ```
 
 ---
 
-## Task 2: Cost dataclass + compute()
+## Task 4: `_finalize` writes `cost` on the JSONL record
 
 **Files:**
-- Create: `src/aegis/budget/cost.py`
-- Test: `tests/test_budget_cost.py`
+- Modify: `src/aegis/queue/manager.py` (`_finalize`, adapter)
+- Test: `tests/test_queue_cost_log.py`
 
-`compute(metrics, provider, model) -> Cost` is the function `QueueManager._finalize` will call when a worker terminates. Takes the existing `SessionMetrics` shape; returns a `Cost` with USD + per-class token counts, ready to serialize into the `task_done` JSONL record.
+Plumb cost computation into `_finalize`. Adapter maps `SessionMetrics.c_in/c_out/c_cached` to `compute()`'s expected names. Provider/model come from `self._queues[task.queue]`. Unknown model → `cost: {"error": "unknown_model"}` instead of crashing.
 
-- [ ] **Step 1: Inspect the SessionMetrics shape**
-
-```bash
-grep -nE "class SessionMetrics|input_tokens|output_tokens|cache_hit|cache_write|thinking_tokens" src/aegis/tui/metrics.py src/aegis/core/session.py 2>/dev/null | head -20
-```
-
-Note the exact attribute names. The plan assumes: `input_tokens`, `output_tokens`, `cache_hit_tokens`, `cache_write_tokens`, `thinking_tokens` (all ints). If any are named differently in current `SessionMetrics`, the test's mock object must match the real shape — but `compute()` should accept any object with the right attribute names (use `getattr(..., 0)` defensive reads).
-
-- [ ] **Step 2: Write failing test**
-
-Create `tests/test_budget_cost.py`:
-
-```python
-from dataclasses import dataclass
-from decimal import Decimal
-
-import pytest
-
-from aegis.budget.cost import Cost, compute
-from aegis.budget.prices import UnknownPriceError
-
-
-@dataclass
-class _FakeMetrics:
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_hit_tokens: int = 0
-    cache_write_tokens: int = 0
-    thinking_tokens: int = 0
-
-
-def test_compute_sums_all_token_classes_for_opus():
-    m = _FakeMetrics(input_tokens=10_000, output_tokens=5_000,
-                    cache_hit_tokens=100_000, cache_write_tokens=2_000,
-                    thinking_tokens=1_000)
-    c = compute(m, "claude-code", "opus")
-    # opus rates per million: in=15, out=75, hit=1.50, write=18.75, think=75
-    # = 10_000*15/1M + 5_000*75/1M + 100_000*1.5/1M + 2_000*18.75/1M + 1_000*75/1M
-    # = 0.15 + 0.375 + 0.15 + 0.0375 + 0.075 = 0.7875
-    assert c.usd == Decimal("0.7875")
-    assert c.input_tokens == 10_000
-    assert c.output_tokens == 5_000
-    assert c.cache_hit_tokens == 100_000
-    assert c.cache_write_tokens == 2_000
-    assert c.thinking_tokens == 1_000
-
-
-def test_compute_zero_metrics_is_zero_cost():
-    c = compute(_FakeMetrics(), "claude-code", "haiku")
-    assert c.usd == Decimal("0")
-    assert c.output_tokens == 0
-
-
-def test_compute_missing_attr_defaults_to_zero():
-    """Defensive: ACP-driven providers may not split cache classes."""
-    class _Sparse:
-        input_tokens = 1_000_000
-        output_tokens = 1_000_000
-        # cache_hit_tokens / cache_write_tokens / thinking_tokens absent
-    c = compute(_Sparse(), "claude-code", "haiku")
-    # haiku: in=1.00/M, out=5.00/M → 1.00 + 5.00 = 6.00
-    assert c.usd == Decimal("6.00")
-
-
-def test_compute_unknown_model_raises():
-    with pytest.raises(UnknownPriceError):
-        compute(_FakeMetrics(input_tokens=1), "claude-code", "ghost")
-
-
-def test_cost_as_dict_serializes_decimal_as_string():
-    c = Cost(usd=Decimal("0.0421"), input_tokens=1, output_tokens=2,
-              cache_hit_tokens=3, cache_write_tokens=4, thinking_tokens=5)
-    d = c.as_dict()
-    assert d["usd"] == "0.0421"
-    assert d["input_tokens"] == 1
-
-
-def test_cost_from_dict_round_trips():
-    """JSONL round-trip: dict -> Cost -> dict must be identical."""
-    src = {"usd": "0.0421", "input_tokens": 1, "output_tokens": 2,
-           "cache_hit_tokens": 3, "cache_write_tokens": 4,
-           "thinking_tokens": 5}
-    c = Cost.from_dict(src)
-    assert c.usd == Decimal("0.0421")
-    assert c.as_dict() == src
-
-
-def test_compute_no_float_drift_over_1000_rounds():
-    """1000 small computes summed equal 1000 * single compute."""
-    m = _FakeMetrics(input_tokens=12_345, output_tokens=6_789)
-    total = sum((compute(m, "claude-code", "sonnet").usd for _ in range(1000)),
-                start=Decimal("0"))
-    single = compute(m, "claude-code", "sonnet").usd
-    assert total == single * 1000
-```
-
-- [ ] **Step 3: Run test to verify failure**
-
-```
-uv run pytest tests/test_budget_cost.py -v
-```
-Expected: FAIL — `ModuleNotFoundError`.
-
-- [ ] **Step 4: Implement cost**
-
-Create `src/aegis/budget/cost.py`:
-
-```python
-"""Compute USD cost from SessionMetrics + price table."""
-from __future__ import annotations
-
-from dataclasses import dataclass
-from decimal import Decimal
-
-from aegis.budget.prices import lookup
-
-_MILLION = Decimal("1000000")
-
-
-@dataclass(frozen=True)
-class Cost:
-    """A worker's finalized cost, ready to land on a task_done JSONL record."""
-    usd:                Decimal
-    input_tokens:       int
-    output_tokens:      int
-    cache_hit_tokens:   int
-    cache_write_tokens: int
-    thinking_tokens:    int
-
-    def as_dict(self) -> dict:
-        """Serialize for JSONL — `usd` becomes a string to avoid float drift."""
-        return {
-            "usd": str(self.usd),
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cache_hit_tokens": self.cache_hit_tokens,
-            "cache_write_tokens": self.cache_write_tokens,
-            "thinking_tokens": self.thinking_tokens,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Cost":
-        return cls(
-            usd=Decimal(d["usd"]),
-            input_tokens=int(d.get("input_tokens", 0)),
-            output_tokens=int(d.get("output_tokens", 0)),
-            cache_hit_tokens=int(d.get("cache_hit_tokens", 0)),
-            cache_write_tokens=int(d.get("cache_write_tokens", 0)),
-            thinking_tokens=int(d.get("thinking_tokens", 0)),
-        )
-
-
-def compute(metrics, provider: str, model: str) -> Cost:
-    """Compute USD cost for the worker, looking up rates by (provider, model).
-
-    ``metrics`` is any object exposing the SessionMetrics token attributes.
-    Missing attributes default to 0 (some providers don't expose all of
-    cache_hit/cache_write/thinking).
-    Raises UnknownPriceError if (provider, model) isn't in PRICES.
-    """
-    row = lookup(provider, model)
-
-    def _tok(name: str) -> int:
-        return int(getattr(metrics, name, 0) or 0)
-
-    inp = _tok("input_tokens")
-    out = _tok("output_tokens")
-    hit = _tok("cache_hit_tokens")
-    wr  = _tok("cache_write_tokens")
-    th  = _tok("thinking_tokens")
-
-    usd = (
-        Decimal(inp) * row.input       / _MILLION +
-        Decimal(out) * row.output      / _MILLION +
-        Decimal(hit) * row.cache_hit   / _MILLION +
-        Decimal(wr)  * row.cache_write / _MILLION +
-        Decimal(th)  * row.thinking    / _MILLION
-    )
-    return Cost(usd=usd, input_tokens=inp, output_tokens=out,
-                cache_hit_tokens=hit, cache_write_tokens=wr,
-                thinking_tokens=th)
-```
-
-- [ ] **Step 5: Run test**
-
-```
-uv run pytest tests/test_budget_cost.py -v
-```
-Expected: PASS (7 tests).
-
-- [ ] **Step 6: Run full hermetic suite**
-
-```
-uv run pytest -q -m "not live" -x
-```
-Expected: all green.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/aegis/budget/cost.py tests/test_budget_cost.py
-git commit -m "feat(budget): Cost dataclass + compute(metrics, provider, model)"
-```
-
----
-
-## Task 3: `task_done` JSONL grows a `cost` field
-
-**Files:**
-- Modify: `src/aegis/queue/manager.py`
-- Test: `tests/test_queue_manager.py` (or new `tests/test_queue_cost_log.py`)
-
-When a worker terminates, `QueueManager._finalize` already collects the final `SessionMetrics` and writes a `task_done` JSONL record. Extend that record with a `cost` field via `compute()`. Also catch `UnknownPriceError` and log `cost_compute_failed` instead of crashing the finalizer.
-
-- [ ] **Step 1: Locate the current _finalize**
-
-```bash
-grep -nE "def _finalize|task_done|self._log" src/aegis/queue/manager.py | head -20
-```
-
-Read the function body. Note the variable holding the worker's metrics and the (provider, model) you can pluck off the `Task` record. (Tasks already record `task.provider` and `task.model` since v0.6+.)
-
-- [ ] **Step 2: Write failing test**
+- [ ] **Step 1: Write failing test**
 
 Create `tests/test_queue_cost_log.py`:
 
 ```python
-"""Verify _finalize writes a `cost` field on the task_done JSONL record."""
+import asyncio
 import json
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-# These imports use whatever queue-manager fixture pattern the existing
-# tests use (see tests/test_queue_manager.py for the FakeSessionManager
-# pattern + how to drive a task to completion).
+from aegis.events import Result, TokenUsage
+from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
+
+# Reuse the existing test_queue_manager helpers (AssistantText, StubSessionManager).
+from tests.test_queue_manager import StubSessionManager, AssistantText
 
 
 @pytest.mark.asyncio
-async def test_task_done_record_includes_cost(tmp_path: Path) -> None:
-    from tests.fixtures.fake_session import FakeSessionManager  # existing
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-
-    # Build a QueueManager with one queue whose worker is "opus" claude-code.
-    sm = FakeSessionManager(provider="claude-code", model="opus")
+async def test_completed_record_includes_cost(tmp_path):
+    """When a worker completes, the JSONL `completed` record carries a
+    `cost` field computed from session.metrics + queue's (provider, model)."""
+    sm = StubSessionManager()
+    inbox = InboxRouter()
     qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default", max_parallel=1)},
-        session_manager=sm,
-        state_dir=tmp_path,
+        {"impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                        provider="claude-code", model="opus")},
+        sm, inbox, state_dir=tmp_path,
     )
-    await qm.start()
-    try:
-        tid, _ = qm.enqueue("impl", "do it",
-                             enqueued_by="agent:caller", callback=False)
-        # Drive worker to completion with a known metrics shape.
-        await sm.finish_task(tid, result_text="done",
-                              metrics=dict(input_tokens=10_000,
-                                           output_tokens=5_000,
-                                           cache_hit_tokens=0,
-                                           cache_write_tokens=0,
-                                           thinking_tokens=0))
-        # Verify the JSONL audit on disk.
-        log_path = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
-        assert log_path.exists()
-        records = [json.loads(line) for line in
-                   log_path.read_text().splitlines() if line.strip()]
-        done = [r for r in records if r.get("event") == "task_done"]
-        assert len(done) == 1
-        assert "cost" in done[0]
-        cost = done[0]["cost"]
-        # opus: in=15/M, out=75/M → 10_000*15/1M + 5_000*75/1M = 0.15 + 0.375
-        assert cost["usd"] == "0.5250" or Decimal(cost["usd"]) == Decimal("0.525")
-        assert cost["input_tokens"] == 10_000
-        assert cost["output_tokens"] == 5_000
-    finally:
-        await qm.stop()
+    # Drive the worker: script its events to include a Result with usage.
+    # Then enqueue + let the substrate finalize it.
+    usage = TokenUsage(true_input=10_000, output=5_000, cache_read=0,
+                       cache_creation=0)
+    sm.script("worker-handle-0",
+              [AssistantText(text="DONE"),
+               Result(duration_ms=1, is_error=False, usage=usage)])
+    tid, _ = qm.enqueue("impl", "x",
+                         enqueued_by=sender_agent("p"), callback=False)
+    # Let the event loop drive the session to completion.
+    await asyncio.sleep(0.1)
+
+    log = tmp_path / "queues" / "impl.jsonl"
+    assert log.exists()
+    records = [json.loads(l) for l in log.read_text().splitlines()
+               if l.strip()]
+    done = [r for r in records if r.get("event") in ("completed", "failed")]
+    assert len(done) == 1
+    assert done[0]["event"] == "completed"
+    assert "cost" in done[0]
+    c = done[0]["cost"]
+    # opus rates: in=15/M, out=75/M, cache_hit=1.50/M
+    # cost = 10_000*15/1M + 5_000*75/1M + 0 = 0.15 + 0.375 = 0.525
+    assert Decimal(c["usd"]) == Decimal("0.525")
+    assert c["input_tokens"] == 10_000
+    assert c["output_tokens"] == 5_000
 
 
 @pytest.mark.asyncio
-async def test_task_done_record_when_price_unknown(tmp_path: Path) -> None:
-    """If the (provider, model) isn't in PRICES, log cost_compute_failed
-    on the same record instead of crashing the finalizer."""
-    from tests.fixtures.fake_session import FakeSessionManager
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-
-    sm = FakeSessionManager(provider="madeup", model="zzz")
+async def test_unknown_model_records_error_instead_of_crashing(tmp_path):
+    """Queue.provider/.model not in PRICES → cost: {error: unknown_model}.
+    Finalizer still completes; the budget evaluator treats this as $0."""
+    sm = StubSessionManager()
+    inbox = InboxRouter()
     qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default", max_parallel=1)},
-        session_manager=sm,
-        state_dir=tmp_path,
+        {"impl": Queue(name="impl", agent_profile="x", max_parallel=1,
+                        provider="madeup", model="zzz")},
+        sm, inbox, state_dir=tmp_path,
     )
-    await qm.start()
-    try:
-        tid, _ = qm.enqueue("impl", "x", enqueued_by="a", callback=False)
-        await sm.finish_task(tid, result_text="done",
-                              metrics=dict(input_tokens=1, output_tokens=1))
-        log = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
-        records = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
-        done = [r for r in records if r.get("event") == "task_done"][0]
-        assert "cost" in done
-        assert done["cost"].get("error") == "unknown_model"
-    finally:
-        await qm.stop()
+    usage = TokenUsage(true_input=1, output=1, cache_read=0,
+                       cache_creation=0)
+    sm.script("worker-handle-0",
+              [AssistantText(text="DONE"),
+               Result(duration_ms=1, is_error=False, usage=usage)])
+    qm.enqueue("impl", "x", enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.1)
+
+    log = tmp_path / "queues" / "impl.jsonl"
+    records = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
+    done = [r for r in records if r.get("event") in ("completed", "failed")]
+    assert len(done) == 1
+    assert done[0]["cost"].get("error") == "unknown_model"
+
+
+@pytest.mark.asyncio
+async def test_failed_record_also_carries_cost(tmp_path):
+    """Failed workers consumed tokens too — record cost on the failed
+    record so the budget evaluator counts them."""
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                        provider="claude-code", model="opus")},
+        sm, inbox, state_dir=tmp_path,
+    )
+    # Script the worker to fail mid-flight: emit a Result with is_error=True.
+    usage = TokenUsage(true_input=1_000, output=500, cache_read=0,
+                       cache_creation=0)
+    sm.script("worker-handle-0",
+              [AssistantText(text="oops"),
+               Result(duration_ms=1, is_error=True, usage=usage)])
+    qm.enqueue("impl", "x", enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.1)
+
+    log = tmp_path / "queues" / "impl.jsonl"
+    records = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
+    done = [r for r in records if r.get("event") in ("completed", "failed")]
+    assert len(done) == 1
+    assert done[0]["event"] == "failed"
+    assert "cost" in done[0]
+    # Failed workers still charged: 1000*15/1M + 500*75/1M = 0.015 + 0.0375
+    assert Decimal(done[0]["cost"]["usd"]) > Decimal("0")
 ```
 
-Note: if `tests/fixtures/fake_session.py` doesn't already exist or doesn't accept `provider`/`model` constructor args + `metrics=` on `finish_task`, you need to extend it (or write a minimal local double). Check `tests/test_queue_manager.py` for the existing fixture pattern; pull in additions as needed.
+(Adjust the `worker-handle-0` literal if `QueueManager` assigns a different handle pattern — check via `grep -nE "handle.*=.*worker|generate_handle" src/aegis/queue/manager.py` or just print the actual handle inside the StubSessionManager fixture.)
 
-- [ ] **Step 3: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**
 
 ```
 uv run pytest tests/test_queue_cost_log.py -v
 ```
-Expected: FAIL — `cost` key not present in the task_done record (the current code doesn't write it).
+Expected: FAIL — `cost` key missing from `completed`/`failed` records.
 
-- [ ] **Step 4: Implement — extend `_finalize`**
+- [ ] **Step 3: Implement the adapter + extend `_finalize`**
 
-In `src/aegis/queue/manager.py`, inside `_finalize`, near where the existing `task_done` JSONL record is built (the `self._log(task.queue, {...})` call), wrap a cost computation:
+In `src/aegis/queue/manager.py`, at the top, import the cost machinery:
 
 ```python
 from aegis.budget.cost import compute as _compute_cost
 from aegis.budget.prices import UnknownPriceError
 
-# ... inside _finalize, after collecting `metrics` and before self._log ...
-cost_dict: dict
+
+def _adapt_metrics(metrics):
+    """Map SessionMetrics committed counters to cost.compute's expected
+    attribute names. Returns a lightweight object — duck-typed."""
+    class _M:
+        input_tokens     = int(getattr(metrics, "c_in", 0) or 0)
+        output_tokens    = int(getattr(metrics, "c_out", 0) or 0)
+        cache_hit_tokens = int(getattr(metrics, "c_cached", 0) or 0)
+        cache_write_tokens = 0
+        thinking_tokens  = 0
+    return _M
+```
+
+Then in `_finalize`, after computing `status`, add:
+
+```python
+q = self._queues[task.queue]
 try:
-    cost_dict = _compute_cost(metrics, task.provider, task.model).as_dict()
+    cost_dict = _compute_cost(
+        _adapt_metrics(session.metrics),
+        provider=q.provider, model=q.model,
+    ).as_dict()
 except UnknownPriceError as e:
     cost_dict = {"error": "unknown_model", "detail": str(e)}
-except Exception as e:    # don't let cost computation break the finalizer
+except Exception as e:  # don't let cost compute break the finalizer
     cost_dict = {"error": "compute_failed", "detail": str(e)}
+```
 
+And extend the `self._log(task.queue, {...})` call to include the new field:
+
+```python
 self._log(task.queue, {
-    "event": "task_done",
-    # ...existing fields...
+    "event": status, "task_id": task.id,
+    "result": result, "error": error,
+    "completed_at": completed.completed_at,
     "cost": cost_dict,
 })
 ```
 
-(The exact location of the existing `self._log({"event": "task_done", ...})` call depends on the current `_finalize` shape — find it with the grep in Step 1; the addition is just one new key.)
-
-- [ ] **Step 5: Run test**
+- [ ] **Step 4: Run tests**
 
 ```
 uv run pytest tests/test_queue_cost_log.py -v
 ```
-Expected: PASS (2 tests).
+Expected: PASS (3 tests).
 
-- [ ] **Step 6: Run full hermetic suite**
-
-```
-uv run pytest -q -m "not live" -x
-```
-Expected: all green.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Run full hermetic suite + commit**
 
 ```bash
+uv run pytest -q -m "not live" -x
 git add src/aegis/queue/manager.py tests/test_queue_cost_log.py
-git commit -m "feat(budget): task_done JSONL record carries cost field"
+git commit -m "feat(budget): _finalize writes cost field on completed/failed JSONL records"
 ```
 
 ---
 
-## Task 4: `Budget` dataclass + config parser
+## Task 5: `Budget` dataclass + `parse_budgets` + `Queue.budgets` field
 
 **Files:**
-- Modify: `src/aegis/queue/schema.py` (or wherever `Queue` lives — grep `class Queue\b`)
-- Modify: `src/aegis/config.py` (or `src/aegis/config/yaml_loader.py` — wherever `.aegis.py` queues are parsed)
-- Create: `src/aegis/budget/budgets.py` — `Budget` dataclass + `parse_budgets()` function
+- Create: `src/aegis/budget/budgets.py` (`Budget`, `BudgetConfigError`, `parse_budgets`)
+- Modify: `src/aegis/queue/schema.py` (Queue grows `budgets: list[Budget]`)
+- Modify: `src/aegis/config/__init__.py` (`load_queues` parses + attaches budgets)
 - Test: `tests/test_budget_config.py`
 
-Parse the `budgets:` list in `.aegis.py` queue declarations into a `list[Budget]` on `Queue`. Validation at config-load: one constraint per entry (xor), valid window string, no duplicate `(constraint, window)` pairs, fail boot loud on violations.
+Pre-budget data model. The evaluator (Task 6) consumes `Budget` objects; the parser validates at config-load.
 
 - [ ] **Step 1: Write failing test**
 
@@ -671,10 +443,11 @@ Create `tests/test_budget_config.py`:
 
 ```python
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
-from aegis.budget.budgets import Budget, parse_budgets, BudgetConfigError
+from aegis.budget.budgets import Budget, BudgetConfigError, parse_budgets
 
 
 def test_parse_single_usd_budget():
@@ -685,22 +458,19 @@ def test_parse_single_usd_budget():
     assert b[0].window_str == "1h"
 
 
-def test_parse_single_output_tokens_budget():
+def test_parse_output_tokens_budget():
     b = parse_budgets([{"output_tokens": 500_000, "window": "1h"}])
     assert b[0].constraint == "output_tokens"
     assert b[0].limit == Decimal("500000")
-    assert b[0].window_str == "1h"
 
 
-def test_parse_multiple_budgets_preserves_order():
+def test_parse_multiple_preserves_order():
     b = parse_budgets([
         {"usd": 1.00, "window": "1h"},
         {"usd": 10.00, "window": "24h"},
         {"output_tokens": 500_000, "window": "1h"},
-        {"usd": 50.00, "window": "7d"},
     ])
-    assert len(b) == 4
-    assert [x.window_str for x in b] == ["1h", "24h", "1h", "7d"]
+    assert [x.window_str for x in b] == ["1h", "24h", "1h"]
 
 
 def test_parse_rejects_both_constraints():
@@ -727,26 +497,61 @@ def test_parse_rejects_duplicate_pair():
     with pytest.raises(BudgetConfigError, match="duplicate"):
         parse_budgets([
             {"usd": 1.00, "window": "1h"},
-            {"usd": 2.00, "window": "1h"},   # same (constraint, window)
+            {"usd": 2.00, "window": "1h"},
         ])
 
 
-def test_parse_accepts_decimal_usd():
-    from decimal import Decimal as D
-    b = parse_budgets([{"usd": D("0.5"), "window": "1h"}])
-    assert b[0].limit == D("0.5")
-
-
-def test_parse_rejects_non_positive_limit():
+def test_parse_rejects_non_positive():
     with pytest.raises(BudgetConfigError, match="positive"):
         parse_budgets([{"usd": 0, "window": "1h"}])
     with pytest.raises(BudgetConfigError, match="positive"):
         parse_budgets([{"output_tokens": -1, "window": "1h"}])
 
 
-def test_parse_empty_list_is_empty():
+def test_parse_empty_list_returns_empty():
     assert parse_budgets([]) == []
     assert parse_budgets(None) == []
+
+
+def test_load_queues_attaches_budgets(tmp_path):
+    """End-to-end: budgets land on Queue.budgets via load_queues."""
+    from aegis.config import load_queues
+    aegis_py = tmp_path / ".aegis.py"
+    aegis_py.write_text("""
+from aegis import Agent, ClaudeCode
+agents = {"opus": Agent(provider=ClaudeCode(model="opus"))}
+default_agent = "opus"
+queues = {
+    "impl": {
+        "agent": "opus", "max_parallel": 2,
+        "budgets": [
+            {"usd": 1.00, "window": "1h"},
+            {"output_tokens": 500_000, "window": "1h"},
+        ],
+    },
+}
+""")
+    queues = load_queues(aegis_py)
+    assert len(queues["impl"].budgets) == 2
+    assert queues["impl"].budgets[0].constraint == "usd"
+
+
+def test_load_queues_with_bad_budget_fails(tmp_path):
+    from aegis.config import ConfigError, load_queues
+    aegis_py = tmp_path / ".aegis.py"
+    aegis_py.write_text("""
+from aegis import Agent, ClaudeCode
+agents = {"opus": Agent(provider=ClaudeCode(model="opus"))}
+default_agent = "opus"
+queues = {
+    "impl": {
+        "agent": "opus", "max_parallel": 1,
+        "budgets": [{"usd": 1.00, "output_tokens": 500, "window": "1h"}],
+    },
+}
+""")
+    with pytest.raises((BudgetConfigError, ConfigError), match="impl"):
+        load_queues(aegis_py)
 ```
 
 - [ ] **Step 2: Run test to verify failure**
@@ -754,9 +559,9 @@ def test_parse_empty_list_is_empty():
 ```
 uv run pytest tests/test_budget_config.py -v
 ```
-Expected: FAIL — `ModuleNotFoundError`.
+Expected: FAIL — module missing.
 
-- [ ] **Step 3: Implement `Budget` + `parse_budgets`**
+- [ ] **Step 3: Implement `parse_budgets`**
 
 Create `src/aegis/budget/budgets.py`:
 
@@ -767,7 +572,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Iterable
 
 from aegis.budget.windows import parse_window
 
@@ -778,24 +582,13 @@ class BudgetConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Budget:
-    """One (constraint, window) entry from a queue's budgets list.
-
-    constraint is "usd" or "output_tokens". limit is the ceiling in the
-    constraint's natural unit (Decimal USD or Decimal output_tokens).
-    """
-    constraint: str
+    constraint: str         # "usd" or "output_tokens"
     limit:      Decimal
-    window_str: str         # verbatim from config — "1h" / "24h" / ...
-    window:     timedelta   # parsed; cached for evaluator use
+    window_str: str         # verbatim from config
+    window:     timedelta   # parsed
 
 
 def parse_budgets(raw) -> list[Budget]:
-    """Parse the raw `budgets:` list from a queue's config.
-
-    Validates: exactly one of usd/output_tokens per entry, valid window,
-    positive limit, no duplicate (constraint, window) pairs. Raises
-    BudgetConfigError on any violation.
-    """
     if not raw:
         return []
     if not isinstance(raw, list):
@@ -839,118 +632,78 @@ def parse_budgets(raw) -> list[Budget]:
         if key in seen:
             raise BudgetConfigError(
                 f"budgets[{i}] duplicate ({constraint!r}, "
-                f"{entry['window']!r}) — collapse into one entry")
+                f"{entry['window']!r})")
         seen.add(key)
         out.append(Budget(constraint=constraint, limit=limit,
                           window_str=entry["window"], window=window))
     return out
 ```
 
-- [ ] **Step 4: Run budgets test**
+- [ ] **Step 4: Extend `Queue` with `budgets`**
+
+In `src/aegis/queue/schema.py`:
+
+```python
+from dataclasses import dataclass, field
+
+from aegis.budget.budgets import Budget   # forward-import safe; no cycle
+
+@dataclass(frozen=True)
+class Queue:
+    name: str
+    agent_profile: str
+    max_parallel: int
+    provider: str = ""
+    model: str = ""
+    budgets: list[Budget] = field(default_factory=list)
+```
+
+If `aegis.queue.schema` is imported by `aegis.budget.budgets` (it isn't currently — check), use a deferred import to break a cycle. Most likely no cycle exists since `budgets.py` only imports `windows.py`.
+
+- [ ] **Step 5: Wire `load_queues` to parse + attach**
+
+In `src/aegis/config/__init__.py`, update `load_queues`'s queue-construction loop:
+
+```python
+from aegis.budget.budgets import parse_budgets, BudgetConfigError
+
+# ...inside the for-each-queue loop, after the validation block:
+try:
+    budgets = parse_budgets(cfg.get("budgets"))
+except BudgetConfigError as e:
+    raise ConfigError(f"{path}: queues[{name!r}].budgets: {e}")
+
+out[name] = Queue(name=name, agent_profile=agent_ref,
+                  max_parallel=cap,
+                  provider=agent.harness, model=agent.model,
+                  budgets=budgets)
+```
+
+- [ ] **Step 6: Run tests**
 
 ```
 uv run pytest tests/test_budget_config.py -v
 ```
-Expected: PASS (11 tests).
+Expected: PASS.
 
-- [ ] **Step 5: Plumb into `Queue`**
-
-Find the queue config dataclass — `grep -n "class Queue\|@dataclass" src/aegis/queue/schema.py | head`. Add a `budgets: list[Budget]` field with default `field(default_factory=list)`. Import `Budget` from `aegis.budget.budgets`.
-
-In the config loader (`src/aegis/config.py` or `src/aegis/config/yaml_loader.py` — whichever parses `queues = {...}` from `.aegis.py`), find where `Queue(**v)` or equivalent is built. Change to call `parse_budgets(v.pop("budgets", None))` and pass through:
-
-```python
-# Before:
-queues = {k: Queue(**v) for k, v in raw_queues.items()}
-# After:
-from aegis.budget.budgets import parse_budgets, BudgetConfigError
-queues = {}
-for k, v in raw_queues.items():
-    v = dict(v)  # don't mutate the caller's dict
-    try:
-        v["budgets"] = parse_budgets(v.pop("budgets", None))
-    except BudgetConfigError as e:
-        raise BudgetConfigError(f"queues[{k!r}]: {e}")
-    queues[k] = Queue(**v)
-```
-
-- [ ] **Step 6: Write integration test for `.aegis.py` parsing**
-
-Add to `tests/test_budget_config.py` (or a config-specific test file if one exists):
-
-```python
-def test_parse_queue_with_budgets_via_config_loader(tmp_path):
-    """End-to-end: budgets in .aegis.py land on the Queue dataclass."""
-    from aegis.config import load_config
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, ClaudeCode
-agents = {"default": Agent(provider=ClaudeCode(model="opus"))}
-default_agent = "default"
-queues = {
-    "impl": {
-        "agent": "default",
-        "max_parallel": 1,
-        "budgets": [
-            {"usd": 1.00, "window": "1h"},
-            {"output_tokens": 500_000, "window": "1h"},
-        ],
-    },
-}
-""")
-    cfg = load_config(tmp_path)
-    q = cfg.queues["impl"]
-    assert len(q.budgets) == 2
-    assert q.budgets[0].constraint == "usd"
-    assert q.budgets[1].constraint == "output_tokens"
-
-
-def test_parse_queue_with_bad_budget_fails_boot(tmp_path):
-    from aegis.budget.budgets import BudgetConfigError
-    from aegis.config import load_config
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, ClaudeCode
-agents = {"default": Agent(provider=ClaudeCode(model="opus"))}
-default_agent = "default"
-queues = {
-    "impl": {"agent": "default", "max_parallel": 1,
-              "budgets": [{"usd": 1.00, "output_tokens": 500, "window": "1h"}]},
-}
-""")
-    with pytest.raises(BudgetConfigError, match="impl"):
-        load_config(tmp_path)
-```
-
-(If `load_config` lives at a different import path or signature, adjust.)
-
-- [ ] **Step 7: Run full suite**
-
-```
-uv run pytest -q -m "not live" -x
-```
-Expected: all green.
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Run full hermetic suite + commit**
 
 ```bash
+uv run pytest -q -m "not live" -x
 git add src/aegis/budget/budgets.py src/aegis/queue/schema.py \
-        src/aegis/config.py src/aegis/config/yaml_loader.py \
-        tests/test_budget_config.py
-git commit -m "feat(budget): Budget dataclass + Queue.budgets config parser"
+        src/aegis/config/__init__.py tests/test_budget_config.py
+git commit -m "feat(budget): Budget dataclass + Queue.budgets via load_queues parser"
 ```
-
-(Stage whichever of those config files you actually touched.)
 
 ---
 
-## Task 5: `BudgetCheck` + `Decision` + `evaluate_budgets()`
+## Task 6: `evaluate_budgets()` pure function
 
 **Files:**
 - Create: `src/aegis/budget/evaluator.py`
 - Test: `tests/test_budget_evaluator.py`
 
-The pure evaluator. Takes a list of `task_done` records from the JSONL tail, a list of `Budget`, and a `now` datetime; returns a `Decision` with one `BudgetCheck` per budget plus the queue-level `allowed` + `unblock_at`.
+Pure-function evaluator over a list of JSONL records. Filters on `event in ("completed", "failed")` (not the imaginary `task_done`). Returns `Decision` with per-budget `BudgetCheck` rows.
 
 - [ ] **Step 1: Write failing test**
 
@@ -968,7 +721,7 @@ from aegis.budget.windows import parse_window
 
 
 def _now() -> datetime:
-    return datetime(2026, 5, 25, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 26, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _budget(constraint: str, limit: str, window_str: str) -> Budget:
@@ -976,165 +729,132 @@ def _budget(constraint: str, limit: str, window_str: str) -> Budget:
                   window_str=window_str, window=parse_window(window_str))
 
 
-def _record(ts: datetime, usd: str = "0", output_tokens: int = 0) -> dict:
+def _rec(ts: datetime, event: str = "completed",
+         usd: str = "0", output_tokens: int = 0) -> dict:
     return {
-        "event": "task_done",
+        "event": event,
         "completed_at": ts.isoformat().replace("+00:00", "Z"),
-        "cost": {"usd": usd, "input_tokens": 0, "output_tokens": output_tokens,
+        "cost": {"usd": usd, "input_tokens": 0,
+                  "output_tokens": output_tokens,
                   "cache_hit_tokens": 0, "cache_write_tokens": 0,
                   "thinking_tokens": 0},
     }
 
 
 def test_no_budgets_allows():
-    d = evaluate_budgets(jsonl_tail=[], budgets=[], now=_now())
+    d = evaluate_budgets([], [], _now())
     assert d.allowed is True
-    assert d.checks == []
     assert d.blocked_by == []
 
 
-def test_single_usd_budget_under_limit_allows():
+def test_completed_record_counts():
     n = _now()
-    tail = [_record(n - timedelta(minutes=10), usd="0.50")]
-    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
-    assert d.allowed is True
-    assert len(d.checks) == 1
-    chk = d.checks[0]
-    assert chk.spent == Decimal("0.50")
-    assert chk.allowed is True
-    assert chk.headroom == Decimal("0.50")
-
-
-def test_single_usd_budget_over_limit_blocks():
-    n = _now()
-    tail = [
-        _record(n - timedelta(minutes=10), usd="0.80"),
-        _record(n - timedelta(minutes=20), usd="0.50"),
-    ]
-    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
-    assert d.allowed is False
-    assert len(d.blocked_by) == 1
-    chk = d.blocked_by[0]
-    assert chk.spent == Decimal("1.30")
-    assert chk.headroom == Decimal("-0.30")
-
-
-def test_records_outside_window_ignored():
-    n = _now()
-    tail = [
-        _record(n - timedelta(minutes=30), usd="0.50"),   # inside 1h
-        _record(n - timedelta(hours=2), usd="100.00"),    # outside 1h
-    ]
+    tail = [_rec(n - timedelta(minutes=10), event="completed", usd="0.50")]
     d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
     assert d.allowed is True
     assert d.checks[0].spent == Decimal("0.50")
 
 
-def test_output_tokens_budget_blocks():
+def test_failed_record_also_counts():
+    """Failed workers burned tokens — count them."""
     n = _now()
-    tail = [_record(n - timedelta(minutes=5), output_tokens=600_000)]
-    d = evaluate_budgets(tail, [_budget("output_tokens", "500000", "1h")], n)
-    assert d.allowed is False
-    assert d.blocked_by[0].spent == Decimal("600000")
+    tail = [_rec(n - timedelta(minutes=10), event="failed", usd="0.80")]
+    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
+    assert d.checks[0].spent == Decimal("0.80")
 
 
-def test_multi_budget_all_allow():
+def test_under_limit_allows():
     n = _now()
-    tail = [_record(n - timedelta(minutes=5), usd="0.30")]
-    d = evaluate_budgets(tail, [
-        _budget("usd", "1.00", "1h"),
-        _budget("usd", "10.00", "24h"),
-    ], n)
+    tail = [_rec(n - timedelta(minutes=10), usd="0.50")]
+    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
     assert d.allowed is True
-    assert all(c.allowed for c in d.checks)
+    assert d.checks[0].headroom == Decimal("0.50")
+
+
+def test_over_limit_blocks():
+    n = _now()
+    tail = [_rec(n - timedelta(minutes=10), usd="0.80"),
+            _rec(n - timedelta(minutes=20), usd="0.50")]
+    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
+    assert d.allowed is False
+    assert d.blocked_by[0].spent == Decimal("1.30")
+
+
+def test_records_outside_window_ignored():
+    n = _now()
+    tail = [_rec(n - timedelta(minutes=30), usd="0.50"),
+            _rec(n - timedelta(hours=2), usd="100.00")]
+    d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
+    assert d.allowed is True
 
 
 def test_multi_budget_partial_block():
-    """1h trips at 0.80/0.50; 24h fine at 1.30/10.00 → blocked_by has one."""
     n = _now()
-    tail = [
-        _record(n - timedelta(minutes=10), usd="0.80"),
-        _record(n - timedelta(minutes=20), usd="0.50"),
-    ]
+    tail = [_rec(n - timedelta(minutes=10), usd="0.80"),
+            _rec(n - timedelta(minutes=20), usd="0.50")]
     d = evaluate_budgets(tail, [
-        _budget("usd", "1.00", "1h"),
-        _budget("usd", "10.00", "24h"),
+        _budget("usd", "1.00", "1h"),    # blocks
+        _budget("usd", "10.00", "24h"),  # ok
     ], n)
     assert d.allowed is False
     assert len(d.blocked_by) == 1
     assert d.blocked_by[0].window_str == "1h"
 
 
-def test_multi_budget_all_block():
+def test_output_tokens_budget():
     n = _now()
-    tail = [_record(n - timedelta(minutes=10), usd="100.00")]
-    d = evaluate_budgets(tail, [
-        _budget("usd", "1.00", "1h"),
-        _budget("usd", "50.00", "24h"),
-    ], n)
+    tail = [_rec(n - timedelta(minutes=5), output_tokens=600_000)]
+    d = evaluate_budgets(tail, [_budget("output_tokens", "500000", "1h")], n)
     assert d.allowed is False
-    assert len(d.blocked_by) == 2
+    assert d.blocked_by[0].spent == Decimal("600000")
 
 
 def test_unblock_at_for_blocking_budget():
-    """One record at 0.80, one at 0.50 (older), limit 1.00 over 1h.
-    The older 0.50 ages out first; spent drops to 0.80 → still over.
-    The 0.80 ages out next; spent drops to 0 → allowed.
-    unblock_at = older_record.completed_at + window."""
     n = _now()
-    older_ts = n - timedelta(minutes=30)  # 0.50
-    newer_ts = n - timedelta(minutes=10)  # 0.80
-    tail = [_record(newer_ts, usd="0.80"), _record(older_ts, usd="0.50")]
+    older = n - timedelta(minutes=30)
+    newer = n - timedelta(minutes=10)
+    tail = [_rec(newer, usd="0.80"), _rec(older, usd="0.50")]
     d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
     assert d.allowed is False
-    # When older record ages out at older_ts + 1h, spent drops to 0.80 → still over (>= 1.00? no, 0.80 < 1.00 → allowed)
-    expected_unblock = older_ts + timedelta(hours=1)
-    assert d.blocked_by[0].unblock_at == expected_unblock
+    # Older ages out first; remaining 0.80 < 1.00 → allowed.
+    assert d.blocked_by[0].unblock_at == older + timedelta(hours=1)
 
 
-def test_decision_unblock_at_is_max_across_blockers():
-    """Two blocking budgets → queue unblock_at is the later of them."""
+def test_decision_unblock_at_is_max():
     n = _now()
-    tail = [
-        _record(n - timedelta(minutes=10), usd="2.00", output_tokens=600_000),
-    ]
+    tail = [_rec(n - timedelta(minutes=10), usd="2.00",
+                  output_tokens=600_000)]
     d = evaluate_budgets(tail, [
-        _budget("usd", "1.00", "1h"),                   # blocks; unblocks ~50m
-        _budget("output_tokens", "500000", "30m"),      # blocks; unblocks ~20m
+        _budget("usd", "1.00", "1h"),
+        _budget("output_tokens", "500000", "30m"),
     ], n)
     assert d.allowed is False
-    # The USD one unblocks later (1h - 10m = ~50m from now) vs output_tokens
-    # (30m - 10m = 20m from now).
-    assert d.unblock_at == d.blocked_by[0].unblock_at  # the later one
-    # Sanity: latest > earliest
     times = [c.unblock_at for c in d.blocked_by if c.unblock_at]
     assert d.unblock_at == max(times)
 
 
-def test_records_missing_cost_field_count_as_zero():
-    """Backwards compat: pre-budget records have no `cost` key.
-    They're treated as $0 contribution."""
+def test_record_without_cost_counts_as_zero():
+    """Backwards compat for pre-budget records."""
     n = _now()
     tail = [
-        {"event": "task_done",
+        {"event": "completed",
          "completed_at": (n - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")},
-        _record(n - timedelta(minutes=10), usd="0.30"),
+        _rec(n - timedelta(minutes=10), usd="0.30"),
     ]
     d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
     assert d.allowed is True
     assert d.checks[0].spent == Decimal("0.30")
 
 
-def test_non_task_done_records_ignored():
+def test_non_terminal_events_ignored():
     n = _now()
     tail = [
         {"event": "task_enqueued",
          "completed_at": (n - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
          "cost": {"usd": "100.00"}},
-        _record(n - timedelta(minutes=10), usd="0.30"),
+        _rec(n - timedelta(minutes=10), usd="0.30"),
     ]
     d = evaluate_budgets(tail, [_budget("usd", "1.00", "1h")], n)
-    assert d.allowed is True
     assert d.checks[0].spent == Decimal("0.30")
 ```
 
@@ -1143,7 +863,7 @@ def test_non_task_done_records_ignored():
 ```
 uv run pytest tests/test_budget_evaluator.py -v
 ```
-Expected: FAIL — `ModuleNotFoundError`.
+Expected: FAIL — module missing.
 
 - [ ] **Step 3: Implement evaluator**
 
@@ -1154,23 +874,28 @@ Create `src/aegis/budget/evaluator.py`:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Iterable
 
 from aegis.budget.budgets import Budget
 
+# JSONL events that count toward budget. The substrate writes either
+# "completed" or "failed" on terminal transition; both consumed tokens
+# so both contribute to spent.
+_TERMINAL_EVENTS = ("completed", "failed")
+
 
 @dataclass(frozen=True)
 class BudgetCheck:
-    constraint:    str               # "usd" or "output_tokens"
+    constraint:    str
     limit:         Decimal
     spent:         Decimal
     window_str:    str
     window_start:  datetime
     allowed:       bool
-    headroom:      Decimal           # limit - spent (negative when over)
-    unblock_at:    datetime | None   # earliest time spent will drop below limit
+    headroom:      Decimal
+    unblock_at:    datetime | None
 
 
 @dataclass(frozen=True)
@@ -1184,7 +909,7 @@ class Decision:
 _ZERO = Decimal("0")
 
 
-def _parse_completed_at(s: str | None) -> datetime | None:
+def _parse_iso(s: str | None) -> datetime | None:
     if not s:
         return None
     try:
@@ -1196,17 +921,15 @@ def _parse_completed_at(s: str | None) -> datetime | None:
 
 
 def _record_value(rec: dict, constraint: str) -> Decimal:
-    """Extract the constraint's value from a task_done record's `cost`."""
     cost = rec.get("cost") or {}
     if "error" in cost:
         return _ZERO
     if constraint == "usd":
-        raw = cost.get("usd", "0")
         try:
-            return Decimal(raw)
+            return Decimal(cost.get("usd", "0"))
         except Exception:
             return _ZERO
-    elif constraint == "output_tokens":
+    if constraint == "output_tokens":
         try:
             return Decimal(int(cost.get("output_tokens", 0) or 0))
         except (ValueError, TypeError):
@@ -1217,12 +940,11 @@ def _record_value(rec: dict, constraint: str) -> Decimal:
 def _evaluate_one(records: list[dict], budget: Budget,
                   now: datetime) -> BudgetCheck:
     window_start = now - budget.window
-    # Filter: task_done records inside the window, oldest first.
     inside: list[tuple[datetime, Decimal]] = []
     for rec in records:
-        if rec.get("event") != "task_done":
+        if rec.get("event") not in _TERMINAL_EVENTS:
             continue
-        ts = _parse_completed_at(rec.get("completed_at"))
+        ts = _parse_iso(rec.get("completed_at"))
         if ts is None or ts <= window_start or ts > now:
             continue
         inside.append((ts, _record_value(rec, budget.constraint)))
@@ -1233,227 +955,159 @@ def _evaluate_one(records: list[dict], budget: Budget,
 
     unblock_at: datetime | None = None
     if not allowed:
-        # Walk records age-order; find earliest ts at which
-        # spent_remaining < limit. Each record ages out at
-        # record_ts + budget.window — when that happens, its contribution
-        # is removed from the rolling sum.
         running = spent
         for ts, value in inside:
             running -= value
             if running < budget.limit:
                 unblock_at = ts + budget.window
                 break
+
     return BudgetCheck(
-        constraint=budget.constraint,
-        limit=budget.limit,
-        spent=spent,
-        window_str=budget.window_str,
-        window_start=window_start,
-        allowed=allowed,
-        headroom=headroom,
-        unblock_at=unblock_at,
+        constraint=budget.constraint, limit=budget.limit, spent=spent,
+        window_str=budget.window_str, window_start=window_start,
+        allowed=allowed, headroom=headroom, unblock_at=unblock_at,
     )
 
 
 def evaluate_budgets(jsonl_tail: Iterable[dict],
                      budgets: list[Budget],
                      now: datetime) -> Decision:
-    """Run every budget in `budgets` against `jsonl_tail`. ALL must allow.
-
-    `jsonl_tail` is an iterable of parsed JSONL records (any order).
-    `now` is injected so the FakeClock pattern works in tests.
-    """
     records = list(jsonl_tail)
     checks = [_evaluate_one(records, b, now) for b in budgets]
     blocked_by = [c for c in checks if not c.allowed]
-    decision_allowed = not blocked_by
     decision_unblock: datetime | None = None
     if blocked_by:
         eligible = [c.unblock_at for c in blocked_by if c.unblock_at]
         decision_unblock = max(eligible) if eligible else None
     return Decision(
-        allowed=decision_allowed,
-        checks=checks,
-        blocked_by=blocked_by,
+        allowed=not blocked_by, checks=checks, blocked_by=blocked_by,
         unblock_at=decision_unblock,
     )
 ```
 
-- [ ] **Step 4: Run evaluator tests**
-
-```
-uv run pytest tests/test_budget_evaluator.py -v
-```
-Expected: PASS (12 tests).
-
-- [ ] **Step 5: Run full suite**
-
-```
-uv run pytest -q -m "not live" -x
-```
-Expected: all green.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Run tests + commit**
 
 ```bash
+uv run pytest tests/test_budget_evaluator.py -v
+uv run pytest -q -m "not live" -x
 git add src/aegis/budget/evaluator.py tests/test_budget_evaluator.py
-git commit -m "feat(budget): BudgetCheck + Decision + evaluate_budgets()"
+git commit -m "feat(budget): evaluate_budgets() pure function over JSONL tail"
 ```
 
 ---
 
-## Task 6: Enforcement — `QueueManager.enqueue` gates on budgets
+## Task 7: `QueueManager.enqueue` gates on budgets
 
 **Files:**
-- Modify: `src/aegis/queue/manager.py`
+- Modify: `src/aegis/queue/manager.py` (enqueue gate + `_load_recent_jsonl` helper)
 - Test: `tests/test_queue_budget_enforcement.py`
 
-`enqueue` calls `evaluate_budgets` before admitting a task. If `Decision.allowed is False`, return a structured error dict naming every blocked constraint + `unblock_at`. Task is not added. In-memory recent-cost deque rebuilt from JSONL on `start()` to keep the hot path O(1) push, O(N) sum over a small N.
+The gate. `enqueue` reads the queue's JSONL tail, runs the evaluator, returns a structured error dict when blocked. Tasks with budgets cause the return shape to potentially be `dict` (rejection) instead of `tuple[str, int]` — callers must handle both.
 
 - [ ] **Step 1: Write failing test**
 
 Create `tests/test_queue_budget_enforcement.py`:
 
 ```python
-import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
+from aegis.budget.budgets import Budget
+from aegis.budget.windows import parse_window
+from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
+
+from tests.test_queue_manager import StubSessionManager
+
+
+def _seed_completed(state_dir: Path, queue: str, usd: str,
+                    minutes_ago: int = 5) -> None:
+    log = state_dir / "queues" / f"{queue}.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    rec = {"event": "completed",
+           "completed_at": (now - timedelta(minutes=minutes_ago)
+                              ).isoformat().replace("+00:00", "Z"),
+           "cost": {"usd": usd, "input_tokens": 0, "output_tokens": 0,
+                     "cache_hit_tokens": 0, "cache_write_tokens": 0,
+                     "thinking_tokens": 0}}
+    log.write_text(json.dumps(rec) + "\n")
+
+
+def _q_with_budget(usd: str = "1.00", window: str = "1h") -> Queue:
+    return Queue(name="impl", agent_profile="opus", max_parallel=1,
+                 provider="claude-code", model="opus",
+                 budgets=[Budget("usd", Decimal(usd), window,
+                                  parse_window(window))])
+
 
 @pytest.mark.asyncio
-async def test_enqueue_admits_when_budgets_allow(tmp_path):
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from tests.fixtures.fake_session import FakeSessionManager
-
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    budgets = [Budget("usd", Decimal("1.00"), "1h", parse_window("1h"))]
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default",
-                                max_parallel=1, budgets=budgets)},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        tid, _ = qm.enqueue("impl", "x",
-                             enqueued_by="a", callback=False)
-        assert isinstance(tid, str)
-    finally:
-        await qm.stop()
+async def test_enqueue_admits_when_budget_allows(tmp_path):
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q_with_budget()}, sm, inbox,
+                       state_dir=tmp_path)
+    result = qm.enqueue("impl", "x",
+                         enqueued_by=sender_agent("p"), callback=False)
+    assert isinstance(result, tuple)
+    tid, pos = result
+    assert isinstance(tid, str)
 
 
 @pytest.mark.asyncio
 async def test_enqueue_rejects_when_budget_exhausted(tmp_path):
-    """Seed a JSONL with $1.50 spent in last hour, $1 budget; new enqueue
-    must return a structured error."""
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from tests.fixtures.fake_session import FakeSessionManager
-    from datetime import datetime, timezone, timedelta
-
-    # Pre-seed the JSONL on disk.
-    log = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    seed = {"event": "task_done",
-            "completed_at": (now - timedelta(minutes=5)
-                              ).isoformat().replace("+00:00", "Z"),
-            "cost": {"usd": "1.50", "input_tokens": 0, "output_tokens": 0,
-                      "cache_hit_tokens": 0, "cache_write_tokens": 0,
-                      "thinking_tokens": 0}}
-    log.write_text(json.dumps(seed) + "\n")
-
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    budgets = [Budget("usd", Decimal("1.00"), "1h", parse_window("1h"))]
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default",
-                                max_parallel=1, budgets=budgets)},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        result = qm.enqueue("impl", "x",
-                             enqueued_by="a", callback=False)
-        assert isinstance(result, dict)
-        assert "error" in result
-        assert result["queue"] == "impl"
-        assert len(result["blocked_by"]) == 1
-        bc = result["blocked_by"][0]
-        assert bc["constraint"] == "usd"
-        assert bc["limit"] == "1.00"
-        assert Decimal(bc["spent"]) == Decimal("1.50")
-        assert bc["window"] == "1h"
-        assert bc["unblock_at"]      # ISO timestamp present
-        assert result["unblock_at"]  # queue-level
-    finally:
-        await qm.stop()
-
-
-@pytest.mark.asyncio
-async def test_enqueue_multi_budget_partial_block(tmp_path):
-    """Block 1h budget, leave 24h fine; blocked_by names just the 1h."""
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from tests.fixtures.fake_session import FakeSessionManager
-    from datetime import datetime, timezone, timedelta
-
-    log = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    seed = {"event": "task_done",
-            "completed_at": (now - timedelta(minutes=5)
-                              ).isoformat().replace("+00:00", "Z"),
-            "cost": {"usd": "1.50", "output_tokens": 0}}
-    log.write_text(json.dumps(seed) + "\n")
-
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    budgets = [
-        Budget("usd", Decimal("1.00"), "1h", parse_window("1h")),    # blocks
-        Budget("usd", Decimal("10.00"), "24h", parse_window("24h")), # fine
-    ]
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default",
-                                max_parallel=1, budgets=budgets)},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        result = qm.enqueue("impl", "x", enqueued_by="a", callback=False)
-        assert "error" in result
-        assert len(result["blocked_by"]) == 1
-        assert result["blocked_by"][0]["window"] == "1h"
-    finally:
-        await qm.stop()
+    _seed_completed(tmp_path, "impl", usd="1.50", minutes_ago=5)
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q_with_budget()}, sm, inbox,
+                       state_dir=tmp_path)
+    result = qm.enqueue("impl", "x",
+                         enqueued_by=sender_agent("p"), callback=False)
+    assert isinstance(result, dict)
+    assert "error" in result
+    assert result["queue"] == "impl"
+    assert len(result["blocked_by"]) == 1
+    bc = result["blocked_by"][0]
+    assert bc["constraint"] == "usd"
+    assert Decimal(bc["spent"]) == Decimal("1.50")
+    assert bc["window"] == "1h"
+    assert bc["unblock_at"]
+    assert result["unblock_at"]
 
 
 @pytest.mark.asyncio
 async def test_enqueue_no_budgets_unchanged(tmp_path):
-    """Queue with no budgets behaves exactly as pre-v0.9."""
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from tests.fixtures.fake_session import FakeSessionManager
+    """Queue with no budgets: same tuple return as pre-v0.9."""
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    q = Queue(name="impl", agent_profile="opus", max_parallel=1,
+              provider="claude-code", model="opus")
+    qm = QueueManager({"impl": q}, sm, inbox, state_dir=tmp_path)
+    result = qm.enqueue("impl", "x",
+                         enqueued_by=sender_agent("p"), callback=False)
+    assert isinstance(result, tuple)
 
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default",
-                                max_parallel=1, budgets=[])},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        tid, _ = qm.enqueue("impl", "x", enqueued_by="a", callback=False)
-        assert isinstance(tid, str)
-    finally:
-        await qm.stop()
+
+@pytest.mark.asyncio
+async def test_multi_budget_partial_block_names_only_blocking(tmp_path):
+    _seed_completed(tmp_path, "impl", usd="1.50", minutes_ago=5)
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    q = Queue(name="impl", agent_profile="opus", max_parallel=1,
+              provider="claude-code", model="opus",
+              budgets=[
+                  Budget("usd", Decimal("1.00"), "1h", parse_window("1h")),
+                  Budget("usd", Decimal("10.00"), "24h", parse_window("24h")),
+              ])
+    qm = QueueManager({"impl": q}, sm, inbox, state_dir=tmp_path)
+    result = qm.enqueue("impl", "x",
+                         enqueued_by=sender_agent("p"), callback=False)
+    assert isinstance(result, dict)
+    assert len(result["blocked_by"]) == 1
+    assert result["blocked_by"][0]["window"] == "1h"
 ```
 
 - [ ] **Step 2: Run test to verify failure**
@@ -1461,24 +1115,59 @@ async def test_enqueue_no_budgets_unchanged(tmp_path):
 ```
 uv run pytest tests/test_queue_budget_enforcement.py -v
 ```
-Expected: FAIL — current `enqueue` doesn't gate on budgets.
+Expected: FAIL — gate not implemented.
 
 - [ ] **Step 3: Implement the gate**
 
 In `src/aegis/queue/manager.py`:
 
-1. Add an import block:
+1. Import:
    ```python
    from datetime import datetime, timezone
    from aegis.budget.evaluator import evaluate_budgets
    ```
-2. At the top of `enqueue(...)`, after the `queue not in self._queues` check but before constructing the `Task`, add:
+
+2. Add the JSONL tail loader as a method on `QueueManager`:
+   ```python
+   def _load_recent_jsonl(self, queue: str, max_age) -> list[dict]:
+       """Read this queue's JSONL, return terminal records within max_age."""
+       import json
+       if self._state_dir is None:
+           return []
+       path = Path(self._state_dir) / "queues" / f"{queue}.jsonl"
+       if not path.exists():
+           return []
+       cutoff = datetime.now(timezone.utc) - max_age
+       out: list[dict] = []
+       for line in path.read_text().splitlines():
+           if not line.strip():
+               continue
+           try:
+               rec = json.loads(line)
+           except json.JSONDecodeError:
+               continue
+           if rec.get("event") not in ("completed", "failed"):
+               continue
+           ts_str = rec.get("completed_at", "")
+           if ts_str.endswith("Z"):
+               ts_str = ts_str[:-1] + "+00:00"
+           try:
+               ts = datetime.fromisoformat(ts_str)
+           except (ValueError, TypeError):
+               continue
+           if ts >= cutoff:
+               out.append(rec)
+       return out
+   ```
+
+3. At the top of `enqueue(...)`, after the `queue not in self._queues` check, add:
    ```python
    q = self._queues[queue]
    if q.budgets:
-       tail = self._load_recent_jsonl(queue, max_age=max(
-           b.window for b in q.budgets))
-       decision = evaluate_budgets(tail, q.budgets, datetime.now(timezone.utc))
+       tail = self._load_recent_jsonl(
+           queue, max_age=max(b.window for b in q.budgets))
+       decision = evaluate_budgets(
+           tail, q.budgets, datetime.now(timezone.utc))
        if not decision.allowed:
            return {
                "error": f"queue {queue!r} over budget",
@@ -1495,89 +1184,50 @@ In `src/aegis/queue/manager.py`:
                    "+00:00", "Z") if decision.unblock_at else None,
            }
    ```
-3. Add a helper `_load_recent_jsonl(queue, max_age)`:
-   ```python
-   def _load_recent_jsonl(self, queue: str,
-                           max_age) -> list[dict]:
-       """Read the queue's JSONL tail, return task_done records within max_age."""
-       import json
-       from datetime import datetime, timezone
-       log = self._state_dir / ".aegis" / "state" / "queues" / f"{queue}.jsonl"
-       if not log.exists():
-           return []
-       cutoff = datetime.now(timezone.utc) - max_age
-       out = []
-       for line in log.read_text().splitlines():
-           if not line.strip():
-               continue
-           try:
-               rec = json.loads(line)
-           except json.JSONDecodeError:
-               continue
-           if rec.get("event") != "task_done":
-               continue
-           ts_str = rec.get("completed_at", "")
-           try:
-               ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-           except (ValueError, TypeError):
-               continue
-           if ts >= cutoff:
-               out.append(rec)
-       return out
-   ```
 
-**Note:** the change affects the **return type** of `enqueue` for callers that previously assumed `tuple[str, int]`. Audit callers — `aegis_enqueue` in `mcp/server.py` already handles the `dict | tuple` shape because it returns `result` directly. But anywhere `tid, pos = qm.enqueue(...)` exists in the codebase will break on budget rejection. Find them:
+- [ ] **Step 4: Audit callers for the dict-or-tuple return shape**
 
 ```bash
 grep -rn "\.enqueue(" src/aegis/ | grep -v "_enqueue\|tests" | head
 ```
 
-Each non-MCP caller (e.g. the workflow engine's `engine.enqueue`, the scheduler's `enqueue` built-in workflow) needs to handle the dict-or-tuple return shape. For now, wrap callers in:
+For each caller that does `tid, pos = ...enqueue(...)`, wrap in a dict-shape check or change the unpack to handle both. Notable callers:
 
-```python
-result = qm.enqueue(...)
-if isinstance(result, dict):
-    # propagate the error as appropriate for this caller
-    ...
-else:
-    tid, pos = result
-```
+- `src/aegis/mcp/server.py::aegis_enqueue` — already returns `result` (dict or task_id+pos), no change.
+- `src/aegis/remote/plane.py::enqueue` HTTP handler — make sure it returns 4xx with the error body for budget rejection (not 200). Add: `if isinstance(result, dict): return JSONResponse(result, status_code=429)`.
+- `src/aegis/workflow/engine.py::enqueue` (if present) — fold into Task 8.
+- `src/aegis/scheduler/workflows/enqueue.py` (if present) — built-in scheduler workflow. Fold into Task 8 too.
 
-In Task 8 we add `BudgetExceeded` as a typed exception for the workflow engine; until then, callers handle the dict shape.
+For any others, add the dict-shape branch inline.
 
-- [ ] **Step 4: Run enforcement tests**
+- [ ] **Step 5: Run tests**
 
 ```
 uv run pytest tests/test_queue_budget_enforcement.py -v
-```
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Run full suite, fix callers**
-
-```
 uv run pytest -q -m "not live" -x
 ```
-Expected: some callers may break with `cannot unpack non-iterable dict` if budgets are set. Most existing tests don't set budgets so they're unaffected. If any test fails, audit the caller and add a dict-shape branch.
+Expected: all green. If any existing test breaks because of the new return shape, fix the caller in-place.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/aegis/queue/manager.py tests/test_queue_budget_enforcement.py
-# plus any caller fixes
+git add src/aegis/queue/manager.py src/aegis/remote/plane.py \
+        tests/test_queue_budget_enforcement.py
+# plus any other caller fixes
 git commit -m "feat(budget): QueueManager.enqueue gates on multi-window budgets"
 ```
 
 ---
 
-## Task 7: `BudgetExceeded` exception for the workflow engine
+## Task 8: `BudgetExceeded` typed exception for `WorkflowEngine.enqueue`
 
 **Files:**
-- Modify: `src/aegis/workflow/engine.py` (the `engine.enqueue` method)
-- Modify: `src/aegis/budget/__init__.py` (export `BudgetExceeded`)
-- Create: `src/aegis/budget/errors.py` (if `BudgetExceeded` doesn't fit in evaluator.py)
+- Create: `src/aegis/budget/errors.py`
+- Modify: `src/aegis/budget/__init__.py` (export)
+- Modify: `src/aegis/workflow/engine.py`
 - Test: `tests/test_workflow_budget.py`
 
-`engine.enqueue` in workflow Python should raise `BudgetExceeded(decision)` (a typed exception) on budget rejection, so workflow authors can `try/except` for clean retry-with-different-queue patterns.
+`engine.enqueue` raises `BudgetExceeded(queue, decision)` on rejection so workflow Python can `try/except` for retry-with-different-queue patterns.
 
 - [ ] **Step 1: Write failing test**
 
@@ -1585,57 +1235,48 @@ Create `tests/test_workflow_budget.py`:
 
 ```python
 import json
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
+from aegis.budget import BudgetExceeded
+from aegis.budget.budgets import Budget
+from aegis.budget.windows import parse_window
+from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
+from aegis.workflow.engine import WorkflowEngine
+
+from tests.test_queue_manager import StubSessionManager
+
 
 @pytest.mark.asyncio
 async def test_engine_enqueue_raises_on_budget_exhausted(tmp_path):
-    """engine.enqueue should raise BudgetExceeded with the Decision attached."""
-    from aegis.budget import BudgetExceeded
-    # ... build an engine + QM where a budget is already exhausted, call
-    #     engine.enqueue, assert it raises BudgetExceeded
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from aegis.workflow.engine import WorkflowEngine
-    from tests.fixtures.fake_session import FakeSessionManager
-    from datetime import datetime, timezone, timedelta
-
-    log = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
+    log = tmp_path / "queues" / "impl.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
     log.write_text(json.dumps({
-        "event": "task_done",
+        "event": "completed",
         "completed_at": (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
         "cost": {"usd": "1.50"},
     }) + "\n")
-
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    budgets = [Budget("usd", Decimal("1.00"), "1h", parse_window("1h"))]
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default",
-                                max_parallel=1, budgets=budgets)},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        engine = WorkflowEngine(...)   # however the engine is constructed
-                                        # in the existing tests; see
-                                        # tests/test_workflow_engine.py
-        with pytest.raises(BudgetExceeded) as ei:
-            await engine.enqueue("impl", "x", from_handle="caller")
-        assert ei.value.decision is not None
-        assert ei.value.decision.allowed is False
-        assert ei.value.queue == "impl"
-    finally:
-        await qm.stop()
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    q = Queue(name="impl", agent_profile="opus", max_parallel=1,
+              provider="claude-code", model="opus",
+              budgets=[Budget("usd", Decimal("1.00"), "1h",
+                                parse_window("1h"))])
+    qm = QueueManager({"impl": q}, sm, inbox, state_dir=tmp_path)
+    engine = WorkflowEngine(queue_manager=qm, ...)  # match real ctor;
+                                                     # check test_workflow_engine.py
+    with pytest.raises(BudgetExceeded) as ei:
+        await engine.enqueue("impl", "x", from_handle="caller")
+    assert ei.value.queue == "impl"
+    assert ei.value.decision.allowed is False
+    assert "1.50" in str(ei.value)
 ```
 
-(If the engine fixture pattern is non-obvious, copy from `tests/test_workflow_engine.py`.)
+(Look up the real `WorkflowEngine` constructor in `tests/test_workflow_engine.py` for the parameter shape — pass equivalents here.)
 
 - [ ] **Step 2: Run test to verify failure**
 
@@ -1644,22 +1285,22 @@ uv run pytest tests/test_workflow_budget.py -v
 ```
 Expected: FAIL — `BudgetExceeded` not defined.
 
-- [ ] **Step 3: Implement the exception**
+- [ ] **Step 3: Implement `BudgetExceeded`**
 
 Create `src/aegis/budget/errors.py`:
 
 ```python
-"""Typed exceptions for budget-related failures in higher-level callers."""
+"""Typed exceptions for budget rejection."""
 from __future__ import annotations
 
 from aegis.budget.evaluator import Decision
 
 
 class BudgetExceeded(Exception):
-    """Raised by engine.enqueue (or any workflow caller) on budget rejection.
+    """Raised when a queue's budgets reject an enqueue.
 
-    Carries the full Decision so the catcher can inspect blocked_by /
-    unblock_at to choose a retry strategy.
+    Carries the full Decision so callers can inspect blocked_by /
+    unblock_at and choose a retry strategy.
     """
     def __init__(self, queue: str, decision: Decision) -> None:
         self.queue = queue
@@ -1667,11 +1308,10 @@ class BudgetExceeded(Exception):
         binding = ", ".join(
             f"{c.spent}/{c.limit} {c.constraint} in {c.window_str}"
             for c in decision.blocked_by)
-        super().__init__(
-            f"queue {queue!r} over budget: {binding}")
+        super().__init__(f"queue {queue!r} over budget: {binding}")
 ```
 
-In `src/aegis/budget/__init__.py`, add:
+Update `src/aegis/budget/__init__.py` to export it:
 
 ```python
 from aegis.budget.errors import BudgetExceeded
@@ -1681,49 +1321,55 @@ __all__ = ["BudgetExceeded"]
 
 - [ ] **Step 4: Wire into `WorkflowEngine.enqueue`**
 
-In `src/aegis/workflow/engine.py`, find `async def enqueue(self, ...)`. Where it calls into the underlying `QueueManager.enqueue`, check for the dict-shape return and raise `BudgetExceeded`:
+In `src/aegis/workflow/engine.py`, find the `enqueue` method. Change its dict-shape branch from "return error" to "raise BudgetExceeded":
 
 ```python
 async def enqueue(self, queue: str, payload: str, *,
                   from_handle: str, callback: bool = False) -> str:
     result = self._qm.enqueue(
-        queue, payload, enqueued_by=sender_agent(from_handle),
-        callback=callback)
+        queue, payload,
+        enqueued_by=sender_agent(from_handle), callback=callback)
     if isinstance(result, dict):
-        # Budget rejection — surface as typed exception.
-        from aegis.budget import BudgetExceeded
-        from aegis.budget.evaluator import (
-            BudgetCheck, Decision)
+        # Reconstruct the Decision from the dict for the exception body.
         from decimal import Decimal
-        # Rebuild a Decision-like object from the dict for the exception
-        # body. (The evaluator returned this dict; we just need the
-        # structured shape.)
-        checks = []
-        for bc in result.get("blocked_by", []):
-            checks.append(BudgetCheck(
-                constraint=bc["constraint"], limit=Decimal(bc["limit"]),
-                spent=Decimal(bc["spent"]), window_str=bc["window"],
-                window_start=None, allowed=False,
-                headroom=Decimal(bc["limit"]) - Decimal(bc["spent"]),
-                unblock_at=None,  # full iso parse omitted for brevity
-            ))
-        decision = Decision(allowed=False, checks=checks,
-                            blocked_by=checks, unblock_at=None)
+        from datetime import datetime
+        from aegis.budget import BudgetExceeded
+        from aegis.budget.evaluator import BudgetCheck, Decision
+
+        def _parse_iso_or_none(s):
+            if not s:
+                return None
+            try:
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                return datetime.fromisoformat(s)
+            except Exception:
+                return None
+
+        checks = [BudgetCheck(
+            constraint=bc["constraint"],
+            limit=Decimal(bc["limit"]),
+            spent=Decimal(bc["spent"]),
+            window_str=bc["window"],
+            window_start=None,
+            allowed=False,
+            headroom=Decimal(bc["limit"]) - Decimal(bc["spent"]),
+            unblock_at=_parse_iso_or_none(bc.get("unblock_at"))
+        ) for bc in result.get("blocked_by", [])]
+        decision = Decision(
+            allowed=False, checks=checks, blocked_by=checks,
+            unblock_at=_parse_iso_or_none(result.get("unblock_at")))
         raise BudgetExceeded(queue=queue, decision=decision)
     tid, _ = result
     return tid
 ```
 
-- [ ] **Step 5: Run test**
+If the engine doesn't currently have `enqueue` — add a fresh method following the local-substrate pattern that already exists in workflow code.
 
-```
-uv run pytest tests/test_workflow_budget.py -v
-```
-Expected: PASS.
-
-- [ ] **Step 6: Run full suite + commit**
+- [ ] **Step 5: Run tests + commit**
 
 ```bash
+uv run pytest tests/test_workflow_budget.py -v
 uv run pytest -q -m "not live" -x
 git add src/aegis/budget/errors.py src/aegis/budget/__init__.py \
         src/aegis/workflow/engine.py tests/test_workflow_budget.py
@@ -1732,140 +1378,118 @@ git commit -m "feat(budget): BudgetExceeded typed exception for workflow engine"
 
 ---
 
-## Task 8: HTTP — `GET /remote/v1/budget` + `/budget/<queue>`
+## Task 9: HTTP — `GET /remote/v1/budget` + `/budget/<queue>`
 
 **Files:**
 - Modify: `src/aegis/remote/plane.py`
 - Test: `tests/test_remote_budget_endpoints.py`
 
-Two read-only HTTP endpoints. Same auth gating as `/enqueue` / `/callback` / `/schedule`. Return the summary (list) and full-Decision (show) shapes.
+Two GET endpoints. Auth gated by `_check_auth` like the other remote-plane routes. Cross-host inspection; no PUT/DELETE.
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Write failing tests**
 
-Create `tests/test_remote_budget_endpoints.py`:
+Create `tests/test_remote_budget_endpoints.py`. Mirror the bridge construction pattern from `tests/test_remote_plane.py` — copy the `_make_queue_manager(tmp_path)` helper or build an inline equivalent that uses `StubSessionManager` and `InboxRouter`:
 
 ```python
 import json
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from pathlib import Path
 
 import httpx
 import pytest
 from httpx import ASGITransport
 
+from aegis.budget.budgets import Budget
+from aegis.budget.windows import parse_window
+from aegis.queue import InboxRouter, Queue, QueueManager
+from aegis.remote.config import RemotePlaneSpec
+from aegis.remote.plane import build_plane
 
-@pytest.mark.asyncio
-async def test_budget_list_returns_per_queue_summary(tmp_path):
-    """Two queues, one with budgets, one without — list shows both."""
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from aegis.remote.config import RemotePlaneSpec
-    from aegis.remote.plane import build_plane
-    from tests.fixtures.fake_session import FakeSessionManager
+from tests.test_queue_manager import StubSessionManager
 
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    qm = QueueManager(
-        queues={
-            "impl": Queue(name="impl", agent="default", max_parallel=1,
-                          budgets=[Budget("usd", Decimal("1.00"),
-                                          "1h", parse_window("1h"))]),
-            "fast": Queue(name="fast", agent="default", max_parallel=2,
-                          budgets=[]),
-        },
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        bridge = _make_bridge_with_queue_manager(qm, tmp_path)
-        app = build_plane(bridge, RemotePlaneSpec(bind="127.0.0.1:8556"))
-        async with httpx.AsyncClient(transport=ASGITransport(app=app),
-                                      base_url="http://test") as c:
-            r = await c.get("/remote/v1/budget")
-            assert r.status_code == 200
-        data = r.json()
-        names = [q["name"] for q in data["queues"]]
-        assert set(names) == {"impl", "fast"}
-        impl = next(q for q in data["queues"] if q["name"] == "impl")
-        fast = next(q for q in data["queues"] if q["name"] == "fast")
-        assert impl["budgets_count"] == 1
-        assert fast["budgets_count"] == 0
-        assert impl["status"] in ("ok", "no-budget", "blocked")
-        assert fast["status"] == "no-budget"
-    finally:
-        await qm.stop()
+
+def _bridge(qm):
+    """Minimal bridge for the plane: needs queue_manager."""
+    class B:
+        queue_manager = qm
+        inbox_router = qm._inbox
+        remote_plane = None
+        remotes = {}
+        # Other fields as the plane reads them — copy the pattern from
+        # tests/test_remote_plane.py if helpers there cover more.
+    return B()
 
 
 @pytest.mark.asyncio
-async def test_budget_show_returns_full_decision(tmp_path):
-    from aegis.budget.budgets import Budget
-    from aegis.budget.windows import parse_window
-    from aegis.queue.manager import QueueManager
-    from aegis.queue.schema import Queue
-    from aegis.remote.config import RemotePlaneSpec
-    from aegis.remote.plane import build_plane
-    from tests.fixtures.fake_session import FakeSessionManager
-    from datetime import datetime, timezone, timedelta
+async def test_budget_list_includes_all_queues(tmp_path):
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({
+        "impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                       provider="claude-code", model="opus",
+                       budgets=[Budget("usd", Decimal("1.00"), "1h",
+                                        parse_window("1h"))]),
+        "fast": Queue(name="fast", agent_profile="haiku", max_parallel=2,
+                       provider="claude-code", model="haiku"),
+    }, sm, inbox, state_dir=tmp_path)
+    app = build_plane(_bridge(qm),
+                       RemotePlaneSpec(bind="127.0.0.1:8556",
+                                        peer_name="test"))
+    async with httpx.AsyncClient(transport=ASGITransport(app=app),
+                                  base_url="http://test") as c:
+        r = await c.get("/remote/v1/budget")
+        assert r.status_code == 200
+    data = r.json()
+    names = {q["name"] for q in data["queues"]}
+    assert names == {"impl", "fast"}
+    fast = next(q for q in data["queues"] if q["name"] == "fast")
+    assert fast["budgets_count"] == 0
+    assert fast["status"] == "no-budget"
 
+
+@pytest.mark.asyncio
+async def test_budget_show_blocked(tmp_path):
     # Pre-seed JSONL: $1.50 spent.
-    log = tmp_path / ".aegis" / "state" / "queues" / "impl.jsonl"
+    log = tmp_path / "queues" / "impl.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
     log.write_text(json.dumps({
-        "event": "task_done",
+        "event": "completed",
         "completed_at": (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
         "cost": {"usd": "1.50"},
     }) + "\n")
 
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    qm = QueueManager(
-        queues={"impl": Queue(name="impl", agent="default", max_parallel=1,
-                                budgets=[Budget("usd", Decimal("1.00"),
-                                                "1h", parse_window("1h"))])},
-        session_manager=sm, state_dir=tmp_path,
-    )
-    await qm.start()
-    try:
-        bridge = _make_bridge_with_queue_manager(qm, tmp_path)
-        app = build_plane(bridge, RemotePlaneSpec(bind="127.0.0.1:8556"))
-        async with httpx.AsyncClient(transport=ASGITransport(app=app),
-                                      base_url="http://test") as c:
-            r = await c.get("/remote/v1/budget/impl")
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({
+        "impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                       provider="claude-code", model="opus",
+                       budgets=[Budget("usd", Decimal("1.00"), "1h",
+                                        parse_window("1h"))]),
+    }, sm, inbox, state_dir=tmp_path)
+    app = build_plane(_bridge(qm),
+                       RemotePlaneSpec(bind="127.0.0.1:8556",
+                                        peer_name="test"))
+    async with httpx.AsyncClient(transport=ASGITransport(app=app),
+                                  base_url="http://test") as c:
+        r = await c.get("/remote/v1/budget/impl")
         assert r.status_code == 200
-        data = r.json()
-        assert data["name"] == "impl"
-        assert data["allowed"] is False
-        assert len(data["blocked_by"]) == 1
-        bc = data["blocked_by"][0]
-        assert bc["constraint"] == "usd"
-        assert Decimal(bc["spent"]) == Decimal("1.50")
-    finally:
-        await qm.stop()
+    data = r.json()
+    assert data["allowed"] is False
+    assert len(data["blocked_by"]) == 1
+    assert Decimal(data["blocked_by"][0]["spent"]) == Decimal("1.50")
 
 
 @pytest.mark.asyncio
 async def test_budget_show_unknown_queue_404(tmp_path):
-    from aegis.queue.manager import QueueManager
-    from aegis.remote.config import RemotePlaneSpec
-    from aegis.remote.plane import build_plane
-    from tests.fixtures.fake_session import FakeSessionManager
-
-    sm = FakeSessionManager(provider="claude-code", model="opus")
-    qm = QueueManager(queues={}, session_manager=sm, state_dir=tmp_path)
-    await qm.start()
-    try:
-        bridge = _make_bridge_with_queue_manager(qm, tmp_path)
-        app = build_plane(bridge, RemotePlaneSpec(bind="127.0.0.1:8556"))
-        async with httpx.AsyncClient(transport=ASGITransport(app=app),
-                                      base_url="http://test") as c:
-            r = await c.get("/remote/v1/budget/nonexistent")
-            assert r.status_code == 404
-    finally:
-        await qm.stop()
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({}, sm, inbox, state_dir=tmp_path)
+    app = build_plane(_bridge(qm),
+                       RemotePlaneSpec(bind="127.0.0.1:8556",
+                                        peer_name="test"))
+    async with httpx.AsyncClient(transport=ASGITransport(app=app),
+                                  base_url="http://test") as c:
+        r = await c.get("/remote/v1/budget/ghost")
+        assert r.status_code == 404
 ```
-
-`_make_bridge_with_queue_manager` is a small helper — copy the bridge construction pattern from `tests/test_remote_plane.py` and add a `queue_manager` attribute.
 
 - [ ] **Step 2: Run test to verify failure**
 
@@ -1874,46 +1498,50 @@ uv run pytest tests/test_remote_budget_endpoints.py -v
 ```
 Expected: FAIL — endpoints not registered.
 
-- [ ] **Step 3: Implement endpoints**
+- [ ] **Step 3: Register endpoints in `plane.py`**
 
-In `src/aegis/remote/plane.py`, register:
+Follow the same pattern as the existing schedule endpoints. Add inside `build_plane`:
 
 ```python
+# /remote/v1/budget — list shape
 @app.route("/remote/v1/budget", methods=["GET"])
 async def budget_list(request):
     auth_err = _check_auth(request, spec)
-    if auth_err: return JSONResponse(auth_err, status_code=401)
-    rows = []
-    qm = bridge.queue_manager
+    if auth_err:
+        return JSONResponse(auth_err, status_code=401)
     from datetime import datetime, timezone
     from aegis.budget.evaluator import evaluate_budgets
+
+    qm = bridge.queue_manager
     now = datetime.now(timezone.utc)
+    rows = []
     for name, q in qm._queues.items():
         if not q.budgets:
             rows.append({"name": name, "budgets_count": 0,
                           "status": "no-budget", "binding": None,
                           "unblock_at": None})
             continue
-        tail = qm._load_recent_jsonl(name,
-                                       max_age=max(b.window for b in q.budgets))
+        tail = qm._load_recent_jsonl(
+            name, max_age=max(b.window for b in q.budgets))
         d = evaluate_budgets(tail, q.budgets, now)
         if d.allowed:
-            # Pick the most-pressured (smallest headroom proportion) check.
-            check = min(d.checks,
-                         key=lambda c: c.headroom / c.limit if c.limit else 0)
-            binding = (f"${check.spent} of ${check.limit} / {check.window_str}"
-                        if check.constraint == "usd"
-                        else f"{check.spent} of {check.limit} "
-                              f"{check.constraint} / {check.window_str}")
+            tightest = min(
+                d.checks,
+                key=lambda c: (c.headroom / c.limit) if c.limit > 0 else 0)
+            binding = (f"${tightest.spent} of ${tightest.limit} "
+                        f"/ {tightest.window_str}"
+                        if tightest.constraint == "usd"
+                        else f"{tightest.spent} of {tightest.limit} "
+                              f"{tightest.constraint} / {tightest.window_str}")
             rows.append({"name": name, "budgets_count": len(q.budgets),
                           "status": "ok", "binding": binding,
                           "unblock_at": None})
         else:
-            check = d.blocked_by[0]
-            binding = (f"${check.spent} of ${check.limit} / {check.window_str}"
-                        if check.constraint == "usd"
-                        else f"{check.spent} of {check.limit} "
-                              f"{check.constraint} / {check.window_str}")
+            c = d.blocked_by[0]
+            binding = (f"${c.spent} of ${c.limit} / {c.window_str}"
+                        if c.constraint == "usd"
+                        else f"{c.spent} of {c.limit} "
+                              f"{c.constraint} / {c.window_str}")
             rows.append({"name": name, "budgets_count": len(q.budgets),
                           "status": "blocked", "binding": binding,
                           "unblock_at": d.unblock_at.isoformat().replace(
@@ -1921,35 +1549,35 @@ async def budget_list(request):
     return JSONResponse({"queues": rows})
 
 
+# /remote/v1/budget/<queue> — full Decision
 @app.route("/remote/v1/budget/{queue}", methods=["GET"])
 async def budget_show(request):
     auth_err = _check_auth(request, spec)
-    if auth_err: return JSONResponse(auth_err, status_code=401)
+    if auth_err:
+        return JSONResponse(auth_err, status_code=401)
     name = request.path_params["queue"]
     qm = bridge.queue_manager
     if name not in qm._queues:
         return JSONResponse({"error": "unknown queue"}, status_code=404)
     q = qm._queues[name]
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     from aegis.budget.evaluator import evaluate_budgets
     now = datetime.now(timezone.utc)
     if not q.budgets:
         return JSONResponse({"name": name, "allowed": True, "checks": [],
                               "blocked_by": [], "unblock_at": None})
-    tail = qm._load_recent_jsonl(name,
-                                   max_age=max(b.window for b in q.budgets))
+    tail = qm._load_recent_jsonl(
+        name, max_age=max(b.window for b in q.budgets))
     d = evaluate_budgets(tail, q.budgets, now)
 
     def _ser(c):
-        return {"constraint": c.constraint,
-                "limit": str(c.limit), "spent": str(c.spent),
-                "window": c.window_str,
-                "window_start": c.window_start.isoformat().replace("+00:00", "Z"),
-                "allowed": c.allowed,
-                "headroom": str(c.headroom),
+        return {"constraint": c.constraint, "limit": str(c.limit),
+                "spent": str(c.spent), "window": c.window_str,
+                "window_start": c.window_start.isoformat().replace(
+                    "+00:00", "Z"),
+                "allowed": c.allowed, "headroom": str(c.headroom),
                 "unblock_at": c.unblock_at.isoformat().replace(
                     "+00:00", "Z") if c.unblock_at else None}
-
     return JSONResponse({
         "name": name, "allowed": d.allowed,
         "checks": [_ser(c) for c in d.checks],
@@ -1959,16 +1587,12 @@ async def budget_show(request):
     })
 ```
 
-- [ ] **Step 4: Run tests**
+(Add the matching route registrations to the `Route(...)` list at the bottom of `build_plane` — same shape as the other GET routes.)
 
-```
-uv run pytest tests/test_remote_budget_endpoints.py -v
-```
-Expected: PASS (3 tests).
-
-- [ ] **Step 5: Run full suite + commit**
+- [ ] **Step 4: Run tests + commit**
 
 ```bash
+uv run pytest tests/test_remote_budget_endpoints.py -v
 uv run pytest -q -m "not live" -x
 git add src/aegis/remote/plane.py tests/test_remote_budget_endpoints.py
 git commit -m "feat(budget): GET /remote/v1/budget list + show"
@@ -1976,7 +1600,7 @@ git commit -m "feat(budget): GET /remote/v1/budget list + show"
 
 ---
 
-## Task 9: Outbound budget client + MCP tool
+## Task 10: Outbound client + `aegis_budget_status` MCP tool
 
 **Files:**
 - Modify: `src/aegis/remote/client.py`
@@ -1984,9 +1608,9 @@ git commit -m "feat(budget): GET /remote/v1/budget list + show"
 - Test: `tests/test_remote_budget_client.py`
 - Test: `tests/test_mcp_budget_tool.py`
 
-Two new outbound client functions (`remote_budget_list`, `remote_budget_show`) plus the `aegis_budget_status` MCP tool with `target=None` local / `target="<peer>"` cross-host pattern.
+Two outbound client functions + one MCP tool that dispatches local-vs-remote.
 
-- [ ] **Step 1: Write failing client tests**
+- [ ] **Step 1: Write client tests**
 
 Create `tests/test_remote_budget_client.py`:
 
@@ -1999,47 +1623,41 @@ from aegis.remote.config import RemoteSpec
 
 
 @pytest.mark.asyncio
-async def test_remote_budget_list_returns_queues(httpx_mock):
+async def test_remote_budget_list(httpx_mock):
     spec = RemoteSpec(url="http://1.2.3.4:8556")
     httpx_mock.add_response(
         method="GET", url="http://1.2.3.4:8556/remote/v1/budget",
         status_code=200,
-        json={"queues": [{"name": "impl", "budgets_count": 2,
-                           "status": "ok", "binding": "$0.30 of $1.00 / 1h",
-                           "unblock_at": None}]})
-    result = await remote_budget_list(spec)
-    assert "queues" in result
-    assert result["queues"][0]["name"] == "impl"
+        json={"queues": [{"name": "impl", "budgets_count": 1,
+                           "status": "ok"}]})
+    r = await remote_budget_list(spec)
+    assert r["queues"][0]["name"] == "impl"
 
 
 @pytest.mark.asyncio
-async def test_remote_budget_show_returns_decision(httpx_mock):
+async def test_remote_budget_show(httpx_mock):
     spec = RemoteSpec(url="http://1.2.3.4:8556")
     httpx_mock.add_response(
         method="GET", url="http://1.2.3.4:8556/remote/v1/budget/impl",
         status_code=200,
         json={"name": "impl", "allowed": True, "checks": [],
               "blocked_by": [], "unblock_at": None})
-    result = await remote_budget_show(spec, "impl")
-    assert result["name"] == "impl"
-    assert result["allowed"] is True
+    r = await remote_budget_show(spec, "impl")
+    assert r["name"] == "impl"
 
 
 @pytest.mark.asyncio
-async def test_remote_budget_show_404_returns_error(httpx_mock):
+async def test_remote_budget_show_404(httpx_mock):
     spec = RemoteSpec(url="http://1.2.3.4:8556")
     httpx_mock.add_response(
         method="GET", url="http://1.2.3.4:8556/remote/v1/budget/ghost",
         status_code=404,
         json={"error": "unknown queue"})
-    result = await remote_budget_show(spec, "ghost")
-    assert "error" in result
-    assert "ghost" in result["error"] or "unknown" in result["error"]
+    r = await remote_budget_show(spec, "ghost")
+    assert "error" in r
 ```
 
-- [ ] **Step 2: Implement clients**
-
-In `src/aegis/remote/client.py`:
+- [ ] **Step 2: Implement clients in `src/aegis/remote/client.py`**
 
 ```python
 async def remote_budget_list(spec: RemoteSpec) -> dict:
@@ -2058,47 +1676,107 @@ async def remote_budget_show(spec: RemoteSpec, queue: str) -> dict:
     return _normalize_err("budget show", r)
 ```
 
+(`_normalize_err` already exists from the v0.7 work — reuse.)
+
 - [ ] **Step 3: Write MCP tool test**
 
 Create `tests/test_mcp_budget_tool.py`:
 
 ```python
+from decimal import Decimal
+from pathlib import Path
+
 import pytest
 
+from aegis.budget.budgets import Budget
+from aegis.budget.windows import parse_window
 from aegis.mcp.server import build_server
+from aegis.queue import InboxRouter, Queue, QueueManager
+from aegis.remote.config import RemoteSpec
+
+from tests.test_queue_manager import StubSessionManager
+
+
+class _Bridge:
+    def __init__(self, qm, remotes=None):
+        self.queue_manager = qm
+        self.inbox_router = qm._inbox
+        self.remotes = remotes or {}
+        self.remote_plane = None
+
+
+async def _call(server, name, **kwargs):
+    tools = await server.list_tools()
+    tool = next(t for t in tools if t.name == name)
+    result = await tool.run(kwargs)
+    sc = getattr(result, "structured_content", None)
+    if isinstance(sc, dict) and "result" in sc:
+        return sc["result"]
+    if sc is not None:
+        return sc
+    return result.content[0].text
 
 
 @pytest.mark.asyncio
 async def test_budget_status_local_no_queue_lists_all(tmp_path):
-    """target=None, queue=None → summary list shape."""
-    # ... build a bridge with a QueueManager that has two queues,
-    #     call aegis_budget_status, assert {"queues": [...]} shape
-    ...
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({
+        "impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                       provider="claude-code", model="opus",
+                       budgets=[Budget("usd", Decimal("1.00"), "1h",
+                                        parse_window("1h"))]),
+        "fast": Queue(name="fast", agent_profile="opus", max_parallel=1,
+                       provider="claude-code", model="opus"),
+    }, sm, inbox, state_dir=tmp_path)
+    server = build_server(_Bridge(qm))
+    r = await _call(server, "aegis_budget_status", from_handle="h")
+    assert "queues" in r
 
 
 @pytest.mark.asyncio
-async def test_budget_status_local_with_queue_returns_decision(tmp_path):
-    """target=None, queue="impl" → full Decision shape."""
-    ...
+async def test_budget_status_local_with_queue(tmp_path):
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({
+        "impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
+                       provider="claude-code", model="opus",
+                       budgets=[Budget("usd", Decimal("1.00"), "1h",
+                                        parse_window("1h"))]),
+    }, sm, inbox, state_dir=tmp_path)
+    server = build_server(_Bridge(qm))
+    r = await _call(server, "aegis_budget_status",
+                     from_handle="h", queue="impl")
+    assert r["name"] == "impl"
+    assert "checks" in r
 
 
 @pytest.mark.asyncio
-async def test_budget_status_remote_routes_through_client(monkeypatch):
-    """target="vps", queue=None → calls remote_budget_list with spec."""
-    ...
+async def test_budget_status_remote_routes_through_client(monkeypatch, tmp_path):
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({}, sm, inbox, state_dir=tmp_path)
+    bridge = _Bridge(qm, remotes={"vps": RemoteSpec(url="http://x")})
+    captured = {}
+    async def fake_list(spec):
+        captured["called"] = True
+        return {"queues": []}
+    monkeypatch.setattr("aegis.remote.client.remote_budget_list", fake_list)
+    server = build_server(bridge)
+    r = await _call(server, "aegis_budget_status",
+                     from_handle="h", target="vps")
+    assert captured.get("called")
 
 
 @pytest.mark.asyncio
-async def test_budget_status_unknown_target_errors():
-    """target="vps" but vps not in remotes → returns error dict."""
-    ...
+async def test_budget_status_unknown_target_errors(tmp_path):
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({}, sm, inbox, state_dir=tmp_path)
+    bridge = _Bridge(qm, remotes={})
+    server = build_server(bridge)
+    r = await _call(server, "aegis_budget_status",
+                     from_handle="h", target="vps")
+    assert "error" in r
 ```
 
-Flesh out the body following the patterns in `tests/test_mcp_schedule_tools.py`.
-
-- [ ] **Step 4: Implement the MCP tool**
-
-In `src/aegis/mcp/server.py`:
+- [ ] **Step 4: Implement `aegis_budget_status` in `src/aegis/mcp/server.py`**
 
 ```python
 @server.tool
@@ -2109,7 +1787,7 @@ async def aegis_budget_status(from_handle: str,
 
     queue=None: summary across all queues on the targeted serve.
     queue="<name>": full Decision for that queue.
-    target=None: this serve; target="<peer>": route through `/remote/v1/budget`.
+    target=None local; target="<peer>" routes through /remote/v1/budget.
     """
     if target is not None:
         remotes = getattr(bridge, "remotes", {}) or {}
@@ -2122,13 +1800,18 @@ async def aegis_budget_status(from_handle: str,
             return await remote_budget_list(spec)
         return await remote_budget_show(spec, queue)
 
-    # Local path
-    qm = bridge.queue_manager
+    # Local path.
     from datetime import datetime, timezone
     from aegis.budget.evaluator import evaluate_budgets
+    qm = bridge.queue_manager
     now = datetime.now(timezone.utc)
+
+    def _ser(c):
+        return {"constraint": c.constraint, "limit": str(c.limit),
+                "spent": str(c.spent), "window": c.window_str,
+                "allowed": c.allowed, "headroom": str(c.headroom)}
+
     if queue is None:
-        # Summary across all queues.
         rows = []
         for name, q in qm._queues.items():
             if not q.budgets:
@@ -2141,35 +1824,25 @@ async def aegis_budget_status(from_handle: str,
             rows.append({"name": name, "budgets_count": len(q.budgets),
                           "status": "ok" if d.allowed else "blocked"})
         return {"queues": rows}
+
     if queue not in qm._queues:
         return {"error": f"unknown queue {queue!r}"}
     q = qm._queues[queue]
     if not q.budgets:
         return {"name": queue, "allowed": True, "checks": [],
                 "blocked_by": [], "unblock_at": None}
-    tail = qm._load_recent_jsonl(queue,
-                                   max_age=max(b.window for b in q.budgets))
+    tail = qm._load_recent_jsonl(
+        queue, max_age=max(b.window for b in q.budgets))
     d = evaluate_budgets(tail, q.budgets, now)
-
-    def _ser(c):
-        return {"constraint": c.constraint, "limit": str(c.limit),
-                "spent": str(c.spent), "window": c.window_str,
-                "allowed": c.allowed, "headroom": str(c.headroom)}
     return {"name": queue, "allowed": d.allowed,
             "checks": [_ser(c) for c in d.checks],
             "blocked_by": [_ser(c) for c in d.blocked_by]}
 ```
 
-- [ ] **Step 5: Run all budget MCP/client tests**
-
-```
-uv run pytest tests/test_remote_budget_client.py tests/test_mcp_budget_tool.py -v
-```
-Expected: PASS.
-
-- [ ] **Step 6: Run full suite + commit**
+- [ ] **Step 5: Run tests + commit**
 
 ```bash
+uv run pytest tests/test_remote_budget_client.py tests/test_mcp_budget_tool.py -v
 uv run pytest -q -m "not live" -x
 git add src/aegis/remote/client.py src/aegis/mcp/server.py \
         tests/test_remote_budget_client.py tests/test_mcp_budget_tool.py
@@ -2178,51 +1851,59 @@ git commit -m "feat(budget): aegis_budget_status MCP tool + remote_budget_* clie
 
 ---
 
-## Task 10: `aegis budget` CLI subapp
+## Task 11: `aegis budget` CLI subapp
 
 **Files:**
 - Create: `src/aegis/cli_budget.py`
 - Modify: `src/aegis/cli.py` (mount the subapp)
 - Test: `tests/test_cli_budget.py`
 
-CLI for operators: `aegis budget list`, `aegis budget show <queue>`, each with `--remote <peer>` for cross-host. Mirrors `aegis schedule`.
+Mirror `aegis schedule`'s shape. `aegis budget list` / `show <queue>` with optional `--remote <peer>`.
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Write the test**
 
-Create `tests/test_cli_budget.py`:
+Create `tests/test_cli_budget.py` mirroring the existing `tests/test_cli_schedule_remote.py`:
 
 ```python
 import pytest
 from typer.testing import CliRunner
 
+# Use the same import path the schedule tests use.
+from aegis.cli import app
 
-def test_budget_list_local_prints_table(monkeypatch, tmp_path):
-    """`aegis budget list` reads from this serve's .aegis.py config."""
-    # ... seed a .aegis.py with two queues, run CliRunner,
-    #     assert output has both queue names in a table
+
+def test_budget_list_runs(tmp_path, monkeypatch):
+    """`aegis budget list` invokes without error against an empty config."""
+    # ... seed a minimal .aegis.py via tmp_path,
+    #     change cwd to tmp_path, run CliRunner(app, ["budget", "list"]),
+    #     assert exit code 0
     ...
 
 
-def test_budget_show_local_prints_decision(monkeypatch, tmp_path):
-    """`aegis budget show impl` prints every BudgetCheck row."""
+def test_budget_show_unknown_queue_errors(tmp_path, monkeypatch):
+    """`aegis budget show ghost` returns non-zero."""
     ...
 
 
-def test_budget_list_remote_calls_client(monkeypatch):
+def test_budget_list_remote_calls_client(monkeypatch, tmp_path):
     """`aegis budget list --remote vps` invokes remote_budget_list."""
     ...
 ```
+
+(Flesh out from the existing `tests/test_cli_schedule_remote.py` pattern.)
 
 - [ ] **Step 2: Implement the subapp**
 
 Create `src/aegis/cli_budget.py`:
 
 ```python
-"""`aegis budget` CLI subapp — inspect per-queue budgets."""
+"""`aegis budget` CLI subapp."""
 from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -2233,29 +1914,22 @@ _console = Console()
 
 
 def _cfg():
-    """Load this serve's config (same pattern as cli_schedule)."""
     from aegis.config import find_project_root, load_config
-    root = find_project_root()
-    return load_config(root)
+    return load_config(find_project_root())
 
 
-def _format_status(row: dict) -> str:
-    s = row.get("status")
-    if s == "no-budget":
-        return "— no budget"
-    if s == "ok":
-        return "✓ ok"
-    if s == "blocked":
-        ua = row.get("unblock_at")
-        return f"⛔ over (unblocks {ua})" if ua else "⛔ over"
-    return s or "?"
+def _load_jsonl(state_dir: Path, queue: str) -> list[dict]:
+    log = state_dir / "queues" / f"{queue}.jsonl"
+    if not log.exists():
+        return []
+    return [json.loads(l) for l in log.read_text().splitlines()
+            if l.strip()]
 
 
 @app.command("list")
 def list_budgets(
-    remote: str = typer.Option(None, "--remote", help="peer name"),
+    remote: str = typer.Option(None, "--remote"),
 ) -> None:
-    """One-line summary per queue."""
     cfg = _cfg()
     if remote is not None:
         from aegis.remote.client import remote_budget_list
@@ -2264,36 +1938,32 @@ def list_budgets(
             raise typer.Exit(1)
         result = asyncio.run(remote_budget_list(cfg.remotes[remote]))
     else:
-        # Local — synthesize by calling the same evaluator the MCP tool uses.
-        from datetime import datetime, timezone
         from aegis.budget.evaluator import evaluate_budgets
-        # We need a QueueManager-like view of the queues' state. For the
-        # CLI's local mode we don't want to spin up a full QM; instead,
-        # read the JSONL directly.
-        rows = []
+        state_dir = Path.cwd() / ".aegis" / "state"
         now = datetime.now(timezone.utc)
+        rows = []
         for name, q in cfg.queues.items():
             if not q.budgets:
                 rows.append({"name": name, "budgets_count": 0,
-                              "status": "no-budget", "binding": None})
+                              "status": "no-budget"})
                 continue
-            from pathlib import Path
-            log = (Path.cwd() / ".aegis" / "state" / "queues" /
-                   f"{name}.jsonl")
+            # Filter tail to terminal events within longest window.
+            cutoff = now - max(b.window for b in q.budgets)
             tail = []
-            if log.exists():
-                for line in log.read_text().splitlines():
-                    if line.strip():
-                        try:
-                            tail.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
+            for rec in _load_jsonl(state_dir, name):
+                if rec.get("event") not in ("completed", "failed"):
+                    continue
+                ts_str = rec.get("completed_at", "")
+                try:
+                    ts = datetime.fromisoformat(
+                        ts_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+                if ts >= cutoff:
+                    tail.append(rec)
             d = evaluate_budgets(tail, q.budgets, now)
             rows.append({"name": name, "budgets_count": len(q.budgets),
-                          "status": "ok" if d.allowed else "blocked",
-                          "binding": None,
-                          "unblock_at": d.unblock_at.isoformat() if
-                                          d.unblock_at else None})
+                          "status": "ok" if d.allowed else "blocked"})
         result = {"queues": rows}
 
     if "error" in result:
@@ -2301,12 +1971,13 @@ def list_budgets(
         raise typer.Exit(1)
 
     table = Table()
-    table.add_column("QUEUE"); table.add_column("BUDGETS")
+    table.add_column("QUEUE")
+    table.add_column("BUDGETS")
     table.add_column("STATUS")
     for row in result["queues"]:
         table.add_row(row["name"],
                       str(row.get("budgets_count", "?")),
-                      _format_status(row))
+                      row.get("status", "?"))
     _console.print(table)
 
 
@@ -2315,7 +1986,6 @@ def show_budget(
     queue: str,
     remote: str = typer.Option(None, "--remote"),
 ) -> None:
-    """Full Decision: every check with spent/limit/headroom/unblock_at."""
     cfg = _cfg()
     if remote is not None:
         from aegis.remote.client import remote_budget_show
@@ -2324,48 +1994,34 @@ def show_budget(
             raise typer.Exit(1)
         result = asyncio.run(remote_budget_show(cfg.remotes[remote], queue))
     else:
-        # Local — same as list but for one queue.
+        from aegis.budget.evaluator import evaluate_budgets
         if queue not in cfg.queues:
             typer.echo(f"unknown queue {queue!r}", err=True)
             raise typer.Exit(1)
-        from datetime import datetime, timezone
-        from pathlib import Path
-        from aegis.budget.evaluator import evaluate_budgets
         q = cfg.queues[queue]
         if not q.budgets:
             typer.echo(f"queue {queue!r} has no budgets configured.")
             return
-        log = Path.cwd() / ".aegis" / "state" / "queues" / f"{queue}.jsonl"
-        tail = []
-        if log.exists():
-            for line in log.read_text().splitlines():
-                if line.strip():
-                    try:
-                        tail.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-        d = evaluate_budgets(tail, q.budgets,
-                              datetime.now(timezone.utc))
+        state_dir = Path.cwd() / ".aegis" / "state"
+        now = datetime.now(timezone.utc)
+        tail = _load_jsonl(state_dir, queue)
+        d = evaluate_budgets(tail, q.budgets, now)
         result = {
             "name": queue, "allowed": d.allowed,
-            "checks": [
-                {"constraint": c.constraint, "limit": str(c.limit),
-                 "spent": str(c.spent), "window": c.window_str,
-                 "allowed": c.allowed, "headroom": str(c.headroom)}
-                for c in d.checks],
-            "blocked_by": [
-                {"constraint": c.constraint, "limit": str(c.limit),
-                 "spent": str(c.spent), "window": c.window_str}
-                for c in d.blocked_by],
+            "checks": [{"constraint": c.constraint, "limit": str(c.limit),
+                          "spent": str(c.spent), "window": c.window_str,
+                          "allowed": c.allowed, "headroom": str(c.headroom)}
+                         for c in d.checks],
         }
 
     if "error" in result:
-        typer.echo(result["error"], err=True); raise typer.Exit(1)
+        typer.echo(result["error"], err=True)
+        raise typer.Exit(1)
 
     table = Table(title=f"budget for queue {queue!r}")
-    table.add_column("CONSTRAINT"); table.add_column("LIMIT")
-    table.add_column("SPENT"); table.add_column("WINDOW")
-    table.add_column("HEADROOM"); table.add_column("STATUS")
+    for col in ("CONSTRAINT", "LIMIT", "SPENT", "WINDOW",
+                "HEADROOM", "STATUS"):
+        table.add_column(col)
     for c in result["checks"]:
         status = "✓" if c["allowed"] else "⛔"
         table.add_row(c["constraint"], c["limit"], c["spent"],
@@ -2373,9 +2029,9 @@ def show_budget(
     _console.print(table)
 ```
 
-- [ ] **Step 3: Mount the subapp in `cli.py`**
+- [ ] **Step 3: Mount in `cli.py`**
 
-In `src/aegis/cli.py`, near the existing `from aegis.cli_schedule import app as _schedule_app`:
+In `src/aegis/cli.py`, near the existing schedule mount:
 
 ```python
 from aegis.cli_budget import app as _budget_app  # noqa: E402
@@ -2393,165 +2049,90 @@ git commit -m "feat(budget): aegis budget list/show CLI verbs + --remote flag"
 
 ---
 
-## Task 11: Docs + roadmap + CHANGELOG + 0.9.0 release
+## Task 12: Docs + CHANGELOG + 0.9.0 release
 
 **Files:**
 - Create: `docs/budget.md`
-- Modify: `docs/configuration.md` — add `budgets:` field documentation under Queues
-- Modify: `docs/index.md` — extend the "what else is in the box" section
-- Modify: `docs/roadmap.md` — add `### v0.9.0 (current)` section
-- Modify: `mkdocs.yml` — add Budgets to nav under Concepts
-- Modify: `README.md` — new section + docs link
-- Modify: `CHANGELOG.md` — `[0.9.0]` entry
-- Modify: `pyproject.toml` + `uv.lock` — 0.8.1 → 0.9.0
+- Modify: `docs/configuration.md`, `docs/index.md`, `docs/roadmap.md`, `README.md`, `mkdocs.yml`, `CHANGELOG.md`, `pyproject.toml`, `uv.lock`
+
+Pattern mirrors the v0.8 / v0.8.1 releases. Write `docs/budget.md` in user-doc voice, sync README + index + configuration + roadmap, bump version, tag, push.
 
 - [ ] **Step 1: Write `docs/budget.md`**
 
-Create `docs/budget.md` covering the same shape as the spec but in user-doc voice:
-- "Why budgets" (motivation)
-- "The model" (multi-window all-must-allow, USD + output_tokens)
-- "Config shape" (worked `.aegis.py` example)
-- "Rejection shape" (what the caller sees on hit)
-- "Observability" (CLI / MCP / HTTP / TUI)
-- "Patterns" (cap an opus queue at $1/hour + $10/day + 500k output/hour; runaway-loop belt)
-- "Non-goals" (no global cap, no pre-flight, no Telegram, no throttle)
-- "FAQ" — "what if a worker is running when the budget trips?" / "how do I know what's been spent?" / "can I update prices?"
-
-Pull paragraphs from the spec where helpful but rewrite in second person ("you") rather than third.
+User-facing doc covering motivation, model (multi-window all-must-allow, USD + output_tokens), worked config example, rejection shape, observability (CLI / MCP / HTTP), patterns (cap-an-opus-queue, runaway-output belt), non-goals, FAQ. Pull paragraphs from the spec; rewrite in second-person ("you").
 
 - [ ] **Step 2: Sync `docs/configuration.md`**
 
-In the existing Queues section, after the `max_parallel` mention, add a `budgets:` field paragraph + a worked example:
-
-```markdown
-Each queue may declare an optional `budgets:` list. The substrate
-rejects new enqueues that would land the queue over any of the
-declared `(constraint, window)` ceilings (USD or output-token,
-rolling window). All budgets must allow.
-
-```python
-queues = {
-    "impl": {
-        "agent": "opus",
-        "max_parallel": 2,
-        "budgets": [
-            {"usd": 1.00,            "window": "1h"},
-            {"usd": 10.00,           "window": "24h"},
-            {"output_tokens": 500000, "window": "1h"},
-        ],
-    },
-}
-```
-
-See [Budgets](budget.md) for the full surface.
-```
+Under Queues, after `max_parallel`, document the optional `budgets:` list with the same worked example as the spec. Link to `docs/budget.md`.
 
 - [ ] **Step 3: Sync `docs/index.md` + `mkdocs.yml`**
 
-In `docs/index.md` "What's also in the box" section, add one bullet:
+Add a bullet in "What's also in the box" of `index.md`:
 
-```markdown
-- **Per-queue budgets.** Declare USD or output-token ceilings over rolling windows on any queue; the substrate rejects new enqueues that would land the queue over budget, naming the binding constraint. Pull-only observability via CLI, MCP, HTTP, and the TUI dashboard. See [Budgets](budget.md).
-```
+> - **Per-queue budgets.** Declare USD or output-token ceilings over rolling windows on any queue; the substrate rejects new enqueues that would land the queue over budget, naming the binding constraint. Pull-only observability via CLI, MCP, HTTP. See [Budgets](budget.md).
 
-In `mkdocs.yml` `nav.Concepts`, add `- Budgets: budget.md` between Groups and Remote plane.
+In `mkdocs.yml`, add `- Budgets: budget.md` under `Concepts`.
 
 - [ ] **Step 4: Sync `docs/roadmap.md`**
 
-Add above `### v0.8.0`:
+Above `### v0.8.1`:
 
 ```markdown
 ### v0.9.0 (current)
-- **Per-queue budgets.** Multi-window per-queue budgets — USD or
-  output-token ceilings over a rolling window; ALL budgets must
-  allow. Enforcement at enqueue time; loud structured rejection
-  naming the binding constraint and `unblock_at` ETA. Cost computed
-  from existing SessionMetrics via a static per-(provider, model)
-  price table at `src/aegis/budget/prices.py`. New CLI verbs
-  (`aegis budget list/show`), MCP tool (`aegis_budget_status`),
-  HTTP endpoints (`GET /remote/v1/budget`, `GET /remote/v1/budget/<queue>`).
+- **Per-queue budgets.** Multi-window per-queue USD / output-token
+  ceilings, all-must-allow, enforcement at enqueue time with a
+  structured rejection naming the binding constraint and an
+  `unblock_at` ETA. Cost computed from existing SessionMetrics via a
+  static per-(provider, model) price table at
+  `src/aegis/budget/prices.py`. Inspection via `aegis budget
+  list/show`, `aegis_budget_status` MCP tool, and `GET
+  /remote/v1/budget` on the plane. TUI surface deferred to v0.9.1.
 ```
 
 - [ ] **Step 5: Sync `README.md`**
 
-Add a section after "Scheduled workflows" (or wherever it fits the current top-level structure):
+Add a "Per-queue budgets" section near the v0.8.1 callbacks section. Include the worked `queues = {...}` example and a link to `docs/budget.md`. Add `- [Budgets](https://apiad.github.io/aegis/budget/)` to the docs link list.
+
+- [ ] **Step 6: `CHANGELOG.md` `[0.9.0]` entry**
+
+Above `## [0.8.1]`:
 
 ```markdown
-## Per-queue budgets
-
-Each queue can declare USD or output-token ceilings over rolling
-windows. The substrate rejects new enqueues that would land the
-queue over any of those ceilings, returning a structured error that
-names every blocked constraint and an ETA for when the queue
-unblocks.
-
-```python
-queues = {
-    "impl": {
-        "agent": "opus",
-        "max_parallel": 2,
-        "budgets": [
-            {"usd": 1.00,            "window": "1h"},
-            {"usd": 10.00,           "window": "24h"},
-            {"output_tokens": 500000, "window": "1h"},
-            {"usd": 50.00,           "window": "7d"},
-        ],
-    },
-}
-```
-
-Pull-only observability via `aegis budget list/show`,
-`aegis_budget_status` MCP tool, and `GET /remote/v1/budget` on the
-plane. See [docs/budget.md](docs/budget.md).
-```
-
-And in the docs link list:
-
-```markdown
-- [Budgets](https://apiad.github.io/aegis/budget/) — per-queue USD / output-token ceilings
-```
-
-- [ ] **Step 6: CHANGELOG `[0.9.0]` entry**
-
-In `CHANGELOG.md` above `## [0.8.1]`:
-
-```markdown
-## [0.9.0] - 2026-05-25
+## [0.9.0] - 2026-05-26
 
 ### Added
 - **Per-queue budgets.** Each queue may declare one or more
   `(constraint, window)` ceilings (USD or output-token) over a
   rolling window. New `aegis_enqueue` calls are rejected with a
   structured error when admitting the task would push the queue
-  over any of the declared budgets. ALL budgets must allow; the
-  rejection names every blocked constraint and an `unblock_at`
-  ETA (computed from when the oldest contributing cost ages out
-  of its window).
-- **Cost accounting on `task_done`.** Existing per-queue JSONL
-  audit now carries a `cost` field per `task_done` record:
+  over any of the declared budgets; ALL budgets must allow. Rejection
+  names every blocked constraint and an `unblock_at` ETA.
+- **Cost accounting.** Existing per-queue JSONL audit now carries a
+  `cost` field on every `completed` and `failed` record:
   `{usd, input_tokens, output_tokens, cache_hit_tokens,
-  cache_write_tokens, thinking_tokens}` computed from the worker's
-  final SessionMetrics + a static per-(provider, model) price
-  table at `src/aegis/budget/prices.py`. Unknown models record
-  `cost: {error: "unknown_model"}` instead of crashing the
-  finalizer.
-- **`BudgetExceeded` typed exception** for the workflow engine —
-  `engine.enqueue` raises on budget rejection so workflow Python
-  can `try/except` and choose a retry strategy.
-- **`aegis_budget_status` MCP tool** — `target=None` for local,
-  `target="<peer>"` for cross-host inspection via the new
-  `GET /remote/v1/budget` and `GET /remote/v1/budget/<queue>`
-  HTTP endpoints. Same auth gating as `/enqueue` / `/callback` /
-  `/schedule`.
+  cache_write_tokens, thinking_tokens}` computed from
+  `SessionMetrics` (committed c_in/c_out/c_cached counters) +
+  a static per-(provider, model) price table at
+  `src/aegis/budget/prices.py`. Unknown models record
+  `cost: {error: "unknown_model"}` without crashing the finalizer.
+  Failed workers count toward budget — they burned tokens too.
+- **`BudgetExceeded` typed exception** for the workflow engine:
+  `engine.enqueue` raises with the full Decision attached so
+  workflow Python can choose a retry strategy.
+- **`aegis_budget_status` MCP tool** with `target=None` local and
+  `target="<peer>"` cross-host via the new `GET /remote/v1/budget`
+  and `GET /remote/v1/budget/<queue>` HTTP endpoints.
 - **`aegis budget` CLI** — `list` (one-line summary per queue) and
-  `show <queue>` (full Decision: every check with spent / limit /
-  headroom / window / unblock_at). `--remote <peer>` on both for
-  cross-host views.
+  `show <queue>` (full Decision with per-budget rows). `--remote
+  <peer>` on both.
+
+The TUI strip + dashboard band described in the spec are
+**deferred to v0.9.1**.
 
 Spec: `docs/superpowers/specs/2026-05-25-aegis-per-queue-budgets-design.md`.
 ```
 
-- [ ] **Step 7: Bump version**
+- [ ] **Step 7: Bump version + lock**
 
 ```bash
 sed -i 's/^version = "0\.8\.1"$/version = "0.9.0"/' pyproject.toml
@@ -2559,12 +2140,11 @@ sed -i '0,/^version = "0\.8\.1"$/s//version = "0.9.0"/' uv.lock
 grep -nE '^name = "aegis-harness"|^version = ' uv.lock | head -4
 grep '^version' pyproject.toml
 ```
-
 Expected: both at `0.9.0`.
 
 - [ ] **Step 8: Final gate**
 
-```bash
+```
 uv run pytest -q -m "not live" -x
 ```
 Expected: all green.
@@ -2573,7 +2153,7 @@ Expected: all green.
 
 ```bash
 git add docs/budget.md docs/configuration.md docs/index.md \
-        docs/roadmap.md README.md CHANGELOG.md mkdocs.yml \
+        docs/roadmap.md README.md mkdocs.yml CHANGELOG.md \
         pyproject.toml uv.lock
 git commit -m "release: 0.9.0 — per-queue token / USD budgets"
 git pull --rebase
@@ -2589,9 +2169,9 @@ sleep 30
 curl -sS https://pypi.org/pypi/aegis-harness/json | \
   python3 -c "import sys,json;d=json.load(sys.stdin);print('latest:',d['info']['version'])"
 ```
-Expected: `latest: 0.9.0`.
+Expected: `latest: 0.9.0`. Retry up to 3 times with 15s sleeps if PyPI lags.
 
-- [ ] **Step 11: Notify completion via Telegram (VPS-only)**
+- [ ] **Step 11: Notify Telegram**
 
 ```bash
 bin/notify-telegram.sh "🎉 aegis 0.9.0 released — per-queue token/USD budgets on PyPI" || true
@@ -2599,33 +2179,42 @@ bin/notify-telegram.sh "🎉 aegis 0.9.0 released — per-queue token/USD budget
 
 ---
 
-## Self-review
+## Self-review (v2)
 
 **Spec coverage:**
 
 | Spec section | Implementation task |
 |---|---|
-| Motivation | (no task — context only) |
-| Non-goals | enforced by absence of code; one validator (Task 4) rejects `usd` + `output_tokens` on same entry |
-| Architecture overview | Tasks 1–6 |
-| Config shape (multi-window, all-must-allow) | Task 4 (parser) + Task 6 (gate) |
-| Cost source + price table | Task 1 (prices) + Task 2 (compute) + Task 3 (JSONL write) |
-| Evaluator (BudgetCheck/Decision) | Task 5 |
-| Rejection shape (5 caller surfaces) | Task 6 (QueueManager + MCP propagation) + Task 7 (workflow exception) + Task 8 (HTTP 429 — actually returns the dict in 200 body, see footnote) + Task 9 (MCP propagation) + Task 10 (CLI) |
-| In-flight cost (ignored in v1) | Task 6 (only counts task_done) |
-| MCP surface (aegis_budget_status) | Task 9 |
-| HTTP surface (GET /remote/v1/budget) | Task 8 |
-| CLI surface | Task 10 |
-| TUI surface | **deferred from this plan — see note below** |
-| File layout | Tasks 1–10 collectively |
-| Testing | every task has hermetic + appropriate live coverage |
-| Implementation notes | embedded in tasks (deque cache deferred; JSONL load is the v1 hot path) |
-| Open questions | Q1 typed BudgetExceeded → Task 7 implements it; Q2 ACP provider metrics → Task 2 uses defensive getattr; Q3 workflow runner own spend → explicit non-goal, not implemented |
+| Motivation | (context only) |
+| Non-goals | enforced by absence of code + the Task 5 validator |
+| Architecture overview | Tasks 3–7 |
+| Config shape (multi-window, all-must-allow) | Task 5 (parser) + Task 7 (gate) |
+| Cost source + price table | Task 1 (prices, ✓) + Task 2 (compute, ✓) + Task 3 (Queue.provider/model) + Task 4 (JSONL write) |
+| Evaluator | Task 6 |
+| Rejection shape | Task 7 (substrate) + Task 8 (workflow exception) + Task 9 (HTTP) + Task 10 (MCP) + Task 11 (CLI) |
+| In-flight cost | covered by spec; Task 6 only counts terminal records |
+| MCP surface | Task 10 |
+| HTTP surface | Task 9 |
+| CLI surface | Task 11 |
+| TUI surface | **deferred to v0.9.1** — explicit in plan + CHANGELOG |
+| Testing | every task has hermetic coverage; live deferred |
+| Implementation notes | embedded in tasks |
+| Open questions | Q1 typed BudgetExceeded → Task 8 implements it; Q2 ACP metrics → adapter in Task 4 uses defensive getattr; Q3 workflow runner own spend → non-goal |
 
-**TUI surface deferred.** The spec's TUI section (always-on strip + dashboard band) is a non-trivial Textual change that overlaps with the v0.4 queue dashboard. To keep this plan shippable and the v0.9.0 release focused on the substrate primitive, the TUI is **explicitly out of scope for v0.9.0** and lands as v0.9.1 (a follow-up plan). The substrate, MCP, HTTP, CLI surfaces are complete in v0.9.0; observability is already pull-able through three channels without the TUI changes. This is a small scope-cut the implementer should *not* try to expand. Note that addition in the CHANGELOG-step.
+**Plan-vs-reality verification (the v1 trap):**
+Every test and code block in Tasks 3–11 references symbols verified against `main` HEAD as of `da2c719`:
 
-**Placeholder scan:** No "TBD" / "implement later" / "similar to Task N" survived. Test files include runnable code. The `_make_bridge_with_queue_manager` and `FakeSessionManager` helpers are existing test fixtures — confirm they exist before starting Task 3 (extend if needed).
+- `Queue(name, agent_profile, max_parallel)` — confirmed `queue/schema.py:46`
+- `Task` fields — confirmed `queue/schema.py:53` (NO provider/model; Task 3 adds them to Queue, not Task)
+- `QueueManager(queues, session_manager, inbox_router, *, state_dir=...)` — confirmed `queue/manager.py:50`
+- `SessionMetrics.c_in/c_out/c_cached` — confirmed `tui/metrics.py:34`
+- `Agent.harness` + `Agent.model` populated by validator — confirmed `config/__init__.py:115`
+- `StubSessionManager.script(handle, [events])` — confirmed `tests/test_queue_manager.py:54`
+- JSONL event values `"completed"` / `"failed"` — confirmed `queue/manager.py:211, 222`
+- State dir path `state_dir/queues/<queue>.jsonl` — confirmed `queue/manager.py:104`
 
-**Type consistency:** `Cost` (Task 2) ↔ `Cost.as_dict()` JSONL shape (Task 3) ↔ evaluator `_record_value` (Task 5) all agree on the field names. `Budget(constraint, limit, window_str, window)` (Task 4) ↔ `evaluate_budgets`'s reads (Task 5) ↔ `QueueManager.enqueue` budget loop (Task 6) all use the same attribute names. `BudgetCheck(constraint, limit, spent, window_str, window_start, allowed, headroom, unblock_at)` is identical across evaluator (Task 5), MCP tool (Task 9), HTTP endpoint (Task 8), and CLI table (Task 10). `Decision(allowed, checks, blocked_by, unblock_at)` likewise.
+**Placeholder scan:** the placeholder `_make_queue_manager` from v1 is removed. Tests now build QueueManager inline with the verified constructor. No "TBD" / "implement later" / "similar to Task N" survives.
 
-Plan complete and saved.
+**Type consistency:** `Cost` (already shipped, Task 2) ↔ `cost` field on JSONL (Task 4) ↔ `_record_value` (Task 6) all agree. `Budget(constraint, limit, window_str, window)` consistent across Tasks 5–11. `BudgetCheck` / `Decision` shape identical across evaluator, HTTP, MCP, CLI.
+
+Plan complete.

@@ -40,7 +40,7 @@ The motivating use cases:
   per-queue caps is whatever it adds up to; if you want a total cap,
   spreadsheet it. A top-level `budget:` block would be a small
   additive change later.
-- **No pre-flight cost estimation.** v1 charges only on `task_done`;
+- **No pre-flight cost estimation.** v1 charges only on `completed`/`failed`;
   in-flight tasks don't count toward the budget until they finish.
   The "I admitted three tasks at $0.99 and now I'm at $4.50" race
   is acceptable — the substrate is honest about what's been
@@ -60,7 +60,7 @@ The motivating use cases:
   workers complete; only new enqueues are blocked. Killing a worker
   mid-task to "recover" budget would cost more than letting it
   finish.
-- **No retroactive cost backfill.** Pre-v0.9 `task_done` records that
+- **No retroactive cost backfill.** Pre-v0.9 `completed`/`failed` records that
   lack a `cost` field are treated as `$0` in the rolling-window sum.
   The first window's worth of post-deploy data slowly becomes
   accurate as the window rolls.
@@ -84,7 +84,7 @@ The motivating use cases:
    │                                                                   │
    │  QueueManager._finalize()                                         │
    │    1. cost = cost.compute(metrics, provider, model)               │
-   │    2. write task_done JSONL with cost field                       │
+   │    2. write completed/failed JSONL record with cost field         │
    └──────────────────────────────────────────────────────────────────┘
                                   ▲
                                   │ pure function over JSONL tail
@@ -98,8 +98,9 @@ The motivating use cases:
 ```
 
 The budget logic is a **pure function** over the existing per-queue
-JSONL audit (`.aegis/state/queues/<queue>.jsonl`) plus the queue's
-declared budgets. No new state machine, no new persistence file, no
+JSONL audit at `<state_dir>/queues/<queue>.jsonl` (where `state_dir`
+is set on `QueueManager`; typical default in `aegis serve` is
+`./.aegis/state`). No new state machine, no new persistence file, no
 observer module, no Telegram coupling.
 
 ## Config shape
@@ -152,13 +153,27 @@ Validation runs at config-load:
 ### Compute
 
 When a worker terminates, `QueueManager._finalize` already collects
-the final `SessionMetrics` (honest cache-aware token counts, present
-since v0.1). One new call:
+the final `SessionMetrics` (committed `c_in`/`c_out`/`c_cached`
+counters present since v0.1). The cost-compute path looks
+`(provider, model)` up off the `Queue` (resolved once at
+config-load from the bound `agent_profile`'s `Agent.harness` /
+`Agent.model`), so neither `Task` nor `SessionMetrics` grows new
+fields:
 
 ```python
-cost = cost.compute(metrics, provider=task.provider, model=task.model)
-self._log(task.queue, {"event": "task_done", ..., "cost": cost.as_dict()})
+q = self._queues[task.queue]
+cost = cost.compute(_metrics_adapter(session.metrics),
+                    provider=q.provider, model=q.model)
+status = "completed" if ok else "failed"
+self._log(task.queue, {"event": status, ..., "cost": cost.as_dict()})
 ```
+
+The `_metrics_adapter` maps `c_in → input_tokens`, `c_out →
+output_tokens`, `c_cached → cache_hit_tokens`; `cache_write_tokens`
+and `thinking_tokens` default to `0` because no current driver
+surfaces them (defensive `getattr(..., 0)` in `compute()` handles
+the gap). When/if a driver starts reporting them, the adapter
+grows.
 
 ```python
 @dataclass(frozen=True)
@@ -241,7 +256,7 @@ one file.
 
 A pure function. Inputs:
 
-- `jsonl_tail`: list of parsed `task_done` records from
+- `jsonl_tail`: list of parsed `completed`/`failed` records from
   `.aegis/state/queues/<queue>.jsonl`, most recent first; the caller
   only needs to pass entries newer than the longest configured
   window (the evaluator further filters per-budget).
@@ -314,7 +329,7 @@ One error contract, five caller surfaces.
 
 ### In-flight cost
 
-A worker that's currently running has no `task_done` record yet, so
+A worker that's currently running has no `completed`/`failed` record yet, so
 its cost isn't counted in the budget until completion. v1 ignores
 in-flight: if a queue is capped at `$1/hour` with `max_parallel: 3`,
 three opus workers can start at `$0.99 spent`, finish at `$4.50
@@ -438,7 +453,7 @@ Modified:
 
 - `src/aegis/queue/manager.py` — `enqueue()` calls
   `evaluator.evaluate_budgets()`; `_finalize()` adds `cost` to the
-  `task_done` JSONL record.
+  `completed`/`failed` JSONL record.
 - `src/aegis/queue/schema.py` (or wherever the queue config dataclass
   lives) — `Queue` grows `budgets: list[Budget]`.
 - `src/aegis/config.py` — parse `budgets:` from queue dicts in
