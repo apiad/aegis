@@ -261,9 +261,9 @@ class ConversationPane(Widget):
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         self.unseen = False
         self._core = AgentSession(session, agent, agent_slug, handle)
-        self._core.on_event = self._on_core_event
-        self._core.on_state = self._on_core_state
-        self._core.on_inbox = self._on_core_inbox
+        self._core.add_event_observer(self._on_core_event)
+        self._core.add_state_observer(self._on_core_state)
+        self._core.add_inbox_observer(self._on_core_inbox)
         if state_dir_path is not None:
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, handle))
