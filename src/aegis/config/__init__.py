@@ -208,6 +208,7 @@ def load_queues(path: Path) -> "dict[str, object]":
     on any structural or referential error, naming the offending queue
     so the operator can fix the right place.
     """
+    from aegis.budget.budgets import BudgetConfigError, parse_budgets
     from aegis.queue import Queue
 
     namespace: dict[str, object] = {}
@@ -252,7 +253,12 @@ def load_queues(path: Path) -> "dict[str, object]":
                 f"{path}: queues[{name!r}].max_parallel must be an int "
                 f">= 1 (got {cap!r}).")
         agent = agents[agent_ref]
+        try:
+            budgets = parse_budgets(cfg.get("budgets"))
+        except BudgetConfigError as e:
+            raise ConfigError(f"{path}: queues[{name!r}].budgets: {e}")
         out[name] = Queue(name=name, agent_profile=agent_ref,
                           max_parallel=cap,
-                          provider=agent.harness, model=agent.model)
+                          provider=agent.harness, model=agent.model,
+                          budgets=budgets)
     return out

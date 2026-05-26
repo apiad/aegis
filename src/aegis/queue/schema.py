@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+from aegis.budget.budgets import Budget
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -50,6 +52,7 @@ class Queue:
     max_parallel: int
     provider: str = ""   # populated from agent_profile at config-load
     model: str = ""      # populated from agent_profile at config-load
+    budgets: list[Budget] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
