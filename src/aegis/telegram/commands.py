@@ -73,3 +73,124 @@ def resolve_remote(ctx: CmdContext) -> tuple[str, Any] | None:
     if ctx.target not in remotes:
         return None
     return ctx.target, remotes[ctx.target]
+
+
+# ── existing verbs migrated into the registry ──────────────────
+
+
+async def _cmd_new(ctx: CmdContext, args: list[str]) -> None:
+    slug = args[0] if args else None
+    try:
+        core = ctx.manager._sync_spawn(slug)
+    except KeyError:
+        agent_list = ", ".join(ctx.manager.list_agents())
+        await ctx.reply(f"unknown agent. agents: {agent_list}")
+        return
+    ctx.frontend._active = core.handle
+    await ctx.reply(f"▸ spawned {core.handle} ({core.agent_slug})")
+
+
+register(Command(
+    name="new",
+    summary="/new [slug] — spawn a new agent session",
+    detail=(
+        "/new [agent-slug]\n\n"
+        "Spawn a new agent session. With no arg, uses the default "
+        "agent profile. The new session becomes the active session "
+        "for bare-text routing. Use /agents to list available profiles."
+    ),
+    handler=_cmd_new,
+))
+
+
+async def _cmd_close(ctx: CmdContext, args: list[str]) -> None:
+    fe = ctx.frontend
+    if fe._active is None:
+        await ctx.reply("no active agent")
+        return
+    closed = fe._active
+    await ctx.manager.close(closed)
+    rest_sessions = ctx.manager.list_sessions()
+    fe._active = rest_sessions[0].handle if rest_sessions else None
+    tail = f"active: {fe._active}" if fe._active else "no active agent"
+    await ctx.reply(f"▸ closed {closed} · {tail}")
+
+
+register(Command(
+    name="close",
+    summary="/close — close the active session",
+    detail=(
+        "/close\n\n"
+        "Close the currently-active agent session. If other sessions "
+        "exist, the first one becomes active. Otherwise the active "
+        "pointer clears."
+    ),
+    handler=_cmd_close,
+))
+
+
+async def _cmd_interrupt(ctx: CmdContext, args: list[str]) -> None:
+    fe = ctx.frontend
+    if fe._active is not None:
+        await ctx.manager.interrupt(fe._active)
+        await ctx.reply(f"▸ interrupted {fe._active}")
+
+
+register(Command(
+    name="interrupt",
+    summary="/interrupt — interrupt the active session's current turn",
+    detail=(
+        "/interrupt\n\n"
+        "Stop the active session's in-progress turn. Equivalent to "
+        "pressing Escape in the TUI. The session stays open; you can "
+        "send another message immediately."
+    ),
+    handler=_cmd_interrupt,
+))
+
+
+async def _cmd_agents(ctx: CmdContext, args: list[str]) -> None:
+    agent_list = ", ".join(ctx.manager.list_agents())
+    await ctx.reply(f"agents: {agent_list}")
+
+
+register(Command(
+    name="agents",
+    summary="/agents — list available agent profiles",
+    detail=(
+        "/agents\n\n"
+        "List the agent profiles declared in .aegis.py. Use one of "
+        "these names as the slug argument to /new."
+    ),
+    handler=_cmd_agents,
+))
+
+
+async def _cmd_sessions(ctx: CmdContext, args: list[str]) -> None:
+    sessions = ctx.manager.list_sessions()
+    if not sessions:
+        await ctx.reply("no sessions")
+        return
+    # One per line; /underscore_alias is tappable in Telegram (which
+    # only auto-links [A-Za-z0-9_]+) and routes back via the _ -> -
+    # normalization in _legacy_handle_alias.
+    lines = [
+        f"{'●' if s.state == 'working' else '○'} "
+        f"/{s.handle.replace('-', '_')} {s.state}"
+        for s in sessions
+    ]
+    await ctx.reply("\n".join(lines))
+
+
+register(Command(
+    name="sessions",
+    summary="/sessions — list active sessions",
+    detail=(
+        "/sessions\n\n"
+        "List all active agent sessions with their state (working / "
+        "ready). Each handle is rendered as /handle_with_underscores "
+        "so Telegram makes it tappable; the dispatcher normalizes back "
+        "to the real hyphenated handle."
+    ),
+    handler=_cmd_sessions,
+))

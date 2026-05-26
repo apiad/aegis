@@ -155,43 +155,14 @@ class TelegramFrontend:
             await cmd.handler(ctx, args)
             return
 
-        # Fall through to the legacy elif chain (existing verbs migrate
-        # in Task 4) and the /<handle> alias-routing at the bottom.
-        rest = rest.strip()
-        if head == "/new":
-            try:
-                core = self._m._sync_spawn(rest or None)
-            except KeyError:
-                await self._reply("unknown agent. " + self._agents_line())
-                return
-            self._active = core.handle
-            await self._reply(
-                f"▸ spawned {core.handle} ({core.agent_slug})")
-        elif head == "/close":
-            if self._active is None:
-                await self._reply("no active agent")
-                return
-            closed = self._active
-            await self._m.close(closed)
-            rest_sessions = self._m.list_sessions()
-            self._active = rest_sessions[0].handle if rest_sessions else None
-            tail = (f"active: {self._active}" if self._active
-                    else "no active agent")
-            await self._reply(f"▸ closed {closed} · {tail}")
-        elif head == "/interrupt":
-            if self._active is not None:
-                await self._m.interrupt(self._active)
-                await self._reply(f"▸ interrupted {self._active}")
-        elif head == "/agents":
-            await self._reply(self._agents_line())
-        elif head == "/sessions":
-            await self._reply(self._sessions_line())
-        elif head == "/help":
+        # /help is a stub until Task 5 adds a registry-driven handler.
+        if head == "/help":
             await self._reply(
                 "/new [slug] /close /interrupt /agents /sessions "
                 "/<handle> [text] /help")
-        else:
-            await self._legacy_handle_alias(head, rest)
+            return
+
+        await self._legacy_handle_alias(head, rest.strip())
 
     async def _legacy_handle_alias(self, head: str, rest: str) -> None:
         """The /<handle> alias-routing pattern: send `rest` to the named
@@ -209,20 +180,6 @@ class TelegramFrontend:
         else:
             self._active = core.handle
             await self._reply(f"▸ talking to {core.handle}")
-
-    def _agents_line(self) -> str:
-        return "agents: " + ", ".join(self._m.list_agents())
-
-    def _sessions_line(self) -> str:
-        si = self._m.list_sessions()
-        if not si:
-            return "no sessions"
-        # One per line; /underscore_alias is tappable in Telegram and routes
-        # back via the _ -> - normalisation in _command.
-        return "\n".join(
-            f"{'●' if s.state == 'working' else '○'} "
-            f"/{s.handle.replace('-', '_')} {s.state}"
-            for s in si)
 
     async def run(self, bot) -> None:
         offset = 0
