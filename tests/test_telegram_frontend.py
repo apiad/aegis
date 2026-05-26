@@ -161,6 +161,47 @@ def test_frontend_ctor_accepts_bridge_and_cfg(tmp_path):
     assert fe._cfg is not None
 
 
+class ToolBurstHarness:
+    def __init__(self):
+        self.sent: list[str] = []
+
+    async def start(self): ...
+    async def send(self, t):
+        self.sent.append(t)
+    async def close(self): ...
+
+    async def events(self):
+        from aegis.events import AssistantText, Result, ToolUse
+        yield ToolUse(name="ToolA", summary="")
+        yield ToolUse(name="ToolB", summary="")
+        yield AssistantText(text="done")
+        yield Result(duration_ms=10, is_error=False)
+
+
+@pytest.mark.asyncio
+async def test_ticker_edits_on_tool_use(tmp_path):
+    b = FakeBot()
+    m = SessionManager({"default": 1}, "default",
+                       lambda p, u, h: ToolBurstHarness(), mcp=None)
+    f = TelegramFrontend(b, m, None, None, chat_id=99, auto_prompt="",
+                         state_dir=tmp_path)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    core = m.list_sessions()[0]
+    core = m.get(core.handle)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "go"}})
+    # drain turn
+    from aegis.tui.state import AgentState
+    for _ in range(80):
+        await asyncio.sleep(0.005)
+        if core.state is not AgentState.working:
+            break
+    # one send for the initial ticker, then edits for each ToolUse and final.
+    # Then a send for the reply at finish.
+    assert len(b.edits) >= 2, f"edits={b.edits}"
+    # The reply was sent (last send_message after the status one).
+    assert any("done" in s[1] for s in b.sent)
+
+
 @pytest.mark.asyncio
 async def test_two_sessions_have_independent_state(tmp_path):
     b = FakeBot()
