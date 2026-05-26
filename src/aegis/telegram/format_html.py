@@ -67,14 +67,102 @@ def _render_inline(tokens: list[Token]) -> str:
     return "".join(parts)
 
 
-def render(md: str) -> str:
-    tokens = _MD.parse(md)
+def _walk_tokens(tokens: list[Token]) -> str:
     out: list[str] = []
-    for t in tokens:
+    i = 0
+    n = len(tokens)
+    while i < n:
+        t = tokens[i]
+        if t.type == "paragraph_open":
+            inline = tokens[i + 1] if i + 1 < n else None
+            if inline and inline.type == "inline":
+                out.append(_render_inline(inline.children or []))
+                out.append("\n\n")
+            i += 3
+            continue
+        if t.type == "heading_open":
+            inline = tokens[i + 1] if i + 1 < n else None
+            out.append("<b>")
+            if inline and inline.type == "inline":
+                out.append(_render_inline(inline.children or []))
+            out.append("</b>\n\n")
+            i += 3
+            continue
+        if t.type == "fence":
+            lang = (t.info or "").strip().split(maxsplit=1)
+            lang_s = lang[0] if lang else ""
+            body = _esc_text(t.content).replace("'", "&#x27;").rstrip("\n") + "\n"
+            if lang_s:
+                out.append(f'<pre><code class="language-{_esc_attr(lang_s)}">{body}</code></pre>')
+            else:
+                out.append(f"<pre><code>{body}</code></pre>")
+            out.append("\n\n")
+            i += 1
+            continue
+        if t.type == "code_block":
+            body = _esc_text(t.content).replace("'", "&#x27;").rstrip("\n") + "\n"
+            out.append(f"<pre><code>{body}</code></pre>")
+            out.append("\n\n")
+            i += 1
+            continue
+        if t.type == "blockquote_open":
+            depth = 1
+            j = i + 1
+            inner: list[Token] = []
+            while j < n and depth > 0:
+                if tokens[j].type == "blockquote_open":
+                    depth += 1
+                elif tokens[j].type == "blockquote_close":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                inner.append(tokens[j])
+                j += 1
+            inside = _walk_tokens(inner).rstrip("\n")
+            out.append(f"<blockquote>{inside}</blockquote>\n\n")
+            i = j + 1
+            continue
+        if t.type == "bullet_list_open" or t.type == "ordered_list_open":
+            ordered = t.type == "ordered_list_open"
+            close_type = "ordered_list_close" if ordered else "bullet_list_close"
+            j = i + 1
+            num = 1
+            while j < n and tokens[j].type != close_type:
+                if tokens[j].type == "list_item_open":
+                    depth = 1
+                    k = j + 1
+                    item_inline = ""
+                    while k < n and depth > 0:
+                        if tokens[k].type == "list_item_open":
+                            depth += 1
+                        elif tokens[k].type == "list_item_close":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        elif tokens[k].type == "inline":
+                            item_inline += _render_inline(tokens[k].children or [])
+                        k += 1
+                    prefix = f"{num}. " if ordered else "• "
+                    out.append(f"{prefix}{item_inline}\n")
+                    num += 1
+                    j = k + 1
+                else:
+                    j += 1
+            out.append("\n")
+            i = j + 1
+            continue
+        if t.type == "hr":
+            out.append("───────\n\n")
+            i += 1
+            continue
         if t.type == "inline" and t.children:
             out.append(_render_inline(t.children))
-        elif t.type == "paragraph_open":
-            pass
-        elif t.type == "paragraph_close":
-            out.append("\n\n")
-    return "".join(out).rstrip()
+            i += 1
+            continue
+        i += 1
+    return "".join(out)
+
+
+def render(md: str) -> str:
+    tokens = _MD.parse(md)
+    return _walk_tokens(tokens).rstrip()
