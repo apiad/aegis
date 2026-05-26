@@ -133,3 +133,45 @@ async def test_schedule_remote_unknown_peer():
         url="http://1.2.3.4:8556")})
     await fe._command("/schedule list @nope")
     assert "unknown peer" in bot.sent[-1].lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_run_local():
+    fired: list[str] = []
+    class _Sched:
+        def fire_now(self, name): fired.append(name)
+        def get(self, name):
+            return SimpleNamespace(name=name) if name == "nb" else None
+    fe, bot = _make_frontend(scheduler=_Sched())
+    await fe._command("/schedule run nb")
+    assert fired == ["nb"]
+    assert "fired" in bot.sent[-1].lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_run_unknown_schedule_errors():
+    class _Sched:
+        def fire_now(self, name): raise KeyError(name)
+        def get(self, name): return None
+    fe, bot = _make_frontend(scheduler=_Sched())
+    await fe._command("/schedule run ghost")
+    assert "no such schedule" in bot.sent[-1].lower() \
+        or "unknown" in bot.sent[-1].lower() \
+        or "error" in bot.sent[-1].lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_run_missing_arg():
+    fe, bot = _make_frontend(scheduler=SimpleNamespace())
+    await fe._command("/schedule run")
+    assert "usage" in bot.sent[-1].lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_run_rejects_at_peer():
+    fe, bot = _make_frontend(scheduler=SimpleNamespace(),
+                              remotes={"vps": RemoteSpec(
+                                  url="http://1.2.3.4:8556")})
+    await fe._command("/schedule run nb @vps")
+    out = bot.sent[-1].lower()
+    assert "cross-host" in out or "local only" in out

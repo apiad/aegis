@@ -432,3 +432,46 @@ register(Command(
     ),
     handler=_cmd_schedule_show,
 ))
+
+
+async def _cmd_schedule_run(ctx: CmdContext, args: list[str]) -> None:
+    if ctx.target is not None:
+        await ctx.reply(
+            "▸ /schedule run not yet supported cross-host "
+            "(this serve only). Drop @<peer>.")
+        return
+    if not args:
+        await ctx.reply("usage: /schedule run <name>")
+        return
+    name = args[0]
+    scheduler = getattr(ctx.bridge, "scheduler", None)
+    if scheduler is None:
+        await ctx.reply("no scheduler configured on this serve")
+        return
+    entry_before = scheduler.get(name)
+    if entry_before is None:
+        await ctx.reply(f"no such schedule {name!r}")
+        return
+    try:
+        scheduler.fire_now(name)
+    except Exception as e:
+        await ctx.reply(f"▸ error firing {name!r}: {e}")
+        return
+    next_fire = getattr(entry_before, "next_fire", None) or "—"
+    await ctx.reply(
+        f"▸ fired schedule {name!r}\n"
+        f"  next regular fire still at {next_fire}")
+
+
+register(Command(
+    name="schedule run",
+    summary="/schedule run <name> — fire a schedule now (this serve only)",
+    detail=(
+        "/schedule run <name>\n\n"
+        "Fire-now a schedule on this serve. The next regular fire "
+        "tick is unaffected. Local only — cross-host fire-now is not "
+        "yet a substrate feature (deferred from v0.8); use @<peer> "
+        "and the substrate will reject with a clear error."
+    ),
+    handler=_cmd_schedule_run,
+))
