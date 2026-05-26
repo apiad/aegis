@@ -38,6 +38,44 @@ async def test_get_updates_passes_offset_and_returns_list():
 
 
 @pytest.mark.asyncio
+async def test_send_message_html_parse_mode(monkeypatch):
+    seen = {}
+    async def fake_call(self, method, **params):
+        seen["method"] = method
+        seen["params"] = params
+        return {"message_id": 99}
+    monkeypatch.setattr("aegis.telegram.bot.BotClient._call", fake_call)
+    bot = BotClient(token="t")
+    mid = await bot.send_message(chat_id=1, text="<b>x</b>", parse_mode="HTML")
+    assert mid == 99
+    assert seen["params"]["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_send_message_no_parse_mode_when_none(monkeypatch):
+    seen = {}
+    async def fake_call(self, method, **params):
+        seen["params"] = params
+        return {"message_id": 1}
+    monkeypatch.setattr("aegis.telegram.bot.BotClient._call", fake_call)
+    bot = BotClient(token="t")
+    await bot.send_message(chat_id=1, text="plain")
+    assert "parse_mode" not in seen["params"]
+
+
+@pytest.mark.asyncio
+async def test_edit_message_html_parse_mode(monkeypatch):
+    seen = {}
+    async def fake_call(self, method, **params):
+        seen["params"] = params
+        return {}
+    monkeypatch.setattr("aegis.telegram.bot.BotClient._call", fake_call)
+    bot = BotClient(token="t")
+    await bot.edit_message(chat_id=1, message_id=2, text="<i>x</i>", parse_mode="HTML")
+    assert seen["params"]["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
 async def test_retry_after_on_429(monkeypatch):
     calls = {"n": 0}
 

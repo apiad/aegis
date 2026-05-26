@@ -92,7 +92,7 @@ class TelegramFrontend:
                 state["refresher"] = None
             reply = "".join(state["buf"]).strip()
             for part in chunk(reply, label=core.handle):
-                await self._bot.send_message(self._chat, part, markdown=True)
+                await self._bot.send_message(self._chat, part, parse_mode="HTML")
             state["buf"].clear()
             state["mid"] = None
 

@@ -47,17 +47,21 @@ class BotClient:
         return res or []
 
     async def send_message(self, chat_id: int, text: str,
-                           markdown: bool = False) -> int | None:
-        params = {"chat_id": chat_id, "text": text}
-        if markdown:
-            params["parse_mode"] = "MarkdownV2"
+                           *, parse_mode: str | None = None) -> int | None:
+        params: dict = {"chat_id": chat_id, "text": text}
+        if parse_mode is not None:
+            params["parse_mode"] = parse_mode
         res = await self._call("sendMessage", **params)
         return res["message_id"] if res else None
 
-    async def edit_message(self, chat_id: int, message_id: int,
-                           text: str) -> None:
-        await self._call("editMessageText", chat_id=chat_id,
-                         message_id=message_id, text=text)
+    async def edit_message(self, chat_id: int, message_id: int, text: str,
+                           *, parse_mode: str | None = None) -> None:
+        params: dict = {"chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": text}
+        if parse_mode is not None:
+            params["parse_mode"] = parse_mode
+        await self._call("editMessageText", **params)
 
     async def aclose(self) -> None:
         await self._http.aclose()
