@@ -67,14 +67,8 @@ class TelegramFrontend:
         def on_inbox(c, msg):
             s = self._state_for(c.handle)
             sender = getattr(msg, "sender", None)
-            if sender is not None:
-                kind = getattr(sender, "kind", "?")
-                handle = getattr(sender, "handle", "?")
-                queue = getattr(sender, "queue", None)
-                if queue:
-                    s["envelope"] = f"from {kind}:{handle}:{queue}"
-                else:
-                    s["envelope"] = f"from {kind}:{handle}"
+            if sender:
+                s["envelope"] = f"from {sender}"
 
         def on_close(c, reason):
             self._states.pop(c.handle, None)

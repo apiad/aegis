@@ -203,6 +203,28 @@ async def test_ticker_edits_on_tool_use(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_envelope_shows_on_ticker(tmp_path):
+    from aegis.queue.schema import InboxMessage
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m, tmp_path)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    core = m.list_sessions()[0]
+    core = m.get(core.handle)
+    f._attach_observers(core)
+    msg = InboxMessage(sender="agent:foo", timestamp="2026-05-26T00:00:00Z",
+                       body="hi")
+    # Fire the inbox observer synchronously.
+    for cb in core._extra_inbox_observers:
+        cb(core, msg)
+    state = f._state_for(core.handle)
+    assert state["envelope"] == "from agent:foo"
+    ticker = f._render_ticker(core, state)
+    assert "✉️" in ticker
+    assert "agent:foo" in ticker
+
+
+@pytest.mark.asyncio
 async def test_two_sessions_have_independent_state(tmp_path):
     b = FakeBot()
     m = mgr()
