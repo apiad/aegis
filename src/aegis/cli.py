@@ -26,6 +26,9 @@ _console = Console()
 from aegis.cli_schedule import app as _schedule_app  # noqa: E402
 app.add_typer(_schedule_app, name="schedule")
 
+from aegis.cli_budget import app as _budget_app  # noqa: E402
+app.add_typer(_budget_app, name="budget")
+
 
 def _version_callback(value: bool) -> None:
     if value:
