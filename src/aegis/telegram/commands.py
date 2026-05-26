@@ -246,3 +246,47 @@ register(Command(
     ),
     handler=_cmd_help,
 ))
+
+
+async def _peer_reachable(url: str) -> bool:
+    """Quick reachability probe — any HTTP response counts as reachable.
+    3s timeout for mobile-fast feedback."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0)) as client:
+            await client.get(url.rstrip("/") + "/remote/v1/")
+        return True
+    except httpx.HTTPError:
+        return False
+
+
+async def _cmd_peers(ctx: CmdContext, args: list[str]) -> None:
+    remotes = getattr(ctx.cfg, "remotes", {}) or {}
+    if not remotes:
+        await ctx.reply("no peers configured")
+        return
+    lines = ["```",
+             f"{'NAME':<12} {'URL':<32} {'AUTH':<8} {'REACHABLE'}"]
+    for name in sorted(remotes):
+        spec = remotes[name]
+        url = getattr(spec, "url", "?")
+        auth = "token" if getattr(spec, "token", None) else "—"
+        ok = await _peer_reachable(url)
+        reach = "✓" if ok else "✗ unreachable"
+        lines.append(f"{name:<12} {url:<32} {auth:<8} {reach}")
+    lines.append("```")
+    await ctx.reply("\n".join(lines))
+
+
+register(Command(
+    name="peers",
+    summary="/peers — list configured remotes and their reachability",
+    detail=(
+        "/peers\n\n"
+        "List every peer in .aegis.yaml's `remotes:` block, with URL, "
+        "auth status (token configured or not), and a 3-second "
+        "reachability probe. No @<peer> argument (the command is "
+        "about peers themselves)."
+    ),
+    handler=_cmd_peers,
+))
