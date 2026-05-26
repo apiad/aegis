@@ -194,3 +194,55 @@ register(Command(
     ),
     handler=_cmd_sessions,
 ))
+
+
+async def _cmd_help(ctx: CmdContext, args: list[str]) -> None:
+    if not args:
+        # Bare /help: group by resource (first whitespace token).
+        groups: dict[str, list[Command]] = {}
+        for cmd in COMMANDS.values():
+            resource = cmd.name.split(" ", 1)[0]
+            groups.setdefault(resource, []).append(cmd)
+        lines = ["Aegis Telegram commands (/help <name> for detail):", ""]
+        for resource in sorted(groups):
+            cmds = sorted(groups[resource], key=lambda c: c.name)
+            for cmd in cmds:
+                lines.append(f"  /{cmd.name} — {cmd.summary}")
+            lines.append("")
+        # Drop trailing blank
+        if lines and lines[-1] == "":
+            lines.pop()
+        await ctx.reply("\n".join(lines))
+        return
+
+    # /help <name> — try exact match first, then prefix match.
+    needle = " ".join(args)
+    if needle in COMMANDS:
+        cmd = COMMANDS[needle]
+        await ctx.reply(f"/{cmd.name}\n\n{cmd.detail}")
+        return
+
+    matching = [c for c in COMMANDS.values()
+                if c.name == needle or c.name.startswith(needle + " ")]
+    if matching:
+        lines = [f"commands matching {needle!r}:", ""]
+        for cmd in sorted(matching, key=lambda c: c.name):
+            lines.append(f"  /{cmd.name} — {cmd.summary}")
+        await ctx.reply("\n".join(lines))
+        return
+
+    await ctx.reply(f"no such command {needle!r}; /help to list all")
+
+
+register(Command(
+    name="help",
+    summary="/help [name] — list commands, or show detail for one",
+    detail=(
+        "/help [name]\n\n"
+        "With no argument, lists every registered command grouped by "
+        "resource. With a command name (`/help new`), prints the "
+        "command's full detail. With a resource prefix "
+        "(`/help queue`), lists every subcommand under that resource."
+    ),
+    handler=_cmd_help,
+))

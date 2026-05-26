@@ -155,13 +155,6 @@ class TelegramFrontend:
             await cmd.handler(ctx, args)
             return
 
-        # /help is a stub until Task 5 adds a registry-driven handler.
-        if head == "/help":
-            await self._reply(
-                "/new [slug] /close /interrupt /agents /sessions "
-                "/<handle> [text] /help")
-            return
-
         await self._legacy_handle_alias(head, rest.strip())
 
     async def _legacy_handle_alias(self, head: str, rest: str) -> None:
