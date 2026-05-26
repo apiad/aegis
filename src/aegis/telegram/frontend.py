@@ -121,7 +121,42 @@ class TelegramFrontend:
         await self._send_to(core, text)
 
     async def _command(self, text: str) -> None:
+        from aegis.telegram.commands import COMMANDS, CmdContext
+
         head, _, rest = text.partition(" ")
+        verb = head.lstrip("/")
+        tokens = rest.split()
+
+        # Pull out @<peer>; only @<name> where name is non-empty counts.
+        # All @<name> tokens are consumed; the first becomes target, the
+        # rest are silently dropped. Bare "@" (no name) stays in args.
+        target: str | None = None
+        args: list[str] = []
+        for t in tokens:
+            if t.startswith("@") and len(t) > 1:
+                if target is None:
+                    target = t[1:]
+                # additional @<name> tokens are dropped (first wins)
+            else:
+                args.append(t)
+
+        # Longest-prefix match: try "<verb> <args[0]>" before "<verb>".
+        key2 = f"{verb} {args[0]}" if args else None
+        cmd = COMMANDS.get(key2) if key2 else None
+        if cmd is not None:
+            args = args[1:]
+        else:
+            cmd = COMMANDS.get(verb)
+
+        if cmd is not None:
+            ctx = CmdContext(
+                bridge=self._bridge, cfg=self._cfg, manager=self._m,
+                target=target, reply=self._reply, frontend=self)
+            await cmd.handler(ctx, args)
+            return
+
+        # Fall through to the legacy elif chain (existing verbs migrate
+        # in Task 4) and the /<handle> alias-routing at the bottom.
         rest = rest.strip()
         if head == "/new":
             try:
@@ -156,18 +191,24 @@ class TelegramFrontend:
                 "/new [slug] /close /interrupt /agents /sessions "
                 "/<handle> [text] /help")
         else:
-            # Telegram only auto-links /[A-Za-z0-9_]+, but handles are
-            # hyphenated. Accept the tappable underscore alias too.
-            raw = head[1:]
-            core = self._m.get(raw) or self._m.get(raw.replace("_", "-"))
-            if core is None:
-                await self._reply(f"no session {raw!r} — /sessions")
-                return
-            if rest:
-                await self._send_to(core, rest)
-            else:
-                self._active = core.handle
-                await self._reply(f"▸ talking to {core.handle}")
+            await self._legacy_handle_alias(head, rest)
+
+    async def _legacy_handle_alias(self, head: str, rest: str) -> None:
+        """The /<handle> alias-routing pattern: send `rest` to the named
+        session, or set it active if no rest is given. Underscore→hyphen
+        normalization because Telegram only auto-links [A-Za-z0-9_]+ but
+        aegis handles are hyphenated.
+        """
+        raw = head[1:]
+        core = self._m.get(raw) or self._m.get(raw.replace("_", "-"))
+        if core is None:
+            await self._reply(f"no session {raw!r} — /sessions")
+            return
+        if rest:
+            await self._send_to(core, rest)
+        else:
+            self._active = core.handle
+            await self._reply(f"▸ talking to {core.handle}")
 
     def _agents_line(self) -> str:
         return "agents: " + ", ".join(self._m.list_agents())
