@@ -300,7 +300,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
         tg_cfg = _SN2(remotes=remotes or {})
         fe = TelegramFrontend(bot, mgr, tg_bridge, tg_cfg,
                               chat_id=tg.chat_id,
-                              auto_prompt=tg.auto_prompt)
+                              auto_prompt=tg.auto_prompt,
+                              state_dir=_state_dir(root))
         tasks.append(asyncio.create_task(fe.run(bot)))
     try:
         await stop.wait()
