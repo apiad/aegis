@@ -269,6 +269,21 @@ async def test_envelope_shows_on_ticker(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_active_clears_on_session_close(tmp_path):
+    b = FakeBot()
+    m = mgr()
+    f = fe(b, m, tmp_path)
+    await f.handle_update({"message": {"chat": {"id": 99}, "text": "/new"}})
+    h = m.list_sessions()[0].handle
+    core = m.get(h)
+    f._attach_observers(core)
+    assert f._active == h
+    core._emit_close("teardown")
+    assert f._active is None
+    assert h not in f._states
+
+
+@pytest.mark.asyncio
 async def test_two_sessions_have_independent_state(tmp_path):
     b = FakeBot()
     m = mgr()
