@@ -45,5 +45,5 @@ jobs:
       - name: Build sdist + wheel
         run: uv build
 
-      - name: Publish to PyPI (trusted publishing)
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to PyPI (trusted publishing via uv)
+        run: uv publish --trusted-publishing always
