@@ -24,6 +24,46 @@ __all__ = [
 ]
 
 
+def _budget_exceeded_from_dict(queue: str, result: dict):
+    """Reconstruct a BudgetExceeded from QueueManager's rejection dict.
+
+    BudgetCheck.window_start is non-nullable (typed as datetime), so we
+    pass UTC epoch as a sentinel when reconstructing from the wire dict,
+    which doesn't carry window_start.
+    """
+    from decimal import Decimal
+    from datetime import datetime, timezone
+    from aegis.budget import BudgetExceeded
+    from aegis.budget.evaluator import BudgetCheck, Decision
+
+    _EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
+
+    def _parse_iso_or_none(s):
+        if not s:
+            return None
+        try:
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            return datetime.fromisoformat(s)
+        except Exception:  # noqa: BLE001
+            return None
+
+    checks = [BudgetCheck(
+        constraint=bc["constraint"],
+        limit=Decimal(bc["limit"]),
+        spent=Decimal(bc["spent"]),
+        window_str=bc["window"],
+        window_start=_EPOCH,
+        allowed=False,
+        headroom=Decimal(bc["limit"]) - Decimal(bc["spent"]),
+        unblock_at=_parse_iso_or_none(bc.get("unblock_at")),
+    ) for bc in result.get("blocked_by", [])]
+    decision = Decision(
+        allowed=False, checks=checks, blocked_by=checks,
+        unblock_at=_parse_iso_or_none(result.get("unblock_at")))
+    return BudgetExceeded(queue=queue, decision=decision)
+
+
 class _DelegationPromise:
     """Inbox-binding shape used by delegate(): receives one InboxMessage
     and resolves a Future. Lives only for the duration of one delegate
@@ -235,11 +275,14 @@ class WorkflowEngine:
             return await self.delegate(queue, payload)
         handle = f"workflow:{self.name}:{_new_ulid()}"
         try:
-            task_id, _pos = self._queue.enqueue(
+            result = self._queue.enqueue(
                 queue, payload, enqueued_by=handle, callback=False)
         except KeyError as e:
             raise WorkflowError(
                 f"unknown queue: {e.args[0]!r}") from e
+        if isinstance(result, dict):
+            raise _budget_exceeded_from_dict(queue, result)
+        task_id, _pos = result
         return task_id
 
     # ── delegate (queue-worker pattern; legacy) ──────────────────────
@@ -252,12 +295,15 @@ class WorkflowEngine:
         self._inbox.bind_session(handle, promise)
         try:
             try:
-                task_id, _pos = self._queue.enqueue(
+                result = self._queue.enqueue(
                     queue, payload,
                     enqueued_by=handle, callback=True)
             except KeyError as e:
                 raise WorkflowError(
                     f"unknown queue: {e.args[0]!r}") from e
+            if isinstance(result, dict):
+                raise _budget_exceeded_from_dict(queue, result)
+            task_id, _pos = result
             msg = await promise
             if msg.status == "error":
                 raise WorkflowError(
