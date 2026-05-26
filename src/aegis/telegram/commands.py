@@ -290,3 +290,145 @@ register(Command(
     ),
     handler=_cmd_peers,
 ))
+
+
+def _fmt_schedule_table(entries: list[Any]) -> str:
+    """Format a list of schedule snapshots as a monospace table.
+    Each entry is either a SimpleNamespace (local) or dict (remote)."""
+    if not entries:
+        return "no schedules"
+    lines = ["```",
+             f"{'NAME':<22} {'SOURCE':<8} {'NEXT FIRE':<22} "
+             f"{'ENABLED':<8} FIRES"]
+    for e in entries:
+        if isinstance(e, dict):
+            name = e.get("name", "?")
+            source = e.get("source", "?")
+            next_fire = e.get("next_fire") or "—"
+            enabled = "✓" if e.get("enabled", True) else "✗"
+            fires = e.get("fire_count", 0)
+        else:
+            name = getattr(e, "name", "?")
+            source = getattr(e, "source", "?")
+            next_fire = getattr(e, "next_fire", None) or "—"
+            enabled = "✓" if getattr(e, "enabled", True) else "✗"
+            fires = getattr(e, "fire_count", 0)
+        lines.append(f"{name:<22} {source:<8} {next_fire:<22} "
+                     f"{enabled:<8} {fires}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
+async def _cmd_schedule_list(ctx: CmdContext, args: list[str]) -> None:
+    if ctx.target is not None:
+        remotes = getattr(ctx.cfg, "remotes", {}) or {}
+        if ctx.target not in remotes:
+            await ctx.reply(f"unknown peer {ctx.target!r}; "
+                             f"known: {sorted(remotes)}")
+            return
+        from aegis.remote.client import remote_schedule_list
+        result = await remote_schedule_list(remotes[ctx.target])
+        if "error" in result:
+            await ctx.reply(f"▸ remote error: {result['error']}")
+            return
+        entries = result.get("schedules", [])
+        await ctx.reply(_fmt_schedule_table(entries))
+        return
+
+    scheduler = getattr(ctx.bridge, "scheduler", None)
+    if scheduler is None:
+        await ctx.reply("no scheduler configured on this serve")
+        return
+    entries = scheduler.snapshot()
+    await ctx.reply(_fmt_schedule_table(entries))
+
+
+register(Command(
+    name="schedule list",
+    summary="/schedule list [@peer] — list schedules with next-fire",
+    detail=(
+        "/schedule list [@<peer>]\n\n"
+        "List every schedule on this serve (or @<peer>) with source "
+        "(inline / overlay / pushed), next fire time, enabled state, "
+        "and total fire count."
+    ),
+    handler=_cmd_schedule_list,
+))
+
+
+def _fmt_schedule_show(entry) -> str:
+    """Format a single schedule's spec + runtime as a multi-line block."""
+    lines = ["```"]
+    if isinstance(entry, dict):
+        # Remote: full Decision shape from remote_schedule_show.
+        name = entry.get("name", "?")
+        source = entry.get("source", "?")
+        lines.append(f"schedule: {name}  (source: {source})")
+        lines.append("")
+        spec = entry.get("spec", {})
+        for k, v in spec.items():
+            lines.append(f"  {k}: {v}")
+        runtime = entry.get("runtime") or {}
+        if runtime:
+            lines.append("")
+            for k, v in runtime.items():
+                lines.append(f"  {k}: {v}")
+    else:
+        name = getattr(entry, "name", "?")
+        source = getattr(entry, "source", "?")
+        lines.append(f"schedule: {name}  (source: {source})")
+        lines.append("")
+        spec = getattr(entry, "spec", {}) or {}
+        for k, v in spec.items():
+            lines.append(f"  {k}: {v}")
+        for fld in ("next_fire", "last_fire", "fire_count",
+                    "in_flight", "enabled"):
+            val = getattr(entry, fld, None)
+            if val is not None:
+                lines.append(f"  {fld}: {val}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
+async def _cmd_schedule_show(ctx: CmdContext, args: list[str]) -> None:
+    if not args:
+        await ctx.reply("usage: /schedule show <name> [@peer]")
+        return
+    name = args[0]
+
+    if ctx.target is not None:
+        remotes = getattr(ctx.cfg, "remotes", {}) or {}
+        if ctx.target not in remotes:
+            await ctx.reply(f"unknown peer {ctx.target!r}; "
+                             f"known: {sorted(remotes)}")
+            return
+        from aegis.remote.client import remote_schedule_show
+        result = await remote_schedule_show(remotes[ctx.target], name)
+        if "error" in result:
+            await ctx.reply(f"▸ remote error: {result['error']}")
+            return
+        await ctx.reply(_fmt_schedule_show(result))
+        return
+
+    scheduler = getattr(ctx.bridge, "scheduler", None)
+    if scheduler is None:
+        await ctx.reply("no scheduler configured on this serve")
+        return
+    entry = scheduler.get(name)
+    if entry is None:
+        await ctx.reply(f"no such schedule {name!r}")
+        return
+    await ctx.reply(_fmt_schedule_show(entry))
+
+
+register(Command(
+    name="schedule show",
+    summary="/schedule show <name> [@peer] — full spec + runtime",
+    detail=(
+        "/schedule show <name> [@<peer>]\n\n"
+        "Print the full schedule spec (workflow, cron, args, "
+        "lifecycle, ...) plus runtime fields (next_fire, last_fire, "
+        "fire_count, in_flight, enabled) for one schedule."
+    ),
+    handler=_cmd_schedule_show,
+))
