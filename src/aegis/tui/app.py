@@ -167,6 +167,7 @@ class AegisApp(App):
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
+        Binding("ctrl+comma", "open_config_panel", "Config", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
@@ -468,6 +469,28 @@ class AegisApp(App):
         self._refresh_tabbar()
         tab.focus_input()
         return tab
+
+    async def action_open_config_panel(self) -> None:
+        """Open (or focus) the ConfigPanel tab."""
+        cs = self.query_one(ContentSwitcher)
+        # Focus existing panel if one is mounted.
+        from aegis.tui.config_panel import ConfigPanel
+        for p in self._panes:
+            if isinstance(p, ConfigPanel):
+                cs.current = p.id
+                p.unseen = False
+                p.focus_input()
+                p.refresh_view()
+                self._refresh_tabbar()
+                return
+        # Otherwise mount a fresh one.
+        root = Path.cwd()
+        panel = ConfigPanel(root)
+        self._panes.append(panel)
+        await cs.mount(panel)
+        cs.current = panel.id
+        self._refresh_tabbar()
+        panel.focus_input()
 
     @work
     async def action_open_file_picker(self, prefill: str = "") -> None:
