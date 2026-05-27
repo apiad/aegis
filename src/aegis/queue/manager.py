@@ -89,6 +89,19 @@ class QueueManager:
     def list_queues(self) -> list[str]:
         return sorted(self._queues)
 
+    def register_queue(self, queue: Queue) -> None:
+        """Add a queue to the live map. Idempotent if (name, queue) match;
+        raises ValueError on name collision with a different queue."""
+        existing = self._queues.get(queue.name)
+        if existing is not None:
+            if existing == queue:
+                return
+            raise ValueError(
+                f"queue {queue.name!r} already registered")
+        self._queues[queue.name] = queue
+        self._pending[queue.name] = []
+        self._inflight[queue.name] = []
+
     def subscribe(self, callback: QueueObserver) -> Unsubscribe:
         """Register an observer for every queue lifecycle transition.
 
