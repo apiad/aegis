@@ -77,6 +77,16 @@ Returns:
 - Posts a message to the TUI app to open or focus the `FileTab`.
 - If the TUI is not running (headless mode), returns `{status: "no_tui"}` without error.
 
+## File Change Detection
+
+`FileTab` stores the file's `mtime` on open and polls it every 2 seconds via Textual's `set_interval`.
+
+**VIEW mode:** mtime changed → silently reload content from disk, update stored mtime. Cursor resets to top.
+
+**EDIT mode:** mtime changed → show a persistent warning in the status bar ("⚠ file changed on disk — [r] reload / [k] keep mine"). Do not auto-reload. Pressing `r` discards edits and reloads; pressing `k` (or continuing to type) dismisses the warning and keeps the in-memory content. On `Ctrl+S`, always write — no merge, last write wins.
+
+**On save:** update stored mtime to the post-write value to suppress a spurious change notification.
+
 ## Implementation Notes
 
 - `FilePickerModal` lives in `tui/picker.py` alongside `AgentPicker` and `TerminalNamePrompt`.
