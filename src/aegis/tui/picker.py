@@ -100,6 +100,8 @@ class FilePickerModal(ModalScreen):
         super().__init__()
         self._prefill = prefill
         self._all_paths: list[str] = []
+        self._booted = False
+        self._poll_timer = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="fp-box"):
@@ -114,13 +116,16 @@ class FilePickerModal(ModalScreen):
         elif indexer is not None:
             ol = self.query_one("#fp-list", OptionList)
             ol.add_option(Option("⏳ indexing files…", id=None))
-            self.set_interval(0.15, self._poll_indexer)
+            self._poll_timer = self.set_interval(0.15, self._poll_indexer)
             self.query_one("#fp-input", Input).focus()
         else:
             self._sync_walk()
             self._boot_input()
 
     def _boot_input(self) -> None:
+        if self._booted:
+            return
+        self._booted = True
         inp = self.query_one("#fp-input", Input)
         if self._prefill:
             inp.value = self._prefill
@@ -131,6 +136,9 @@ class FilePickerModal(ModalScreen):
         indexer = getattr(self.app, "_file_indexer", None)
         if indexer is None or not indexer.ready:
             return
+        if self._poll_timer is not None:
+            self._poll_timer.stop()
+            self._poll_timer = None
         self._all_paths = indexer.paths
         self._boot_input()
 

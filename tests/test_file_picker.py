@@ -164,6 +164,43 @@ async def test_file_picker_enter_opens_top_match(tmp_path: Path):
     assert result[0].name == "target.py"
 
 
+@pytest.mark.asyncio
+async def test_file_picker_indexer_poll_does_not_clobber_input(tmp_path: Path):
+    """After the indexer is ready and boot has run, the poll path must
+    not refire and reset the Input value / option list."""
+    from aegis.tui.file_index import FileIndexer
+
+    (tmp_path / "alpha.py").write_text("a")
+    (tmp_path / "beta.py").write_text("b")
+
+    class _AppWithIndexer(App):
+        def __init__(self) -> None:
+            super().__init__()
+            self._file_indexer = FileIndexer()
+            self._file_indexer.start(tmp_path)
+            self._file_indexer._ready.wait(timeout=3)
+
+        def compose(self) -> ComposeResult:
+            yield FilePickerModal()
+
+    os.chdir(tmp_path)
+    app = _AppWithIndexer()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from textual.widgets import Input, OptionList
+        inp = app.query_one(Input)
+        ol = app.query_one("#fp-list", OptionList)
+        inp.value = "alpha"
+        await pilot.pause()
+        # Give any stray timers a chance to fire.
+        for _ in range(10):
+            await pilot.pause(0.05)
+        assert inp.value == "alpha"
+        option_ids = [ol.get_option_at_index(i).id
+                      for i in range(ol.option_count)]
+        assert all("alpha" in (oid or "") for oid in option_ids)
+
+
 def test_resolve_unique_indexed_match_exact_path():
     from aegis.tui.picker import resolve_unique_match
     paths = ["src/foo.py", "tests/foo.py", "src/bar.py"]
