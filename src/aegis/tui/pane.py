@@ -231,8 +231,24 @@ class CopyableBlock(Widget):
             token = await self.app.push_screen_wait(_TokenChooser(tokens))
             if token is None:
                 return
-        from aegis.tui.picker import FilePickerModal
-        self.app.push_screen(FilePickerModal(prefill=token))
+
+        from aegis.tui.picker import FilePickerModal, resolve_unique_match
+        opener = getattr(self.app, "_open_file_tab", None)
+
+        # Bypass the picker when the token resolves unambiguously.
+        indexer = getattr(self.app, "_file_indexer", None)
+        paths = (indexer.paths
+                 if (indexer is not None and indexer.ready) else [])
+        match = resolve_unique_match(token, paths)
+        if match is not None:
+            candidate = Path.cwd() / match
+            if candidate.is_file() and opener is not None:
+                await opener(candidate)
+                return
+
+        path = await self.app.push_screen_wait(FilePickerModal(prefill=token))
+        if path is not None and opener is not None:
+            await opener(path)
 
 
 def _payload_for_event(ev) -> str:

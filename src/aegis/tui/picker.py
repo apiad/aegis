@@ -3,10 +3,22 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList
 from textual.widgets.option_list import Option
+
+
+def resolve_unique_match(token: str, paths: list[str]) -> str | None:
+    """If exactly one indexed path matches the token, return it; else None.
+
+    A path matches when it equals the token or ends with ``"/" + token``
+    — so a bare basename resolves only when unique across the index.
+    """
+    candidates = [p for p in paths
+                  if p == token or p.endswith("/" + token)]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 class AgentPicker(ModalScreen[str | None]):
@@ -63,6 +75,14 @@ class TerminalNamePrompt(ModalScreen[str | None]):
 
 class FilePickerModal(ModalScreen):
     """Fuzzy file picker. Dismisses with a resolved Path or None."""
+
+    BINDINGS = [
+        Binding("down", "highlight_next", show=False, priority=True),
+        Binding("up", "highlight_prev", show=False, priority=True),
+        Binding("pagedown", "highlight_page", "page", show=False,
+                priority=True),
+        Binding("pageup", "highlight_page_up", show=False, priority=True),
+    ]
 
     DEFAULT_CSS = """
     FilePickerModal { align: center middle; }
@@ -142,6 +162,8 @@ class FilePickerModal(ModalScreen):
         )
         for p in matches[:50]:
             ol.add_option(Option(p, id=p))
+        if ol.option_count > 0:
+            ol.highlighted = 0
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self._filter(event.value)
@@ -175,6 +197,25 @@ class FilePickerModal(ModalScreen):
 
     def key_enter(self) -> None:
         self._select_highlighted()
+
+    def _move_highlight(self, delta: int) -> None:
+        ol = self.query_one("#fp-list", OptionList)
+        if ol.option_count == 0:
+            return
+        cur = ol.highlighted if ol.highlighted is not None else 0
+        ol.highlighted = max(0, min(ol.option_count - 1, cur + delta))
+
+    def action_highlight_next(self) -> None:
+        self._move_highlight(1)
+
+    def action_highlight_prev(self) -> None:
+        self._move_highlight(-1)
+
+    def action_highlight_page(self) -> None:
+        self._move_highlight(10)
+
+    def action_highlight_page_up(self) -> None:
+        self._move_highlight(-10)
 
 
 class _TokenChooser(ModalScreen):

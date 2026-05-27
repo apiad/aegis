@@ -95,6 +95,100 @@ async def test_file_picker_uses_indexer(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_file_picker_top_match_highlighted(tmp_path: Path):
+    """After filtering, the first match is always highlighted so Enter
+    opens it without arrow-key navigation."""
+    (tmp_path / "alpha.py").write_text("a")
+    (tmp_path / "beta.py").write_text("b")
+    os.chdir(tmp_path)
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from textual.widgets import Input, OptionList
+        inp = app.query_one(Input)
+        inp.value = "alpha"
+        await pilot.pause()
+        ol = app.query_one("#fp-list", OptionList)
+        assert ol.option_count >= 1
+        assert ol.highlighted == 0
+
+
+@pytest.mark.asyncio
+async def test_file_picker_arrow_keys_navigate(tmp_path: Path):
+    """Down/up arrows move highlight while Input keeps focus."""
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text("x")
+    os.chdir(tmp_path)
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from textual.widgets import Input, OptionList
+        inp = app.query_one(Input)
+        ol = app.query_one("#fp-list", OptionList)
+        assert ol.highlighted == 0
+        assert inp.has_focus
+        await pilot.press("down")
+        await pilot.pause()
+        assert ol.highlighted == 1
+        await pilot.press("down")
+        await pilot.pause()
+        assert ol.highlighted == 2
+        await pilot.press("up")
+        await pilot.pause()
+        assert ol.highlighted == 1
+        assert inp.has_focus
+
+
+@pytest.mark.asyncio
+async def test_file_picker_enter_opens_top_match(tmp_path: Path):
+    """Enter on a prefilled query dismisses with the top-match path."""
+    (tmp_path / "target.py").write_text("x")
+    (tmp_path / "other.py").write_text("y")
+    os.chdir(tmp_path)
+    result: list = []
+
+    class _Wrapper(App):
+        async def on_mount(self) -> None:
+            self.push_screen(FilePickerModal(prefill="target"),
+                             callback=lambda r: (result.append(r),
+                                                 self.exit()))
+
+    app = _Wrapper()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        for _ in range(5):
+            await pilot.pause()
+
+    assert result and result[0] is not None
+    assert result[0].name == "target.py"
+
+
+def test_resolve_unique_indexed_match_exact_path():
+    from aegis.tui.picker import resolve_unique_match
+    paths = ["src/foo.py", "tests/foo.py", "src/bar.py"]
+    assert resolve_unique_match("src/foo.py", paths) == "src/foo.py"
+
+
+def test_resolve_unique_indexed_match_basename_unique():
+    from aegis.tui.picker import resolve_unique_match
+    paths = ["src/foo.py", "tests/bar.py"]
+    assert resolve_unique_match("bar.py", paths) == "tests/bar.py"
+
+
+def test_resolve_unique_indexed_match_basename_ambiguous():
+    from aegis.tui.picker import resolve_unique_match
+    paths = ["src/foo.py", "tests/foo.py"]
+    assert resolve_unique_match("foo.py", paths) is None
+
+
+def test_resolve_unique_indexed_match_missing():
+    from aegis.tui.picker import resolve_unique_match
+    paths = ["src/foo.py"]
+    assert resolve_unique_match("nope.py", paths) is None
+
+
+@pytest.mark.asyncio
 async def test_token_chooser_returns_selected():
     result_holder: list = []
 
