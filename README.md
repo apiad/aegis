@@ -1,7 +1,10 @@
 # Aegis
 
-> **The meta-harness.** Drive Claude Code, Gemini CLI, and OpenCode side
-> by side from one calm terminal — and make them collaborate.
+> **The programmable multi-agent meta-harness.**
+>
+> Drives Claude Code, Gemini CLI, and OpenCode in one terminal, gives
+> them six primitives for working together, and lets you orchestrate
+> them with deterministic Python workflows and scheduled jobs.
 
 [![CI](https://github.com/apiad/aegis/actions/workflows/ci.yml/badge.svg)](https://github.com/apiad/aegis/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-apiad.github.io%2Faegis-blue)](https://apiad.github.io/aegis/)
@@ -30,31 +33,43 @@
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-## Above the harness, not beside it
+## What aegis is
 
-Most agentic frameworks (CrewAI, LangGraph, AutoGen, the whole long
-list) talk **directly to LLM providers** — they replace your coding
-agent and reimplement tool use, permissions, sandboxing, terminal
-integration. Aegis takes the opposite path:
+**Meta-harness.** Most agentic frameworks (CrewAI, LangGraph,
+AutoGen, the long list) talk directly to LLM providers — they replace
+your coding agent and reimplement tool use, permissions, sandboxing,
+terminal integration. Aegis sits *above* your existing coding agents
+and drives them over their structured protocols — `stream-json` for
+Claude Code, the Agent Client Protocol (ACP) for Gemini CLI and
+OpenCode, with a clean driver seam for whatever lands next. The
+harness keeps owning tool use, model selection, MCP hosting,
+sandboxing. Aegis owns the layer above — tabs, routing, delegation,
+persistence — the things a single-conversation CLI was never built to
+do.
 
-- **It sits above your existing coding agents** and drives them over
-  their structured protocols — `stream-json` for Claude Code, the Agent
-  Client Protocol (ACP) for Gemini CLI and OpenCode, and a clean driver
-  seam for whatever lands next.
-- **It doesn't reimplement the agent.** Tool use, sandboxing, MCP
-  hosting, model selection — that's the harness's job. Aegis's job is
-  the layer *above*: tabs, routing, delegation, persistence, the
-  things a single-conversation CLI was never built to do.
-- **It makes them collaborate.** Six composable coordination
-  primitives mean a Claude tab can hand off to a Gemini tab, dispatch
-  an OpenCode worker, subscribe to a shared canvas, share a live
-  terminal, fan a question out to a committee, or kick off a
-  deterministic Python workflow that drives all three.
+**Multi-agent.** Six composable coordination primitives, all wired
+into one MCP plane every spawned agent sees. **Inbox** for
+fire-and-forget context handoff. **Queue** for spawn-a-worker-on-
+demand dispatch. **Canvas** for shared markdown blackboards.
+**Terminal** for live shared PTYs. **Groups** for broadcast-and-
+gather across a committee. **Workflow** for deterministic Python
+orchestration. Mix providers freely — a Claude tab hands off to a
+Gemini tab; an OpenCode worker drops its result in your inbox; three
+agents co-author a canvas; a workflow drives all of them in lockstep.
 
-The harness wars are over. You probably already have your favorite (or
-two, or three). Aegis lets you keep them — and run them as a team.
+**Programmable.** The substrate is scriptable from the outside *and*
+the inside. Outside: `@workflow`-decorated Python functions that
+compose the six primitives into deterministic procedures (TDD loops,
+branch reviews, spec-to-plan-to-implementation pipelines), cron-
+scheduled or invoked on demand. Inside: spawned agents can mutate
+`.aegis.yaml` themselves through MCP — declare a new specialised
+agent profile, register a queue, drop a plugin dir, and dispatch work
+to it in the same session, no restart. The substrate extends from
+inside.
 
 ## Six primitives for agent coordination
+
+*— the multi-agent pillar.*
 
 Each primitive has one verb and lands the same way in the receiving
 agent's transcript: as a `✉` block with a sender tag, timestamp, and a
@@ -331,6 +346,8 @@ patterns in [docs/remote.md](docs/remote.md).
 
 ## Per-queue budgets
 
+*— the programmable pillar.*
+
 Declare rolling USD or output-token ceilings on any queue. The
 substrate enforces them at enqueue time — if admitting the task would
 push the queue over any configured ceiling, the enqueue is rejected
@@ -371,6 +388,8 @@ the only loud signal.
 See [docs/budget.md](docs/budget.md) for the full model.
 
 ## Scheduled workflows
+
+*— the programmable pillar.*
 
 Aegis runs a cron-style scheduler alongside QueueManager and the inbox
 router. Schedules are declared in `.aegis.yaml` and can be split into

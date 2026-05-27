@@ -10,7 +10,8 @@ hide:
 # aegis { .aegis-hero-mark }
 
 <p class="aegis-hero-tagline" markdown>
-The **meta-harness**. Drive Claude Code, Gemini CLI, and OpenCode side by side from one calm terminal — and make them *collaborate*.
+**The programmable multi-agent meta-harness.**<br><br>
+Drives Claude Code, Gemini CLI, and OpenCode in one terminal, gives them six primitives for working together, and lets you orchestrate them with deterministic Python workflows and scheduled jobs.
 </p>
 
 <div class="aegis-hero-cta" markdown>
@@ -49,35 +50,49 @@ lucid-knuth <span class="t-muted">·opus· opus·full</span>   ↑128k (94% cach
 
 <section class="aegis-section" markdown>
 
-## Above the harness, not beside it { .aegis-section-h }
+## What aegis is { .aegis-section-h }
 
-<p class="aegis-lead" markdown>
-Most agentic frameworks talk **directly to LLM providers** — they replace your coding agent. Aegis takes the opposite path: it sits **above** the coding agents you already use, drives them over their structured protocols, and adds a routing + delegation plane on top.
-</p>
+**Meta-harness.** Most agentic frameworks (CrewAI, LangGraph,
+AutoGen, the long list) talk directly to LLM providers — they replace
+your coding agent and reimplement tool use, permissions, sandboxing,
+terminal integration. Aegis sits *above* your existing coding agents
+and drives them over their structured protocols — `stream-json` for
+Claude Code, the Agent Client Protocol (ACP) for Gemini CLI and
+OpenCode, with a clean driver seam for whatever lands next. The
+harness keeps owning tool use, model selection, MCP hosting,
+sandboxing. Aegis owns the layer above — tabs, routing, delegation,
+persistence — the things a single-conversation CLI was never built to
+do.
 
-<div class="aegis-stack" markdown>
+**Multi-agent.** Six composable coordination primitives, all wired
+into one MCP plane every spawned agent sees. **Inbox** for
+fire-and-forget context handoff. **Queue** for spawn-a-worker-on-
+demand dispatch. **Canvas** for shared markdown blackboards.
+**Terminal** for live shared PTYs. **Groups** for broadcast-and-
+gather across a committee. **Workflow** for deterministic Python
+orchestration. Mix providers freely — a Claude tab hands off to a
+Gemini tab; an OpenCode worker drops its result in your inbox; three
+agents co-author a canvas; a workflow drives all of them in lockstep.
 
-<div class="col dim" markdown>
-#### Most agent frameworks
-Talk to LLM providers (OpenAI, Anthropic). Replace your coding agent. Reimplement tool use, permissions, sandboxing. Every provider needs new glue.
-</div>
-
-<div class="col" markdown>
-#### Aegis
-Talks to **agents** — Claude Code (stream-json), Gemini CLI (ACP), OpenCode (ACP). Doesn't replace them; orchestrates them. New providers slot in behind one driver seam.
-</div>
-
-</div>
-
-<p class="aegis-lead muted" markdown>
-The harness wars are over. You probably already have your favorite (or two, or three). Aegis lets you keep them — and make them work as a team.
-</p>
+**Programmable.** The substrate is scriptable from the outside *and*
+the inside. Outside: `@workflow`-decorated Python functions that
+compose the six primitives into deterministic procedures (TDD loops,
+branch reviews, spec-to-plan-to-implementation pipelines), cron-
+scheduled or invoked on demand. Inside: spawned agents can mutate
+`.aegis.yaml` themselves through MCP — declare a new specialised
+agent profile, register a queue, drop a plugin dir, and dispatch work
+to it in the same session, no restart. The substrate extends from
+inside.
 
 </section>
 
 <section class="aegis-section" markdown>
 
 ## Six primitives for agent coordination { .aegis-section-h }
+
+<p class="aegis-lead" markdown>
+*— the multi-agent pillar.*
+</p>
 
 <p class="aegis-lead" markdown>
 Multi-agent systems need more than a chat box. Aegis ships **six composable coordination primitives**, each with one verb, each delivered through the same calm `✉` block in the receiving agent's transcript.
