@@ -1,184 +1,18 @@
 # Aegis — Tasks / Next
 
-Working roadmap for what's next. Curated public roadmap lives in
-`docs/roadmap.md`; this file is the scratch/priority list.
+Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
+the public roadmap is `docs/roadmap.md`. This file is the scratch /
+priority list — keep it terse and current.
 
-## Shipped 2026-05-21
-
-### Queue dashboard v1 — **done**
-
-Observability surface for the queue substrate. Two pieces:
-
-- **Always-on strip.** One-line summary above every conversation's
-  status bar showing per-queue depth + most recent in-flight worker.
-  Adaptive format: 1 queue → full breakdown, 2–3 queues → compact
-  per-queue, 4+ queues → aggregate. Hidden when no queues configured.
-- **`Ctrl+D` modal dashboard.** Four bands — `QUEUES` (config + live
-  counts), `IN-FLIGHT`, `QUEUED`, `RECENT` (last 10 completed in
-  reverse time order) — left ⅔ of screen; `DetailPanel` on the right
-  ⅓ showing the selected task's identity, payload, lifecycle, and a
-  live tail of assistant text (ring buffer of 8 lines for running
-  workers, captured final text for completed). `↑↓` cursor, `Enter`
-  refresh, `>` jump to the worker's tab when one exists, `Esc`
-  close.
-
-New `QueueEvent` taxonomy + `QueueManager.subscribe(callback)` hook
-(committed-state push, observer exceptions swallowed). One
-`QueueDigest` service per app, subscribed once at boot; the strip and
-the dashboard both read from its `snapshot()`. Worker assistant-text
-events are routed through the digest's per-handle tail buffer. Live
-smoke test added (`tests/test_queue_dashboard_live.py`).
-
-Spec: `docs/superpowers/specs/2026-05-21-aegis-queue-dashboard-design.html`.
-Plan: `docs/superpowers/plans/2026-05-21-aegis-queue-dashboard-v1.md`.
-
-Hermetic: 309 passed (was 261; +47 from new tests + the priority-binding
-regression test). Implemented end-to-end on the VPS via the job
-substrate.
-
-## Shipped 2026-05-20
-
-### Task queue v1 — **done**
-
-Inter-agent delegation primitive shipped end-to-end (substrate + persistence
-+ config + MCP plane + TUI integration + live smoke). See
-`docs/superpowers/specs/2026-05-20-aegis-task-queue-design.html` and
-`docs/superpowers/plans/2026-05-20-aegis-task-queue-v1.html`.
-
-What's in:
-
-- `aegis_enqueue(queue, payload, from_handle, callback=true)` and
-  `aegis_task_status(task_id)` MCP tools.
-- `QueueManager` (FIFO + max-parallel cap + substrate-deterministic
-  dispatch; JSONL lifecycle log under `.aegis/state/queues/<queue>.jsonl`;
-  restart replay marks in-flight as `failed:interrupted`).
-- `InboxRouter` (per-handle delivery; wake-on-idle / mid-turn buffer /
-  turn-end chain via `AgentSession.deliver`; JSONL writethrough under
-  `.aegis/state/inboxes/<handle>.jsonl`).
-- Universal sender tagging: queue callbacks, peer handoffs, Telegram, and
-  the substrate all arrive at agent inboxes through one channel with a
-  consistent `> from <sender> · …` header.
-- `aegis_handoff` refactored to flow through the same `InboxRouter` —
-  one delivery surface for everything an agent receives.
-- `.aegis.py` grows `queues = {"<name>": {"agent": "<profile>",
-  "max_parallel": N}, …}` with fail-loud validation at boot.
-- TUI integration: queue workers appear as background tabs (no focus
-  steal), per-pane inbox bind/unbind, `_SessionManagerAdapter` bridges
-  Textual's async mount lifecycle to `QueueManager.spawn`'s sync seam.
-- 196 hermetic tests + 1 live smoke covering the full chain.
-
-### Delegation — **answered (subsumed by task queue)**
-
-What we wrote for delegation: a deterministic substrate primitive
-(`aegis_enqueue`) that returns a `task_id` immediately and, when the
-spawned worker finishes, delivers the result back to the producer's
-inbox as a normal user-message turn. Producer keeps working between
-enqueue and callback arrival. Workers are ephemeral (one task per
-spawn). Queues are statically configured in `.aegis.py`.
-
-The brainstorm question "delegation = `spawn` + `handoff` (compose) vs.
-delegation as its own primitive where the result auto-returns" was
-answered by going with the second option: queues + callbacks form the
-auto-return primitive; `aegis_handoff` stays as a separate
-fire-and-forget peer-to-peer primitive (now riding the same inbox
-channel for shape symmetry).
-
-## Next up
-
-### 1. Workflow scaffold v1 — **shipped (2026-05-20)**
-
-`@workflow` decorator + auto-registry, `WorkflowEngine` runtime
-(`delegate` / `send` / `drain` / `spawn` / `close` / `bash` / `log` /
-`caller_handle`), `runner.run_workflow` with auto-drain + auto-close,
-`aegis workflow list/run` CLI, and `aegis_run_workflow` MCP tool — all
-composed on the v1 queue + inbox. Canonical example `examples/tdd_step.py`
-plus a live e2e test (`tests/test_workflow_live.py`, marker `live`,
-auto-skip when `claude` is off PATH) ride along. Plan:
-`docs/superpowers/plans/2026-05-20-aegis-workflow-scaffold-v1.md`.
-
-### 1.5. Multi-provider drivers v2 (ACP) — **shipped (2026-05-20)**
-
-Replaces the v1 one-shot CLI drivers with ACP-based versions on the
-official `agent-client-protocol` Python SDK. **Both v1 limitations
-dissolved against real binaries**:
-
-- **Multi-turn per session.** `send()` calls `conn.prompt()` on the
-  same `session_id`; conversation state persists. Live-tested:
-  "memorize 4217 → recite it back" works on both Gemini and OpenCode.
-- **Per-session aegis-MCP injection.** `new_session(mcp_servers=[
-  {type:http, name:aegis, url:<mcp_url>, headers:[]}])` — agent
-  connects to our HTTP MCP server for that session only. Live-tested:
-  spun up a FastMCP server, both providers called the tool. Full
-  feature parity with Claude's `--mcp-config`.
-
-Architecture: one generic `AcpSession`+`AcpDriver` in `drivers/acp.py`;
-two ~10-line provider shims (`GeminiDriver`, `OpenCodeDriver`); per-CLI
-hand parsers deleted (ACP carries the event taxonomy). `_AegisAcpClient`
-translates `session_update` notifications into aegis Event types
-(AssistantText, AssistantThinking, ToolUse, ToolResult).
-
-The earlier provider-config classes (`ClaudeCode` / `GeminiCLI` /
-`OpenCode` in `config.py`) and the three queues (`impl`, `impl-gemini`,
-`impl-opencode`) in `.aegis.py` from the v1 work all carry over
-unchanged.
-
-Live tests (6, ~165s total): round-trip + multi-turn + MCP-injection
-per provider. Hermetic: 261 passed (was 277; -16 from deleted v1
-parsers).
-
-Three driver-shape gotchas captured in code comments + playtest
-findings (`.playground/acp-probe/FINDINGS.md`):
-
-- ACP SDK invokes `on_connect` synchronously, not as a coroutine.
-- Notifications dispatch as separate supervised tasks — `send()` must
-  yield to the loop a few times after `prompt()` returns so
-  notification handlers complete before the synthesized Result lands.
-- OpenCode's `opencode acp` doesn't accept `-m <model>` (Gemini's
-  does). Model-flag injection lives per-driver.
-
-Spec: `vault/Atlas/Architecture/2026-05-20-aegis-acp-drivers-design.md`.
-Plan: `vault/Atlas/Architecture/plans/2026-05-20-aegis-acp-drivers-v2.md`.
-
-### 2. Queue v1 polish
-
-Small, all on top of a shipped substrate:
-
-- **Worker tab handle suffix** (T4.1 deferred) — `<handle> · <queue>#<task>`
-  in the TUI tab bar so workers are visible at a glance. Touches
-  `tui/widgets.py`, `tui/app.py`, `tui/pane.py`. Textual lifecycle was
-  flagged as exploratory in the plan; should be straightforward now that
-  the adapter is proven.
-- **`aegis_cancel(task_id)` MCP tool** — currently cancellation flows
-  through `aegis_handoff` to the worker's inbox; a dedicated tool would
-  be cleaner.
-- **`aegis_delegate` sync wrapper** — single MCP call that does
-  enqueue + await internally for callers that want the simple sync
-  shape. Composes on top of the existing primitives.
-- **Telegram delivery sanity test** (T4.3 deferred) — verify the
-  substrate header survives chunking and reaches the Telegram chat.
-
-### 3. Sequential handoff (vision Phase 4)
-
-Distinct from live handoff: agent A summarises its current task state
-and *retires*; agent B (potentially a different harness) is instantiated
-and continues from where A left off. Used for long tasks that need to
-migrate (e.g. laptop → VPS) or where the original context window is
-exhausted. Standalone, no dependencies on the workflow scaffold.
-
-### 4. Long-lived bash terminals (vision Phase 4)
-
-Bash sessions reified as named Aegis objects that agents can attach to,
-observe, and inject into — replaces the Bash-as-tool-call pattern. The
-`sender: terminal:<name>` slot is already reserved in the inbox tag
-schema. Standalone.
+Current release: **v0.11.2** (file indexer + picker UX, 2026-05-26).
 
 ## Time-sensitive (June 2026 billing changes)
 
-### ⚠️ Before June 15 — migrate Claude driver from `claude -p` to REPL mode
+### ⚠️ Before June 15 — Claude driver: `claude -p` → REPL mode
 
 Anthropic splits interactive vs programmatic billing on June 15. `claude -p`
 (current driver) hits the new metered credit pool (full API rates). Interactive
-REPL mode stays on the subscription bucket unchanged.
+REPL stays on the subscription bucket unchanged.
 
 Change: strip `-p` from spawn argv; write prompts to `proc.stdin` instead of
 passing as a CLI argument. Output stream-JSON protocol is identical. The VS Code
@@ -186,28 +20,58 @@ Claude extension already works this way.
 
 See `vault/Atlas/Architecture/2026-05-25-aegis-harness-roadmap.md`.
 
-### ⚠️ Before June 18 — add `GEMINI_API_KEY` support to Gemini agent profile
+### ⚠️ Before June 18 — `GEMINI_API_KEY` support in Gemini agent profile
 
 Gemini CLI's personal OAuth dies June 18 for Google AI Pro/Ultra accounts.
-Fix: add optional `api_key` field to GeminiCLI agent profile config; inject
+Fix: add optional `api_key` field to `GeminiCLI` profile config; inject
 `GEMINI_API_KEY=<value>` into the subprocess env at spawn time. User gets an
 API key from Google AI Studio (free tier available) and puts it in `.aegis.py`.
 No driver changes, no ACP changes — the subprocess just picks up the env var.
 
-### 5. Copilot ACP driver (after June 1 billing transition is confirmed)
+### After June 1 billing transition — Copilot ACP driver
 
 GitHub Copilot CLI supports ACP since Jan 2026: `copilot --acp` (stdio).
 Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
 Auth goes through `gh auth login` (no separate token management).
 
-### 6. OpenAI Codex JSON-RPC driver
+## Active
+
+### Queue v1 polish
+
+Small follow-ups on top of the shipped substrate:
+
+- **Worker tab handle suffix** (T4.1 deferred) — `<handle> · <queue>#<task>`
+  in the TUI tab bar so workers are visible at a glance. Touches
+  `tui/widgets.py`, `tui/app.py`, `tui/pane.py`.
+- **`aegis_cancel(task_id)` MCP tool** — cancellation currently flows through
+  `aegis_handoff` to the worker's inbox; a dedicated tool would be cleaner.
+- **`aegis_delegate` sync wrapper** — single MCP call that does enqueue + await
+  internally for callers that want the simple sync shape. Composes on the
+  existing primitives.
+- **Telegram delivery sanity test** (T4.3 deferred) — verify the substrate
+  header survives chunking and reaches the Telegram chat.
+
+### Sequential handoff — re-scope
+
+Original framing (vision Phase 4): agent A summarises its current task state
+and retires; agent B (potentially a different harness) is instantiated and
+continues from where A left off.
+
+Adjacent work has since shipped (workflow `send/drain/caller_handle`, inbox
+arrivals with a visible block, canvas substrate, agent groups, remote plane).
+Worth re-scoping before picking up — figure out what's left vs what's already
+in the substrate.
+
+### OpenAI Codex JSON-RPC driver
 
 Codex CLI exposes a bidirectional JSON-RPC app server (`codex exec --json`).
 Different from ACP but documented and stable. Needs a custom `CodexDriver`
 implementing `HarnessSession` over JSON-RPC. Auth: `OPENAI_API_KEY` env var.
 No deadline pressure.
 
-### 7. Antigravity CLI (Gemini replacement, after June 18)
+## Backlog
+
+### Antigravity CLI (after June 18)
 
 Google's closed-source replacement for Gemini CLI. Probe for ACP support after
 it ships (`agy --help | grep acp`). If ACP confirmed: three-line shim identical
