@@ -10,7 +10,7 @@ def context_window_for(harness: str, model: str) -> int:
     Hardcoded; edit when a new model lands or a 1m beta opens up."""
     m = (model or "").lower()
     if harness == "claude-code":
-        if "1m" in m:
+        if "1m" in m or "opus" in m:
             return 1_000_000
         return 200_000
     if harness == "gemini":
