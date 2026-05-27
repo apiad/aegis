@@ -66,6 +66,34 @@ def test_extract_backtick_tokens():
     assert _extract_backtick_tokens("") == []
 
 
+@pytest.mark.asyncio
+async def test_file_picker_uses_indexer(tmp_path: Path):
+    """Picker reads from app._file_indexer when available."""
+    from aegis.tui.file_index import FileIndexer
+
+    (tmp_path / "indexed.py").write_text("x")
+
+    class _AppWithIndexer(App):
+        def __init__(self) -> None:
+            super().__init__()
+            self._file_indexer = FileIndexer()
+            self._file_indexer.start(tmp_path)
+            self._file_indexer._ready.wait(timeout=3)
+
+        def compose(self) -> ComposeResult:
+            yield FilePickerModal()
+
+    app = _AppWithIndexer()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from textual.widgets import OptionList
+        ol = app.query_one("#fp-list", OptionList)
+        await pilot.pause()
+        option_ids = [ol.get_option_at_index(i).id
+                      for i in range(ol.option_count)]
+        assert any("indexed.py" in (oid or "") for oid in option_ids)
+
+
 class _Host(App):
     def __init__(self, prefill: str = "") -> None:
         super().__init__()

@@ -87,6 +87,35 @@ class FilePickerModal(ModalScreen):
             yield OptionList(id="fp-list")
 
     def on_mount(self) -> None:
+        indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None and indexer.ready:
+            self._all_paths = indexer.paths
+            self._boot_input()
+        elif indexer is not None:
+            ol = self.query_one("#fp-list", OptionList)
+            ol.add_option(Option("⏳ indexing files…", id=None))
+            self.set_interval(0.15, self._poll_indexer)
+            self.query_one("#fp-input", Input).focus()
+        else:
+            self._sync_walk()
+            self._boot_input()
+
+    def _boot_input(self) -> None:
+        inp = self.query_one("#fp-input", Input)
+        if self._prefill:
+            inp.value = self._prefill
+        inp.focus()
+        self._filter(self._prefill)
+
+    def _poll_indexer(self) -> None:
+        indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is None or not indexer.ready:
+            return
+        self._all_paths = indexer.paths
+        self._boot_input()
+
+    def _sync_walk(self) -> None:
+        """Fallback synchronous walk (used when no FileIndexer is attached)."""
         cwd = Path.cwd()
         paths: list[str] = []
         try:
@@ -101,11 +130,6 @@ class FilePickerModal(ModalScreen):
         except PermissionError:
             pass
         self._all_paths = paths
-        inp = self.query_one("#fp-input", Input)
-        if self._prefill:
-            inp.value = self._prefill
-        inp.focus()
-        self._filter(self._prefill)
 
     def _filter(self, text: str) -> None:
         ol = self.query_one("#fp-list", OptionList)
