@@ -5,8 +5,8 @@ polling. File changes on disk trigger an auto-reload.
 
 EDIT mode (press `e`): TextArea becomes writable. File changes on disk
 show a warning bar with [r] reload / [k] keep options. Ctrl+S saves.
-Esc exits edit mode (leaving modifications in memory until saved or the
-tab is closed).
+Esc exits edit mode — if the buffer is dirty, a confirm bar offers
+[d] discard / [esc] keep editing instead of exiting silently.
 """
 from __future__ import annotations
 
@@ -41,6 +41,9 @@ class FileTab(Widget):
     FileTab #ft-warn { height: 1; background: $warning; color: $text;
                        padding: 0 2; display: none; }
     FileTab #ft-warn.visible { display: block; }
+    FileTab #ft-cancel { height: 1; background: $warning; color: $text;
+                         padding: 0 2; display: none; }
+    FileTab #ft-cancel.visible { display: block; }
     FileTab TextArea { height: 1fr; }
     """
 
@@ -61,6 +64,7 @@ class FileTab(Widget):
         self._modified: bool = False
         self._mtime: float = 0.0
         self._disk_changed: bool = False
+        self._cancel_pending: bool = False
 
     # --- compose ----------------------------------------------------
 
@@ -70,6 +74,9 @@ class FileTab(Widget):
             "⚠ file changed on disk — [r] reload (discard edits)  "
             "[k] keep mine",
             id="ft-warn", markup=False)
+        yield Static(
+            "⚠ unsaved edits — [d] discard  [esc] keep editing",
+            id="ft-cancel", markup=False)
         lang = _EXT_LANGUAGE.get(self._path.suffix.lower())
         yield TextArea(language=lang, read_only=True, id="ft-editor")
 
@@ -153,11 +160,55 @@ class FileTab(Widget):
         if self._disk_changed:
             self._hide_disk_changed_warning()
 
+    def key_d(self) -> None:
+        if self._cancel_pending:
+            self._discard_and_exit_edit()
+
     def key_escape(self) -> None:
-        if self._edit_mode:
-            self._edit_mode = False
+        if not self._edit_mode:
+            return
+        if self._cancel_pending:
+            self._hide_cancel_prompt()
+            return
+        if self._modified:
+            self._show_cancel_prompt()
+            return
+        self._edit_mode = False
+        self.query_one("#ft-editor", TextArea).read_only = True
+        self._refresh_status()
+
+    def _show_cancel_prompt(self) -> None:
+        self._cancel_pending = True
+        # Park the TextArea read-only so `d`/`escape` don't get typed
+        # into the buffer while the confirm bar is up.
+        with contextlib.suppress(Exception):
             self.query_one("#ft-editor", TextArea).read_only = True
-            self._refresh_status()
+        with contextlib.suppress(Exception):
+            self.query_one("#ft-cancel", Static).add_class("visible")
+
+    def _hide_cancel_prompt(self) -> None:
+        was_pending = self._cancel_pending
+        self._cancel_pending = False
+        with contextlib.suppress(Exception):
+            self.query_one("#ft-cancel", Static).remove_class("visible")
+        if was_pending and self._edit_mode:
+            with contextlib.suppress(Exception):
+                self.query_one("#ft-editor", TextArea).read_only = False
+
+    def _discard_and_exit_edit(self) -> None:
+        self._edit_mode = False
+        editor = self.query_one("#ft-editor", TextArea)
+        editor.read_only = True
+        try:
+            content = self._path.read_text(errors="replace")
+            self._mtime = self._path.stat().st_mtime
+            editor.load_text(content)
+        except OSError:
+            pass
+        self._modified = False
+        self._hide_cancel_prompt()
+        self._hide_disk_changed_warning()
+        self._refresh_status()
 
     def on_text_area_changed(self, _event: TextArea.Changed) -> None:
         if self._edit_mode:

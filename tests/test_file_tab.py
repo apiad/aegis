@@ -104,3 +104,76 @@ async def test_file_tab_escape_exits_edit(tmp_path: Path):
         await pilot.press("escape")
         await pilot.pause()
         assert tab.query_one(TextArea).read_only is True
+
+
+@pytest.mark.asyncio
+async def test_file_tab_escape_when_modified_shows_cancel_prompt(
+        tmp_path: Path):
+    f = tmp_path / "dirty.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        editor.load_text("x = 2")
+        tab._modified = True  # short-circuit Changed event timing
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert tab._cancel_pending is True
+        assert tab._edit_mode is True
+        # editor is parked read-only while the confirm bar is up so the
+        # bar's keystrokes don't get typed into the buffer.
+        assert editor.read_only is True
+
+
+@pytest.mark.asyncio
+async def test_file_tab_cancel_prompt_d_discards(tmp_path: Path):
+    f = tmp_path / "discard.py"
+    f.write_text("original")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        editor.load_text("MUTATED")
+        tab._modified = True
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        assert tab._cancel_pending is False
+        assert tab._edit_mode is False
+        assert tab._modified is False
+        assert editor.read_only is True
+        assert editor.text.rstrip("\n") == "original"
+
+
+@pytest.mark.asyncio
+async def test_file_tab_cancel_prompt_escape_keeps_editing(tmp_path: Path):
+    f = tmp_path / "keep.py"
+    f.write_text("original")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        editor.load_text("MUTATED")
+        tab._modified = True
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert tab._cancel_pending is False
+        assert tab._edit_mode is True
+        assert editor.read_only is False
+        assert "MUTATED" in editor.text
