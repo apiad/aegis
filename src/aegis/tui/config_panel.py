@@ -11,17 +11,102 @@ from io import StringIO
 from pathlib import Path
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from textual import work
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
+from textual.binding import Binding
+from textual.containers import Vertical, VerticalScroll
+from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Static
+from textual.widgets import Input, Label, Select, Static
 
 from aegis.config import ConfigError, load_queues, load_telegram_config
 from aegis.config.yaml_loader import load_config as _load_yaml_config
 from aegis.tui.state import AgentState
+
+
+class AddAgentModal(ModalScreen[bool]):
+    """Modal: gather slug/provider/model/effort/permission, call
+    add_agent on save. Dismisses True on success, False on cancel."""
+
+    BINDINGS = [
+        Binding("ctrl+s", "save", show=False, priority=True),
+        Binding("escape", "cancel", show=False, priority=True),
+    ]
+
+    DEFAULT_CSS = """
+    AddAgentModal { align: center middle; }
+    AddAgentModal #agm-box {
+        width: 60; height: auto;
+        border: round $panel; background: $surface; padding: 1 2;
+    }
+    AddAgentModal Label { margin-top: 1; }
+    AddAgentModal Input, AddAgentModal Select {
+        width: 100%; margin-bottom: 0;
+    }
+    AddAgentModal #agm-err { color: $error; margin-top: 1; height: auto; }
+    """
+
+    def __init__(self, root: Path) -> None:
+        super().__init__()
+        self._root = root
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="agm-box"):
+            yield Label("Add agent — Ctrl+S save, Esc cancel",
+                        markup=False)
+            yield Label("slug")
+            yield Input(placeholder="e.g. main", id="agm-slug")
+            yield Label("provider")
+            yield Select(
+                [("claude-code", "claude-code"), ("gemini", "gemini"),
+                 ("opencode", "opencode")],
+                value="claude-code", allow_blank=False, id="agm-provider")
+            yield Label("model")
+            yield Input(placeholder="e.g. opus", id="agm-model")
+            yield Label("effort (claude-code only)")
+            yield Select(
+                [("low", "low"), ("medium", "medium"),
+                 ("high", "high"), ("max", "max")],
+                value="high", allow_blank=False, id="agm-effort")
+            yield Label("permission")
+            yield Select(
+                [("read", "read"), ("write", "write"),
+                 ("full", "full"), ("auto", "auto")],
+                value="auto", allow_blank=False, id="agm-permission")
+            yield Static("", id="agm-err", markup=False)
+
+    def on_mount(self) -> None:
+        self.query_one("#agm-slug", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_save(self) -> None:
+        slug = self.query_one("#agm-slug", Input).value.strip()
+        model = self.query_one("#agm-model", Input).value.strip()
+        provider = self.query_one("#agm-provider", Select).value
+        effort = self.query_one("#agm-effort", Select).value
+        permission = self.query_one("#agm-permission", Select).value
+        err = self.query_one("#agm-err", Static)
+        if not slug:
+            err.update("slug is required")
+            return
+        if not model:
+            err.update("model is required")
+            return
+        # effort only applies to claude-code.
+        effort_arg = effort if provider == "claude-code" else None
+        try:
+            from aegis.config.edit import add_agent
+            add_agent(self._root, slug,
+                      provider=str(provider), model=model,
+                      effort=effort_arg, permission=str(permission))
+        except ConfigError as e:
+            err.update(str(e))
+            return
+        self.dismiss(True)
 
 
 class ConfigPanel(Widget):
@@ -31,6 +116,10 @@ class ConfigPanel(Widget):
     TabBar machinery can render it alongside ConversationPane and the
     other tab types.
     """
+
+    BINDINGS = [
+        Binding("a", "add_agent", "Add agent", show=False, priority=True),
+    ]
 
     DEFAULT_CSS = """
     ConfigPanel { layout: vertical; height: 1fr; background: $background; }
@@ -198,6 +287,15 @@ class ConfigPanel(Widget):
 
     async def close(self) -> None:
         pass
+
+    # --- keybindings ------------------------------------------------
+
+    @work
+    async def action_add_agent(self) -> None:
+        """Open AddAgentModal; refresh panel on success."""
+        result = await self.app.push_screen_wait(AddAgentModal(self._root))
+        if result:
+            self.refresh_view()
 
 
 def _rich_to_text(renderable) -> Text:

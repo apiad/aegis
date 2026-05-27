@@ -167,7 +167,7 @@ class AegisApp(App):
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
-        Binding("ctrl+comma", "open_config_panel", "Config", priority=True),
+        Binding("f2", "open_config_panel", "Config", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
@@ -251,6 +251,25 @@ class AegisApp(App):
         await self._mcp.start()
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
+
+        # Bootstrap mode: no agents declared yet → open ConfigPanel as
+        # the only tab and skip the normal session spawn. The watchdog
+        # / explicit F2 refresh path picks up the first agent and
+        # the user can then close the panel and `/new` to start a real
+        # session (or relaunch — re-binding running session managers
+        # to a changed agent set is slice 16).
+        if not self._agents:
+            from aegis.tui.config_panel import ConfigPanel
+            panel = ConfigPanel(Path.cwd())
+            self._panes.append(panel)
+            cs = self.query_one(ContentSwitcher)
+            await cs.mount(panel)
+            cs.current = panel.id
+            self._refresh_tabbar()
+            panel.focus_input()
+            self.set_interval(1.0, self._tick)
+            return
+
         # TODO(Task 11/13 / session-persistence-v1): wire bootstrap_resume here.
         # bootstrap_resume() is now the pure orchestrator — it classifies tabs
         # via plan_resume, calls driver.resume() per resumable tab, and returns

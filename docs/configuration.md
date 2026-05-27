@@ -6,14 +6,23 @@ YAML**, parsed once at startup. Two sections are required: `agents:`
 `agents:` to use when no `--agent` is specified). Queues, Telegram,
 schedules, remotes, groups, and workflow plugins are optional.
 
-`aegis init` generates a starter file. The rest of this page is the
-reference.
+Two paths to author the file:
+
+- **Interactive (TUI ConfigPanel).** Launch `aegis` in any directory.
+  With no `.aegis.yaml` present, the TUI drops you straight into the
+  ConfigPanel; press `a` to add an agent, save, and you're ready.
+  Reach the same panel mid-session via `F2`.
+- **Scriptable (CLI).** `aegis config agent add <slug> --provider …
+  --model …` writes the same file. See [CLI surface](#cli-surface)
+  below for the full set of verbs.
+
+The rest of this page is the reference for what each section means.
 
 ## Search
 
 `aegis` walks up from the current directory and uses the closest
 ancestor containing a `.aegis.yaml`. With no `.aegis.yaml` anywhere,
-`aegis` refuses to start.
+`aegis` launches the TUI ConfigPanel so you can create one in place.
 
 ## Agents
 
@@ -259,6 +268,26 @@ Default off (key absent or empty block). Gates compose with AND — both
 empty means "anything that reaches the port is trusted." See
 [Remote plane](remote.md) for the full surface, error model, and
 patterns.
+
+## CLI surface
+
+Every section above is also reachable through `aegis config`:
+
+```
+aegis config show [--json]
+aegis config agent list / add <slug> --provider --model [--effort] [--permission] / remove <slug>
+aegis config queue list / add <name> --agent --max-parallel [--budget …]+ / remove <name>
+aegis config telegram show / set [--token --chat-id --auto-prompt
+                                  + matching --clear-* variants]
+aegis config default-agent <slug>
+aegis config plugin-dir list / add <path> / remove <path>
+```
+
+Budget spec: `<constraint>:<limit>:<window>`, e.g.
+`usd:1.00:1h` or `output_tokens:500000:1h`. The `--budget` flag is
+repeatable. Every writing verb validates against the YAML loader's
+invariants before persisting; an invalid argument leaves the on-disk
+file unchanged.
 
 ## Worked example
 

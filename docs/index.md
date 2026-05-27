@@ -214,7 +214,7 @@ The TUI is calm and dense. The metrics are honest. The substrate persists.
 
 ```bash
 pip install aegis-harness   # Python 3.13+
-aegis init                  # interactive wizard
+aegis            # TUI; opens ConfigPanel if no .aegis.yaml
 aegis                       # full-screen TUI
 ```
 

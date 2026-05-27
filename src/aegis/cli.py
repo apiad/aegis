@@ -43,46 +43,12 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-@app.command()
-def init(
-    force: bool = typer.Option(
-        False, "--force", "-f",
-        help="Overwrite any existing .aegis.yaml and ignore upstream ones."),
-) -> None:
-    """Interactive wizard to create a .aegis.yaml.
-
-    Detects installed agent CLIs (claude, gemini, opencode) and walks
-    you through adding agents and queues. Refuses to run if any
-    .aegis.yaml exists in the current dir or an ancestor (pass --force
-    to override + overwrite).
-    """
-    upstream = find_project_root()
-    target = (upstream or Path.cwd()) / ".aegis.yaml"
-
-    if upstream is not None and not force:
-        _console.print(
-            f"[red]aegis already configured at "
-            f"[bold]{upstream / '.aegis.yaml'}[/bold].[/red]\n"
-            f"[dim]Pass --force to overwrite and re-run the wizard.[/dim]")
-        raise typer.Exit(1)
-
-    if target.exists() and not force:
-        _console.print(
-            f"[red]{target} already exists.[/red]\n"
-            f"[dim]Pass --force to overwrite.[/dim]")
-        raise typer.Exit(1)
-
-    from aegis.init_wizard import render_aegis_yaml, run_wizard
-    config = run_wizard(_console)
-    if config is None:
-        _console.print("[yellow]aborted; no file written.[/yellow]")
-        raise typer.Exit(1)
-
-    target.write_text(render_aegis_yaml(config))
-    _console.print(f"\n[green]Wrote {target}[/green]")
-    _console.print(
-        f"[dim]Run [bold]aegis[/bold] to start the interactive TUI, "
-        f"or [bold]aegis serve[/bold] for headless mode.[/dim]")
+# `aegis init` was retired in the .aegis.yaml migration. To bootstrap:
+#   - Run `aegis` in an empty directory — the TUI opens the ConfigPanel
+#     so you can add agents interactively.
+#   - Or use the scriptable CLI verbs:
+#     `aegis config agent add main --provider claude-code --model opus
+#                                  --effort high`.
 
 
 @app.callback(invoke_without_command=True)
@@ -102,25 +68,36 @@ def run(
     """Run the interactive aegis session (default when no subcommand)."""
     if ctx.invoked_subcommand is not None:
         return
-    try:
-        agents, default_agent = load_config()
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
-    name = agent or default_agent
-    if name not in agents:
-        _console.print(
-            f"[red]Unknown agent {name!r}. Known: {sorted(agents)}[/red]")
-        raise typer.Exit(1)
-
+    # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
+    # TUI ConfigPanel instead of refusing. Once the user saves at least
+    # one agent + a default_agent, normal session spawn becomes
+    # available (currently via app relaunch — slice 16 will make this
+    # in-place via the watchdog reload path).
     root = find_project_root() or Path.cwd()
-    effective_cwd = str(root) if cwd == "." else cwd
+    if not (root / ".aegis.yaml").is_file():
+        agents: dict = {}
+        default_agent = ""
+        queues: dict = {}
+    else:
+        try:
+            agents, default_agent = load_config()
+        except ConfigError as e:
+            _console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        name = agent or default_agent
+        if name not in agents:
+            _console.print(
+                f"[red]Unknown agent {name!r}. "
+                f"Known: {sorted(agents)}[/red]")
+            raise typer.Exit(1)
+        default_agent = name
+        try:
+            queues = load_queues(root)
+        except ConfigError as e:
+            _console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
 
-    try:
-        queues = load_queues(root)
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+    effective_cwd = str(root) if cwd == "." else cwd
 
     try:
         pick_workspace_to_resume(state_dir(Path.cwd()), clean=clean)
@@ -134,8 +111,8 @@ def run(
         return get_driver(profile.harness).session(
             profile, effective_cwd, mcp_url, handle)
 
-    AegisApp(agents, name, make_session, AegisMCP(), queues=queues,
-             clean=clean).run()
+    AegisApp(agents, default_agent, make_session, AegisMCP(),
+             queues=queues, clean=clean).run()
 
 
 @dataclass

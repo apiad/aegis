@@ -2,8 +2,12 @@
 
 ## Running
 
-    aegis init && aegis           # full-screen TUI
+    aegis                         # full-screen TUI (opens ConfigPanel
+                                  # when there's no .aegis.yaml)
     aegis serve                   # headless: MCP plane + optional Telegram
+    aegis config ...              # scriptable .aegis.yaml authoring
+                                  # (agent / queue / telegram / default-agent
+                                  #  / plugin-dir / show)
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
@@ -22,7 +26,13 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 
 ## Layout
 
-- `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis init`)
+- `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis serve`,
+  `aegis workflow`, `aegis budget`, `aegis schedule`)
+- `src/aegis/cli_config.py` - the `aegis config ...` subapp; all writing
+  verbs route through `aegis.config.edit` helpers.
+- `src/aegis/tui/config_panel.py` - the TUI ConfigPanel tab + AddAgentModal;
+  mounted at boot when there's no `.aegis.yaml`, also reachable mid-session
+  via `F2`.
 - `src/aegis/config/__init__.py` - Agent / Permission / Effort /
   Provider dataclasses + `find_project_root`, `load_config`,
   `load_queues`, `load_telegram_config` — all YAML-backed thin

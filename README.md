@@ -406,13 +406,23 @@ Requires Python 3.13+ and at least one of: `claude`, `gemini`, or
 ## Quickstart
 
 ```bash
-aegis init     # interactive wizard — detects installed CLIs, writes .aegis.py
-aegis          # full-screen TUI
+aegis          # full-screen TUI; opens ConfigPanel if no .aegis.yaml
 ```
 
-The wizard finds whichever agent CLIs you have installed and walks you
-through picking a model, permission mode, and optional queues. The
-generated `.aegis.py` is plain Python — edit it freely afterward.
+With no `.aegis.yaml` in the directory, `aegis` drops you straight
+into the TUI ConfigPanel — press `a` to add your first agent and
+save. The scriptable equivalent:
+
+```bash
+aegis config agent add main --provider claude-code \
+                            --model opus --effort high
+aegis                       # start the TUI normally
+```
+
+`.aegis.yaml` is declarative YAML — edit it by hand or use
+`aegis config` verbs (every section reachable: agents, queues,
+telegram, default-agent, plugin-dir). Mid-session, reach the
+ConfigPanel via `F2`.
 
 ## Keys
 

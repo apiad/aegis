@@ -12,7 +12,8 @@
   install and run aegis.
 
 You can mix and match — install only the providers you actually use.
-`aegis init` detects what's available and offers only those.
+The ConfigPanel + `aegis config agent add` only let you wire up
+providers that are actually on `PATH`.
 
 ## Install
 
@@ -36,15 +37,21 @@ is `aegis` (so `pip install aegis-harness` then `from aegis import …`).
 ## First run
 
 ```bash
-aegis init     # interactive wizard — writes .aegis.yaml
-aegis          # full-screen TUI
+aegis            # full-screen TUI; opens ConfigPanel if no .aegis.yaml
 ```
 
-`aegis init` is a Rich-powered wizard. It scans your `PATH` for the
-supported CLIs, lets you pick a model + permission mode for each,
-optionally configures queues, and writes a `.aegis.yaml` to your current
-directory. Re-running `aegis init` refuses to overwrite an existing
-`.aegis.yaml` unless you pass `--force`.
+When you launch `aegis` in a directory without a `.aegis.yaml`, the
+TUI drops you straight into the ConfigPanel — press `a` to add your
+first agent and save. Alternatively, the scriptable CLI:
+
+```bash
+aegis config agent add main --provider claude-code \
+                            --model opus --effort high
+```
+
+writes a minimal `.aegis.yaml` with one agent and sets it as the
+default. `aegis config show` prints the current file; `aegis config
+agent list` enumerates declared profiles.
 
 ## Verify
 
@@ -58,7 +65,7 @@ If you see `aegis 0.3.0` (or higher), you're good.
 
 `aegis` walks up from the current directory to find the closest
 ancestor containing a `.aegis.yaml`. With no config anywhere, it
-refuses to start and points you at `aegis init`.
+launches the TUI ConfigPanel so you can set one up in place.
 
 ## Development install (from source)
 
