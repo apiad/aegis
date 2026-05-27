@@ -355,6 +355,8 @@ def build_server(bridge: AppBridge) -> FastMCP:
     server = FastMCP("aegis")
     server.tool(aegis_meta)
 
+    config_write_lock = asyncio.Lock()
+
     # Lazily attach a WorkflowRunner so the MCP workflow tools have a
     # canonical place to track running tasks + pending human questions.
     if getattr(bridge, "workflow_runner", None) is None:
