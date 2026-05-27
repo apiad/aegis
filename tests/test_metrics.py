@@ -1,9 +1,67 @@
 from aegis.events import TokenUsage
-from aegis.tui.metrics import SessionMetrics
+from aegis.tui.metrics import SessionMetrics, context_window_for
 
 
 def _u(inp=0, cc=0, cr=0, out=0):
     return TokenUsage(input=inp, cache_creation=cc, cache_read=cr, output=out)
+
+
+# --- context window lookup --------------------------------------------
+
+def test_context_window_for_claude_code_default_200k():
+    assert context_window_for("claude-code", "opus") == 200_000
+    assert context_window_for("claude-code", "sonnet") == 200_000
+    assert context_window_for("claude-code", "claude-opus-4-7") == 200_000
+
+
+def test_context_window_for_claude_code_1m_variant():
+    assert context_window_for("claude-code", "sonnet-1m") == 1_000_000
+    assert context_window_for("claude-code", "claude-sonnet-4-5-1m") == 1_000_000
+
+
+def test_context_window_for_gemini_is_1m():
+    assert context_window_for("gemini", "gemini-2.5-pro") == 1_048_576
+    assert context_window_for("gemini", "anything") == 1_048_576
+
+
+def test_context_window_for_opencode_conservative_200k():
+    assert context_window_for("opencode", "anthropic/claude-sonnet-4.5") == 200_000
+
+
+def test_context_window_for_unknown_harness_returns_zero():
+    assert context_window_for("nope", "whatever") == 0
+
+
+# --- ctx segment in render -------------------------------------------
+
+def test_render_omits_ctx_when_window_is_zero():
+    m = SessionMetrics()
+    assert "ctx" not in m.render(0.0)
+
+
+def test_render_ctx_uses_last_committed_true_input_idle():
+    m = SessionMetrics(context_window=200_000)
+    m.commit(_u(inp=2000, cc=10_000, cr=80_000, out=200), 1.0)
+    # last_true_input = 92_000; 92_000 / 200_000 = 46%
+    s = m.render(0.0)
+    assert "ctx 92k (46%)" in s
+
+
+def test_render_ctx_uses_provisional_p_in_mid_turn():
+    m = SessionMetrics(context_window=200_000)
+    m.commit(_u(inp=1000, cc=0, cr=50_000, out=100), 1.0)  # last_true_input=51k
+    m.observe(_u(inp=2000, cc=20_000, cr=70_000))           # p_in=92_000
+    s = m.render(0.0)
+    assert "ctx 92k (46%)" in s
+    assert s.startswith("~")
+
+
+def test_commit_updates_last_true_input_but_none_keeps_it():
+    m = SessionMetrics(context_window=200_000)
+    m.commit(_u(inp=1, cc=0, cr=99, out=10), 1.0)
+    assert m.last_true_input == 100
+    m.commit(None, 2.0)              # error/no-result — keep prior value
+    assert m.last_true_input == 100
 
 
 # --- token accounting -------------------------------------------------

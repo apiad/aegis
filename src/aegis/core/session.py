@@ -8,7 +8,7 @@ from collections.abc import Callable
 from aegis.drivers.base import HarnessSession
 from aegis.events import Event, Result, ToolResult, ToolUse
 from aegis.queue.schema import InboxMessage, render_inbox_header
-from aegis.tui.metrics import SessionMetrics
+from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
 log = logging.getLogger("aegis.core.session")
@@ -37,7 +37,10 @@ class AgentSession:
         self.agent_slug = agent_slug
         self.handle = handle
         self.state = AgentState.ready
-        self.metrics = SessionMetrics()
+        self.metrics = SessionMetrics(
+            context_window=context_window_for(
+                getattr(agent, "harness", ""),
+                getattr(agent, "model", "")))
         self._now = now
         self._started = False
         self._task: asyncio.Task | None = None

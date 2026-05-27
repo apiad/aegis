@@ -5,6 +5,21 @@ from dataclasses import dataclass
 from aegis.events import TokenUsage
 
 
+def context_window_for(harness: str, model: str) -> int:
+    """Tokens the model can ingest per turn. 0 = unknown (skip display).
+    Hardcoded; edit when a new model lands or a 1m beta opens up."""
+    m = (model or "").lower()
+    if harness == "claude-code":
+        if "1m" in m:
+            return 1_000_000
+        return 200_000
+    if harness == "gemini":
+        return 1_048_576
+    if harness == "opencode":
+        return 200_000
+    return 0
+
+
 def _fmt_tokens(n: int) -> str:
     if n < 1000:
         return str(n)
@@ -40,6 +55,11 @@ class SessionMetrics:
     p_out: int = 0
     p_cached: int = 0
     _provisional: bool = False
+    # Most recent turn's authoritative true_input. Approximates the live
+    # context size the model ingests; combined with context_window gives
+    # the % gauge in render().
+    last_true_input: int = 0
+    context_window: int = 0
 
     def start_turn(self, now: float) -> None:
         self.turn_start = now
@@ -69,6 +89,7 @@ class SessionMetrics:
             self.c_in += usage.true_input
             self.c_out += usage.output
             self.c_cached += usage.cache_read
+            self.last_true_input = usage.true_input
         self.p_in = self.p_out = self.p_cached = 0
         self._provisional = False
         self._end_time(now)
@@ -101,9 +122,15 @@ class SessionMetrics:
         tool = f"⚒ {self.tool_calls}"
         if self.tool_errors:
             tool += f" ({self.tool_errors} err)"
+        ctx = ""
+        if self.context_window > 0:
+            live = self.p_in if self._provisional else self.last_true_input
+            ctx_pct = round(100 * live / self.context_window)
+            ctx = f"ctx {_fmt_tokens(live)} ({ctx_pct}%) · "
         return (
             f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
             f"↓{_fmt_tokens(out)} · "
+            f"{ctx}"
             f"{tool} · "
             f"{_fmt_time(self.turn_seconds(now))} / "
             f"{_fmt_time(self.session_seconds(now))}"
