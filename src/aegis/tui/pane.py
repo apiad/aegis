@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import random
 import time
 from datetime import datetime, timezone
@@ -149,6 +150,11 @@ class WorkingIndicator(Static):
         ))
 
 
+def _extract_backtick_tokens(text: str) -> list[str]:
+    """Return all strings enclosed in single backticks (same line)."""
+    return re.findall(r"`([^`\n]+)`", text)
+
+
 class CopyableBlock(Widget):
     """One transcript cell — hover tints, click copies its text payload.
 
@@ -173,9 +179,13 @@ class CopyableBlock(Widget):
         super().__init__(classes="-tight" if tight else None)
         self._renderable = renderable
         self._text_payload = text_payload
+        self._backtick_tokens: list[str] = _extract_backtick_tokens(
+            text_payload)
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        self.tooltip = "click to copy"
+        self.tooltip = (
+            "click to open file" if self._backtick_tokens else "click to copy"
+        )
 
     def compose(self) -> ComposeResult:
         yield Static(self._renderable, classes="content")
@@ -184,6 +194,10 @@ class CopyableBlock(Widget):
                        text_payload: str) -> None:
         self._renderable = renderable
         self._text_payload = text_payload
+        self._backtick_tokens = _extract_backtick_tokens(text_payload)
+        self.tooltip = (
+            "click to open file" if self._backtick_tokens else "click to copy"
+        )
         with contextlib.suppress(Exception):
             self.query_one(".content", Static).update(renderable)
 
@@ -191,6 +205,12 @@ class CopyableBlock(Widget):
         return self._text_payload
 
     def on_click(self, event: Click) -> None:
+        if self._backtick_tokens:
+            with contextlib.suppress(Exception):
+                from aegis.tui.picker import FilePickerModal
+                self.app.push_screen(
+                    FilePickerModal(prefill=self._backtick_tokens[0]))
+            return
         if not self._text_payload:
             return
         try:
