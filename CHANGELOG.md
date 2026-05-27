@@ -5,6 +5,21 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-05-26
+
+### File picker improvements
+
+- Background `FileIndexer` (watchdog + `os.walk`) starts on app load — picker
+  opens instantly instead of blocking on `rglob`. Ships its own comprehensive
+  ignore list (`.git`, `__pycache__`, `.venv`, `node_modules`, `*.pyc`, etc.);
+  does not parse `.gitignore`. Live-updates as agents create or delete files.
+- `FilePickerModal` reads from `FileIndexer` when available; falls back to
+  synchronous walk in test environments without a full `AegisApp`.
+- `CopyableBlock`: click = copy text (restored); ctrl+click = open file from
+  backtick token. Multiple tokens → `_TokenChooser` lets you pick which one.
+  Tooltip updated to `"click to copy | ctrl+click to open file"` when tokens
+  are present.
+
 ## [0.11.1] - 2026-05-26
 
 ### File viewer/editor
