@@ -357,6 +357,112 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     config_write_lock = asyncio.Lock()
 
+    # --- config-edit read tools ----------------------------------------
+
+    @server.tool
+    async def aegis_config_show() -> dict:
+        """Full parsed .aegis.yaml view. Telegram token redacted."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError as e:
+            return {"error": str(e)}
+        out: dict = {
+            "agents": {
+                slug: {
+                    "harness": a.harness, "model": a.model,
+                    "effort": a.effort.value if a.effort else None,
+                    "permission": a.permission.value,
+                } for slug, a in cfg.agents.items()
+            },
+            "queues": {
+                name: {"agent": q.agent, "max_parallel": q.max_parallel,
+                       "budgets": list(q.budgets or [])}
+                for name, q in (cfg.queues or {}).items()
+            },
+            "schedules": {
+                name: {"cron": s.get("cron"),
+                       "enabled": s.get("enabled", True),
+                       "workflow": s.get("workflow")}
+                for name, s in (cfg.schedules or {}).items()
+            },
+            "plugin_dirs": [str(p) for p in (cfg.plugin_dirs or [])],
+            "default_agent": cfg.default_agent,
+        }
+        if cfg.telegram is not None:
+            out["telegram"] = {
+                "token": "<set>" if cfg.telegram.token else "<unset>",
+                "chat_id": cfg.telegram.chat_id,
+                "auto_prompt": cfg.telegram.auto_prompt,
+            }
+        return out
+
+    @server.tool
+    async def aegis_config_list_agents() -> list[dict]:
+        """[{slug, harness, model, effort, permission}, …] from .aegis.yaml."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+
+        root = find_project_root()
+        if root is None:
+            return []
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError:
+            return []
+        return [
+            {"slug": slug, "harness": a.harness, "model": a.model,
+             "effort": a.effort.value if a.effort else None,
+             "permission": a.permission.value}
+            for slug, a in cfg.agents.items()
+        ]
+
+    @server.tool
+    async def aegis_config_list_queues() -> list[dict]:
+        """[{name, agent, max_parallel, budgets}, …] from .aegis.yaml."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+
+        root = find_project_root()
+        if root is None:
+            return []
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError:
+            return []
+        return [
+            {"name": name, "agent": q.agent,
+             "max_parallel": q.max_parallel,
+             "budgets": list(q.budgets or [])}
+            for name, q in (cfg.queues or {}).items()
+        ]
+
+    @server.tool
+    async def aegis_config_list_schedules() -> list[dict]:
+        """[{name, cron, enabled, workflow}, …] from .aegis.yaml."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+
+        root = find_project_root()
+        if root is None:
+            return []
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError:
+            return []
+        return [
+            {"name": name,
+             "cron": s.get("cron"),
+             "enabled": s.get("enabled", True),
+             "workflow": s.get("workflow")}
+            for name, s in (cfg.schedules or {}).items()
+        ]
+
     # Lazily attach a WorkflowRunner so the MCP workflow tools have a
     # canonical place to track running tasks + pending human questions.
     if getattr(bridge, "workflow_runner", None) is None:
