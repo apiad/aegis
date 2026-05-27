@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from textual.app import App, ComposeResult
+from textual.widgets import ContentSwitcher, TextArea
+
+from aegis.tui.file_tab import FileTab
+from aegis.tui.state import AgentState
+
+
+class _Host(App):
+    def __init__(self, tab: FileTab) -> None:
+        super().__init__()
+        self._tab = tab
+
+    def compose(self) -> ComposeResult:
+        yield ContentSwitcher(id="cs")
+
+    async def on_mount(self) -> None:
+        cs = self.query_one("#cs", ContentSwitcher)
+        await cs.mount(self._tab)
+        cs.current = self._tab.id
+
+
+@pytest.mark.asyncio
+async def test_file_tab_loads_content(tmp_path: Path):
+    f = tmp_path / "hello.py"
+    f.write_text("print('hello')")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        assert "print" in editor.text
+        assert editor.read_only is True
+
+
+def test_file_tab_quacks_like_pane(tmp_path: Path):
+    """FileTab must expose handle, agent_slug, state, unseen, id."""
+    f = tmp_path / "x.py"
+    f.write_text("")
+    tab = FileTab(f)
+    assert isinstance(tab.handle, str)
+    assert tab.agent_slug == "file"
+    assert tab.state is AgentState.ready
+    assert tab.unseen is False
+    assert tab.id is not None
+
+
+def test_file_tab_deduplication(tmp_path: Path):
+    """Two FileTabs for the same path get the same id."""
+    f = tmp_path / "dup.py"
+    f.write_text("x = 1")
+    tab1 = FileTab(f)
+    tab2 = FileTab(f)
+    assert tab1.id == tab2.id
+
+
+@pytest.mark.asyncio
+async def test_file_tab_edit_mode_toggle(tmp_path: Path):
+    f = tmp_path / "edit.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        assert editor.read_only is True
+        await pilot.press("e")
+        await pilot.pause()
+        assert editor.read_only is False
+
+
+@pytest.mark.asyncio
+async def test_file_tab_save(tmp_path: Path):
+    f = tmp_path / "save_me.py"
+    f.write_text("old content")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        editor.load_text("new content")
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+    assert f.read_text() == "new content"
+
+
+@pytest.mark.asyncio
+async def test_file_tab_escape_exits_edit(tmp_path: Path):
+    f = tmp_path / "esc.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert tab.query_one(TextArea).read_only is False
+        await pilot.press("escape")
+        await pilot.pause()
+        assert tab.query_one(TextArea).read_only is True
