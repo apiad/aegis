@@ -178,13 +178,27 @@ class AegisApp(App):
     def __init__(self, agents: dict[str, Agent], default_agent: str,
                  make_session: SessionFactory, mcp,
                  *, queues: "dict | None" = None,
-                 clean: bool = False) -> None:
+                 clean: bool = False,
+                 drivers: "dict | None" = None,
+                 cwd: "str | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
         self._clean = clean
+        # Driver registry used for workspace resume. Default empty so the
+        # test harness doesn't accidentally engage real harness binaries;
+        # production wires the full DRIVERS map from cli.py.
+        self._drivers: dict = drivers or {}
+        self._cwd: str = cwd if cwd is not None else str(Path.cwd())
+        # Guards against premature workspace.json writes during on_mount.
+        # Setting self.theme = ... in on_mount triggers watch_theme →
+        # _refresh_tabbar → _write_snapshot BEFORE the resume path has had
+        # a chance to load the prior workspace; without this flag that
+        # write would clobber the saved roster with an empty one. Flipped
+        # to True after the resume decision lands.
+        self._boot_done: bool = False
         self._panes: list[ConversationPane] = []
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
@@ -265,29 +279,88 @@ class AegisApp(App):
             cs = self.query_one(ContentSwitcher)
             await cs.mount(panel)
             cs.current = panel.id
+            self._boot_done = True
             self._refresh_tabbar()
             panel.focus_input()
             self.set_interval(1.0, self._tick)
             return
 
-        # TODO(Task 11/13 / session-persistence-v1): wire bootstrap_resume here.
-        # bootstrap_resume() is now the pure orchestrator — it classifies tabs
-        # via plan_resume, calls driver.resume() per resumable tab, and returns
-        # a banner string. Wiring it into on_mount requires a spawn path that
-        # accepts a pre-existing HarnessSession (bypassing make_session), which
-        # is a deeper refactor than fits this task. The follow-up (Task 14 or
-        # later) should:
-        #   1. Add ConversationPane.from_resumed(session, ...) classmethod.
-        #   2. Call bootstrap_resume(..., open_tab=<mount resumed pane>,
-        #      open_failed_tab=<mount placeholder + show_resume_failure>) here.
-        #   3. If banner starts "no resumable", skip default spawn and self.exit().
-        #   4. Otherwise call show_resume_banner on the active pane.
-        # Task 13 added ConversationPane.show_resume_failure(reason) for use by
-        # open_failed_tab; the orchestrator is already exercised in tests, but
-        # the AegisApp closure for it shares the same from_resumed dependency.
-        await self._spawn(self._default_agent)
+        resumed = await self._maybe_resume_workspace()
+        self._boot_done = True
+        if not resumed:
+            await self._spawn(self._default_agent)
+        else:
+            # Persist the resumed roster now that the guard is open, so
+            # workspace.json reflects the freshly-restored panes (and any
+            # newly-latched session_ids).
+            self._write_snapshot()
         await self._maybe_resume_terminals()
         self.set_interval(1.0, self._tick)
+
+    async def _maybe_resume_workspace(self) -> bool:
+        """Restore agent tabs from workspace.json. Returns True iff at
+        least one tab was resumed (so the caller should skip the default
+        spawn). False means: --clean, no workspace, or nothing resumable
+        — fall through to the default spawn."""
+        if self._clean:
+            return False
+        ws = pick_workspace_to_resume(self._state_dir, clean=False)
+        if ws is None or not ws.tabs:
+            return False
+
+        from aegis.state.session_log import replay_events
+        from aegis.tui.resume_plan import plan_resume
+
+        plan = plan_resume(ws, self._agents, self._drivers)
+        if not plan.resumable:
+            return False
+
+        cs = self.query_one(ContentSwitcher)
+        failures: list[tuple[str, str]] = []
+        for tp in plan.resumable:
+            tab = tp.tab
+            drv = self._drivers[tab.provider]
+            agent = self._agents[tab.profile]
+            try:
+                session = drv.resume(
+                    agent, self._cwd, self._mcp.url,
+                    tab.handle, tab.session_id)
+            except Exception as e:  # noqa: BLE001
+                failures.append((tab.handle, str(e)))
+                continue
+            replay = replay_events(self._state_dir, tab.handle)
+            pane = ConversationPane(
+                session, agent, tab.profile, tab.handle, self._palette,
+                digest=self.queue_digest, state_dir_path=self._state_dir,
+                replay=replay)
+            self._panes.append(pane)
+            self.inbox_router.bind_session(tab.handle, pane._core)
+            await cs.mount(pane)
+
+        if not self._panes:
+            return False
+
+        # Activate the previously-active tab if it came back; otherwise
+        # the first restored tab.
+        active = next(
+            (p for p in self._panes
+             if isinstance(p, ConversationPane)
+             and p.handle == ws.active_handle),
+            self._panes[0])
+        cs.current = active.id
+        active.focus_input()
+        self._refresh_tabbar()
+
+        resumed = len([p for p in self._panes
+                       if isinstance(p, ConversationPane)])
+        parts = [f"↻ resumed {resumed} tab(s)"]
+        if plan.skipped:
+            provs = sorted({s.tab.provider for s in plan.skipped})
+            parts.append(f"skipped {len(plan.skipped)} ({', '.join(provs)})")
+        if failures:
+            parts.append(f"failed {len(failures)}")
+        active.show_resume_banner(" · ".join(parts))
+        return True
 
     async def _maybe_resume_terminals(self) -> None:
         """If a saved workspace has terminals and --clean is False,
@@ -389,6 +462,10 @@ class AegisApp(App):
         self._write_snapshot()
 
     def _write_snapshot(self) -> None:
+        if not self._boot_done:
+            # Pre-resume: persist nothing so the saved workspace.json
+            # survives long enough for _maybe_resume_workspace to load it.
+            return
         cs = self.query_one(ContentSwitcher)
         active_handle = None
         if cs.current is not None:
@@ -594,6 +671,13 @@ class AegisApp(App):
             active.interrupt()
 
     async def action_quit(self) -> None:
+        # Persist the current roster BEFORE teardown so any session_ids
+        # latched mid-turn (after the last tab event) reach disk and the
+        # next boot can resume.
+        try:
+            self._write_snapshot()
+        except Exception:  # noqa: BLE001 — snapshot failure must not block quit
+            pass
         for pane in list(self._panes):
             if isinstance(pane, ConversationPane):
                 self.inbox_router.unbind_session(pane.handle)

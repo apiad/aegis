@@ -14,7 +14,7 @@ from aegis.config import (
     load_telegram_config,
 )
 from aegis.core.manager import SessionManager
-from aegis.drivers import get_driver
+from aegis.drivers import DRIVERS, get_driver
 from aegis.mcp import AegisMCP
 from aegis.state.workspace import CorruptWorkspace, state_dir
 from aegis.tui import AegisApp
@@ -111,8 +111,13 @@ def run(
         return get_driver(profile.harness).session(
             profile, effective_cwd, mcp_url, handle)
 
+    # Driver registry for workspace resume — one instance per provider so
+    # bootstrap_resume can call drv.resume(...) without re-instantiating
+    # per tab.
+    drivers = {slug: cls() for slug, cls in DRIVERS.items()}
     AegisApp(agents, default_agent, make_session, AegisMCP(),
-             queues=queues, clean=clean).run()
+             queues=queues, clean=clean, drivers=drivers,
+             cwd=effective_cwd).run()
 
 
 @dataclass
