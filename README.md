@@ -226,7 +226,10 @@ plan → dispatch implementer per task with durable resume),
   finishes. Click any block to copy it.
 - **Honest metrics.** True input (incl. cache) with cached %, output,
   tool calls, per-turn and per-session wall-clock. Provisional while
-  streaming, exact at turn end. **No log scraping anywhere.**
+  streaming, exact at turn end. Live `ctx Nk (P%)` segment shows the
+  current turn's true input against the model's context window — Opus
+  4.x at 1M, Sonnet/Haiku at 200k, Gemini at 1M. **No log scraping
+  anywhere.**
 - **Queue dashboard.** Always-on one-line strip above the status bar
   shows live per-queue depth and the most recent in-flight worker.
   `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
@@ -242,8 +245,12 @@ plan → dispatch implementer per task with durable resume),
 - **Config panel.** `F2` opens the live `.aegis.yaml` editor inside
   the TUI — see agents/queues/telegram at a glance, add an agent
   through a validated modal. Same edit helpers back the scriptable
-  `aegis config` CLI verbs, so a side-terminal `aegis config agent
-  add` and the panel are interchangeable.
+  `aegis config` CLI verbs and a parallel MCP surface
+  (`aegis_config_add_agent`, `…_add_queue`, `…_add_plugin_dir`,
+  `…_set_schedule_enabled`, plus removes and reads), so agents can
+  extend the substrate from inside — declare a queue and enqueue to
+  it within one session, no restart. Panel, CLI, and MCP all route
+  through the same comment-preserving atomic-write path.
 - **Session persistence.** `aegis` reopens the last workspace by
   default — agent tabs, terminal tabs, profiles, order, with each
   underlying session genuinely resumed (model memory intact).

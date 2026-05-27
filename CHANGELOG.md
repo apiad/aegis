@@ -5,6 +5,73 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-27
+
+### MCP config-edit surface
+
+Spawned agents can now mutate `.aegis.yaml` through the same
+comment-preserving, validated, atomic-write path the `aegis config`
+CLI uses — 12 new MCP tools surfaced uniformly to every spawned
+harness. Additive paths hot-register on the live `QueueManager` /
+agent map / plugin loader so the "create queue → enqueue to it" loop
+works within a single `aegis serve` session; removes persist to YAML
+but defer effect to next restart, signalled via the return-value
+`restart_required_for` field.
+
+Read tools (4):
+
+- `aegis_config_show` — full parsed `.aegis.yaml`; telegram token
+  redacted to `<set>`/`<unset>`.
+- `aegis_config_list_agents` — `[{slug, harness, model, effort,
+  permission}, …]`.
+- `aegis_config_list_queues` — `[{name, agent, max_parallel,
+  budgets}, …]`.
+- `aegis_config_list_schedules` — `[{name, cron, enabled, workflow},
+  …]`.
+
+Write tools (8) — all wrapping the corresponding `aegis.config.edit`
+helper:
+
+- `aegis_config_add_agent(slug, harness, model, effort?, permission?)`
+  — **live** (registers on the agent map).
+- `aegis_config_remove_agent(slug)` — persisted; restart required.
+- `aegis_config_add_queue(name, agent, max_parallel, budgets?)` —
+  **live** (registers on `QueueManager`).
+- `aegis_config_remove_queue(name)` — persisted; restart required.
+- `aegis_config_add_plugin_dir(path)` — **live** (re-runs
+  `import_plugins` so any new `@workflow` registers immediately).
+- `aegis_config_remove_plugin_dir(path)` — persisted; restart
+  required.
+- `aegis_config_set_schedule_enabled(name, enabled)` /
+  `aegis_config_toggle_schedule_enabled(name)` — live; the existing
+  `ReloadWatcher` picks the change up.
+
+Every write returns
+`{ok, live, restart_required_for, [note]}`. Validation failures
+(unknown harness, duplicate slug, queue referencing a missing agent)
+bubble up as `{error: ...}` with the same wording the human sees at
+`aegis config …`. A per-server `asyncio.Lock` serializes writes; the
+existing `_atomic_write` (tempfile + rename) keeps the on-disk file
+well-formed under concurrent calls. Out of scope in v1:
+`set_telegram`, `set_default_agent`, fully-live removes, dry-run
+mode, and groups/remotes (no `aegis.config.edit` helpers yet).
+
+Spec: `docs/superpowers/specs/2026-05-27-mcp-config-edit-design.md`.
+Plan: `docs/superpowers/plans/2026-05-27-mcp-config-edit.md`.
+
+### Live context-size meter
+
+The status-line metrics widget gained a `ctx Nk (P%)` segment showing
+the most recent turn's authoritative `true_input` against the model's
+context window, alongside the existing cumulative `↑` total. While a
+turn is in flight, `p_in` (the monotonic max of streamed assistant
+usages) drives the live value; at turn end the committed
+`result.usage.true_input` takes over. Window comes from a hardcoded
+`context_window_for(harness, model)` map — Claude Opus 4.x at 1M,
+Sonnet/Haiku 4.x at 200k, Gemini at 1M, anything with `1m` in the
+model name at 1M, OpenCode 200k. Unknown harness suppresses the
+segment.
+
 ## [0.12.0] - 2026-05-27
 
 ### BREAKING
