@@ -122,10 +122,13 @@ filesystem and shell surface is aegis-controlled.
 **Gemini / OpenCode (ACP drivers).** No hard-suppression knob in
 the ACP layer or either CLI today (Gemini's `--allowed-tools` is
 deprecated; their Policy Engine is the planned successor but not
-shipped; OpenCode has no external tool-control). When
-`suppress_builtins=True`, aegis adds an instruction to the
-system-prompt addendum already injected via `--append-system-prompt`
-(or the equivalent ACP `system_prompt`):
+shipped; OpenCode has no external tool-control). Soft suppression
+only.
+
+**Prefer-aegis-tools system-prompt addendum — always injected,
+regardless of `suppress_builtins`.** The existing `aegis.mcp.PRIMING`
+template (which every driver passes through `--append-system-prompt`
+or the ACP equivalent) grows a permanent block:
 
 > *Prefer aegis tools over harness built-ins: `aegis_bash` instead
 > of `Bash`/`Shell`, `aegis_read` instead of `Read`, `aegis_edit`
@@ -133,18 +136,23 @@ system-prompt addendum already injected via `--append-system-prompt`
 > instead of `Grep`, `aegis_listdir` instead of `ls`. They route
 > through your operator's permission and visibility layer.*
 
-Soft, model-trust-based. Built-in calls remain visible to aegis via
-the existing ACP event stream and are written to the audit log
-alongside aegis-tool calls — the visibility goal holds even when the
-enforcement floor is partial.
+Rationale for unconditional injection: the addendum is a no-op on
+Claude when `suppress_builtins=True` (the agent has no built-ins to
+prefer aegis tools over anyway), useful on Claude when
+`suppress_builtins=False`, and useful on every ACP harness session.
+Always-on means one less branch in driver code and one less surprise
+when an agent doesn't get the nudge because the profile didn't
+opt-in. Soft, model-trust-based — built-in calls on ACP harnesses
+remain visible to aegis via the event stream and are written to the
+audit log alongside aegis-tool calls.
 
 **`suppress_builtins` schema location.** On `_ProviderBase`
 (`src/aegis/config/__init__.py`), so any driver can read it through
-the flat `agent.suppress_builtins` access pattern. Only
-`ClaudePrintDriver` and `ClaudeReplDriver` act on it in v1 by
-emitting `--tools ""`. The same field becomes the natural knob when
-Gemini's Policy Engine or an OpenCode equivalent ships hard
-suppression.
+the flat `agent.suppress_builtins` access pattern. Only the hard
+suppression (Claude `--tools ""`) is gated on this flag; the soft
+guidance via `PRIMING` is universal. The flag becomes the natural
+knob when Gemini's Policy Engine or an OpenCode equivalent ships
+hard suppression.
 
 ### 3. Permission framework
 
@@ -257,8 +265,9 @@ to `aegis_write`). The audit dir is gitignored (already-covered by
 | `src/aegis/mcp/fs_tools/` | New directory; one tool per file. |
 | `src/aegis/mcp/permissions.py` | New `PermissionRouter` + `permission_gate` decorator + `Verdict` enum + `PermissionRequest` dataclass. |
 | `src/aegis/mcp/server.py` | Imports `register_fs_tools(server, bridge)` from `fs_tools`; wraps each registration with `permission_gate`. |
-| `src/aegis/drivers/claude_print.py` + `claude_repl.py` | `build_argv` appends `--tools ""` when `agent.suppress_builtins`. |
-| `src/aegis/drivers/acp.py` | The shared `system_prompt` builder gains the prefer-aegis-tools addendum when `agent.suppress_builtins`. |
+| `src/aegis/mcp/__init__.py` (or wherever `PRIMING` lives) | Extend `PRIMING` template with the unconditional prefer-aegis-tools block. Every driver picks it up automatically — no per-driver branching needed. |
+| `src/aegis/drivers/claude_print.py` + `claude_repl.py` | `build_argv` appends `--tools ""` when `agent.suppress_builtins=True`. (No prompt-addendum work — PRIMING change covers it.) |
+| `src/aegis/drivers/acp.py` | No changes needed — the soft-suppression addendum rides PRIMING, which acp.py already passes through. |
 | `src/aegis/tui/pane.py` | `ConversationPane` registers with `PermissionRouter` on mount / unregisters on unmount. Renders inline approval modal on `PermissionRequest`. |
 | `src/aegis/telegram/bot.py` | `BotClient` gains `send_message_with_inline_keyboard(chat_id, text, buttons)` and `edit_message_text(chat_id, message_id, text, reply_markup=None)`. Long-poll loop extended to dispatch `callback_query` updates. |
 | `src/aegis/telegram/frontend.py` | `TelegramFrontend` registers a `callback_query` handler for the `perm:` prefix that calls `PermissionRouter.resolve(req_id, verdict)`. |
