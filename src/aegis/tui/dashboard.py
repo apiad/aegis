@@ -50,7 +50,7 @@ class QueuesBand(_Band):
         t = Text()
         t.append("QUEUES\n", style=f"bold {pal.accent}")
         if not snap.queues:
-            t.append("(no queues configured in .aegis.py)\n",
+            t.append("(no queues configured in .aegis.yaml)\n",
                      style=pal.muted)
             self._inner.update(t)
             return

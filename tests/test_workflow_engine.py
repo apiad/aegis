@@ -97,7 +97,7 @@ async def test_bash_timeout_raises_workflow_error(tmp_path):
 
 async def test_bash_default_cwd_is_project_root(tmp_path, monkeypatch):
     # Run from a tmp dir; bash() should still resolve to project root
-    # (or fall back to tmp_path when no .aegis.py upstream).
+    # (or fall back to tmp_path when no .aegis.yaml upstream).
     monkeypatch.chdir(tmp_path)
     e = _engine(tmp_path)
     proc = await e.bash("pwd")

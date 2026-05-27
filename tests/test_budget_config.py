@@ -72,39 +72,43 @@ def test_parse_empty_list_returns_empty():
 def test_load_queues_attaches_budgets(tmp_path):
     """End-to-end: budgets land on Queue.budgets via load_queues."""
     from aegis.config import load_queues
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, ClaudeCode
-agents = {"opus": Agent(provider=ClaudeCode(model="opus"))}
-default_agent = "opus"
-queues = {
-    "impl": {
-        "agent": "opus", "max_parallel": 2,
-        "budgets": [
-            {"usd": 1.00, "window": "1h"},
-            {"output_tokens": 500_000, "window": "1h"},
-        ],
-    },
-}
+    (tmp_path / ".aegis.yaml").write_text("""
+default_agent: opus
+agents:
+  opus:
+    provider: claude-code
+    model: opus
+queues:
+  impl:
+    agent: opus
+    max_parallel: 2
+    budgets:
+      - usd: 1.00
+        window: 1h
+      - output_tokens: 500000
+        window: 1h
 """)
-    queues = load_queues(aegis_py)
+    queues = load_queues(tmp_path)
     assert len(queues["impl"].budgets) == 2
     assert queues["impl"].budgets[0].constraint == "usd"
 
 
 def test_load_queues_with_bad_budget_fails(tmp_path):
     from aegis.config import ConfigError, load_queues
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, ClaudeCode
-agents = {"opus": Agent(provider=ClaudeCode(model="opus"))}
-default_agent = "opus"
-queues = {
-    "impl": {
-        "agent": "opus", "max_parallel": 1,
-        "budgets": [{"usd": 1.00, "output_tokens": 500, "window": "1h"}],
-    },
-}
+    (tmp_path / ".aegis.yaml").write_text("""
+default_agent: opus
+agents:
+  opus:
+    provider: claude-code
+    model: opus
+queues:
+  impl:
+    agent: opus
+    max_parallel: 1
+    budgets:
+      - usd: 1.00
+        output_tokens: 500
+        window: 1h
 """)
     with pytest.raises((BudgetConfigError, ConfigError), match="impl"):
-        load_queues(aegis_py)
+        load_queues(tmp_path)

@@ -1,8 +1,8 @@
 """Tests for `aegis budget list` / `show` CLI verbs.
 
 Mirrors the `tests/test_cli_schedule_remote.py` pattern: seeds a
-minimal `.aegis.yaml` + `.aegis.py` in tmp_path, monkeypatches remote
-client functions, and drives the app via CliRunner.
+minimal `.aegis.yaml` in tmp_path, monkeypatches remote client
+functions, and drives the app via CliRunner.
 """
 from __future__ import annotations
 
@@ -17,24 +17,23 @@ runner = CliRunner()
 
 
 def _seed(root: Path) -> None:
-    """Write minimal config files into root."""
-    (root / ".aegis.py").write_text(
-        "from aegis.config import Agent\n"
-        "agents = {'c': Agent(harness='claude-code', model='haiku')}\n"
-        "default_agent = 'c'\n"
-        "queues = {\n"
-        "    'impl': {'agent': 'c', 'max_parallel': 1},\n"
-        "    'budgeted': {\n"
-        "        'agent': 'c', 'max_parallel': 1,\n"
-        "        'budgets': [{'usd': '1.00', 'window': '1d'}],\n"
-        "    },\n"
-        "}\n"
-    )
+    """Write a minimal .aegis.yaml into root."""
     (root / ".aegis.yaml").write_text(
+        "default_agent: c\n"
         "agents:\n"
         "  c:\n"
         "    provider: claude-code\n"
         "    model: haiku\n"
+        "queues:\n"
+        "  impl:\n"
+        "    agent: c\n"
+        "    max_parallel: 1\n"
+        "  budgeted:\n"
+        "    agent: c\n"
+        "    max_parallel: 1\n"
+        "    budgets:\n"
+        "      - usd: '1.00'\n"
+        "        window: 1d\n"
         "remotes:\n"
         "  vps:\n"
         "    url: https://example.invalid\n"

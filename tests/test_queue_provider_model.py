@@ -19,23 +19,29 @@ def test_queue_defaults_provider_and_model_to_empty():
 
 
 def test_load_queues_derives_provider_and_model_from_agent(tmp_path):
-    """End-to-end: an .aegis.py with queues:{...} populates Queue.provider
+    """End-to-end: a .aegis.yaml with queues:{...} populates Queue.provider
     and Queue.model from the bound agent profile."""
     from aegis.config import load_queues
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, ClaudeCode
-agents = {
-    "opus":  Agent(provider=ClaudeCode(model="opus",  effort="high")),
-    "haiku": Agent(provider=ClaudeCode(model="haiku", effort="low")),
-}
-default_agent = "opus"
-queues = {
-    "impl":     {"agent": "opus",  "max_parallel": 2},
-    "fast":     {"agent": "haiku", "max_parallel": 4},
-}
+    (tmp_path / ".aegis.yaml").write_text("""
+default_agent: opus
+agents:
+  opus:
+    provider: claude-code
+    model: opus
+    effort: high
+  haiku:
+    provider: claude-code
+    model: haiku
+    effort: low
+queues:
+  impl:
+    agent: opus
+    max_parallel: 2
+  fast:
+    agent: haiku
+    max_parallel: 4
 """)
-    queues = load_queues(aegis_py)
+    queues = load_queues(tmp_path)
     assert queues["impl"].provider == "claude-code"
     assert queues["impl"].model == "opus"
     assert queues["fast"].provider == "claude-code"
@@ -44,13 +50,17 @@ queues = {
 
 def test_load_queues_gemini_provider(tmp_path):
     from aegis.config import load_queues
-    aegis_py = tmp_path / ".aegis.py"
-    aegis_py.write_text("""
-from aegis import Agent, GeminiCLI
-agents = {"g": Agent(provider=GeminiCLI(model="gemini-3-pro"))}
-default_agent = "g"
-queues = {"r": {"agent": "g", "max_parallel": 1}}
+    (tmp_path / ".aegis.yaml").write_text("""
+default_agent: g
+agents:
+  g:
+    provider: gemini
+    model: gemini-3-pro
+queues:
+  r:
+    agent: g
+    max_parallel: 1
 """)
-    queues = load_queues(aegis_py)
+    queues = load_queues(tmp_path)
     assert queues["r"].provider == "gemini"
     assert queues["r"].model == "gemini-3-pro"

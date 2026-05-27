@@ -23,6 +23,7 @@ def _write_yaml(path: Path, body: str) -> None:
 
 def _seed(root: Path, *, enabled: bool = True) -> None:
     (root / ".aegis.yaml").write_text(
+        "default_agent: c\n"
         "agents:\n"
         "  c:\n"
         "    provider: claude-code\n"

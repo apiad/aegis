@@ -8,11 +8,13 @@ runner = CliRunner()
 
 def test_corrupt_workspace_exits_nonzero_with_hint(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # Write a minimal .aegis.py so .aegis.py load doesn't fail first
-    (tmp_path / ".aegis.py").write_text(
-        "from aegis import Agent, ClaudeCode\n"
-        "agents = {'default': Agent(provider=ClaudeCode(model='opus'))}\n"
-        "default_agent = 'default'\n"
+    # Write a minimal .aegis.yaml so config load doesn't fail first.
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: default\n"
+        "agents:\n"
+        "  default:\n"
+        "    provider: claude-code\n"
+        "    model: opus\n"
     )
     sd = state_dir(tmp_path)
     sd.mkdir(parents=True)

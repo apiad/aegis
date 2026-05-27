@@ -4,8 +4,6 @@ loop is tested at the CLI level via typer's CliRunner with stdin
 scripted (see test_init_cli.py)."""
 from __future__ import annotations
 
-import textwrap
-
 from aegis.config import load_config, load_queues
 from aegis.init_wizard import (
     AgentEntry,
@@ -13,7 +11,7 @@ from aegis.init_wizard import (
     WizardConfig,
     _next_slug,
     detect_providers,
-    render_aegis_py,
+    render_aegis_yaml,
 )
 
 
@@ -51,7 +49,7 @@ def test_detect_providers_none_installed():
     assert all(not p.available for p in out)
 
 
-# ---------- render_aegis_py -------------------------------------------
+# ---------- render_aegis_yaml -----------------------------------------
 
 def _claude_default() -> AgentEntry:
     return AgentEntry(slug="claude", provider_name="claude-code",
@@ -75,18 +73,14 @@ def _opencode_worker() -> AgentEntry:
 
 def test_render_single_claude_agent_no_queues(tmp_path):
     cfg = WizardConfig(agents=[_claude_default()], default_agent="claude")
-    out = render_aegis_py(cfg)
-    # Imports only what's used.
-    assert "from aegis import Agent, ClaudeCode" in out
-    assert "GeminiCLI" not in out and "OpenCode" not in out
-    # No queues block when none configured.
-    assert "queues = {" not in out
-    # Round-trip: writing the file and loading it produces matching agents.
-    (tmp_path / ".aegis.py").write_text(out)
-    agents, default = load_config(search_paths=[tmp_path / ".aegis.py"])
+    out = render_aegis_yaml(cfg)
+    assert "default_agent: claude" in out
+    assert "provider: claude-code" in out
+    assert "queues:" not in out
+    (tmp_path / ".aegis.yaml").write_text(out)
+    agents, default = load_config(root=tmp_path)
     assert default == "claude"
     assert set(agents) == {"claude"}
-    assert agents["claude"].provider.cls_name() if False else True  # pydantic noise
 
 
 def test_render_three_providers_with_queues_round_trips(tmp_path):
@@ -99,24 +93,21 @@ def test_render_three_providers_with_queues_round_trips(tmp_path):
             QueueEntry(name="impl-opencode", agent_slug="opencode", max_parallel=1),
         ],
     )
-    out = render_aegis_py(cfg)
-    # All three provider classes imported.
-    assert "ClaudeCode" in out and "GeminiCLI" in out and "OpenCode" in out
-    # Round-trip through the real config loader.
-    p = tmp_path / ".aegis.py"
-    p.write_text(out)
-    agents, default = load_config(search_paths=[p])
+    out = render_aegis_yaml(cfg)
+    assert "provider: claude-code" in out
+    assert "provider: gemini" in out
+    assert "provider: opencode" in out
+    (tmp_path / ".aegis.yaml").write_text(out)
+    agents, default = load_config(root=tmp_path)
     assert default == "claude"
     assert set(agents) == {"claude", "gemini", "opencode"}
-    # Each agent carries the right harness + model.
     assert agents["claude"].harness == "claude-code"
     assert agents["claude"].model == "opus"
     assert agents["gemini"].harness == "gemini"
     assert agents["gemini"].model == "gemini-3-flash-preview"
     assert agents["opencode"].harness == "opencode"
     assert agents["opencode"].model == "opencode/kimi-k2.6"
-    # Queues parse + bind correctly.
-    qs = load_queues(p)
+    qs = load_queues(tmp_path)
     assert set(qs) == {"impl", "impl-gemini", "impl-opencode"}
     assert qs["impl-gemini"].agent_profile == "gemini"
     assert qs["impl-gemini"].max_parallel == 2
@@ -127,22 +118,22 @@ def test_render_claude_emits_effort_other_providers_dont():
         agents=[_claude_default(), _gemini_worker()],
         default_agent="claude",
     )
-    out = render_aegis_py(cfg)
-    # ClaudeCode line carries effort=...; GeminiCLI line does NOT.
-    # Filter for the agent-line shape (Agent(provider=...)), not the import.
-    claude_line = next(
-        ln for ln in out.splitlines()
-        if "Agent(provider=ClaudeCode" in ln)
-    gemini_line = next(
-        ln for ln in out.splitlines()
-        if "Agent(provider=GeminiCLI" in ln)
-    assert 'effort="high"' in claude_line
-    assert "effort=" not in gemini_line
+    out = render_aegis_yaml(cfg)
+    # Find each agent block by its provider line, then check whether the
+    # next few lines include `effort:`.
+    lines = out.splitlines()
+    claude_idx = next(i for i, ln in enumerate(lines)
+                      if "provider: claude-code" in ln)
+    gemini_idx = next(i for i, ln in enumerate(lines)
+                      if "provider: gemini" in ln)
+    claude_block = "\n".join(lines[claude_idx:claude_idx + 4])
+    gemini_block = "\n".join(lines[gemini_idx:gemini_idx + 4])
+    assert "effort: high" in claude_block
+    assert "effort:" not in gemini_block
 
 
 def test_render_no_agents_returns_minimal_file():
     cfg = WizardConfig(agents=[], default_agent="")
-    out = render_aegis_py(cfg)
-    # No imports beyond Agent; agents dict empty; default_agent empty.
-    assert "from aegis import Agent" in out
-    assert "agents = {" in out and "}" in out
+    out = render_aegis_yaml(cfg)
+    assert "agents:" in out
+    assert "queues:" not in out

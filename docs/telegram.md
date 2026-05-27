@@ -12,16 +12,16 @@ substrate has grown since v0.2 is now reachable from the chat.
    token.
 2. Find your personal chat ID (send any message to the bot and call
    `getUpdates`, or use the `@userinfobot` helper).
-3. Add to `.aegis.py`:
+3. Add to `.aegis.yaml`:
 
-```python
-# .aegis.py
-telegram_token   = "..."        # or set AEGIS_TELEGRAM_TOKEN
-telegram_chat_id = 123456789    # the single allowed chat
-
-# Optional: append a brevity hint to every bare-text message.
-# Set to "" to disable.
-# auto_add_to_telegram_prompt = "Be concise. Reply in one paragraph."
+```yaml
+# .aegis.yaml
+telegram:
+  token: "..."            # or set AEGIS_TELEGRAM_TOKEN (env wins)
+  chat_id: 123456789      # the single allowed chat
+  # Optional: append a brevity hint to every bare-text message.
+  # Set to "" to disable.
+  # auto_prompt: "Be concise. Reply in one paragraph."
 ```
 
 4. Start the serve:
@@ -34,7 +34,7 @@ A systemd unit template lives at `scripts/aegis-serve.service`.
 
 ### Bot account requirements
 
-- A **private bot** — only the single `telegram_chat_id` is accepted.
+- A **private bot** — only the single `telegram.chat_id` is accepted.
   Any message from a different chat ID is silently dropped.
 - The bot needs no special permissions beyond `sendMessage` /
   `getUpdates`. No inline mode, no group membership needed.
@@ -56,7 +56,7 @@ behavior is unchanged.
 | `/agents` | List configured agent profiles |
 | `/sessions` | List open sessions with their state |
 | `/<handle> text…` | One-shot to a specific session — doesn't move the active pointer |
-| bare text | Sent to the active session, with `auto_add_to_telegram_prompt` appended |
+| bare text | Sent to the active session, with `telegram.auto_prompt` appended |
 
 ---
 
@@ -297,8 +297,8 @@ Commands that are **local-only in v0.10** (`/queue list`, `/queue show`,
 
 **Can I use `aegis serve` without Telegram?**
 
-Yes. Telegram is entirely optional. Omit `telegram_token` and
-`telegram_chat_id` from `.aegis.py` and the serve runs as a pure
+Yes. Telegram is entirely optional. Omit the `telegram:` block from
+`.aegis.yaml` (or set `token`/`chat_id` to null) and the serve runs as a pure
 headless substrate (MCP plane + HTTP remote plane).
 
 **Is there a webhook mode?**
@@ -308,11 +308,11 @@ you're running the serve behind a public-IP reverse proxy.
 
 **The bot ignores my messages.**
 
-Check that `telegram_chat_id` matches your personal chat ID, not the
+Check that `telegram.chat_id` matches your personal chat ID, not the
 bot's own ID. Any message from an unrecognized chat is dropped without
 a reply.
 
 **Can multiple users share one bot?**
 
-No. `telegram_chat_id` is a single integer. If you need multi-user
+No. `telegram.chat_id` is a single integer. If you need multi-user
 access, run separate `aegis serve` instances with separate bots.

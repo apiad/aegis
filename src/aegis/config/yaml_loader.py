@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,11 +22,13 @@ from typing import Any
 from ruamel.yaml import YAML
 
 from aegis.config import (
+    DEFAULT_TELEGRAM_PROMPT,
     Agent,
     ClaudeCode,
     ConfigError,
     GeminiCLI,
     OpenCode,
+    TelegramConfig,
 )
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 
@@ -34,12 +37,13 @@ from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 class QueueSpec:
     """Lightweight queue spec parsed from YAML.
 
-    Mirrors the queue dict shape in `.aegis.py` (agent profile name +
-    max_parallel cap). Compatible with `aegis.queue.Queue.from_dict`
-    callers via attribute access.
+    Carries the queue's agent profile reference, parallel cap, and
+    raw budget entries (parsed lazily by `load_queues` so the YAML
+    layer does not depend on `aegis.budget`).
     """
     agent: str
     max_parallel: int = 1
+    budgets: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -55,6 +59,7 @@ class AegisConfig:
     groups: dict[str, Any] = field(default_factory=dict)
     remotes: dict[str, RemoteSpec] = field(default_factory=dict)
     remote_plane: RemotePlaneSpec | None = None
+    telegram: TelegramConfig | None = None
     root: Path | None = None
     inline_schedule_names: set[str] = field(default_factory=set)
 
@@ -163,8 +168,36 @@ def load_config(root: Path) -> AegisConfig:
     plugin_dirs_raw = raw.get("plugin_dirs") or [".aegis/plugins"]
     plugin_dirs = [root / Path(p) for p in plugin_dirs_raw]
 
+    default_agent = raw.get("default_agent")
+    if agents:
+        if default_agent is None:
+            raise ConfigError(
+                f"{base}: `default_agent` is required when `agents:` "
+                f"is set (known: {sorted(agents)}).")
+        if default_agent not in agents:
+            raise ConfigError(
+                f"{base}: `default_agent`={default_agent!r} is not in "
+                f"`agents` (known: {sorted(agents)}).")
+    if not agents and default_agent is not None:
+        raise ConfigError(
+            f"{base}: `default_agent` is set but no `agents:` declared.")
+
+    # Validate queue.agent references + max_parallel sanity.
+    for qname, qspec in queues.items():
+        if qspec.agent not in agents:
+            raise ConfigError(
+                f"{base}: queues[{qname!r}].agent={qspec.agent!r} does "
+                f"not reference a declared agent profile "
+                f"(known: {sorted(agents)}).")
+        if not isinstance(qspec.max_parallel, int) or qspec.max_parallel < 1:
+            raise ConfigError(
+                f"{base}: queues[{qname!r}].max_parallel must be an int "
+                f">= 1 (got {qspec.max_parallel!r}).")
+
+    telegram = _build_telegram(raw.get("telegram") or {})
+
     return AegisConfig(
-        default_agent=raw.get("default_agent"),
+        default_agent=default_agent,
         agents=agents,
         queues=queues,
         schedules=merged["schedules"],
@@ -174,8 +207,28 @@ def load_config(root: Path) -> AegisConfig:
         groups=groups,
         remotes=remotes,
         remote_plane=remote_plane,
+        telegram=telegram,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
+    )
+
+
+def _build_telegram(raw: dict[str, Any]) -> TelegramConfig:
+    """Build a TelegramConfig from a `telegram:` YAML block.
+
+    Token resolution: `AEGIS_TELEGRAM_TOKEN` env var wins, else the
+    YAML `token:` field. Either may be absent; the headless plane
+    only activates Telegram when both token and chat_id are present.
+    """
+    if not isinstance(raw, dict):
+        raise ConfigError("telegram: must be a mapping")
+    token = os.environ.get("AEGIS_TELEGRAM_TOKEN") or raw.get("token") or None
+    chat_id = raw.get("chat_id")
+    auto = raw.get("auto_prompt", DEFAULT_TELEGRAM_PROMPT)
+    return TelegramConfig(
+        token=token,
+        chat_id=int(chat_id) if chat_id is not None else None,
+        auto_prompt="" if auto == "" else str(auto),
     )
 
 

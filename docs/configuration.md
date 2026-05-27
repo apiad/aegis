@@ -1,54 +1,56 @@
 # Configuration
 
-Aegis is configured by a single file: `.aegis.py`. It is **plain
-Python**, executed once at startup. Two names are required: `agents`
-(a dict of profile name → `Agent`) and `default_agent` (which key in
-that dict to use when no `--agent` is specified). Queues, Telegram, and
-workflows are optional.
+Aegis is configured by a single file: `.aegis.yaml`. It is **declarative
+YAML**, parsed once at startup. Two sections are required: `agents:`
+(profile name → agent spec) and `default_agent:` (which key in
+`agents:` to use when no `--agent` is specified). Queues, Telegram,
+schedules, remotes, groups, and workflow plugins are optional.
 
 `aegis init` generates a starter file. The rest of this page is the
 reference.
 
-## Search order
+## Search
 
-1. Closest ancestor of the current directory containing `.aegis.py`.
-2. `~/.aegis.py`.
-
-With no `.aegis.py` anywhere, `aegis` refuses to start.
+`aegis` walks up from the current directory and uses the closest
+ancestor containing a `.aegis.yaml`. With no `.aegis.yaml` anywhere,
+`aegis` refuses to start.
 
 ## Agents
 
-```python
-from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
-
-agents = {
-    "default": Agent(provider=ClaudeCode(model="opus", effort="high",
-                                          permission="auto")),
-    "fast":    Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
-                                         permission="full")),
-    "oss":     Agent(provider=OpenCode(model="opencode/kimi-k2.6",
-                                        permission="full")),
-}
-default_agent = "default"
+```yaml
+default_agent: default
+agents:
+  default:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+  fast:
+    provider: gemini
+    model: gemini-3-flash-preview
+    permission: full
+  oss:
+    provider: opencode
+    model: opencode/kimi-k2.6
+    permission: full
 ```
 
-### Provider classes
+### Providers
 
-Each provider has its own config class so per-provider fields are
-validated up-front.
+Each agent's `provider:` selects which CLI aegis drives.
 
-| Provider | Class | Fields | Notes |
+| Provider value | Driver | Fields | Notes |
 |---|---|---|---|
-| Claude Code | `ClaudeCode` | `model`, `effort`, `permission` | The only provider with an `effort` knob. |
-| Gemini CLI  | `GeminiCLI`  | `model`, `permission` | Permission maps to `--approval-mode`. |
-| OpenCode    | `OpenCode`   | `model`, `permission` | Model strings use `provider/model` form. |
+| `claude-code` | Claude Code  | `model`, `effort`, `permission` | The only provider with an `effort` knob. |
+| `gemini`      | Gemini CLI   | `model`, `permission` | Permission maps to `--approval-mode`. |
+| `opencode`    | OpenCode     | `model`, `permission` | Model strings use `provider/model` form. |
 
 See [Drivers](drivers.md) for what each provider's `model` strings
 look like and how permission maps to the underlying CLI's flag.
 
 ### Permission
 
-`Permission` is a string enum: `"read"`, `"write"`, `"full"`, `"auto"`.
+`permission:` is one of `read`, `write`, `full`, `auto`.
 
 | Value | Claude | Gemini | OpenCode |
 |---|---|---|---|
@@ -59,31 +61,39 @@ look like and how permission maps to the underlying CLI's flag.
 
 ### Effort (Claude only)
 
-`Effort` is a string enum: `"low"`, `"medium"`, `"high"`, `"max"`.
-Other providers don't expose an equivalent knob and ignore it.
+`effort:` is one of `low`, `medium`, `high`, `max`. Other providers
+ignore it.
 
-### Legacy flat shape
+## Drop-in overlays
 
-The old flat keyword shape still works for back-compat:
+Each top-level section also accepts overlay files under
+`.aegis/{agents,queues,schedules,groups,remotes}/<name>.yaml`. The
+file body **is** the entry (no extra `name:` wrapper); the filename
+stem is the entry key.
 
-```python
-Agent(harness="claude-code", model="opus", effort="high",
-      permission="auto")
+```
+.aegis/
+  agents/
+    sonnet.yaml         # body: provider:, model:, ...
+  schedules/
+    nightly.yaml        # body: workflow:, cron:, ...
 ```
 
-This is equivalent to `Agent(provider=ClaudeCode(...))`. Prefer the
-provider-object shape — it has stricter validation.
+Inline + overlay key collisions are fail-loud at boot.
 
 ## Queues
 
 Optional. Static configuration for the queue substrate; see
 [Queues](queues.md) for the runtime model.
 
-```python
-queues = {
-    "review":   {"agent": "fast", "max_parallel": 2},
-    "research": {"agent": "default", "max_parallel": 1},
-}
+```yaml
+queues:
+  review:
+    agent: fast
+    max_parallel: 2
+  research:
+    agent: default
+    max_parallel: 1
 ```
 
 Each queue binds to one agent profile and a `max_parallel` cap. An
@@ -97,24 +107,24 @@ caps cause `aegis` to abort with a clear error.
 Add a `budgets:` list to cap rolling USD spend or output-token volume
 on a queue. All entries must allow for the enqueue to be admitted:
 
-```python
-queues = {
-    "impl": {
-        "agent": "opus",
-        "max_parallel": 2,
-        "budgets": [
-            {"usd": 1.00,             "window": "1h"},
-            {"usd": 10.00,            "window": "24h"},
-            {"output_tokens": 500000, "window": "1h"},   # runaway belt
-            {"usd": 50.00,            "window": "7d"},
-        ],
-    },
-    "fast": {
-        "agent": "haiku-fast",
-        "max_parallel": 4,
-        # no budgets: key → no caps
-    },
-}
+```yaml
+queues:
+  impl:
+    agent: opus
+    max_parallel: 2
+    budgets:
+      - usd: 1.00
+        window: 1h
+      - usd: 10.00
+        window: 24h
+      - output_tokens: 500000
+        window: 1h
+      - usd: 50.00
+        window: 7d
+  fast:
+    agent: haiku-fast
+    max_parallel: 4
+    # no budgets: key → no caps
 ```
 
 Each entry carries exactly one constraint (`usd` or `output_tokens`)
@@ -126,11 +136,11 @@ observability surface.
 
 ## Headless / Telegram
 
-```python
-# .aegis.py
-telegram_token = "…"                  # or set AEGIS_TELEGRAM_TOKEN
-telegram_chat_id = 123456             # the single allowed chat
-# auto_add_to_telegram_prompt = ""    # set "" to disable the default brevity hint
+```yaml
+telegram:
+  token: "..."            # or set AEGIS_TELEGRAM_TOKEN (env wins)
+  chat_id: 123456         # the single allowed chat
+  # auto_prompt: ""       # set to "" to disable the default brevity hint
 ```
 
 Run with:
@@ -139,34 +149,14 @@ Run with:
 aegis serve
 ```
 
-All commands available in the chat (v0.10):
-
-| Command | Action |
-|---|---|
-| `/new [agent]` | Spawn a new session (defaults to `default_agent`) |
-| `/close [handle]` | Close a session (default: the active one) |
-| `/interrupt` | Interrupt the active turn |
-| `/agents` | List configured agent profiles |
-| `/sessions` | List open sessions |
-| `/<handle> text…` | One-shot to a specific session (doesn't move the sticky pointer) |
-| bare text | Sent to the active session, with `auto_add_to_telegram_prompt` appended |
-| `/queue list` | Per-queue depth + in-flight + last task (local only) |
-| `/queue show <name>` | Full detail on one queue (local only) |
-| `/schedule list [@peer]` | All schedules with next fire time |
-| `/schedule show <name> [@peer]` | Full detail on one schedule |
-| `/schedule run <name>` | Force-fire a schedule now (local only) |
-| `/budget list [@peer]` | Budget state for every queue |
-| `/budget show <queue> [@peer]` | Per-constraint budget detail for one queue |
-| `/peers` | Configured remotes with live reachability probe |
-| `/help [command]` | Registry-driven help |
-
-See [Telegram](telegram.md) for setup, output examples, `@<peer>` cross-host syntax, and FAQ.
+See [Telegram](telegram.md) for the full command surface, setup,
+output examples, `@<peer>` cross-host syntax, and FAQ.
 
 A systemd unit template lives at `scripts/aegis-serve.service`.
 
 ## Groups
 
-Optional. Declarative shapes for agent committees. Inline form:
+Optional. Declarative shapes for agent committees:
 
 ```yaml
 groups:
@@ -192,26 +182,37 @@ See [Groups](groups.md) for the full surface.
 
 ## Workflows
 
-To make Python workflows visible to `aegis workflow run` and to the
-`aegis_run_workflow` MCP tool, **import** them in your `.aegis.py` so
-the `@workflow` decorator registers them:
+`@workflow`-decorated functions are auto-discovered. At boot, aegis
+imports every `*.py` under each `plugin_dirs:` entry (default
+`.aegis/plugins/`):
 
-```python
-from examples.tdd_step import tdd_step    # noqa: F401 — registers
+```yaml
+plugin_dirs:
+  - .aegis/plugins
+  - my_workflows
 ```
 
+Drop your workflow modules into any listed folder; the `@workflow`
+decorator fires at import time and the name lands in the registry.
 See [Workflows](workflows.md) for writing your own.
+
+To enable one of aegis's built-in workflow modules (under
+`aegis.workflows.builtins.*`), name it in `workflows:`:
+
+```yaml
+workflows:
+  - my_builtin
+```
 
 ## Remote plane
 
 Optional. Lets this `aegis serve` enqueue work into another `aegis
 serve` over HTTP and/or accept incoming enqueues from peers on the
-same tailnet. Lives in `.aegis.yaml`, not `.aegis.py`.
+same tailnet.
 
 **Outbound** — the list of remotes this serve can call:
 
 ```yaml
-# .aegis.yaml
 remotes:
   vps:
     url: http://100.64.0.5:8556
@@ -223,12 +224,12 @@ Per-remote overlay files at `.aegis/remotes/<name>.yaml` (body is the
 remote body — `url:` directly). Name collisions between inline and
 overlay are fail-loud.
 
-`peer_name` (optional, v0.8.0+) is the name this caller goes by in
-the *peer's* `remotes:` block. It's used as the `callback_to` value
-when calling `aegis_enqueue(target="<peer>", callback=True)` — the
-peer will then look that name up in its own outbound remotes to
-route the callback back. Required for callback delivery; ignored
-for fire-and-forget enqueues.
+`peer_name` is the name this caller goes by in the *peer's*
+`remotes:` block. It's used as the `callback_to` value when calling
+`aegis_enqueue(target="<peer>", callback=True)` — the peer will then
+look that name up in its own outbound remotes to route the callback
+back. Required for callback delivery; ignored for fire-and-forget
+enqueues.
 
 **Inbound** — opt-in section that turns on the receive side:
 
@@ -240,15 +241,15 @@ remote_plane:
   accept_from: []               # optional source-IP allowlist
 ```
 
-`peer_name` (v0.8.1+) is **this serve's identity** as seen by its
-peers. It populates the `from_peer` field of outbound callback POSTs
-so the receiver can match it against its own `remotes:` map. Required
-when this serve also has `remotes:` configured (i.e. might send
-callbacks); receiver-only deployments may leave it unset.
+`peer_name` is **this serve's identity** as seen by its peers. It
+populates the `from_peer` field of outbound callback POSTs so the
+receiver can match it against its own `remotes:` map. Required when
+this serve also has `remotes:` configured (i.e. might send callbacks);
+receiver-only deployments may leave it unset.
 
 Convention: the `peer_name` here must equal the value you use in
 every peer's `remotes.<this-serve>.peer_name` — it's the single
-identity by which the rest of the tailnet knows you. If `remotes` is
+identity by which the rest of the tailnet knows you. If `remotes:` is
 set but `remote_plane.peer_name` is not, the serve still boots but
 the outbound callback observer is not installed; any
 `aegis_enqueue(target=…, callback=True)` then returns a loud error
@@ -259,62 +260,45 @@ empty means "anything that reaches the port is trusted." See
 [Remote plane](remote.md) for the full surface, error model, and
 patterns.
 
-**Symmetric deployment** — two hosts that each enqueue into the
-other with callbacks both need to define each other in their
-`remotes:` block. Each side's `peer_name` is *its own* name in the
-other's eyes:
-
-```yaml
-# zion's .aegis.yaml
-remotes:
-  vps:
-    url: http://100.64.0.5:8556
-    peer_name: zion          # zion is "zion" to vps
-remote_plane:
-  bind: 100.64.0.4:8556
-  peer_name: zion            # same identity, claimed on outbound callbacks
-```
-
-```yaml
-# vps's .aegis.yaml
-remotes:
-  zion:
-    url: http://100.64.0.4:8556
-    peer_name: vps           # vps is "vps" to zion
-remote_plane:
-  bind: 100.64.0.5:8556
-  peer_name: vps             # same identity, claimed on outbound callbacks
-```
-
-With this shape either side can call
-`aegis_enqueue(target="<peer>", callback=True)` and the worker's
-final message will flow back into the calling agent's inbox.
-
 ## Worked example
 
-A full `.aegis.py` mixing everything:
+A full `.aegis.yaml` mixing everything:
 
-```python
-from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
-from examples.tdd_step import tdd_step      # noqa: F401
+```yaml
+default_agent: default
 
-agents = {
-    "default": Agent(provider=ClaudeCode(
-        model="opus", effort="high", permission="auto")),
-    "worker-sonnet": Agent(provider=ClaudeCode(
-        model="sonnet", effort="medium", permission="full")),
-    "reviewer": Agent(provider=GeminiCLI(
-        model="gemini-3.1-pro-preview", permission="auto")),
-    "oss": Agent(provider=OpenCode(
-        model="opencode/kimi-k2.6", permission="full")),
-}
-default_agent = "default"
+agents:
+  default:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+  worker-sonnet:
+    provider: claude-code
+    model: sonnet
+    effort: medium
+    permission: full
+  reviewer:
+    provider: gemini
+    model: gemini-3.1-pro-preview
+    permission: auto
+  oss:
+    provider: opencode
+    model: opencode/kimi-k2.6
+    permission: full
 
-queues = {
-    "tdd":    {"agent": "worker-sonnet", "max_parallel": 2},
-    "review": {"agent": "reviewer",      "max_parallel": 1},
-}
+queues:
+  tdd:
+    agent: worker-sonnet
+    max_parallel: 2
+  review:
+    agent: reviewer
+    max_parallel: 1
 
-telegram_token   = None    # set via AEGIS_TELEGRAM_TOKEN env var instead
-telegram_chat_id = 123456789
+telegram:
+  # token resolved from AEGIS_TELEGRAM_TOKEN env var
+  chat_id: 123456789
+
+plugin_dirs:
+  - .aegis/plugins
 ```

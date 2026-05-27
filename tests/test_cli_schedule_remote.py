@@ -17,6 +17,7 @@ runner = CliRunner()
 
 def _seed(root: Path) -> None:
     (root / ".aegis.yaml").write_text(
+        "default_agent: c\n"
         "agents:\n"
         "  c:\n"
         "    provider: claude-code\n"

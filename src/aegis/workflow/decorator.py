@@ -45,7 +45,7 @@ def _register(fn: WorkflowFn, name: str) -> WorkflowFn:
     existing = _REGISTRY.get(name)
     if existing is not None:
         # Idempotent re-registration: same source location → same workflow,
-        # just the .aegis.py being reloaded. Different source location →
+        # just a plugin module being reloaded. Different source location →
         # real collision.
         ec, nc = existing.__code__, fn.__code__
         if (ec.co_filename == nc.co_filename

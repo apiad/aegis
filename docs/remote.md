@@ -60,7 +60,7 @@ Response 4xx/5xx:
 The remote `QueueManager` accepts the task as if it were locally
 enqueued and records `enqueued_by="remote:<from>"` in its JSONL
 lifecycle log. The worker runs on the remote machine's filesystem,
-with the remote `.aegis.py`'s agent profiles.
+with the remote `.aegis.yaml`'s agent profiles.
 
 ## MCP surface
 
@@ -365,12 +365,12 @@ later.
 
 A small fast model on one machine handles routing and clarification
 and hands hard subproblems off to a bigger model running on another.
-The remote's `.aegis.py` configures `implementation` against the
+The remote's `.aegis.yaml` configures `implementation` against the
 heavier model with full permissions; the calling serve doesn't even
 need to know that model exists.
 
 ```python
-# .aegis.py on the cheap side
+# .aegis.yaml on the cheap side
 agents = {
     "router": Agent(provider=ClaudeCode(model="haiku",
                                          permission="auto")),

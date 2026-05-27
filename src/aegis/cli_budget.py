@@ -21,7 +21,7 @@ def _cfg():
     from aegis.config import find_project_root, load_queues
     from aegis.config.yaml_loader import load_config as _load_yaml
     root = find_project_root() or Path.cwd()
-    queues = load_queues(root / ".aegis.py")
+    queues = load_queues(root)
     # Remotes come from the YAML config; fall back gracefully if absent.
     try:
         yaml_cfg = _load_yaml(root)

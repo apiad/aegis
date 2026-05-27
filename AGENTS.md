@@ -6,11 +6,15 @@
     aegis serve                   # headless: MCP plane + optional Telegram
 
 `aegis` and `aegis serve` both resolve the project root via
-`find_project_root()` (closest ancestor containing `.aegis.py` or
-`.aegis.yaml`); the harness subprocess is rooted there unless `--cwd`
-overrides. `.aegis.py` carries imperative agent + queue setup;
-`.aegis.yaml` (plus drop-in overlays under `.aegis/schedules/`) carries
-declarative scheduler entries — both loaders coexist and merge.
+`find_project_root()` (closest ancestor containing `.aegis.yaml`); the
+harness subprocess is rooted there unless `--cwd` overrides.
+`.aegis.yaml` is the single config substrate — it carries `agents:`,
+`queues:`, `telegram:`, `schedules:`, `remotes:`, `groups:`, and
+`plugin_dirs:` sections. Drop-in overlays live under
+`.aegis/{agents,queues,schedules,groups}/*.yaml` and merge fail-loud
+with inline entries. `@workflow`-decorated functions are registered by
+auto-importing every `*.py` under each `plugin_dirs` entry (default
+`.aegis/plugins/`).
 
 ## Package management
 
@@ -19,7 +23,14 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 ## Layout
 
 - `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis init`)
-- `src/aegis/config.py` - Agent profile + .aegis.py loader
+- `src/aegis/config/__init__.py` - Agent / Permission / Effort /
+  Provider dataclasses + `find_project_root`, `load_config`,
+  `load_queues`, `load_telegram_config` — all YAML-backed thin
+  wrappers around `aegis.config.yaml_loader.load_config`.
+- `src/aegis/config/yaml_loader.py` - the real YAML parser:
+  `.aegis.yaml` + overlays → `AegisConfig` (agents, queues, schedules,
+  remotes, groups, telegram, plugin_dirs). Fail-loud on default_agent /
+  queue-agent / max_parallel violations.
 - `src/aegis/drivers/` - HarnessDriver seam + concrete drivers:
   `claude.py` (Claude Code, full-featured — multi-turn via stream-json
   INPUT, per-invocation MCP injection via `--mcp-config`),
@@ -50,8 +61,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `chunk`), and `TelegramFrontend` (`/new /close /interrupt /agents
   /sessions /<handle> /help`, bare-text routing with auto_prompt suffix,
   mid-turn status refresher — `frontend.py`). Activated by `aegis serve`
-  when `telegram_token` + `telegram_chat_id` are configured in
-  `.aegis.py` (token also accepted via `AEGIS_TELEGRAM_TOKEN`).
+  when the `telegram:` block (`token` + `chat_id`) is configured in
+  `.aegis.yaml` (token also accepted via `AEGIS_TELEGRAM_TOKEN`, which
+  wins over the YAML value).
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker
@@ -87,9 +99,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   callback=True) and `aegis_task_status`. `aegis_handoff` now flows
   through the same inbox channel — target agents read handoffs and
   callbacks through one consistent surface (universal tagging).
-  Queues are declared in `.aegis.py` as
-  `queues = {"<name>": {"agent": "<profile>", "max_parallel": N}, …}`;
-  unknown agent references fail loud at `aegis serve` boot.
+  Queues are declared in `.aegis.yaml` under `queues:` as
+  `<name>: {agent: <profile>, max_parallel: N}`; unknown agent
+  references fail loud at `aegis serve` boot.
 - `src/aegis/workflow/` - the workflow scaffold (v1). `@workflow`
   decorator + auto-registry (`decorator.py`); `WorkflowEngine` runtime
   with `delegate` (one-shot via queue), `send`/`drain` (live-agent
@@ -137,8 +149,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (`GroupTabState` + aggregate-state emoji); `dashboard.py`
   (`GroupDashboard` widget with `render_dashboard` pure function —
   Members / Current broadcast / Recent broadcasts panels).
-- `examples/` - shipped workflows (`tdd_step.py`). Import in your
-  `.aegis.py` to register them.
+- `examples/` - shipped workflows (`tdd_step.py`). Drop them into
+  `.aegis/plugins/` (or any `plugin_dirs:` entry in `.aegis.yaml`) to
+  register them.
 - Theme colors are threaded as an `AegisColors` object (`app.palette`,
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's

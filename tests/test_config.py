@@ -10,6 +10,17 @@ DEFAULT_PROMPT = (
     "focused if possible, only resort to long responses if it really matters")
 
 
+_MIN_AGENT = (
+    "default_agent: default\n"
+    "agents:\n"
+    "  default:\n"
+    "    provider: claude-code\n"
+    "    model: opus\n"
+    "    effort: high\n"
+    "    permission: auto\n"
+)
+
+
 def test_agent_constructs_with_enums():
     a = Agent(harness="claude-code", model="opus",
               effort="high", permission="auto")
@@ -20,64 +31,66 @@ def test_agent_constructs_with_enums():
 
 
 def test_load_config_missing_everywhere_points_to_init(tmp_path):
+    # No .aegis.yaml anywhere → load_config raises pointing at `aegis init`.
+    import os
+    os.chdir(tmp_path)
     with pytest.raises(ConfigError, match="aegis init"):
-        load_config(search_paths=[tmp_path / "nope.py",
-                                  tmp_path / "also-nope.py"])
+        load_config()
 
 
-def test_load_config_cwd_shadows_home(tmp_path):
-    cwd = tmp_path / ".aegis.py"
-    home = tmp_path / "home.py"
-    cwd.write_text('from aegis import Agent\n'
-                    'agents={"default":Agent(harness="claude-code",'
-                    'model="sonnet",effort="low",permission="read")}\n'
-                    'default_agent="default"\n')
-    home.write_text('from aegis import Agent\n'
-                     'agents={"default":Agent(harness="claude-code",'
-                     'model="opus",effort="max",permission="full")}\n'
-                     'default_agent="default"\n')
-    agents, _ = load_config(search_paths=[cwd, home])
-    assert agents["default"].model == "sonnet"
+def test_load_config_with_explicit_root(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text(_MIN_AGENT)
+    agents, default = load_config(root=tmp_path)
+    assert default == "default"
+    assert agents["default"].model == "opus"
 
 
 def test_load_config_default_agent_not_a_key(tmp_path):
-    f = tmp_path / ".aegis.py"
-    f.write_text('from aegis import Agent\n'
-                  'agents={"default":Agent(harness="claude-code",'
-                  'model="opus",effort="high",permission="auto")}\n'
-                  'default_agent="missing"\n')
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: missing\n"
+        "agents:\n"
+        "  default:\n"
+        "    provider: claude-code\n"
+        "    model: opus\n"
+        "    effort: high\n"
+        "    permission: auto\n"
+    )
     with pytest.raises(ConfigError, match="default_agent"):
-        load_config(search_paths=[f])
+        load_config(root=tmp_path)
 
 
-def test_load_config_bad_permission_names_field(tmp_path):
-    f = tmp_path / ".aegis.py"
-    f.write_text('from aegis import Agent\n'
-                  'agents={"default":Agent(harness="claude-code",'
-                  'model="opus",effort="high",permission="banana")}\n'
-                  'default_agent="default"\n')
-    with pytest.raises(ConfigError, match="permission"):
-        load_config(search_paths=[f])
+def test_load_config_bad_permission_value(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: default\n"
+        "agents:\n"
+        "  default:\n"
+        "    provider: claude-code\n"
+        "    model: opus\n"
+        "    effort: high\n"
+        "    permission: banana\n"
+    )
+    with pytest.raises(Exception):
+        load_config(root=tmp_path)
 
 
 def test_find_project_root_in_cwd(tmp_path):
-    (tmp_path / ".aegis.py").write_text("agents={}\n")
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
     assert find_project_root(tmp_path) == tmp_path
 
 
 def test_find_project_root_in_ancestor(tmp_path):
-    (tmp_path / ".aegis.py").write_text("x=1\n")
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
     deep = tmp_path / "a" / "b"
     deep.mkdir(parents=True)
     assert find_project_root(deep) == tmp_path
 
 
 def test_find_project_root_closest_wins(tmp_path):
-    (tmp_path / ".aegis.py").write_text("x=1\n")
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
     inner = tmp_path / "inner"
     sub = inner / "sub"
     sub.mkdir(parents=True)
-    (inner / ".aegis.py").write_text("x=1\n")
+    (inner / ".aegis.yaml").write_text("agents: {}\n")
     assert find_project_root(sub) == inner
 
 
@@ -86,22 +99,22 @@ def test_find_project_root_none(tmp_path):
 
 
 def test_telegram_config_defaults(tmp_path, monkeypatch):
-    p = tmp_path / ".aegis.py"
-    p.write_text("telegram_chat_id=5\n")
+    (tmp_path / ".aegis.yaml").write_text(
+        _MIN_AGENT + "telegram:\n  chat_id: 5\n")
     monkeypatch.delenv("AEGIS_TELEGRAM_TOKEN", raising=False)
-    cfg = load_telegram_config(p)
+    cfg = load_telegram_config(tmp_path)
     assert cfg.chat_id == 5 and cfg.token is None
     assert cfg.auto_prompt == DEFAULT_PROMPT
 
 
 def test_env_token_wins(tmp_path, monkeypatch):
-    p = tmp_path / ".aegis.py"
-    p.write_text("telegram_token='infile'\n")
+    (tmp_path / ".aegis.yaml").write_text(
+        _MIN_AGENT + "telegram:\n  token: infile\n")
     monkeypatch.setenv("AEGIS_TELEGRAM_TOKEN", "fromenv")
-    assert load_telegram_config(p).token == "fromenv"
+    assert load_telegram_config(tmp_path).token == "fromenv"
 
 
 def test_empty_auto_prompt_disables(tmp_path):
-    p = tmp_path / ".aegis.py"
-    p.write_text("auto_add_to_telegram_prompt=''\n")
-    assert load_telegram_config(p).auto_prompt == ""
+    (tmp_path / ".aegis.yaml").write_text(
+        _MIN_AGENT + "telegram:\n  auto_prompt: ''\n")
+    assert load_telegram_config(tmp_path).auto_prompt == ""

@@ -77,12 +77,18 @@ def test_serve_refuses_to_start_when_queues_invalid(tmp_path, monkeypatch):
     from aegis.cli import app
 
     root = tmp_path
-    (root / ".aegis.py").write_text("""
-from aegis import Agent
-agents = {"x": Agent(harness="claude-code", model="opus",
-                     effort="high", permission="auto")}
-default_agent = "x"
-queues = {"impl": {"agent": "ghost", "max_parallel": 1}}
+    (root / ".aegis.yaml").write_text("""
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: ghost
+    max_parallel: 1
 """)
     monkeypatch.chdir(root)
     res = CliRunner().invoke(app, ["serve"])

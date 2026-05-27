@@ -96,26 +96,26 @@ it if your provider changes prices.
 
 ## Configuration
 
-Add a `budgets:` list to any queue in `.aegis.py`:
+Add a `budgets:` list to any queue in `.aegis.yaml`:
 
-```python
-queues = {
-    "impl": {
-        "agent": "opus",
-        "max_parallel": 2,
-        "budgets": [
-            {"usd": 1.00,             "window": "1h"},
-            {"usd": 10.00,            "window": "24h"},
-            {"output_tokens": 500000, "window": "1h"},   # runaway belt
-            {"usd": 50.00,            "window": "7d"},
-        ],
-    },
-    "fast": {
-        "agent": "haiku-fast",
-        "max_parallel": 4,
-        # no budgets: key → no caps; behaves as before
-    },
-}
+```yaml
+queues:
+  impl:
+    agent: opus
+    max_parallel: 2
+    budgets:
+      - usd: 1.00
+        window: 1h
+      - usd: 10.00
+        window: 24h
+      - output_tokens: 500000     # runaway belt
+        window: 1h
+      - usd: 50.00
+        window: 7d
+  fast:
+    agent: haiku-fast
+    max_parallel: 4
+    # no budgets: key → no caps; behaves as before
 ```
 
 Validation happens at boot. Aegis refuses to start if:
@@ -230,7 +230,7 @@ The list endpoint returns a summary row per queue. The per-queue
 endpoint returns the full `Decision` — or `404` if the queue doesn't
 exist on that serve.
 
-These are read-only. Budget configuration lives in `.aegis.py` and is
+These are read-only. Budget configuration lives in `.aegis.yaml` and is
 not writable over the wire.
 
 ## Patterns
@@ -353,7 +353,7 @@ replayed on every start. There is no separate budget state file.
 
 **Can I change budgets without restarting?**
 
-Yes. `.aegis.py` is re-evaluated on config reload (or `aegis` restart).
+Yes. `.aegis.yaml` is re-evaluated on config reload (or `aegis` restart).
 Budget changes apply to the next enqueue after reload; in-flight workers
 are not affected.
 

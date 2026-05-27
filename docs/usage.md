@@ -87,7 +87,7 @@ on the default screen.
 
 ## Queue dashboard
 
-When queues are configured in `.aegis.py`, a one-line **strip** sits
+When queues are configured in `.aegis.yaml`, a one-line **strip** sits
 just above the status bar in every conversation showing live per-queue
 depth and the most recent in-flight worker. Press `Ctrl+D` to expand
 into a full-screen modal with `QUEUES / IN-FLIGHT / QUEUED / RECENT`
@@ -111,7 +111,7 @@ aegis           # resume the last workspace
 aegis --clean   # start fresh (no resume)
 ```
 
-What's persisted, under `.aegis/state/` next to your `.aegis.py`:
+What's persisted, under `.aegis/state/` next to your `.aegis.yaml`:
 
 - **`workspace.json`** — the tabs that were open: handle, profile,
   display order, which tab was active.

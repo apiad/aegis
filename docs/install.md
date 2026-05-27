@@ -36,15 +36,15 @@ is `aegis` (so `pip install aegis-harness` then `from aegis import …`).
 ## First run
 
 ```bash
-aegis init     # interactive wizard — writes .aegis.py
+aegis init     # interactive wizard — writes .aegis.yaml
 aegis          # full-screen TUI
 ```
 
 `aegis init` is a Rich-powered wizard. It scans your `PATH` for the
 supported CLIs, lets you pick a model + permission mode for each,
-optionally configures queues, and writes a `.aegis.py` to your current
+optionally configures queues, and writes a `.aegis.yaml` to your current
 directory. Re-running `aegis init` refuses to overwrite an existing
-`.aegis.py` unless you pass `--force`.
+`.aegis.yaml` unless you pass `--force`.
 
 ## Verify
 
@@ -57,8 +57,8 @@ If you see `aegis 0.3.0` (or higher), you're good.
 ## Where aegis looks for config
 
 `aegis` walks up from the current directory to find the closest
-ancestor containing a `.aegis.py`, falling back to `~/.aegis.py`. With
-no config anywhere, it refuses to start and points you at `aegis init`.
+ancestor containing a `.aegis.yaml`. With no config anywhere, it
+refuses to start and points you at `aegis init`.
 
 ## Development install (from source)
 

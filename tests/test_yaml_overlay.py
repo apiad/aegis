@@ -12,6 +12,7 @@ from aegis.config.yaml_loader import load_config
 
 def test_overlay_only_schedules(tmp_path: Path) -> None:
     (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: c\n"
         "agents:\n  c:\n    provider: claude-code\n    model: opus\n")
     overlay = tmp_path / ".aegis" / "schedules"
     overlay.mkdir(parents=True)
@@ -58,7 +59,7 @@ def test_conflict_fails_loud(tmp_path: Path) -> None:
 
 
 def test_agent_overlay(tmp_path: Path) -> None:
-    (tmp_path / ".aegis.yaml").write_text("")
+    (tmp_path / ".aegis.yaml").write_text("default_agent: claude\n")
     overlay = tmp_path / ".aegis" / "agents"
     overlay.mkdir(parents=True)
     (overlay / "claude.yaml").write_text(textwrap.dedent("""
@@ -72,7 +73,11 @@ def test_agent_overlay(tmp_path: Path) -> None:
 
 
 def test_queue_overlay(tmp_path: Path) -> None:
-    (tmp_path / ".aegis.yaml").write_text("")
+    (tmp_path / ".aegis.yaml").write_text("default_agent: claude\n")
+    agents_overlay = tmp_path / ".aegis" / "agents"
+    agents_overlay.mkdir(parents=True)
+    (agents_overlay / "claude.yaml").write_text(
+        "provider: claude-code\nmodel: opus\n")
     overlay = tmp_path / ".aegis" / "queues"
     overlay.mkdir(parents=True)
     (overlay / "tasks.yaml").write_text(

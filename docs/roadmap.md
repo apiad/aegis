@@ -36,7 +36,7 @@
   blocks, max-variety alliterating handle generation.
 - **Rich `aegis init` wizard** — detects installed CLIs, walks
   through agent + queue setup, refuses to clobber upstream
-  `.aegis.py` without `--force`.
+  `.aegis.yaml` without `--force`.
 - **First PyPI release** — distributed as `aegis-harness`.
 
 ### v0.4.x (current)

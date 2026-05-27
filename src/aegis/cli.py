@@ -44,40 +44,38 @@ def _version_callback(value: bool) -> None:
 def init(
     force: bool = typer.Option(
         False, "--force", "-f",
-        help="Overwrite any existing .aegis.py and ignore upstream ones."),
+        help="Overwrite any existing .aegis.yaml and ignore upstream ones."),
 ) -> None:
-    """Interactive wizard to create a .aegis.py.
+    """Interactive wizard to create a .aegis.yaml.
 
     Detects installed agent CLIs (claude, gemini, opencode) and walks
     you through adding agents and queues. Refuses to run if any
-    .aegis.py exists in the current dir or an ancestor (pass --force
+    .aegis.yaml exists in the current dir or an ancestor (pass --force
     to override + overwrite).
     """
     upstream = find_project_root()
-    target = (upstream or Path.cwd()) / ".aegis.py"
+    target = (upstream or Path.cwd()) / ".aegis.yaml"
 
     if upstream is not None and not force:
         _console.print(
             f"[red]aegis already configured at "
-            f"[bold]{upstream / '.aegis.py'}[/bold].[/red]\n"
+            f"[bold]{upstream / '.aegis.yaml'}[/bold].[/red]\n"
             f"[dim]Pass --force to overwrite and re-run the wizard.[/dim]")
         raise typer.Exit(1)
 
     if target.exists() and not force:
-        # find_project_root returned None (no upstream found from here)
-        # but the file still exists in cwd. Same refuse-without-force.
         _console.print(
             f"[red]{target} already exists.[/red]\n"
             f"[dim]Pass --force to overwrite.[/dim]")
         raise typer.Exit(1)
 
-    from aegis.init_wizard import render_aegis_py, run_wizard
+    from aegis.init_wizard import render_aegis_yaml, run_wizard
     config = run_wizard(_console)
     if config is None:
         _console.print("[yellow]aborted; no file written.[/yellow]")
         raise typer.Exit(1)
 
-    target.write_text(render_aegis_py(config))
+    target.write_text(render_aegis_yaml(config))
     _console.print(f"\n[green]Wrote {target}[/green]")
     _console.print(
         f"[dim]Run [bold]aegis[/bold] to start the interactive TUI, "
@@ -116,7 +114,7 @@ def run(
     effective_cwd = str(root) if cwd == "." else cwd
 
     try:
-        queues = load_queues(root / ".aegis.py")
+        queues = load_queues(root)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -333,36 +331,30 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
             profile, effective, mcp_url, handle)
 
     try:
-        queues = load_queues(root / ".aegis.py")
+        queues = load_queues(root)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    tcfg = load_telegram_config(root / ".aegis.py")
+    tcfg = load_telegram_config(root)
     tg = tcfg if tcfg.token and tcfg.chat_id else None
     if tg is None:
         _console.print("[yellow]No telegram_token/chat_id — "
                        "headless MCP-only.[/yellow]")
 
-    # Optional .aegis.yaml: load schedules + import plugin workflows.
-    schedules: dict = {}
-    remotes: dict = {}
-    remote_plane = None
-    inline_schedule_names: set[str] = set()
-    if (root / ".aegis.yaml").is_file():
-        try:
-            from aegis.config.yaml_loader import (
-                import_plugins, load_config as _load_yaml,
-            )
-            yaml_cfg = _load_yaml(root)
-            import_plugins(yaml_cfg)
-            schedules = yaml_cfg.schedules
-            remotes = yaml_cfg.remotes
-            remote_plane = yaml_cfg.remote_plane
-            inline_schedule_names = yaml_cfg.inline_schedule_names
-        except Exception as e:  # noqa: BLE001
-            _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
-            raise typer.Exit(1)
+    try:
+        from aegis.config.yaml_loader import (
+            import_plugins, load_config as _load_yaml,
+        )
+        yaml_cfg = _load_yaml(root)
+        import_plugins(yaml_cfg)
+        schedules = yaml_cfg.schedules
+        remotes = yaml_cfg.remotes
+        remote_plane = yaml_cfg.remote_plane
+        inline_schedule_names = yaml_cfg.inline_schedule_names
+    except ConfigError as e:
+        _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
+        raise typer.Exit(1)
 
     async def main_async():
         stop = asyncio.Event()
@@ -386,9 +378,14 @@ app.add_typer(workflow_app, name="workflow")
 
 @workflow_app.command("list")
 def workflow_list_cmd() -> None:
-    """List all @workflow-decorated functions discovered via .aegis.py."""
+    """List @workflow-decorated functions discovered via .aegis/plugins."""
+    root = find_project_root() or Path.cwd()
     try:
-        load_config()    # loads .aegis.py → @workflow decorators fire
+        from aegis.config.yaml_loader import (
+            import_plugins,
+            load_config as _load_yaml,
+        )
+        import_plugins(_load_yaml(root))
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -420,7 +417,12 @@ def workflow_run_cmd(
         raise typer.Exit(1)
     root = find_project_root() or Path.cwd()
     try:
-        queues = load_queues(root / ".aegis.py")
+        queues = load_queues(root)
+        from aegis.config.yaml_loader import (
+            import_plugins,
+            load_config as _load_yaml,
+        )
+        import_plugins(_load_yaml(root))
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)

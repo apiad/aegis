@@ -159,7 +159,7 @@ register(Command(
     summary="/agents — list available agent profiles",
     detail=(
         "/agents\n\n"
-        "List the agent profiles declared in .aegis.py. Use one of "
+        "List the agent profiles declared in .aegis.yaml. Use one of "
         "these names as the slug argument to /new."
     ),
     handler=_cmd_agents,

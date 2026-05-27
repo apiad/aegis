@@ -7,13 +7,16 @@ inbox message. Producer keeps working in between.
 
 ## The model
 
-A queue is statically configured in `.aegis.py`:
+A queue is statically configured in `.aegis.yaml`:
 
-```python
-queues = {
-    "review":   {"agent": "reviewer", "max_parallel": 2},
-    "research": {"agent": "default",  "max_parallel": 1},
-}
+```yaml
+queues:
+  review:
+    agent: reviewer
+    max_parallel: 2
+  research:
+    agent: default
+    max_parallel: 1
 ```
 
 Each queue binds to one agent profile and a max-parallel cap. At
@@ -106,7 +109,7 @@ format adapts to how many queues you have:
 | 2–3 | `queues: tasks ●1/2 ○3 · impl ●0/1    last: brisk-curie` |
 | 4+ | `5 queues · ●3/8 ○12 ✓42 ✗3    last: brisk-curie` |
 
-If no queues are configured in `.aegis.py`, the strip is hidden.
+If no queues are configured in `.aegis.yaml`, the strip is hidden.
 
 ### Dashboard (`Ctrl+D`)
 

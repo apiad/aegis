@@ -30,11 +30,17 @@ async def hello(engine, *, who: str = "world") -> str:
         await engine.close(handle)
 ```
 
-Register it by importing in `.aegis.py`:
+Drop the module into `.aegis/plugins/` (the default `plugin_dirs`
+entry); aegis auto-imports every `*.py` there at boot, so the
+`@workflow` decorator fires and the name lands in the registry:
 
-```python
-from my_workflows import hello   # noqa: F401
 ```
+.aegis/
+  plugins/
+    my_workflows.py     # contains the @workflow function
+```
+
+To use a different folder, set `plugin_dirs:` in `.aegis.yaml`.
 
 Run it:
 
@@ -60,7 +66,7 @@ the substrate handle. Key methods:
 | `await engine.checkpoint(name, payload)` | Persist a JSON-serializable state snapshot to the ledger. |
 | `await engine.resume_state() -> dict \| None` | Return the last checkpoint payload, or `None` for a fresh run. |
 | `engine.log(message)` | Append a line to the workflow's JSONL log. |
-| `engine.config` | Read-only dict view of values from `.aegis.py`. |
+| `engine.config` | Read-only dict view of values from `.aegis.yaml`. |
 | `engine.host`, `engine.workflow_id`, `engine.name` | Runtime identity. |
 
 Workflows are `async def` — `await` everything that returns a coroutine.
@@ -139,16 +145,13 @@ immediately.
 
 ## Configuration
 
-Workflows read `engine.config` — populated from `.aegis.py`. For
-example, to override `review_branch`'s reviewer set:
+Workflows read `engine.config` — populated from each `@workflow`'s
+`.configure(...)` call (run at plugin import time). For example, to
+override `review_branch`'s reviewer set, add to your plugin module:
 
 ```python
-# .aegis.py
-workflows = {
-    "review_branch": {
-        "reviewers": ["security-reviewer", "perf-reviewer"],
-    },
-}
+from aegis.workflows.review_branch import review_branch
+review_branch.configure(reviewers=["security-reviewer", "perf-reviewer"])
 ```
 
 The `default_subagent_profile` key (used by `execute_plan`) defaults
