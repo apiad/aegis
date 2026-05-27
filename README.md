@@ -231,6 +231,19 @@ plan → dispatch implementer per task with durable resume),
   shows live per-queue depth and the most recent in-flight worker.
   `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
   QUEUED / RECENT` bands and a live assistant-text tail.
+- **File viewer + picker.** `Ctrl+O` opens a fuzzy file picker
+  (typeahead, keyboard nav, top-match preselected) over a background
+  watchdog index; pick a file and it lands in a `FileTab` —
+  syntax-highlighted read-only view by default, `e` toggles edit mode,
+  `Ctrl+S` saves, Escape with unsaved edits prompts to discard. Agents
+  can drop you into the same view via the `aegis_view_file` MCP tool,
+  and `Ctrl+click` on a backtick-wrapped filename in any agent
+  response opens it directly.
+- **Config panel.** `F2` opens the live `.aegis.yaml` editor inside
+  the TUI — see agents/queues/telegram at a glance, add an agent
+  through a validated modal. Same edit helpers back the scriptable
+  `aegis config` CLI verbs, so a side-terminal `aegis config agent
+  add` and the panel are interchangeable.
 - **Session persistence.** `aegis` reopens the last workspace by
   default — agent tabs, terminal tabs, profiles, order, with each
   underlying session genuinely resumed (model memory intact).
@@ -435,6 +448,7 @@ ConfigPanel via `F2`.
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `Ctrl+D` | Open / close the queue dashboard |
+| `F2` | Open the **ConfigPanel** — edit agents/queues/etc. live |
 | `Escape` | Interrupt the active turn (or dismiss a modal) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
@@ -443,28 +457,40 @@ A backgrounded tab that finishes shows a `*` and rings the bell.
 
 ## Configuration
 
-`.aegis.py` is plain Python. The wizard writes one for you; here's the
-shape:
+`.aegis.yaml` is declarative YAML. Author it interactively (the TUI
+ConfigPanel — boot-into-panel when no config exists, `F2` mid-session)
+or with the scriptable CLI (`aegis config agent add`, `aegis config
+queue add`, `aegis config telegram set`, …). Shape:
 
-```python
-from aegis import Agent, ClaudeCode, GeminiCLI, OpenCode
+```yaml
+default_agent: default
 
-agents = {
-    "default":  Agent(provider=ClaudeCode(model="opus", effort="high",
-                                           permission="auto")),
-    "reviewer": Agent(provider=ClaudeCode(model="sonnet",
-                                           permission="read")),
-    "fast":     Agent(provider=GeminiCLI(model="gemini-3-flash-preview",
-                                          permission="full")),
-    "oss":      Agent(provider=OpenCode(model="opencode/kimi-k2.6",
-                                         permission="full")),
-}
-default_agent = "default"
+agents:
+  default:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+  reviewer:
+    provider: claude-code
+    model: sonnet
+    permission: read
+  fast:
+    provider: gemini
+    model: gemini-3-flash-preview
+    permission: full
+  oss:
+    provider: opencode
+    model: opencode/kimi-k2.6
+    permission: full
 
-queues = {
-    "review": {"agent": "reviewer", "max_parallel": 2},
-    "fast":   {"agent": "fast",     "max_parallel": 4},
-}
+queues:
+  review:
+    agent: reviewer
+    max_parallel: 2
+  fast:
+    agent: fast
+    max_parallel: 4
 ```
 
 Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
@@ -474,10 +500,11 @@ Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 `aegis serve` runs the SessionManager and MCP plane without the TUI; add
 a Telegram token to drive it from your phone:
 
-```python
-# .aegis.py
-telegram_token = "…"        # or set AEGIS_TELEGRAM_TOKEN
-telegram_chat_id = 123456   # the single allowed chat
+```yaml
+# .aegis.yaml
+telegram:
+  token: "…"               # or set AEGIS_TELEGRAM_TOKEN (env wins)
+  chat_id: 123456          # the single allowed chat
 ```
 
 v0.10 ships a full **substrate command surface** alongside the original

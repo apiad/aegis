@@ -198,6 +198,8 @@ The TUI is calm and dense. The metrics are honest. The substrate persists.
 - **Multi-tab TUI.** N independent agent sessions plus terminal tabs. Generated alliterating handles (`lucid-knuth`, `wry-hopper`). State dots, sticky `*`, terminal bell when a backgrounded agent finishes. Per-block click-to-copy.
 - **Honest metrics.** True input (including cache) with cached %, output, tool calls, per-turn and per-session timing. Provisional while streaming, exact at turn end. No log scraping anywhere.
 - **Queue dashboard.** Always-on one-line strip above the status bar (per-queue depth, last in-flight worker). `Ctrl+D` for a full dashboard with in-flight / queued / recent bands and a live assistant-text tail.
+- **File viewer + picker.** `Ctrl+O` opens a fuzzy file picker (typeahead, keyboard nav, top-match preselected) over a background watchdog index; selection lands in a `FileTab` — syntax-highlighted read-only view by default, `e` toggles edit mode, `Ctrl+S` saves, Escape with unsaved edits prompts to discard. Agents can drop you into the same view via the `aegis_view_file` MCP tool, and `Ctrl+click` on a backtick-wrapped filename in any agent response opens it directly.
+- **Config panel.** `F2` opens the live `.aegis.yaml` editor inside the TUI — see agents/queues/telegram/plugin_dirs at a glance, add an agent through a validated modal. Same edit helpers back the scriptable `aegis config` CLI verbs, so a side-terminal `aegis config agent add` and the panel are interchangeable.
 - **Session persistence.** `aegis` reopens the last workspace by default — agent tabs, terminal tabs, profiles, order, with each underlying session genuinely resumed. `aegis --clean` opts out.
 - **Workflow catalog.** The `aegis.workflows` package ships seed workflows you import to register: `brainstorm_to_spec`, `execute_plan`, `review_branch`, `tdd_cycle`. The engine offers `ask_human` for host-tab dialogue, explicit checkpoints with durable resume, `spawn`/`close` for subagents, `bash_predicate` for retry-with-feedback loops, and `parallel` for fan-out joins.
 - **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP plane without a TUI. Add a Telegram token and drive your agent team from your phone.
@@ -214,8 +216,8 @@ The TUI is calm and dense. The metrics are honest. The substrate persists.
 
 ```bash
 pip install aegis-harness   # Python 3.13+
-aegis            # TUI; opens ConfigPanel if no .aegis.yaml
-aegis                       # full-screen TUI
+aegis                       # full-screen TUI; opens ConfigPanel
+                            # if no .aegis.yaml is found
 ```
 
 [Install →](install.md){ .aegis-button }

@@ -5,6 +5,82 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-27
+
+### BREAKING
+
+- **`.aegis.py` removed.** `.aegis.yaml` is now the single config
+  substrate. Migration: rewrite your imperative `Agent(...)` /
+  `queues = {...}` / `telegram_token = ...` lines as YAML sections
+  (see [Configuration](docs/configuration.md)). `find_project_root`
+  keys off `.aegis.yaml`; any `.aegis.py` in the tree is ignored.
+- **`aegis init` retired.** Bootstrap paths now: launch `aegis` in
+  an empty directory (the TUI opens the ConfigPanel — press `a` to
+  add an agent), or use the scriptable CLI verbs (`aegis config
+  agent add <slug> --provider <…> --model <…>` writes a minimal
+  `.aegis.yaml`).
+
+### `aegis config` CLI surface
+
+Scriptable, idempotent subcommands for every authorable section of
+`.aegis.yaml`. Each writing verb routes through ruamel.yaml so
+existing comments and key order are preserved, validates the
+prospective body via `yaml_loader.load_config` before persisting, and
+fails loud on invalid input (the on-disk file is unchanged):
+
+- `aegis config show [--json]`
+- `aegis config agent list / add <slug> --provider --model
+                                       [--effort] [--permission] /
+                            remove <slug>`
+- `aegis config queue list / add <name> --agent --max-parallel
+                                       [--budget …]+ /
+                            remove <name>`
+- `aegis config telegram show / set [--token --chat-id --auto-prompt
+                                    + matching --clear-* variants]`
+- `aegis config default-agent <slug>`
+- `aegis config plugin-dir list / add / remove`
+
+`--budget` format: `usd:1.00:1h` or `output_tokens:500000:1h`
+(repeatable).
+
+### TUI ConfigPanel
+
+New tab type alongside `ConversationPane` / `FileTab` / `TerminalTab`.
+Stacks four sections — default-agent + agents table, queues table,
+telegram block (token redacted), plugin_dirs list — and re-reads
+`.aegis.yaml` on each refresh.
+
+- **Boot-into-panel.** Launching `aegis` in a directory with no
+  `.aegis.yaml` no longer refuses to start. The TUI mounts the panel
+  as the only tab, status bar nudges you to add an agent.
+- **Mid-session.** `F2` opens (or focuses) the panel from any other
+  tab. `Ctrl+,` was the original binding but most terminals don't
+  deliver it distinctly from `,`.
+- **AddAgentModal.** Press `a` on the panel → modal with
+  slug/provider/model/effort/permission fields, validates through
+  the same `add_agent` helper the CLI uses, refreshes on save.
+
+### File picker — keyboard nav + bypass on unique match
+
+- Up/Down/PgUp/PgDn move the highlight while focus stays in the
+  Input (priority bindings).
+- Top match is always preselected after each filter pass — Enter
+  opens it without arrow keys.
+- Escape is now a priority binding so the Input can't swallow it.
+- Indexer poll is one-shot; was running every 150ms forever and
+  clobbering your typed query.
+- Ctrl+click on a backtick token bypasses the picker entirely when
+  the token resolves to a unique indexed file (otherwise falls back
+  to the prefilled picker, whose dismiss path now actually opens
+  the file — the previous `push_screen` call dropped the result).
+
+### File viewer — cancel-edit confirm bar
+
+Escape in edit mode with unsaved modifications now shows a
+`⚠ unsaved edits — [d] discard / [esc] keep editing` bar and parks
+the TextArea read-only so the bar's keystrokes don't get typed into
+the buffer. Clean buffer still exits edit mode silently.
+
 ## [0.11.2] - 2026-05-26
 
 ### File picker improvements
