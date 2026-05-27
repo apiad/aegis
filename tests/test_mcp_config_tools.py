@@ -349,3 +349,24 @@ async def test_config_toggle_schedule_enabled_flips(tmp_path, monkeypatch):
                       name="morning")
     assert out["ok"] is True
     assert out["enabled"] is False
+
+
+# --- concurrency -------------------------------------------------------
+
+async def test_two_add_queue_calls_serialize_safely(root_with_yaml):
+    """Two concurrent add_queue calls — both end up in YAML; the file
+    parses; no torn state. The asyncio.Lock + _atomic_write together
+    guarantee this."""
+    import asyncio as _asyncio
+    server = build_server(_StubBridge())
+    await _asyncio.gather(
+        _call(server, "aegis_config_add_queue",
+              name="a", agent="researcher", max_parallel=1),
+        _call(server, "aegis_config_add_queue",
+              name="b", agent="researcher", max_parallel=1),
+    )
+    yml = (root_with_yaml / ".aegis.yaml").read_text()
+    assert "a:" in yml and "b:" in yml
+    from aegis.config.yaml_loader import load_config as _load_yaml
+    cfg = _load_yaml(root_with_yaml)
+    assert {"a", "b"} <= set(cfg.queues)

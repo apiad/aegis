@@ -108,7 +108,14 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_schedule_show", "aegis_schedule_remove",
         "aegis_schedule_logs",
         "aegis_budget_status",
-        "aegis_view_file"}
+        "aegis_view_file",
+        "aegis_config_show", "aegis_config_list_agents",
+        "aegis_config_list_queues", "aegis_config_list_schedules",
+        "aegis_config_add_agent", "aegis_config_remove_agent",
+        "aegis_config_add_queue", "aegis_config_remove_queue",
+        "aegis_config_add_plugin_dir", "aegis_config_remove_plugin_dir",
+        "aegis_config_set_schedule_enabled",
+        "aegis_config_toggle_schedule_enabled"}
 
 
 @pytest.mark.asyncio
