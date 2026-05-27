@@ -10,6 +10,7 @@ from pathlib import Path
 from rich.console import RenderableType
 from rich.markdown import Markdown
 from rich.text import Text
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.events import Click
@@ -184,7 +185,7 @@ class CopyableBlock(Widget):
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
         self.tooltip = (
-            "click to open file" if self._backtick_tokens else "click to copy"
+            "click to copy | ctrl+click to open file" if self._backtick_tokens else "click to copy"
         )
 
     def compose(self) -> ComposeResult:
@@ -196,7 +197,7 @@ class CopyableBlock(Widget):
         self._text_payload = text_payload
         self._backtick_tokens = _extract_backtick_tokens(text_payload)
         self.tooltip = (
-            "click to open file" if self._backtick_tokens else "click to copy"
+            "click to copy | ctrl+click to open file" if self._backtick_tokens else "click to copy"
         )
         with contextlib.suppress(Exception):
             self.query_one(".content", Static).update(renderable)
@@ -205,11 +206,8 @@ class CopyableBlock(Widget):
         return self._text_payload
 
     def on_click(self, event: Click) -> None:
-        if self._backtick_tokens:
-            with contextlib.suppress(Exception):
-                from aegis.tui.picker import FilePickerModal
-                self.app.push_screen(
-                    FilePickerModal(prefill=self._backtick_tokens[0]))
+        if event.ctrl and self._backtick_tokens:
+            self._open_file_from_tokens()
             return
         if not self._text_payload:
             return
@@ -222,6 +220,19 @@ class CopyableBlock(Widget):
                 f"copied {len(self._text_payload)} chars", timeout=1.5)
         except Exception:
             pass
+
+    @work
+    async def _open_file_from_tokens(self) -> None:
+        tokens = self._backtick_tokens
+        if len(tokens) == 1:
+            token = tokens[0]
+        else:
+            from aegis.tui.picker import _TokenChooser
+            token = await self.app.push_screen_wait(_TokenChooser(tokens))
+            if token is None:
+                return
+        from aegis.tui.picker import FilePickerModal
+        self.app.push_screen(FilePickerModal(prefill=token))
 
 
 def _payload_for_event(ev) -> str:

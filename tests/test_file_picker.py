@@ -94,6 +94,48 @@ async def test_file_picker_uses_indexer(tmp_path: Path):
         assert any("indexed.py" in (oid or "") for oid in option_ids)
 
 
+@pytest.mark.asyncio
+async def test_token_chooser_returns_selected():
+    result_holder: list = []
+
+    class _Wrapper(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                _TokenChooser(["src/foo.py", "tests/bar.py"]),
+                callback=lambda r: result_holder.append(r) or self.exit())
+
+    from aegis.tui.picker import _TokenChooser
+    app = _Wrapper()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        for _ in range(5):
+            await pilot.pause()
+
+    assert result_holder and result_holder[0] == "src/foo.py"
+
+
+@pytest.mark.asyncio
+async def test_token_chooser_escape_returns_none():
+    result_holder: list = []
+
+    class _Wrapper(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                _TokenChooser(["a.py", "b.py"]),
+                callback=lambda r: result_holder.append(r) or self.exit())
+
+    from aegis.tui.picker import _TokenChooser
+    app = _Wrapper()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("escape")
+        for _ in range(5):
+            await pilot.pause()
+
+    assert result_holder == [None]
+
+
 class _Host(App):
     def __init__(self, prefill: str = "") -> None:
         super().__init__()

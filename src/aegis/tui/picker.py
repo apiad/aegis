@@ -175,3 +175,32 @@ class FilePickerModal(ModalScreen):
 
     def key_enter(self) -> None:
         self._select_highlighted()
+
+
+class _TokenChooser(ModalScreen):
+    """Pick one backtick token from a list — routes to FilePickerModal."""
+
+    DEFAULT_CSS = """
+    _TokenChooser { align: center middle; }
+    _TokenChooser OptionList {
+        width: 50; max-height: 16;
+        border: round $panel; background: $surface;
+    }
+    """
+
+    def __init__(self, tokens: list[str]) -> None:
+        super().__init__()
+        self._tokens = tokens
+
+    def compose(self) -> ComposeResult:
+        yield OptionList(*[Option(t, id=t) for t in self._tokens])
+
+    def on_mount(self) -> None:
+        self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(
+            self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
