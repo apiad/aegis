@@ -68,6 +68,28 @@ class SessionManager:
     def inline_schedule_names(self) -> set[str]:
         return set(self._inline_schedule_names)
 
+    def register_agent(self, slug: str, agent) -> None:
+        existing = self._agents.get(slug)
+        if existing is not None:
+            if existing == agent:
+                return
+            raise ValueError(f"agent {slug!r} already registered")
+        self._agents[slug] = agent
+
+    def register_queue(self, queue) -> None:
+        if self.queue_manager is None:
+            raise RuntimeError(
+                "no queue_manager attached; cannot register queue")
+        self.queue_manager.register_queue(queue)
+
+    def reload_plugins(self) -> None:
+        from pathlib import Path
+
+        from aegis.config import yaml_loader
+        root = self.state_root or Path.cwd()
+        cfg = yaml_loader.load_config(root)
+        yaml_loader.import_plugins(cfg)
+
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,
                     handle: str | None = None) -> AgentSession:
