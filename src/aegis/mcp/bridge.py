@@ -66,3 +66,19 @@ class AppBridge(Protocol):
     async def spawn(self, profile: str, *,
                     handle: str | None = None) -> str: ...
     async def close(self, handle: str) -> None: ...
+
+    def register_agent(self, slug: str, agent: object) -> None:
+        """Add a freshly-validated Agent to the live agent map. Idempotent
+        on identical (slug, agent) pairs; raises ValueError on slug
+        collision with a different agent."""
+        ...
+
+    def register_queue(self, queue: object) -> None:
+        """Add a freshly-validated Queue to the live QueueManager.
+        Raises ValueError on name collision."""
+        ...
+
+    def reload_plugins(self) -> None:
+        """Re-run import_plugins(load_config(state_root)) so newly-added
+        plugin_dirs entries register their @workflow functions."""
+        ...
