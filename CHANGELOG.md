@@ -5,6 +5,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-05-26
+
+### File viewer/editor
+
+- `FileTab` — new TUI tab type for viewing and lightly editing any file with
+  syntax highlighting (tree-sitter via `textual[syntax]`).
+- Ctrl+O opens a fuzzy `FilePickerModal` with typeahead over the current
+  working directory (up to 5000 entries).
+- Clicking any backtick-wrapped token in an agent response opens the file
+  picker pre-filled with that token.
+- MCP tool `aegis_view_file(path)` lets agents surface a file to the operator
+  mid-task; focuses an existing tab if the same path is already open.
+- VIEW mode (default): read-only; 2s mtime polling auto-reloads on disk
+  changes.
+- EDIT mode (`e`): writable; disk changes show a warning bar with `[r]` reload
+  / `[k]` keep options; Ctrl+S saves; Esc returns to VIEW.
+
 ## [0.11.0] - 2026-05-26
 
 ### Telegram renderer + correctness (buckets B+D from the v0.10 critique)
