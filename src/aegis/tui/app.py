@@ -188,6 +188,8 @@ class AegisApp(App):
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
         self._state_dir: Path = state_dir(Path.cwd())
+        from aegis.tui.file_index import FileIndexer
+        self._file_indexer = FileIndexer()
         # AppBridge surface. AegisApp is the bridge in the interactive
         # (TUI) path. QueueManager spawns workers through an adapter that
         # creates real ConversationPanes (so workers are visible tabs Alex
@@ -246,6 +248,7 @@ class AegisApp(App):
         self._palette = aegis_colors(self.current_theme)
         self.query_one(TabBar).set_palette(self._palette)
         await self._mcp.start()
+        self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
         # TODO(Task 11/13 / session-persistence-v1): wire bootstrap_resume here.
         # bootstrap_resume() is now the pure orchestrator — it classifies tabs
@@ -556,6 +559,7 @@ class AegisApp(App):
         self.queue_digest.stop()
         await self.queue_manager.stop()
         await self._mcp.stop()
+        self._file_indexer.stop()
         self.exit()
 
     # --- AppBridge --------------------------------------------------------
