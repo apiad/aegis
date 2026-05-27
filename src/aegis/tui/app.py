@@ -166,6 +166,7 @@ class AegisApp(App):
         Binding("ctrl+e", "new_terminal", "New terminal", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
+        Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
@@ -464,6 +465,59 @@ class AegisApp(App):
         self._refresh_tabbar()
         tab.focus_input()
         return tab
+
+    @work
+    async def action_open_file_picker(self, prefill: str = "") -> None:
+        from aegis.tui.picker import FilePickerModal
+        path = await self.push_screen_wait(FilePickerModal(prefill=prefill))
+        if path is not None:
+            await self._open_file_tab(path)
+
+    async def _open_file_tab(self, path: Path) -> None:
+        from aegis.tui.file_tab import FileTab
+        resolved = path.resolve()
+        tab_id = f"filetab-{abs(hash(str(resolved)))}"
+        for p in self._panes:
+            if p.id == tab_id:
+                cs = self.query_one(ContentSwitcher)
+                cs.current = tab_id
+                p.unseen = False
+                p.focus_input()
+                self._refresh_tabbar()
+                return
+        tab = FileTab(resolved)
+        self._panes.append(tab)
+        cs = self.query_one(ContentSwitcher)
+        await cs.mount(tab)
+        cs.current = tab.id
+        self._refresh_tabbar()
+        tab.focus_input()
+
+    async def open_file(self, path: str) -> dict:
+        """AppBridge entry point for aegis_view_file MCP tool."""
+        try:
+            resolved = Path(path).resolve()
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+        if not resolved.is_file():
+            return {"status": "error", "reason": "file not found",
+                    "path": str(path)}
+        tab_id = f"filetab-{abs(hash(str(resolved)))}"
+        for p in self._panes:
+            if p.id == tab_id:
+                self.run_worker(self._focus_existing_tab(p),
+                                group=f"focus-{tab_id}", exclusive=False)
+                return {"status": "focused", "path": str(resolved)}
+        self.run_worker(self._open_file_tab(resolved),
+                        group=f"open-file-{tab_id}", exclusive=False)
+        return {"status": "opened", "path": str(resolved)}
+
+    async def _focus_existing_tab(self, tab) -> None:
+        cs = self.query_one(ContentSwitcher)
+        cs.current = tab.id
+        tab.unseen = False
+        tab.focus_input()
+        self._refresh_tabbar()
 
     def on_pane_state_changed(self, message: PaneStateChanged) -> None:
         if message.finished:
