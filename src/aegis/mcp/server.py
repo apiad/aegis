@@ -375,6 +375,22 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return list(bridge.list_agents())
 
     @server.tool
+    async def aegis_view_file(path: str) -> dict:
+        """Open a file in the Aegis TUI viewer tab.
+
+        Opens a read-only syntax-highlighted view of the file. The operator
+        can press `e` in the tab to enter edit mode and Ctrl+S to save.
+        If the TUI is not running (headless mode), returns status 'no_tui'
+        without error.
+
+        path: absolute or relative to the cwd where aegis was launched.
+        """
+        open_file = getattr(bridge, "open_file", None)
+        if open_file is None:
+            return {"status": "no_tui"}
+        return await open_file(path)
+
+    @server.tool
     async def aegis_handoff(from_handle: str, target_handle: str,
                             context: str) -> str:
         """One-way context transfer to a live peer aegis session.
