@@ -82,6 +82,7 @@ class FilePickerModal(ModalScreen):
         Binding("pagedown", "highlight_page", "page", show=False,
                 priority=True),
         Binding("pageup", "highlight_page_up", show=False, priority=True),
+        Binding("escape", "cancel", show=False, priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -200,7 +201,7 @@ class FilePickerModal(ModalScreen):
             pass
         self.dismiss(None)
 
-    def key_escape(self) -> None:
+    def action_cancel(self) -> None:
         self.dismiss(None)
 
     def key_enter(self) -> None:
