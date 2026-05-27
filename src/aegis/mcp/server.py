@@ -463,6 +463,176 @@ def build_server(bridge: AppBridge) -> FastMCP:
             for name, s in (cfg.schedules or {}).items()
         ]
 
+    # --- config-edit write tools ---------------------------------------
+
+    @server.tool
+    async def aegis_config_add_agent(
+        slug: str, harness: str, model: str,
+        effort: str | None = None, permission: str | None = None,
+    ) -> dict:
+        """Add an agent profile to .aegis.yaml. Hot-registers on the live
+        agent map so the next spawn can use the new slug."""
+        from aegis.config import Agent, ConfigError, find_project_root
+        from aegis.config.edit import add_agent as _add
+
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _add(root, slug, provider=harness, model=model,
+                     effort=effort, permission=permission)
+            except ConfigError as e:
+                return {"error": str(e)}
+            kw: dict = {"harness": harness, "model": model}
+            if effort is not None:
+                kw["effort"] = effort
+            if permission is not None:
+                kw["permission"] = permission
+            try:
+                agent = Agent(**kw)
+                bridge.register_agent(slug, agent)
+            except Exception as e:                       # noqa: BLE001
+                return {"ok": True, "live": False,
+                        "restart_required_for": ["agents"],
+                        "note": f"persisted but live-register failed: {e}"}
+            return {"ok": True, "live": True, "restart_required_for": []}
+
+    @server.tool
+    async def aegis_config_remove_agent(slug: str) -> dict:
+        """Drop an agent profile from .aegis.yaml. Restart required."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.edit import remove_agent as _rm
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _rm(root, slug)
+            except ConfigError as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": False,
+                "restart_required_for": ["agents"]}
+
+    @server.tool
+    async def aegis_config_add_queue(
+        name: str, agent: str, max_parallel: int,
+        budgets: list[dict] | None = None,
+    ) -> dict:
+        """Add a queue to .aegis.yaml. Hot-registers on the live
+        QueueManager so subsequent aegis_enqueue calls can target it."""
+        from aegis.config import ConfigError, find_project_root, load_queues
+        from aegis.config.edit import add_queue as _add
+
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _add(root, name, agent=agent, max_parallel=max_parallel,
+                     budgets=budgets)
+            except ConfigError as e:
+                return {"error": str(e)}
+            try:
+                fresh_queues = load_queues(root)
+                queue = fresh_queues[name]
+                bridge.register_queue(queue)
+            except Exception as e:                       # noqa: BLE001
+                return {"ok": True, "live": False,
+                        "restart_required_for": ["queues"],
+                        "note": f"persisted but live-register failed: {e}"}
+            return {"ok": True, "live": True, "restart_required_for": []}
+
+    @server.tool
+    async def aegis_config_remove_queue(name: str) -> dict:
+        """Drop a queue from .aegis.yaml. Restart required."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.edit import remove_queue as _rm
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _rm(root, name)
+            except ConfigError as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": False,
+                "restart_required_for": ["queues"]}
+
+    @server.tool
+    async def aegis_config_add_plugin_dir(path: str) -> dict:
+        """Register a plugin directory; reloads plugins so any new
+        @workflow functions register immediately."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.edit import add_plugin_dir as _add
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _add(root, path)
+            except ConfigError as e:
+                return {"error": str(e)}
+            try:
+                bridge.reload_plugins()
+            except Exception as e:                       # noqa: BLE001
+                return {"ok": True, "live": False,
+                        "restart_required_for": ["plugins"],
+                        "note": f"persisted but reload failed: {e}"}
+            return {"ok": True, "live": True, "restart_required_for": []}
+
+    @server.tool
+    async def aegis_config_remove_plugin_dir(path: str) -> dict:
+        """Drop a plugin_dirs entry. Restart required to fully
+        deregister @workflow functions imported from that dir."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.edit import remove_plugin_dir as _rm
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                _rm(root, path)
+            except ConfigError as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": False,
+                "restart_required_for": ["plugins"]}
+
+    @server.tool
+    async def aegis_config_set_schedule_enabled(
+        name: str, enabled: bool,
+    ) -> dict:
+        """Set the enabled flag on a schedule. ReloadWatcher picks the
+        change up automatically — no bridge call needed."""
+        from aegis.config import find_project_root
+        from aegis.config.edit import set_schedule_enabled as _set
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                new_state = _set(root, name, enabled)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": True, "restart_required_for": [],
+                "enabled": new_state}
+
+    @server.tool
+    async def aegis_config_toggle_schedule_enabled(name: str) -> dict:
+        """Flip the enabled flag on a schedule. Returns new state."""
+        from aegis.config import find_project_root
+        from aegis.config.edit import toggle_schedule_enabled as _tog
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found"}
+        async with config_write_lock:
+            try:
+                new_state = _tog(root, name)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": True, "restart_required_for": [],
+                "enabled": new_state}
+
     # Lazily attach a WorkflowRunner so the MCP workflow tools have a
     # canonical place to track running tasks + pending human questions.
     if getattr(bridge, "workflow_runner", None) is None:
