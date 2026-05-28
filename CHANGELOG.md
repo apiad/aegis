@@ -5,6 +5,41 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 4 (file-diff preview)
+
+`ToolResult` now carries an optional `diff: (path, old_text, new_text)`
+tuple that drivers populate for edit-shaped tool calls.
+
+- ACP side: `session_update` walks `ToolCallProgress.content` for a
+  `FileEditToolCallContent` block and captures `(path, old_text,
+  new_text)` from it.
+- Claude side: `ParserState` gains a `tool_diffs` dict; the `Edit`
+  tool_use parser captures `(file_path, old_string, new_string)`, the
+  `Write` parser captures `(file_path, "", content)` since Write
+  overwrites. The matching tool_result attaches the cached diff.
+- `render_event` shows a small unified preview when `diff` is
+  populated and the call succeeded — trimmed common prefix/suffix,
+  capped at 6 visible rows with a "… N more" footer, red `-` gutters
+  for removed lines and green `+` for added. Failed edits still show
+  the single-line `error …` form.
+
+Real-CLI smoke against an opencode write of a 5-line file shows the
+full added content live in the transcript:
+
+```
+✏️ write
+  ┌ target.out
+  │ + alpha
+  │ + beta
+  │ + gamma
+  │ + delta
+  │ + epsilon
+  └
+```
+
+State `event_codec` round-trips the diff with backward-compatible
+defaults.
+
 ### Driver visibility — parity slice 3 (AgentPlan blocks)
 
 New canonical event `AgentPlan` + `PlanEntry` dataclass unifies
