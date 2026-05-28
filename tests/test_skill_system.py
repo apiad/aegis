@@ -107,3 +107,23 @@ async def test_load_skill_unknown_raises(tmp_path: Path, fresh, monkeypatch) -> 
     load = _TOOL_REG["load_skill"].func
     with pytest.raises(FileNotFoundError):
         await load(name="never-existed")
+
+
+def test_install_creates_skills_folder_and_readme(tmp_path: Path, monkeypatch) -> None:
+    """End-to-end: install skill-system from local source; folder + README appear."""
+    from typer.testing import CliRunner
+    from aegis.cli import app
+
+    runner = CliRunner()
+    src = Path(__file__).parent.parent / "plugins" / "skill-system"
+    proj = tmp_path / "proj"; proj.mkdir()
+    (proj / ".aegis").mkdir()
+    (proj / ".aegis.yaml").write_text("agents: {}\n")
+    monkeypatch.chdir(proj)
+    r = runner.invoke(
+        app, ["plugin", "install", "skill-system", "--from", str(src), "--yes"],
+    )
+    assert r.exit_code == 0, r.output
+    skills_dir = proj / ".aegis" / "skills"
+    assert skills_dir.is_dir()
+    assert (skills_dir / "README.md").exists()
