@@ -7,268 +7,327 @@ topic: session-history
 
 # Aegis — Session History (Ctrl+H)
 
-A persistent, cross-process record of user-initiated agent sessions, surfaced
-as a `Ctrl+H` modal. Closing a tab — or quitting and relaunching aegis —
-should not erase the trail. Every prior session can be reopened with the
-same agent profile and driver, and (for Claude) optionally resumed with full
-conversation continuity.
+A persistent, cross-process record of user-initiated agent sessions,
+surfaced as a `Ctrl+H` modal. Closing a tab — or quitting and relaunching
+aegis — should not erase the trail. Every prior session can be reopened
+either fresh (new `AgentSession` with the same agent + cwd) or, where the
+driver supports it, resumed with full conversation continuity.
 
 ## Motivation
 
-Aegis already persists every substrate-level artefact: queues, inboxes,
-schedules, workflows, groups. Sessions themselves — the most user-visible
-unit of work — are the one thing that disappears the moment a tab closes
-or the process exits. There is no way to look back at "what was I working
-on yesterday with the opus tab?", and no way to relaunch it with the same
-profile + cwd without re-doing the Ctrl+N picker dance.
+The current `--resume` flow restores the most recent workspace at launch:
+the tab roster from the last `workspace.json` write, with full transcript
+replay from each tab's `sessions/<handle>.jsonl` event log. But:
 
-This design adds the missing surface: per-session JSONL persistence
-matching the existing substrate idiom, plus a `Ctrl+H` modal that lists
-prior sessions and reopens them.
+- **Closing a tab erases its workspace.json row.** Its event log file is
+  left behind, orphaned and metadata-less.
+- **Relaunching with `--clean`, or after the workspace file has rolled
+  past, makes earlier rosters invisible.**
+- **There is no in-session way to look back.** You cannot see "what was I
+  working on yesterday with the opus tab?" without grepping the state
+  directory by hand.
+
+This design closes that loop: a `Ctrl+H` modal that lists every recorded
+session (open or closed, in this process or a previous one) and reopens
+the selected row through the existing `drv.resume()` protocol.
 
 ## Scope
 
-**In scope.** User-initiated sessions only:
+**In scope.** User-initiated agent sessions only:
 
-- TUI tabs opened via `Ctrl+N` (the AgentPicker) or the implicit first tab.
-- Telegram-routed sessions created by `/new` or by bare-text routing from
-  the bot.
+- TUI tabs opened via `Ctrl+N` (the `AgentPicker`), `Ctrl+T` (default
+  agent), or the implicit first tab at boot.
+- Telegram-routed sessions created by `/new` or by bare-text routing
+  from the bot.
 
 **Out of scope.** Substrate ephemera:
 
-- Queue workers spawned by `aegis_enqueue` — already observable via the
-  `Ctrl+D` queue dashboard.
-- Workflow-spawned agents from `engine.spawn()` — covered by workflow JSONL
-  logs under `.aegis/state/workflows/`.
-- Handoff targets created indirectly by `aegis_handoff` — the inbox channel
-  already records the message; the receiving session itself is either a
-  user session (already in scope) or a worker (already excluded).
+- Queue workers spawned by `aegis_enqueue` — already observable via
+  the `Ctrl+D` queue dashboard.
+- Workflow-spawned agents from `engine.spawn()` — covered by workflow
+  JSONL logs under `.aegis/state/workflows/`.
+- Handoff targets — receivers are either user sessions (in scope) or
+  workers (excluded).
 
-The gating mechanism is a single `record_history: bool` flag passed to
-`SessionManager.spawn(...)`. Only the two user-initiated entry points pass
-`True`.
+Substrate ephemera will write the same per-session event log as today
+(that mechanism is shared) but will **not** receive a "session opened"
+meta header — and the Ctrl+H reader skips any log without a header.
+That's the entire gating mechanism.
+
+## Existing infrastructure (reused, not rebuilt)
+
+The repo already implements most of what this feature needs. The design
+deliberately routes through these:
+
+- `aegis.state.workspace` — `WorkspaceTab` record (`handle, profile,
+  order, provider, session_id, created_at`); `Workspace` snapshot;
+  `save(state_dir, ws)`; `load(state_dir) -> Workspace | None`;
+  `state_dir(cwd)`.
+- `aegis.state.session_log` — `append_event(state_dir, handle, ev)`
+  writes one JSON line per event under
+  `.aegis/state/sessions/<handle>.jsonl`. `replay_events(state_dir,
+  handle) -> EventReplay` reads it back.
+- `aegis.tui.resume_plan` — `plan_resume(ws, agents, drivers) ->
+  ResumePlan` classifies each `WorkspaceTab` as resumable or skipped
+  (`profile_missing` / `driver_no_resume` / `no_session_id`).
+- Driver `supports_resume: bool` + `resume(agent, cwd, mcp_url,
+  handle, session_id) -> HarnessSession`. Claude implements both;
+  Gemini and OpenCode are skipped automatically.
+- `AegisApp._resume_agent_tabs(ws)` — the existing bootstrap path that
+  iterates a `ResumePlan`, calls `drv.resume(...)`, replays events into
+  fresh `ConversationPane`s, and rebinds the inbox router.
+
+The Ctrl+H reopen path reuses **the same `drv.resume()` + `ConversationPane(replay=…)` mount** as boot-time resume. No new resume path.
 
 ## Architecture
 
-Three new modules, no changes to drivers, events, or `AgentSession`:
+Three small additions, zero behavioural changes to drivers or
+`AgentSession`:
 
-- `src/aegis/core/history.py` — `SessionHistory` class. Owns per-session
-  JSONL writes and the `list_sessions()` reader. Exposes
-  `record_opened()`, `record_first_message()`, `record_claude_session_id()`,
-  `record_closed()`. Append-only, fail-loud on read errors, atomic on
-  write (line buffered, fsync on close).
-- `src/aegis/tui/history.py` — `HistoryModal` (Textual `ModalScreen`).
-  Mirrors `AgentPicker`'s shape. Reads via `SessionHistory.list_sessions()`,
-  emits either `OpenFresh(record)` or `Resume(record)` messages back to
-  the app.
-- `src/aegis/tui/app.py` — adds a `Ctrl+H` binding to
-  `action_open_history()`, handles the modal's outcome by delegating to
-  `SessionManager` (existing spawn path).
+- **A meta header in the per-session event log.** A new
+  `SessionMeta` event type, written as the very first line of every
+  user-initiated `sessions/<handle>.jsonl`. Carries `handle, profile,
+  provider, cwd, created_at, origin`. Substrate ephemera (queue
+  workers, workflow spawns) skip this write.
 
-`SessionManager` (`core/manager.py`) gains:
+- **A close marker in the per-session event log.** A new
+  `SessionClosed` event, appended when the pane is closed (any reason).
+  Carries `closed_at, reason ∈ {"user", "interrupt", "crash"}`. Missing
+  marker at read time → inferred as `crash`.
 
-- A `_history: SessionHistory | None` field, set once at construction.
-- `record_history: bool = False` parameter on `spawn(...)`. When `True`,
-  the manager calls `_history.record_opened(...)` immediately after
-  successful spawn and wires close-time `_history.record_closed(...)`
-  through the existing close observer.
-- A new `spawn_from_record(record, resume: bool)` convenience that
-  resolves the record's agent profile from the current
-  `AegisConfig.agents`, picks a fresh handle, and delegates to `spawn(...)`
-  with the recorded `cwd` and (when `resume=True`) an extra
-  `claude_resume_session_id` argument routed into the Claude driver.
+- **A history reader.** `aegis.state.history.list_history(state_dir,
+  *, live_handles) -> list[SessionHistoryRow]` globs
+  `.aegis/state/sessions/*.jsonl`, reads only the first record of each
+  file (the `SessionMeta`) plus a streamed scan for the last `Result`
+  (preview text) and any `SessionClosed`. Skips files without a meta
+  header. Cross-references `live_handles` to mark currently-open rows.
 
-The Claude driver (`drivers/claude.py`) gains one optional argv addition:
-when `resume_session_id` is set on the `ClaudeCode` profile (or threaded
-through at spawn time), `build_argv()` appends
-`--resume <session_id>`. The stream-json protocol is unchanged.
+- **A modal.** `aegis.tui.history.HistoryModal` — Textual `ModalScreen`,
+  shape mirroring `AgentPicker`. Reads via `list_history()`. Dismisses
+  with one of: `("jump", handle)`, `("resume", row)`, `("open_fresh",
+  row)`, or `None`.
 
-## Persistence schema
+- **A keybinding.** `Ctrl+H` → `AegisApp.action_open_history()`.
+  Dispatches the modal's outcome to either the focus adapter
+  (`jump`), the existing resume flow (`resume`), or a fresh
+  `_spawn(slug, ..., cwd=row.cwd)` (`open_fresh`).
 
-One JSONL file per session:
+## Data shape
 
-```
-.aegis/state/sessions/<ulid>.jsonl
-```
+### `SessionMeta` event
 
-ULID at the filename layer gives natural recency sort and is consistent
-with how tasks are addressed elsewhere in the substrate. The directory
-is gitignored along with the rest of `.aegis/state/`.
+A new variant in `aegis.events.Event` (sum type). Encoded by the existing
+`event_codec.encode_event` / `decode_event` round-trip:
 
-Event record types (each one line of JSON):
-
-```json
-{"event":"opened","ulid":"01J...","handle":"lucid-knuth","agent":"claude-sonnet","origin":"tui","cwd":"/home/apiad/Workspace/repos/aegis","ts":"2026-05-28T14:09:00Z"}
-{"event":"first_user_message","preview":"first 200 chars of first user msg","ts":"2026-05-28T14:09:42Z"}
-{"event":"claude_session_id","session_id":"abc-123-def","ts":"2026-05-28T14:09:43Z"}
-{"event":"closed","reason":"user","ts":"2026-05-28T15:30:00Z"}
+```python
+@dataclass(frozen=True)
+class SessionMeta:
+    handle: str
+    profile: str
+    provider: str   # "claude-code" | "gemini" | "opencode"
+    cwd: str
+    created_at: str  # ISO-8601 UTC
+    origin: str     # "tui" | "telegram"
 ```
 
-Field notes:
+Written exactly once, before the first turn of every user-initiated
+session, via a new `session_log.append_meta(state_dir, meta)` helper that
+guards the "must be first record" invariant.
 
-- `origin` ∈ `{"tui", "telegram"}`.
-- `agent` is the profile name as it appears in `.aegis.yaml`. Resolving
-  it back to a concrete `Agent` happens at reopen time against the
-  *current* config, so renaming / removing a profile is observable
-  (the row is shown dimmed and is non-actionable).
-- `preview` is captured once, on first user message only. We do not
-  store the full transcript in v1 — drivers and the runtime already
-  log their own streams.
-- `claude_session_id` is captured opportunistically. Claude Code's
-  stream-json `system:init` event carries it; the existing event
-  pipeline exposes it on `AgentSession`. If a non-Claude driver is in
-  play, this record is simply never written.
-- `closed.reason` ∈ `{"user", "interrupt", "crash"}`. A session that
-  never wrote `closed` (process died) is treated as `crash` at next
-  boot's `list_sessions()` read.
+### `SessionClosed` event
 
-## Reading
+```python
+@dataclass(frozen=True)
+class SessionClosed:
+    closed_at: str
+    reason: str   # "user" | "interrupt" | "crash"
+```
 
-`SessionHistory.list_sessions() -> list[SessionRecord]`:
+Appended on close through the existing `append_event` codepath. Reason is
+selected by the call site:
+- `"user"` — `Ctrl+W` close, `Ctrl+Q` quit, AppBridge `close(handle)`.
+- `"interrupt"` — driver subprocess exit with non-zero rc.
+- `"crash"` — not written explicitly; inferred at read time when the
+  log has a `SessionMeta` but no `SessionClosed`.
 
-- Globs `.aegis/state/sessions/*.jsonl`.
-- For each file, folds the event stream into a single `SessionRecord`
-  with: `ulid`, `handle`, `agent`, `origin`, `cwd`,
-  `opened_at`, `closed_at | None`, `last_activity_at`, `preview`,
-  `claude_session_id | None`, `is_open_in_process: bool` (computed by
-  cross-referencing live `SessionManager` state at read time).
-- Sorts most recent first by `last_activity_at`.
-- Tolerates a torn trailing line (matches the convention already used
-  by groups persistence).
-- Caps at 500 most recent files for the modal's initial read; older
-  files remain on disk and a future "load more" pagination can extend
-  the cap without schema change.
+### `SessionHistoryRow`
 
-## Resume semantics
+The reader's output type — derived, not persisted:
 
-The modal exposes two outcomes per row:
+```python
+@dataclass(frozen=True)
+class SessionHistoryRow:
+    handle: str
+    profile: str
+    provider: str
+    cwd: str
+    created_at: str
+    closed_at: str | None
+    last_activity_at: str         # max(any aegis_ts in the log)
+    preview: str                  # first ≤200 chars of the first user msg
+    session_id: str | None        # latched from latest claude system:init
+    is_open: bool                 # handle in live_handles
+    crash_inferred: bool          # has meta but no SessionClosed
+    profile_present: bool         # profile in current agents map
+    driver_supports_resume: bool  # drivers[provider].supports_resume
+```
 
-- **Open fresh** (`Enter`, default). Spawns a brand-new `AgentSession`
-  with the recorded `Agent` profile and `cwd`. New handle, fresh
-  generated name, no conversation continuity. Works for every driver.
-- **Resume** (`r`). Claude only, only when the row carries a
-  `claude_session_id`. Adds `--resume <session_id>` to the spawn argv.
-  If the underlying Claude session is no longer in
-  `~/.claude/projects/...` the driver fails loud and the modal shows
-  the error inline (does not close).
+`session_id` is read by the `list_history()` scan, NOT written explicitly.
+The Claude driver already emits a `system:init` event carrying the
+upstream session id; we just remember the last one we saw per file.
 
-Edge cases:
+`preview` is derived from the first user-message event in the log. If
+there is no user message yet, the field is empty.
 
-- **Profile renamed or removed.** Row is dimmed, marked
-  `profile missing`, both actions disabled. A future "edit row" affordance
-  could let the user re-bind to a new profile, but is out of v1 scope.
-- **CWD no longer exists.** Spawn proceeds with the recorded cwd; the
-  underlying driver surfaces the error on first turn — same path as if
-  the user manually picked a stale cwd today.
-- **Already-open session** (`is_open_in_process=True`). Default action
-  becomes "jump to that tab" instead of "open fresh". Resume is
-  disabled — there is nothing to resume against an already-live
-  process.
+## Reopen semantics
+
+Each row in the modal has up to three actions, gated on row state:
+
+- **Jump** (`Enter` when `is_open=True`). Switch the `ContentSwitcher`
+  to the matching pane. No spawn.
+
+- **Resume** (`Enter` or `r` when `is_open=False`,
+  `profile_present=True`, `driver_supports_resume=True`,
+  `session_id is not None`). Build a `WorkspaceTab(handle=…,
+  profile=…, provider=…, session_id=…, …)` from the row and feed it
+  through the existing resume codepath (`drv.resume(...)` →
+  `ConversationPane(replay=…)`). The pane is mounted in the foreground
+  and gets a `↻ resumed from history` banner.
+
+- **Open fresh** (`Enter` or `f` when not resumable). Call
+  `_spawn(profile, cwd=row.cwd)`. New handle. No history continuity.
+  This is the fallback path for Gemini/OpenCode rows (where the driver
+  refuses resume) and Claude rows where the upstream session id is gone.
+
+When a row's `profile` is missing from the current `agents` map the row
+is shown dimmed and both actions are disabled (matches the existing
+`profile_missing` skip reason).
 
 ## UX (Ctrl+H modal)
 
-`HistoryModal` mirrors the visual idiom of `AgentPicker`. Layout sketch:
+`HistoryModal` styled after `AgentPicker` and `FilePickerModal`. Layout:
 
 ```
 ┌─ History ──────────────────────────────────────────────────────┐
 │ /                                                              │  filter
 ├────────────────────────────────────────────────────────────────┤
 │ ● lucid-knuth   claude-sonnet  2m ago   "fix the regression…" │
-│ ○ brave-turing  gemini-flash   1h ago   "summarise this…"     │
-│ ○ keen-codd     claude-opus    3h ago   "let's refactor…"     │
+│ ↻ brave-turing  claude-opus    1h ago   "summarise this…"     │
+│ ○ keen-codd     gemini-flash   3h ago   "let's refactor…"     │
 │ ⊘ dim-hopper    <missing>     yesterday "…"                    │
 └────────────────────────────────────────────────────────────────┘
- ↑↓ navigate · Enter open · r resume · / filter · Esc close
+ ↑↓ navigate · Enter primary · r resume · f fresh · / filter · Esc
 ```
 
-Visual conventions:
+Status glyphs:
 
-- `●` = open in current process (Enter jumps to that tab).
-- `○` = closed (Enter opens fresh; `r` resumes if Claude session_id
-  present).
-- `⊘` = unactionable (profile missing or other terminal-failure state).
-- Columns: status glyph, handle, agent profile, relative-time of
-  `last_activity_at`, preview snippet truncated to terminal width.
+- `●` = `is_open` — Enter jumps to the live tab.
+- `↻` = closed, resumable (Claude + session_id present + profile + driver
+  → Enter resumes; `f` forces fresh).
+- `○` = closed, not resumable (Gemini/OpenCode, or Claude with no
+  session_id) → Enter opens fresh.
+- `⊘` = profile missing — non-actionable.
 
-Keybindings:
+Sort: most recent `last_activity_at` first. Filter: substring match
+against `handle + profile + cwd + preview`. The modal does not poll;
+re-opening Ctrl+H re-reads (cheap — one disk scan, ≤ a few hundred
+files).
 
-- `↑` / `↓` — move cursor
-- `Enter` — open fresh (or jump-to-tab if `●`)
-- `r` — resume (Claude + session_id present)
-- `/` — toggle filter input; substring match against
-  `handle + agent + preview + cwd`
-- `Esc` — close modal
+The modal caps at the **500 most recent log files** on initial read.
+Older logs remain on disk; a future "load more" affordance can lift the
+cap without schema change.
 
-The modal is read-only over `SessionHistory.list_sessions()` at open
-time; we do not subscribe to live history events. Re-opening Ctrl+H
-re-reads, which is cheap (≤500 small files) and consistent with how
-the queue dashboard handles its own data.
+## Wiring points
+
+- `aegis.events` — add `SessionMeta` and `SessionClosed` to the `Event`
+  sum type.
+- `aegis.state.event_codec` — encode/decode for the two new variants.
+- `aegis.state.session_log` — add `append_meta(state_dir, meta)`.
+- `aegis.state.history` — new module: `list_history(state_dir, *,
+  live_handles, limit=500) -> list[SessionHistoryRow]`.
+- `aegis.tui.history` — new module: `HistoryModal`.
+- `aegis.tui.app` —
+  - bind `Ctrl+H` → `action_open_history()` (worker decorator,
+    same shape as `action_pick_agent`).
+  - emit `SessionMeta` from `_spawn(...)` for foreground-true /
+    user-initiated paths. The `_SessionManagerAdapter.spawn()` path
+    (queue workers) intentionally does NOT emit one.
+  - emit `SessionClosed` from `_close_pane(...)` and `action_quit()`
+    for `ConversationPane`s with a meta header.
+- `aegis.telegram.frontend` — `/new` and bare-text routing call into
+  the same `_spawn(...)` indirectly via `SessionManager.spawn(...)`.
+  `SessionManager.spawn()` gains a parallel meta-header emission for
+  the headless (`aegis serve`) path. Same shape, different surface.
 
 ## Configuration
 
-No new top-level `.aegis.yaml` section in v1. The substrate is always
-on for user-initiated sessions; substrate ephemera always skip it.
-
-If a future need surfaces (retention policy, disable history per
-project), we add a `history:` block then. YAGNI for v1.
-
-## Telemetry / observability
-
-None beyond the JSONL log itself. The log is the observability
-surface: tailing `.aegis/state/sessions/*.jsonl` answers every
-question we care about.
+No new `.aegis.yaml` section. The feature is always on for user-initiated
+sessions; substrate ephemera always skip it. Retention / archival / per-
+project disable are future extensions.
 
 ## Testing
 
-`tests/test_history_persistence.py`:
+`tests/test_session_meta_event.py` — codec round-trip for `SessionMeta`
+and `SessionClosed`; backwards-compat assertion that a log without a
+meta header still decodes its event tail.
 
-- Round-trip: open → first message → close emits the expected event
-  sequence; `list_sessions()` reads it back as one `SessionRecord`.
-- Torn trailing line is tolerated.
-- Missing `closed` event surfaces as `closed_at=None`,
+`tests/test_history_reader.py`:
+
+- Round-trip: write `SessionMeta` + a few events + `SessionClosed`,
+  call `list_history()`, assert one row with the right shape.
+- No meta header → file excluded from results.
+- Meta present, no closed marker → row has `closed_at=None`,
   `crash_inferred=True`.
-- Claude `session_id` capture is recorded when present, omitted
-  otherwise.
+- `last_activity_at` derived from the highest `aegis_ts` in the log.
+- `session_id` latches the **latest** `system:init` (not the first).
+- Cap honoured: pass `limit=2`, assert the 3rd-oldest is dropped.
+- `is_open=True` when the row's handle is in `live_handles`.
 
-`tests/test_history_modal.py`:
+`tests/test_history_modal.py` (Textual snapshot harness):
 
-- Empty state (no files yet) renders the empty-state placeholder.
-- Populated state renders sorted-by-recency.
-- Filter narrows the visible rows live.
-- Dimmed-row (profile missing) is non-actionable.
+- Empty state renders the empty-state placeholder.
+- Populated state renders sorted-by-recency with correct glyphs.
+- Filter narrows visible rows live.
+- Dimmed row (profile missing) is non-actionable.
 
-`tests/test_session_manager_history_integration.py`:
+`tests/test_app_history_integration.py`:
 
-- `spawn(..., record_history=False)` produces no session file (queue
-  workers, workflow spawns).
-- `spawn(..., record_history=True)` produces exactly one file.
-- Close path writes the closing event on every close reason (user,
-  interrupt, crash via test harness signal).
+- `_spawn(...)` writes a meta header on first call for the handle.
+- `_close_pane(pane)` writes `SessionClosed` with `reason="user"`.
+- `_SessionManagerAdapter.spawn(...)` (queue workers) writes NO
+  meta header (worker JSONL is event-only, excluded from Ctrl+H).
+- Pressing `Ctrl+H` then `Enter` on an open row activates the
+  matching tab.
+- Pressing `Ctrl+H` then `Enter` on a closed Claude row with
+  `session_id` calls `drv.resume(...)` (assert via test double).
 
 `tests/test_history_live.py` (marker `live`, requires `claude`):
 
-- Open a session, send a turn, close, reopen via `Resume` — verify
-  the resumed session retains conversation memory by asking a
-  follow-up that references the earlier turn.
+- Open a session, send a turn, close, relaunch with `--clean`,
+  press Ctrl+H, select the closed row, press Enter (resume) — verify
+  the resumed session retains memory by asking a follow-up that
+  references the earlier turn.
 
 ## Migration
 
-None. The substrate directory is created on first write. Existing
-installations gain history starting at upgrade time; pre-upgrade
-sessions are simply absent from `Ctrl+H`.
+None required. The substrate directory already exists. Existing
+installations gain Ctrl+H rows starting at upgrade time; pre-upgrade
+sessions that already have `sessions/<handle>.jsonl` event logs but no
+meta header are excluded from the listing (showing them would force a
+backfill of the missing metadata — out of scope).
 
 ## Future extensions (deferred)
 
-- **Full transcript persistence** — recording every `event` from the
-  driver stream into the same JSONL file, so the modal could show a
-  scrollable preview and `Ctrl+H` becomes a true "session browser".
-  Requires deciding what to do with cost / token / tool-use records.
-- **Cross-host history sync** — pulling the VPS substrate's session
-  history into the laptop's Ctrl+H view via the remotes substrate.
-- **Retention / archive** — auto-archive sessions older than N days
-  into `.aegis/state/sessions/archive/`.
-- **Profile rebind UX** — let the user re-bind a dimmed row to a new
+- **Retention / archive policy.** Auto-archive logs older than N days
+  into `.aegis/state/sessions/archive/`. YAGNI for v1; the 500-file
+  initial cap absorbs the foreseeable growth.
+- **Pre-upgrade backfill.** A one-shot tool that synthesises `SessionMeta`
+  for orphaned logs by joining against the most recent `workspace.json`
+  history. Useful only if pre-upgrade rosters turn out to be valuable.
+- **Cross-host history.** Pulling the VPS substrate's session history
+  into the laptop's Ctrl+H via the remotes substrate.
+- **Full transcript preview pane.** The modal could optionally show a
+  scrollable, syntax-coloured preview of the selected row's transcript.
+- **Profile rebind UX.** Let the user re-bind a dimmed row to a new
   profile from inside the modal.
-- **Pin / favourite** — sticky rows at the top of the modal.
-
-None of these are needed for v1.
+- **Pin / favourite.** Sticky rows at the top.
