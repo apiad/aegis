@@ -35,6 +35,9 @@ app.add_typer(_models_app, name="models")
 from aegis.cli_config import app as _config_app  # noqa: E402
 app.add_typer(_config_app, name="config")
 
+from aegis.cli_plugin import app as _plugin_app  # noqa: E402
+app.add_typer(_plugin_app, name="plugin")
+
 
 def _version_callback(value: bool) -> None:
     if value:

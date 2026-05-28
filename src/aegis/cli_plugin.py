@@ -1,0 +1,88 @@
+"""`aegis plugin ...` Typer subapp."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from aegis.plugins import lockfile
+from aegis.plugins.install import InstallError, install_plugin
+from aegis.plugins.uninstall import UninstallError, uninstall_plugin
+
+app = typer.Typer(name="plugin", help="Manage aegis plugins.")
+console = Console()
+
+
+@app.command("install")
+def cmd_install(
+    name: str,
+    from_: Path | None = typer.Option(
+        None, "--from",
+        help="Install from a local path instead of a registry (slice 4 unblocks registries).",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Don't prompt; accept defaults."),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing installation."),
+) -> None:
+    """Install a plugin."""
+    if from_ is None:
+        console.print(
+            "[yellow]Registry resolution lands in slice 4. "
+            "Pass --from <local-path> for now.[/]"
+        )
+        raise typer.Exit(2)
+    try:
+        install_plugin(
+            name=name, source=from_, project_root=Path.cwd(),
+            yes=yes, force=force, console=console,
+        )
+    except InstallError as exc:
+        console.print(f"[red]install failed:[/] {exc}")
+        raise typer.Exit(1)
+    console.print(f"[green]installed[/] {name}")
+
+
+@app.command("uninstall")
+def cmd_uninstall(
+    name: str,
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Uninstall a plugin."""
+    try:
+        uninstall_plugin(name=name, project_root=Path.cwd(), yes=yes, console=console)
+    except UninstallError as exc:
+        console.print(f"[red]uninstall failed:[/] {exc}")
+        raise typer.Exit(1)
+    console.print(f"[green]uninstalled[/] {name}")
+
+
+@app.command("list")
+def cmd_list() -> None:
+    """List installed plugins."""
+    data = lockfile.read_lock(Path.cwd())
+    plugs = data.get("plugins") or []
+    if not plugs:
+        console.print("[dim]no plugins installed[/]")
+        return
+    table = Table(title="Installed plugins")
+    table.add_column("Name"); table.add_column("Version"); table.add_column("Installed")
+    for p in plugs:
+        table.add_row(p.get("name", ""), p.get("version", ""), p.get("installed", ""))
+    console.print(table)
+
+
+@app.command("show")
+def cmd_show(name: str) -> None:
+    """Show details of an installed plugin."""
+    data = lockfile.read_lock(Path.cwd())
+    for p in data.get("plugins", []):
+        if p.get("name") == name:
+            for k, v in p.items():
+                if k == "file_hashes":
+                    console.print(f"file_hashes: <{len(v)} files>")
+                else:
+                    console.print(f"{k}: {v}")
+            return
+    console.print(f"[red]not installed:[/] {name}")
+    raise typer.Exit(1)
