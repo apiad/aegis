@@ -33,6 +33,50 @@ def test_result_optional_fields_default():
     assert r.permission_denials == ()
 
 
+def test_parse_result_populates_stop_reason_and_cost():
+    ev = parse(json.dumps({
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "duration_ms": 5000,
+        "duration_api_ms": 4500,
+        "ttft_ms": 234,
+        "num_turns": 2,
+        "stop_reason": "end_turn",
+        "total_cost_usd": 0.012,
+        "usage": {"input_tokens": 100, "output_tokens": 50},
+        "modelUsage": {
+            "claude-opus-4-7": {
+                "input_tokens": 100, "output_tokens": 50,
+            },
+        },
+        "permission_denials": [
+            {"tool_name": "Bash"},
+        ],
+    }))
+    assert isinstance(ev, Result)
+    assert ev.stop_reason == "end_turn"
+    assert ev.ttft_ms == 234
+    assert ev.num_turns == 2
+    assert ev.cost_usd == 0.012
+    assert len(ev.model_usage) == 1
+    assert ev.model_usage[0][0] == "claude-opus-4-7"
+    assert ev.permission_denials == ("Bash",)
+
+
+def test_parse_result_handles_legacy_shape():
+    """A result event without the enriched fields decodes with all
+    new attrs at defaults."""
+    ev = parse(json.dumps({
+        "type": "result", "is_error": False,
+        "duration_ms": 1, "usage": {},
+    }))
+    assert ev.stop_reason is None
+    assert ev.cost_usd is None
+    assert ev.model_usage == ()
+    assert ev.permission_denials == ()
+
+
 def test_result_carries_enriched_fields():
     r = Result(
         duration_ms=100, is_error=False,

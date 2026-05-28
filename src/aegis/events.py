@@ -218,12 +218,40 @@ def parse(line: str, state: ParserState | None = None) -> Event:
         usage = obj.get("usage")
         if not isinstance(usage, dict):
             usage = {}
+        mu_raw = obj.get("modelUsage") or {}
+        model_usage: tuple[tuple[str, TokenUsage | None], ...] = ()
+        if isinstance(mu_raw, dict):
+            model_usage = tuple(
+                (name, _token_usage(u))
+                for name, u in mu_raw.items()
+                if isinstance(name, str)
+            )
+        denials_raw = obj.get("permission_denials") or []
+        denials: tuple[str, ...] = ()
+        if isinstance(denials_raw, list):
+            denials = tuple(
+                d.get("tool_name") for d in denials_raw
+                if isinstance(d, dict) and isinstance(
+                    d.get("tool_name"), str)
+            )
+        ttft = obj.get("ttft_ms")
+        cost = obj.get("total_cost_usd")
         return Result(
             duration_ms=obj.get("duration_ms"),
             is_error=bool(obj.get("is_error", False)),
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
             usage=_token_usage(usage),
+            stop_reason=(obj.get("stop_reason")
+                         if isinstance(obj.get("stop_reason"), str)
+                         else None),
+            ttft_ms=int(ttft) if isinstance(ttft, (int, float)) else None,
+            num_turns=(int(obj["num_turns"])
+                       if isinstance(obj.get("num_turns"), int) else None),
+            cost_usd=(float(cost)
+                      if isinstance(cost, (int, float)) else None),
+            model_usage=model_usage,
+            permission_denials=denials,
         )
 
     if etype == "assistant":
