@@ -1,7 +1,7 @@
 from rich.console import Console
 from aegis.events import (
-    AssistantText, AssistantThinking, ToolUse, ToolResult,
-    Result, SystemInit, Unknown,
+    AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
+    ToolResult, Result, SystemInit, Unknown,
 )
 from aegis.render import render_event, render_user_line
 from aegis.tui.themes import aegis_colors, INK
@@ -92,6 +92,41 @@ def test_tool_use_falls_back_to_summary_when_no_location():
     out = as_text(render_event(
         ToolUse(name="Bash", summary="echo hi", kind="execute"), C))
     assert "echo hi" in out
+
+
+def test_agent_plan_renders_status_glyphs():
+    plan = AgentPlan(entries=(
+        PlanEntry(content="alpha", status="completed"),
+        PlanEntry(content="beta", status="in_progress"),
+        PlanEntry(content="gamma", status="pending"),
+    ))
+    out = as_text(render_event(plan, C))
+    # Each entry's content appears, each with its corresponding glyph.
+    assert "alpha" in out
+    assert "beta" in out
+    assert "gamma" in out
+    assert "●" in out   # completed
+    assert "◐" in out   # in_progress
+    assert "○" in out   # pending
+
+
+def test_agent_plan_empty_renders_label():
+    """An empty plan is still meaningful — the model said 'no plan' —
+    so render a single muted line rather than nothing."""
+    out = as_text(render_event(AgentPlan(entries=()), C))
+    assert out.strip() != ""
+
+
+def test_agent_plan_completed_count_visible():
+    """Header summarizes progress so the eye catches it at a glance."""
+    plan = AgentPlan(entries=(
+        PlanEntry(content="a", status="completed"),
+        PlanEntry(content="b", status="completed"),
+        PlanEntry(content="c", status="in_progress"),
+        PlanEntry(content="d", status="pending"),
+    ))
+    out = as_text(render_event(plan, C))
+    assert "2/4" in out or "2 of 4" in out
 
 
 def test_tool_use_hint_suppressed_when_equal_to_name():

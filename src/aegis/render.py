@@ -7,9 +7,46 @@ from rich.text import Text
 from dataclasses import replace
 
 from aegis.events import (
-    AssistantText, AssistantThinking, ToolUse, ToolResult,
-    Result, SystemInit, Unknown, Event,
+    AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
+    ToolResult, Result, SystemInit, Unknown, Event,
 )
+
+
+_PLAN_STATUS_GLYPH = {
+    "completed": "●",
+    "in_progress": "◐",
+    "pending": "○",
+}
+
+
+def _render_agent_plan(plan: AgentPlan, colors) -> "RenderableType":
+    """Render an AgentPlan as a fenced status block with one row per
+    entry. Header summarizes progress (e.g. "2/4 done"). High-priority
+    entries get bolded content; low-priority entries dim. Empty plans
+    render a single muted "(no plan)" line so the model's
+    "I'm clearing my plan" signal is still visible."""
+    total = len(plan.entries)
+    if total == 0:
+        return Text("📋 (no plan)", style=colors.muted)
+    done = sum(1 for e in plan.entries if e.status == "completed")
+    body = Text()
+    body.append(f"📋 Plan — {done}/{total} done\n",
+                style=f"bold {colors.accent}")
+    for entry in plan.entries:
+        glyph = _PLAN_STATUS_GLYPH.get(entry.status, "○")
+        glyph_style = (
+            colors.ok if entry.status == "completed"
+            else colors.accent if entry.status == "in_progress"
+            else colors.muted
+        )
+        content_style = ""
+        if entry.priority == "high":
+            content_style = "bold"
+        elif entry.priority == "low":
+            content_style = colors.muted
+        body.append(f"  {glyph} ", style=glyph_style)
+        body.append(entry.content + "\n", style=content_style)
+    return body
 
 
 def coalesce_chunks(events: list[Event]) -> list[Event]:
@@ -105,6 +142,8 @@ def render_event(ev: Event, colors) -> RenderableType | None:
                                  ("error ", colors.err), first)
         return Text.assemble(("  └ ", colors.muted),
                              ("ok ", colors.ok), first)
+    if isinstance(ev, AgentPlan):
+        return _render_agent_plan(ev, colors)
     if isinstance(ev, Result):
         secs = (ev.duration_ms or 0) / 1000
         return Text(f"── done in {secs:.1f}s ──", style=colors.muted)
