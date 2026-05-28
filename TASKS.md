@@ -58,7 +58,7 @@ no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity *(slices 1-2 of 7 shipped)*
+### Driver visibility parity *(slices 1-3 of 7 shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
 structured input retained, success/failure styling. Slice 1 shipped
@@ -77,8 +77,17 @@ real `opencode acp`: 80 raw events → 9 coalesced; opencode's per-token ✻
 cliff is gone. Live pane streaming was already kind-coalesced via
 `_stream_append`; this slice closes the same gap on the replay path.
 
+Slice 3 shipped (`2648551` → `81b4956`): canonical `AgentPlan` event +
+`PlanEntry` dataclass; claude parser promotes `TodoWrite` tool_use to
+`AgentPlan`; ACP `AgentPlanUpdate` notification maps to the same event;
+renderer shows a `📋 Plan — N/M done` block with status glyphs
+(● completed, ◐ in_progress, ○ pending) and priority emphasis. Real-CLI
+smoke against an opencode planning turn surfaced 4 distinct plan
+revisions live (0/3 → 1/3 → 2/3 → 3/3). Polish item deferred: replace
+prior `AgentPlan` from same turn instead of appending — ship if it
+becomes noisy in real use.
+
 Subsequent slices owed:
-- Slice 3 — `AgentPlan` event for claude `TodoWrite` + ACP `AgentPlanUpdate`.
 - Slice 4 — file-diff rendering for edits.
 - Slice 5 — `Result` enrichment (stop_reason, ttft_ms, cost_usd, model_usage).
 - Slice 6 — mid-turn `ContextUpdate` from ACP `UsageUpdate` / `CurrentModeUpdate`.

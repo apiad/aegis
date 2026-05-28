@@ -5,6 +5,31 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 3 (AgentPlan blocks)
+
+New canonical event `AgentPlan` + `PlanEntry` dataclass unifies
+claude's `TodoWrite` tool input and ACP's `AgentPlanUpdate` notification.
+
+- The claude `parse()` intercepts `tool_use(name="TodoWrite")` and
+  emits `AgentPlan(entries=…)` instead of a generic `ToolUse`. Each
+  entry's `content` + `status` (`pending` / `in_progress` /
+  `completed`) flows through; priority defaults to `medium` (claude
+  doesn't expose one).
+- The ACP driver's `session_update` handler maps `AgentPlanUpdate` →
+  `AgentPlan` with priority preserved.
+- `render_event` grows a plan branch: `📋 Plan — N/M done` header
+  followed by one row per entry with status glyphs (● completed,
+  ◐ in_progress, ○ pending). High-priority entries bold their
+  content; low-priority dim. Empty plans render `📋 (no plan)`.
+- State `event_codec` round-trips with the natural shape; legacy
+  records still decode.
+
+Real-CLI smoke against an opencode planning turn: 4 distinct
+`AgentPlan` events emitted (0/3 → 1/3 → 2/3 → 3/3 progress) with
+proper glyphs interleaved with tool calls. The model's plan
+revisions are now visible in real time instead of buried inside a
+`⏺ TodoWrite(…)` blob.
+
 ### Driver visibility — parity slice 2 (chunk coalescing by message_id)
 
 `AssistantText` / `AssistantThinking` now carry `message_id` (claude
