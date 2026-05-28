@@ -1,0 +1,9 @@
+[plugin]
+name           = "skill-system"
+version        = "0.1.0"
+description    = "Inject relevant skill descriptions pre-turn; agent calls load_skill on demand."
+requires_aegis = ">=0.15"
+
+[default_config]
+folder = ".aegis/skills/"
+top_k  = 3
