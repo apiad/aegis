@@ -15,7 +15,6 @@ from aegis.drivers.acp import AcpDriver
 
 class GeminiDriver(AcpDriver):
     BASE_CMD = ["gemini", "--acp"]
-    supports_resume = False
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:

@@ -120,12 +120,16 @@ What's persisted, under `.aegis/state/` next to your `.aegis.yaml`:
 
 Limitations:
 
-- **Driver support.** Only drivers that support session resume are
-  re-attached. Currently Claude Code resumes; Gemini and OpenCode do
-  not — their tabs are skipped at startup with a one-line banner.
+- **Driver support.** Claude Code resumes via `claude --resume`; Gemini
+  and OpenCode resume via ACP `loadSession` (the spawned agent must
+  implement it — if it doesn't, the tab opens with a failure banner).
 - **Cwd-bound.** Claude resume is tied to the working directory of the
   original session. Moving or renaming the project breaks resume for
   that workspace; use `--clean` to recover.
+- **Terminals + file tabs.** Terminals re-spawn as fresh shells over
+  their existing ledger; file tabs re-open the file at the saved path
+  (dirty buffers and cursor position are NOT preserved). Both restore
+  whether or not any agent tabs resumed.
 - **Workers not resumed.** Queue workers and workflow runs are not part
   of the workspace snapshot; only interactive tabs are restored.
 

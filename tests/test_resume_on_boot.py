@@ -167,6 +167,60 @@ async def test_fallthrough_to_default_spawn_when_nothing_resumable(
 
 
 @pytest.mark.asyncio
+async def test_files_resume_on_boot(tmp_path, monkeypatch):
+    """File tabs recorded in workspace.json are re-opened on boot."""
+    from aegis.state.workspace import WorkspaceFile
+    from aegis.tui.file_tab import FileTab
+
+    monkeypatch.chdir(tmp_path)
+    a = tmp_path / "alpha.md"
+    b = tmp_path / "beta.md"
+    a.write_text("alpha\n"); b.write_text("beta\n")
+    sd = state_dir(tmp_path)
+    save(sd, Workspace(active_handle=None, tabs=[], files=[
+        WorkspaceFile(path=str(a), order=0,
+                      created_at="2026-05-27T00:00:00Z"),
+        WorkspaceFile(path=str(b), order=1,
+                      created_at="2026-05-27T00:00:00Z"),
+    ]))
+    app = AegisApp({"default": _agent()}, "default",
+                   _factory(FakeSession()), FakeMCP(),
+                   cwd=str(tmp_path))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        file_tabs = [p for p in app._panes if isinstance(p, FileTab)]
+        assert {str(t._path) for t in file_tabs} == {str(a), str(b)}
+
+
+@pytest.mark.asyncio
+async def test_terminals_resume_even_with_default_spawn(tmp_path, monkeypatch):
+    """Regression: terminals must restore even when no agent tabs
+    resumed (so the default spawn ran). Pre-fix, the default spawn
+    overwrote workspace.json with terminals=[] before
+    _maybe_resume_terminals had a chance to read it."""
+    from aegis.state.workspace import WorkspaceTerminal
+    from aegis.tui.terminal_tab import TerminalTab
+
+    monkeypatch.chdir(tmp_path)
+    sd = state_dir(tmp_path)
+    save(sd, Workspace(active_handle=None, tabs=[], terminals=[
+        WorkspaceTerminal(name="t1", shell="/bin/sh", cwd=str(tmp_path),
+                          created_at="2026-05-27T00:00:00Z"),
+    ]))
+    app = AegisApp({"default": _agent()}, "default",
+                   _factory(FakeSession()), FakeMCP(),
+                   cwd=str(tmp_path))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        terms = [p for p in app._panes if isinstance(p, TerminalTab)]
+        assert len(terms) == 1
+        assert terms[0]._info.name == "t1"
+        # Tear down the spawned PTY subprocess explicitly — otherwise
+        # the test hangs at exit waiting on the child.
+        await pilot.press("ctrl+q")
+
+
+@pytest.mark.asyncio
 async def test_quit_writes_snapshot_with_session_ids(tmp_path, monkeypatch):
     """Ctrl+Q must persist the current roster — including session_ids that
     were latched after the last tab event — so the next boot can resume."""

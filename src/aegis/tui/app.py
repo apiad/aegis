@@ -125,12 +125,13 @@ def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | 
 
 
 def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle,
-                             *, terminals=None) -> None:
+                             *, terminals=None, files=None) -> None:
     """Persist the current tab roster to workspace.json."""
     from aegis.state.workspace import Workspace, save
     save(state_dir_path,
          Workspace(active_handle=active_handle, tabs=list(tabs),
-                   terminals=list(terminals or [])))
+                   terminals=list(terminals or []),
+                   files=list(files or [])))
 
 
 def _provider_slug(pane: ConversationPane) -> str:
@@ -285,27 +286,31 @@ class AegisApp(App):
             self.set_interval(1.0, self._tick)
             return
 
-        resumed = await self._maybe_resume_workspace()
+        # Load the prior workspace ONCE and share it across every resume
+        # path. If we let `_maybe_resume_terminals` / `_maybe_resume_files`
+        # each re-load from disk, the default-agent `_spawn` (which writes
+        # a fresh snapshot when no agent tabs were resumable) would have
+        # already clobbered the on-disk terminals/files list.
+        ws = (None if self._clean
+              else pick_workspace_to_resume(self._state_dir, clean=False))
+        resumed_agents = await self._resume_agent_tabs(ws) if ws else False
         self._boot_done = True
-        if not resumed:
+        if not resumed_agents:
             await self._spawn(self._default_agent)
         else:
-            # Persist the resumed roster now that the guard is open, so
-            # workspace.json reflects the freshly-restored panes (and any
-            # newly-latched session_ids).
+            # Persist the resumed roster now that the guard is open.
             self._write_snapshot()
-        await self._maybe_resume_terminals()
+        if ws is not None:
+            await self._resume_terminals(ws)
+            await self._resume_files(ws)
         self.set_interval(1.0, self._tick)
 
-    async def _maybe_resume_workspace(self) -> bool:
-        """Restore agent tabs from workspace.json. Returns True iff at
-        least one tab was resumed (so the caller should skip the default
-        spawn). False means: --clean, no workspace, or nothing resumable
-        — fall through to the default spawn."""
-        if self._clean:
-            return False
-        ws = pick_workspace_to_resume(self._state_dir, clean=False)
-        if ws is None or not ws.tabs:
+    async def _resume_agent_tabs(self, ws) -> bool:
+        """Restore agent tabs from the in-memory workspace snapshot.
+        Returns True iff at least one tab was resumed (caller skips the
+        default spawn). False means: --clean, no workspace, or nothing
+        resumable — fall through to the default spawn."""
+        if not ws.tabs:
             return False
 
         from aegis.state.session_log import replay_events
@@ -362,20 +367,29 @@ class AegisApp(App):
         active.show_resume_banner(" · ".join(parts))
         return True
 
-    async def _maybe_resume_terminals(self) -> None:
-        """If a saved workspace has terminals and --clean is False,
-        re-spawn each one as a fresh shell over the existing ledger.
-        TerminalTab's on_mount renders prior records dimmed."""
-        if self._clean:
-            return
-        ws = pick_workspace_to_resume(self._state_dir, clean=False)
-        if ws is None or not ws.terminals:
+    async def _resume_terminals(self, ws) -> None:
+        """Re-spawn each saved terminal as a fresh shell over its
+        existing ledger. TerminalTab's on_mount renders prior records
+        dimmed."""
+        if not ws.terminals:
             return
         for t in ws.terminals:
             try:
                 await self._spawn_terminal_from_snapshot(t)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # One bad terminal shouldn't block the others or the app.
+                continue
+
+    async def _resume_files(self, ws) -> None:
+        """Re-open each saved file tab. Editor-state (dirty buffer, cursor)
+        is intentionally NOT preserved — file tabs are viewers, not
+        long-lived sessions."""
+        if not ws.files:
+            return
+        for f in sorted(ws.files, key=lambda x: x.order):
+            try:
+                await self._open_file_tab(Path(f.path))
+            except Exception:  # noqa: BLE001
                 continue
 
     async def _spawn_terminal_from_snapshot(self, snap) -> None:
@@ -476,16 +490,26 @@ class AegisApp(App):
         tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)
                 if isinstance(p, ConversationPane)]
         from aegis.tui.terminal_tab import TerminalTab
-        from aegis.state.workspace import WorkspaceTerminal
+        from aegis.tui.file_tab import FileTab
+        from aegis.state.workspace import WorkspaceFile, WorkspaceTerminal
         terms = [
             WorkspaceTerminal(
                 name=p._info.name, shell=p._info.shell,
                 cwd=p._info.cwd, created_at=p._created_at)
             for p in self._panes if isinstance(p, TerminalTab)
         ]
+        from datetime import datetime, timezone
+        _now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        files = [
+            WorkspaceFile(
+                path=str(p._path), order=i,
+                created_at=getattr(p, "_created_at", _now))
+            for i, p in enumerate(self._panes)
+            if isinstance(p, FileTab)
+        ]
         write_workspace_snapshot(self._state_dir, tabs=tabs,
                                  active_handle=active_handle,
-                                 terminals=terms)
+                                 terminals=terms, files=files)
 
     def _tick(self) -> None:
         active = self._active

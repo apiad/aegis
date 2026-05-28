@@ -266,6 +266,72 @@ async def test_acp_session_injects_mcp_servers_into_new_session(tmp_path):
     assert "headers" in parsed[0]
 
 
+_STUB_RESUME = r'''
+import asyncio
+import acp
+from acp.schema import AgentMessageChunk, TextContentBlock
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+        self.loaded = None
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def load_session(self, cwd, session_id, mcp_servers=None,
+                            additional_directories=None, **kw):
+        self.loaded = session_id
+        return acp.LoadSessionResponse()
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        reply = f"resumed={self.loaded}|sid={session_id}"
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text=reply, type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+def test_acp_driver_supports_resume():
+    assert AcpDriver.supports_resume is True
+
+
+async def test_acp_session_load_session_when_resume_id_set(tmp_path):
+    """driver.resume(...) yields a session whose start() invokes
+    load_session(session_id=...) instead of new_session(...)."""
+    drv = _stub_driver(_STUB_RESUME)
+    sess = drv.resume(_agent(), str(tmp_path), mcp_url="",
+                      handle="h", session_id="prior-sid-9000")
+    await sess.start()
+    await sess.send("ping")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+    text = next((e.text for e in events if isinstance(e, AssistantText)), "")
+    assert "resumed=prior-sid-9000" in text
+    assert "sid=prior-sid-9000" in text
+
+
 async def test_acp_session_empty_mcp_url_sends_no_mcp_servers(tmp_path):
     """If mcp_url is empty, mcp_servers=[]."""
     sess = _stub_driver(_STUB_ECHO_MCP).session(

@@ -42,10 +42,23 @@ class WorkspaceTerminal:
 
 
 @dataclass(frozen=True)
+class WorkspaceFile:
+    """Snapshot of an open FileTab for resume. File tabs are transient
+    viewers/editors — restoring one re-opens the file at the recorded
+    path; transcient editor state (dirty buffer, scroll position) is
+    NOT preserved by design."""
+
+    path: str
+    order: int
+    created_at: str
+
+
+@dataclass(frozen=True)
 class Workspace:
     active_handle: str | None
     tabs: list[WorkspaceTab] = field(default_factory=list)
     terminals: list[WorkspaceTerminal] = field(default_factory=list)
+    files: list[WorkspaceFile] = field(default_factory=list)
 
 
 def state_dir(cwd: Path) -> Path:
@@ -64,6 +77,7 @@ def save(state_dir_path: Path, ws: Workspace) -> None:
         "active_handle": ws.active_handle,
         "tabs": [asdict(t) for t in ws.tabs],
         "terminals": [asdict(t) for t in ws.terminals],
+        "files": [asdict(f) for f in ws.files],
     }
     target = state_dir_path / "workspace.json"
     # Atomic write: tmp file + rename, so a crash mid-write never leaves
@@ -118,5 +132,16 @@ def load(state_dir_path: Path) -> Workspace | None:
         ]
     except (KeyError, TypeError) as e:
         raise CorruptWorkspace(f"malformed terminal record: {e}") from e
+    try:
+        files = [
+            WorkspaceFile(
+                path=f["path"],
+                order=f["order"],
+                created_at=f["created_at"],
+            )
+            for f in raw.get("files", [])
+        ]
+    except (KeyError, TypeError) as e:
+        raise CorruptWorkspace(f"malformed file record: {e}") from e
     return Workspace(active_handle=raw.get("active_handle"),
-                     tabs=tabs, terminals=terminals)
+                     tabs=tabs, terminals=terminals, files=files)

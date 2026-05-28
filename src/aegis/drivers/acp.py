@@ -191,11 +191,16 @@ class AcpSession(HarnessSession):
     BASE_CMD: list[str] = []  # set by the subclass driver
 
     def __init__(self, agent: Agent, cwd: str,
-                 mcp_url: str, handle: str) -> None:
+                 mcp_url: str, handle: str,
+                 *, resume_session_id: str | None = None) -> None:
         self._agent = agent
         self._cwd = cwd
         self._mcp_url = mcp_url
         self._handle = handle
+        # When set, start() calls load_session(session_id=...) instead of
+        # new_session(...) so the agent re-attaches to an existing
+        # conversation rather than starting fresh.
+        self._resume_session_id: str | None = resume_session_id
         self._proc: asyncio.subprocess.Process | None = None
         self._conn: Any = None
         self._session_id: str | None = None
@@ -327,9 +332,19 @@ class AcpSession(HarnessSession):
                 "url": self._mcp_url,
                 "headers": [],
             }] if self._mcp_url else [])
-            sess = await self._conn.new_session(
-                cwd=self._cwd, mcp_servers=mcp_servers)
-            self._session_id = sess.session_id
+            if self._resume_session_id:
+                sess = await self._conn.load_session(
+                    cwd=self._cwd,
+                    session_id=self._resume_session_id,
+                    mcp_servers=mcp_servers)
+            else:
+                sess = await self._conn.new_session(
+                    cwd=self._cwd, mcp_servers=mcp_servers)
+            # load_session's response may not echo session_id; fall back
+            # to the requested id so subsequent prompt() calls hit the
+            # right conversation.
+            self._session_id = (getattr(sess, "session_id", None)
+                                or self._resume_session_id)
         except BaseException as e:
             raise (await self._wrap_error(e)) from None
 
@@ -404,6 +419,11 @@ class AcpDriver(HarnessDriver):
 
     BASE_CMD: list[str] = []
     SESSION_CLS: type[AcpSession] = AcpSession
+    # ACP defines `loadSession` (and the SDK exposes it), so we advertise
+    # support and the per-provider start() probes whether the spawned
+    # agent actually implements it. If the agent doesn't, load_session
+    # raises and the resumed tab surfaces a clear failure banner.
+    supports_resume = True
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:
@@ -418,5 +438,13 @@ class AcpDriver(HarnessDriver):
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle)
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
+        s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
+        return s
+
+    def resume(self, agent: Agent, cwd: str,
+               mcp_url: str, handle: str,
+               session_id: str) -> AcpSession:
+        s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
+                             resume_session_id=session_id)
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
