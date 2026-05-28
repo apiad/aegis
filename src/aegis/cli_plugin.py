@@ -73,6 +73,51 @@ def cmd_list() -> None:
     console.print(table)
 
 
+@app.command("update")
+def cmd_update(
+    name: str | None = typer.Argument(None),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Update an installed plugin (re-fetch + replace)."""
+    from aegis.plugins.install import update_plugin
+
+    targets: list[str]
+    if name is not None:
+        targets = [name]
+    else:
+        targets = [p["name"] for p in (lockfile.read_lock(Path.cwd()).get("plugins") or [])]
+    if not targets:
+        console.print("[dim]no plugins installed[/]"); return
+
+    for t in targets:
+        try:
+            update_plugin(
+                name=t, project_root=Path.cwd(),
+                yes=yes, force=force, console=console,
+            )
+        except InstallError as exc:
+            console.print(f"[red]{t} failed:[/] {exc}")
+            raise typer.Exit(1)
+        console.print(f"[green]updated[/] {t}")
+
+
+@app.command("search")
+def cmd_search(query: str) -> None:
+    """Search registries for plugins matching `query`."""
+    from aegis.plugins.install import search_plugins
+    hits = search_plugins(query=query, project_root=Path.cwd())
+    if not hits:
+        console.print(f"[dim]no plugins match {query!r}[/]"); return
+    for h in hits:
+        console.print(
+            f"[bold]{h['name']}[/] {h['version']}  "
+            f"[dim]from {h['registry']}[/]"
+        )
+        if h.get("description"):
+            console.print(f"  {h['description']}")
+
+
 @app.command("show")
 def cmd_show(name: str) -> None:
     """Show details of an installed plugin."""

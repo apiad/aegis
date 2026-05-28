@@ -183,3 +183,81 @@ def _load_registries(project_root: Path) -> list[str]:
     yaml = YAML(typ="safe")
     data = yaml.load(yaml_path) or {}
     return list(data.get("plugin_registries") or [])
+
+
+def update_plugin(
+    *, name: str, project_root: Path,
+    yes: bool = False, force: bool = False, console: Any = None,
+) -> None:
+    """Re-fetch and replace. Refuses on local edits unless force=True."""
+    installed_dir = project_root / ".aegis" / "plugins" / name
+    if not installed_dir.exists():
+        raise InstallError(f"{name!r} is not installed")
+    if not force:
+        data = lockfile.read_lock(project_root)
+        entry = next(
+            (p for p in data.get("plugins", []) if p.get("name") == name),
+            None,
+        )
+        if entry is not None:
+            recorded = entry.get("file_hashes") or {}
+            current = lockfile.hash_dir(installed_dir)
+            edited = [
+                k for k in current
+                if recorded.get(k) and recorded[k] != current[k]
+            ]
+            if edited:
+                raise InstallError(
+                    f"locally edited files: {', '.join(sorted(edited))} "
+                    "(use --force to clobber)"
+                )
+    resolve_and_install(
+        name=name, project_root=project_root,
+        yes=yes, force=True, console=console,
+    )
+
+
+def search_plugins(*, query: str, project_root: Path) -> list[dict]:
+    """Walk every configured registry; collect (name, description) hits."""
+    from aegis.plugins.registry import parse_registry_url
+
+    registries = _load_registries(project_root) or [DEFAULT_REGISTRY]
+    hits: list[dict] = []
+    for url_str in registries:
+        url = parse_registry_url(url_str)
+        for nm, manifest in _list_plugins_in_registry(url):
+            if (
+                query.lower() in nm.lower()
+                or query.lower() in (manifest.get("description") or "").lower()
+            ):
+                hits.append({
+                    "name": nm,
+                    "version": manifest.get("version", ""),
+                    "description": manifest.get("description", ""),
+                    "registry": url_str,
+                })
+    return hits
+
+
+def _list_plugins_in_registry(url) -> list[tuple[str, dict]]:
+    """Enumerate every plugin folder in a registry. Returns (name, manifest)."""
+    if url.scheme == "file":
+        root = Path(url.path)
+        if not root.exists():
+            return []
+        out = []
+        for sub in sorted(root.iterdir()):
+            if not sub.is_dir():
+                continue
+            manifest_path = sub / "plugin.toml"
+            if not manifest_path.exists():
+                continue
+            try:
+                manifest = load_manifest(manifest_path)
+            except Exception:
+                continue
+            out.append((manifest.name, manifest.raw.get("plugin", {})))
+        return out
+    if url.scheme == "gh":
+        return []
+    return []
