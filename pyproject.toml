@@ -38,6 +38,7 @@ dependencies = [
     "ruamel.yaml>=0.18",
     "starlette>=0.46",
     "textual[syntax]>=8.2.6",
+    "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "uvicorn>=0.32",
     "watchdog>=4.0",
