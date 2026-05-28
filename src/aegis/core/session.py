@@ -10,7 +10,7 @@ from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, Event, Result, ToolResult, ToolUse
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
-    SessionHandle, Turn,
+    SessionHandle, SessionStartEvent, Turn,
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
@@ -81,6 +81,11 @@ class AgentSession:
         # Captured by _run_turn's except clause for postmortem inspection.
         # None until a harness error occurs; replaced on each new error.
         self.last_error: Exception | None = None
+        # session_start hooks fire exactly once at the top of the first
+        # _run_turn (before pre_turn). Flag is independent of _started
+        # (which tracks harness-subprocess lifecycle) so the hook fires
+        # even if the harness never successfully starts.
+        self._session_start_fired = False
 
     @property
     def session_id(self) -> str | None:
@@ -178,14 +183,30 @@ class AgentSession:
 
     async def _run_turn(self, text: str) -> None:
         """Unified path. Runs hooks, then harness, then observers."""
-        # 1. Pre-turn hooks
         harness_name = getattr(self.agent, "harness", "unknown")
+        handle = SessionHandle(
+            handle=self.handle,
+            agent_profile=self.agent_slug,
+            harness=harness_name,
+        )
+
+        # 0. session_start hook — fires once, before pre_turn of the
+        # first turn. Awaited so ordering across start → pre → harness
+        # is deterministic; bounded by the runner's per-hook timeout.
+        if not self._session_start_fired:
+            self._session_start_fired = True
+            await run_observer_hooks(
+                SessionStartEvent(
+                    session=handle,
+                    project_root=self.project_root,
+                ),
+                _HOOK_REG["session_start"],
+                state_dir=self.state_dir,
+            )
+
+        # 1. Pre-turn hooks
         ctx = PreTurnContext(
-            session=SessionHandle(
-                handle=self.handle,
-                agent_profile=self.agent_slug,
-                harness=harness_name,
-            ),
+            session=handle,
             user_message=text,
             history=(),  # FIXME: fetch from metrics or session
             project_root=self.project_root,

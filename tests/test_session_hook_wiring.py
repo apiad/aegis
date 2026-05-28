@@ -155,3 +155,65 @@ async def test_session_end_fires_on_close(tmp_path: Path) -> None:
     await asyncio.sleep(0.05)
     assert captured.get("reason") == "test-close"
     assert captured.get("handle") == "t"
+
+
+@pytest.mark.asyncio
+async def test_session_start_fires_before_first_pre_turn(tmp_path: Path) -> None:
+    """session_start fires once, at the top of the first turn, BEFORE
+    pre_turn. Awaited (not fire-and-forget) so the ordering across
+    start → pre → harness send is deterministic."""
+    timeline: list[str] = []
+
+    @hook("session_start")
+    async def s_start(ev):
+        timeline.append(f"start:{ev.session.handle}")
+
+    @hook("pre_turn")
+    async def pre(ctx):
+        timeline.append(f"pre:{ctx.user_message}")
+        return PreTurnResult()
+
+    from aegis.core.session import AgentSession
+    class FakeAgent:
+        def __init__(self, profile, harness):
+            self.profile = profile
+            self.harness = harness
+            self.model = "sonnet"
+
+    harness = FakeHarnessSession()
+    session = AgentSession(
+        harness, FakeAgent("p", "claude"), "p", "t",
+        project_root=tmp_path,
+    )
+    await session.send_and_wait("hi")
+    await asyncio.sleep(0.05)
+    # Order: start first, then pre. Both fire exactly once.
+    assert timeline == ["start:t", "pre:hi"]
+
+
+@pytest.mark.asyncio
+async def test_session_start_fires_only_once_across_turns(tmp_path: Path) -> None:
+    """session_start fires on the FIRST turn only — subsequent turns
+    don't refire it."""
+    starts: list[str] = []
+
+    @hook("session_start")
+    async def s_start(ev):
+        starts.append(ev.session.handle)
+
+    from aegis.core.session import AgentSession
+    class FakeAgent:
+        def __init__(self, profile, harness):
+            self.profile = profile
+            self.harness = harness
+            self.model = "sonnet"
+
+    harness = FakeHarnessSession()
+    session = AgentSession(
+        harness, FakeAgent("p", "claude"), "p", "t",
+        project_root=tmp_path,
+    )
+    await session.send_and_wait("turn 1")
+    await session.send_and_wait("turn 2")
+    await asyncio.sleep(0.05)
+    assert starts == ["t"]
