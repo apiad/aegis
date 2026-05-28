@@ -9,7 +9,8 @@ from pathlib import Path
 from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, Event, Result, ToolResult, ToolUse
 from aegis.hooks import (
-    PostTurnEvent, PreTurnContext, PreTurnResult, SessionHandle, Turn,
+    PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
+    SessionHandle, Turn,
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
@@ -321,4 +322,19 @@ class AgentSession:
                 pass
         if self._started:
             await self._session.close()
+        harness_name = getattr(self.agent, "harness", "unknown")
+        asyncio.create_task(
+            run_observer_hooks(
+                SessionEndEvent(
+                    session=SessionHandle(
+                        handle=self.handle, agent_profile=self.agent_slug,
+                        harness=harness_name,
+                    ),
+                    project_root=self.project_root,
+                    reason=reason,
+                ),
+                _HOOK_REG["session_end"],
+                state_dir=self.state_dir,
+            )
+        )
         self._emit_close(reason)

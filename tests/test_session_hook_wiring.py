@@ -127,3 +127,31 @@ async def test_post_turn_fires_with_assistant_text(tmp_path: Path) -> None:
     await asyncio.sleep(0.05)
     assert captured.get("user") == "hi"
     assert "response" in captured.get("text", "")
+
+
+@pytest.mark.asyncio
+async def test_session_end_fires_on_close(tmp_path: Path) -> None:
+    captured = {}
+
+    @hook("session_end")
+    async def record(ev):
+        captured["reason"] = ev.reason
+        captured["handle"] = ev.session.handle
+
+    from aegis.core.session import AgentSession
+    class FakeAgent:
+        def __init__(self, profile, harness):
+            self.profile = profile
+            self.harness = harness
+            self.model = "sonnet"
+
+    harness = FakeHarnessSession()
+    session = AgentSession(
+        harness, FakeAgent("p", "claude"), "p", "t",
+        project_root=tmp_path,
+    )
+    await session.send_and_wait("hi")
+    await session.close(reason="test-close")
+    await asyncio.sleep(0.05)
+    assert captured.get("reason") == "test-close"
+    assert captured.get("handle") == "t"
