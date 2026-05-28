@@ -1,4 +1,4 @@
-# aegis model registry — provider → model → {context_window, prices}.
+# aegis model registry — provider → model → {context_window, prices, aliases}.
 #
 # This is the canonical list. aegis ships a bundled copy under
 # src/aegis/data/models.yaml; at boot, the CLI fires a best-effort
@@ -10,10 +10,13 @@
 # Prices are per-million-tokens in USD, written as strings so the loader
 # can use Decimal arithmetic without float drift.
 #
+# aliases: alternate model names the underlying CLI accepts that map to
+# the same canonical entry (so e.g. claude-opus-4-7 gets opus's prices).
+#
 # context_window_patterns is a fallback list applied to the model name
-# (lowercase substring match, first wins) when no exact entry matches —
-# this preserves the prior pattern-based behavior (e.g. any model name
-# containing "1m" gets the 1M context window).
+# (lowercase substring match, first wins) when no exact or alias entry
+# matches — this preserves the prior pattern-based behavior (e.g. any
+# model name containing "1m" gets the 1M context window).
 #
 # When a new model lands: add an entry here, push to main, every aegis
 # installation picks it up within 24h via the background refresh.
@@ -21,6 +24,12 @@ version: 1
 updated: "2026-05-28"
 
 providers:
+  # ---------------------------------------------------------------------
+  # Claude Code (Anthropic CLI). Accepts both nicknames (opus / sonnet /
+  # haiku) and explicit version IDs (claude-opus-4-7 etc.). The nickname
+  # is the canonical entry; the version ID is an alias so lookups work
+  # either way.
+  # ---------------------------------------------------------------------
   claude-code:
     default_context_window: 200000
     context_window_patterns:
@@ -28,6 +37,8 @@ providers:
       - { match: "opus", context_window: 1000000 }
     models:
       opus:
+        label: "claude-opus-4-7"
+        aliases: [claude-opus-4-7, claude-opus-4]
         context_window: 1000000
         prices:
           input:       "15.00"
@@ -36,6 +47,8 @@ providers:
           cache_write: "18.75"
           thinking:    "75.00"
       sonnet:
+        label: "claude-sonnet-4-6"
+        aliases: [claude-sonnet-4-6, claude-sonnet-4-5, claude-sonnet-4]
         context_window: 200000
         prices:
           input:       "3.00"
@@ -44,6 +57,8 @@ providers:
           cache_write: "3.75"
           thinking:    "15.00"
       haiku:
+        label: "claude-haiku-4-5"
+        aliases: [claude-haiku-4-5-20251001, claude-haiku-4-5]
         context_window: 200000
         prices:
           input:       "1.00"
@@ -52,10 +67,15 @@ providers:
           cache_write: "1.25"
           thinking:    "5.00"
 
+  # ---------------------------------------------------------------------
+  # Gemini CLI (`gemini --acp`). Model names go through the CLI's -m
+  # flag and match Google AI Studio model IDs verbatim.
+  # ---------------------------------------------------------------------
   gemini:
     default_context_window: 1048576
     models:
       gemini-3-pro:
+        label: "Gemini 3 Pro"
         context_window: 1048576
         prices:
           input:       "1.25"
@@ -64,6 +84,25 @@ providers:
           cache_write: "1.25"
           thinking:    "10.00"
       gemini-3-flash-preview:
+        label: "Gemini 3 Flash (preview)"
+        context_window: 1048576
+        prices:
+          input:       "0.075"
+          output:      "0.30"
+          cache_hit:   "0.019"
+          cache_write: "0.075"
+          thinking:    "0.30"
+      gemini-2.5-pro:
+        label: "Gemini 2.5 Pro"
+        context_window: 1048576
+        prices:
+          input:       "1.25"
+          output:      "10.00"
+          cache_hit:   "0.31"
+          cache_write: "1.25"
+          thinking:    "10.00"
+      gemini-2.5-flash:
+        label: "Gemini 2.5 Flash"
         context_window: 1048576
         prices:
           input:       "0.075"
@@ -72,14 +111,103 @@ providers:
           cache_write: "0.075"
           thinking:    "0.30"
 
+  # ---------------------------------------------------------------------
+  # OpenCode (`opencode acp`) — routes through OpenRouter (configured in
+  # the user's ~/.config/opencode/config.json). aegis doesn't pass the
+  # model flag itself; this list is what aegis displays + the names used
+  # for cost lookup. Pick the slug that matches your opencode config.
+  # ---------------------------------------------------------------------
   opencode:
     default_context_window: 200000
     models:
-      kimi-k2.6:
+      anthropic/claude-sonnet-4.5:
+        label: "Claude Sonnet 4.5 (via OpenRouter)"
         context_window: 200000
+        prices:
+          input:       "3.00"
+          output:      "15.00"
+          cache_hit:   "0.30"
+          cache_write: "3.75"
+          thinking:    "15.00"
+      anthropic/claude-opus-4.7:
+        label: "Claude Opus 4.7 (via OpenRouter)"
+        context_window: 1000000
+        prices:
+          input:       "15.00"
+          output:      "75.00"
+          cache_hit:   "1.50"
+          cache_write: "18.75"
+          thinking:    "75.00"
+      moonshotai/kimi-k2-0905:
+        label: "Kimi K2 0905 (Moonshot)"
+        context_window: 256000
         prices:
           input:       "0.30"
           output:      "1.20"
           cache_hit:   "0.06"
           cache_write: "0.30"
           thinking:    "1.20"
+      moonshotai/kimi-k2.6:
+        label: "Kimi K2.6 (Moonshot)"
+        aliases: [kimi-k2.6]
+        context_window: 256000
+        prices:
+          input:       "0.30"
+          output:      "1.20"
+          cache_hit:   "0.06"
+          cache_write: "0.30"
+          thinking:    "1.20"
+      minimax/minimax-m2:
+        label: "MiniMax M2"
+        context_window: 256000
+        prices:
+          input:       "0.30"
+          output:      "1.20"
+          cache_hit:   "0.06"
+          cache_write: "0.30"
+          thinking:    "1.20"
+      qwen/qwen3-coder:
+        label: "Qwen 3 Coder"
+        context_window: 262144
+        prices:
+          input:       "0.20"
+          output:      "0.80"
+          cache_hit:   "0.05"
+          cache_write: "0.20"
+          thinking:    "0.80"
+      qwen/qwen3-235b-a22b-instruct:
+        label: "Qwen 3 235B Instruct"
+        context_window: 131072
+        prices:
+          input:       "0.20"
+          output:      "0.60"
+          cache_hit:   "0.05"
+          cache_write: "0.20"
+          thinking:    "0.60"
+      deepseek/deepseek-chat-v3.1:
+        label: "DeepSeek Chat V3.1"
+        context_window: 131072
+        prices:
+          input:       "0.27"
+          output:      "1.10"
+          cache_hit:   "0.07"
+          cache_write: "0.27"
+          thinking:    "1.10"
+      deepseek/deepseek-r1-0528:
+        label: "DeepSeek R1 (0528)"
+        context_window: 131072
+        prices:
+          input:       "0.55"
+          output:      "2.19"
+          cache_hit:   "0.14"
+          cache_write: "0.55"
+          thinking:    "2.19"
+      google/gemini-2.5-pro:
+        label: "Gemini 2.5 Pro (via OpenRouter)"
+        context_window: 1048576
+        prices:
+          input:       "1.25"
+          output:      "10.00"
+          cache_hit:   "0.31"
+          cache_write: "1.25"
+          thinking:    "10.00"

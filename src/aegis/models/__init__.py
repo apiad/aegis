@@ -53,6 +53,15 @@ class ContextWindowPattern:
 class ModelEntry:
     context_window: int | None = None
     prices: ProviderPrices | None = None
+    # Alternate names the underlying CLI accepts for the same model
+    # (e.g. ``claude-opus-4-7`` is an alias of ``opus``). The dropdown
+    # only shows the canonical key; aliases let users hand-write the
+    # explicit version in ``.aegis.yaml`` and still get correct prices
+    # / context-window lookups.
+    aliases: tuple[str, ...] = ()
+    # Optional human-readable label shown next to the canonical name in
+    # the model picker (e.g. "opus → claude-opus-4-7"). Omitted = name only.
+    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,17 @@ class ProviderEntry:
     default_context_window: int = 0
     context_window_patterns: list[ContextWindowPattern] = field(default_factory=list)
     models: dict[str, ModelEntry] = field(default_factory=dict)
+
+    def resolve(self, model: str) -> tuple[str, ModelEntry] | None:
+        """Return (canonical_name, entry) if ``model`` matches a canonical
+        key or any alias; None otherwise. Used by lookups so aliases get
+        the same prices / context window as the canonical entry."""
+        if model in self.models:
+            return model, self.models[model]
+        for name, entry in self.models.items():
+            if model in entry.aliases:
+                return name, entry
+        return None
 
 
 @dataclass(frozen=True)
@@ -71,9 +91,9 @@ class Registry:
     def get_prices(self, provider: str, model: str) -> ProviderPrices:
         prov = self.providers.get(provider)
         if prov is not None:
-            entry = prov.models.get(model)
-            if entry is not None and entry.prices is not None:
-                return entry.prices
+            resolved = prov.resolve(model)
+            if resolved is not None and resolved[1].prices is not None:
+                return resolved[1].prices
         raise UnknownPriceError(
             f"no price for {(provider, model)!r}; "
             f"add to src/aegis/data/models.yaml")
@@ -82,15 +102,31 @@ class Registry:
         prov = self.providers.get(harness)
         if prov is None:
             return 0
-        entry = prov.models.get(model)
-        if entry is not None and entry.context_window is not None:
-            return entry.context_window
+        resolved = prov.resolve(model)
+        if resolved is not None and resolved[1].context_window is not None:
+            return resolved[1].context_window
         # Pattern fallback (case-insensitive substring match, first wins).
         lower = (model or "").lower()
         for pat in prov.context_window_patterns:
             if pat.match.lower() in lower:
                 return pat.context_window
         return prov.default_context_window
+
+    def models_for(self, provider: str) -> list[tuple[str, str]]:
+        """Return ``[(canonical_name, display_label), ...]`` for the
+        provider's model picker — canonical-name order preserved as
+        written in models.yaml. ``display_label`` is the canonical name
+        plus the entry's optional ``label`` (e.g. ``"opus → claude-opus-4-7"``).
+        Empty list when the provider is unknown.
+        """
+        prov = self.providers.get(provider)
+        if prov is None:
+            return []
+        out: list[tuple[str, str]] = []
+        for name, entry in prov.models.items():
+            label = (f"{name} → {entry.label}" if entry.label else name)
+            out.append((name, label))
+        return out
 
 
 def cache_path() -> Path:
@@ -153,9 +189,14 @@ def _parse(text: str) -> Registry:
                     thinking=Decimal(str(pr["thinking"])),
                 )
             cw = model_raw.get("context_window")
+            aliases = tuple(
+                str(a) for a in (model_raw.get("aliases") or []))
+            label = str(model_raw.get("label") or "")
             models[str(model_name)] = ModelEntry(
                 context_window=int(cw) if cw is not None else None,
                 prices=prices,
+                aliases=aliases,
+                label=label,
             )
         providers[str(prov_name)] = ProviderEntry(
             default_context_window=int(
@@ -193,6 +234,12 @@ def get_context_window(harness: str, model: str) -> int:
     return load_registry().get_context_window(harness, model)
 
 
+def models_for(provider: str) -> list[tuple[str, str]]:
+    """Return the model picker options for a provider — see
+    ``Registry.models_for``."""
+    return load_registry().models_for(provider)
+
+
 __all__ = [
     "ContextWindowPattern",
     "ModelEntry",
@@ -204,4 +251,5 @@ __all__ = [
     "get_context_window",
     "get_prices",
     "load_registry",
+    "models_for",
 ]

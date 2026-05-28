@@ -26,9 +26,17 @@ from aegis.config.yaml_loader import load_config as _load_yaml_config
 from aegis.tui.state import AgentState
 
 
+CUSTOM_MODEL_OPTION = "<custom>"
+
+
 class AddAgentModal(ModalScreen[bool]):
     """Modal: gather slug/provider/model/effort/permission, call
-    add_agent on save. Dismisses True on success, False on cancel."""
+    add_agent on save. Dismisses True on success, False on cancel.
+
+    The model picker is sourced from ``aegis.models.models_for(provider)``
+    so the list stays in sync with the YAML registry; picking
+    ``<custom>`` reveals a free-form input for an arbitrary model name.
+    """
 
     BINDINGS = [
         Binding("ctrl+s", "save", show=False, priority=True),
@@ -38,13 +46,15 @@ class AddAgentModal(ModalScreen[bool]):
     DEFAULT_CSS = """
     AddAgentModal { align: center middle; }
     AddAgentModal #agm-box {
-        width: 60; height: auto;
+        width: 64; height: auto;
         border: round $panel; background: $surface; padding: 1 2;
     }
     AddAgentModal Label { margin-top: 1; }
     AddAgentModal Input, AddAgentModal Select {
         width: 100%; margin-bottom: 0;
     }
+    AddAgentModal #agm-model-custom { display: none; }
+    AddAgentModal #agm-model-custom.-visible { display: block; }
     AddAgentModal #agm-err { color: $error; margin-top: 1; height: auto; }
     """
 
@@ -64,7 +74,13 @@ class AddAgentModal(ModalScreen[bool]):
                  ("opencode", "opencode")],
                 value="claude-code", allow_blank=False, id="agm-provider")
             yield Label("model")
-            yield Input(placeholder="e.g. opus", id="agm-model")
+            yield Select(
+                _model_options("claude-code"),
+                value=_default_model_value("claude-code"),
+                allow_blank=False, id="agm-model")
+            yield Input(placeholder="custom model name "
+                        "(e.g. claude-opus-4-7 or vendor/model)",
+                        id="agm-model-custom")
             yield Label("effort (claude-code only)")
             yield Select(
                 [("low", "low"), ("medium", "medium"),
@@ -80,21 +96,44 @@ class AddAgentModal(ModalScreen[bool]):
     def on_mount(self) -> None:
         self.query_one("#agm-slug", Input).focus()
 
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """When provider changes, repopulate the model Select; when the
+        model Select changes, toggle the custom-input row."""
+        if event.select.id == "agm-provider":
+            provider = str(event.value)
+            sel = self.query_one("#agm-model", Select)
+            sel.set_options(_model_options(provider))
+            sel.value = _default_model_value(provider)
+            self._set_custom_visible(sel.value == CUSTOM_MODEL_OPTION)
+        elif event.select.id == "agm-model":
+            self._set_custom_visible(event.value == CUSTOM_MODEL_OPTION)
+
+    def _set_custom_visible(self, visible: bool) -> None:
+        inp = self.query_one("#agm-model-custom", Input)
+        if visible:
+            inp.add_class("-visible")
+            inp.focus()
+        else:
+            inp.remove_class("-visible")
+
     def action_cancel(self) -> None:
         self.dismiss(False)
 
     def action_save(self) -> None:
         slug = self.query_one("#agm-slug", Input).value.strip()
-        model = self.query_one("#agm-model", Input).value.strip()
         provider = self.query_one("#agm-provider", Select).value
+        model_choice = self.query_one("#agm-model", Select).value
+        custom = self.query_one("#agm-model-custom", Input).value.strip()
         effort = self.query_one("#agm-effort", Select).value
         permission = self.query_one("#agm-permission", Select).value
         err = self.query_one("#agm-err", Static)
         if not slug:
             err.update("slug is required")
             return
+        model = custom if model_choice == CUSTOM_MODEL_OPTION else str(model_choice)
         if not model:
-            err.update("model is required")
+            err.update("model is required (pick from the list or "
+                       "select <custom> and enter a model name)")
             return
         # effort only applies to claude-code.
         effort_arg = effort if provider == "claude-code" else None
@@ -107,6 +146,30 @@ class AddAgentModal(ModalScreen[bool]):
             err.update(str(e))
             return
         self.dismiss(True)
+
+
+def _model_options(provider: str) -> list[tuple[str, str]]:
+    """Build the Select options for a provider: registry models followed
+    by ``<custom>``. The tuple is ``(display_label, value)``; the value
+    is what ``Select.value`` returns and is also what gets written to
+    ``.aegis.yaml``."""
+    from aegis.models import models_for
+    out: list[tuple[str, str]] = [
+        (label, name) for name, label in models_for(provider)
+    ]
+    out.append((CUSTOM_MODEL_OPTION, CUSTOM_MODEL_OPTION))
+    return out
+
+
+def _default_model_value(provider: str) -> str:
+    """The Select needs an initial value. Use the first registered model
+    for the provider, or ``<custom>`` if the provider has no registry
+    entries yet."""
+    from aegis.models import models_for
+    entries = models_for(provider)
+    if entries:
+        return entries[0][0]
+    return CUSTOM_MODEL_OPTION
 
 
 class ConfigPanel(Widget):

@@ -98,6 +98,62 @@ def test_get_context_window_unknown_provider_returns_zero():
     assert get_context_window("madeup-harness", "anything") == 0
 
 
+# --- aliases ----------------------------------------------------------
+
+def test_aliases_resolve_for_prices_and_context_window():
+    """Explicit version IDs are aliases of the canonical nickname —
+    lookups must return identical prices and context windows for both."""
+    # claude-opus-4-7 is an alias for opus.
+    p_canon = get_prices("claude-code", "opus")
+    p_alias = get_prices("claude-code", "claude-opus-4-7")
+    assert p_canon == p_alias
+    assert get_context_window("claude-code", "claude-opus-4-7") == 1_000_000
+    # Sonnet alias from prior aegis releases.
+    p_sonnet = get_prices("claude-code", "claude-sonnet-4-6")
+    assert p_sonnet == get_prices("claude-code", "sonnet")
+
+
+def test_alias_for_openrouter_legacy_kimi_slug():
+    """``kimi-k2.6`` (bare, no vendor prefix) was the shipped slug
+    before the OpenRouter list expanded. It must still resolve through
+    the aliases mechanism so prior ``.aegis.yaml`` files keep working."""
+    p = get_prices("opencode", "kimi-k2.6")
+    assert p.input == Decimal("0.30")
+
+
+# --- models_for (picker source) ---------------------------------------
+
+def test_models_for_claude_code_lists_nicknames_in_order():
+    from aegis.models import models_for
+    pairs = models_for("claude-code")
+    names = [name for name, _label in pairs]
+    assert names[:3] == ["opus", "sonnet", "haiku"]
+
+
+def test_models_for_includes_openrouter_classic_slugs():
+    """Spot-check that the OpenCode (OpenRouter-routed) list carries the
+    classic Kimi / Minimax / Qwen / DeepSeek slugs."""
+    from aegis.models import models_for
+    names = {name for name, _label in models_for("opencode")}
+    assert "moonshotai/kimi-k2-0905" in names
+    assert "minimax/minimax-m2" in names
+    assert "qwen/qwen3-coder" in names
+    assert "deepseek/deepseek-r1-0528" in names
+
+
+def test_models_for_unknown_provider_is_empty():
+    from aegis.models import models_for
+    assert models_for("madeup-provider") == []
+
+
+def test_models_for_label_includes_version_when_present():
+    """Models with a ``label`` field render as 'name → label' so the
+    picker shows both the short and explicit forms."""
+    from aegis.models import models_for
+    pairs = dict(models_for("claude-code"))
+    assert "claude-opus-4-7" in pairs["opus"]
+
+
 # --- cache precedence -------------------------------------------------
 
 _MINIMAL_CACHE_YAML = """\

@@ -128,7 +128,8 @@ async def test_add_agent_modal_writes_through_edit_helpers(
         from textual.widgets import Input
         inputs = {inp.id: inp for inp in app.screen.query(Input)}
         inputs["agm-slug"].value = "main"
-        inputs["agm-model"].value = "opus"
+        # Default model dropdown selection (first claude-code entry,
+        # "opus") is used — no manual model entry needed.
         await pilot.pause()
         await pilot.press("ctrl+s")  # save
         for _ in range(5):
@@ -138,6 +139,7 @@ async def test_add_agent_modal_writes_through_edit_helpers(
     text = (tmp_path / ".aegis.yaml").read_text()
     assert "main:" in text
     assert "provider: claude-code" in text
+    assert "model: opus" in text
 
 
 @pytest.mark.asyncio
@@ -156,7 +158,8 @@ async def test_add_agent_modal_validates_missing_fields(
     app = _Wrap()
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Hit save with empty slug/model — modal must stay open.
+        # Hit save with empty slug — modal must stay open (model has a
+        # default selection from the registry, so it's never empty).
         await pilot.press("ctrl+s")
         await pilot.pause()
         # Modal remains on screen → callback not yet fired.
@@ -181,3 +184,139 @@ async def test_config_panel_a_keybinding_opens_modal(tmp_path: Path) -> None:
         await pilot.pause()
         # Top screen on the stack is the modal.
         assert isinstance(app.screen, AddAgentModal)
+
+
+# --- Model picker (registry-backed) ---------------------------------
+
+@pytest.mark.asyncio
+async def test_add_agent_modal_picks_model_from_registry(
+        tmp_path: Path) -> None:
+    """Picking a non-default model from the dropdown writes that exact
+    value to .aegis.yaml — no custom input needed."""
+    from textual.widgets import Select
+    from aegis.tui.config_panel import AddAgentModal
+
+    result: list = []
+
+    class _Wrap(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                AddAgentModal(tmp_path),
+                callback=lambda r: (result.append(r), self.exit()))
+
+    app = _Wrap()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from textual.widgets import Input
+        app.screen.query_one("#agm-slug", Input).value = "fast"
+        app.screen.query_one("#agm-model", Select).value = "haiku"
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        for _ in range(5):
+            await pilot.pause()
+
+    text = (tmp_path / ".aegis.yaml").read_text()
+    assert "model: haiku" in text
+
+
+@pytest.mark.asyncio
+async def test_add_agent_modal_provider_change_repopulates_model_select(
+        tmp_path: Path) -> None:
+    """Switching the provider Select replaces the model options with the
+    new provider's registry entries."""
+    from textual.widgets import Select
+    from aegis.tui.config_panel import AddAgentModal
+
+    class _Wrap(App):
+        async def on_mount(self) -> None:
+            self.push_screen(AddAgentModal(tmp_path))
+
+    app = _Wrap()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        provider = app.screen.query_one("#agm-provider", Select)
+        model = app.screen.query_one("#agm-model", Select)
+        # Switch to gemini — model Select must now offer gemini models.
+        provider.value = "gemini"
+        await pilot.pause()
+        opts = [v for _label, v in model._options]  # (prompt, value)
+        assert any("gemini" in o for o in opts if isinstance(o, str))
+        # Switch to opencode — pick a Kimi entry to prove the slug shape.
+        provider.value = "opencode"
+        await pilot.pause()
+        opts = [v for _label, v in model._options]
+        assert any("kimi" in (o.lower() if isinstance(o, str) else "")
+                   for o in opts)
+
+
+@pytest.mark.asyncio
+async def test_add_agent_modal_custom_model_writes_typed_value(
+        tmp_path: Path) -> None:
+    """Selecting <custom> reveals the input; the typed value is what
+    lands in .aegis.yaml."""
+    from textual.widgets import Input, Select
+    from aegis.tui.config_panel import (
+        AddAgentModal, CUSTOM_MODEL_OPTION,
+    )
+
+    result: list = []
+
+    class _Wrap(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                AddAgentModal(tmp_path),
+                callback=lambda r: (result.append(r), self.exit()))
+
+    app = _Wrap()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#agm-slug", Input).value = "weird"
+        app.screen.query_one("#agm-model", Select).value = CUSTOM_MODEL_OPTION
+        await pilot.pause()
+        # Custom input is now visible.
+        custom = app.screen.query_one("#agm-model-custom", Input)
+        assert custom.has_class("-visible")
+        custom.value = "experimental-model-7b"
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        for _ in range(5):
+            await pilot.pause()
+
+    text = (tmp_path / ".aegis.yaml").read_text()
+    assert "model: experimental-model-7b" in text
+
+
+@pytest.mark.asyncio
+async def test_add_agent_modal_custom_with_empty_input_blocks_save(
+        tmp_path: Path) -> None:
+    """If <custom> is picked but the input is empty, save must error
+    rather than write 'model: <custom>'."""
+    from textual.widgets import Input, Select
+    from aegis.tui.config_panel import (
+        AddAgentModal, CUSTOM_MODEL_OPTION,
+    )
+
+    result: list = []
+
+    class _Wrap(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                AddAgentModal(tmp_path),
+                callback=lambda r: result.append(r))
+
+    app = _Wrap()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#agm-slug", Input).value = "blank"
+        app.screen.query_one("#agm-model", Select).value = CUSTOM_MODEL_OPTION
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        # Save did not dismiss the modal (callback not invoked).
+        assert result == []
+        # .aegis.yaml was not written.
+        assert not (tmp_path / ".aegis.yaml").exists()
+        await pilot.press("escape")
+        for _ in range(5):
+            await pilot.pause()
+    assert result == [False]
