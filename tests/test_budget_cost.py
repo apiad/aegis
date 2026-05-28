@@ -21,10 +21,11 @@ def test_compute_sums_all_token_classes_for_opus():
                     cache_hit_tokens=100_000, cache_write_tokens=2_000,
                     thinking_tokens=1_000)
     c = compute(m, "claude-code", "opus")
-    # opus rates per million: in=15, out=75, hit=1.50, write=18.75, think=75
-    # = 10_000*15/1M + 5_000*75/1M + 100_000*1.5/1M + 2_000*18.75/1M + 1_000*75/1M
-    # = 0.15 + 0.375 + 0.15 + 0.0375 + 0.075 = 0.7875
-    assert c.usd == Decimal("0.7875")
+    # opus 4.7 rates per million (Anthropic docs + models.dev):
+    #   in=5, out=25, hit=0.50, write=6.25, think=25
+    # = 10_000*5/1M + 5_000*25/1M + 100_000*0.5/1M + 2_000*6.25/1M + 1_000*25/1M
+    # = 0.05 + 0.125 + 0.05 + 0.0125 + 0.025 = 0.2625
+    assert c.usd == Decimal("0.2625")
     assert c.input_tokens == 10_000
     assert c.output_tokens == 5_000
     assert c.cache_hit_tokens == 100_000

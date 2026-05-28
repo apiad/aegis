@@ -192,6 +192,14 @@ catalog OpenCode itself consults). Run manually: `--diff` to preview, `--apply`
 to write. Update the script's curation lists when adding a new provider or
 when a model rev requires the canonical-key name to change.
 
+After pushing a new `models.yaml` to `main`, installed aegis instances pick
+it up within 24h via the background fetch into `~/.cache/aegis/models.yaml`.
+To force the local cache to refresh immediately:
+
+    aegis models refresh       # synchronous fetch + reload
+    aegis models clear         # delete cache, fall back to bundled
+    aegis models list [prov]   # show what aegis currently sees
+
 ## Conventions
 
 - TDD: failing test first, then minimal implementation, commit per logical unit.

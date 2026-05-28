@@ -40,11 +40,12 @@ async def test_completed_record_includes_cost(tmp_path):
     assert done[0]["event"] == "completed"
     assert "cost" in done[0]
     c = done[0]["cost"]
-    # opus rates: in=15/M, out=75/M, cache_hit=1.50/M
+    # opus 4.7 rates (Anthropic docs + models.dev):
+    #   in=5/M, out=25/M, cache_hit=0.50/M
     # c_in = true_input = 10_000 + 0 + 0 = 10_000
     # c_out = output = 5_000
-    # cost = 10_000*15/1M + 5_000*75/1M = 0.15 + 0.375 = 0.525
-    assert Decimal(c["usd"]) == Decimal("0.525")
+    # cost = 10_000*5/1M + 5_000*25/1M = 0.05 + 0.125 = 0.175
+    assert Decimal(c["usd"]) == Decimal("0.175")
     assert c["input_tokens"] == 10_000
     assert c["output_tokens"] == 5_000
 

@@ -15,9 +15,11 @@ def test_provider_prices_uses_decimal():
 
 
 def test_lookup_known_pair_returns_row():
+    """Claude Opus 4.7 rate card (per Anthropic docs + models.dev):
+    $5/$25 input/output per million tokens."""
     row = lookup("claude-code", "opus")
-    assert row.input == Decimal("15.00")
-    assert row.output == Decimal("75.00")
+    assert row.input == Decimal("5.00")
+    assert row.output == Decimal("25.00")
 
 
 def test_lookup_unknown_pair_raises():

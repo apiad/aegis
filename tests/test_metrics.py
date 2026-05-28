@@ -8,9 +8,12 @@ def _u(inp=0, cc=0, cr=0, out=0):
 
 # --- context window lookup --------------------------------------------
 
-def test_context_window_for_claude_code_sonnet_default_200k():
-    assert context_window_for("claude-code", "sonnet") == 200_000
-    assert context_window_for("claude-code", "claude-sonnet-4-6") == 200_000
+def test_context_window_for_claude_code_per_model():
+    """Sonnet 4.6 + Opus 4.7 both have 1M context windows; only Haiku
+    stays at 200k (per Anthropic docs + models.dev). The provider's
+    200k default is what unknown-model fallbacks land on."""
+    assert context_window_for("claude-code", "sonnet") == 1_000_000
+    assert context_window_for("claude-code", "claude-sonnet-4-6") == 1_000_000
     assert context_window_for("claude-code", "haiku") == 200_000
 
 
