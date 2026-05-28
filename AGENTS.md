@@ -210,6 +210,31 @@ To force the local cache to refresh immediately:
   The line REPL was removed in Phase 1.5; there is no `--plain` mode, so the
   TUI requires a TTY. Live/driver tests do not go through the App.
 
+## Plugins
+
+The plugin substrate (`src/aegis/plugins/`, `src/aegis/hooks/`,
+`src/aegis/tools/`) lets users extend aegis without forking it. Three
+primitive shapes:
+
+- `@workflow` (existing) — user/agent/scheduler-invoked orchestration.
+- `@hook("<event>")` — fires on harness lifecycle events. Tier A in v1:
+  `pre_turn` (mutator), `post_turn`, `session_start`, `session_end`.
+  See `src/aegis/hooks/contexts.py` for payload shapes.
+- `@tool` — first-class MCP tool the agent can call. Auto-schema from
+  type hints + docstring via FastMCP.
+
+Plugins live under `.aegis/plugins/<name>/` and are auto-imported on
+session start (full recursion; `_*.py` and `_*` directories skipped).
+The aegis repo's own `plugins/` folder is the default registry served
+at `gh:apiad/aegis#plugins/`.
+
+CLI: `aegis plugin {install, uninstall, update, list, search, show}`.
+
+The canonical `skill-system` plugin replicates Claude Code's
+skill-selection behavior on any harness. See
+`plugins/skill-system/` and the design spec at
+`docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`.
+
 ## Python
 
 Requires Python 3.13+.
