@@ -6,6 +6,8 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import ContentSwitcher, TextArea
 
+from textual.widgets import MarkdownViewer
+
 from aegis.tui.file_tab import FileTab
 from aegis.tui.state import AgentState
 
@@ -177,3 +179,45 @@ async def test_file_tab_cancel_prompt_escape_keeps_editing(tmp_path: Path):
         assert tab._edit_mode is True
         assert editor.read_only is False
         assert "MUTATED" in editor.text
+
+
+@pytest.mark.asyncio
+async def test_markdown_preview_lazy_mounts_and_toggles(tmp_path: Path):
+    f = tmp_path / "doc.md"
+    f.write_text("# Hi\nbody")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # No MarkdownViewer on initial open — lazy.
+        assert tab._md_viewer is None
+        assert tab._preview_mode is False
+
+        # p → preview: viewer mounts, becomes visible, editor hidden.
+        await pilot.press("p")
+        await pilot.pause()
+        assert tab._preview_mode is True
+        viewer = tab.query_one(MarkdownViewer)
+        assert viewer.has_class("visible")
+        assert tab.query_one(TextArea).has_class("hidden")
+
+        # p → back to VIEW: viewer still mounted but hidden.
+        await pilot.press("p")
+        await pilot.pause()
+        assert tab._preview_mode is False
+        assert not viewer.has_class("visible")
+        assert not tab.query_one(TextArea).has_class("hidden")
+
+
+@pytest.mark.asyncio
+async def test_preview_disabled_for_non_markdown(tmp_path: Path):
+    f = tmp_path / "hello.py"
+    f.write_text("print('hi')")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        assert tab._preview_mode is False
+        assert tab._md_viewer is None

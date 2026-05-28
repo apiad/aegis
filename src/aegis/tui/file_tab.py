@@ -7,6 +7,11 @@ EDIT mode (press `e`): TextArea becomes writable. File changes on disk
 show a warning bar with [r] reload / [k] keep options. Ctrl+S saves.
 Esc exits edit mode — if the buffer is dirty, a confirm bar offers
 [d] discard / [esc] keep editing instead of exiting silently.
+
+PREVIEW mode (press `p`, .md only): scrollable rendered Markdown via
+Textual's MarkdownViewer. Lazy-mounted on first toggle so opening a .md
+file stays fast; subsequent toggles just flip visibility. Esc returns
+to VIEW.
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widget import Widget
-from textual.widgets import Static, TextArea
+from textual.widgets import MarkdownViewer, Static, TextArea
 
 from aegis.tui.state import AgentState
 
@@ -31,7 +36,7 @@ _EXT_LANGUAGE: dict[str, str] = {
 _MTIME_POLL_S: float = 2.0
 
 
-class FileTab(Widget):
+class FileTab(Widget, can_focus=True):
     """Viewer/editor tab for a single file."""
 
     DEFAULT_CSS = """
@@ -45,10 +50,14 @@ class FileTab(Widget):
                          padding: 0 2; display: none; }
     FileTab #ft-cancel.visible { display: block; }
     FileTab TextArea { height: 1fr; }
+    FileTab TextArea.hidden { display: none; }
+    FileTab MarkdownViewer { height: 1fr; display: none; }
+    FileTab MarkdownViewer.visible { display: block; }
     """
 
     BINDINGS = [
         Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("p", "preview", "Preview", priority=True),
     ]
 
     def __init__(self, path: Path) -> None:
@@ -61,10 +70,16 @@ class FileTab(Widget):
         self.state: AgentState = AgentState.ready
         self.unseen: bool = False
         self._edit_mode: bool = False
+        self._preview_mode: bool = False
+        self._md_viewer: MarkdownViewer | None = None
         self._modified: bool = False
         self._mtime: float = 0.0
         self._disk_changed: bool = False
         self._cancel_pending: bool = False
+
+    @property
+    def _is_markdown(self) -> bool:
+        return self._path.suffix.lower() == ".md"
 
     # --- compose ----------------------------------------------------
 
@@ -93,7 +108,12 @@ class FileTab(Widget):
     # --- status bar -------------------------------------------------
 
     def _refresh_status(self) -> None:
-        mode = "EDIT" if self._edit_mode else "VIEW"
+        if self._edit_mode:
+            mode = "EDIT"
+        elif self._preview_mode:
+            mode = "PREVIEW"
+        else:
+            mode = "VIEW"
         mod = " *" if self._modified else ""
         try:
             loc = self.query_one("#ft-editor", TextArea).cursor_location
@@ -124,7 +144,10 @@ class FileTab(Widget):
             content = self._path.read_text(errors="replace")
             self.query_one("#ft-editor", TextArea).load_text(content)
         except OSError:
-            pass
+            return
+        if self._md_viewer is not None:
+            with contextlib.suppress(Exception):
+                self._md_viewer.document.update(content)
 
     def _show_disk_changed_warning(self) -> None:
         self._disk_changed = True
@@ -139,10 +162,54 @@ class FileTab(Widget):
     # --- keybindings ------------------------------------------------
 
     def key_e(self) -> None:
+        if self._preview_mode:
+            self._exit_preview()
         if not self._edit_mode:
             self._edit_mode = True
             self.query_one("#ft-editor", TextArea).read_only = False
             self._refresh_status()
+
+    async def action_preview(self) -> None:
+        if not self._is_markdown or self._edit_mode:
+            return
+        if self._preview_mode:
+            self._exit_preview()
+        else:
+            await self._enter_preview()
+        self._refresh_status()
+
+    async def _enter_preview(self) -> None:
+        try:
+            content = self._path.read_text(errors="replace")
+        except OSError:
+            return
+        if self._md_viewer is None:
+            self._md_viewer = MarkdownViewer(
+                content, show_table_of_contents=False)
+            await self.mount(self._md_viewer)
+        else:
+            with contextlib.suppress(Exception):
+                await self._md_viewer.document.update(content)
+        self._preview_mode = True
+        self.query_one("#ft-editor", TextArea).add_class("hidden")
+        self._md_viewer.add_class("visible")
+        # Park focus on FileTab itself first so the next keypress always
+        # has a delivery target; the viewer's scroll child may not be
+        # ready to accept focus until after the next refresh cycle.
+        with contextlib.suppress(Exception):
+            self.focus()
+        self.call_after_refresh(self._focus_viewer_if_preview)
+
+    def _focus_viewer_if_preview(self) -> None:
+        if self._preview_mode and self._md_viewer is not None:
+            with contextlib.suppress(Exception):
+                self._md_viewer.focus()
+
+    def _exit_preview(self) -> None:
+        self._preview_mode = False
+        if self._md_viewer is not None:
+            self._md_viewer.remove_class("visible")
+        self.query_one("#ft-editor", TextArea).remove_class("hidden")
 
     def key_r(self) -> None:
         if self._disk_changed:
@@ -165,6 +232,10 @@ class FileTab(Widget):
             self._discard_and_exit_edit()
 
     def key_escape(self) -> None:
+        if self._preview_mode and not self._edit_mode:
+            self._exit_preview()
+            self._refresh_status()
+            return
         if not self._edit_mode:
             return
         if self._cancel_pending:
@@ -235,7 +306,10 @@ class FileTab(Widget):
 
     def focus_input(self) -> None:
         with contextlib.suppress(Exception):
-            self.query_one("#ft-editor", TextArea).focus()
+            if self._preview_mode and self._md_viewer is not None:
+                self._md_viewer.focus()
+            else:
+                self.query_one("#ft-editor", TextArea).focus()
 
     async def close(self) -> None:
         pass
