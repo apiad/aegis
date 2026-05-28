@@ -263,22 +263,40 @@ def _resolve_groups(root: Path, inline: dict[str, Any]) -> dict[str, Any]:
 
 
 def import_plugins(cfg: AegisConfig) -> None:
-    """Auto-import every `*.py` in each configured plugin dir.
+    """Auto-import every non-underscore-prefixed `*.py` under each
+    configured plugin dir, recursively. Underscore-prefixed files and
+    directories are skipped at any depth.
 
-    Side effects: any `@workflow`-decorated function is registered.
-    Import errors fail loud.
+    Side effects: any `@workflow`, `@hook`, or `@tool` decorated
+    function is registered. Import errors fail loud.
     """
     for d in cfg.plugin_dirs:
         if not d.is_dir():
             continue
-        for path in sorted(d.glob("*.py")):
-            mod_name = f"aegis_plugin_{path.stem}"
+        for path in _iter_plugin_files(d):
+            mod_name = (
+                "aegis_plugin_"
+                + str(path.relative_to(d)).replace("/", "_").replace(".py", "")
+            )
             spec = importlib.util.spec_from_file_location(mod_name, path)
             if spec is None or spec.loader is None:
                 raise ConfigError(f"could not load plugin {path}")
             module = importlib.util.module_from_spec(spec)
             sys.modules[mod_name] = module
             spec.loader.exec_module(module)
+
+
+def _iter_plugin_files(root: Path):
+    """Yield every `*.py` under `root`, recursively, skipping any path
+    component whose basename starts with `_` or `.`.
+    Order is deterministic (lexical by relative path)."""
+    out: list[Path] = []
+    for path in root.rglob("*.py"):
+        if any(part.startswith(("_", ".")) for part in path.relative_to(root).parts):
+            continue
+        out.append(path)
+    out.sort(key=lambda p: str(p.relative_to(root)))
+    yield from out
 
 
 def register_builtins(cfg: AegisConfig) -> None:
