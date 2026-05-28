@@ -58,7 +58,7 @@ no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity *(slices 1-5 of 7 shipped)*
+### Driver visibility parity *(slices 1-6 of 7 shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
 structured input retained, success/failure styling. Slice 1 shipped
@@ -103,8 +103,13 @@ Gemini's per-model attribution from field_meta.quota.model_usage).
 Renderer's terminator line surfaces cost + non-default stop_reason
 when fired. Codec backward-compatible.
 
+Slice 6 shipped (`72d7fc5` → `247b154`): canonical `ContextUpdate` +
+`CostUsage`; ACP `session_update` maps UsageUpdate / CurrentModeUpdate /
+SessionInfoUpdate to the canonical event. Renderer returns None
+(transcript stays clean); status-bar / metrics consumption is a polish
+follow-on.
+
 Subsequent slices owed:
-- Slice 6 — mid-turn `ContextUpdate` from ACP `UsageUpdate` / `CurrentModeUpdate`.
 - Slice 7 — `SystemInit` enrichment (model, permission, commands, version).
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`

@@ -5,6 +5,25 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 6 (mid-turn ContextUpdate)
+
+New event types `ContextUpdate` + `CostUsage` are the canonical home
+for mid-turn ACP telemetry that doesn't belong in the transcript:
+
+- `UsageUpdate` (cost amount + context used/size) →
+  `ContextUpdate(cost=CostUsage(…))`
+- `CurrentModeUpdate` → `ContextUpdate(mode=…)`
+- `SessionInfoUpdate` → `ContextUpdate(title=…)`
+
+The renderer returns `None` for `ContextUpdate` so the pane skips it;
+downstream subscribers (status bar, metrics observers) consume through
+the standard event-observer surface — that wiring lands in a follow-on.
+Claude has no equivalent — claude reports cost / size only at turn end
+on `Result` (slice 5).
+
+State `event_codec` round-trips cost/mode/title independently with
+backward-compatible defaults.
+
 ### Driver visibility — parity slice 5 (Result enrichment)
 
 `Result` event gains optional `stop_reason`, `ttft_ms`, `num_turns`,
