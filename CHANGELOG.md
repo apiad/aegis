@@ -5,6 +5,46 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-05-28
+
+Two big lines land together: the **plugin substrate v1** (hooks +
+tools + plugin install/uninstall + registry resolution + a canonical
+`skill-system` plugin) and the **driver visibility parity arc** —
+seven slices that close the gap on what Claude / Gemini / OpenCode
+each publish on the wire, surfaced through one canonical event surface
+the renderer treats identically.
+
+### Plugin substrate (v1)
+
+Five-slice plan landed end-to-end: hooks, tools, plugin
+install/uninstall lifecycle, registry resolution, and a canonical
+`skill-system` plugin.
+
+- **Hooks** (`@hook`). `pre_turn` modifies the user message before it
+  reaches the harness (`prepend_system`, `rewrite_user`, `block`);
+  `post_turn`, `session_start`, `session_end` are observer hooks
+  with per-hook timeout and JSONL logging. All four fire at the right
+  point in `AgentSession`'s turn loop — `session_start` once at the
+  top of the first turn, `session_end` on `close()`. Composition rules
+  thread multiple `pre_turn` results deterministically.
+- **Tools** (`@tool`). Decorator + registry with reserved-name guard,
+  invocation wrapper that handles timeout / sync-or-async / JSONL
+  logging, and FastMCP registration so every `@tool` lights up as an
+  MCP tool the spawned agent can call.
+- **Plugin lifecycle.** `plugin.toml` manifest parser,
+  `InstallContext` for `_install.py` hooks, local-path install with
+  rollback on failure, lockfile write/read, uninstall flow that calls
+  `_uninstall.py` and strips config. `aegis plugin
+  install/uninstall/list/show` typer subapp drives it from the CLI.
+- **Registry resolution.** `gh:owner/repo[#path]` and `file://`
+  registry URL parsers, `git archive` HTTPS fetch, install wired
+  through registries; `aegis plugin update` + `aegis plugin search`
+  round out the surface.
+- **Canonical `skill-system` plugin** at `plugins/skill-system/`
+  registers a `pre_turn` hook that lazy-loads filesystem skills + a
+  `load_skill` MCP tool. Live integration test drives a real claude
+  subprocess through the install → invoke loop.
+
 ### Driver visibility — parity slice 7 (SystemInit enrichment)
 
 `SystemInit` carries optional `model`, `permission_mode`, `version`,

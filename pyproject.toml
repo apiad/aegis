@@ -1,6 +1,6 @@
 [project]
 name = "aegis-harness"
-version = "0.14.0"
+version = "0.15.0"
 description = "A multi-agent meta-harness for coding agents — drives Claude Code, Gemini CLI, and OpenCode in one calm full-screen TUI."
 readme = "README.md"
 authors = [
