@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -46,12 +46,19 @@ class ToolUse:
     name: str
     summary: str
     usage: TokenUsage | None = None
+    kind: str | None = None
+    raw_input: dict | None = None
+    tool_call_id: str | None = None
+    locations: tuple[tuple[str, int | None], ...] = ()
+    status: str | None = None
 
 
 @dataclass
 class ToolResult:
     text: str
     is_error: bool
+    tool_call_id: str | None = None
+    kind: str | None = None
 
 
 @dataclass

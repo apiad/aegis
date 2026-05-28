@@ -51,6 +51,45 @@ def test_parse_tool_use():
     assert ev.summary == "echo hi"
 
 
+def test_tool_use_optional_fields_default():
+    """ToolUse(name=…, summary=…) (the legacy two-arg form) must still
+    construct cleanly with sensible defaults on all new fields.
+    Drivers populate the new fields opportunistically; the renderer
+    treats absence as "fall back to the LCD view"."""
+    t = ToolUse(name="X", summary="")
+    assert t.kind is None
+    assert t.tool_call_id is None
+    assert t.raw_input is None
+    assert t.locations == ()
+    assert t.status is None
+
+
+def test_tool_use_carries_kind_locations_raw_input_tool_call_id():
+    t = ToolUse(name="Read", summary="foo.py",
+                kind="read", tool_call_id="toolu_1",
+                raw_input={"file_path": "foo.py"},
+                locations=(("foo.py", 12),),
+                status="in_progress")
+    assert t.kind == "read"
+    assert t.tool_call_id == "toolu_1"
+    assert t.raw_input == {"file_path": "foo.py"}
+    assert t.locations == (("foo.py", 12),)
+    assert t.status == "in_progress"
+
+
+def test_tool_result_optional_fields_default():
+    r = ToolResult(text="ok", is_error=False)
+    assert r.tool_call_id is None
+    assert r.kind is None
+
+
+def test_tool_result_carries_tool_call_id_and_kind():
+    r = ToolResult(text="ok", is_error=False,
+                   tool_call_id="toolu_1", kind="read")
+    assert r.tool_call_id == "toolu_1"
+    assert r.kind == "read"
+
+
 def test_parse_tool_result():
     ev = parse(json.dumps({
         "type": "user",
