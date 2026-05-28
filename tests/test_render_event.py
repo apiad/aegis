@@ -26,9 +26,14 @@ def test_tool_use_one_liner():
     assert out.count("\n") <= 2
 
 
-def test_thinking_collapsed():
+def test_thinking_content_shown():
     out = as_text(render_event(AssistantThinking("secret chain"), C))
-    assert "secret chain" not in out
+    assert "secret chain" in out
+    assert "✻" in out
+
+
+def test_thinking_empty_falls_back_to_label():
+    out = as_text(render_event(AssistantThinking(""), C))
     assert "Thinking" in out
 
 

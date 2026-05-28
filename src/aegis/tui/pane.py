@@ -457,7 +457,11 @@ class ConversationPane(Widget):
     def _render_for_stream(self, kind: str,
                             text: str) -> RenderableType:
         if kind == "thinking":
-            return Text("✻ Thinking…", style=self._palette.muted)
+            body = text.strip()
+            if not body:
+                return Text("✻ Thinking…", style=self._palette.muted)
+            return Text(f"✻ {body}",
+                        style=f"italic {self._palette.muted}")
         return Markdown(text) if text.strip() else Text("")
 
     def _stream_append(self, kind: str, new_text: str) -> None:

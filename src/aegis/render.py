@@ -16,7 +16,10 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         text = ev.text.strip()
         return Markdown(text) if text else None
     if isinstance(ev, AssistantThinking):
-        return Text("✻ Thinking…", style=colors.muted)
+        body = (ev.text or "").strip()
+        if not body:
+            return Text("✻ Thinking…", style=colors.muted)
+        return Text(f"✻ {body}", style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
         arg = f"({ev.summary})" if ev.summary else ""
         return Text.assemble(("⏺ ", colors.accent), f"{ev.name}{arg}")
