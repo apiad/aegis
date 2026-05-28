@@ -168,6 +168,20 @@ def test_agent_plan_empty_roundtrip():
     assert _roundtrip(e) == e
 
 
+def test_tool_result_with_diff_roundtrip():
+    e = ToolResult(text="ok", is_error=False,
+                   diff=("src/x.py", "old line\n", "new line\n"))
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.diff == ("src/x.py", "old line\n", "new line\n")
+
+
+def test_tool_result_without_diff_roundtrip():
+    e = ToolResult(text="ok", is_error=False)
+    rt = _roundtrip(e)
+    assert rt.diff is None
+
+
 def test_legacy_tool_result_record_decodes_with_defaults():
     legacy = {"t": "ToolResult", "text": "ok", "is_error": False}
     ev = decode_event(legacy)

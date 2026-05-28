@@ -140,6 +140,17 @@ def test_tool_result_carries_tool_call_id_and_kind():
     assert r.kind == "read"
 
 
+def test_tool_result_diff_default_none():
+    r = ToolResult(text="ok", is_error=False)
+    assert r.diff is None
+
+
+def test_tool_result_carries_diff():
+    r = ToolResult(text="written", is_error=False,
+                   diff=("x.py", "a\n", "b\n"))
+    assert r.diff == ("x.py", "a\n", "b\n")
+
+
 @pytest.mark.parametrize("name,expected", [
     ("Read", "read"),
     ("Bash", "execute"),

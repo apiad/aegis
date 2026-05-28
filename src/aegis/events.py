@@ -61,6 +61,9 @@ class ToolResult:
     is_error: bool
     tool_call_id: str | None = None
     kind: str | None = None
+    # (path, old_text, new_text) for edit/write tool calls. None for
+    # everything else. Drivers populate; renderer shows a 3-line preview.
+    diff: tuple[str, str, str] | None = None
 
 
 @dataclass

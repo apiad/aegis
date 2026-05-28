@@ -64,6 +64,9 @@ def encode_event(ev: Event) -> dict:
             out["tool_call_id"] = ev.tool_call_id
         if ev.kind is not None:
             out["kind"] = ev.kind
+        if ev.diff is not None:
+            path, old, new = ev.diff
+            out["diff"] = {"path": path, "old": old, "new": new}
         return out
     if isinstance(ev, Result):
         return {"t": "Result", "duration_ms": ev.duration_ms,
@@ -107,9 +110,13 @@ def decode_event(d: dict) -> Event:
                        locations=locs,
                        status=d.get("status"))
     if t == "ToolResult":
+        diff_d = d.get("diff")
+        diff = ((diff_d["path"], diff_d["old"], diff_d["new"])
+                if isinstance(diff_d, dict) else None)
         return ToolResult(text=d["text"], is_error=d["is_error"],
                           tool_call_id=d.get("tool_call_id"),
-                          kind=d.get("kind"))
+                          kind=d.get("kind"),
+                          diff=diff)
     if t == "Result":
         return Result(duration_ms=d.get("duration_ms"),
                       is_error=d["is_error"],
