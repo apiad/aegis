@@ -174,9 +174,6 @@ A workflow exposed via MCP is reached as `aegis_run_workflow(name="X", kwargs=..
     _install.py               # optional — runs on `aegis plugin install`
     _uninstall.py             # optional — runs on `aegis plugin uninstall`
     _lib.py                   # optional — internal helpers, not auto-imported
-    templates/
-      skills/
-        README.md             # materialized into .aegis/skills/ on install
   my_local_plugin/
     plugin.toml
     handlers.py
@@ -208,10 +205,6 @@ requires_aegis = ">=0.15"
 # Only consulted at install time; runtime config lives in .aegis.yaml.
 folder = ".aegis/skills/"
 top_k  = 3
-
-[[templates]]
-src = "templates/skills/"
-dst = ".aegis/skills/"
 ```
 
 The manifest is the single source of truth for plugin metadata. Aegis reads only the fields listed above; unknown keys are preserved across `aegis plugin update` operations.
@@ -224,11 +217,12 @@ The manifest is the single source of truth for plugin metadata. Aegis reads only
 2. **Fetch.** Pull the plugin folder from the registry via `git archive` over HTTPS (or equivalent tarball download).
 3. **Copy.** Place files under `.aegis/plugins/<name>/`. If the folder already exists, refuse unless `--force` is passed.
 4. **Merge config.** If the manifest declares `[default_config]`, prompt to merge under `.aegis.yaml`'s `plugins.<name>` namespace (`--yes` skips the prompt; runs as if the user confirmed). Comment-preserving merge via `aegis.config.edit` (ruamel-backed).
-5. **Materialize templates.** For each `[[templates]]` entry, copy `src` → `dst` if `dst` doesn't already exist; never overwrite.
-6. **Run `_install.py::install(ctx)`** if present.
-7. **Record install state.** Append/update an entry in `.aegis/plugins.lock` (see Lockfile below).
+5. **Run `_install.py::install(ctx)`** if present.
+6. **Record install state.** Append/update an entry in `.aegis/plugins.lock` (see Lockfile below).
 
-If step 6 raises, the installer rolls back steps 3–5, surfaces the traceback, and exits non-zero. Step 4 is *not* rolled back automatically — config merges are user-visible and Alex should keep the partial state to inspect.
+If step 5 raises, the installer rolls back step 3 (deletes the copied folder), surfaces the traceback, and exits non-zero. Step 4 is *not* rolled back automatically — config merges are user-visible and the user should keep the partial state to inspect.
+
+Anything beyond file copy and config merge — creating user data folders, writing starter files, prompting for credentials, registering with an OS service — is the plugin author's job, done inside `_install.py`. The installer does not ship a declarative scaffolding mechanism; `_install.py` is the single imperative escape hatch.
 
 ### `_install.py` contract
 
@@ -238,34 +232,42 @@ from aegis.plugins import InstallContext
 
 
 def install(ctx: InstallContext) -> None:
-    """Runs after files are copied and templates are materialized.
+    """Runs after files are copied and config is merged.
 
     Plugin author owns idempotency and failure modes.
     """
-    if not ctx.skills_dir.exists():
-        ctx.skills_dir.mkdir(parents=True, exist_ok=True)
-    ctx.console.print(f"[green]skill-system[/] ready at {ctx.skills_dir}")
+    skills_dir = ctx.aegis_dir / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    ctx.console.print(f"[green]skill-system[/] ready at {skills_dir}/")
 ```
 
-**`InstallContext` (frozen dataclass):**
+**`InstallContext` (frozen dataclass) — complete field list:**
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `project_root` | `Path` | Parent of `.aegis.yaml`. |
 | `aegis_dir` | `Path` | `<project_root>/.aegis/`. |
-| `plugin_dir` | `Path` | `<aegis_dir>/plugins/<name>/`. |
+| `plugin_dir` | `Path` | `<aegis_dir>/plugins/<name>/`. The plugin's own files. |
+| `plugin_name` | `str` | The plugin's name from its manifest. |
+| `manifest` | `dict` | The parsed `plugin.toml` (read-only view). |
 | `config` | `AegisConfig` | Parsed `.aegis.yaml`. Mutable — changes are written back to disk on a clean return. |
 | `console` | `rich.Console` | Pre-baked for terminal output; respects no-color and quiet flags from the CLI. |
 | `confirm(q: str, default: bool) -> bool` | callable | Prompts the user; returns `default` automatically when the installer was invoked with `--yes`. |
 
-Both `install` and `uninstall` are optional. Aegis tolerates missing `_install.py` (no setup needed) and missing `uninstall` (no teardown needed).
+The `InstallContext` exposes only substrate-level handles. Plugin-specific paths
+(`.aegis/skills/`, `.aegis/state/<plugin>/`, etc.) are derived inside the
+plugin's `_install.py` from `ctx.aegis_dir` or `ctx.project_root` — they are
+not fields on `InstallContext`, because aegis does not know about them.
+
+Both `install` and `uninstall` are optional. Aegis tolerates missing
+`_install.py` (no setup needed) and missing `uninstall` (no teardown needed).
 
 ### `aegis plugin uninstall <name>`
 
 1. **Run `_uninstall.py::uninstall(ctx)`** if present. Exceptions log + continue — the user wants the plugin gone.
 2. **Delete** `.aegis/plugins/<name>/`.
 3. **Strip** the plugin's `[default_config]` from `.aegis.yaml`'s `plugins.<name>` namespace. The user's hand-edits to that namespace are preserved (only keys present in the manifest's `default_config` are removed).
-4. **Leave user data alone.** `.aegis/skills/`, materialized templates, state files — untouched. The plugin's author decides in `uninstall(ctx)` whether to clean state; aegis defaults to keeping it.
+4. **Leave user data alone.** `.aegis/skills/`, state files, anything the plugin's `_install.py` created — untouched. The plugin's author decides in `uninstall(ctx)` whether to clean state; aegis defaults to keeping it.
 5. **Update the lockfile.**
 
 ### `aegis plugin update [name]`
@@ -413,25 +415,42 @@ async def load_skill(name: str) -> str:
 
 ### `_install.py` for `skill-system`
 
-The folder and the README come from the manifest's `[[templates]]` entry — the
-installer copies `templates/skills/` to `.aegis/skills/` automatically. The
-`_install.py` for this plugin only confirms the installation visibly:
+The plugin creates the user-data folder and the starter README itself:
 
 ```python
 from aegis.plugins import InstallContext
 
 
+SKILLS_README = """\
+# .aegis/skills/
+
+Drop Claude-Code-compatible skill files here:
+
+```
+---
+name: my-skill
+description: When to use this skill.
+---
+
+Skill body in markdown.
+```
+"""
+
+
 def install(ctx: InstallContext) -> None:
     skills_dir = ctx.aegis_dir / "skills"
-    n = sum(1 for _ in skills_dir.glob("*.md")) if skills_dir.exists() else 0
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    readme = skills_dir / "README.md"
+    if not readme.exists():
+        readme.write_text(SKILLS_README, encoding="utf-8")
+    n = sum(1 for _ in skills_dir.glob("*.md")) - (1 if readme.exists() else 0)
     ctx.console.print(
         f"[green]skill-system[/] ready — {n} skill file(s) at {skills_dir}/"
     )
 ```
 
-A plugin author would reach for `_install.py` when setup needs imperative logic
-— validating an external dependency, prompting for credentials, registering with
-an OS service. Plain folder/file scaffolding belongs in `[[templates]]`.
+The plugin owns the README content (so it can evolve independently of aegis
+releases) and the idempotency check (never overwrite a user-edited README).
 
 ## Implicit assumptions worth surfacing
 
