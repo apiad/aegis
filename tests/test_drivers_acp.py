@@ -542,6 +542,90 @@ asyncio.run(acp.run_agent(StubAgent()))
 '''
 
 
+_STUB_FILE_EDIT = r'''
+import asyncio
+import acp
+from acp.schema import (
+    ToolCallStart, ToolCallProgress,
+    FileEditToolCallContent,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallStart(
+                toolCallId="tc-edit-1",
+                title="write",
+                kind="edit",
+                status="in_progress",
+                sessionUpdate="tool_call",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallProgress(
+                toolCallId="tc-edit-1",
+                title="/tmp/x.py",
+                status="completed",
+                content=[FileEditToolCallContent(
+                    path="/tmp/x.py",
+                    oldText="alpha\n",
+                    newText="alpha\nbeta\n",
+                    type="diff",
+                )],
+                sessionUpdate="tool_call_update",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_tool_result_carries_diff_from_file_edit_content(tmp_path):
+    """ACP's FileEditToolCallContent carries (path, old_text, new_text).
+    The driver must extract the first such block from
+    ToolCallProgress.content into ToolResult.diff so the renderer can
+    show a real unified preview."""
+    from aegis.events import ToolResult
+    sess = _stub_driver(_STUB_FILE_EDIT).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("edit a file")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    results = [e for e in events if isinstance(e, ToolResult)]
+    assert len(results) == 1
+    r = results[0]
+    assert r.diff is not None
+    path, old, new = r.diff
+    assert path == "/tmp/x.py"
+    assert old == "alpha\n"
+    assert new == "alpha\nbeta\n"
+
+
 _STUB_PLAN_UPDATE = r'''
 import asyncio
 import acp

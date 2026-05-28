@@ -186,7 +186,17 @@ class _AegisAcpClient(acp.Client):
                 is_error = status == "failed"
                 tcid = getattr(update, "tool_call_id", "") or ""
                 text = ""
+                diff: tuple[str, str, str] | None = None
                 for block in (update.content or []):
+                    # FileEditToolCallContent carries (path, old_text,
+                    # new_text); first one wins per turn.
+                    if diff is None and getattr(
+                            block, "type", None) == "diff":
+                        path = getattr(block, "path", "") or ""
+                        old = getattr(block, "old_text", "") or ""
+                        new = getattr(block, "new_text", "") or ""
+                        if path:
+                            diff = (path, old, new)
                     inner = getattr(block, "content", None)
                     if inner is not None:
                         candidate = getattr(inner, "text", "")
@@ -196,6 +206,7 @@ class _AegisAcpClient(acp.Client):
                     text=text, is_error=is_error,
                     tool_call_id=tcid or None,
                     kind=self._tool_kinds.get(tcid),
+                    diff=diff,
                 ))
         elif kind == "AgentPlanUpdate":
             entries = tuple(
