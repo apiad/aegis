@@ -139,7 +139,8 @@ class _AegisAcpClient(acp.Client):
             self._queue.put_nowait(ToolUse(name=title, summary=""))
         elif kind == "ToolCallProgress":
             status = getattr(update, "status", "")
-            if status == "completed":
+            if status in ("completed", "failed"):
+                is_error = status == "failed"
                 text = ""
                 for block in (update.content or []):
                     inner = getattr(block, "content", None)
@@ -148,7 +149,7 @@ class _AegisAcpClient(acp.Client):
                         if candidate:
                             text = candidate
                 self._queue.put_nowait(
-                    ToolResult(text=text, is_error=False))
+                    ToolResult(text=text, is_error=is_error))
         # Other update classes (AvailableCommandsUpdate, UsageUpdate,
         # CurrentModeUpdate, etc.) are provider telemetry — drop.
 

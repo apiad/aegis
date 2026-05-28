@@ -416,6 +416,85 @@ async def test_acp_session_maps_usage_into_result_token_usage(tmp_path):
     assert result.usage.true_input == 1234 + 300 + 2000  # 3534
 
 
+_STUB_FAILED_TOOL = r'''
+import asyncio
+import acp
+from acp.schema import (
+    ToolCallStart, ToolCallProgress,
+    ContentToolCallContent, TextContentBlock,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallStart(
+                toolCallId="tc-fail-1",
+                title="bad_edit",
+                kind="edit",
+                status="in_progress",
+                sessionUpdate="tool_call",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallProgress(
+                toolCallId="tc-fail-1",
+                title="bad_edit",
+                status="failed",
+                content=[ContentToolCallContent(
+                    content=TextContentBlock(
+                        text="permission denied", type="text"),
+                    type="content",
+                )],
+                sessionUpdate="tool_call_update",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_failed_tool_marks_error(tmp_path):
+    """ToolCallProgress(status='failed') must produce ToolResult(is_error=True).
+
+    Pre-fix the driver hardcoded is_error=False on every completed/failed
+    tool call — failures rendered as green ok lines."""
+    from aegis.events import ToolResult
+    sess = _stub_driver(_STUB_FAILED_TOOL).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("trigger a failure")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    results = [e for e in events if isinstance(e, ToolResult)]
+    assert len(results) == 1, events
+    assert results[0].is_error is True
+    assert "permission denied" in results[0].text
+
+
 async def test_acp_session_empty_mcp_url_sends_no_mcp_servers(tmp_path):
     """If mcp_url is empty, mcp_servers=[]."""
     sess = _stub_driver(_STUB_ECHO_MCP).session(
