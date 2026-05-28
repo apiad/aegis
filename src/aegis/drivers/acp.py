@@ -135,6 +135,9 @@ class _AegisAcpClient(acp.Client):
         # doesn't restate the kind from the matching ToolCallStart, so
         # we cache it here for the ToolResult correlation.
         self._tool_kinds: dict[str, str] = {}
+        # Latest mid-turn UsageUpdate.cost.amount — surfaced on Result.
+        # ACP has no end-of-turn cost field, only the in-band updates.
+        self.last_cost_usd: float | None = None
 
     # The SDK invokes on_connect as a regular function, NOT as a
     # coroutine — declaring this async produces a "coroutine was never
@@ -208,6 +211,11 @@ class _AegisAcpClient(acp.Client):
                     kind=self._tool_kinds.get(tcid),
                     diff=diff,
                 ))
+        elif kind == "UsageUpdate":
+            cost_obj = getattr(update, "cost", None)
+            amount = getattr(cost_obj, "amount", None)
+            if isinstance(amount, (int, float)):
+                self.last_cost_usd = float(amount)
         elif kind == "AgentPlanUpdate":
             entries = tuple(
                 PlanEntry(
@@ -479,10 +487,37 @@ class AcpSession(HarnessSession):
                 out_tok = int(tc.get("output_tokens") or 0)
                 usage = _TU(input=in_tok, cache_creation=0,
                             cache_read=0, output=out_tok)
+
+        # Per-model breakdown — Gemini exposes it in field_meta.quota.
+        model_usage: tuple[tuple[str, _TU | None], ...] = ()
+        fm = getattr(resp, "field_meta", None) or {}
+        mu_raw = ((fm.get("quota") or {}).get("model_usage")) or []
+        if isinstance(mu_raw, list):
+            entries = []
+            for entry in mu_raw:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("model")
+                tc = entry.get("token_count") or {}
+                if isinstance(name, str) and isinstance(tc, dict):
+                    entries.append((name, _TU(
+                        input=int(tc.get("input_tokens") or 0),
+                        cache_creation=0, cache_read=0,
+                        output=int(tc.get("output_tokens") or 0),
+                    )))
+            model_usage = tuple(entries)
+
+        stop_reason = getattr(resp, "stop_reason", None)
+        if not isinstance(stop_reason, str):
+            stop_reason = None
         self._queue.put_nowait(Result(
             duration_ms=duration_ms, is_error=is_error,
             input_tokens=in_tok, output_tokens=out_tok,
-            usage=usage))
+            usage=usage,
+            stop_reason=stop_reason,
+            cost_usd=self._client.last_cost_usd,
+            model_usage=model_usage,
+        ))
         # End-of-turn sentinel so events() returns.
         self._queue.put_nowait(None)
 

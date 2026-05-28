@@ -626,6 +626,91 @@ async def test_acp_tool_result_carries_diff_from_file_edit_content(tmp_path):
     assert new == "alpha\nbeta\n"
 
 
+_STUB_RESULT_TELEMETRY = r'''
+import asyncio
+import acp
+from acp.schema import AgentMessageChunk, TextContentBlock, Usage, UsageUpdate
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="ok", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        # Mid-turn UsageUpdate carries cost — driver should remember
+        # the latest one and surface it on Result.cost_usd.
+        await self._conn.session_update(
+            session_id=session_id,
+            update=UsageUpdate(
+                cost={"amount": 0.0042, "currency": "USD"},
+                size=200000,
+                used=12345,
+                sessionUpdate="usage_update",
+            ),
+        )
+        # Gemini-shape: usage=None, counts in field_meta.quota with
+        # per-model attribution.
+        return acp.PromptResponse(**{
+            "stopReason": "end_turn",
+            "_meta": {"quota": {
+                "token_count": {"input_tokens": 10, "output_tokens": 20},
+                "model_usage": [
+                    {"model": "flash", "token_count":
+                        {"input_tokens": 3, "output_tokens": 7}},
+                    {"model": "auto", "token_count":
+                        {"input_tokens": 7, "output_tokens": 13}},
+                ],
+            }},
+        })
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_result_carries_stop_reason_cost_model_usage(tmp_path):
+    """End-of-turn Result event surfaces stop_reason verbatim, the
+    last UsageUpdate.cost.amount as cost_usd, and Gemini's per-model
+    breakdown from field_meta.quota.model_usage."""
+    from aegis.events import Result
+    sess = _stub_driver(_STUB_RESULT_TELEMETRY).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    result = next(e for e in events if isinstance(e, Result))
+    assert result.stop_reason == "end_turn"
+    assert result.cost_usd == 0.0042
+    # Per-model breakdown — order preserved from the wire.
+    assert len(result.model_usage) == 2
+    assert result.model_usage[0][0] == "flash"
+    assert result.model_usage[1][0] == "auto"
+
+
 _STUB_PLAN_UPDATE = r'''
 import asyncio
 import acp
