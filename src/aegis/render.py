@@ -200,7 +200,14 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         return _render_agent_plan(ev, colors)
     if isinstance(ev, Result):
         secs = (ev.duration_ms or 0) / 1000
-        return Text(f"── done in {secs:.1f}s ──", style=colors.muted)
+        parts = [f"done in {secs:.1f}s"]
+        if ev.cost_usd is not None and ev.cost_usd > 0:
+            parts.append(f"${ev.cost_usd:.4f}".rstrip("0").rstrip("."))
+        # Only surface stop_reason when it's something the user should
+        # notice — end_turn is the boring happy path.
+        if ev.stop_reason and ev.stop_reason != "end_turn":
+            parts.append(ev.stop_reason)
+        return Text(f"── {' · '.join(parts)} ──", style=colors.muted)
     if isinstance(ev, (SystemInit, Unknown)):
         return None
     return None

@@ -219,6 +219,38 @@ def test_result_separator():
     assert "2.5" in out
 
 
+def test_result_shows_cost_when_populated():
+    """When cost_usd is set, the result line surfaces it so the eye
+    catches dollar burn at a glance."""
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False, cost_usd=0.0123), C))
+    assert "$" in out
+    assert "0.01" in out
+
+
+def test_result_shows_stop_reason_when_non_default():
+    """end_turn is the boring case — don't pollute. max_tokens /
+    refusal / cancelled mean something happened that should be visible."""
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False,
+               stop_reason="max_tokens"), C))
+    assert "max_tokens" in out
+
+
+def test_result_omits_end_turn_stop_reason():
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False, stop_reason="end_turn"), C))
+    assert "end_turn" not in out
+
+
+def test_result_combines_cost_and_stop_reason():
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False,
+               cost_usd=0.05, stop_reason="refusal"), C))
+    assert "0.05" in out
+    assert "refusal" in out
+
+
 def test_systeminit_and_unknown_are_none():
     assert render_event(SystemInit(session_id="x"), C) is None
     assert render_event(Unknown(raw="{}"), C) is None
