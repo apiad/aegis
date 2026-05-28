@@ -18,7 +18,9 @@ Change: strip `-p` from spawn argv; write prompts to `proc.stdin` instead of
 passing as a CLI argument. Output stream-JSON protocol is identical. The VS Code
 Claude extension already works this way.
 
-See `vault/Atlas/Architecture/2026-05-25-aegis-harness-roadmap.md`.
+- Spec: `docs/superpowers/specs/2026-05-27-aegis-claude-repl-driver-design.md`
+- Plan: `docs/superpowers/plans/2026-05-27-aegis-claude-repl-driver-v1.md` *(armed, not yet executed — no `drivers/claude_repl.py` on disk)*
+- Roadmap context: `vault/Atlas/Architecture/2026-05-25-aegis-harness-roadmap.md`
 
 ### ⚠️ Before June 18 — `GEMINI_API_KEY` support in Gemini agent profile
 
@@ -35,6 +37,61 @@ Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
 Auth goes through `gh auth login` (no separate token management).
 
 ## Active
+
+### Plugin substrate v1 *(slice 1 of 5 shipped)*
+
+Hooks + tools + plugin install/update/uninstall + registry resolver + canonical
+`skill-system` plugin. Slice 1 (hooks substrate — `@hook` decorator, composer,
+runner, `pre_turn` / `post_turn` / `session_end` wired into `AgentSession`)
+already landed (commits `8a9b206` → `75076f5`). Slice 2 (tools), Slice 3 (plugin
+lifecycle + lockfile), Slice 4 (`gh:` registry resolver), Slice 5 (skill-system
+canonical plugin) still owed — no `src/aegis/tools/`, `src/aegis/plugins/`, or
+top-level `plugins/` on disk yet.
+
+- Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
+- Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
+
+### Driver visibility parity — slice 1
+
+Make every tool call legible across drivers: semantic kind icon, path hint,
+structured input retained, success/failure styling. Two ride-along bug fixes
+(failed gemini events as red `└ error`, gemini turn metrics > 0). No new event
+types in this slice — chunk aggregation, plan blocks, diff rendering each get
+their own slice.
+
+- Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`
+- Plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: draft)*
+
+### Session history (`Ctrl+H`)
+
+Modal listing every user-initiated agent session (open or closed, current
+process or previous); reopens via jump-to-tab, `drv.resume()`, or fresh spawn
+with recorded profile + cwd. Three slices: backend reads → resume path with
+`session_id` latch → close marker + preview + Telegram parity.
+
+- Spec: `docs/superpowers/specs/2026-05-28-aegis-session-history-design.md`
+- Plan: `docs/superpowers/plans/2026-05-28-aegis-session-history.md`
+
+### Aegis filesystem tool surface
+
+Six aegis-owned tools (`aegis_bash`, `aegis_read`, `aegis_write`, `aegis_edit`,
+`aegis_grep`, `aegis_listdir`) routing every agent's filesystem + shell access
+through the substrate. `PermissionRouter` (`allow` / `deny` / `ask`) with TUI
+inline + Telegram inline-button approval. Hard Claude built-in suppression via
+`--tools ""`. Universal "prefer aegis tools" system-prompt addendum.
+
+- Spec: `docs/superpowers/specs/2026-05-27-aegis-fs-tool-surface-design.md`
+- Plan: `docs/superpowers/plans/2026-05-27-aegis-fs-tool-surface-v1.md`
+
+### Agent sandbox *(designed, no plan yet)*
+
+Per-profile opt-in isolation primitives: worktree isolation, declarative
+read-only / hidden filesystem partitioning, outbound network block. Backend:
+`bubblewrap` for filesystem + network (Linux-only); native `git worktree add`
+for worktrees.
+
+- Spec: `docs/superpowers/specs/2026-05-27-agent-sandbox-design.md`
+- Plan: *not yet drafted*
 
 ### Queue v1 polish
 
