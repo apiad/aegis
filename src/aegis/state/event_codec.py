@@ -38,11 +38,27 @@ def encode_event(ev: Event) -> dict:
         return {"t": "AssistantThinking", "text": ev.text,
                 "usage": _encode_usage(ev.usage)}
     if isinstance(ev, ToolUse):
-        return {"t": "ToolUse", "name": ev.name, "summary": ev.summary,
-                "usage": _encode_usage(ev.usage)}
+        out = {"t": "ToolUse", "name": ev.name, "summary": ev.summary,
+               "usage": _encode_usage(ev.usage)}
+        if ev.kind is not None:
+            out["kind"] = ev.kind
+        if ev.tool_call_id is not None:
+            out["tool_call_id"] = ev.tool_call_id
+        if ev.raw_input is not None:
+            out["raw_input"] = ev.raw_input
+        if ev.locations:
+            out["locations"] = [[p, ln] for p, ln in ev.locations]
+        if ev.status is not None:
+            out["status"] = ev.status
+        return out
     if isinstance(ev, ToolResult):
-        return {"t": "ToolResult", "text": ev.text,
-                "is_error": ev.is_error}
+        out = {"t": "ToolResult", "text": ev.text,
+               "is_error": ev.is_error}
+        if ev.tool_call_id is not None:
+            out["tool_call_id"] = ev.tool_call_id
+        if ev.kind is not None:
+            out["kind"] = ev.kind
+        return out
     if isinstance(ev, Result):
         return {"t": "Result", "duration_ms": ev.duration_ms,
                 "is_error": ev.is_error,
@@ -66,10 +82,18 @@ def decode_event(d: dict) -> Event:
         return AssistantThinking(text=d["text"],
                                  usage=_decode_usage(d.get("usage")))
     if t == "ToolUse":
+        locs = tuple((p, ln) for p, ln in d.get("locations", []))
         return ToolUse(name=d["name"], summary=d["summary"],
-                       usage=_decode_usage(d.get("usage")))
+                       usage=_decode_usage(d.get("usage")),
+                       kind=d.get("kind"),
+                       raw_input=d.get("raw_input"),
+                       tool_call_id=d.get("tool_call_id"),
+                       locations=locs,
+                       status=d.get("status"))
     if t == "ToolResult":
-        return ToolResult(text=d["text"], is_error=d["is_error"])
+        return ToolResult(text=d["text"], is_error=d["is_error"],
+                          tool_call_id=d.get("tool_call_id"),
+                          kind=d.get("kind"))
     if t == "Result":
         return Result(duration_ms=d.get("duration_ms"),
                       is_error=d["is_error"],

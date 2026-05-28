@@ -67,3 +67,68 @@ def test_decode_rejects_missing_type():
 def test_decode_rejects_unknown_type():
     with pytest.raises(ValueError):
         decode_event({"t": "MysteryEvent"})
+
+
+def test_tool_use_with_kind_roundtrip():
+    e = ToolUse(name="Read", summary="x.py", kind="read")
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.kind == "read"
+
+
+def test_tool_use_with_locations_roundtrip():
+    e = ToolUse(name="Read", summary="x.py",
+                locations=(("src/x.py", 42), ("src/y.py", None)))
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.locations == (("src/x.py", 42), ("src/y.py", None))
+
+
+def test_tool_use_with_raw_input_roundtrip():
+    e = ToolUse(name="Bash", summary="echo hi",
+                raw_input={"command": "echo hi", "description": "say hi"})
+    rt = _roundtrip(e)
+    assert rt == e
+
+
+def test_tool_use_with_all_new_fields_roundtrip():
+    e = ToolUse(name="Edit", summary="x.py",
+                kind="edit", tool_call_id="toolu_1",
+                raw_input={"file_path": "x.py", "old_string": "a",
+                           "new_string": "b"},
+                locations=(("x.py", None),),
+                status="completed")
+    assert _roundtrip(e) == e
+
+
+def test_tool_result_with_kind_and_id_roundtrip():
+    e = ToolResult(text="hi", is_error=False,
+                   tool_call_id="toolu_1", kind="read")
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.kind == "read"
+    assert rt.tool_call_id == "toolu_1"
+
+
+def test_legacy_tool_use_record_decodes_with_defaults():
+    """Old session logs (pre-slice-1) wrote ToolUse without the new
+    fields. Those records must still decode cleanly."""
+    legacy = {"t": "ToolUse", "name": "Bash", "summary": "echo hi",
+              "usage": None}
+    ev = decode_event(legacy)
+    assert isinstance(ev, ToolUse)
+    assert ev.name == "Bash"
+    assert ev.summary == "echo hi"
+    assert ev.kind is None
+    assert ev.tool_call_id is None
+    assert ev.raw_input is None
+    assert ev.locations == ()
+    assert ev.status is None
+
+
+def test_legacy_tool_result_record_decodes_with_defaults():
+    legacy = {"t": "ToolResult", "text": "ok", "is_error": False}
+    ev = decode_event(legacy)
+    assert isinstance(ev, ToolResult)
+    assert ev.tool_call_id is None
+    assert ev.kind is None
