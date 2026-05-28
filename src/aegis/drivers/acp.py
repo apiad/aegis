@@ -400,6 +400,17 @@ class AcpSession(HarnessSession):
                 cache_read=cr_tok,
                 output=out_tok + th_tok,
             )
+        else:
+            # Gemini doesn't populate PromptResponse.usage — it puts
+            # token counts in field_meta.quota.token_count instead.
+            # Without this fallback every Gemini turn reports 0/0.
+            fm = getattr(resp, "field_meta", None) or {}
+            tc = ((fm.get("quota") or {}).get("token_count")) or {}
+            if tc:
+                in_tok = int(tc.get("input_tokens") or 0)
+                out_tok = int(tc.get("output_tokens") or 0)
+                usage = _TU(input=in_tok, cache_creation=0,
+                            cache_read=0, output=out_tok)
         self._queue.put_nowait(Result(
             duration_ms=duration_ms, is_error=is_error,
             input_tokens=in_tok, output_tokens=out_tok,

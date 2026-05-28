@@ -495,6 +495,75 @@ async def test_acp_failed_tool_marks_error(tmp_path):
     assert "permission denied" in results[0].text
 
 
+_STUB_GEMINI_QUOTA = r'''
+import asyncio
+import acp
+from acp.schema import AgentMessageChunk, TextContentBlock
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="ok", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        # Gemini puts token counts in field_meta.quota, NOT in usage —
+        # leaving usage=None means aegis would report 0/0 unless we
+        # fall back to field_meta. Wire alias for field_meta is _meta.
+        return acp.PromptResponse(**{
+            "stopReason": "end_turn",
+            "_meta": {"quota": {"token_count": {
+                "input_tokens": 12345, "output_tokens": 678}}},
+        })
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_session_uses_field_meta_quota_fallback(tmp_path):
+    """Gemini puts token counts in PromptResponse.field_meta.quota.token_count
+    rather than PromptResponse.usage. Without a fallback the driver
+    reports Result.usage=None → SessionMetrics shows 0/0 for every
+    Gemini turn. Fix: when usage is None, read field_meta.quota."""
+    from aegis.events import Result, TokenUsage
+    sess = _stub_driver(_STUB_GEMINI_QUOTA).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    result = next(e for e in events if isinstance(e, Result))
+    assert result.usage is not None
+    assert isinstance(result.usage, TokenUsage)
+    assert result.usage.input == 12345
+    assert result.usage.output == 678
+    assert result.input_tokens == 12345
+    assert result.output_tokens == 678
+
+
 async def test_acp_session_empty_mcp_url_sends_no_mcp_servers(tmp_path):
     """If mcp_url is empty, mcp_servers=[]."""
     sess = _stub_driver(_STUB_ECHO_MCP).session(
