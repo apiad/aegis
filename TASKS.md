@@ -42,25 +42,44 @@ Auth goes through `gh auth login` (no separate token management).
 
 Hooks + tools + plugin install/update/uninstall + registry resolver + canonical
 `skill-system` plugin. Slice 1 (hooks substrate — `@hook` decorator, composer,
-runner, `pre_turn` / `post_turn` / `session_end` wired into `AgentSession`)
-already landed (commits `8a9b206` → `75076f5`). Slice 2 (tools), Slice 3 (plugin
-lifecycle + lockfile), Slice 4 (`gh:` registry resolver), Slice 5 (skill-system
-canonical plugin) still owed — no `src/aegis/tools/`, `src/aegis/plugins/`, or
-top-level `plugins/` on disk yet.
+runner, all four lifecycle events fire from `AgentSession`) landed in commits
+`8a9b206` → `8b91cee`. `pre_turn` / `post_turn` were wired by the prior agent
+session; `session_end` followed in `75076f5`; the final hold-out `session_start`
+fired in `8b91cee` (was declared in `VALID_EVENTS` but never invoked — exposed
+by the prior agent's `tests/test_hooks_e2e.py`, now passing). All four hook
+events fire end-to-end through both focused tests and a fixture-plugin
+integration test.
+
+Slice 2 (tools — `@tool` decorator, runner, FastMCP registration), Slice 3
+(plugin manifest + local install/uninstall + lockfile), Slice 4 (`gh:`
+registry resolver), Slice 5 (canonical `skill-system` plugin) still owed —
+no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet.
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity — slice 1
+### Driver visibility parity *(slice 1 of 7 shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
-structured input retained, success/failure styling. Two ride-along bug fixes
-(failed gemini events as red `└ error`, gemini turn metrics > 0). No new event
-types in this slice — chunk aggregation, plan blocks, diff rendering each get
-their own slice.
+structured input retained, success/failure styling. Slice 1 shipped
+(`3f6772b` → `763e1b6`) — `ToolUse` / `ToolResult` carry `kind`, `tool_call_id`,
+`raw_input`, `locations`, `status`; `_AegisAcpClient` and the claude parser
+populate them; `render_event` shows a glyph per kind (📖 ✏️ ⌬ 🔎 ✻ 🌐 ➡️ 🗑 🔄 ⏺)
+and a path-tail hint; codec round-trips through `state/event_codec.py` with
+legacy-record decode. Two ride-along bug fixes: ACP `is_error` now derives from
+`status=="failed"`, Gemini usage falls back to `field_meta.quota.token_count`.
+
+Subsequent slices owed:
+- Slice 2 — chunk aggregation by `message_id` (kills opencode's 116-thought-
+  chunks-per-turn visual cliff).
+- Slice 3 — `AgentPlan` event for claude `TodoWrite` + ACP `AgentPlanUpdate`.
+- Slice 4 — file-diff rendering for edits.
+- Slice 5 — `Result` enrichment (stop_reason, ttft_ms, cost_usd, model_usage).
+- Slice 6 — mid-turn `ContextUpdate` from ACP `UsageUpdate` / `CurrentModeUpdate`.
+- Slice 7 — `SystemInit` enrichment (model, permission, commands, version).
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`
-- Plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: draft)*
+- Slice-1 plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: shipped)*
 
 ### Session history (`Ctrl+H`)
 

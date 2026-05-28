@@ -1,9 +1,10 @@
 ---
 date: 2026-05-28
 type: plan
-status: draft
+status: shipped
 spec: docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md
 slice: 1 — Legible tool calls everywhere
+landed: 3f6772b → 763e1b6
 ---
 
 # Slice 1 plan — Legible tool calls everywhere
