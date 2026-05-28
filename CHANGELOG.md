@@ -5,6 +5,25 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 5 (Result enrichment)
+
+`Result` event gains optional `stop_reason`, `ttft_ms`, `num_turns`,
+`cost_usd`, `model_usage`, `permission_denials` fields. Each driver
+populates whatever it surfaces (claude → all except cost is from
+result.total_cost_usd; ACP → stop_reason from PromptResponse, cost
+accumulated from mid-turn UsageUpdate.cost.amount, model_usage from
+gemini's field_meta.quota.model_usage list).
+
+The terminator line in the transcript grows from
+`── done in 2.5s ──` to
+`── done in 2.5s · $0.0042 · max_tokens ──` when the new fields fire.
+Cost is shown only when > 0 (so claude-subscription turns stay
+quiet) and `stop_reason` is shown only when non-default (so the
+happy `end_turn` path stays silent).
+
+State `event_codec` round-trips every new field with
+backward-compatible defaults; legacy Result records still decode.
+
 ### Driver visibility — parity slice 4 (file-diff preview)
 
 `ToolResult` now carries an optional `diff: (path, old_text, new_text)`

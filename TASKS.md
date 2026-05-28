@@ -58,7 +58,7 @@ no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity *(slices 1-4 of 7 shipped)*
+### Driver visibility parity *(slices 1-5 of 7 shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
 structured input retained, success/failure styling. Slice 1 shipped
@@ -96,8 +96,14 @@ preview — capped at 6 visible rows with truncation footer — with `-`
 red and `+` green gutters. Real opencode write of a 5-line file
 surfaces the full added content live in the transcript.
 
+Slice 5 shipped (`8f9965c` → `dae8963`): `Result` carries stop_reason,
+ttft_ms, num_turns, cost_usd, model_usage, permission_denials. Both
+drivers populate (ACP cost comes from the last mid-turn UsageUpdate;
+Gemini's per-model attribution from field_meta.quota.model_usage).
+Renderer's terminator line surfaces cost + non-default stop_reason
+when fired. Codec backward-compatible.
+
 Subsequent slices owed:
-- Slice 5 — `Result` enrichment (stop_reason, ttft_ms, cost_usd, model_usage).
 - Slice 6 — mid-turn `ContextUpdate` from ACP `UsageUpdate` / `CurrentModeUpdate`.
 - Slice 7 — `SystemInit` enrichment (model, permission, commands, version).
 
