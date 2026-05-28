@@ -22,7 +22,9 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, AssistantThinking, ToolUse
-from aegis.render import render_event, render_inbox_block, render_user_line
+from aegis.render import (
+    coalesce_chunks, render_event, render_inbox_block, render_user_line,
+)
 from aegis.state.session_log import EventReplay
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
@@ -38,7 +40,7 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
         from aegis.tui.themes import INK, aegis_colors
         colors = aegis_colors(INK)
     blocks: list[RenderableType] = []
-    for ev in replay.events:
+    for ev in coalesce_chunks(replay.events):
         r = render_event(ev, colors)
         if r is None:
             continue
