@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 
 from aegis.config import Agent, Effort, Permission
-from aegis.events import Event, Result, parse
+from aegis.events import Event, ParserState, Result, parse
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.mcp import PRIMING, mcp_config_json
 
@@ -38,6 +38,9 @@ class ClaudeSession(HarnessSession):
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
         self._reader: asyncio.Task | None = None
         self._session_id: str | None = None
+        # One ParserState per session — remembers each tool_use.id →
+        # kind so the matching tool_result can carry kind too.
+        self._parser_state = ParserState()
 
     @property
     def session_id(self) -> str | None:
@@ -68,7 +71,7 @@ class ClaudeSession(HarnessSession):
             async for raw in self._proc.stdout:
                 line = raw.decode("utf-8", "replace").strip()
                 if line:
-                    ev = parse(line)
+                    ev = parse(line, state=self._parser_state)
                     self._latch_session_id(ev)
                     await self._queue.put(ev)
         except Exception:

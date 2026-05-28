@@ -90,6 +90,28 @@ _TOOL_SUMMARY_KEY = {
     "Grep": "pattern",
 }
 
+# Tool name -> semantic kind (parity with ACP's tool_call kind enum).
+# Unknown tools fall through to "other" so the renderer still gets
+# something to switch on.
+_KIND_BY_NAME = {
+    "Read": "read",
+    "Bash": "execute", "BashOutput": "execute", "KillShell": "execute",
+    "Edit": "edit", "Write": "edit", "NotebookEdit": "edit",
+    "Glob": "search", "Grep": "search",
+    "WebFetch": "fetch", "WebSearch": "fetch",
+    "Task": "think", "Agent": "think",
+}
+
+
+@dataclass
+class ParserState:
+    """Per-session state threaded through parse() so tool_result blocks
+    can carry the kind of the matching tool_use. claude's stream-json
+    doesn't put the kind on the tool_result itself — the only way to
+    enrich it is to remember each tool_use.id → kind as the assistant
+    stream goes by."""
+    tool_kinds: dict[str, str] = field(default_factory=dict)
+
 
 def _summarize_tool(name: str, tool_input: dict) -> str:
     key = _TOOL_SUMMARY_KEY.get(name)
@@ -124,7 +146,9 @@ def _token_usage(d: object) -> TokenUsage | None:
     )
 
 
-def parse(line: str) -> Event:
+def parse(line: str, state: ParserState | None = None) -> Event:
+    if state is None:
+        state = ParserState()
     try:
         obj = json.loads(line)
     except (json.JSONDecodeError, ValueError):
@@ -163,12 +187,26 @@ def parse(line: str) -> Event:
             return AssistantThinking(text=block.get("thinking", ""),
                                      usage=u)
         if btype == "tool_use":
+            name = block.get("name", "?")
+            tool_input = block.get("input", {}) or {}
+            kind = _KIND_BY_NAME.get(name, "other")
+            tool_call_id = block.get("id")
+            if tool_call_id:
+                state.tool_kinds[tool_call_id] = kind
+            file_path = tool_input.get("file_path") \
+                if isinstance(tool_input, dict) else None
+            locations = (
+                ((file_path, None),)
+                if isinstance(file_path, str) else ()
+            )
             return ToolUse(
-                name=block.get("name", "?"),
-                summary=_summarize_tool(
-                    block.get("name", ""), block.get("input", {}) or {}
-                ),
+                name=name,
+                summary=_summarize_tool(name, tool_input),
                 usage=u,
+                kind=kind,
+                raw_input=tool_input if isinstance(tool_input, dict) else None,
+                tool_call_id=tool_call_id,
+                locations=locations,
             )
         return Unknown(raw=line)
 
@@ -179,9 +217,13 @@ def parse(line: str) -> Event:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     raw = block.get("content", "")
                     text = raw if isinstance(raw, str) else json.dumps(raw)
+                    tcid = block.get("tool_use_id")
+                    kind = state.tool_kinds.get(tcid) if tcid else None
                     return ToolResult(
                         text=text,
                         is_error=bool(block.get("is_error", False)),
+                        tool_call_id=tcid,
+                        kind=kind,
                     )
         return Unknown(raw=line)
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from aegis.events import (
     parse, SystemInit, AssistantText, AssistantThinking,
-    ToolUse, ToolResult, Result, Unknown,
+    ToolUse, ToolResult, Result, Unknown, ParserState,
 )
 
 FIX = Path(__file__).parent / "fixtures"
@@ -88,6 +88,108 @@ def test_tool_result_carries_tool_call_id_and_kind():
                    tool_call_id="toolu_1", kind="read")
     assert r.tool_call_id == "toolu_1"
     assert r.kind == "read"
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Read", "read"),
+    ("Bash", "execute"),
+    ("BashOutput", "execute"),
+    ("KillShell", "execute"),
+    ("Edit", "edit"),
+    ("Write", "edit"),
+    ("NotebookEdit", "edit"),
+    ("Glob", "search"),
+    ("Grep", "search"),
+    ("WebFetch", "fetch"),
+    ("WebSearch", "fetch"),
+    ("Task", "think"),
+    ("Agent", "think"),
+    ("MyMcpTool", "other"),  # unknown → other
+])
+def test_tool_use_kind_derived_from_name(name, expected):
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_x", "name": name,
+            "input": {},
+        }]},
+    }))
+    assert isinstance(ev, ToolUse)
+    assert ev.kind == expected
+
+
+def test_tool_use_carries_raw_input_and_tool_call_id():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_42", "name": "Read",
+            "input": {"file_path": "src/foo.py"},
+        }]},
+    }))
+    assert ev.tool_call_id == "toolu_42"
+    assert ev.raw_input == {"file_path": "src/foo.py"}
+
+
+def test_tool_use_locations_from_file_path():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "tu", "name": "Read",
+            "input": {"file_path": "src/foo.py"},
+        }]},
+    }))
+    assert ev.locations == (("src/foo.py", None),)
+
+
+def test_tool_use_locations_empty_when_no_file_path():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "tu", "name": "Bash",
+            "input": {"command": "ls"},
+        }]},
+    }))
+    assert ev.locations == ()
+
+
+def test_tool_result_kind_correlated_via_parser_state():
+    state = ParserState()
+    use = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_99", "name": "Edit",
+            "input": {"file_path": "x.py", "old_string": "a",
+                      "new_string": "b"},
+        }]},
+    }), state=state)
+    assert isinstance(use, ToolUse)
+    assert use.kind == "edit"
+
+    result = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "toolu_99",
+            "content": "ok", "is_error": False,
+        }]},
+    }), state=state)
+    assert isinstance(result, ToolResult)
+    assert result.tool_call_id == "toolu_99"
+    assert result.kind == "edit"
+
+
+def test_tool_result_kind_none_without_matching_state():
+    """If parser state never saw the matching tool_use (e.g. truncated
+    stream replay), tool_call_id passes through but kind is None."""
+    result = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "missing",
+            "content": "ok", "is_error": False,
+        }]},
+    }))
+    assert isinstance(result, ToolResult)
+    assert result.tool_call_id == "missing"
+    assert result.kind is None
 
 
 def test_parse_tool_result():
