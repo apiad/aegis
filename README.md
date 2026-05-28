@@ -284,6 +284,20 @@ plan → dispatch implementer per task with durable resume),
   invocation. One consistent surface across providers. With
   `--strict-mcp-config`, aegis is the *only* MCP server the spawned
   agent sees.
+- **Driver parity.** The canonical event surface unifies what every
+  substrate publishes: semantic tool kinds (📖 read / ✏️ edit / ⌬
+  execute / 🔎 search / ✻ think / 🌐 fetch) with locations + raw
+  inputs, file diffs for edits, plan blocks for `TodoWrite` /
+  `AgentPlanUpdate`, mid-turn cost / mode / title telemetry, and
+  end-of-turn `stop_reason` / `cost_usd` / per-model attribution.
+  Same render code paths for Claude, Gemini, and OpenCode; opencode's
+  per-token thought stream coalesces by `message_id` into one block
+  per assistant message.
+- **Plugin substrate.** `@hook` for pre/post-turn + session lifecycle,
+  `@tool` for FastMCP-registered helpers, `aegis plugin
+  install/uninstall/list` over local paths or `gh:` registry URLs,
+  comment-preserving lockfile, and a canonical `skill-system` plugin
+  that demonstrates the full surface end-to-end.
 
 ## Remote plane — cross-machine handoff
 
