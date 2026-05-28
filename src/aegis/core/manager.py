@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -10,6 +11,16 @@ from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
 SessionFactory = Callable[[object, str, str], object]
+
+# 2 or 3 hyphen-separated alnum segments. First char must be a letter
+# (so the handle doesn't read like a version string). Keeps handles
+# greppable and URL-safe; rules out empties, uppercase, whitespace, and
+# trailing/leading hyphens.
+_HANDLE_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+){1,2}$")
+
+
+def is_valid_handle(s: str) -> bool:
+    return bool(_HANDLE_RE.match(s))
 
 
 class SessionManager:
@@ -164,6 +175,40 @@ class SessionManager:
 
     def live_handles(self) -> set[str]:
         return {s.handle for s in self._sessions}
+
+    async def rename_handle(self, old: str, new: str) -> dict:
+        """Swap a live session's handle. Used by the ``aegis_rename`` MCP
+        tool so an agent can give itself a more meaningful name once the
+        session's purpose has settled.
+
+        Returns ``{"ok": True, "old": old, "new": new}`` on success or
+        ``{"error": "..."}`` on validation failure / unknown old / collision.
+        ``old == new`` is a no-op success.
+        """
+        if old == new:
+            session = self.get(old)
+            if session is None:
+                return {"error": f"no session {old!r}"}
+            return {"ok": True, "old": old, "new": new}
+        if not is_valid_handle(new):
+            return {"error":
+                    f"new handle {new!r} fails format: must be 2-3 "
+                    f"kebab-case alphanumeric segments, starting with a "
+                    f"letter (e.g. 'lucid-river-runs')"}
+        session = self.get(old)
+        if session is None:
+            return {"error":
+                    f"no session {old!r} (use aegis_list_sessions)"}
+        if self.get(new) is not None:
+            return {"error":
+                    f"handle {new!r} already in use by another session"}
+        session.handle = new
+        if old in self._mru:
+            idx = self._mru.index(old)
+            self._mru[idx] = new
+        if self._inbox is not None:
+            self._inbox.rename(old, new)
+        return {"ok": True, "old": old, "new": new}
 
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str:

@@ -777,6 +777,43 @@ class AegisApp(App):
             await self._close_pane(pane)
             self._refresh_tabbar()
 
+    async def rename_handle(self, old: str, new: str) -> dict:
+        """AppBridge-shaped: rename a live pane's handle in-place.
+
+        Swaps the pane's handle, the inbox-router binding, and the
+        tabbar label. Used by the ``aegis_rename`` MCP tool.
+        """
+        from aegis.core.manager import is_valid_handle
+        if old == new:
+            pane = next((p for p in self._panes
+                         if isinstance(p, ConversationPane)
+                         and p.handle == old), None)
+            if pane is None:
+                return {"error": f"no session {old!r}"}
+            return {"ok": True, "old": old, "new": new}
+        if not is_valid_handle(new):
+            return {"error":
+                    f"new handle {new!r} fails format: must be 2-3 "
+                    f"kebab-case alphanumeric segments, starting with a "
+                    f"letter (e.g. 'lucid-river-runs')"}
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == old), None)
+        if pane is None:
+            return {"error":
+                    f"no session {old!r} (use aegis_list_sessions)"}
+        collision = next((p for p in self._panes
+                          if isinstance(p, ConversationPane)
+                          and p.handle == new), None)
+        if collision is not None:
+            return {"error":
+                    f"handle {new!r} already in use by another session"}
+        pane.handle = new
+        pane._core.handle = new
+        self.inbox_router.rename(old, new)
+        self._refresh_tabbar()
+        return {"ok": True, "old": old, "new": new}
+
 
 class _GroupSessionAdapter:
     """SessionManager-shaped facade over AegisApp for groups wiring.

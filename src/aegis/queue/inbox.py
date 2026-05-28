@@ -27,6 +27,19 @@ class InboxRouter:
     def unbind_session(self, handle: str) -> None:
         self._sessions.pop(handle, None)
 
+    def rename(self, old: str, new: str) -> None:
+        """Move both the live-session binding and any pending messages
+        from ``old`` to ``new``. No-op when ``old == new``.
+        """
+        if old == new:
+            return
+        session = self._sessions.pop(old, None)
+        if session is not None:
+            self._sessions[new] = session
+        pending = self._pending.pop(old, None)
+        if pending is not None:
+            self._pending.setdefault(new, []).extend(pending)
+
     async def deliver(self, handle: str, msg: InboxMessage) -> None:
         # Persist before any live-session signalling: the JSONL record is
         # the audit-log; an in-flight crash between writethrough and poke

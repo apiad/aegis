@@ -26,6 +26,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         async def handoff(self, a, b, c): return "ok"
         async def spawn(self, profile, *, handle=None): return "h"
         async def close(self, handle): return None
+        async def rename_handle(self, old, new): return {"ok": True}
         def register_agent(self, slug, agent): pass
         def register_queue(self, queue): pass
         def reload_plugins(self): pass
@@ -52,6 +53,7 @@ def test_appbridge_requires_full_surface():
         async def handoff(self, a, b, c): return "ok"
         async def spawn(self, profile, *, handle=None): return "h"
         async def close(self, handle): return None
+        async def rename_handle(self, old, new): return {"ok": True}
         def register_agent(self, slug, agent): pass
         def register_queue(self, queue): pass
         def reload_plugins(self): pass
@@ -71,6 +73,7 @@ def test_appbridge_requires_full_surface():
         def list_agents(self): return []
         async def handoff(self, a, b, c): return "ok"
         async def close(self, handle): return None
+        async def rename_handle(self, old, new): return {"ok": True}
         def register_agent(self, slug, agent): pass
         def register_queue(self, queue): pass
         def reload_plugins(self): pass

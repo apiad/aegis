@@ -109,6 +109,12 @@ async def _aegis_group_rename_impl(bridge, *, old: str, new: str) -> dict:
     return await bridge.groups.rename(old, new)
 
 
+async def _aegis_rename_impl(bridge, *, old_handle: str,
+                             new_handle: str) -> dict:
+    """Rename a live aegis session's handle in place."""
+    return await bridge.rename_handle(old_handle, new_handle)
+
+
 async def _aegis_group_move_member_impl(bridge, *, handle: str,
                                         from_group: str,
                                         to_group: str) -> dict:
@@ -130,6 +136,16 @@ BRIEFING = (
     "  - aegis_list_agents() : the configured agent-profile slugs that "
     "could be spawned (spawn itself is a future tool, not in this "
     "release).\n"
+    "  - aegis_rename(old_handle, new_handle) : rename a live aegis "
+    "session in place. Use this on YOURSELF once the session has a clear "
+    "purpose — your starting handle (e.g. 'deep-dijkstra') is generated; "
+    "a 2-3 word kebab-case name that describes what you're actually "
+    "doing ('rename-tool-mcp', 'plugin-substrate-slice2') makes the "
+    "tabbar, peer lists, and inbox headers more legible for Alex and "
+    "for other agents. Format: 2-3 alphanumeric segments separated by "
+    "hyphens, starting with a letter. Also call this when Alex asks you "
+    "to rename. Returns {ok, old, new} on success or {error: ...} on "
+    "format failure / collision.\n"
     "  - aegis_handoff(from_handle, target_handle, context) : one-way "
     "(fire-and-forget) context transfer to a live peer session. You pass "
     "your own aegis handle as from_handle — it is in your system prompt. "
@@ -303,9 +319,13 @@ BRIEFING = (
 PRIMING = (
     "You are running inside aegis, a meta-harness. An MCP server named "
     "'aegis' is attached and (strict config) is your only MCP server. "
-    "Your aegis handle is '{handle}'. Call its aegis_meta tool first to "
-    "learn this environment and the aegis tools available to you, then "
-    "proceed. When handing off to a peer (aegis_handoff) or delegating "
+    "Your aegis handle is '{handle}'. This is your starting name; once "
+    "your session has a clear purpose, you may rename yourself via "
+    "aegis_rename('{handle}', '<new-handle>') to a 2-3 word kebab-case "
+    "name that describes what you're doing — see aegis_meta for the "
+    "format. Call aegis_meta first to learn this environment and the "
+    "aegis tools available to you, then proceed. When handing off to a "
+    "peer (aegis_handoff) or delegating "
     "via a queue (aegis_enqueue), pass your handle '{handle}' as "
     "from_handle — that is how queue callbacks find their way back to "
     "you. Messages from queue callbacks, peer handoffs, Telegram, and "
@@ -727,6 +747,29 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 timestamp=now_iso(),
                 body=context))
         return f"delivered to {target_handle}"
+
+    @server.tool
+    async def aegis_rename(old_handle: str, new_handle: str) -> dict:
+        """Rename a live aegis session's handle in place.
+
+        Use this to change your own handle (or a peer's) from the generated
+        ``adjective-laureate`` form to something more informative once
+        the session's purpose has settled — e.g. ``deep-dijkstra`` →
+        ``rename-tool-mcp``. Pass your current handle (from your system
+        prompt) as ``old_handle`` and the desired new name as ``new_handle``.
+
+        ``new_handle`` format: 2-3 hyphen-separated alphanumeric segments,
+        starting with a letter (e.g. ``lucid-river``, ``rename-tool-mcp``,
+        ``agent-7``). The whole peer set, your inbox binding, and the
+        tabbar label all migrate atomically; messages already queued for
+        the old handle are re-routed.
+
+        Returns ``{"ok": True, "old": ..., "new": ...}`` on success or
+        ``{"error": "..."}`` on validation failure / unknown old /
+        collision with another live session.
+        """
+        return await _aegis_rename_impl(
+            bridge, old_handle=old_handle, new_handle=new_handle)
 
     @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,

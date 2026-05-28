@@ -86,7 +86,7 @@ def test_build_server_registers_all_aegis_tools():
     tools = asyncio.run(srv.list_tools())
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
-        "aegis_list_agents", "aegis_handoff",
+        "aegis_list_agents", "aegis_handoff", "aegis_rename",
         "aegis_enqueue", "aegis_task_status",
         "aegis_run_workflow",
         "aegis_workflow_status", "aegis_workflow_cancel",
