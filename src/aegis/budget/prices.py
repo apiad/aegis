@@ -1,69 +1,79 @@
-"""Static per-(provider, model) price table for cost computation.
+"""Backward-compatible shim over the YAML-backed model registry.
 
-Rates are per-MILLION-tokens in USD. Update this file when providers
-publish new prices — it is the only piece of maintained data the
-budget feature depends on.
+The canonical data now lives in ``src/aegis/data/models.yaml`` and is
+served by ``aegis.models``. This module re-exports the same names the
+rest of the codebase already imports (``ProviderPrices``, ``lookup``,
+``UnknownPriceError``) so callers don't need to change. The ``PRICES``
+dict is built lazily from the registry on first access.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal
-
-
-class UnknownPriceError(KeyError):
-    """Raised when cost.compute() can't find a (provider, model) pair."""
-
-
-@dataclass(frozen=True)
-class ProviderPrices:
-    """Per-million-token rates in USD, all Decimal to avoid float drift."""
-    input:       Decimal
-    output:      Decimal
-    cache_hit:   Decimal
-    cache_write: Decimal
-    thinking:    Decimal
-
-
-def _d(s: str) -> Decimal:
-    return Decimal(s)
-
-
-PRICES: dict[tuple[str, str], ProviderPrices] = {
-    # Claude Code (Anthropic) — Nov 2025 list prices.
-    ("claude-code", "opus"): ProviderPrices(
-        input=_d("15.00"), output=_d("75.00"),
-        cache_hit=_d("1.50"), cache_write=_d("18.75"),
-        thinking=_d("75.00")),
-    ("claude-code", "sonnet"): ProviderPrices(
-        input=_d("3.00"), output=_d("15.00"),
-        cache_hit=_d("0.30"), cache_write=_d("3.75"),
-        thinking=_d("15.00")),
-    ("claude-code", "haiku"): ProviderPrices(
-        input=_d("1.00"), output=_d("5.00"),
-        cache_hit=_d("0.10"), cache_write=_d("1.25"),
-        thinking=_d("5.00")),
-    # Gemini CLI — Nov 2025 list prices.
-    ("gemini", "gemini-3-pro"): ProviderPrices(
-        input=_d("1.25"), output=_d("10.00"),
-        cache_hit=_d("0.31"), cache_write=_d("1.25"),
-        thinking=_d("10.00")),
-    ("gemini", "gemini-3-flash-preview"): ProviderPrices(
-        input=_d("0.075"), output=_d("0.30"),
-        cache_hit=_d("0.019"), cache_write=_d("0.075"),
-        thinking=_d("0.30")),
-    # OpenCode — provider-routed; defaults match Kimi K2.6 listed pricing.
-    ("opencode", "kimi-k2.6"): ProviderPrices(
-        input=_d("0.30"), output=_d("1.20"),
-        cache_hit=_d("0.06"), cache_write=_d("0.30"),
-        thinking=_d("1.20")),
-}
+from aegis.models import (
+    ProviderPrices,
+    UnknownPriceError,
+    get_prices,
+    load_registry,
+)
 
 
 def lookup(provider: str, model: str) -> ProviderPrices:
-    """Return the price row, raise UnknownPriceError on miss."""
-    try:
-        return PRICES[(provider, model)]
-    except KeyError:
-        raise UnknownPriceError(
-            f"no price for {(provider, model)!r}; "
-            f"add to aegis.budget.prices.PRICES")
+    return get_prices(provider, model)
+
+
+def _build_prices() -> dict[tuple[str, str], ProviderPrices]:
+    reg = load_registry()
+    out: dict[tuple[str, str], ProviderPrices] = {}
+    for prov_name, prov in reg.providers.items():
+        for model_name, entry in prov.models.items():
+            if entry.prices is not None:
+                out[(prov_name, model_name)] = entry.prices
+    return out
+
+
+class _LazyPricesDict(dict):
+    """Compatibility view over the YAML-backed registry. Behaves like a
+    frozen mapping; raises if anyone tries to mutate it (no callers do
+    today but the old module-level dict was mutable in principle)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._loaded = False
+
+    def _ensure(self) -> None:
+        if not self._loaded:
+            super().update(_build_prices())
+            self._loaded = True
+
+    def __getitem__(self, key):  # type: ignore[override]
+        self._ensure()
+        return super().__getitem__(key)
+
+    def __contains__(self, key):  # type: ignore[override]
+        self._ensure()
+        return super().__contains__(key)
+
+    def __iter__(self):  # type: ignore[override]
+        self._ensure()
+        return super().__iter__()
+
+    def __len__(self):  # type: ignore[override]
+        self._ensure()
+        return super().__len__()
+
+    def items(self):  # type: ignore[override]
+        self._ensure()
+        return super().items()
+
+    def keys(self):  # type: ignore[override]
+        self._ensure()
+        return super().keys()
+
+    def values(self):  # type: ignore[override]
+        self._ensure()
+        return super().values()
+
+
+PRICES: dict[tuple[str, str], ProviderPrices] = _LazyPricesDict()  # type: ignore[assignment]
+
+
+__all__ = ["PRICES", "ProviderPrices", "UnknownPriceError", "lookup"]

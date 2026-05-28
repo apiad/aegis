@@ -7,17 +7,12 @@ from aegis.events import TokenUsage
 
 def context_window_for(harness: str, model: str) -> int:
     """Tokens the model can ingest per turn. 0 = unknown (skip display).
-    Hardcoded; edit when a new model lands or a 1m beta opens up."""
-    m = (model or "").lower()
-    if harness == "claude-code":
-        if "1m" in m or "opus" in m:
-            return 1_000_000
-        return 200_000
-    if harness == "gemini":
-        return 1_048_576
-    if harness == "opencode":
-        return 200_000
-    return 0
+
+    Backed by the YAML registry at ``src/aegis/data/models.yaml`` (see
+    ``aegis.models``); the values refresh from GitHub every 24h so new
+    models land without a release."""
+    from aegis.models import get_context_window
+    return get_context_window(harness, model)
 
 
 def _fmt_tokens(n: int) -> str:

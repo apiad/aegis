@@ -107,6 +107,15 @@ def run(
                    err=True)
         raise typer.Exit(code=2)
 
+    # Best-effort background refresh of ~/.cache/aegis/models.yaml so
+    # prices + context windows stay current without a release. Never
+    # blocks startup; failures are silent.
+    try:
+        from aegis.models.refresh import maybe_refresh
+        maybe_refresh()
+    except Exception:  # noqa: BLE001
+        pass
+
     def make_session(profile, mcp_url, handle):
         return get_driver(profile.harness).session(
             profile, effective_cwd, mcp_url, handle)

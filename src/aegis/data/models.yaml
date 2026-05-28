@@ -1,0 +1,85 @@
+# aegis model registry — provider → model → {context_window, prices}.
+#
+# This is the canonical list. aegis ships a bundled copy under
+# src/aegis/data/models.yaml; at boot, the CLI fires a best-effort
+# background fetch of
+#   https://raw.githubusercontent.com/apiad/aegis/main/src/aegis/data/models.yaml
+# into ~/.cache/aegis/models.yaml. The cache wins over the bundled file
+# when it's present and newer (so updates propagate without a release).
+#
+# Prices are per-million-tokens in USD, written as strings so the loader
+# can use Decimal arithmetic without float drift.
+#
+# context_window_patterns is a fallback list applied to the model name
+# (lowercase substring match, first wins) when no exact entry matches —
+# this preserves the prior pattern-based behavior (e.g. any model name
+# containing "1m" gets the 1M context window).
+#
+# When a new model lands: add an entry here, push to main, every aegis
+# installation picks it up within 24h via the background refresh.
+version: 1
+updated: "2026-05-28"
+
+providers:
+  claude-code:
+    default_context_window: 200000
+    context_window_patterns:
+      - { match: "1m",   context_window: 1000000 }
+      - { match: "opus", context_window: 1000000 }
+    models:
+      opus:
+        context_window: 1000000
+        prices:
+          input:       "15.00"
+          output:      "75.00"
+          cache_hit:   "1.50"
+          cache_write: "18.75"
+          thinking:    "75.00"
+      sonnet:
+        context_window: 200000
+        prices:
+          input:       "3.00"
+          output:      "15.00"
+          cache_hit:   "0.30"
+          cache_write: "3.75"
+          thinking:    "15.00"
+      haiku:
+        context_window: 200000
+        prices:
+          input:       "1.00"
+          output:      "5.00"
+          cache_hit:   "0.10"
+          cache_write: "1.25"
+          thinking:    "5.00"
+
+  gemini:
+    default_context_window: 1048576
+    models:
+      gemini-3-pro:
+        context_window: 1048576
+        prices:
+          input:       "1.25"
+          output:      "10.00"
+          cache_hit:   "0.31"
+          cache_write: "1.25"
+          thinking:    "10.00"
+      gemini-3-flash-preview:
+        context_window: 1048576
+        prices:
+          input:       "0.075"
+          output:      "0.30"
+          cache_hit:   "0.019"
+          cache_write: "0.075"
+          thinking:    "0.30"
+
+  opencode:
+    default_context_window: 200000
+    models:
+      kimi-k2.6:
+        context_window: 200000
+        prices:
+          input:       "0.30"
+          output:      "1.20"
+          cache_hit:   "0.06"
+          cache_write: "0.30"
+          thinking:    "1.20"

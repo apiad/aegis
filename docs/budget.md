@@ -90,9 +90,16 @@ a `cost` field:
 thousands of records. The budget evaluator parses it back to `Decimal`
 when summing a window.
 
-The price table lives at `src/aegis/budget/prices.py` — a plain Python
-dict keyed by `(provider, model)` with per-million-token rates. Update
-it if your provider changes prices.
+The price table lives at `src/aegis/data/models.yaml` — a YAML document
+keyed by `(provider, model)` with per-million-token rates. aegis ships
+a bundled copy and, at boot, fires a best-effort background fetch of
+`https://raw.githubusercontent.com/apiad/aegis/main/src/aegis/data/models.yaml`
+into `~/.cache/aegis/models.yaml` (24h TTL), so new prices propagate
+without a release. The cache wins over the bundled copy when present.
+
+Update the YAML and push to `main`; every aegis installation picks it
+up within 24h. `aegis.budget.prices.lookup(...)` is a thin shim over
+the YAML registry for backward compatibility.
 
 ## Configuration
 
