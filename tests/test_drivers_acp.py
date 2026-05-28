@@ -542,6 +542,77 @@ asyncio.run(acp.run_agent(StubAgent()))
 '''
 
 
+_STUB_PLAN_UPDATE = r'''
+import asyncio
+import acp
+from acp.schema import AgentPlanUpdate, PlanEntry as AcpPlanEntry
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentPlanUpdate(
+                entries=[
+                    AcpPlanEntry(content="alpha",
+                                 status="completed", priority="high"),
+                    AcpPlanEntry(content="beta",
+                                 status="in_progress", priority="medium"),
+                    AcpPlanEntry(content="gamma",
+                                 status="pending", priority="low"),
+                ],
+                sessionUpdate="plan",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_plan_update_emits_agent_plan(tmp_path):
+    """ACP's AgentPlanUpdate carries an entries[] list of PlanEntry
+    (content + status + priority). The driver must convert each entry
+    and emit a canonical AgentPlan event so the renderer's plan-block
+    branch picks it up regardless of substrate."""
+    from aegis.events import AgentPlan, PlanEntry
+    sess = _stub_driver(_STUB_PLAN_UPDATE).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("propose a plan")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    plans = [e for e in events if isinstance(e, AgentPlan)]
+    assert len(plans) == 1, events
+    p = plans[0]
+    assert len(p.entries) == 3
+    assert p.entries[0] == PlanEntry(
+        content="alpha", status="completed", priority="high")
+    assert p.entries[1] == PlanEntry(
+        content="beta", status="in_progress", priority="medium")
+    assert p.entries[2].priority == "low"
+
+
 _STUB_CHUNKED_THOUGHTS = r'''
 import asyncio
 import acp

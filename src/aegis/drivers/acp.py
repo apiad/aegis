@@ -87,9 +87,11 @@ class _RingHandler(logging.Handler):
 from aegis.config import Agent
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.events import (
+    AgentPlan,
     AssistantText,
     AssistantThinking,
     Event,
+    PlanEntry,
     Result,
     ToolResult,
     ToolUse,
@@ -195,6 +197,16 @@ class _AegisAcpClient(acp.Client):
                     tool_call_id=tcid or None,
                     kind=self._tool_kinds.get(tcid),
                 ))
+        elif kind == "AgentPlanUpdate":
+            entries = tuple(
+                PlanEntry(
+                    content=getattr(e, "content", "") or "",
+                    status=getattr(e, "status", "pending") or "pending",
+                    priority=getattr(e, "priority", "medium") or "medium",
+                )
+                for e in (getattr(update, "entries", None) or [])
+            )
+            self._queue.put_nowait(AgentPlan(entries=entries))
         # Other update classes (AvailableCommandsUpdate, UsageUpdate,
         # CurrentModeUpdate, etc.) are provider telemetry — drop.
 
