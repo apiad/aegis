@@ -4,9 +4,15 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import Event, Result, ToolResult, ToolUse
+from aegis.hooks import (
+    PostTurnEvent, PreTurnContext, PreTurnResult, SessionHandle, Turn,
+)
+from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
+from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
 from aegis.queue.schema import InboxMessage, render_inbox_header
 from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
@@ -31,11 +37,16 @@ class AgentSession:
                  handle: str, *,
                  now: Callable[[], float] = time.monotonic,
                  inbox=None,
-                 opening_prompt: str | None = None) -> None:
+                 opening_prompt: str | None = None,
+                 project_root: Path | None = None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
+        self.project_root = project_root or Path.cwd()
+        # hooks log into .aegis/state relative to the project root
+        self.state_dir = self.project_root / ".aegis" / "state"
+
         self.state = AgentState.ready
         _harness = getattr(agent, "harness", "")
         _model = getattr(agent, "model", "")
@@ -115,6 +126,104 @@ class AgentSession:
         self._emit_state(AgentState.working, finished=False)
         self.metrics.start_turn(self._now())
         self._task = asyncio.create_task(self._run_turn(text))
+
+    async def send_and_wait(self, text: str) -> Result:
+        """New hook-aware path. Returns the final Result of the turn."""
+        if self.state is AgentState.working:
+            raise RuntimeError("session is already busy")
+
+        self._emit_state(AgentState.working, finished=False)
+        self.metrics.start_turn(self._now())
+
+        # 1. Pre-turn hooks
+        harness_name = getattr(self.agent, "harness", "unknown")
+        ctx = PreTurnContext(
+            session=SessionHandle(
+                handle=self.handle,
+                agent_profile=self.agent_slug,
+                harness=harness_name,
+            ),
+            user_message=text,
+            history=(),  # FIXME: fetch from metrics or session
+            project_root=self.project_root,
+        )
+        composed = await run_pre_turn_hooks(
+            ctx, _HOOK_REG["pre_turn"], state_dir=self.state_dir
+        )
+
+        if composed.block:
+            res = Result(duration_ms=0, is_error=True)
+            res.blocked_reason = composed.block  # for tests
+            self.metrics.commit(None, self._now())
+            self._emit_state(AgentState.ready, finished=True)
+            return res
+
+        # 2. Preparation of message to harness
+        to_send = text
+        if composed.rewrite_user:
+            to_send = composed.rewrite_user
+        if composed.prepend_system:
+            to_send = (
+                f"<aegis_context>\n{composed.prepend_system}\n</aegis_context>\n\n"
+                + to_send
+            )
+
+        # 3. Harness invocation
+        from aegis.events import AssistantText
+        final_result = Result(duration_ms=None, is_error=True)
+        assistant_text_parts: list[str] = []
+
+        try:
+            if not self._started:
+                await self._session.start()
+                self._started = True
+                self.metrics.begin_session(self._now())
+
+            await self._session.send(to_send)
+            async for ev in self._session.events():
+                if self.on_event is not None:
+                    self.on_event(self, ev)
+                for cb in self._extra_event_observers:
+                    cb(self, ev)
+
+                if isinstance(ev, AssistantText):
+                    assistant_text_parts.append(ev.text)
+                elif isinstance(ev, ToolUse):
+                    self.metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self.metrics.record_tool_error()
+
+                if isinstance(ev, Result):
+                    final_result = ev
+                    self.metrics.commit(ev.usage, self._now())
+                    self._emit_state(
+                        AgentState.error if ev.is_error else AgentState.ready,
+                        finished=True
+                    )
+                else:
+                    u = getattr(ev, "usage", None)
+                    if u is not None:
+                        self.metrics.observe(u)
+        except Exception as e:
+            log.exception("harness error in send_and_wait")
+            self.metrics.commit(None, self._now())
+            self._emit_state(AgentState.error, finished=True)
+            raise
+
+        # 4. Post-turn hooks (fire-and-forget)
+        post_ev = PostTurnEvent(
+            session=ctx.session,
+            user_message=text,
+            assistant_message="".join(assistant_text_parts),
+            project_root=self.project_root,
+        )
+        asyncio.create_task(
+            run_observer_hooks(
+                post_ev, _HOOK_REG["post_turn"], state_dir=self.state_dir
+            )
+        )
+
+        return final_result
 
     async def deliver(self, msg: InboxMessage) -> None:
         """Push an inbox message at this session. Wake if idle; buffer
