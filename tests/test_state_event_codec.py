@@ -1,7 +1,8 @@
 # tests/test_state_event_codec.py
 import pytest
 from aegis.events import (
-    AgentPlan, PlanEntry, SystemInit, AssistantText, AssistantThinking,
+    AgentPlan, PlanEntry, ContextUpdate, CostUsage,
+    SystemInit, AssistantText, AssistantThinking,
     ToolUse, ToolResult, Result, Unknown, TokenUsage,
 )
 from aegis.state.event_codec import encode_event, decode_event
@@ -208,6 +209,23 @@ def test_legacy_result_record_decodes_with_defaults():
     assert ev.cost_usd is None
     assert ev.model_usage == ()
     assert ev.permission_denials == ()
+
+
+def test_context_update_cost_roundtrip():
+    e = ContextUpdate(cost=CostUsage(
+        amount_usd=0.042, context_used=12345, context_size=200000))
+    rt = _roundtrip(e)
+    assert rt == e
+
+
+def test_context_update_mode_roundtrip():
+    e = ContextUpdate(mode="plan")
+    assert _roundtrip(e) == e
+
+
+def test_context_update_all_none_roundtrip():
+    e = ContextUpdate()
+    assert _roundtrip(e) == e
 
 
 def test_legacy_tool_result_record_decodes_with_defaults():

@@ -103,6 +103,30 @@ class PlanEntry:
     priority: str = "medium"   # high / medium / low (default for claude)
 
 
+@dataclass(frozen=True)
+class CostUsage:
+    """Mid-turn cost + context-window snapshot. ACP UsageUpdate fires
+    these in-band; claude has no equivalent and reports at turn end
+    via Result.cost_usd. Each field optional — different sources
+    populate different subsets."""
+    amount_usd:   float | None = None
+    context_used: int | None = None
+    context_size: int | None = None
+
+
+@dataclass
+class ContextUpdate:
+    """Mid-turn telemetry that doesn't render in the transcript —
+    consumed by the status bar / metrics observers. ACP-only signal:
+    cost from UsageUpdate, mode from CurrentModeUpdate, title from
+    SessionInfoUpdate. The renderer returns None for this so the pane
+    skips it; downstream subscribers receive it through the standard
+    event observer surface."""
+    cost:  CostUsage | None = None
+    mode:  str | None = None
+    title: str | None = None
+
+
 @dataclass
 class AgentPlan:
     """Canonical plan-tracking event. Emitted by:
@@ -124,7 +148,8 @@ class Unknown:
 
 Event = (
     SystemInit | AssistantText | AssistantThinking
-    | ToolUse | ToolResult | AgentPlan | Result | Unknown
+    | ToolUse | ToolResult | AgentPlan | ContextUpdate
+    | Result | Unknown
 )
 
 # Tool name -> input key whose value is the one-line summary.

@@ -7,8 +7,9 @@ transcript redraw on resume. Type tag is the dataclass name under
 from __future__ import annotations
 
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Event, PlanEntry,
-    Result, SystemInit, TokenUsage, ToolResult, ToolUse, Unknown,
+    AgentPlan, AssistantText, AssistantThinking, ContextUpdate,
+    CostUsage, Event, PlanEntry, Result, SystemInit, TokenUsage,
+    ToolResult, ToolUse, Unknown,
 )
 
 
@@ -95,6 +96,19 @@ def encode_event(ev: Event) -> dict:
                      "priority": e.priority}
                     for e in ev.entries
                 ]}
+    if isinstance(ev, ContextUpdate):
+        out: dict = {"t": "ContextUpdate"}
+        if ev.cost is not None:
+            out["cost"] = {
+                "amount_usd": ev.cost.amount_usd,
+                "context_used": ev.cost.context_used,
+                "context_size": ev.cost.context_size,
+            }
+        if ev.mode is not None:
+            out["mode"] = ev.mode
+        if ev.title is not None:
+            out["title"] = ev.title
+        return out
     if isinstance(ev, Unknown):
         return {"t": "Unknown", "raw": ev.raw}
     raise ValueError(f"unknown event type: {type(ev).__name__}")
@@ -153,6 +167,15 @@ def decode_event(d: dict) -> Event:
             for e in d.get("entries", [])
         )
         return AgentPlan(entries=entries)
+    if t == "ContextUpdate":
+        cost_d = d.get("cost")
+        cost = (CostUsage(
+            amount_usd=cost_d.get("amount_usd"),
+            context_used=cost_d.get("context_used"),
+            context_size=cost_d.get("context_size"),
+        ) if isinstance(cost_d, dict) else None)
+        return ContextUpdate(
+            cost=cost, mode=d.get("mode"), title=d.get("title"))
     if t == "Unknown":
         return Unknown(raw=d["raw"])
     raise ValueError(f"unknown event type tag: {t!r}")
