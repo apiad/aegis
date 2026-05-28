@@ -46,6 +46,40 @@ def test_assistant_thinking_carries_message_id():
     assert t.message_id == "msg_99"
 
 
+def test_parse_assistant_text_populates_message_id_from_claude_stream():
+    """Claude's assistant.message.id is the natural aggregation key
+    for streaming text chunks."""
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {
+            "id": "msg_01ABC",
+            "content": [{"type": "text", "text": "hello"}],
+        },
+    }))
+    assert isinstance(ev, AssistantText)
+    assert ev.message_id == "msg_01ABC"
+
+
+def test_parse_assistant_thinking_populates_message_id():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {
+            "id": "msg_01XYZ",
+            "content": [{"type": "thinking", "thinking": "..."}],
+        },
+    }))
+    assert isinstance(ev, AssistantThinking)
+    assert ev.message_id == "msg_01XYZ"
+
+
+def test_parse_assistant_text_without_message_id_stays_none():
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{"type": "text", "text": "hi"}]},
+    }))
+    assert ev.message_id is None
+
+
 def test_parse_assistant_thinking():
     ev = parse(json.dumps({
         "type": "assistant",

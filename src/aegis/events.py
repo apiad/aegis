@@ -182,12 +182,14 @@ def parse(line: str, state: ParserState | None = None) -> Event:
         if block is None:
             return Unknown(raw=line)
         u = _token_usage(message.get("usage"))
+        mid = message.get("id") if isinstance(message.get("id"), str) else None
         btype = block.get("type")
         if btype == "text":
-            return AssistantText(text=block.get("text", ""), usage=u)
+            return AssistantText(text=block.get("text", ""),
+                                 usage=u, message_id=mid)
         if btype == "thinking":
             return AssistantThinking(text=block.get("thinking", ""),
-                                     usage=u)
+                                     usage=u, message_id=mid)
         if btype == "tool_use":
             name = block.get("name", "?")
             tool_input = block.get("input", {}) or {}
