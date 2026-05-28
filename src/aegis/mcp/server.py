@@ -1512,7 +1512,33 @@ def build_server(bridge: AppBridge) -> FastMCP:
             return {"status": "unknown"}
         return st
 
+    # Register user-declared @tool functions.
+    from aegis.tools import _REGISTRY as _TOOL_REG
+
+    for _entry in _TOOL_REG.values():
+        _register_user_tool(server, _entry)
+
     return server
+
+
+def _register_user_tool(server: "FastMCP", entry) -> None:
+    """Wrap a ToolEntry as a FastMCP tool with auto-derived schema."""
+    import inspect
+    from pathlib import Path
+
+    from aegis.tools.runner import invoke_tool
+
+    async def _wrapper(**kwargs):
+        state_dir = Path.cwd() / ".aegis" / "state"
+        return await invoke_tool(entry, kwargs=kwargs, state_dir=state_dir)
+
+    _wrapper.__name__ = entry.name
+    _wrapper.__doc__ = entry.func.__doc__
+    _wrapper.__signature__ = inspect.signature(entry.func)
+    # FastMCP uses typing.get_type_hints; it must see the original annotations,
+    # not the wrapper's bare **kwargs annotation.
+    _wrapper.__annotations__ = dict(getattr(entry.func, "__annotations__", {}))
+    server.tool(_wrapper)
 
 
 def mcp_config_json(url: str) -> str:
