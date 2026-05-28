@@ -182,6 +182,34 @@ def test_tool_result_without_diff_roundtrip():
     assert rt.diff is None
 
 
+def test_result_with_enriched_fields_roundtrip():
+    u = TokenUsage(input=10, cache_creation=0, cache_read=0, output=20)
+    e = Result(
+        duration_ms=1234, is_error=False,
+        input_tokens=10, output_tokens=20, usage=u,
+        stop_reason="end_turn", ttft_ms=42, num_turns=3,
+        cost_usd=0.0123,
+        model_usage=(("flash-preview", u),),
+        permission_denials=("Bash",),
+    )
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.stop_reason == "end_turn"
+    assert rt.cost_usd == 0.0123
+    assert rt.model_usage[0][0] == "flash-preview"
+
+
+def test_legacy_result_record_decodes_with_defaults():
+    legacy = {"t": "Result", "duration_ms": 100, "is_error": False,
+              "input_tokens": None, "output_tokens": None, "usage": None}
+    ev = decode_event(legacy)
+    assert isinstance(ev, Result)
+    assert ev.stop_reason is None
+    assert ev.cost_usd is None
+    assert ev.model_usage == ()
+    assert ev.permission_denials == ()
+
+
 def test_legacy_tool_result_record_decodes_with_defaults():
     legacy = {"t": "ToolResult", "text": "ok", "is_error": False}
     ev = decode_event(legacy)

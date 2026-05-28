@@ -23,6 +23,32 @@ def test_parse_system_init():
     assert ev.session_id == "abc"
 
 
+def test_result_optional_fields_default():
+    r = Result(duration_ms=10, is_error=False)
+    assert r.stop_reason is None
+    assert r.ttft_ms is None
+    assert r.num_turns is None
+    assert r.cost_usd is None
+    assert r.model_usage == ()
+    assert r.permission_denials == ()
+
+
+def test_result_carries_enriched_fields():
+    r = Result(
+        duration_ms=100, is_error=False,
+        stop_reason="end_turn", ttft_ms=42,
+        num_turns=3, cost_usd=0.012,
+        model_usage=(("gemini-3-flash-preview", None),),
+        permission_denials=("Bash",),
+    )
+    assert r.stop_reason == "end_turn"
+    assert r.ttft_ms == 42
+    assert r.num_turns == 3
+    assert r.cost_usd == 0.012
+    assert r.model_usage[0][0] == "gemini-3-flash-preview"
+    assert r.permission_denials == ("Bash",)
+
+
 def test_parse_assistant_text():
     ev = parse(json.dumps({
         "type": "assistant",

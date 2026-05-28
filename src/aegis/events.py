@@ -73,6 +73,24 @@ class Result:
     input_tokens: int | None = None
     output_tokens: int | None = None
     usage: TokenUsage | None = None
+    # Full stop_reason enum, not just is_error — claude exposes
+    # end_turn / max_tokens / refusal / tool_use / stop_sequence; ACP
+    # exposes end_turn / max_tokens / max_turn_requests / refusal /
+    # cancelled.
+    stop_reason: str | None = None
+    # Time-to-first-token (claude result.ttft_ms; ACP measured locally).
+    ttft_ms: int | None = None
+    # Model-rebound count claude exposes as result.num_turns.
+    num_turns: int | None = None
+    # Dollar cost claude exposes as result.total_cost_usd; ACP from the
+    # last UsageUpdate.cost.amount of the turn.
+    cost_usd: float | None = None
+    # Per-model token attribution — claude exposes as result.modelUsage,
+    # gemini as field_meta.quota.model_usage. Stored as ((model_id,
+    # usage), ...) for stable ordering.
+    model_usage: tuple[tuple[str, "TokenUsage | None"], ...] = ()
+    # Tool calls the user denied during the turn (claude only).
+    permission_denials: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

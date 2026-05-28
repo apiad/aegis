@@ -69,11 +69,25 @@ def encode_event(ev: Event) -> dict:
             out["diff"] = {"path": path, "old": old, "new": new}
         return out
     if isinstance(ev, Result):
-        return {"t": "Result", "duration_ms": ev.duration_ms,
-                "is_error": ev.is_error,
-                "input_tokens": ev.input_tokens,
-                "output_tokens": ev.output_tokens,
-                "usage": _encode_usage(ev.usage)}
+        out = {"t": "Result", "duration_ms": ev.duration_ms,
+               "is_error": ev.is_error,
+               "input_tokens": ev.input_tokens,
+               "output_tokens": ev.output_tokens,
+               "usage": _encode_usage(ev.usage)}
+        if ev.stop_reason is not None:
+            out["stop_reason"] = ev.stop_reason
+        if ev.ttft_ms is not None:
+            out["ttft_ms"] = ev.ttft_ms
+        if ev.num_turns is not None:
+            out["num_turns"] = ev.num_turns
+        if ev.cost_usd is not None:
+            out["cost_usd"] = ev.cost_usd
+        if ev.model_usage:
+            out["model_usage"] = [
+                [name, _encode_usage(u)] for name, u in ev.model_usage]
+        if ev.permission_denials:
+            out["permission_denials"] = list(ev.permission_denials)
+        return out
     if isinstance(ev, AgentPlan):
         return {"t": "AgentPlan",
                 "entries": [
@@ -118,11 +132,20 @@ def decode_event(d: dict) -> Event:
                           kind=d.get("kind"),
                           diff=diff)
     if t == "Result":
+        mu_raw = d.get("model_usage") or []
+        mu = tuple((name, _decode_usage(u)) for name, u in mu_raw)
         return Result(duration_ms=d.get("duration_ms"),
                       is_error=d["is_error"],
                       input_tokens=d.get("input_tokens"),
                       output_tokens=d.get("output_tokens"),
-                      usage=_decode_usage(d.get("usage")))
+                      usage=_decode_usage(d.get("usage")),
+                      stop_reason=d.get("stop_reason"),
+                      ttft_ms=d.get("ttft_ms"),
+                      num_turns=d.get("num_turns"),
+                      cost_usd=d.get("cost_usd"),
+                      model_usage=mu,
+                      permission_denials=tuple(
+                          d.get("permission_denials") or ()))
     if t == "AgentPlan":
         entries = tuple(
             PlanEntry(content=e["content"], status=e["status"],
