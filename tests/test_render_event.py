@@ -94,6 +94,16 @@ def test_tool_use_falls_back_to_summary_when_no_location():
     assert "echo hi" in out
 
 
+def test_tool_use_hint_suppressed_when_equal_to_name():
+    """ACP titles often equal the filename ("target.txt"); the pathhint
+    derives the same string from locations[0]. Don't render both."""
+    out = as_text(render_event(
+        ToolUse(name="target.txt", summary="", kind="read",
+                locations=(("/some/path/target.txt", None),)), C))
+    # The name shows once; no parenthetical duplicate.
+    assert out.count("target.txt") == 1
+
+
 def test_thinking_content_shown():
     out = as_text(render_event(AssistantThinking("secret chain"), C))
     assert "secret chain" in out

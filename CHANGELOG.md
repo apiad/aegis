@@ -5,6 +5,29 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 1
+
+Tool calls now read identically across all three drivers (claude
+stream-json, gemini --acp, opencode acp) — every tool call carries
+its semantic `kind`, `tool_call_id`, structured `raw_input`, and file
+`locations`, and `ToolResult` correlates back via `tool_call_id` so
+`kind` is available downstream. The TUI renderer picks a glyph by
+kind (📖 read, ✏️ edit, ⌬ execute, 🔎 search, ✻ think, 🌐 fetch, ➡️
+move, 🗑 delete, 🔄 switch_mode, ⏺ fallback) and shows a path tail
+hint (`foo.py:42`) instead of the bare tool name.
+
+Bug fixes:
+
+- ACP failed tool calls were silently rendered as green ok lines —
+  `is_error` is now derived from `ToolCallProgress.status == "failed"`.
+- Gemini's PromptResponse usage was always zero because Gemini puts
+  token counts in `field_meta.quota.token_count` (wire alias `_meta`),
+  not in the canonical `usage` field — `AcpSession.send` now falls
+  back to `field_meta.quota` when `usage` is None.
+
+Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`.
+Slice 2 (chunk aggregation by `message_id`) is next.
+
 ## [0.14.0] - 2026-05-28
 
 ### Workspace recovery: complete

@@ -52,7 +52,10 @@ def render_event(ev: Event, colors) -> RenderableType | None:
     if isinstance(ev, ToolUse):
         icon = _KIND_ICON.get(ev.kind or "", "⏺")
         hint = _pathhint(ev)
-        arg = f"({hint})" if hint else ""
+        # Suppress the parenthetical hint when it duplicates the name —
+        # ACP titles are often the filename itself, so we'd otherwise
+        # render "📖 target.txt(target.txt)".
+        arg = f"({hint})" if hint and hint != ev.name else ""
         return Text.assemble((f"{icon} ", colors.accent), f"{ev.name}{arg}")
     if isinstance(ev, ToolResult):
         first = ev.text.splitlines()[0] if ev.text.strip() else ""
