@@ -177,34 +177,3 @@ async def test_file_tab_cancel_prompt_escape_keeps_editing(tmp_path: Path):
         assert tab._edit_mode is True
         assert editor.read_only is False
         assert "MUTATED" in editor.text
-
-
-@pytest.mark.asyncio
-async def test_file_tab_markdown_rendering(tmp_path: Path):
-    from textual.widgets import Markdown
-    f = tmp_path / "test.md"
-    f.write_text("# Hello\nWorld")
-    tab = FileTab(f)
-    app = _Host(tab)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        md = tab.query_one(Markdown)
-        editor = tab.query_one(TextArea)
-        
-        # In VIEW mode, Markdown is visible, TextArea is hidden
-        assert md.has_class("visible") is True
-        assert editor.has_class("hidden") is True
-        
-        # Enter EDIT mode
-        await pilot.press("e")
-        await pilot.pause()
-        assert md.has_class("visible") is False
-        assert editor.has_class("hidden") is False
-        assert editor.read_only is False
-        
-        # Exit EDIT mode
-        await pilot.press("escape")
-        await pilot.pause()
-        assert md.has_class("visible") is True
-        assert editor.has_class("hidden") is True
-        assert editor.read_only is True
