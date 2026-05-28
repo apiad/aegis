@@ -31,7 +31,16 @@ def _decode_usage(d: dict | None) -> TokenUsage | None:
 
 def encode_event(ev: Event) -> dict:
     if isinstance(ev, SystemInit):
-        return {"t": "SystemInit", "session_id": ev.session_id}
+        out = {"t": "SystemInit", "session_id": ev.session_id}
+        if ev.model is not None:
+            out["model"] = ev.model
+        if ev.permission_mode is not None:
+            out["permission_mode"] = ev.permission_mode
+        if ev.version is not None:
+            out["version"] = ev.version
+        if ev.available_commands:
+            out["available_commands"] = list(ev.available_commands)
+        return out
     if isinstance(ev, AssistantText):
         out = {"t": "AssistantText", "text": ev.text,
                "usage": _encode_usage(ev.usage)}
@@ -119,7 +128,13 @@ def decode_event(d: dict) -> Event:
     if t is None:
         raise ValueError("event dict missing type tag 't'")
     if t == "SystemInit":
-        return SystemInit(session_id=d.get("session_id"))
+        return SystemInit(
+            session_id=d.get("session_id"),
+            model=d.get("model"),
+            permission_mode=d.get("permission_mode"),
+            version=d.get("version"),
+            available_commands=tuple(d.get("available_commands") or ()),
+        )
     if t == "AssistantText":
         return AssistantText(text=d["text"],
                              usage=_decode_usage(d.get("usage")),

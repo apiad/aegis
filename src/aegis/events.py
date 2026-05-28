@@ -27,6 +27,14 @@ class TokenUsage:
 @dataclass
 class SystemInit:
     session_id: str | None
+    # Optional boot-time metadata; both substrates populate these
+    # opportunistically. claude pulls from system.init (model,
+    # permissionMode, claude_code_version, slash_commands); ACP from
+    # InitializeResponse.agent_info + (later) AvailableCommandsUpdate.
+    model: str | None = None
+    permission_mode: str | None = None
+    version: str | None = None
+    available_commands: tuple[str, ...] = ()
 
 
 @dataclass
@@ -237,7 +245,25 @@ def parse(line: str, state: ParserState | None = None) -> Event:
     etype = obj.get("type")
 
     if etype == "system" and obj.get("subtype") == "init":
-        return SystemInit(session_id=obj.get("session_id"))
+        cmds_raw = obj.get("slash_commands") or []
+        if isinstance(cmds_raw, list):
+            commands = tuple(
+                c.get("name") for c in cmds_raw
+                if isinstance(c, dict) and isinstance(c.get("name"), str)
+            )
+        else:
+            commands = ()
+        return SystemInit(
+            session_id=obj.get("session_id"),
+            model=obj.get("model") if isinstance(obj.get("model"), str)
+                  else None,
+            permission_mode=obj.get("permissionMode")
+                  if isinstance(obj.get("permissionMode"), str) else None,
+            version=obj.get("claude_code_version")
+                  if isinstance(obj.get("claude_code_version"), str)
+                  else None,
+            available_commands=commands,
+        )
 
     if etype == "result":
         usage = obj.get("usage")

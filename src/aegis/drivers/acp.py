@@ -95,6 +95,7 @@ from aegis.events import (
     Event,
     PlanEntry,
     Result,
+    SystemInit,
     ToolResult,
     ToolUse,
 )
@@ -212,6 +213,22 @@ class _AegisAcpClient(acp.Client):
                     tool_call_id=tcid or None,
                     kind=self._tool_kinds.get(tcid),
                     diff=diff,
+                ))
+        elif kind == "AvailableCommandsUpdate":
+            # Surface as a follow-on SystemInit carrying only the
+            # commands list. Downstream consumers see two SystemInits
+            # — boot (model + version) and post-boot (commands) — and
+            # can merge if they care. Keeps SystemInit as the canonical
+            # "this is what the agent advertised" channel.
+            cmds = tuple(
+                getattr(c, "name", "") or ""
+                for c in (getattr(update, "available_commands", None) or [])
+                if isinstance(getattr(c, "name", None), str)
+            )
+            if cmds:
+                self._queue.put_nowait(SystemInit(
+                    session_id=session_id,
+                    available_commands=cmds,
                 ))
         elif kind == "UsageUpdate":
             cost_obj = getattr(update, "cost", None)
@@ -415,7 +432,7 @@ class AcpSession(HarnessSession):
         self._conn = acp.connect_to_agent(
             self._client, self._proc.stdin, self._proc.stdout)
         try:
-            await self._conn.initialize(
+            init_resp = await self._conn.initialize(
                 protocol_version=1,
                 client_capabilities={
                     "fs": {"readTextFile": True, "writeTextFile": True},
@@ -442,6 +459,22 @@ class AcpSession(HarnessSession):
             # right conversation.
             self._session_id = (getattr(sess, "session_id", None)
                                 or self._resume_session_id)
+            # Emit a SystemInit so downstream consumers see the same
+            # boot-time payload shape ACP offers (model + version are
+            # the model/agent the subprocess advertised, plus the
+            # latched session_id). available_commands populate later
+            # if/when AvailableCommandsUpdate fires; we emit them on a
+            # follow-on SystemInit then.
+            agent_info = getattr(init_resp, "agent_info", None)
+            agent_version = getattr(agent_info, "version", None)
+            agent_name = getattr(agent_info, "name", None)
+            self._queue.put_nowait(SystemInit(
+                session_id=self._session_id,
+                model=agent_name
+                      if isinstance(agent_name, str) else None,
+                version=agent_version
+                      if isinstance(agent_version, str) else None,
+            ))
         except BaseException as e:
             raise (await self._wrap_error(e)) from None
 

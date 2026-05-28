@@ -806,6 +806,99 @@ async def test_acp_emits_context_update_for_usage_mode_title(tmp_path):
     assert title_ctx.title == "Refactoring auth"
 
 
+_STUB_AVAILABLE_COMMANDS = r'''
+import asyncio
+import acp
+from acp.schema import (
+    AgentMessageChunk, TextContentBlock,
+    AvailableCommandsUpdate, AvailableCommand,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub-agent", "version": "1.2.3"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AvailableCommandsUpdate(
+                availableCommands=[
+                    AvailableCommand(name="review", description="r"),
+                    AvailableCommand(name="ultra", description="u"),
+                ],
+                sessionUpdate="available_commands_update",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="ok", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_emits_systeminit_at_boot_with_agent_info(tmp_path):
+    """After new_session, AcpSession emits a canonical SystemInit
+    carrying the model (agent name) and version from the
+    InitializeResponse, so downstream pickup matches the claude
+    system.init shape."""
+    from aegis.events import SystemInit
+    sess = _stub_driver(_STUB_AVAILABLE_COMMANDS).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    inits = [e for e in events if isinstance(e, SystemInit)]
+    assert len(inits) >= 1
+    boot = inits[0]
+    assert boot.session_id == "sess-1"
+    assert boot.model == "stub-agent"
+    assert boot.version == "1.2.3"
+
+
+async def test_acp_available_commands_emits_followup_systeminit(tmp_path):
+    """AvailableCommandsUpdate arrives after boot in ACP — surface as
+    a follow-on SystemInit with only the commands populated.
+    Consumers see boot SystemInit (model+version) then a second
+    SystemInit (available_commands) and can merge if they care."""
+    from aegis.events import SystemInit
+    sess = _stub_driver(_STUB_AVAILABLE_COMMANDS).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    cmd_inits = [e for e in events
+                 if isinstance(e, SystemInit) and e.available_commands]
+    assert len(cmd_inits) == 1
+    assert cmd_inits[0].available_commands == ("review", "ultra")
+
+
 _STUB_PLAN_UPDATE = r'''
 import asyncio
 import acp

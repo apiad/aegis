@@ -23,6 +23,42 @@ def test_parse_system_init():
     assert ev.session_id == "abc"
 
 
+def test_system_init_optional_fields_default():
+    ev = SystemInit(session_id="x")
+    assert ev.model is None
+    assert ev.permission_mode is None
+    assert ev.version is None
+    assert ev.available_commands == ()
+
+
+def test_parse_system_init_populates_enrichment():
+    ev = parse(json.dumps({
+        "type": "system", "subtype": "init",
+        "session_id": "abc",
+        "model": "claude-opus-4-7",
+        "permissionMode": "bypassPermissions",
+        "claude_code_version": "2.1.143",
+        "slash_commands": [
+            {"name": "review", "description": "review pr"},
+            {"name": "ultra", "description": "ultra review"},
+        ],
+    }))
+    assert ev.model == "claude-opus-4-7"
+    assert ev.permission_mode == "bypassPermissions"
+    assert ev.version == "2.1.143"
+    assert ev.available_commands == ("review", "ultra")
+
+
+def test_parse_system_init_legacy_shape_decodes():
+    ev = parse(json.dumps({
+        "type": "system", "subtype": "init",
+        "session_id": "abc",
+    }))
+    assert ev.session_id == "abc"
+    assert ev.model is None
+    assert ev.available_commands == ()
+
+
 def test_result_optional_fields_default():
     r = Result(duration_ms=10, is_error=False)
     assert r.stop_reason is None
