@@ -7,8 +7,8 @@ transcript redraw on resume. Type tag is the dataclass name under
 from __future__ import annotations
 
 from aegis.events import (
-    AssistantText, AssistantThinking, Event, Result, SystemInit,
-    TokenUsage, ToolResult, ToolUse, Unknown,
+    AgentPlan, AssistantText, AssistantThinking, Event, PlanEntry,
+    Result, SystemInit, TokenUsage, ToolResult, ToolUse, Unknown,
 )
 
 
@@ -71,6 +71,13 @@ def encode_event(ev: Event) -> dict:
                 "input_tokens": ev.input_tokens,
                 "output_tokens": ev.output_tokens,
                 "usage": _encode_usage(ev.usage)}
+    if isinstance(ev, AgentPlan):
+        return {"t": "AgentPlan",
+                "entries": [
+                    {"content": e.content, "status": e.status,
+                     "priority": e.priority}
+                    for e in ev.entries
+                ]}
     if isinstance(ev, Unknown):
         return {"t": "Unknown", "raw": ev.raw}
     raise ValueError(f"unknown event type: {type(ev).__name__}")
@@ -109,6 +116,13 @@ def decode_event(d: dict) -> Event:
                       input_tokens=d.get("input_tokens"),
                       output_tokens=d.get("output_tokens"),
                       usage=_decode_usage(d.get("usage")))
+    if t == "AgentPlan":
+        entries = tuple(
+            PlanEntry(content=e["content"], status=e["status"],
+                      priority=e.get("priority", "medium"))
+            for e in d.get("entries", [])
+        )
+        return AgentPlan(entries=entries)
     if t == "Unknown":
         return Unknown(raw=d["raw"])
     raise ValueError(f"unknown event type tag: {t!r}")

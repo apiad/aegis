@@ -72,6 +72,30 @@ class Result:
     usage: TokenUsage | None = None
 
 
+@dataclass(frozen=True)
+class PlanEntry:
+    """One row of an AgentPlan. Status vocabulary follows ACP's
+    PlanEntry.status enum (pending / in_progress / completed) so the
+    same renderer can handle both ACP and claude TodoWrite sources."""
+    content: str
+    status: str            # pending / in_progress / completed
+    priority: str = "medium"   # high / medium / low (default for claude)
+
+
+@dataclass
+class AgentPlan:
+    """Canonical plan-tracking event. Emitted by:
+    - the claude parser when it sees a TodoWrite tool_use (the model's
+      explicit plan revision);
+    - the ACP driver when it receives an AgentPlanUpdate notification.
+
+    Entries arrive cumulatively (not as deltas) — each event carries
+    the full current plan. Pane renderers should treat a new AgentPlan
+    in the same turn as a replacement for any earlier one.
+    """
+    entries: tuple[PlanEntry, ...] = ()
+
+
 @dataclass
 class Unknown:
     raw: str
@@ -79,7 +103,7 @@ class Unknown:
 
 Event = (
     SystemInit | AssistantText | AssistantThinking
-    | ToolUse | ToolResult | Result | Unknown
+    | ToolUse | ToolResult | AgentPlan | Result | Unknown
 )
 
 # Tool name -> input key whose value is the one-line summary.

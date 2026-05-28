@@ -1,8 +1,8 @@
 # tests/test_state_event_codec.py
 import pytest
 from aegis.events import (
-    SystemInit, AssistantText, AssistantThinking, ToolUse, ToolResult,
-    Result, Unknown, TokenUsage,
+    AgentPlan, PlanEntry, SystemInit, AssistantText, AssistantThinking,
+    ToolUse, ToolResult, Result, Unknown, TokenUsage,
 )
 from aegis.state.event_codec import encode_event, decode_event
 
@@ -148,6 +148,24 @@ def test_legacy_assistant_text_record_decodes_without_message_id():
     assert isinstance(ev, AssistantText)
     assert ev.text == "hi"
     assert ev.message_id is None
+
+
+def test_agent_plan_roundtrip():
+    e = AgentPlan(entries=(
+        PlanEntry(content="A", status="completed", priority="high"),
+        PlanEntry(content="B", status="in_progress"),
+        PlanEntry(content="C", status="pending", priority="low"),
+    ))
+    rt = _roundtrip(e)
+    assert rt == e
+    assert len(rt.entries) == 3
+    assert rt.entries[0].priority == "high"
+    assert rt.entries[1].priority == "medium"  # default
+
+
+def test_agent_plan_empty_roundtrip():
+    e = AgentPlan(entries=())
+    assert _roundtrip(e) == e
 
 
 def test_legacy_tool_result_record_decodes_with_defaults():
