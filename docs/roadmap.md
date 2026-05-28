@@ -4,7 +4,37 @@ Newest first. Patch releases bundle under their minor parent.
 
 ## Shipped
 
-### v0.13.0 — 2026-05-27 *(current)*
+### v0.14.0 — 2026-05-28 *(current)*
+- **Workspace recovery is complete.** Every ConversationPane
+  (claude via `claude --resume`; gemini / opencode via ACP
+  `loadSession`), every TerminalTab, and every FileTab restore on
+  relaunch from a shared `workspace.json` snapshot. `Ctrl+Q` and
+  crash exits flush a final snapshot so session_ids latched
+  mid-turn reach disk.
+- **YAML-backed model registry.** Prices + context windows + the
+  picker's model lineup all live in `src/aegis/data/models.yaml`,
+  with a 24h background fetch from
+  `raw.githubusercontent.com/apiad/aegis/main/…` keeping
+  installed copies current without a release. `aegis models
+  refresh / clear / list` for manual overrides;
+  `scripts/refresh-models.py` regenerates the bundled YAML from
+  models.dev (the catalog OpenCode itself consults).
+- **AddAgentModal: registry-backed model picker.** Provider Select
+  drives a Model Select sourced from the registry; `<custom>`
+  reveals an Input for arbitrary model names.
+- **Catalog corrections.** Claude Opus 4.7 prices at $5 / $25 (not
+  the legacy $15 / $75); Sonnet 4.6 has a 1M context window;
+  Gemini IDs match `ai.google.dev`; OpenCode entries use the
+  `<vendor>/<model-id>` form opencode writes in its own config.
+- **Live USD cost segment** in the status line, adaptive
+  `X.Y¢` / `N¢` / `$X.XX` formatting.
+- **Fix: ACP usage mapping.** Gemini and OpenCode sessions
+  populate every status-line metric (↑↓ tokens, ctx %, $ cost) —
+  the driver now reads `PromptResponse.usage` directly instead
+  of the legacy `field_meta["quota"]["token_count"]` path that
+  never reached `Result.usage`.
+
+### v0.13.0 — 2026-05-27
 - **MCP config-edit surface.** Spawned agents can mutate `.aegis.yaml`
   from inside through 12 new MCP tools (4 reads + 8 writes — add/remove
   agents, queues, plugin dirs, schedule toggles), going through the same

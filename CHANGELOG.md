@@ -5,6 +5,155 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-05-28
+
+### Workspace recovery: complete
+
+`aegis` now restores the full previous workspace on relaunch — every
+ConversationPane (claude-code via `claude --resume`; gemini and opencode
+via ACP `loadSession`), every TerminalTab (re-spawned as a fresh shell
+over its existing ledger), and every FileTab (re-opened at the saved
+path). Both `Ctrl+Q` and crash exits persist a final snapshot so any
+session_id latched mid-turn reaches disk and the next boot can resume.
+
+Key wiring:
+
+- `AegisApp.on_mount` loads `~/.aegis/state/workspace.json` once and
+  threads the snapshot through `_resume_agent_tabs`, `_resume_terminals`,
+  and `_resume_files` — so the default-spawn that fires when no agent
+  tabs were resumable no longer clobbers terminals / files (a
+  pre-existing bug that meant terminal-resume never actually worked).
+- New `_boot_done` guard suppresses snapshot writes during the on_mount
+  sequence so `self.theme = …` triggering `watch_theme → _refresh_tabbar`
+  can't overwrite the saved roster before resume runs.
+- `action_quit` now writes a final snapshot before teardown.
+- `AcpDriver` advertises `supports_resume = True`; `AcpSession.start()`
+  calls `conn.load_session(session_id=…)` instead of `new_session(…)`
+  when a resume id is set. If the spawned agent doesn't implement
+  `loadSession`, the resumed tab surfaces a clear ⚠ banner.
+- New `WorkspaceFile(path, order, created_at)` schema entry; file
+  tabs persist via `_write_snapshot` (filtering FileTab panes) and
+  restore via the existing `_open_file_tab` path. Dirty buffers and
+  cursor positions intentionally NOT preserved — file tabs are
+  viewers, not long-lived sessions.
+
+### Model registry: YAML-backed + auto-refresh
+
+The hardcoded `aegis.budget.prices.PRICES` dict and the substring-pattern
+`context_window_for` function are gone — both now derive from a single
+canonical YAML at `src/aegis/data/models.yaml`, served by a new
+`aegis.models` registry module. At CLI boot, `aegis` fires a best-effort
+background fetch of
+`https://raw.githubusercontent.com/apiad/aegis/main/src/aegis/data/models.yaml`
+into `~/.cache/aegis/models.yaml` (24h TTL). The cache wins over the
+bundled file on next load — so updating prices or adding new models is
+a single PR to `main`, no release required. Cache failures (404, HTML
+body, partial download) never corrupt the local copy: the fetcher
+parse-validates before atomic replace, and a corrupt cache silently
+falls back to the bundled YAML.
+
+Public surface:
+
+- `aegis.models.get_prices(provider, model)` — exact + alias match,
+  raises `UnknownPriceError` on miss (preserves the legacy
+  `prices.lookup` contract).
+- `aegis.models.get_context_window(harness, model)` — exact, then
+  alias, then `context_window_patterns` substring fallback, then
+  provider default; 0 for unknown providers.
+- `aegis.models.models_for(provider)` — `(name, label)` pairs powering
+  the picker.
+- `aegis.budget.prices` is a thin backward-compat shim over the
+  registry; existing callers (`cost.compute`, queue manager, budget
+  evaluator) keep working unchanged.
+
+### Registry-backed model picker in `AddAgentModal`
+
+The Add-Agent modal's model field is now a `Select` populated from
+`aegis.models.models_for(<provider>)`. Switching providers repopulates
+the dropdown; picking `<custom>` reveals an Input for any arbitrary
+model name. `ModelEntry` gains an `aliases` list (so `claude-opus-4-7`
+and `opus` resolve to the same prices) and an optional `label` for the
+"opus → claude-opus-4-7" picker subtitle.
+
+### Refresh tooling
+
+- `scripts/refresh-models.py` regenerates `models.yaml` from
+  `https://models.dev/api.json` (the catalog OpenCode itself consults
+  per opencode.ai/docs/models). Curation lives at the top of the script
+  (CLAUDE_CODE / GEMINI / OPENCODE lists). `--diff` previews,
+  `--apply` writes.
+- `aegis models refresh` synchronously refetches the GitHub raw URL +
+  reloads the in-memory registry (use when you don't want to wait for
+  the 24h background TTL). `aegis models clear` deletes the local
+  cache. `aegis models list [provider]` prints exactly what aegis
+  currently sees.
+
+### Model catalog corrections
+
+The bundled catalog regenerated from models.dev surfaces several
+inaccuracies in the prior hardcoded table:
+
+- **Claude Opus 4.7 is $5 / $25 per MTok**, not the legacy Opus 4.1
+  $15 / $75. A 3× cost-reporting error in earlier 0.13.x sessions.
+- **Claude Sonnet 4.6 has a 1M context window**, not 200k.
+- **Gemini lineup:** `gemini-3-pro-preview`, `gemini-3.5-flash`,
+  `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-3.1-flash-lite` —
+  model IDs match what `ai.google.dev` publishes.
+- **OpenCode** entries now use the `<vendor>/<model-id>` form opencode
+  writes in its own config, sourced from the same models.dev provider
+  IDs: `anthropic/claude-{opus-4-7, sonnet-4-6, haiku-4-5}`,
+  `google/gemini-{3-pro-preview, 3.5-flash, 2.5-pro, 2.5-flash}`,
+  `moonshotai/{kimi-k2.6, kimi-k2-thinking, kimi-k2-0905-preview}`,
+  `minimax/MiniMax-{M2.7, M2.1, M2}`, `deepseek/deepseek-{v4-pro,
+  v4-flash, chat, reasoner}`, `alibaba/{qwen3.7-max, qwen3-coder-plus,
+  qwen3.6-plus}`.
+
+The pre-existing bare `kimi-k2.6` slug is preserved as an alias of
+`moonshotai/kimi-k2.6` so existing `.aegis.yaml` files don't break.
+
+Parser hardening: `cache_hit` / `cache_write` are now optional in the
+YAML (many providers don't publish them); missing fields default to 0
+and `thinking` falls back to `output`. Pre-fix, parsing raised
+`KeyError` on Moonshot / MiniMax / DeepSeek rows that omit
+`cache_write`.
+
+### Live cost segment in the status line
+
+The status line gains a USD cost segment between the ctx % and the
+tool counter, recomputed every render from the running token tallies
+against the rate card. Adaptive formatting keeps it short:
+
+```
+↑12.0k (45% cached) ↓3.1k · ctx 12k (6%) · 12.3¢ · ⚒ 4 · 3s / 1m12s
+↑1.2M (60% cached) ↓45k · ctx 1.2M (60%) · $5.43 · ⚒ 28 · 4s / 18m02s
+```
+
+Sub-cent → `X.Y¢`, 1¢–99¢ → `N¢`, ≥$1 → `$X.XX`. Unknown model or
+lookup failure drops the segment silently.
+
+`SessionMetrics` gains `c_cache_write` (tracking `cache_creation`
+tokens separately from `cache_read`, billed at different rates) plus
+`provider` / `model` strings that drive the lookup, and five
+`@property` accessors mapping internal counters to the attribute
+names `aegis.budget.cost.compute()` reads — so the same registry
+path powers both per-turn budget enforcement and the live status
+line.
+
+### Fixes
+
+- **ACP usage mapping.** Gemini and OpenCode sessions were rendering
+  0 / 0 / 0 / 0 for every status-line metric: the driver populated
+  `Result.input_tokens` / `Result.output_tokens` as bare fields from
+  the legacy `field_meta["quota"]["token_count"]` path but never set
+  `Result.usage`, and `SessionMetrics.commit` reads `ev.usage`
+  exclusively. The ACP SDK has had a structured
+  `PromptResponse.usage` (`acp.schema.Usage`) with
+  `input_tokens` / `output_tokens` / `cached_read_tokens` /
+  `cached_write_tokens` / `thought_tokens` since the protocol added
+  it — the driver now reads it directly and builds a `TokenUsage`
+  with `thought_tokens` folded into `output` (every provider aegis
+  surfaces today bills thinking at the output rate).
+
 ## [0.13.0] - 2026-05-27
 
 ### MCP config-edit surface
