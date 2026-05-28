@@ -58,7 +58,7 @@ no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity *(slice 1 of 7 shipped)*
+### Driver visibility parity *(slices 1-2 of 7 shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
 structured input retained, success/failure styling. Slice 1 shipped
@@ -69,9 +69,15 @@ and a path-tail hint; codec round-trips through `state/event_codec.py` with
 legacy-record decode. Two ride-along bug fixes: ACP `is_error` now derives from
 `status=="failed"`, Gemini usage falls back to `field_meta.quota.token_count`.
 
+Slice 2 shipped (`f141b51` → `de1fd68`): `AssistantText` / `AssistantThinking`
+carry `message_id` from both drivers; new pure helper
+`aegis.render.coalesce_chunks` merges adjacent same-`(type, message_id)`
+chunks; `replay_blocks` pipes through it before rendering. Smoke against
+real `opencode acp`: 80 raw events → 9 coalesced; opencode's per-token ✻
+cliff is gone. Live pane streaming was already kind-coalesced via
+`_stream_append`; this slice closes the same gap on the replay path.
+
 Subsequent slices owed:
-- Slice 2 — chunk aggregation by `message_id` (kills opencode's 116-thought-
-  chunks-per-turn visual cliff).
 - Slice 3 — `AgentPlan` event for claude `TodoWrite` + ACP `AgentPlanUpdate`.
 - Slice 4 — file-diff rendering for edits.
 - Slice 5 — `Result` enrichment (stop_reason, ttft_ms, cost_usd, model_usage).

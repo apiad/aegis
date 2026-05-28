@@ -5,6 +5,30 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 2 (chunk coalescing by message_id)
+
+`AssistantText` / `AssistantThinking` now carry `message_id` (claude
+from `assistant.message.id`, ACP from each chunk's `message_id`). A
+new pure helper `aegis.render.coalesce_chunks` merges adjacent
+same-`(type, message_id)` chunks into one event; any non-chunk event
+(`ToolUse`, `ToolResult`, `Result`, …) breaks the run.
+
+`replay_blocks` pipes its events through the coalescer before
+rendering. An opencode session that persists ~116 thought-chunk
+events under one message_id now renders as a single ✻ block on
+resume instead of 116 separate lines. Live pane streaming was
+unchanged — `_stream_append` already coalesced by kind for the
+in-flight path.
+
+Visible measurement (real opencode acp turn, file-read + write +
+report):
+
+- Raw events: **80**
+- After coalesce: **9**
+
+State `event_codec` round-trips `message_id` with backward-compatible
+defaults; legacy persisted records still decode.
+
 ### Driver visibility — parity slice 1
 
 Tool calls now read identically across all three drivers (claude
