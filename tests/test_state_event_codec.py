@@ -126,6 +126,30 @@ def test_legacy_tool_use_record_decodes_with_defaults():
     assert ev.status is None
 
 
+def test_assistant_text_with_message_id_roundtrip():
+    e = AssistantText(text="hi", message_id="msg_42")
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.message_id == "msg_42"
+
+
+def test_assistant_thinking_with_message_id_roundtrip():
+    e = AssistantThinking(text="hmm", message_id="msg_99")
+    rt = _roundtrip(e)
+    assert rt == e
+    assert rt.message_id == "msg_99"
+
+
+def test_legacy_assistant_text_record_decodes_without_message_id():
+    """Pre-slice-2 records didn't carry message_id; they must still
+    decode cleanly."""
+    legacy = {"t": "AssistantText", "text": "hi", "usage": None}
+    ev = decode_event(legacy)
+    assert isinstance(ev, AssistantText)
+    assert ev.text == "hi"
+    assert ev.message_id is None
+
+
 def test_legacy_tool_result_record_decodes_with_defaults():
     legacy = {"t": "ToolResult", "text": "ok", "is_error": False}
     ev = decode_event(legacy)

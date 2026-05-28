@@ -31,6 +31,21 @@ def test_parse_assistant_text():
     assert ev.text == "hello"
 
 
+def test_assistant_text_message_id_default_none():
+    t = AssistantText(text="hi")
+    assert t.message_id is None
+
+
+def test_assistant_text_carries_message_id():
+    t = AssistantText(text="hi", message_id="msg_42")
+    assert t.message_id == "msg_42"
+
+
+def test_assistant_thinking_carries_message_id():
+    t = AssistantThinking(text="hmm", message_id="msg_99")
+    assert t.message_id == "msg_99"
+
+
 def test_parse_assistant_thinking():
     ev = parse(json.dumps({
         "type": "assistant",

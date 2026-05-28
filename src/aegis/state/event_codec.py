@@ -32,11 +32,17 @@ def encode_event(ev: Event) -> dict:
     if isinstance(ev, SystemInit):
         return {"t": "SystemInit", "session_id": ev.session_id}
     if isinstance(ev, AssistantText):
-        return {"t": "AssistantText", "text": ev.text,
-                "usage": _encode_usage(ev.usage)}
+        out = {"t": "AssistantText", "text": ev.text,
+               "usage": _encode_usage(ev.usage)}
+        if ev.message_id is not None:
+            out["message_id"] = ev.message_id
+        return out
     if isinstance(ev, AssistantThinking):
-        return {"t": "AssistantThinking", "text": ev.text,
-                "usage": _encode_usage(ev.usage)}
+        out = {"t": "AssistantThinking", "text": ev.text,
+               "usage": _encode_usage(ev.usage)}
+        if ev.message_id is not None:
+            out["message_id"] = ev.message_id
+        return out
     if isinstance(ev, ToolUse):
         out = {"t": "ToolUse", "name": ev.name, "summary": ev.summary,
                "usage": _encode_usage(ev.usage)}
@@ -77,10 +83,13 @@ def decode_event(d: dict) -> Event:
     if t == "SystemInit":
         return SystemInit(session_id=d.get("session_id"))
     if t == "AssistantText":
-        return AssistantText(text=d["text"], usage=_decode_usage(d.get("usage")))
+        return AssistantText(text=d["text"],
+                             usage=_decode_usage(d.get("usage")),
+                             message_id=d.get("message_id"))
     if t == "AssistantThinking":
         return AssistantThinking(text=d["text"],
-                                 usage=_decode_usage(d.get("usage")))
+                                 usage=_decode_usage(d.get("usage")),
+                                 message_id=d.get("message_id"))
     if t == "ToolUse":
         locs = tuple((p, ln) for p, ln in d.get("locations", []))
         return ToolUse(name=d["name"], summary=d["summary"],

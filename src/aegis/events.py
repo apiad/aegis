@@ -33,12 +33,14 @@ class SystemInit:
 class AssistantText:
     text: str
     usage: TokenUsage | None = None
+    message_id: str | None = None
 
 
 @dataclass
 class AssistantThinking:
     text: str
     usage: TokenUsage | None = None
+    message_id: str | None = None
 
 
 @dataclass
