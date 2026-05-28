@@ -129,6 +129,60 @@ def test_agent_plan_completed_count_visible():
     assert "2/4" in out or "2 of 4" in out
 
 
+def test_tool_result_with_diff_renders_unified_preview():
+    """ToolResult.diff shows up as a small unified-style block — minus
+    lines for old, plus lines for new — under the success/error line."""
+    out = as_text(render_event(
+        ToolResult(
+            text="ok",
+            is_error=False,
+            kind="edit",
+            diff=("x.py", "alpha\nbeta\n", "alpha\nGAMMA\nbeta\n"),
+        ), C))
+    # The path is referenced.
+    assert "x.py" in out
+    # Removed line marker present (- gamma).
+    assert "+" in out  # plus marker for added line
+    # The added word appears.
+    assert "GAMMA" in out
+
+
+def test_tool_result_diff_pure_addition():
+    """Write case — old is empty, new has the full content. Should
+    render the new content as additions only."""
+    out = as_text(render_event(
+        ToolResult(
+            text="ok",
+            is_error=False,
+            kind="edit",
+            diff=("new.py", "", "first\nsecond\n"),
+        ), C))
+    assert "new.py" in out
+    assert "first" in out
+
+
+def test_tool_result_without_diff_renders_legacy_one_liner():
+    """Backward compat: ToolResult without diff renders the same
+    single-line ok/error preview as before."""
+    out = as_text(render_event(
+        ToolResult(text="bar", is_error=False, kind="read"), C))
+    assert "ok" in out.lower() or "└" in out
+    # No diff gutter when there's no diff.
+
+
+def test_tool_result_diff_truncates_long_changes():
+    """Big diffs get capped — we show a few +/- lines plus a hint that
+    more was elided. The renderer shouldn't dump 500 lines into a
+    transcript block."""
+    old = "".join(f"line-old-{i}\n" for i in range(40))
+    new = "".join(f"line-new-{i}\n" for i in range(40))
+    out = as_text(render_event(
+        ToolResult(text="ok", is_error=False, kind="edit",
+                   diff=("x.py", old, new)), C))
+    # Total rendered lines stays bounded (< 20 visible).
+    assert out.count("\n") < 20
+
+
 def test_tool_use_hint_suppressed_when_equal_to_name():
     """ACP titles often equal the filename ("target.txt"); the pathhint
     derives the same string from locations[0]. Don't render both."""

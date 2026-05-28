@@ -12,6 +12,58 @@ from aegis.events import (
 )
 
 
+def _render_diff(diff: tuple[str, str, str], colors,
+                  max_lines: int = 6) -> "Text":
+    """Render a (path, old_text, new_text) tuple as a small unified
+    preview — at most `max_lines` total visible removed+added rows,
+    with a "… N more" footer when truncated.
+
+    Pure removals from the old side render as `-` rows; pure additions
+    from the new side render as `+` rows. Common context lines are
+    elided — this is a change preview, not a diff viewer.
+    """
+    path, old_text, new_text = diff
+    old_lines = old_text.splitlines() if old_text else []
+    new_lines = new_text.splitlines() if new_text else []
+    # Trim a common prefix and suffix so we show only the changed
+    # window — cheap heuristic; sufficient for transcript previews.
+    head = 0
+    while (head < len(old_lines) and head < len(new_lines)
+           and old_lines[head] == new_lines[head]):
+        head += 1
+    tail = 0
+    while (tail < len(old_lines) - head
+           and tail < len(new_lines) - head
+           and old_lines[len(old_lines) - 1 - tail]
+               == new_lines[len(new_lines) - 1 - tail]):
+        tail += 1
+    removed = old_lines[head:len(old_lines) - tail]
+    added = new_lines[head:len(new_lines) - tail]
+
+    body = Text()
+    body.append(f"  ┌ {path}\n", style=colors.muted)
+    shown = 0
+    for line in removed:
+        if shown >= max_lines:
+            break
+        body.append(f"  │ -", style=colors.err)
+        body.append(f" {line}\n", style=colors.err)
+        shown += 1
+    for line in added:
+        if shown >= max_lines:
+            break
+        body.append(f"  │ +", style=colors.ok)
+        body.append(f" {line}\n", style=colors.ok)
+        shown += 1
+    elided = max(0, (len(removed) + len(added)) - shown)
+    if elided > 0:
+        body.append(f"  │ … {elided} more line"
+                    f"{'s' if elided != 1 else ''}\n",
+                    style=colors.muted)
+    body.append("  └", style=colors.muted)
+    return body
+
+
 _PLAN_STATUS_GLYPH = {
     "completed": "●",
     "in_progress": "◐",
@@ -134,6 +186,8 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         arg = f"({hint})" if hint and hint != ev.name else ""
         return Text.assemble((f"{icon} ", colors.accent), f"{ev.name}{arg}")
     if isinstance(ev, ToolResult):
+        if ev.diff is not None and not ev.is_error:
+            return _render_diff(ev.diff, colors)
         first = ev.text.splitlines()[0] if ev.text.strip() else ""
         if len(first) > 100:
             first = first[:100] + "…"
