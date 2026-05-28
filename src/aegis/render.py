@@ -4,10 +4,49 @@ from rich.console import RenderableType
 from rich.markdown import Markdown
 from rich.text import Text
 
+from dataclasses import replace
+
 from aegis.events import (
     AssistantText, AssistantThinking, ToolUse, ToolResult,
     Result, SystemInit, Unknown, Event,
 )
+
+
+def coalesce_chunks(events: list[Event]) -> list[Event]:
+    """Merge adjacent AssistantText / AssistantThinking events that
+    share the same (kind, message_id) into a single concatenated
+    event. Any non-chunk event breaks the run. When message_id is
+    None on both sides, falls back to grouping by kind alone (the
+    pre-slice-2 claude case).
+
+    Used by the replay path so a persisted token-stream renders as
+    one block per assistant message, not 116 separate lines. The
+    last chunk's usage carries the running total — preserve it on
+    the merged event.
+
+    Pure function; no rendering, no I/O."""
+    if not events:
+        return []
+    out: list[Event] = []
+    buf: AssistantText | AssistantThinking | None = None
+    for ev in events:
+        if isinstance(ev, (AssistantText, AssistantThinking)):
+            if buf is not None and type(buf) is type(ev) \
+                    and buf.message_id == ev.message_id:
+                buf = replace(buf, text=buf.text + ev.text,
+                              usage=ev.usage or buf.usage)
+                continue
+            if buf is not None:
+                out.append(buf)
+            buf = ev
+        else:
+            if buf is not None:
+                out.append(buf)
+                buf = None
+            out.append(ev)
+    if buf is not None:
+        out.append(buf)
+    return out
 
 
 # Glyph per semantic kind (parity with ACP's tool_call kind enum;
