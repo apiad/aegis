@@ -542,6 +542,82 @@ asyncio.run(acp.run_agent(StubAgent()))
 '''
 
 
+_STUB_CHUNKED_THOUGHTS = r'''
+import asyncio
+import acp
+from acp.schema import (
+    AgentMessageChunk, AgentThoughtChunk, TextContentBlock,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        # Emit two thought chunks under one message_id, then two text
+        # chunks under a second message_id — exercises the cross-id
+        # coalescing surface the renderer will care about.
+        for tok in ("Let ", "me "):
+            await self._conn.session_update(
+                session_id=session_id,
+                update=AgentThoughtChunk(
+                    messageId="msg_thought_1",
+                    content=TextContentBlock(text=tok, type="text"),
+                    sessionUpdate="agent_thought_chunk",
+                ),
+            )
+        for tok in ("o", "k"):
+            await self._conn.session_update(
+                session_id=session_id,
+                update=AgentMessageChunk(
+                    messageId="msg_text_2",
+                    content=TextContentBlock(text=tok, type="text"),
+                    sessionUpdate="agent_message_chunk",
+                ),
+            )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_chunks_carry_message_id(tmp_path):
+    """AgentMessageChunk and AgentThoughtChunk both carry message_id;
+    the driver must propagate it onto the canonical events so the
+    renderer can coalesce by (kind, message_id)."""
+    from aegis.events import AssistantText, AssistantThinking
+    sess = _stub_driver(_STUB_CHUNKED_THOUGHTS).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("think then speak")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    thoughts = [e for e in events if isinstance(e, AssistantThinking)]
+    texts = [e for e in events if isinstance(e, AssistantText)]
+    assert len(thoughts) == 2
+    assert len(texts) == 2
+    assert all(t.message_id == "msg_thought_1" for t in thoughts)
+    assert all(t.message_id == "msg_text_2" for t in texts)
+
+
 _STUB_TOOL_LIFECYCLE = r'''
 import asyncio
 import acp

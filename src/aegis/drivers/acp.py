@@ -145,11 +145,15 @@ class _AegisAcpClient(acp.Client):
         if kind == "AgentMessageChunk":
             text = getattr(update.content, "text", None)
             if text:
-                self._queue.put_nowait(AssistantText(text=text))
+                mid = getattr(update, "message_id", None)
+                self._queue.put_nowait(
+                    AssistantText(text=text, message_id=mid))
         elif kind == "AgentThoughtChunk":
             text = getattr(update.content, "text", None)
             if text:
-                self._queue.put_nowait(AssistantThinking(text=text))
+                mid = getattr(update, "message_id", None)
+                self._queue.put_nowait(
+                    AssistantThinking(text=text, message_id=mid))
         elif kind == "ToolCallStart":
             tcid = getattr(update, "tool_call_id", "") or ""
             title = getattr(update, "title", "?") or "?"
