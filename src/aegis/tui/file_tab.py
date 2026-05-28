@@ -16,7 +16,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widget import Widget
-from textual.widgets import Static, TextArea
+from textual.widgets import Markdown, Static, TextArea
 
 from aegis.tui.state import AgentState
 
@@ -29,6 +29,10 @@ _EXT_LANGUAGE: dict[str, str] = {
 }
 
 _MTIME_POLL_S: float = 2.0
+
+
+class FocusableMarkdown(Markdown, can_focus=True):
+    """Markdown widget that can be focused for keyboard scrolling."""
 
 
 class FileTab(Widget):
@@ -45,10 +49,14 @@ class FileTab(Widget):
                          padding: 0 2; display: none; }
     FileTab #ft-cancel.visible { display: block; }
     FileTab TextArea { height: 1fr; }
+    FileTab TextArea.hidden { display: none; }
+    FileTab #ft-markdown { height: 1fr; display: none; }
+    FileTab #ft-markdown.visible { display: block; }
     """
 
     BINDINGS = [
         Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("e", "edit", "Edit mode", priority=True),
     ]
 
     def __init__(self, path: Path) -> None:
@@ -69,7 +77,7 @@ class FileTab(Widget):
     # --- compose ----------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="ft-status", markup=False)
+        yield Static("", id="ft-status", markup=True)
         yield Static(
             "⚠ file changed on disk — [r] reload (discard edits)  "
             "[k] keep mine",
@@ -79,6 +87,7 @@ class FileTab(Widget):
             id="ft-cancel", markup=False)
         lang = _EXT_LANGUAGE.get(self._path.suffix.lower())
         yield TextArea(language=lang, read_only=True, id="ft-editor")
+        yield FocusableMarkdown(id="ft-markdown")
 
     async def on_mount(self) -> None:
         try:
@@ -87,20 +96,34 @@ class FileTab(Widget):
         except OSError:
             content = f"(could not read {self._path})"
         self.query_one("#ft-editor", TextArea).load_text(content)
+        if self._is_markdown:
+            self.query_one("#ft-markdown", FocusableMarkdown).update(content)
+        self._update_visibility()
         self._refresh_status()
         self.set_interval(_MTIME_POLL_S, self._check_mtime)
+
+    @property
+    def _is_markdown(self) -> bool:
+        return self._path.suffix.lower() == ".md"
+
+    def _update_visibility(self) -> None:
+        show_md = self._is_markdown and not self._edit_mode
+        self.query_one("#ft-markdown", FocusableMarkdown).set_class(show_md, "visible")
+        self.query_one("#ft-editor", TextArea).set_class(show_md, "hidden")
 
     # --- status bar -------------------------------------------------
 
     def _refresh_status(self) -> None:
         mode = "EDIT" if self._edit_mode else "VIEW"
+        # Make the mode indicator look like a clickable button
+        mode_btn = fr"[@click=edit]\[{mode}][/]"
         mod = " *" if self._modified else ""
         try:
             loc = self.query_one("#ft-editor", TextArea).cursor_location
             pos = f"  {loc[0] + 1}:{loc[1] + 1}"
         except Exception:
             pos = ""
-        text = f"{self._path}    [{mode}]{mod}{pos}"
+        text = f"{self._path}    {mode_btn}{mod}{pos}"
         with contextlib.suppress(Exception):
             self.query_one("#ft-status", Static).update(text)
 
@@ -123,6 +146,8 @@ class FileTab(Widget):
         try:
             content = self._path.read_text(errors="replace")
             self.query_one("#ft-editor", TextArea).load_text(content)
+            if self._is_markdown:
+                self.query_one("#ft-markdown", FocusableMarkdown).update(content)
         except OSError:
             pass
 
@@ -138,10 +163,11 @@ class FileTab(Widget):
 
     # --- keybindings ------------------------------------------------
 
-    def key_e(self) -> None:
+    def action_edit(self) -> None:
         if not self._edit_mode:
             self._edit_mode = True
             self.query_one("#ft-editor", TextArea).read_only = False
+            self._update_visibility()
             self._refresh_status()
 
     def key_r(self) -> None:
@@ -150,6 +176,8 @@ class FileTab(Widget):
                 content = self._path.read_text(errors="replace")
                 self._mtime = self._path.stat().st_mtime
                 self.query_one("#ft-editor", TextArea).load_text(content)
+                if self._is_markdown:
+                    self.query_one("#ft-markdown", FocusableMarkdown).update(content)
                 self._modified = False
             except OSError:
                 pass
@@ -175,6 +203,7 @@ class FileTab(Widget):
             return
         self._edit_mode = False
         self.query_one("#ft-editor", TextArea).read_only = True
+        self._update_visibility()
         self._refresh_status()
 
     def _show_cancel_prompt(self) -> None:
@@ -203,9 +232,12 @@ class FileTab(Widget):
             content = self._path.read_text(errors="replace")
             self._mtime = self._path.stat().st_mtime
             editor.load_text(content)
+            if self._is_markdown:
+                self.query_one("#ft-markdown", FocusableMarkdown).update(content)
         except OSError:
             pass
         self._modified = False
+        self._update_visibility()
         self._hide_cancel_prompt()
         self._hide_disk_changed_warning()
         self._refresh_status()
@@ -222,6 +254,8 @@ class FileTab(Widget):
             content = self.query_one("#ft-editor", TextArea).text
             self._path.write_text(content)
             self._mtime = self._path.stat().st_mtime
+            if self._is_markdown:
+                self.query_one("#ft-markdown", FocusableMarkdown).update(content)
             self._modified = False
             with contextlib.suppress(Exception):
                 self.app.notify(f"saved {self._path.name}", timeout=1.5)
@@ -235,7 +269,10 @@ class FileTab(Widget):
 
     def focus_input(self) -> None:
         with contextlib.suppress(Exception):
-            self.query_one("#ft-editor", TextArea).focus()
+            if self._is_markdown and not self._edit_mode:
+                self.query_one("#ft-markdown", FocusableMarkdown).focus()
+            else:
+                self.query_one("#ft-editor", TextArea).focus()
 
     async def close(self) -> None:
         pass
