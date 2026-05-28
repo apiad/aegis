@@ -20,23 +20,24 @@ def cmd_install(
     name: str,
     from_: Path | None = typer.Option(
         None, "--from",
-        help="Install from a local path instead of a registry (slice 4 unblocks registries).",
+        help="Install from a local path instead of the registry.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Don't prompt; accept defaults."),
     force: bool = typer.Option(False, "--force", help="Overwrite existing installation."),
 ) -> None:
     """Install a plugin."""
-    if from_ is None:
-        console.print(
-            "[yellow]Registry resolution lands in slice 4. "
-            "Pass --from <local-path> for now.[/]"
-        )
-        raise typer.Exit(2)
+    from aegis.plugins.install import resolve_and_install
     try:
-        install_plugin(
-            name=name, source=from_, project_root=Path.cwd(),
-            yes=yes, force=force, console=console,
-        )
+        if from_ is not None:
+            install_plugin(
+                name=name, source=from_, project_root=Path.cwd(),
+                yes=yes, force=force, console=console,
+            )
+        else:
+            resolve_and_install(
+                name=name, project_root=Path.cwd(),
+                yes=yes, force=force, console=console,
+            )
     except InstallError as exc:
         console.print(f"[red]install failed:[/] {exc}")
         raise typer.Exit(1)

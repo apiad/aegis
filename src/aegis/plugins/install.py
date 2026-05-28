@@ -134,3 +134,52 @@ def _merge_default_config(
     buf = StringIO()
     y.dump(data, buf)
     yaml_path.write_text(buf.getvalue())
+
+
+DEFAULT_REGISTRY = "gh:apiad/aegis#plugins/"
+
+
+def resolve_and_install(
+    *,
+    name: str,
+    project_root: Path,
+    yes: bool = False,
+    force: bool = False,
+    console: Any = None,
+) -> None:
+    """Walk configured registries; install from the first hit."""
+    from aegis.plugins.registry import fetch_plugin, parse_registry_url
+
+    registries = _load_registries(project_root)
+    if not registries:
+        registries = [DEFAULT_REGISTRY]
+    errors: list[str] = []
+    for url_str in registries:
+        url = parse_registry_url(url_str)
+        try:
+            with fetch_plugin(url, plugin_name=name) as fetched:
+                install_plugin(
+                    name=name, source=fetched, project_root=project_root,
+                    yes=yes, force=force, console=console,
+                )
+                return
+        except FileNotFoundError as exc:
+            errors.append(f"{url_str}: {exc}")
+            continue
+        except Exception as exc:
+            errors.append(f"{url_str}: {type(exc).__name__}: {exc}")
+            continue
+    raise InstallError(
+        f"could not resolve {name!r} in any registry:\n  "
+        + "\n  ".join(errors)
+    )
+
+
+def _load_registries(project_root: Path) -> list[str]:
+    yaml_path = project_root / ".aegis.yaml"
+    if not yaml_path.exists():
+        return []
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    data = yaml.load(yaml_path) or {}
+    return list(data.get("plugin_registries") or [])
