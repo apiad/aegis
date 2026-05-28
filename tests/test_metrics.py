@@ -168,6 +168,64 @@ def test_session_clock_unanchored_then_begin():
     assert m.session_seconds(160.0) == 60.0
 
 
+# --- cost segment in render -------------------------------------------
+
+def test_render_cost_omitted_without_provider_model():
+    """No provider/model wiring → status line stays cost-free."""
+    m = SessionMetrics()
+    m.commit(_u(inp=1000, cc=0, cr=0, out=500), 1.0)
+    s = m.render(0.0)
+    assert "$" not in s and "¢" not in s
+
+
+def test_render_cost_shown_with_provider_model():
+    """Opus 4.7 at $5/$25 per MTok. 1k input + 500 output ≈
+    1000*5/1M + 500*25/1M = 0.005 + 0.0125 = $0.0175 → "1.8¢"."""
+    m = SessionMetrics(provider="claude-code", model="opus")
+    m.commit(_u(inp=1000, cc=0, cr=0, out=500), 1.0)
+    s = m.render(0.0)
+    assert "¢" in s or "$" in s
+
+
+def test_render_cost_uses_cents_below_one_dollar():
+    """The status-line formatter shows cents for sub-dollar costs so
+    short sessions stay visually informative."""
+    m = SessionMetrics(provider="claude-code", model="haiku")
+    m.commit(_u(inp=10_000, cc=0, cr=0, out=5_000), 1.0)
+    # haiku at $1/$5 → 10_000*1/1M + 5_000*5/1M = 0.01 + 0.025 = $0.035 = 3.5¢
+    s = m.render(0.0)
+    assert "3" in s and "¢" in s
+
+
+def test_render_cost_uses_dollars_above_one():
+    """At >= $1 the status line switches to dollar formatting."""
+    m = SessionMetrics(provider="claude-code", model="opus")
+    m.commit(_u(inp=1_000_000, cc=0, cr=0, out=0), 1.0)
+    # opus $5/MTok input → exactly $5.00
+    s = m.render(0.0)
+    assert "$5" in s
+
+
+def test_render_cost_silent_on_unknown_model():
+    """An unknown model must NOT crash the render — cost is dropped."""
+    m = SessionMetrics(provider="claude-code", model="made-up-model-9")
+    m.commit(_u(inp=1000, cc=0, cr=0, out=500), 1.0)
+    s = m.render(0.0)
+    assert "$" not in s and "¢" not in s
+
+
+def test_cost_tracks_cache_creation_and_cache_read_separately():
+    """Cache-creation (write rate) and cache-read (hit rate) tokens
+    must be tallied separately — both are subtracted from c_in to
+    derive the uncached input."""
+    m = SessionMetrics(provider="claude-code", model="opus")
+    m.commit(_u(inp=1000, cc=2000, cr=3000, out=500), 1.0)
+    assert m.input_tokens == 1000
+    assert m.cache_write_tokens == 2000
+    assert m.cache_hit_tokens == 3000
+    assert m.output_tokens == 500
+
+
 def test_time_formatting_tail():
     m = SessionMetrics(session_start=0.0)
     m.start_turn(0.0)

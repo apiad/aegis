@@ -33,6 +33,21 @@ def _fmt_time(seconds: float) -> str:
     return f"{s // 60}m{s % 60:02d}s"
 
 
+def _fmt_cost(usd) -> str:
+    """Adaptive formatting for the status-line cost segment.
+    Sub-cent values render as ``X.Y¢`` so they're visible at a glance;
+    larger values use ``$X.XX``. ``usd`` is a Decimal."""
+    from decimal import Decimal
+    cents = usd * Decimal(100)
+    if cents < Decimal("1"):
+        # Sub-cent: show one decimal place in cents (0.1¢ resolution).
+        return f"{cents.quantize(Decimal('0.1'))}¢"
+    if usd < Decimal("1"):
+        # Whole cents at 1¢–99¢: show as cents with no decimals.
+        return f"{int(cents)}¢"
+    return f"${usd.quantize(Decimal('0.01'))}"
+
+
 @dataclass
 class SessionMetrics:
     session_start: float | None = None
@@ -44,6 +59,10 @@ class SessionMetrics:
     c_in: int = 0
     c_out: int = 0
     c_cached: int = 0
+    # Cache-creation tokens — billed at the cache_write rate, tracked
+    # separately from c_cached (cache-read hits) so the cost computation
+    # can multiply each class against its own rate.
+    c_cache_write: int = 0
     # provisional — current turn, monotonic MAX over streamed assistant
     # usages (a step's usage repeats across events; summing double-counts).
     p_in: int = 0
@@ -55,6 +74,40 @@ class SessionMetrics:
     # the % gauge in render().
     last_true_input: int = 0
     context_window: int = 0
+    # provider + model strings drive the cost lookup. Empty strings mean
+    # cost rendering is skipped (no $ segment in the status line).
+    provider: str = ""
+    model: str = ""
+
+    # ----- properties consumed by aegis.budget.cost.compute() -----
+    # The Cost computation reads input_tokens / output_tokens /
+    # cache_hit_tokens / cache_write_tokens / thinking_tokens via getattr.
+    # SessionMetrics maps its internal counters to those attribute names
+    # so cost.compute(self, ...) works without an adapter.
+
+    @property
+    def input_tokens(self) -> int:
+        """Uncached input tokens (true_input minus the two cached classes)."""
+        return max(0, self.c_in - self.c_cached - self.c_cache_write)
+
+    @property
+    def output_tokens(self) -> int:
+        return self.c_out
+
+    @property
+    def cache_hit_tokens(self) -> int:
+        return self.c_cached
+
+    @property
+    def cache_write_tokens(self) -> int:
+        return self.c_cache_write
+
+    @property
+    def thinking_tokens(self) -> int:
+        # We don't track thinking tokens separately yet — Anthropic
+        # surfaces them under cache_creation/output in the headline
+        # usage, so leaving this at 0 avoids double-billing.
+        return 0
 
     def start_turn(self, now: float) -> None:
         self.turn_start = now
@@ -84,6 +137,7 @@ class SessionMetrics:
             self.c_in += usage.true_input
             self.c_out += usage.output
             self.c_cached += usage.cache_read
+            self.c_cache_write += usage.cache_creation
             self.last_true_input = usage.true_input
         self.p_in = self.p_out = self.p_cached = 0
         self._provisional = False
@@ -122,11 +176,26 @@ class SessionMetrics:
             live = self.p_in if self._provisional else self.last_true_input
             ctx_pct = round(100 * live / self.context_window)
             ctx = f"ctx {_fmt_tokens(live)} ({ctx_pct}%) · "
+        cost = self._render_cost()
         return (
             f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
             f"↓{_fmt_tokens(out)} · "
             f"{ctx}"
+            f"{cost}"
             f"{tool} · "
             f"{_fmt_time(self.turn_seconds(now))} / "
             f"{_fmt_time(self.session_seconds(now))}"
         )
+
+    def _render_cost(self) -> str:
+        """Status-line segment showing accumulated session cost in USD.
+        Empty string when (provider, model) aren't set or the lookup
+        fails — silent so an unknown model never breaks the render."""
+        if not (self.provider and self.model):
+            return ""
+        try:
+            from aegis.budget.cost import compute
+            cost = compute(self, self.provider, self.model)
+        except Exception:  # noqa: BLE001 — UnknownPriceError + anything else
+            return ""
+        return f"{_fmt_cost(cost.usd)} · "

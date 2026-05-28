@@ -37,10 +37,12 @@ class AgentSession:
         self.agent_slug = agent_slug
         self.handle = handle
         self.state = AgentState.ready
+        _harness = getattr(agent, "harness", "")
+        _model = getattr(agent, "model", "")
         self.metrics = SessionMetrics(
-            context_window=context_window_for(
-                getattr(agent, "harness", ""),
-                getattr(agent, "model", "")))
+            context_window=context_window_for(_harness, _model),
+            provider=_harness,
+            model=_model)
         self._now = now
         self._started = False
         self._task: asyncio.Task | None = None
