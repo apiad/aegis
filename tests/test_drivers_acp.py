@@ -542,6 +542,111 @@ asyncio.run(acp.run_agent(StubAgent()))
 '''
 
 
+_STUB_TOOL_LIFECYCLE = r'''
+import asyncio
+import acp
+from acp.schema import (
+    ToolCallStart, ToolCallProgress,
+    ContentToolCallContent, TextContentBlock, ToolCallLocation,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallStart(
+                toolCallId="tc-read-1",
+                title="read",
+                kind="read",
+                status="in_progress",
+                locations=[ToolCallLocation(path="/tmp/foo.txt", line=42)],
+                rawInput={"filePath": "/tmp/foo.txt"},
+                sessionUpdate="tool_call",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=ToolCallProgress(
+                toolCallId="tc-read-1",
+                title="/tmp/foo.txt",
+                status="completed",
+                content=[ContentToolCallContent(
+                    content=TextContentBlock(
+                        text="file contents", type="text"),
+                    type="content",
+                )],
+                sessionUpdate="tool_call_update",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_tool_use_carries_kind_locations_and_raw_input(tmp_path):
+    """ToolCallStart with kind/locations/raw_input populated must land
+    on the canonical ToolUse with the same fields, so the renderer can
+    pick a kind icon and a pathhint without driver branching."""
+    from aegis.events import ToolUse
+    sess = _stub_driver(_STUB_TOOL_LIFECYCLE).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("read the file")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    uses = [e for e in events if isinstance(e, ToolUse)]
+    assert len(uses) == 1
+    u = uses[0]
+    assert u.kind == "read"
+    assert u.tool_call_id == "tc-read-1"
+    assert u.locations == (("/tmp/foo.txt", 42),)
+    assert u.raw_input == {"filePath": "/tmp/foo.txt"}
+    assert u.status == "in_progress"
+
+
+async def test_acp_tool_result_correlates_kind_via_tool_call_id(tmp_path):
+    """ToolCallProgress(completed) doesn't carry kind on its own — but
+    we stash kind from the matching ToolCallStart on the client so the
+    emitted ToolResult can fill it in."""
+    from aegis.events import ToolResult
+    sess = _stub_driver(_STUB_TOOL_LIFECYCLE).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("read the file")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    results = [e for e in events if isinstance(e, ToolResult)]
+    assert len(results) == 1
+    r = results[0]
+    assert r.is_error is False
+    assert r.tool_call_id == "tc-read-1"
+    assert r.kind == "read"
+    assert r.text == "file contents"
+
+
 async def test_acp_session_uses_field_meta_quota_fallback(tmp_path):
     """Gemini puts token counts in PromptResponse.field_meta.quota.token_count
     rather than PromptResponse.usage. Without a fallback the driver

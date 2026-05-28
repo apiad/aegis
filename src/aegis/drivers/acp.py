@@ -104,6 +104,20 @@ except _PNFE:                    # not installed (e.g. running from source)
 _STREAM_LIMIT = 16 * 1024 * 1024
 
 
+def _summarize_acp_input(raw_input: dict) -> str:
+    """One-line summary from an ACP tool's raw_input. Tries common
+    keys (command / file_path / filePath / pattern) first, then any
+    string value. Empty string when nothing fits."""
+    for key in ("command", "file_path", "filePath", "pattern"):
+        v = raw_input.get(key)
+        if isinstance(v, str) and v:
+            return v
+    for v in raw_input.values():
+        if isinstance(v, str) and v:
+            return v
+    return ""
+
+
 class _AegisAcpClient(acp.Client):
     """Translates ACP ``session_update`` notifications into aegis Events
     on a queue the surrounding session drains. Implements the
@@ -115,6 +129,10 @@ class _AegisAcpClient(acp.Client):
         # Track tool-call ids → name so ToolCallProgress(completed) can
         # carry a useful renderable.
         self._tool_calls: dict[str, str] = {}
+        # Tool-call ids → kind (read/edit/execute/…). ToolCallProgress
+        # doesn't restate the kind from the matching ToolCallStart, so
+        # we cache it here for the ToolResult correlation.
+        self._tool_kinds: dict[str, str] = {}
 
     # The SDK invokes on_connect as a regular function, NOT as a
     # coroutine — declaring this async produces a "coroutine was never
@@ -133,14 +151,34 @@ class _AegisAcpClient(acp.Client):
             if text:
                 self._queue.put_nowait(AssistantThinking(text=text))
         elif kind == "ToolCallStart":
-            tcid = getattr(update, "tool_call_id", "")
+            tcid = getattr(update, "tool_call_id", "") or ""
             title = getattr(update, "title", "?") or "?"
+            tool_kind = getattr(update, "kind", None)
+            raw_input = getattr(update, "raw_input", None)
+            status = getattr(update, "status", None)
+            locations_raw = getattr(update, "locations", None) or []
+            locations = tuple(
+                (getattr(loc, "path", ""), getattr(loc, "line", None))
+                for loc in locations_raw
+            )
             self._tool_calls[tcid] = title
-            self._queue.put_nowait(ToolUse(name=title, summary=""))
+            if tool_kind:
+                self._tool_kinds[tcid] = tool_kind
+            summary = _summarize_acp_input(raw_input) \
+                if isinstance(raw_input, dict) else ""
+            self._queue.put_nowait(ToolUse(
+                name=title, summary=summary,
+                kind=tool_kind,
+                raw_input=raw_input if isinstance(raw_input, dict) else None,
+                tool_call_id=tcid or None,
+                locations=locations,
+                status=status,
+            ))
         elif kind == "ToolCallProgress":
             status = getattr(update, "status", "")
             if status in ("completed", "failed"):
                 is_error = status == "failed"
+                tcid = getattr(update, "tool_call_id", "") or ""
                 text = ""
                 for block in (update.content or []):
                     inner = getattr(block, "content", None)
@@ -148,8 +186,11 @@ class _AegisAcpClient(acp.Client):
                         candidate = getattr(inner, "text", "")
                         if candidate:
                             text = candidate
-                self._queue.put_nowait(
-                    ToolResult(text=text, is_error=is_error))
+                self._queue.put_nowait(ToolResult(
+                    text=text, is_error=is_error,
+                    tool_call_id=tcid or None,
+                    kind=self._tool_kinds.get(tcid),
+                ))
         # Other update classes (AvailableCommandsUpdate, UsageUpdate,
         # CurrentModeUpdate, etc.) are provider telemetry — drop.
 
