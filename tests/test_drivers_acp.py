@@ -332,6 +332,90 @@ async def test_acp_session_load_session_when_resume_id_set(tmp_path):
     assert "sid=prior-sid-9000" in text
 
 
+_STUB_WITH_USAGE = r'''
+import asyncio
+import acp
+from acp.schema import (
+    AgentMessageChunk, TextContentBlock, Usage,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="OK", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        return acp.PromptResponse(
+            stopReason="end_turn",
+            usage=Usage(
+                inputTokens=1234,
+                outputTokens=567,
+                cachedReadTokens=2000,
+                cachedWriteTokens=300,
+                thoughtTokens=42,
+                totalTokens=1234 + 567 + 2000 + 300 + 42,
+            ),
+        )
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_session_maps_usage_into_result_token_usage(tmp_path):
+    """ACP PromptResponse.usage must land on Result.usage as TokenUsage so
+    SessionMetrics.commit (which reads ev.usage) sees real numbers.
+    Pre-fix: Result.usage was None → metrics stayed at 0/0/0/0 for every
+    Gemini and OpenCode session.
+
+    Mapping:
+        input_tokens         → TokenUsage.input
+        cached_write_tokens  → TokenUsage.cache_creation
+        cached_read_tokens   → TokenUsage.cache_read
+        output_tokens + thought_tokens → TokenUsage.output
+    (thought tokens fold into output because they're billed at the
+    output rate by every provider aegis surfaces today.)
+    """
+    sess = _stub_driver(_STUB_WITH_USAGE).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    from aegis.events import Result, TokenUsage
+    result = next(e for e in events if isinstance(e, Result))
+    assert result.usage is not None
+    assert isinstance(result.usage, TokenUsage)
+    assert result.usage.input == 1234
+    assert result.usage.output == 567 + 42       # thought_tokens folded in
+    assert result.usage.cache_read == 2000
+    assert result.usage.cache_creation == 300
+    assert result.usage.true_input == 1234 + 300 + 2000  # 3534
+
+
 async def test_acp_session_empty_mcp_url_sends_no_mcp_servers(tmp_path):
     """If mcp_url is empty, mcp_servers=[]."""
     sess = _stub_driver(_STUB_ECHO_MCP).session(

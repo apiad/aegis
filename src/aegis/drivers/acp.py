@@ -368,22 +368,41 @@ class AcpSession(HarnessSession):
         # before we put the terminal Result on the queue.
         for _ in range(3):
             await asyncio.sleep(0)
-        # Synthesize the terminal Result from PromptResponse. Token
-        # counts arrive (when available) under
-        # resp.field_meta["quota"]["token_count"]. duration_ms is
-        # measured locally — ACP's PromptResponse doesn't carry it.
+        # Synthesize the terminal Result from PromptResponse.
+        # ACP PromptResponse carries a top-level ``usage`` (acp.schema.Usage)
+        # with input_tokens / output_tokens / cached_read_tokens /
+        # cached_write_tokens / thought_tokens / total_tokens. Map it into
+        # our TokenUsage so SessionMetrics.commit picks the same fields
+        # the claude-code driver populates — otherwise the status line
+        # would show 0/0/0 for ACP-backed sessions even though the agent
+        # genuinely consumed tokens. duration_ms is measured locally;
+        # PromptResponse doesn't carry it.
+        from aegis.events import TokenUsage as _TU
         duration_ms = int((_time.monotonic() - started) * 1000)
         is_error = resp.stop_reason not in ("end_turn", None)
+        usage = None
         in_tok = out_tok = None
-        try:
-            tok = resp.field_meta["quota"]["token_count"]  # type: ignore[index]
-            in_tok = tok.get("input_tokens")
-            out_tok = tok.get("output_tokens")
-        except (KeyError, TypeError, AttributeError):
-            pass
+        u = getattr(resp, "usage", None)
+        if u is not None:
+            in_tok = int(getattr(u, "input_tokens", 0) or 0)
+            out_tok = int(getattr(u, "output_tokens", 0) or 0)
+            cr_tok = int(getattr(u, "cached_read_tokens", 0) or 0)
+            cw_tok = int(getattr(u, "cached_write_tokens", 0) or 0)
+            th_tok = int(getattr(u, "thought_tokens", 0) or 0)
+            # Thought tokens are billed at the output rate (true for
+            # Anthropic + Gemini + Moonshot) — fold them into output so
+            # the cost segment is accurate without a separate thinking
+            # tally.
+            usage = _TU(
+                input=in_tok,
+                cache_creation=cw_tok,
+                cache_read=cr_tok,
+                output=out_tok + th_tok,
+            )
         self._queue.put_nowait(Result(
             duration_ms=duration_ms, is_error=is_error,
-            input_tokens=in_tok, output_tokens=out_tok))
+            input_tokens=in_tok, output_tokens=out_tok,
+            usage=usage))
         # End-of-turn sentinel so events() returns.
         self._queue.put_nowait(None)
 
