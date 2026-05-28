@@ -138,8 +138,14 @@ class ParserState:
     can carry the kind of the matching tool_use. claude's stream-json
     doesn't put the kind on the tool_result itself — the only way to
     enrich it is to remember each tool_use.id → kind as the assistant
-    stream goes by."""
+    stream goes by.
+
+    Also remembers the (path, old, new) tuple for Edit/Write tool calls
+    so the matching ToolResult can attach a diff — claude's tool_result
+    body is just "ok" or error text; the diff lives on the Edit/Write
+    tool_use input."""
     tool_kinds: dict[str, str] = field(default_factory=dict)
+    tool_diffs: dict[str, tuple[str, str, str]] = field(default_factory=dict)
 
 
 def _summarize_tool(name: str, tool_input: dict) -> str:
@@ -246,6 +252,21 @@ def parse(line: str, state: ParserState | None = None) -> Event:
                 ((file_path, None),)
                 if isinstance(file_path, str) else ()
             )
+            # Remember Edit / Write inputs so the matching ToolResult
+            # can attach a diff. Edit carries old_string/new_string;
+            # Write replaces the file so the "old" side is empty.
+            if tool_call_id and isinstance(file_path, str):
+                if name == "Edit":
+                    old = tool_input.get("old_string", "")
+                    new = tool_input.get("new_string", "")
+                    if isinstance(old, str) and isinstance(new, str):
+                        state.tool_diffs[tool_call_id] = (
+                            file_path, old, new)
+                elif name == "Write":
+                    content = tool_input.get("content", "")
+                    if isinstance(content, str):
+                        state.tool_diffs[tool_call_id] = (
+                            file_path, "", content)
             return ToolUse(
                 name=name,
                 summary=_summarize_tool(name, tool_input),
@@ -266,11 +287,13 @@ def parse(line: str, state: ParserState | None = None) -> Event:
                     text = raw if isinstance(raw, str) else json.dumps(raw)
                     tcid = block.get("tool_use_id")
                     kind = state.tool_kinds.get(tcid) if tcid else None
+                    diff = state.tool_diffs.get(tcid) if tcid else None
                     return ToolResult(
                         text=text,
                         is_error=bool(block.get("is_error", False)),
                         tool_call_id=tcid,
                         kind=kind,
+                        diff=diff,
                     )
         return Unknown(raw=line)
 

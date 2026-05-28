@@ -238,6 +238,78 @@ def test_tool_result_kind_correlated_via_parser_state():
     assert result.kind == "edit"
 
 
+def test_tool_result_diff_synthesized_from_edit_input():
+    """Claude's tool_result doesn't carry the diff itself — but the
+    matching Edit tool_use input has file_path/old_string/new_string.
+    The parser's ParserState remembers the Edit input so the
+    ToolResult that follows can attach the diff."""
+    state = ParserState()
+    use = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_edit_1",
+            "name": "Edit",
+            "input": {"file_path": "src/x.py",
+                      "old_string": "alpha\n",
+                      "new_string": "beta\n"},
+        }]},
+    }), state=state)
+    assert isinstance(use, ToolUse)
+
+    result = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "toolu_edit_1",
+            "content": "ok", "is_error": False,
+        }]},
+    }), state=state)
+    assert isinstance(result, ToolResult)
+    assert result.diff == ("src/x.py", "alpha\n", "beta\n")
+
+
+def test_tool_result_diff_from_write_input():
+    """Write replaces the file — diff = (path, "", new_content)."""
+    state = ParserState()
+    parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_w_1",
+            "name": "Write",
+            "input": {"file_path": "src/new.py",
+                      "content": "hello\n"},
+        }]},
+    }), state=state)
+    result = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "toolu_w_1",
+            "content": "ok", "is_error": False,
+        }]},
+    }), state=state)
+    assert result.diff == ("src/new.py", "", "hello\n")
+
+
+def test_tool_result_diff_none_for_non_edit_tools():
+    """Read/Bash/Grep/etc. don't produce diffs — keep diff None."""
+    state = ParserState()
+    parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_r_1",
+            "name": "Read",
+            "input": {"file_path": "src/x.py"},
+        }]},
+    }), state=state)
+    result = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "toolu_r_1",
+            "content": "ok", "is_error": False,
+        }]},
+    }), state=state)
+    assert result.diff is None
+
+
 def test_tool_result_kind_none_without_matching_state():
     """If parser state never saw the matching tool_use (e.g. truncated
     stream replay), tool_call_id passes through but kind is None."""
