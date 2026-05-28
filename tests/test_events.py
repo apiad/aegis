@@ -4,6 +4,7 @@ import pytest
 from aegis.events import (
     parse, SystemInit, AssistantText, AssistantThinking,
     ToolUse, ToolResult, Result, Unknown, ParserState,
+    AgentPlan, PlanEntry,
 )
 
 FIX = Path(__file__).parent / "fixtures"
@@ -239,6 +240,63 @@ def test_tool_result_kind_none_without_matching_state():
     assert isinstance(result, ToolResult)
     assert result.tool_call_id == "missing"
     assert result.kind is None
+
+
+def test_parse_todowrite_emits_agent_plan_not_tool_use():
+    """Claude's TodoWrite tool is the model's plan revision channel.
+    The parser intercepts it and emits an AgentPlan event so the
+    renderer can show a proper status block instead of a generic
+    ⏺ TodoWrite(…) line."""
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_plan_1",
+            "name": "TodoWrite",
+            "input": {"todos": [
+                {"content": "draft spec",
+                 "status": "completed", "activeForm": "Drafting spec"},
+                {"content": "write tests",
+                 "status": "in_progress", "activeForm": "Writing tests"},
+                {"content": "ship it",
+                 "status": "pending", "activeForm": "Shipping it"},
+            ]},
+        }]},
+    }))
+    assert isinstance(ev, AgentPlan)
+    assert len(ev.entries) == 3
+    assert ev.entries[0] == PlanEntry(
+        content="draft spec", status="completed", priority="medium")
+    assert ev.entries[1].status == "in_progress"
+    assert ev.entries[2].status == "pending"
+
+
+def test_parse_todowrite_empty_todos_emits_empty_plan():
+    """An empty todo list is a valid plan revision — the model is
+    saying 'no plan yet'."""
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "toolu_plan_2",
+            "name": "TodoWrite",
+            "input": {"todos": []},
+        }]},
+    }))
+    assert isinstance(ev, AgentPlan)
+    assert ev.entries == ()
+
+
+def test_other_tool_uses_still_emit_toolUse():
+    """Only TodoWrite is intercepted — every other tool stays as
+    ToolUse so the kind-icon + pathhint rendering keeps working."""
+    ev = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": "tu",
+            "name": "Read", "input": {"file_path": "x.py"},
+        }]},
+    }))
+    assert isinstance(ev, ToolUse)
+    assert ev.name == "Read"
 
 
 def test_parse_tool_result():

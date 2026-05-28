@@ -217,6 +217,22 @@ def parse(line: str, state: ParserState | None = None) -> Event:
         if btype == "tool_use":
             name = block.get("name", "?")
             tool_input = block.get("input", {}) or {}
+            # TodoWrite is the model's plan-revision channel — promote
+            # to the canonical AgentPlan event so the renderer can show
+            # a proper status block instead of a generic ⏺ TodoWrite(…).
+            if name == "TodoWrite":
+                todos = tool_input.get("todos") \
+                    if isinstance(tool_input, dict) else None
+                if not isinstance(todos, list):
+                    todos = []
+                entries = tuple(
+                    PlanEntry(
+                        content=str(t.get("content", "")),
+                        status=str(t.get("status", "pending")),
+                    )
+                    for t in todos if isinstance(t, dict)
+                )
+                return AgentPlan(entries=entries)
             kind = _KIND_BY_NAME.get(name, "other")
             tool_call_id = block.get("id")
             if tool_call_id:
