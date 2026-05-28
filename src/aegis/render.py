@@ -10,6 +10,35 @@ from aegis.events import (
 )
 
 
+# Glyph per semantic kind (parity with ACP's tool_call kind enum;
+# claude paths derive kind from the tool name in events.py).
+_KIND_ICON = {
+    "read": "📖",
+    "edit": "✏️",
+    "execute": "⌬",
+    "search": "🔎",
+    "think": "✻",
+    "fetch": "🌐",
+    "move": "➡️",
+    "delete": "🗑",
+    "switch_mode": "🔄",
+    "other": "⏺",
+}
+
+
+def _pathhint(ev: ToolUse) -> str:
+    """One-line context for a tool call: the tail of the first known
+    location (with :line suffix when known), falling back to the tool's
+    legacy summary string."""
+    if ev.locations:
+        path, line = ev.locations[0]
+        tail = path.rsplit("/", 1)[-1] if path else ""
+        if line is not None:
+            return f"{tail}:{line}"
+        return tail
+    return ev.summary
+
+
 def render_event(ev: Event, colors) -> RenderableType | None:
     """Map one typed event to a Rich renderable (themed), or None."""
     if isinstance(ev, AssistantText):
@@ -21,8 +50,10 @@ def render_event(ev: Event, colors) -> RenderableType | None:
             return Text("✻ Thinking…", style=colors.muted)
         return Text(f"✻ {body}", style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
-        arg = f"({ev.summary})" if ev.summary else ""
-        return Text.assemble(("⏺ ", colors.accent), f"{ev.name}{arg}")
+        icon = _KIND_ICON.get(ev.kind or "", "⏺")
+        hint = _pathhint(ev)
+        arg = f"({hint})" if hint else ""
+        return Text.assemble((f"{icon} ", colors.accent), f"{ev.name}{arg}")
     if isinstance(ev, ToolResult):
         first = ev.text.splitlines()[0] if ev.text.strip() else ""
         if len(first) > 100:

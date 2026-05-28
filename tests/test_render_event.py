@@ -26,6 +26,74 @@ def test_tool_use_one_liner():
     assert out.count("\n") <= 2
 
 
+def test_tool_use_kind_read_renders_book_icon():
+    out = as_text(render_event(
+        ToolUse(name="Read", summary="foo.py", kind="read"), C))
+    assert "📖" in out
+    assert "Read" in out
+
+
+def test_tool_use_kind_execute_renders_terminal_icon():
+    out = as_text(render_event(
+        ToolUse(name="Bash", summary="echo hi", kind="execute"), C))
+    assert "⌬" in out
+
+
+def test_tool_use_kind_edit_renders_pencil():
+    out = as_text(render_event(
+        ToolUse(name="Edit", summary="x.py", kind="edit"), C))
+    assert "✏" in out  # variation selector intentionally not asserted
+
+
+def test_tool_use_kind_search_renders_magnifier():
+    out = as_text(render_event(
+        ToolUse(name="Grep", summary="foo", kind="search"), C))
+    assert "🔎" in out
+
+
+def test_tool_use_kind_think_renders_sparkle():
+    out = as_text(render_event(
+        ToolUse(name="Task", summary="plan", kind="think"), C))
+    assert "✻" in out
+
+
+def test_tool_use_no_kind_falls_back_to_dot():
+    out = as_text(render_event(
+        ToolUse(name="MysteryTool", summary="x"), C))
+    assert "⏺" in out  # current behavior
+
+
+def test_tool_use_unknown_kind_also_falls_back():
+    out = as_text(render_event(
+        ToolUse(name="X", summary="y", kind="bogus"), C))
+    assert "⏺" in out
+
+
+def test_tool_use_location_pathhint_shortens_long_path():
+    out = as_text(render_event(
+        ToolUse(name="Read", summary="",
+                kind="read",
+                locations=(("/very/deep/nested/path/foo.py", None),)), C))
+    assert "foo.py" in out
+    # No need to assert the absence of /very — the renderer might show
+    # the full path; what matters is the tail is visible.
+
+
+def test_tool_use_location_with_line_appended():
+    out = as_text(render_event(
+        ToolUse(name="Read", summary="",
+                kind="read",
+                locations=(("foo.py", 42),)), C))
+    assert "foo.py" in out
+    assert "42" in out
+
+
+def test_tool_use_falls_back_to_summary_when_no_location():
+    out = as_text(render_event(
+        ToolUse(name="Bash", summary="echo hi", kind="execute"), C))
+    assert "echo hi" in out
+
+
 def test_thinking_content_shown():
     out = as_text(render_event(AssistantThinking("secret chain"), C))
     assert "secret chain" in out
