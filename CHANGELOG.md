@@ -5,6 +5,30 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Driver visibility — parity slice 7 (SystemInit enrichment)
+
+`SystemInit` carries optional `model`, `permission_mode`, `version`,
+`available_commands` fields. Both substrates populate at boot:
+
+- Claude `parse()` reads `system.init.model`,
+  `system.init.permissionMode`, `system.init.claude_code_version`, and
+  `system.init.slash_commands[].name`.
+- `AcpSession.start()` emits a `SystemInit` immediately after
+  `new_session` returns, with the agent name + version from
+  `InitializeResponse.agent_info`. `AvailableCommandsUpdate` arrives
+  later in the ACP timeline and surfaces as a follow-on `SystemInit`
+  with only `available_commands` populated; consumers see two
+  `SystemInit`s and can merge.
+
+State `event_codec` round-trips every new field with
+backward-compatible defaults.
+
+This closes the 7-slice driver-visibility parity arc. The canonical
+event surface now exposes every signal both substrates publish — what
+the model is doing, what tools it invoked with what arguments on which
+files with what diff, the running plan, mid-turn cost / mode / title
+telemetry, and end-of-turn cost / stop_reason / per-model attribution.
+
 ### Driver visibility — parity slice 6 (mid-turn ContextUpdate)
 
 New event types `ContextUpdate` + `CostUsage` are the canonical home

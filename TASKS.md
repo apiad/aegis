@@ -58,7 +58,7 @@ no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
 
-### Driver visibility parity *(slices 1-6 of 7 shipped)*
+### Driver visibility parity *(complete — all 7 slices shipped)*
 
 Make every tool call legible across drivers: semantic kind icon, path hint,
 structured input retained, success/failure styling. Slice 1 shipped
@@ -109,8 +109,16 @@ SessionInfoUpdate to the canonical event. Renderer returns None
 (transcript stays clean); status-bar / metrics consumption is a polish
 follow-on.
 
-Subsequent slices owed:
-- Slice 7 — `SystemInit` enrichment (model, permission, commands, version).
+Slice 7 shipped (`7840def`): `SystemInit` carries model, permission_mode,
+version, available_commands. Claude reads from `system.init`; ACP emits
+at boot from `InitializeResponse.agent_info` and follows with a second
+`SystemInit` carrying available_commands when
+`AvailableCommandsUpdate` fires.
+
+The 7-slice arc is complete. The canonical event surface now exposes
+every signal both substrates publish. Polish follow-ons (status-bar
+consumption of `ContextUpdate`, plan-block replacement-within-turn,
+TTFT for ACP) remain candidate work but aren't on the critical path.
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`
 - Slice-1 plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: shipped)*
