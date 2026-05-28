@@ -186,6 +186,12 @@ unrelated names (e.g. anything containing `deliver`).
 Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 `claude` stream-json output, then sanitizes identifiers/paths before commit).
 
+Regenerate `src/aegis/data/models.yaml` (model registry + prices) with
+`scripts/refresh-models.py` — pulls from `https://models.dev/api.json` (the
+catalog OpenCode itself consults). Run manually: `--diff` to preview, `--apply`
+to write. Update the script's curation lists when adding a new provider or
+when a model rev requires the canonical-key name to change.
+
 ## Conventions
 
 - TDD: failing test first, then minimal implementation, commit per logical unit.

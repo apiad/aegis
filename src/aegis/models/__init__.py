@@ -181,12 +181,19 @@ def _parse(text: str) -> Registry:
             prices = None
             if "prices" in model_raw and model_raw["prices"]:
                 pr = model_raw["prices"]
+                # cache_hit / cache_write / thinking are optional in the
+                # YAML — many providers (Moonshot, MiniMax, DeepSeek)
+                # publish neither. Default missing fields to 0 so the
+                # downstream cost path is well-defined; the lookup never
+                # blocks because the cache columns aren't there.
+                _z = Decimal("0")
                 prices = ProviderPrices(
-                    input=Decimal(str(pr["input"])),
-                    output=Decimal(str(pr["output"])),
-                    cache_hit=Decimal(str(pr["cache_hit"])),
-                    cache_write=Decimal(str(pr["cache_write"])),
-                    thinking=Decimal(str(pr["thinking"])),
+                    input=Decimal(str(pr.get("input", _z))),
+                    output=Decimal(str(pr.get("output", _z))),
+                    cache_hit=Decimal(str(pr.get("cache_hit", _z))),
+                    cache_write=Decimal(str(pr.get("cache_write", _z))),
+                    thinking=Decimal(str(pr.get("thinking",
+                                                pr.get("output", _z)))),
                 )
             cw = model_raw.get("context_window")
             aliases = tuple(

@@ -47,13 +47,16 @@ def test_bundled_yaml_loads_with_known_providers():
 
 # --- prices --------------------------------------------------------
 
-def test_get_prices_claude_opus_matches_prior_constants():
+def test_get_prices_claude_opus_matches_authoritative_rate_card():
+    """Per Anthropic docs (and models.dev), Claude Opus 4.7 is
+    $5/$25 input/output per million tokens — not the legacy
+    Opus-4.1 $15/$75 rate."""
     p = get_prices("claude-code", "opus")
-    assert p.input == Decimal("15.00")
-    assert p.output == Decimal("75.00")
-    assert p.cache_hit == Decimal("1.50")
-    assert p.cache_write == Decimal("18.75")
-    assert p.thinking == Decimal("75.00")
+    assert p.input == Decimal("5.00")
+    assert p.output == Decimal("25.00")
+    assert p.cache_hit == Decimal("0.5")
+    assert p.cache_write == Decimal("6.25")
+    assert p.thinking == Decimal("25.00")
     assert isinstance(p, ProviderPrices)
 
 
@@ -73,8 +76,10 @@ def test_legacy_PRICES_dict_proxies_through_registry():
 # --- context windows --------------------------------------------------
 
 def test_get_context_window_exact_model_match():
+    """Sonnet 4.6 + Opus 4.7 both have 1M context windows; only Haiku
+    is 200k."""
     assert get_context_window("claude-code", "opus") == 1_000_000
-    assert get_context_window("claude-code", "sonnet") == 200_000
+    assert get_context_window("claude-code", "sonnet") == 1_000_000
     assert get_context_window("claude-code", "haiku") == 200_000
 
 
@@ -89,9 +94,15 @@ def test_get_context_window_pattern_fallback_1m_suffix():
 
 
 def test_get_context_window_default_for_unknown_model():
-    """No exact match, no pattern hit → provider default."""
-    assert get_context_window("claude-code", "claude-sonnet-4-6") == 200_000
-    assert get_context_window("opencode", "anthropic/claude-sonnet-4.5") == 200_000
+    """No exact match, no pattern hit → provider default.
+
+    ``claude-sonnet-4-6`` IS a registered alias and resolves to
+    sonnet's 1M; for the unknown-model fallback we use a name with no
+    pattern hit either."""
+    # Unknown OpenCode slug → provider default (200k).
+    assert get_context_window("opencode", "unknown-vendor/some-model") == 200_000
+    # Unknown Gemini variant → provider default (1M).
+    assert get_context_window("gemini", "gemini-future-7") == 1_048_576
 
 
 def test_get_context_window_unknown_provider_returns_zero():
@@ -113,12 +124,15 @@ def test_aliases_resolve_for_prices_and_context_window():
     assert p_sonnet == get_prices("claude-code", "sonnet")
 
 
-def test_alias_for_openrouter_legacy_kimi_slug():
+def test_alias_for_legacy_bare_kimi_slug():
     """``kimi-k2.6`` (bare, no vendor prefix) was the shipped slug
-    before the OpenRouter list expanded. It must still resolve through
-    the aliases mechanism so prior ``.aegis.yaml`` files keep working."""
+    before the curated list moved to ``<vendor>/<model>`` shape. It
+    must still resolve through the aliases mechanism so prior
+    ``.aegis.yaml`` files keep working."""
     p = get_prices("opencode", "kimi-k2.6")
-    assert p.input == Decimal("0.30")
+    # Whatever today's Kimi K2.6 price is, the alias path must reach it.
+    assert p.input > 0
+    assert p.input == get_prices("opencode", "moonshotai/kimi-k2.6").input
 
 
 # --- models_for (picker source) ---------------------------------------
@@ -130,15 +144,17 @@ def test_models_for_claude_code_lists_nicknames_in_order():
     assert names[:3] == ["opus", "sonnet", "haiku"]
 
 
-def test_models_for_includes_openrouter_classic_slugs():
-    """Spot-check that the OpenCode (OpenRouter-routed) list carries the
-    classic Kimi / Minimax / Qwen / DeepSeek slugs."""
+def test_models_for_includes_canonical_openrouter_slugs():
+    """Spot-check the OpenCode list carries one canonical slug per
+    classic vendor (Kimi, MiniMax, Qwen, DeepSeek). Exact slug strings
+    follow models.dev so they may rev as vendors ship new models — we
+    assert via vendor prefix rather than nailing down a version."""
     from aegis.models import models_for
     names = {name for name, _label in models_for("opencode")}
-    assert "moonshotai/kimi-k2-0905" in names
-    assert "minimax/minimax-m2" in names
-    assert "qwen/qwen3-coder" in names
-    assert "deepseek/deepseek-r1-0528" in names
+    assert any(n.startswith("moonshotai/kimi-") for n in names)
+    assert any(n.startswith("minimax/MiniMax-") for n in names)
+    assert any(n.startswith("alibaba/qwen") for n in names)
+    assert any(n.startswith("deepseek/deepseek-") for n in names)
 
 
 def test_models_for_unknown_provider_is_empty():
@@ -196,8 +212,10 @@ def test_corrupt_cache_falls_back_to_bundled(monkeypatch, tmp_path):
     cache.write_text("this is not yaml :::", encoding="utf-8")
     monkeypatch.setattr(models, "cache_path", lambda: cache)
     monkeypatch.setattr(models, "_registry", None)
-    # Bundled price still answers.
-    assert get_prices("claude-code", "opus").input == Decimal("15.00")
+    # Bundled price still answers — value is whatever today's Opus rate
+    # card says (we don't pin the number; the bundled YAML is the
+    # authoritative source so spot-check just that it's nonzero).
+    assert get_prices("claude-code", "opus").input > 0
 
 
 # --- refresh ----------------------------------------------------------
