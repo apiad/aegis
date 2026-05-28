@@ -90,6 +90,8 @@ from aegis.events import (
     AgentPlan,
     AssistantText,
     AssistantThinking,
+    ContextUpdate,
+    CostUsage,
     Event,
     PlanEntry,
     Result,
@@ -214,8 +216,26 @@ class _AegisAcpClient(acp.Client):
         elif kind == "UsageUpdate":
             cost_obj = getattr(update, "cost", None)
             amount = getattr(cost_obj, "amount", None)
-            if isinstance(amount, (int, float)):
-                self.last_cost_usd = float(amount)
+            used = getattr(update, "used", None)
+            size = getattr(update, "size", None)
+            amount_f = (float(amount)
+                        if isinstance(amount, (int, float)) else None)
+            if amount_f is not None:
+                self.last_cost_usd = amount_f
+            self._queue.put_nowait(ContextUpdate(
+                cost=CostUsage(
+                    amount_usd=amount_f,
+                    context_used=int(used) if isinstance(used, int) else None,
+                    context_size=int(size) if isinstance(size, int) else None,
+                )))
+        elif kind == "CurrentModeUpdate":
+            mode_id = getattr(update, "current_mode_id", None)
+            if isinstance(mode_id, str):
+                self._queue.put_nowait(ContextUpdate(mode=mode_id))
+        elif kind == "SessionInfoUpdate":
+            title = getattr(update, "title", None)
+            if isinstance(title, str):
+                self._queue.put_nowait(ContextUpdate(title=title))
         elif kind == "AgentPlanUpdate":
             entries = tuple(
                 PlanEntry(

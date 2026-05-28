@@ -711,6 +711,101 @@ async def test_acp_result_carries_stop_reason_cost_model_usage(tmp_path):
     assert result.model_usage[1][0] == "auto"
 
 
+_STUB_CONTEXT_UPDATES = r'''
+import asyncio
+import acp
+from acp.schema import (
+    AgentMessageChunk, TextContentBlock,
+    UsageUpdate, CurrentModeUpdate, SessionInfoUpdate,
+)
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await self._conn.session_update(
+            session_id=session_id,
+            update=UsageUpdate(
+                cost={"amount": 0.0042, "currency": "USD"},
+                size=200000,
+                used=12345,
+                sessionUpdate="usage_update",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=CurrentModeUpdate(
+                currentModeId="plan",
+                sessionUpdate="current_mode_update",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=SessionInfoUpdate(
+                title="Refactoring auth",
+                updatedAt="2026-05-28T16:30:00Z",
+                sessionUpdate="session_info_update",
+            ),
+        )
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="ok", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_emits_context_update_for_usage_mode_title(tmp_path):
+    """Mid-turn UsageUpdate / CurrentModeUpdate / SessionInfoUpdate
+    must each surface as a ContextUpdate event with the corresponding
+    field populated, so downstream subscribers don't have to know
+    about ACP-specific notification kinds."""
+    from aegis.events import ContextUpdate
+    sess = _stub_driver(_STUB_CONTEXT_UPDATES).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("driver telemetry")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    ctxs = [e for e in events if isinstance(e, ContextUpdate)]
+    assert len(ctxs) == 3, events
+
+    cost_ctx = next(c for c in ctxs if c.cost is not None)
+    assert cost_ctx.cost.amount_usd == 0.0042
+    assert cost_ctx.cost.context_used == 12345
+    assert cost_ctx.cost.context_size == 200000
+
+    mode_ctx = next(c for c in ctxs if c.mode is not None)
+    assert mode_ctx.mode == "plan"
+
+    title_ctx = next(c for c in ctxs if c.title is not None)
+    assert title_ctx.title == "Refactoring auth"
+
+
 _STUB_PLAN_UPDATE = r'''
 import asyncio
 import acp
