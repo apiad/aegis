@@ -5,6 +5,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-05-29
+
+The 0.15.0 release commit bumped `pyproject.toml` but didn't
+regenerate `uv.lock`, so CI and the release workflow both failed on
+`uv sync --locked` and nothing reached PyPI. This patch syncs the
+lockfile to match the project version. No source-code or behavior
+changes — 0.15.0 and 0.15.1 are byte-identical except for the lock.
+
 ## [0.15.0] - 2026-05-28
 
 Two big lines land together: the **plugin substrate v1** (hooks +
