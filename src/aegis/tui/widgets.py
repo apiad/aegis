@@ -1,10 +1,82 @@
 from __future__ import annotations
 
+from textual import events
 from textual.containers import HorizontalScroll
-from textual.widgets import Static
+from textual.message import Message
+from textual.widgets import Static, TextArea
 
 from aegis.tui.state import AgentState
 from aegis.tui.themes import aegis_colors, INK
+
+
+class GrowingInput(TextArea):
+    """Multi-line chat input that grows from 1 to ``MAX_LINES`` rows of
+    content, then scrolls. Drops in where Textual's ``Input`` was used:
+    exposes ``value`` and a ``Submitted`` message with ``.value``.
+
+    Plain ``enter`` submits; ``shift+enter`` / ``ctrl+j`` / ``alt+enter``
+    insert a newline (terminals vary on which one they emit, so all three
+    are wired).
+    """
+
+    MAX_LINES = 5
+
+    class Submitted(Message):
+        def __init__(self, sender: "GrowingInput", value: str) -> None:
+            super().__init__()
+            self.input = sender
+            self.value = value
+
+        @property
+        def control(self) -> "GrowingInput":
+            return self.input
+
+    def __init__(self, placeholder: str = "", *,
+                 id: str | None = None) -> None:
+        super().__init__(
+            soft_wrap=True,
+            show_line_numbers=False,
+            tab_behavior="focus",
+            placeholder=placeholder,
+            id=id,
+        )
+
+    @property
+    def value(self) -> str:
+        return self.text
+
+    @value.setter
+    def value(self, v: str) -> None:
+        self.text = v
+        self._resize_to_content()
+
+    def on_mount(self) -> None:
+        self._resize_to_content()
+
+    def _resize_to_content(self) -> None:
+        n = max(1, min(self.MAX_LINES, self.document.line_count))
+        # +2 for the top + bottom border rows
+        self.styles.height = n + 2
+
+    def on_text_area_changed(self, _event: TextArea.Changed) -> None:
+        self._resize_to_content()
+
+    async def action_submit(self) -> None:
+        self.post_message(self.Submitted(self, self.text))
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            await self.action_submit()
+            return
+        if event.key in ("shift+enter", "ctrl+j", "alt+enter"):
+            event.stop()
+            event.prevent_default()
+            start, end = self.selection
+            self._replace_via_keyboard("\n", start, end)
+            return
+        await super()._on_key(event)
 
 
 class _TabCell(Static):

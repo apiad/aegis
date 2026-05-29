@@ -6,7 +6,7 @@ from aegis.tui.pane import ConversationPane
 from aegis.tui.state import AgentState
 from aegis.tui.widgets import StatusBar, TabBar
 from textual.containers import VerticalScroll
-from textual.widgets import Input
+from aegis.tui.widgets import GrowingInput as Input
 from aegis.tui.pane import CopyableBlock
 
 
@@ -330,7 +330,7 @@ async def test_error_then_resend_recovers_to_ready():
     app = _app(_factory(FakeSession(script)))
     async with app.run_test() as pilot:
         pane = app._panes[0]
-        from textual.widgets import Input
+        from aegis.tui.widgets import GrowingInput as Input
         pane.query_one(Input).value = "first"
         await pilot.press("enter")
         await pilot.pause()
@@ -432,6 +432,48 @@ async def test_input_border_stable_across_focus_blur():
         assert f_bot[0] and f_bot[0] not in ("", "none"), f_bot
         # and there is air between the status line and the input
         assert inp.styles.margin.top >= 1, inp.styles.margin
+
+
+@pytest.mark.asyncio
+async def test_input_grows_with_lines_and_caps_at_max():
+    # Conversation input is a TextArea-backed widget that grows from 1 row
+    # of content (height 3 = 1 + 2 border) up to MAX_LINES (height 7 = 5 + 2),
+    # then scrolls internally rather than stretching further.
+    app = _app()
+    async with app.run_test() as pilot:
+        inp = app._panes[0].query_one(Input)
+        await pilot.pause()
+        assert inp.styles.height.value == 3, inp.styles.height
+        inp.text = "line1\nline2"
+        await pilot.pause()
+        assert inp.styles.height.value == 4
+        inp.text = "a\nb\nc\nd\ne"
+        await pilot.pause()
+        assert inp.styles.height.value == 7
+        # 6 lines: capped at MAX_LINES + border
+        inp.text = "a\nb\nc\nd\ne\nf"
+        await pilot.pause()
+        assert inp.styles.height.value == 7
+        inp.text = ""
+        await pilot.pause()
+        assert inp.styles.height.value == 3
+
+
+@pytest.mark.asyncio
+async def test_enter_submits_and_clears_input():
+    # Plain Enter submits; the multi-line input is NOT a chance to bury a
+    # newline accidentally — Enter still ends the turn.
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        inp = pane.query_one(Input)
+        app.set_focus(inp)
+        await pilot.pause()
+        inp.text = "hello"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert pane._session.sent == ["hello"]
+        assert inp.text == ""
 
 
 @pytest.mark.asyncio

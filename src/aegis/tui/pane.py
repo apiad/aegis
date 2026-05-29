@@ -16,7 +16,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Input, Static
+from textual.widgets import Static
 
 from aegis.config import Agent
 from aegis.core.session import AgentSession
@@ -28,7 +28,7 @@ from aegis.render import (
 from aegis.state.session_log import EventReplay
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
-from aegis.tui.widgets import StatusBar
+from aegis.tui.widgets import GrowingInput, StatusBar
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -285,13 +285,14 @@ class ConversationPane(Widget):
                                    padding: 1 4; scrollbar-size: 0 0; }
     ConversationPane StatusBar { height: 1; background: $panel;
                                  color: $foreground; padding: 0 2; }
-    ConversationPane Input { height: 3; background: $surface;
+    ConversationPane GrowingInput { height: 3; background: $surface;
                              color: $foreground; padding: 0 2;
                              border: none;
                              border-top: solid $foreground 20%;
                              border-bottom: solid $foreground 20%;
-                             margin-top: 1; }
-    ConversationPane Input:focus { border: none;
+                             margin-top: 1;
+                             scrollbar-size: 0 0; }
+    ConversationPane GrowingInput:focus { border: none;
                              border-top: solid $foreground 20%;
                              border-bottom: solid $foreground 20%; }
     """
@@ -345,7 +346,7 @@ class ConversationPane(Widget):
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)
-            yield Input(placeholder="type a message…")
+            yield GrowingInput(placeholder="type a message…")
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
@@ -422,21 +423,21 @@ class ConversationPane(Widget):
                    for b in self._transcript_blocks())
 
     def focus_input(self) -> None:
-        self.query_one(Input).focus()
+        self.query_one(GrowingInput).focus()
 
-    async def on_input_submitted(self,
-                                  event: Input.Submitted) -> None:
+    async def on_growing_input_submitted(self,
+                                  event: GrowingInput.Submitted) -> None:
         event.stop()
         text = event.value.strip()
         if not text or self.state is AgentState.working:
             return
-        inp = self.query_one(Input)
+        inp = self.query_one(GrowingInput)
         inp.value = ""
         self._submit(text)
 
     def _submit(self, text: str) -> None:
         self._flush_streaming()
-        inp = self.query_one(Input)
+        inp = self.query_one(GrowingInput)
         inp.disabled = True
         width = self._transcript().size.width or 80
         self._mount_block(
@@ -529,7 +530,7 @@ class ConversationPane(Widget):
         self.post_message(PaneStateChanged(self, finished))
         if finished:
             self._stop_indicator()
-            inp = self.query_one(Input)
+            inp = self.query_one(GrowingInput)
             inp.disabled = False
             inp.focus()
         self.refresh_metrics()
@@ -545,7 +546,7 @@ class ConversationPane(Widget):
                 Text("^C — interrupted", style=self._palette.muted),
                 "^C — interrupted")
             self.refresh_metrics()
-            inp = self.query_one(Input)
+            inp = self.query_one(GrowingInput)
             inp.disabled = False
             inp.focus()
 
