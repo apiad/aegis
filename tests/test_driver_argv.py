@@ -68,6 +68,15 @@ def test_build_argv_injects_strict_mcp_and_priming():
     assert "-p" in argv
 
 
+def test_aegis_plane_is_allowlisted_in_every_mode():
+    # The aegis MCP server is aegis's own, trusted by construction.
+    # Without an allowlist its tools hit a permission prompt that
+    # cannot be answered under `claude -p`, so the call just fails.
+    for perm in ("read", "write", "full", "auto"):
+        argv = argv_for(perm)
+        assert argv[argv.index("--allowedTools") + 1] == "mcp__aegis"
+
+
 def test_build_argv_bakes_handle_into_priming():
     argv = argv_for("auto", handle="lucid-knuth")
     j = argv.index("--append-system-prompt")
