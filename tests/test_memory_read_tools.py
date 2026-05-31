@@ -8,10 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from aegis.hooks.decorator import _reset_registry_for_tests as _reset_hooks
 from aegis.tools.decorator import _reset_registry_for_tests as _reset_tools
 
 
 def _load(monkeypatch, tmp_path: Path):
+    _reset_hooks()
     _reset_tools()
     monkeypatch.chdir(tmp_path)
     repo_root = Path(__file__).parent.parent

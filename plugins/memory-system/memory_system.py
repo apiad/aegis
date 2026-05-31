@@ -142,8 +142,13 @@ _STOPWORDS = frozenset({
 def _tokenize(s: str) -> set[str]:
     out: set[str] = set()
     for tok in re.split(r"[^a-z0-9]+", s.lower()):
-        if tok and tok not in _STOPWORDS:
-            out.add(tok)
+        if not tok or tok in _STOPWORDS:
+            continue
+        out.add(tok)
+        if len(tok) > 3 and tok.endswith("s"):
+            out.add(tok[:-1])
+        if len(tok) > 4 and tok.endswith("ing"):
+            out.add(tok[:-3])
     return out
 
 
@@ -283,3 +288,134 @@ async def memory_remove(slug: str) -> dict:
     path.unlink()
     rebuild_index(root)
     return {"slug": slug, "removed": True}
+
+
+from aegis.hooks import hook, PreTurnContext, PreTurnResult
+
+
+PRIMER = """\
+# Memory
+
+You have a persistent memory at .aegis/memory/. The MEMORY.md index above
+lists everything you know. Use memory_search(query) to find an entry's
+body, or memory_read(slug) when you already know the slug.
+
+Write a memory when:
+- the user corrects you ("don't", "stop X") -> save as `feedback`
+- the user reveals a preference, role, or constraint -> `user`
+- you discover a non-obvious fact about the project or tooling -> `fact`
+- the user names an external system you'll need again -> `reference`
+
+Skip trivial / easily-rediscovered things. When unsure, save -- the
+dream pass will consolidate later.
+
+Tools:
+- memory_search(query)         -- find entries by keyword
+- memory_read(slug)            -- fetch one entry's body
+- memory_add(type, name, ...)  -- save a new memory
+- memory_replace(slug, ...)    -- update an existing one
+- memory_remove(slug)          -- delete (use sparingly outside dream pass)
+"""
+
+
+TURN_ZERO_CAP_TOKENS = 4000
+TURN_N_CAP_WORDS = 1000
+TOP_K = 5
+
+
+def _approx_tokens(text: str) -> int:
+    return int(len(text.split()) * 1.3)
+
+
+def _read_file_or_none(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _build_turn_zero(project_root: Path) -> str:
+    mem_dir = project_root / MEMORY_SUBDIR
+    soul = _read_file_or_none(mem_dir / "SOUL.md")
+    user = _read_file_or_none(mem_dir / "USER.md")
+    entries = list_entries(project_root)
+    entries.sort(
+        key=lambda e: (mem_dir / "entries" / f"{e.slug}.md").stat().st_mtime,
+        reverse=True,
+    )
+
+    def _assemble(included: list[Entry], dropped: int) -> str:
+        parts: list[str] = []
+        if soul:
+            parts.append(soul)
+        if user:
+            parts.append(user)
+        if included:
+            parts.append("## Memory index\n")
+            for e in included:
+                parts.append(f"- [{e.name}](entries/{e.slug}.md) -- {e.description}")
+        if dropped > 0:
+            parts.append(
+                f"... {dropped} more entries; use memory_search to find specific ones"
+            )
+        parts.append("")
+        parts.append(PRIMER)
+        return "\n".join(parts)
+
+    text = _assemble(entries, 0)
+    total = len(entries)
+    while _approx_tokens(text) > TURN_ZERO_CAP_TOKENS and entries:
+        entries.pop()
+        text = _assemble(entries, total - len(entries))
+    return text
+
+
+def _build_turn_n(project_root: Path, user_message: str) -> str | None:
+    qtoks = _tokenize(user_message)
+    if not qtoks:
+        return None
+    now_ts = datetime.now(timezone.utc).timestamp()
+    scored: list[tuple[int, Entry]] = []
+    for e in list_entries(project_root):
+        s = _score(e, qtoks)
+        try:
+            mtime = (project_root / ENTRIES_SUBDIR / f"{e.slug}.md").stat().st_mtime
+            if now_ts - mtime < 86400:
+                s += 1
+        except OSError:
+            pass
+        if s >= 2:
+            scored.append((s, e))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x[0], reverse=True)
+    lines = ["## Possibly relevant memory", ""]
+    used = sum(len(line.split()) for line in lines)
+    for _, e in scored[:TOP_K]:
+        line = f"- **{e.name}** -- {e.description}"
+        if used + len(line.split()) > TURN_N_CAP_WORDS:
+            break
+        lines.append(line)
+        used += len(line.split())
+    if len(lines) == 2:
+        return None
+    return "\n".join(lines)
+
+
+@hook("pre_turn")
+async def inject_memory(ctx: PreTurnContext) -> PreTurnResult | None:
+    """Inject SOUL+USER+index+primer on turn 0, top-K teasers afterward."""
+    if not ctx.history:
+        return PreTurnResult(prepend_system=_build_turn_zero(ctx.project_root))
+    body = _build_turn_n(ctx.project_root, ctx.user_message)
+    if body is None:
+        return None
+    return PreTurnResult(prepend_system=body)
+
+
+@hook("session_start")
+async def log_session_open(ctx) -> None:
+    """Observer: best-effort note that a session has started."""
+    pass
