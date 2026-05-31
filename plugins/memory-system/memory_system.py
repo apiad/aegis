@@ -20,7 +20,7 @@ DREAMS_SUBDIR = ".aegis/memory/dreams"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _kebab(s: str) -> str:
@@ -214,3 +214,72 @@ async def memory_search(query: str, limit: int = 10) -> list[dict]:
             "snippet": _snippet(e.content, qtoks),
         })
     return out
+
+
+@tool(timeout=5.0)
+async def memory_add(type: str, name: str,
+                     description: str, content: str) -> dict:
+    """Save a new memory entry.
+
+    Args:
+        type: one of "user", "feedback", "fact", "reference".
+        name: short label (will be kebab-cased).
+        description: one-line summary (used by future sessions to decide
+            relevance).
+        content: the entry body, markdown.
+
+    Returns:
+        {"slug": str, "path": str}.
+    """
+    root = _project_root()
+    path = write_entry(root, type, name, description, content)
+    rebuild_index(root)
+    return {"slug": path.stem, "path": str(path)}
+
+
+@tool(timeout=5.0)
+async def memory_replace(slug: str, *, description: str | None = None,
+                         content: str | None = None) -> dict:
+    """Update an existing entry. Name and type are immutable.
+
+    Args:
+        slug: the entry's slug.
+        description: new description (optional).
+        content: new body (optional).
+
+    Returns:
+        {"slug": str, "path": str}.
+    """
+    root = _project_root()
+    e = read_entry(root, slug)
+    new_desc = description if description is not None else e.description
+    new_content = content if content is not None else e.content
+    path = _entry_path(root, slug)
+    front = {
+        "type": e.type, "name": e.name,
+        "description": new_desc, "created": e.created,
+        "updated": _now_iso(),
+    }
+    body = (
+        "---\n"
+        + yaml.safe_dump(front, sort_keys=False, allow_unicode=True)
+        + "---\n\n"
+        + new_content.rstrip()
+        + "\n"
+    )
+    path.write_text(body, encoding="utf-8")
+    if description is not None and description != e.description:
+        rebuild_index(root)
+    return {"slug": slug, "path": str(path)}
+
+
+@tool(timeout=5.0)
+async def memory_remove(slug: str) -> dict:
+    """Delete an entry permanently."""
+    root = _project_root()
+    path = _entry_path(root, slug)
+    if not path.exists():
+        raise FileNotFoundError(f"entry {slug!r} not found at {path}")
+    path.unlink()
+    rebuild_index(root)
+    return {"slug": slug, "removed": True}
