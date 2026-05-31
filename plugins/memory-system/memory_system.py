@@ -125,3 +125,92 @@ def rebuild_index(root: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+from aegis.tools import tool
+
+
+_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "but", "if", "then", "of", "to",
+    "for", "in", "on", "at", "by", "with", "is", "are", "was", "were",
+    "be", "been", "being", "this", "that", "these", "those", "i", "you",
+    "he", "she", "it", "we", "they", "what", "which", "who", "when",
+    "where", "why", "how", "do", "does", "did", "have", "has", "had",
+})
+
+
+def _tokenize(s: str) -> set[str]:
+    out: set[str] = set()
+    for tok in re.split(r"[^a-z0-9]+", s.lower()):
+        if tok and tok not in _STOPWORDS:
+            out.add(tok)
+    return out
+
+
+def _score(entry: Entry, query_toks: set[str]) -> int:
+    name_desc = _tokenize(entry.name + " " + entry.description)
+    body = _tokenize(entry.content)
+    return (len(query_toks & name_desc) * 2) + len(query_toks & body)
+
+
+def _snippet(content: str, query_toks: set[str], window: int = 200) -> str:
+    low = content.lower()
+    for tok in query_toks:
+        idx = low.find(tok)
+        if idx >= 0:
+            half = window // 2
+            start = max(0, idx - half)
+            end = min(len(content), idx + half)
+            return content[start:end].strip()
+    return content[:window].strip()
+
+
+def _project_root() -> Path:
+    return Path.cwd()
+
+
+@tool(timeout=5.0)
+async def memory_read(slug: str) -> dict:
+    """Fetch one memory entry's full body by slug.
+
+    Args:
+        slug: the entry's slug (e.g. "feedback_phrasing").
+
+    Returns:
+        a dict with keys: slug, name, type, description, content.
+    """
+    e = read_entry(_project_root(), slug)
+    return {
+        "slug": e.slug, "name": e.name, "type": e.type,
+        "description": e.description, "content": e.content,
+    }
+
+
+@tool(timeout=5.0)
+async def memory_search(query: str, limit: int = 10) -> list[dict]:
+    """Keyword search over memory entries.
+
+    Args:
+        query: free-text query.
+        limit: max results, default 10.
+
+    Returns:
+        list of {slug, name, description, score, snippet}, score-descending.
+    """
+    qtoks = _tokenize(query)
+    if not qtoks:
+        return []
+    scored: list[tuple[int, Entry]] = []
+    for e in list_entries(_project_root()):
+        s = _score(e, qtoks)
+        if s > 0:
+            scored.append((s, e))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    out: list[dict] = []
+    for s, e in scored[:limit]:
+        out.append({
+            "slug": e.slug, "name": e.name,
+            "description": e.description, "score": s,
+            "snippet": _snippet(e.content, qtoks),
+        })
+    return out
