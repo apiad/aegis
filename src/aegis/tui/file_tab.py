@@ -16,6 +16,7 @@ to VIEW.
 from __future__ import annotations
 
 import contextlib
+import subprocess
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -58,6 +59,7 @@ class FileTab(Widget, can_focus=True):
     BINDINGS = [
         Binding("ctrl+s", "save", "Save", priority=True),
         Binding("p", "preview", "Preview", priority=True),
+        Binding("ctrl+x", "open_external", "Open external", priority=True),
     ]
 
     def __init__(self, path: Path) -> None:
@@ -285,6 +287,26 @@ class FileTab(Widget, can_focus=True):
         if self._edit_mode:
             self._modified = True
             self._refresh_status()
+
+    async def action_open_external(self) -> None:
+        if self._edit_mode:
+            return
+        try:
+            subprocess.Popen(
+                ["xdg-open", str(self._path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            with contextlib.suppress(Exception):
+                self.app.notify(
+                    f"xdg-open {self._path.name}", timeout=1.5)
+        except OSError as e:
+            with contextlib.suppress(Exception):
+                self.app.notify(
+                    f"xdg-open failed: {e}",
+                    severity="error", timeout=3.0)
 
     async def action_save(self) -> None:
         if not self._edit_mode:

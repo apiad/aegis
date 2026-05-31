@@ -221,3 +221,77 @@ async def test_preview_disabled_for_non_markdown(tmp_path: Path):
         await pilot.pause()
         assert tab._preview_mode is False
         assert tab._md_viewer is None
+
+
+@pytest.mark.asyncio
+async def test_ctrl_x_invokes_xdg_open_in_view_mode(
+        tmp_path: Path, monkeypatch):
+    f = tmp_path / "open_me.html"
+    f.write_text("<h1>hi</h1>")
+    tab = FileTab(f)
+    app = _Host(tab)
+    calls: list[list[str]] = []
+
+    def fake_popen(argv, **_kw):
+        calls.append(argv)
+
+        class _P:
+            pass
+        return _P()
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+x")
+        await pilot.pause()
+    assert calls == [["xdg-open", str(f.resolve())]]
+
+
+@pytest.mark.asyncio
+async def test_ctrl_x_invokes_xdg_open_in_preview_mode(
+        tmp_path: Path, monkeypatch):
+    f = tmp_path / "open_me.md"
+    f.write_text("# hi")
+    tab = FileTab(f)
+    app = _Host(tab)
+    calls: list[list[str]] = []
+
+    def fake_popen(argv, **_kw):
+        calls.append(argv)
+
+        class _P:
+            pass
+        return _P()
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        assert tab._preview_mode is True
+        await pilot.press("ctrl+x")
+        await pilot.pause()
+    assert calls == [["xdg-open", str(f.resolve())]]
+
+
+@pytest.mark.asyncio
+async def test_ctrl_x_noop_in_edit_mode(tmp_path: Path, monkeypatch):
+    f = tmp_path / "no_open.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    calls: list[list[str]] = []
+
+    def fake_popen(argv, **_kw):
+        calls.append(argv)
+
+        class _P:
+            pass
+        return _P()
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert tab._edit_mode is True
+        await pilot.press("ctrl+x")
+        await pilot.pause()
+    assert calls == []
