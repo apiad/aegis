@@ -419,3 +419,166 @@ async def inject_memory(ctx: PreTurnContext) -> PreTurnResult | None:
 async def log_session_open(ctx) -> None:
     """Observer: best-effort note that a session has started."""
     pass
+
+
+# --- dream workflow ---------------------------------------------------
+
+import json as _json
+import time as _time
+
+from aegis.workflow import workflow
+
+
+def _recent_session_files(project_root: Path, lookback_days: int,
+                          max_files: int) -> list[Path]:
+    sessions = project_root / ".aegis" / "state" / "sessions"
+    if not sessions.exists():
+        return []
+    cutoff = _time.time() - lookback_days * 86400
+    out: list[Path] = []
+    for p in sessions.glob("*.jsonl"):
+        try:
+            if p.stat().st_mtime >= cutoff:
+                out.append(p)
+        except OSError:
+            continue
+    out.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return out[:max_files]
+
+
+def _stage1_prompt(transcript_path: Path) -> str:
+    transcript = transcript_path.read_text(encoding="utf-8")
+    return (
+        "Here is one aegis session transcript. Summarize what happened, "
+        "propose memory entries the agent should have saved but didn't, "
+        "and note observations -- surprising patterns, contradictions, "
+        "repeated stumbles. Return JSON only, matching this shape:\n"
+        '{"session_handle": "...", "summary": "...", '
+        '"proposed_entries": [...], "observations": [...]}\n\n'
+        f"Session handle: {transcript_path.stem}\n\n"
+        "Transcript:\n"
+        f"{transcript}\n"
+    )
+
+
+def _stage2_prompt(current_entries: list[Entry],
+                   proposals: list[dict]) -> str:
+    body = []
+    for e in current_entries:
+        body.append(f"=== {e.slug} ({e.type}) -- {e.description} ===\n{e.content}")
+    return (
+        "Consolidate. Given the current memory entries and the proposals "
+        "from each session reader, emit a JSON action plan:\n"
+        '{"actions": [{"action": "add", "type": "...", "name": "...", '
+        '"description": "...", "content": "..."}, '
+        '{"action": "replace", "slug": "...", "description": "...", '
+        '"content": "..."}, '
+        '{"action": "remove", "slug": "..."}], "rationale": "..."}\n\n'
+        "Current entries:\n\n" + "\n\n".join(body) +
+        "\n\nProposals:\n" + _json.dumps(proposals, indent=2)
+    )
+
+
+def _stage3_prompt(observations: list[str], rationale: str) -> str:
+    return (
+        "Write a short narrative dream log (500-1000 words) in first person "
+        "from the agent's perspective. Reflect on patterns from the "
+        "observations and the consolidation rationale. Prose only.\n\n"
+        "Observations:\n" + "\n".join(f"- {o}" for o in observations) +
+        f"\n\nConsolidation rationale: {rationale}\n"
+    )
+
+
+async def _apply_actions(root: Path, actions: list[dict]) -> list[str]:
+    """Apply consolidation actions via the write helpers."""
+    touched: list[str] = []
+    for a in actions:
+        op = a.get("action")
+        try:
+            if op == "add":
+                p = write_entry(root, a["type"], a["name"],
+                                a["description"], a["content"])
+                touched.append(p.stem)
+            elif op == "replace":
+                slug = a["slug"]
+                e = read_entry(root, slug)
+                new_desc = a.get("description", e.description)
+                new_content = a.get("content", e.content)
+                path = _entry_path(root, slug)
+                front = {"type": e.type, "name": e.name,
+                         "description": new_desc, "created": e.created,
+                         "updated": _now_iso()}
+                path.write_text(
+                    "---\n" + yaml.safe_dump(front, sort_keys=False,
+                                             allow_unicode=True) +
+                    "---\n\n" + new_content.rstrip() + "\n",
+                    encoding="utf-8")
+                touched.append(slug)
+            elif op == "remove":
+                _entry_path(root, a["slug"]).unlink()
+                touched.append(a["slug"])
+        except (FileNotFoundError, FileExistsError, KeyError):
+            continue
+    rebuild_index(root)
+    return touched
+
+
+def _write_dream_log(root: Path, prose: str, *, actions: list[str],
+                     sessions: list[str], lookback_days: int) -> Path:
+    from datetime import date
+    dreams_dir = root / DREAMS_SUBDIR
+    dreams_dir.mkdir(parents=True, exist_ok=True)
+    path = dreams_dir / f"dream-{date.today().isoformat()}.md"
+    front = yaml.safe_dump({
+        "actions": actions,
+        "sessions_read": sessions,
+        "lookback_days": lookback_days,
+    }, sort_keys=False)
+    path.write_text(
+        "---\n" + front + "---\n\n" + prose.rstrip() + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+@workflow
+async def dream(engine, *, lookback_days: int = 7,
+                max_session_files: int = 50,
+                dreamer_queue: str = "dreamer-queue") -> dict:
+    """Periodic memory consolidation + synthesis."""
+    root = _project_root()
+    files = _recent_session_files(root, lookback_days, max_session_files)
+    proposals: list[dict] = []
+    observations: list[str] = []
+    session_handles: list[str] = []
+
+    for p in files:
+        try:
+            raw = await engine.delegate(dreamer_queue, _stage1_prompt(p))
+            parsed = _json.loads(raw)
+        except (ValueError, _json.JSONDecodeError):
+            continue
+        session_handles.append(parsed.get("session_handle", p.stem))
+        proposals.extend(parsed.get("proposed_entries", []))
+        observations.extend(parsed.get("observations", []))
+
+    current = list_entries(root)
+    try:
+        raw2 = await engine.delegate(
+            dreamer_queue, _stage2_prompt(current, proposals))
+        plan = _json.loads(raw2)
+    except (ValueError, _json.JSONDecodeError):
+        plan = {"actions": [], "rationale": ""}
+    touched = await _apply_actions(root, plan.get("actions", []))
+
+    prose = await engine.delegate(
+        dreamer_queue, _stage3_prompt(observations, plan.get("rationale", "")))
+    log_path = _write_dream_log(
+        root, prose, actions=touched,
+        sessions=session_handles, lookback_days=lookback_days,
+    )
+    return {
+        "sessions_read": len(files),
+        "actions_applied": len(touched),
+        "dream_log": str(log_path),
+    }
