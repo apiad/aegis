@@ -1,0 +1,10 @@
+[plugin]
+name           = "memory-system"
+version        = "0.1.0"
+description    = "Hermes-inspired persistent memory with periodic dreaming."
+requires_aegis = ">=0.15"
+
+[default_config]
+lookback_days     = 7
+max_session_files = 50
+dreamer_agent     = "dreamer"
