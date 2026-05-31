@@ -80,7 +80,7 @@ def _maybe_install_schedule(ctx: InstallContext) -> bool:
     ):
         return False
     _write_schedule(
-        state_root=ctx.aegis_dir,
+        state_root=ctx.project_root,
         name="memory-dream",
         spec={
             "workflow":  "dream",
@@ -93,7 +93,7 @@ def _maybe_install_schedule(ctx: InstallContext) -> bool:
 
 
 def install(ctx: InstallContext) -> None:
-    mem_dir = ctx.aegis_dir / ".aegis" / "memory"
+    mem_dir = ctx.aegis_dir / "memory"
     (mem_dir / "entries").mkdir(parents=True, exist_ok=True)
     (mem_dir / "dreams").mkdir(parents=True, exist_ok=True)
 
@@ -104,8 +104,8 @@ def install(ctx: InstallContext) -> None:
         if not path.exists():
             path.write_text(body, encoding="utf-8")
 
-    yaml_path = ctx.aegis_dir / ".aegis.yaml"
-    _add_dreamer_if_absent(ctx.aegis_dir)
+    yaml_path = ctx.project_root / ".aegis.yaml"
+    _add_dreamer_if_absent(ctx.project_root)
     defaults = dict(ctx.manifest.get(
         "default_config",
         {"lookback_days": 7, "max_session_files": 50,

@@ -22,10 +22,12 @@ def _ctx(tmp_path: Path, *, yes: bool) -> InstallContext:
     yaml_path = tmp_path / ".aegis.yaml"
     if not yaml_path.exists():
         yaml_path.write_text("", encoding="utf-8")
+    aegis_dir = tmp_path / ".aegis"
+    aegis_dir.mkdir(exist_ok=True)
     return InstallContext(
         project_root=tmp_path,
-        aegis_dir=tmp_path,
-        plugin_dir=tmp_path / "plugins" / "memory-system",
+        aegis_dir=aegis_dir,
+        plugin_dir=aegis_dir / "plugins" / "memory-system",
         plugin_name="memory-system",
         manifest={"plugin": {"name": "memory-system", "version": "0.1.0"},
                   "default_config": {"lookback_days": 7,

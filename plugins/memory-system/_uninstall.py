@@ -47,15 +47,15 @@ def _strip_yaml(yaml_path: Path) -> None:
 
 
 def uninstall(ctx: InstallContext) -> None:
-    yaml_path = ctx.aegis_dir / ".aegis.yaml"
+    yaml_path = ctx.project_root / ".aegis.yaml"
     if yaml_path.exists():
         _strip_yaml(yaml_path)
 
-    overlay = ctx.aegis_dir / ".aegis" / "schedules" / "memory-dream.yaml"
+    overlay = ctx.aegis_dir / "schedules" / "memory-dream.yaml"
     if overlay.exists():
         overlay.unlink()
 
-    mem_dir = ctx.aegis_dir / ".aegis" / "memory"
+    mem_dir = ctx.aegis_dir / "memory"
     if mem_dir.exists():
         consent = ctx._yes or ctx.confirm(
             f"Also delete {mem_dir} and all stored memories and dream logs?",
