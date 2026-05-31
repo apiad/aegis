@@ -154,8 +154,18 @@ class WorkingIndicator(Static):
 
 
 def _extract_backtick_tokens(text: str) -> list[str]:
-    """Return all strings enclosed in single backticks (same line)."""
-    return re.findall(r"`([^`\n]+)`", text)
+    """Return unique strings enclosed in single backticks, in first-seen order.
+
+    Dedup matters: tokens feed a chooser whose options key on the token
+    string. Repeated filenames in one block would otherwise collide on id.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in re.findall(r"`([^`\n]+)`", text):
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
 
 
 class CopyableBlock(Widget):

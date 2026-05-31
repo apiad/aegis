@@ -64,6 +64,32 @@ def test_extract_backtick_tokens():
     assert _extract_backtick_tokens("no backticks here") == []
     assert _extract_backtick_tokens("`a.py` and `b.py`") == ["a.py", "b.py"]
     assert _extract_backtick_tokens("") == []
+    # Repeated tokens collapse to first occurrence — they would otherwise
+    # collide on OptionList id and crash the chooser.
+    assert _extract_backtick_tokens(
+        "`a.py` then `b.py` then `a.py` again") == ["a.py", "b.py"]
+
+
+@pytest.mark.asyncio
+async def test_token_chooser_survives_duplicate_tokens():
+    """Repeated tokens used to raise DuplicateID and crash the app."""
+    from aegis.tui.picker import _TokenChooser
+    result_holder: list = []
+
+    class _Wrapper(App):
+        async def on_mount(self) -> None:
+            self.push_screen(
+                _TokenChooser(["foo.py", "bar.py", "foo.py"]),
+                callback=lambda r: result_holder.append(r) or self.exit())
+
+    app = _Wrapper()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        for _ in range(5):
+            await pilot.pause()
+
+    assert result_holder and result_holder[0] == "foo.py"
 
 
 @pytest.mark.asyncio

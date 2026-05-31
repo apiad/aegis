@@ -169,7 +169,11 @@ class FilePickerModal(ModalScreen):
             if needle
             else self._all_paths[:50]
         )
+        seen: set[str] = set()
         for p in matches[:50]:
+            if p in seen:
+                continue
+            seen.add(p)
             ol.add_option(Option(p, id=p))
         if ol.option_count > 0:
             ol.highlighted = 0
@@ -240,7 +244,11 @@ class _TokenChooser(ModalScreen):
 
     def __init__(self, tokens: list[str]) -> None:
         super().__init__()
-        self._tokens = tokens
+        # Defensive dedup: OptionList raises DuplicateID on repeated ids,
+        # and a repeated token has no distinct action anyway.
+        seen: set[str] = set()
+        self._tokens = [t for t in tokens
+                        if not (t in seen or seen.add(t))]
 
     def compose(self) -> ComposeResult:
         yield OptionList(*[Option(t, id=t) for t in self._tokens])
