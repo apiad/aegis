@@ -38,25 +38,36 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
-### Plugin substrate v1 *(slice 1 of 5 shipped)*
+### Plugin substrate v1 *(complete — all 5 slices shipped in 0.15.0)*
 
-Hooks + tools + plugin install/update/uninstall + registry resolver + canonical
-`skill-system` plugin. Slice 1 (hooks substrate — `@hook` decorator, composer,
-runner, all four lifecycle events fire from `AgentSession`) landed in commits
-`8a9b206` → `8b91cee`. `pre_turn` / `post_turn` were wired by the prior agent
-session; `session_end` followed in `75076f5`; the final hold-out `session_start`
-fired in `8b91cee` (was declared in `VALID_EVENTS` but never invoked — exposed
-by the prior agent's `tests/test_hooks_e2e.py`, now passing). All four hook
-events fire end-to-end through both focused tests and a fixture-plugin
-integration test.
-
-Slice 2 (tools — `@tool` decorator, runner, FastMCP registration), Slice 3
-(plugin manifest + local install/uninstall + lockfile), Slice 4 (`gh:`
-registry resolver), Slice 5 (canonical `skill-system` plugin) still owed —
-no `src/aegis/tools/`, `src/aegis/plugins/`, or top-level `plugins/` on disk yet.
+Five-slice plan landed end-to-end on 2026-05-28: hooks (`@hook` — `pre_turn`
+mutator + `post_turn` / `session_start` / `session_end` observers), tools
+(`@tool` decorator + FastMCP registration with reserved-name guard), plugin
+lifecycle (`plugin.toml` manifest, `InstallContext`, local-path install with
+rollback, lockfile, `_install.py` / `_uninstall.py` hooks), registry
+resolution (`gh:owner/repo#path` + `file://`, `git archive` HTTPS fetch,
+`aegis plugin install / uninstall / list / show / update / search`), and the
+canonical `plugins/skill-system/` plugin (pre_turn skill injection +
+`load_skill` MCP tool, live-tested against a real `claude` subprocess).
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-plugin-substrate-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-plugin-substrate-v1.md`
+- Release notes: `CHANGELOG.md` § 0.15.0
+
+Deferred to follow-ups (per spec § "Deferred — call-outs for future work"):
+Tier B hook events (`pre_tool_use`, `post_tool_use`, `on_error`, `on_interrupt`,
+`on_handoff`, `on_enqueue`); per-agent-profile tool scoping
+(`agents.<name>.tools: [...]`); plugin-version constraints + inter-plugin
+deps; Tier B substrate-events bus. Revisit when a concrete plugin demands
+one.
+
+### Memory plugin *(brainstorming next)*
+
+Second canonical plugin — Hermes-style memory system with periodical dreaming
+and several memory files. Stress-tests the v1 substrate beyond `skill-system`
+and may surface needs for Tier B hooks (e.g. `session_end` consolidation
+isn't enough; a scheduled "dream" pass + cross-session memory layering need
+exploring). To brainstorm before scoping.
 
 ### Driver visibility parity *(complete — all 7 slices shipped)*
 
