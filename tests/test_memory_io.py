@@ -7,8 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from aegis.tools.decorator import _reset_registry_for_tests as _reset_tools
+
 
 def _load_memory_system():
+    _reset_tools()
     repo_root = Path(__file__).parent.parent
     path = repo_root / "plugins" / "memory-system" / "memory_system.py"
     spec = importlib.util.spec_from_file_location("_test_memory_system", path)
