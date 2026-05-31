@@ -1,0 +1,1705 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/">
+      
+      
+      
+        <link rel="next" href="install/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Aegis - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#aegis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Aegis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+                
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" hidden>
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-aegis-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What aegis is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#six-primitives-for-agent-coordination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Six primitives for agent coordination
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Six primitives for agent coordination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inbox-send-context-to-a-peer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbox · send context to a peer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queue-spawn-a-worker-on-demand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Queue · spawn a worker on demand
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#canvas-collaborate-on-a-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canvas · collaborate on a document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#terminal-share-a-live-shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal · share a live shell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groups-broadcast-and-gather" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Groups · broadcast and gather
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow-deterministic-python-orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow · deterministic Python orchestration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-also-in-the-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's also in the box
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-aegis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get aegis
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+                
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-aegis-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What aegis is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#six-primitives-for-agent-coordination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Six primitives for agent coordination
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Six primitives for agent coordination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inbox-send-context-to-a-peer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbox · send context to a peer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queue-spawn-a-worker-on-demand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Queue · spawn a worker on demand
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#canvas-collaborate-on-a-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canvas · collaborate on a document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#terminal-share-a-live-shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal · share a live shell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groups-broadcast-and-gather" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Groups · broadcast and gather
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow-deterministic-python-orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow · deterministic Python orchestration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-also-in-the-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's also in the box
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-aegis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get aegis
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+
+
+
+  
+  
+
+
+<div class="aegis-hero">
+<h1 class="aegis-hero-mark" id="aegis">aegis<a class="headerlink" href="#aegis" title="Permanent link">&para;</a></h1>
+<p class="aegis-hero-tagline">
+<strong>The programmable multi-agent meta-harness.</strong><br><br>
+Drives Claude Code, Gemini CLI, and OpenCode in one terminal, gives them six primitives for working together, and lets you orchestrate them with deterministic Python workflows and scheduled jobs.
+</p>
+<div class="aegis-hero-cta">
+<p><code>pip install aegis-harness</code>
+<a class="aegis-button" href="install/">Quickstart →</a></p>
+</div>
+</div>
+<div class="aegis-term hero">
+<div class="aegis-term-chrome">
+<span class="aegis-term-dot accent"></span>
+<span class="aegis-term-dot"></span>
+<span class="aegis-term-dot"></span>
+<span class="aegis-term-title">aegis · 3 agents · ~/code/aegis</span>
+</div>
+<div class="aegis-term-body"><span class="t-accent">●</span> 1 lucid-knuth <span class="t-muted">·opus·</span>   <span class="t-success">●</span> 2 wry-hopper <span class="t-muted">·gemini·</span>   <span class="t-accent">●</span> 3 brisk-curie <span class="t-muted">·opencode·</span> <span class="t-accent">*</span>
+
+<span class="t-user">› explain the retry path in worker.py and have wry-hopper draft a unit test for it</span>
+
+<span class="t-muted">⠹ Thinking… (3.2s)</span>
+<span class="t-accent">⏺</span> Read(worker.py)
+   └ ok
+The retry lives in <span class="t-bold">_run_turn</span> at line 142. On harness-error it
+captures the exception, commits zero-token metrics, then chains a
+follow-up turn from the buffered inbox.
+
+<span class="t-accent">⏺</span> aegis_handoff(target=wry-hopper)
+   └ delivered to wry-hopper
+
+<span class="t-muted">queues: tests ●1/2 ○0 ✓3 ✗0    last: brisk-curie</span>
+lucid-knuth <span class="t-muted">·opus· opus·full</span>   ↑128k (94% cached) ↓1k
+<span class="t-muted">─────────────────────────────────────────────────────────────────────────</span>
+› ask something…</div>
+</div>
+
+<section class="aegis-section">
+<h2 class="aegis-section-h" id="what-aegis-is">What aegis is<a class="headerlink" href="#what-aegis-is" title="Permanent link">&para;</a></h2>
+<p><strong>Meta-harness.</strong> Most agentic frameworks (CrewAI, LangGraph,
+AutoGen, the long list) talk directly to LLM providers — they replace
+your coding agent and reimplement tool use, permissions, sandboxing,
+terminal integration. Aegis sits <em>above</em> your existing coding agents
+and drives them over their structured protocols — <code>stream-json</code> for
+Claude Code, the Agent Client Protocol (ACP) for Gemini CLI and
+OpenCode, with a clean driver seam for whatever lands next. The
+harness keeps owning tool use, model selection, MCP hosting,
+sandboxing. Aegis owns the layer above — tabs, routing, delegation,
+persistence — the things a single-conversation CLI was never built to
+do.</p>
+<p><strong>Multi-agent.</strong> Six composable coordination primitives, all wired
+into one MCP plane every spawned agent sees. <strong>Inbox</strong> for
+fire-and-forget context handoff. <strong>Queue</strong> for spawn-a-worker-on-
+demand dispatch. <strong>Canvas</strong> for shared markdown blackboards.
+<strong>Terminal</strong> for live shared PTYs. <strong>Groups</strong> for broadcast-and-
+gather across a committee. <strong>Workflow</strong> for deterministic Python
+orchestration. Mix providers freely — a Claude tab hands off to a
+Gemini tab; an OpenCode worker drops its result in your inbox; three
+agents co-author a canvas; a workflow drives all of them in lockstep.</p>
+<p><strong>Programmable.</strong> The substrate is scriptable from the outside <em>and</em>
+the inside. Outside: <code>@workflow</code>-decorated Python functions that
+compose the six primitives into deterministic procedures (TDD loops,
+branch reviews, spec-to-plan-to-implementation pipelines), cron-
+scheduled or invoked on demand. Inside: spawned agents can mutate
+<code>.aegis.yaml</code> themselves through MCP — declare a new specialised
+agent profile, register a queue, drop a plugin dir, and dispatch work
+to it in the same session, no restart. The substrate extends from
+inside.</p>
+</section>
+<section class="aegis-section">
+<h2 class="aegis-section-h" id="six-primitives-for-agent-coordination">Six primitives for agent coordination<a class="headerlink" href="#six-primitives-for-agent-coordination" title="Permanent link">&para;</a></h2>
+<p class="aegis-lead">
+<em>— the multi-agent pillar.</em>
+</p>
+<p class="aegis-lead">
+Multi-agent systems need more than a chat box. Aegis ships <strong>six composable coordination primitives</strong>, each with one verb, each delivered through the same calm <code>✉</code> block in the receiving agent's transcript.
+</p>
+<div class="aegis-primitives">
+<div class="aegis-card">
+<div class="aegis-card-glyph">→</div>
+<h3 id="inbox-send-context-to-a-peer">Inbox · <em>send context to a peer</em><a class="headerlink" href="#inbox-send-context-to-a-peer" title="Permanent link">&para;</a></h3>
+<p>Any agent can hand off context to any other live agent. Fire-and-forget. The recipient gets a normal user-message turn, tagged with the sender's handle.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_handoff(target=wry-hopper, context="…")
+   └ delivered to wry-hopper
+
+<span class="t-muted">--- in wry-hopper's pane ---</span>
+<span class="t-accent">✉</span> from agent:lucid-knuth · 17:42:03Z
+  Please review the retry path in worker.py.</div>
+</div>
+</div>
+<div class="aegis-card">
+<div class="aegis-card-glyph">⏳</div>
+<h3 id="queue-spawn-a-worker-on-demand">Queue · <em>spawn a worker on demand</em><a class="headerlink" href="#queue-spawn-a-worker-on-demand" title="Permanent link">&para;</a></h3>
+<p>Enqueue a task to a named queue; the substrate spawns a fresh agent of the configured profile, runs the payload, and delivers the result back to your inbox. Producer keeps working in between.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_enqueue(queue="review", payload="…")
+   └ {task_id: 01HK…, queued_position: 1}
+
+<span class="t-muted">--- 4 minutes later ---</span>
+<span class="t-accent">✉</span> from queue:review · task#01HK… · <span class="t-success">ok</span>
+  PR looks clean. Two nits flagged.</div>
+</div>
+</div>
+<div class="aegis-card">
+<div class="aegis-card-glyph">▦</div>
+<h3 id="canvas-collaborate-on-a-document">Canvas · <em>collaborate on a document</em><a class="headerlink" href="#canvas-collaborate-on-a-document" title="Permanent link">&para;</a></h3>
+<p>Open a shared markdown file. Multiple agents read, write sections, subscribe. Each write wakes every other subscriber with a diff-aware notification. The classical blackboard pattern, terminal-native.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_canvas_write_section(name="report-q3", section="data", …)
+
+<span class="t-muted">--- in pm's pane ---</span>
+<span class="t-accent">✉</span> from canvas:report-q3 · 20:30:00Z
+  section "data" · written by agent:researcher (+18 / -3 lines)
+  ──
+  Q3 numbers came in stronger than projected…</div>
+</div>
+</div>
+<div class="aegis-card">
+<div class="aegis-card-glyph">▮</div>
+<h3 id="terminal-share-a-live-shell">Terminal · <em>share a live shell</em><a class="headerlink" href="#terminal-share-a-live-shell" title="Permanent link">&para;</a></h3>
+<p>Spawn a PTY-backed shell any agent (or you) can run commands on, send raw keystrokes to, and subscribe to. Command boundaries come from OSC 133 markers; every finalized command wakes subscribers with the cmd, exit code, and a tail of output.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_term_run(name="build", cmd="pytest -q")
+   └ exit 0 · 4.20s
+
+<span class="t-muted">--- in pm's pane ---</span>
+<span class="t-accent">✉</span> from term:build · 14:03:25Z
+  $ pytest -q  · run by agent:builder
+  exit 0 · 4.20s
+  ──
+  6 passed in 4.18s</div>
+</div>
+</div>
+<div class="aegis-card">
+<div class="aegis-card-glyph">▣</div>
+<h3 id="groups-broadcast-and-gather">Groups · <em>broadcast and gather</em><a class="headerlink" href="#groups-broadcast-and-gather" title="Permanent link">&para;</a></h3>
+<p>Form a named committee of agents that share one inbox-fanout channel. Send one structured four-field question; collect N parallel replies; reduce them into a single result. Use for multi-lens reviews, fastest-answer races, cross-provider consensus, or generate-and-pick.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_group_spawn_mixed(name="audit", profiles=["sec","style","logic"])
+<span class="t-accent">⏺</span> aegis_group_broadcast(name="audit", objective="audit PR #214", …)
+<span class="t-accent">⏺</span> aegis_group_wait_all(name="audit", reducer="join_by_handle")
+   └ <span class="t-success">3/3 replied · 92s · join_by_handle</span>
+
+<span class="t-muted">--- result.reduced ---</span>
+{"sec":     "no obvious issues; rate-limiter uses a safe defaults table…",
+ "style":   "two nits in worker.py (naming, double-blank line)…",
+ "logic":   "the retry guard mis-counts attempts on connection-reset…"}</div>
+</div>
+</div>
+<div class="aegis-card">
+<div class="aegis-card-glyph">⟳</div>
+<h3 id="workflow-deterministic-python-orchestration">Workflow · <em>deterministic Python orchestration</em><a class="headerlink" href="#workflow-deterministic-python-orchestration" title="Permanent link">&para;</a></h3>
+<p>When the dance has to be reliable — TDD loops, bug triage, multi-step plans — wrap it in a workflow. Plain Python, calls agents, runs bash predicates, retries with feedback. Top of the stack; spans agents.</p>
+<div class="aegis-term">
+<div class="aegis-term-body"><span class="t-accent">⏺</span> aegis_run_workflow(name="tdd-cycle", kwargs={"feature": "…"})
+
+<span class="t-muted">workflow:tdd-cycle ▶ implementer (writing failing test)</span>
+<span class="t-muted">workflow:tdd-cycle ▶ predicate: pytest tests/test_x.py::… (FAIL ✓)</span>
+<span class="t-muted">workflow:tdd-cycle ▶ implementer (implementing)</span>
+<span class="t-muted">workflow:tdd-cycle ▶ predicate: pytest tests/test_x.py (PASS ✓)</span>
+<span class="t-muted">workflow:tdd-cycle ▶ reviewer (final pass)</span></div>
+</div>
+</div>
+</div>
+</section>
+<section class="aegis-section">
+<h2 class="aegis-section-h" id="whats-also-in-the-box">What's also in the box<a class="headerlink" href="#whats-also-in-the-box" title="Permanent link">&para;</a></h2>
+<p class="aegis-lead">
+The TUI is calm and dense. The metrics are honest. The substrate persists.
+</p>
+<ul>
+<li><strong>Multi-tab TUI.</strong> N independent agent sessions plus terminal tabs. Generated alliterating handles (<code>lucid-knuth</code>, <code>wry-hopper</code>). State dots, sticky <code>*</code>, terminal bell when a backgrounded agent finishes. Per-block click-to-copy.</li>
+<li><strong>Honest metrics.</strong> True input (including cache) with cached %, output, tool calls, per-turn and per-session timing. Provisional while streaming, exact at turn end. No log scraping anywhere.</li>
+<li><strong>Queue dashboard.</strong> Always-on one-line strip above the status bar (per-queue depth, last in-flight worker). <code>Ctrl+D</code> for a full dashboard with in-flight / queued / recent bands and a live assistant-text tail.</li>
+<li><strong>File viewer + picker.</strong> <code>Ctrl+O</code> opens a fuzzy file picker (typeahead, keyboard nav, top-match preselected) over a background watchdog index; selection lands in a <code>FileTab</code> — syntax-highlighted read-only view by default, <code>e</code> toggles edit mode, <code>Ctrl+S</code> saves, Escape with unsaved edits prompts to discard. Agents can drop you into the same view via the <code>aegis_view_file</code> MCP tool, and <code>Ctrl+click</code> on a backtick-wrapped filename in any agent response opens it directly.</li>
+<li><strong>Config panel.</strong> <code>F2</code> opens the live <code>.aegis.yaml</code> editor inside the TUI — see agents/queues/telegram/plugin_dirs at a glance, add an agent through a validated modal. Same edit helpers back the scriptable <code>aegis config</code> CLI verbs, so a side-terminal <code>aegis config agent add</code> and the panel are interchangeable.</li>
+<li><strong>Session persistence.</strong> <code>aegis</code> reopens the last workspace by default — agent tabs, terminal tabs, profiles, order, with each underlying session genuinely resumed. <code>aegis --clean</code> opts out.</li>
+<li><strong>Workflow catalog.</strong> The <code>aegis.workflows</code> package ships seed workflows you import to register: <code>brainstorm_to_spec</code>, <code>execute_plan</code>, <code>review_branch</code>, <code>tdd_cycle</code>. The engine offers <code>ask_human</code> for host-tab dialogue, explicit checkpoints with durable resume, <code>spawn</code>/<code>close</code> for subagents, <code>bash_predicate</code> for retry-with-feedback loops, and <code>parallel</code> for fan-out joins.</li>
+<li><strong>Headless + Telegram.</strong> <code>aegis serve</code> runs the SessionManager + MCP plane without a TUI. Add a Telegram token and drive your agent team from your phone.</li>
+<li><strong>Telegram substrate commands.</strong> <code>/queue</code>, <code>/schedule</code>, <code>/budget</code>, <code>/peers</code>, plus session-spawn verbs — every aegis substrate is now reachable from the phone, with optional <code>@&lt;peer&gt;</code> for cross-host inspection. See <a href="telegram/">Telegram</a>.</li>
+<li><strong>Remote plane.</strong> Run <code>aegis serve</code> on a second machine and an agent on the first can <code>aegis_enqueue(target="builder", …)</code> to hand long work off over HTTP. Bind the plane wherever it should be reachable from — typically a private overlay network (Tailscale/Headscale/WireGuard/VPN) — and layer bearer-token and source-IP gates on top. Optional wire callbacks deliver the remote worker's final message back to the originating agent's inbox, and a small <code>/remote/v1/schedule/*</code> control plane lets an agent push, list, inspect, or remove schedules on a peer (and self-schedule its own future work). See <a href="remote/">Remote plane</a>.</li>
+<li><strong>Per-queue budgets.</strong> Declare USD or output-token ceilings over rolling windows on any queue; the substrate rejects new enqueues that would land the queue over budget, naming the binding constraint. Pull-only observability via CLI, MCP, HTTP. See <a href="budget/">Budgets</a>.</li>
+<li><strong>MCP plane.</strong> Every spawned agent is injected with the aegis MCP server. Orientation (<code>aegis_meta</code>), session listing, handoff, queue dispatch, canvas ops, terminal ops, group broadcast/gather, workflow invocation — one consistent surface across providers.</li>
+<li><strong>Plugin substrate.</strong> Extend aegis without forking it: <code>@hook</code> for pre/post-turn + session lifecycle, <code>@tool</code> for FastMCP-registered helpers, <code>@workflow</code> for orchestrated procedures. <code>aegis plugin install/uninstall/list</code> over local paths or <code>gh:owner/repo#path</code> registry URLs; comment-preserving lockfile; rolls back on failure. Two canonical plugins ship in-tree — <code>skill-system</code> (Claude-Code-style skill selection on any harness) and <code>memory-system</code> (Hermes-inspired persistent memory with periodic dreaming). See <a href="plugins/">Plugins</a>.</li>
+</ul>
+</section>
+<div class="aegis-final">
+<h2 id="get-aegis">Get aegis<a class="headerlink" href="#get-aegis" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>aegis-harness<span class="w">   </span><span class="c1"># Python 3.13+</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>aegis<span class="w">                       </span><span class="c1"># full-screen TUI; opens ConfigPanel</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">                            </span><span class="c1"># if no .aegis.yaml is found</span>
+</code></pre></div>
+<p><a class="aegis-button" href="install/">Install →</a>
+<a class="aegis-button" href="usage/">Usage →</a>
+<a class="aegis-button" href="roadmap/">Roadmap →</a></p>
+</div>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+  
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
