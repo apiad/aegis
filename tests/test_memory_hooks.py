@@ -14,6 +14,13 @@ from aegis.hooks.decorator import _reset_registry_for_tests as _reset_hooks
 from aegis.tools.decorator import _reset_registry_for_tests as _reset_tools
 
 
+@pytest.fixture(autouse=True)
+def _isolate_registries():
+    _reset_hooks(); _reset_tools()
+    yield
+    _reset_hooks(); _reset_tools()
+
+
 SH = SessionHandle(handle="test-handle",
                    agent_profile="test", harness="claude")
 
