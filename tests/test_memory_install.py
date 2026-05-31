@@ -78,3 +78,30 @@ def test_install_writes_schedule_overlay_when_yes(tmp_path: Path) -> None:
     body = overlay.read_text(encoding="utf-8")
     assert "workflow: dream" in body
     assert "0 3 * * *" in body
+
+
+def test_uninstall_strips_yaml_and_overlay_preserves_memory_dir(
+        tmp_path: Path) -> None:
+    install = _load_module("_install")
+    uninstall = _load_module("_uninstall")
+    install.install(_ctx(tmp_path, yes=True))
+    (tmp_path / ".aegis/memory/entries/user_name.md").write_text(
+        "---\ntype: user\nname: name\ndescription: d\n"
+        "created: 2026-05-30T00:00:00+00:00\n"
+        "updated: 2026-05-30T00:00:00+00:00\n---\n\nAlex\n",
+        encoding="utf-8",
+    )
+    uninstall.uninstall(_ctx(tmp_path, yes=False))
+    text = (tmp_path / ".aegis.yaml").read_text(encoding="utf-8")
+    assert "memory:" not in text
+    assert "dreamer:" not in text
+    assert not (tmp_path / ".aegis/schedules/memory-dream.yaml").exists()
+    assert (tmp_path / ".aegis/memory/entries/user_name.md").exists()
+
+
+def test_uninstall_deletes_memory_dir_when_user_consents(tmp_path: Path) -> None:
+    install = _load_module("_install")
+    uninstall = _load_module("_uninstall")
+    install.install(_ctx(tmp_path, yes=True))
+    uninstall.uninstall(_ctx(tmp_path, yes=True))
+    assert not (tmp_path / ".aegis/memory").exists()
