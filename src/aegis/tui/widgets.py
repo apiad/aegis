@@ -54,11 +54,24 @@ class GrowingInput(TextArea):
         self._resize_to_content()
 
     def _resize_to_content(self) -> None:
-        n = max(1, min(self.MAX_LINES, self.document.line_count))
+        # Count visual rows, not just hard-newline lines — a long
+        # single-line string that soft-wraps should still grow the
+        # widget. wrapped_document.height needs a known wrap width; if
+        # the widget hasn't laid out yet, fall back to line_count.
+        try:
+            rows = self.wrapped_document.height
+        except Exception:
+            rows = self.document.line_count
+        n = max(1, min(self.MAX_LINES, rows))
         # +2 for the top + bottom border rows
         self.styles.height = n + 2
 
     def on_text_area_changed(self, _event: TextArea.Changed) -> None:
+        self._resize_to_content()
+
+    def on_resize(self, _event) -> None:
+        # When the viewport width changes, soft-wrap recomputes and
+        # the row count can shift even though the text didn't change.
         self._resize_to_content()
 
     async def action_submit(self) -> None:

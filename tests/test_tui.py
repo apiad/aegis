@@ -460,6 +460,24 @@ async def test_input_grows_with_lines_and_caps_at_max():
 
 
 @pytest.mark.asyncio
+async def test_input_grows_with_soft_wrapped_lines():
+    # A long single-line string that visually wraps should grow the
+    # input box too — otherwise the user is stuck scrolling inside a
+    # one-line widget.
+    app = _app()
+    async with app.run_test(size=(40, 30)) as pilot:
+        inp = app._panes[0].query_one(Input)
+        await pilot.pause()
+        assert inp.styles.height.value == 3
+        # ~200 chars at width ~30 (after padding/borders) wraps to >=5
+        # visual rows; height caps at MAX_LINES + border = 7.
+        inp.text = "x" * 200
+        await pilot.pause()
+        await pilot.pause()
+        assert inp.styles.height.value == 7, inp.styles.height
+
+
+@pytest.mark.asyncio
 async def test_enter_submits_and_clears_input():
     # Plain Enter submits; the multi-line input is NOT a chance to bury a
     # newline accidentally — Enter still ends the turn.
