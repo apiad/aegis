@@ -264,7 +264,9 @@ During stage 3 the agent may also drop 0–N additional high-level `fact` entrie
 
 ### Triggering
 
-The plugin ships only the `@workflow`. At install, the user is asked once whether to schedule it daily at 03:00. If yes, a `schedules:` entry is added to `.aegis.yaml`. Either way, the workflow remains runnable on demand via `aegis workflow run dream`.
+The plugin ships only the `@workflow`. At install, the user is asked once whether to schedule it daily at 03:00. If yes, install **calls `aegis.scheduler.push.write_atomic(...)`** to write an overlay schedule file at `.aegis/schedules/memory-dream.yaml`. Going through `write_atomic` (rather than appending to `.aegis.yaml` inline) is what gives the schedule a real existence — it's the same path the `aegis schedule` CLI uses, it validates the spec against the workflow registry before writing, and a running `aegis serve` picks the new file up via the `ReloadWatcher` within the debounce window. A bare append to `.aegis.yaml` would persist but never *register*.
+
+Note that **cron only fires while a long-running aegis process is up** (`aegis` or `aegis serve`) — the scheduler lives in that process. If the user runs the plugin in a project where they only invoke aegis ad-hoc, the cron entry is dormant until next start. The install summary message surfaces this explicitly ("dream scheduled at 03:00 — fires whenever `aegis serve` is running"). Either way, the workflow remains runnable on demand via `aegis workflow run dream`.
 
 ### Cost shape
 
@@ -300,18 +302,18 @@ dreamer_agent     = "dreamer"
      permission: read-write
    ```
 4. Add a `memory:` block with `default_config` values.
-5. `ctx.confirm("Schedule the dream pass daily at 3am? [Y/n]", default=True)`. If yes, append:
+5. `ctx.confirm("Schedule the dream pass daily at 3am? [Y/n]", default=True)`. If yes, call `aegis.scheduler.push.write_atomic(state_root=ctx.aegis_dir, name="memory-dream", spec=…)` with the spec:
    ```yaml
-   memory-dream:
-     workflow:  dream
-     cron:      "0 3 * * *"
-     lifecycle: forever
+   workflow:  dream
+   cron:      "0 3 * * *"
+   lifecycle: forever
    ```
-6. Print a one-line summary of created paths + cron status.
+   This writes the validated overlay to `.aegis/schedules/memory-dream.yaml`. Any running `aegis serve` picks it up via `ReloadWatcher`; if no aegis process is running, the schedule loads at next start.
+6. Print a one-line summary of created paths + cron status. If the cron was installed, mention explicitly that it fires only while `aegis serve` (or `aegis`) is running.
 
 ### `_uninstall.py::uninstall(ctx)`
 
-1. Strip from `.aegis.yaml`: the `memory:` block, the `dreamer` agent (only if unused by other queues/schedules), the `memory-dream` schedule.
+1. Strip from `.aegis.yaml`: the `memory:` block and the `dreamer` agent (only if unused by other queues/schedules). Delete the overlay file `.aegis/schedules/memory-dream.yaml` (the scheduler's `ReloadWatcher` removes it from the live table on next reload).
 2. `ctx.confirm("Also delete .aegis/memory/ and all stored memories and dream logs? [y/N]", default=False)`. Default **N** — uninstall must not silently lose accreted memory.
 3. Print confirmation.
 
