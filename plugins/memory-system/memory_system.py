@@ -98,3 +98,30 @@ def read_entry(root: Path, slug: str) -> Entry:
         updated=str(front.get("updated", "")),
         content=content,
     )
+
+
+def list_entries(root: Path) -> list[Entry]:
+    """Return every well-formed entry under entries/, sorted by name."""
+    folder = root / ENTRIES_SUBDIR
+    if not folder.exists():
+        return []
+    out: list[Entry] = []
+    for path in sorted(folder.glob("*.md")):
+        slug = path.stem
+        try:
+            out.append(read_entry(root, slug))
+        except (ValueError, FileNotFoundError):
+            continue
+    return out
+
+
+def rebuild_index(root: Path) -> Path:
+    """Rebuild MEMORY.md from the current state of entries/."""
+    entries = list_entries(root)
+    lines = ["# Memory index", "", "## Index", ""]
+    for e in entries:
+        lines.append(f"- [{e.name}](entries/{e.slug}.md) — {e.description}")
+    path = root / MEMORY_SUBDIR / "MEMORY.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path

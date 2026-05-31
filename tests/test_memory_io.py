@@ -62,3 +62,40 @@ def test_write_entry_kebabs_the_name(tmp_path: Path) -> None:
     path = m.write_entry(tmp_path, "user", "Alex Likes Spanish",
                          "d", "c")
     assert path.name == "user_alex-likes-spanish.md"
+
+
+def test_list_entries_returns_all(tmp_path: Path) -> None:
+    m = _load_memory_system()
+    m.write_entry(tmp_path, "user", "name", "Goes by Alex", "body")
+    m.write_entry(tmp_path, "feedback", "phrasing", "no load-bearing", "body")
+    slugs = sorted(e.slug for e in m.list_entries(tmp_path))
+    assert slugs == ["feedback_phrasing", "user_name"]
+
+
+def test_list_entries_skips_malformed(tmp_path: Path) -> None:
+    m = _load_memory_system()
+    m.write_entry(tmp_path, "user", "good", "d", "c")
+    bad = tmp_path / m.ENTRIES_SUBDIR / "bad.md"
+    bad.write_text("no frontmatter here\n", encoding="utf-8")
+    slugs = [e.slug for e in m.list_entries(tmp_path)]
+    assert slugs == ["user_good"]
+
+
+def test_rebuild_index_writes_memory_md(tmp_path: Path) -> None:
+    m = _load_memory_system()
+    m.write_entry(tmp_path, "user", "name", "Goes by Alex", "body")
+    m.write_entry(tmp_path, "fact", "cron", "Dream at 3am", "body")
+    m.rebuild_index(tmp_path)
+    text = (tmp_path / m.MEMORY_SUBDIR / "MEMORY.md").read_text(encoding="utf-8")
+    assert "# Memory index" in text
+    assert "## Index" in text
+    assert "[name](entries/user_name.md) — Goes by Alex" in text
+    assert "[cron](entries/fact_cron.md) — Dream at 3am" in text
+
+
+def test_rebuild_index_empty_when_no_entries(tmp_path: Path) -> None:
+    m = _load_memory_system()
+    m.rebuild_index(tmp_path)
+    text = (tmp_path / m.MEMORY_SUBDIR / "MEMORY.md").read_text(encoding="utf-8")
+    assert "## Index" in text
+    assert text.count("\n- [") == 0
