@@ -202,7 +202,9 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         secs = (ev.duration_ms or 0) / 1000
         parts = [f"done in {secs:.1f}s"]
         if ev.cost_usd is not None and ev.cost_usd > 0:
-            parts.append(f"${ev.cost_usd:.4f}".rstrip("0").rstrip("."))
+            from decimal import Decimal
+            from aegis.tui.metrics import _fmt_cost
+            parts.append(_fmt_cost(Decimal(str(ev.cost_usd))))
         # Only surface stop_reason when it's something the user should
         # notice — end_turn is the boring happy path.
         if ev.stop_reason and ev.stop_reason != "end_turn":

@@ -221,11 +221,21 @@ def test_result_separator():
 
 def test_result_shows_cost_when_populated():
     """When cost_usd is set, the result line surfaces it so the eye
-    catches dollar burn at a glance."""
+    catches dollar burn at a glance. Rounding matches the status line
+    (status_line.metrics._fmt_cost) — sub-cent → '0.X¢', whole cents
+    under $1 → 'N¢', dollars otherwise → '$N.NN'."""
+    # 1.23¢ → "1¢" (whole cents under $1)
     out = as_text(render_event(
         Result(duration_ms=1000, is_error=False, cost_usd=0.0123), C))
-    assert "$" in out
-    assert "0.01" in out
+    assert "1¢" in out
+    # 0.5¢ → "0.5¢" (sub-cent)
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False, cost_usd=0.005), C))
+    assert "0.5¢" in out
+    # $1.23 → "$1.23" (dollars)
+    out = as_text(render_event(
+        Result(duration_ms=1000, is_error=False, cost_usd=1.23), C))
+    assert "$1.23" in out
 
 
 def test_result_shows_stop_reason_when_non_default():
@@ -247,7 +257,7 @@ def test_result_combines_cost_and_stop_reason():
     out = as_text(render_event(
         Result(duration_ms=1000, is_error=False,
                cost_usd=0.05, stop_reason="refusal"), C))
-    assert "0.05" in out
+    assert "5¢" in out
     assert "refusal" in out
 
 
