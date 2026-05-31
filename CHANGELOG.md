@@ -5,6 +5,32 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### memory-system plugin (v0.1.0)
+
+Second canonical plugin under `plugins/memory-system/`. Hermes-inspired
+persistent memory:
+
+- Per-project `.aegis/memory/` with `SOUL.md`, `USER.md`, and a
+  `MEMORY.md` index over typed entries (`user` / `feedback` / `fact` /
+  `reference`).
+- `pre_turn` hook injects SOUL + USER + index + judgment primer on
+  turn 0; top-5 entry teasers (name + description, 1000-word cap) on
+  later turns.
+- Five `@tool`s: `memory_add`, `memory_replace`, `memory_remove`,
+  `memory_search`, `memory_read`.
+- `dream` `@workflow` -- three-stage consolidate + synthesize pass over
+  the last 7 days of `.aegis/state/sessions/`. Writes new entries +
+  a dated `dreams/dream-YYYY-MM-DD.md` narrative log. Defaults to a
+  Haiku-backed `dreamer` agent.
+- Install optionally drops a daily 3am cron via
+  `aegis.scheduler.push.write_atomic` (overlay file at
+  `.aegis/schedules/memory-dream.yaml`); cron fires while `aegis serve`
+  runs.
+
+Proves the v1 plugin substrate generalizes beyond `skill-system` --
+every primitive shape (`@hook`, `@tool`, `@workflow`) is exercised
+end-to-end.
+
 ## [0.15.1] - 2026-05-29
 
 The 0.15.0 release commit bumped `pyproject.toml` but didn't

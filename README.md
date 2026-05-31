@@ -298,6 +298,11 @@ plan → dispatch implementer per task with durable resume),
   install/uninstall/list` over local paths or `gh:` registry URLs,
   comment-preserving lockfile, and a canonical `skill-system` plugin
   that demonstrates the full surface end-to-end.
+- **`memory-system` plugin.** Hermes-inspired persistent memory with
+  periodic dreaming. Per-project `.aegis/memory/` (SOUL + USER + typed
+  entries + dated dream logs); a `dream` `@workflow` consolidates and
+  synthesizes nightly. Exercises every v1 primitive (`@hook`, `@tool`,
+  `@workflow`) end-to-end.
 
 ## Remote plane — cross-machine handoff
 

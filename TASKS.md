@@ -61,13 +61,15 @@ Tier B hook events (`pre_tool_use`, `post_tool_use`, `on_error`, `on_interrupt`,
 deps; Tier B substrate-events bus. Revisit when a concrete plugin demands
 one.
 
-### Memory plugin *(brainstorming next)*
+### memory-system plugin *(shipped — v0.1.0)*
 
-Second canonical plugin — Hermes-style memory system with periodical dreaming
-and several memory files. Stress-tests the v1 substrate beyond `skill-system`
-and may surface needs for Tier B hooks (e.g. `session_end` consolidation
-isn't enough; a scheduled "dream" pass + cross-session memory layering need
-exploring). To brainstorm before scoping.
+Second canonical plugin: Hermes-inspired persistent memory with
+periodic dreaming. Exercises every v1 substrate primitive (`@hook`,
+`@tool`, `@workflow`) end-to-end.
+
+- Spec: `docs/superpowers/specs/2026-05-30-aegis-memory-plugin-design.md`
+- Plan: `docs/superpowers/plans/2026-05-30-aegis-memory-plugin-v1.md`
+- Release notes: `CHANGELOG.md` § memory-system plugin (v0.1.0)
 
 ### Driver visibility parity *(complete — all 7 slices shipped)*
 
