@@ -227,6 +227,62 @@ async def test_file_picker_indexer_poll_does_not_clobber_input(tmp_path: Path):
         assert all("alpha" in (oid or "") for oid in option_ids)
 
 
+def test_filter_path_tokens_drops_non_path(tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    (tmp_path / "real.py").write_text("x")
+    tokens = ["foo()", "real.py", "True", "--verbose"]
+    assert filter_path_tokens(tokens, tmp_path, []) == ["real.py"]
+
+
+def test_filter_path_tokens_rerots_absolute_under_cwd(tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.py").write_text("x")
+    abs_str = str(tmp_path / "sub" / "deep.py")
+    assert filter_path_tokens([abs_str], tmp_path, []) == ["sub/deep.py"]
+
+
+def test_filter_path_tokens_keeps_absolute_outside_cwd_if_exists(
+        tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    outside = tmp_path / "outside.py"
+    outside.write_text("x")
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    # cwd is `inner`, file lives one directory up.
+    assert filter_path_tokens([str(outside)], inner, []) == [str(outside)]
+
+
+def test_filter_path_tokens_drops_absolute_that_does_not_exist(
+        tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    fake = "/definitely/not/a/real/path/zzzzz.py"
+    assert filter_path_tokens([fake], tmp_path, []) == []
+
+
+def test_filter_path_tokens_dedupes_after_normalization(tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    (tmp_path / "x.py").write_text("x")
+    abs_x = str(tmp_path / "x.py")
+    out = filter_path_tokens(["x.py", abs_x], tmp_path, [])
+    assert out == ["x.py"]
+
+
+def test_filter_path_tokens_accepts_indexer_hit(tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    # Token doesn't exist on disk but the indexer knows about it.
+    out = filter_path_tokens(["foo.py"], tmp_path, ["src/foo.py"])
+    assert out == ["foo.py"]
+
+
+def test_filter_path_tokens_preserves_order(tmp_path: Path):
+    from aegis.tui.picker import filter_path_tokens
+    (tmp_path / "a.py").write_text("a")
+    (tmp_path / "b.py").write_text("b")
+    out = filter_path_tokens(["b.py", "noise", "a.py"], tmp_path, [])
+    assert out == ["b.py", "a.py"]
+
+
 def test_resolve_unique_indexed_match_exact_path():
     from aegis.tui.picker import resolve_unique_match
     paths = ["src/foo.py", "tests/foo.py", "src/bar.py"]

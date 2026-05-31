@@ -235,28 +235,42 @@ class CopyableBlock(Widget):
 
     @work
     async def _open_file_from_tokens(self) -> None:
-        tokens = self._backtick_tokens
+        from aegis.tui.picker import (
+            FilePickerModal, _TokenChooser, filter_path_tokens,
+            resolve_unique_match)
+
+        cwd = Path.cwd()
+        indexer = getattr(self.app, "_file_indexer", None)
+        paths = (indexer.paths
+                 if (indexer is not None and indexer.ready) else [])
+        tokens = filter_path_tokens(self._backtick_tokens, cwd, paths)
+        if not tokens:
+            with contextlib.suppress(Exception):
+                self.app.notify("no path-like tokens here", timeout=1.5)
+            return
+
         if len(tokens) == 1:
             token = tokens[0]
         else:
-            from aegis.tui.picker import _TokenChooser
             token = await self.app.push_screen_wait(_TokenChooser(tokens))
             if token is None:
                 return
 
-        from aegis.tui.picker import FilePickerModal, resolve_unique_match
         opener = getattr(self.app, "_open_file_tab", None)
 
         # Bypass the picker when the token resolves unambiguously.
-        indexer = getattr(self.app, "_file_indexer", None)
-        paths = (indexer.paths
-                 if (indexer is not None and indexer.ready) else [])
         match = resolve_unique_match(token, paths)
         if match is not None:
-            candidate = Path.cwd() / match
+            candidate = cwd / match
             if candidate.is_file() and opener is not None:
                 await opener(candidate)
                 return
+        # Token might itself already be a file on disk (re-rooted from
+        # an absolute path or directly indexable).
+        direct = cwd / token
+        if direct.is_file() and opener is not None:
+            await opener(direct)
+            return
 
         path = await self.app.push_screen_wait(FilePickerModal(prefill=token))
         if path is not None and opener is not None:

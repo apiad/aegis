@@ -10,6 +10,65 @@ from textual.widgets import Input, OptionList
 from textual.widgets.option_list import Option
 
 
+def filter_path_tokens(
+        tokens: list[str], cwd: Path,
+        indexed_paths: list[str]) -> list[str]:
+    """Keep tokens that look like paths to files; drop everything else.
+
+    Absolute tokens whose resolved form lives under ``cwd`` are
+    re-rooted to the relative form so picker matching against the
+    relative-path index works.
+
+    A token counts as a path when any of:
+      - ``cwd / token`` is an existing file,
+      - the token is absolute and exists on disk,
+      - the token matches an entry in ``indexed_paths`` exactly or by
+        ``"/" + token`` suffix.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in tokens:
+        norm = _normalize_token(raw, cwd)
+        if norm is None or norm in seen:
+            continue
+        if not _is_path_like(norm, cwd, indexed_paths):
+            continue
+        seen.add(norm)
+        out.append(norm)
+    return out
+
+
+def _normalize_token(raw: str, cwd: Path) -> str | None:
+    t = raw.strip()
+    if not t:
+        return None
+    p = Path(t)
+    if p.is_absolute():
+        try:
+            return str(p.resolve().relative_to(cwd.resolve()))
+        except (ValueError, OSError):
+            return t
+    return t
+
+
+def _is_path_like(
+        token: str, cwd: Path, indexed_paths: list[str]) -> bool:
+    try:
+        if (cwd / token).is_file():
+            return True
+    except OSError:
+        pass
+    p = Path(token)
+    if p.is_absolute():
+        try:
+            if p.is_file():
+                return True
+        except OSError:
+            pass
+    return any(ip == token or ip.endswith("/" + token)
+               for ip in indexed_paths)
+
+
 def resolve_unique_match(token: str, paths: list[str]) -> str | None:
     """If exactly one indexed path matches the token, return it; else None.
 
