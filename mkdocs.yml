@@ -87,6 +87,8 @@ nav:
       - MCP plane: mcp.md
       - Budgets: budget.md
       - Telegram: telegram.md
+  - Plugins:
+      - Overview: plugins.md
   - Reference:
       - Architecture: architecture.md
       - API: api.md

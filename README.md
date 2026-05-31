@@ -293,16 +293,71 @@ plan → dispatch implementer per task with durable resume),
   Same render code paths for Claude, Gemini, and OpenCode; opencode's
   per-token thought stream coalesces by `message_id` into one block
   per assistant message.
-- **Plugin substrate.** `@hook` for pre/post-turn + session lifecycle,
-  `@tool` for FastMCP-registered helpers, `aegis plugin
-  install/uninstall/list` over local paths or `gh:` registry URLs,
-  comment-preserving lockfile, and a canonical `skill-system` plugin
-  that demonstrates the full surface end-to-end.
-- **`memory-system` plugin.** Hermes-inspired persistent memory with
-  periodic dreaming. Per-project `.aegis/memory/` (SOUL + USER + typed
-  entries + dated dream logs); a `dream` `@workflow` consolidates and
-  synthesizes nightly. Exercises every v1 primitive (`@hook`, `@tool`,
-  `@workflow`) end-to-end.
+## Plugins — extend aegis without forking
+
+Plugins are how third-party code adds behavior to a session. Three
+composable primitive shapes, auto-imported from disk, installable from
+anywhere over `gh:` registry URLs:
+
+- **`@hook(event)`** — fires on harness lifecycle events. `pre_turn`
+  is the mutator (prepend system text, rewrite the user message,
+  block the turn); `post_turn` / `session_start` / `session_end` are
+  observers. Composes deterministically; timeout-wrapped per call;
+  JSONL-logged.
+- **`@tool`** — first-class FastMCP tools the spawned agent can call.
+  Schema is auto-generated from type hints + docstring. Reserved
+  names (every built-in `aegis_*`) are guarded at registration.
+- **`@workflow`** — orchestrated procedures driven by the
+  `WorkflowEngine` (delegate, spawn, send/drain, bash, groups). CLI-,
+  MCP-, or scheduler-invoked.
+
+A plugin is one directory: a `plugin.toml` manifest, the Python
+module(s) holding decorated functions, and optional `_install.py` /
+`_uninstall.py` for setup and teardown. The loader recurses and
+auto-imports `*.py`, **skipping** anything starting with `_` — so
+install scripts coexist with runtime code without colliding.
+
+Install lifecycle:
+
+```bash
+aegis plugin install <name> --from gh:owner/repo#plugins/<name>
+aegis plugin list / show / update / search / uninstall
+```
+
+`--from` accepts `gh:owner/repo[@ref][#path]` (HTTPS `git archive`
+fetch) or `file:///abs/path` (local copy). Without `--from`, the
+default registry is `gh:apiad/aegis#plugins/`. Installs roll back on
+failure; `.aegis/plugins.lock` records the resolved source +
+timestamp.
+
+### Two canonical plugins (in this repo)
+
+**`skill-system`** — Claude-Code-style skill selection on any
+harness. A `pre_turn` hook injects a numbered menu parsed from
+`.aegis/skills/*.md`; a `load_skill(name)` `@tool` pulls the body on
+demand. ~100 lines of Python.
+
+```bash
+aegis plugin install skill-system --from gh:apiad/aegis#plugins/skill-system
+```
+
+**`memory-system`** — Hermes-inspired persistent memory with
+periodic dreaming. Per-project `.aegis/memory/` holds a user-edited
+`SOUL.md` + `USER.md`, a `MEMORY.md` index over typed entries (`user`
+/ `feedback` / `fact` / `reference`), and a `dreams/` log. The
+`pre_turn` hook injects the persona bundle on turn 0 and top-K
+relevant teasers on later turns. Five `memory_*` `@tool`s let the
+agent read/write/search. The `dream` `@workflow` runs a three-stage
+consolidate-plus-synthesize pass over the last week of session
+transcripts; install asks once whether to schedule it daily at 03:00.
+Exercises every substrate primitive (`@hook`, `@tool`, `@workflow`)
+end-to-end.
+
+```bash
+aegis plugin install memory-system --from gh:apiad/aegis#plugins/memory-system
+```
+
+Full protocol reference: [Plugins documentation](https://apiad.github.io/aegis/plugins/).
 
 ## Remote plane — cross-machine handoff
 
