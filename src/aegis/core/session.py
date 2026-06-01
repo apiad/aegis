@@ -61,6 +61,13 @@ class AgentSession:
         self._inbox = inbox                       # InboxRouter | None
         self._inbox_buffer: list[InboxMessage] = []
         self._opening_prompt = opening_prompt
+        # Idle watcher: armed at turn-end when the harness supports
+        # spontaneous between-turn events (e.g. Claude's background
+        # Monitor). Polls has_pending_event() and promotes any arrivals
+        # into an unsolicited turn. None when no watcher is currently
+        # armed (also when the harness doesn't support idle events).
+        self._idle_task: asyncio.Task | None = None
+        self._idle_poll_seconds = 0.25
         # Primary observers — the owning frontend (TUI pane, headless
         # SessionManager wrapper) sets these for its own renderer/state
         # tracking. Multi-observer slots below let extra subscribers
@@ -129,6 +136,7 @@ class AgentSession:
     async def send(self, text: str) -> None:
         if self.state is AgentState.working:
             return
+        await self._cancel_idle_watcher()
         self._emit_state(AgentState.working, finished=False)
         self.metrics.start_turn(self._now())
         self._task = asyncio.create_task(self._run_turn(text))
@@ -173,6 +181,7 @@ class AgentSession:
         self._inbox_buffer.append(msg)
         if self.state is AgentState.working:
             return
+        await self._cancel_idle_watcher()
         # idle: drain everything we hold and wake
         batch = self._inbox_buffer
         self._inbox_buffer = []
@@ -313,16 +322,110 @@ class AgentSession:
             cb(self, ev)
 
     def _chain_if_pending(self) -> None:
-        if not self._inbox_buffer:
+        if self._inbox_buffer:
+            batch = self._inbox_buffer
+            self._inbox_buffer = []
+            text = _render_batch(batch)
+            self._emit_state(AgentState.working, finished=False)
+            self.metrics.start_turn(self._now())
+            self._task = asyncio.create_task(self._run_turn(text))
             return
-        batch = self._inbox_buffer
-        self._inbox_buffer = []
-        text = _render_batch(batch)
-        self._emit_state(AgentState.working, finished=False)
-        self.metrics.start_turn(self._now())
-        self._task = asyncio.create_task(self._run_turn(text))
+        # No inbox messages. Some harnesses (Claude with a background
+        # Monitor or sub-task) can emit events after Result without us
+        # sending a prompt. Drain anything that arrived during this
+        # turn synchronously so it doesn't spill into the next user
+        # message, then arm an async watcher for events that arrive
+        # later while truly idle.
+        has_pending = getattr(
+            self._session, "has_pending_event", lambda: False)
+        if has_pending():
+            self._emit_state(AgentState.working, finished=False)
+            self.metrics.start_turn(self._now())
+            self._task = asyncio.create_task(self._drain_unsolicited_turn())
+            return
+        self._arm_idle_watcher()
+
+    async def _drain_unsolicited_turn(self) -> None:
+        """Consume one turn's worth of events the harness emitted
+        without us sending a prompt (e.g. a Claude Monitor firing).
+        Skips pre/post-turn hooks and ``session.send()`` — the harness
+        is mid-stream, not waiting on input."""
+        saw_result = False
+        try:
+            async for ev in self._session.events():
+                self._fire_event(ev)
+                if isinstance(ev, ToolUse):
+                    self.metrics.record_tool()
+                elif isinstance(ev, ToolResult) and ev.is_error:
+                    self.metrics.record_tool_error()
+                if isinstance(ev, Result):
+                    self.metrics.commit(ev.usage, self._now())
+                    saw_result = True
+                    self._emit_state(
+                        AgentState.error if ev.is_error else AgentState.ready,
+                        finished=True)
+                else:
+                    u = getattr(ev, "usage", None)
+                    if u is not None:
+                        self.metrics.observe(u)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.exception("harness error in unsolicited drain")
+            self.last_error = e
+            if not saw_result:
+                self.metrics.commit(None, self._now())
+                self._emit_state(AgentState.error, finished=True)
+            self._chain_if_pending()
+            return
+        if not saw_result:
+            self.metrics.commit(None, self._now())
+            self._emit_state(AgentState.error, finished=True)
+        self._chain_if_pending()
+
+    def _arm_idle_watcher(self) -> None:
+        if not getattr(self._session, "supports_idle_events", False):
+            return
+        if self._idle_task is not None and not self._idle_task.done():
+            return
+        self._idle_task = asyncio.create_task(self._idle_watcher_loop())
+
+    async def _idle_watcher_loop(self) -> None:
+        """Poll the harness for spontaneous events while the session is
+        idle. On first arrival, promote it to an unsolicited turn —
+        this exits the watcher; ``_chain_if_pending`` will re-arm it
+        after the drain completes."""
+        try:
+            while True:
+                if self.state is AgentState.working:
+                    return  # something else took over
+                has_pending = getattr(
+                    self._session, "has_pending_event", lambda: False)
+                if has_pending():
+                    self._emit_state(AgentState.working, finished=False)
+                    self.metrics.start_turn(self._now())
+                    self._task = asyncio.create_task(
+                        self._drain_unsolicited_turn())
+                    return
+                await asyncio.sleep(self._idle_poll_seconds)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("idle watcher error; standing down")
+
+    async def _cancel_idle_watcher(self) -> None:
+        if self._idle_task is None or self._idle_task.done():
+            self._idle_task = None
+            return
+        self._idle_task.cancel()
+        try:
+            await self._idle_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        self._idle_task = None
 
     async def interrupt(self) -> None:
+        await self._cancel_idle_watcher()
         if self.state is not AgentState.working:
             return
         if self._task is not None:
@@ -335,6 +438,7 @@ class AgentSession:
         self._emit_state(AgentState.ready, finished=False)
 
     async def close(self, reason: str = "explicit") -> None:
+        await self._cancel_idle_watcher()
         if self._task is not None and not self._task.done():
             self._task.cancel()
             try:

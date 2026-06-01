@@ -31,6 +31,12 @@ _EFFORT = {
 
 
 class ClaudeSession(HarnessSession):
+    # Claude in ``-p`` mode keeps the subprocess alive across turns and
+    # can emit events without aegis having sent a prompt — e.g. when a
+    # background Monitor or scheduled sub-task fires. AgentSession arms
+    # an idle watcher for these.
+    supports_idle_events = True
+
     def __init__(self, argv: list[str], cwd: str) -> None:
         self._argv = argv
         self._cwd = cwd
@@ -41,6 +47,9 @@ class ClaudeSession(HarnessSession):
         # One ParserState per session — remembers each tool_use.id →
         # kind so the matching tool_result can carry kind too.
         self._parser_state = ParserState()
+
+    def has_pending_event(self) -> bool:
+        return not self._queue.empty()
 
     @property
     def session_id(self) -> str | None:
