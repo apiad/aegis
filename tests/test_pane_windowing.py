@@ -50,6 +50,20 @@ def _app():
 
 
 @pytest.mark.asyncio
+async def test_streaming_updates_history_record_in_place():
+    """Three streamed AssistantText chunks coalesce into one widget AND
+    one BlockRecord whose payload reflects the full concatenated text."""
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        pane._on_core_event(None, AssistantText(text="hel", usage=None))
+        pane._on_core_event(None, AssistantText(text="lo ", usage=None))
+        pane._on_core_event(None, AssistantText(text="world", usage=None))
+        assert len(pane._history) == 1
+        assert pane._history[0].payload == "hello world"
+
+
+@pytest.mark.asyncio
 async def test_history_records_every_event():
     """Every rendered event appends a BlockRecord to _history."""
     app = _app()

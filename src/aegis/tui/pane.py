@@ -507,6 +507,7 @@ class ConversationPane(Widget):
         self._streaming_block = None
         self._streaming_kind = None
         self._streaming_text = ""
+        self._streaming_history_idx = None
 
     def _render_for_stream(self, kind: str,
                             text: str) -> RenderableType:
@@ -526,6 +527,8 @@ class ConversationPane(Widget):
             r = self._render_for_stream(kind, self._streaming_text)
             self._streaming_block = self._mount_block(
                 r, self._streaming_text)
+            # The block just appended is the last entry in _history.
+            self._streaming_history_idx = len(self._history) - 1
         else:
             self._streaming_text += new_text
             if self._streaming_block is not None:
@@ -533,6 +536,10 @@ class ConversationPane(Widget):
                     kind, self._streaming_text)
                 self._streaming_block.update_content(
                     r, self._streaming_text)
+                if self._streaming_history_idx is not None:
+                    rec = self._history[self._streaming_history_idx]
+                    rec.renderable = r
+                    rec.payload = self._streaming_text
 
     # --- event handlers --------------------------------------------
 
