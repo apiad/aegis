@@ -374,6 +374,9 @@ class ConversationPane(Widget):
         self._history: list[BlockRecord] = []
         self._window_start: int = 0
         self._streaming_history_idx: int | None = None
+        self._stick_to_bottom: bool = True
+        self._loading_older: bool = False
+        self._load_timer = None
 
     @property
     def state(self) -> AgentState:
@@ -402,6 +405,8 @@ class ConversationPane(Widget):
         self.query_one(StatusBar).set_state(AgentState.ready)
         self._mount_replay()
         self.refresh_metrics()
+        t = self._transcript()
+        self.watch(t, "scroll_y", self._on_scroll_y)
 
     def _mount_replay(self) -> None:
         """Paint prior events from a replay onto the transcript, then
@@ -423,6 +428,11 @@ class ConversationPane(Widget):
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
 
+    def _on_scroll_y(self, _value: float) -> None:
+        t = self._transcript()
+        self._stick_to_bottom = (
+            (t.max_scroll_y - t.scroll_y) <= STICKY_EPS)
+
     def _working_indicator(self) -> WorkingIndicator | None:
         matches = self.query(WorkingIndicator)
         return matches.first() if len(matches) else None
@@ -442,7 +452,8 @@ class ConversationPane(Widget):
             t.mount(block, before=ind)
         else:
             t.mount(block)
-        t.scroll_end(animate=False)
+        if self._stick_to_bottom:
+            t.scroll_end(animate=False)
         return block
 
     def _start_indicator(self) -> None:

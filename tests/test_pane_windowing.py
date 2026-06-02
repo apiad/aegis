@@ -50,6 +50,35 @@ def _app():
 
 
 @pytest.mark.asyncio
+async def test_sticky_bottom_flag_starts_true_and_flips_on_scroll_up():
+    """Pane starts sticky; scrolling away from the bottom flips the flag."""
+    from textual.containers import VerticalScroll
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        # Fresh pane is at scroll_y=0 == max_scroll_y=0 → sticky.
+        assert pane._stick_to_bottom is True
+
+        # Pump enough events to make the transcript scrollable.
+        for i in range(60):
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read"))
+        await pilot.pause()
+        await pilot.pause()
+
+        t = pane.query_one("#transcript", VerticalScroll)
+        # Scroll to top.
+        t.scroll_y = 0
+        await pilot.pause()
+        assert pane._stick_to_bottom is False
+
+        # Scroll back to bottom.
+        t.scroll_y = t.max_scroll_y
+        await pilot.pause()
+        assert pane._stick_to_bottom is True
+
+
+@pytest.mark.asyncio
 async def test_streaming_updates_history_record_in_place():
     """Three streamed AssistantText chunks coalesce into one widget AND
     one BlockRecord whose payload reflects the full concatenated text."""
