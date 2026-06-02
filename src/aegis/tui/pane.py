@@ -4,6 +4,7 @@ import contextlib
 import re
 import random
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +30,24 @@ from aegis.state.session_log import EventReplay
 from aegis.tui.state import AgentState
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
+
+
+N_MAX = 300
+EVICT_BATCH = 50
+LOAD_BATCH = 100
+STICKY_EPS = 2
+LOAD_MORE_EPS = 3
+DEBOUNCE_S = 0.15
+
+
+@dataclass(slots=True)
+class BlockRecord:
+    """One transcript entry. Mutable so streaming aggregation can update
+    in place. Mirrors the arguments passed to CopyableBlock so older
+    blocks can be reconstructed on scroll-up."""
+    renderable: RenderableType
+    payload: str
+    tight: bool
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -348,6 +367,13 @@ class ConversationPane(Widget):
         self._streaming_block: CopyableBlock | None = None
         self._streaming_kind: str | None = None     # "text" | "thinking"
         self._streaming_text: str = ""
+        # Windowing: every rendered block lives here; only
+        # _history[_window_start:] is mounted. _streaming_history_idx
+        # points at the record currently being mutated by streaming
+        # aggregation (None when no stream is in flight).
+        self._history: list[BlockRecord] = []
+        self._window_start: int = 0
+        self._streaming_history_idx: int | None = None
 
     @property
     def state(self) -> AgentState:
@@ -404,6 +430,7 @@ class ConversationPane(Widget):
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
                      *, tight: bool = False) -> CopyableBlock:
+        self._history.append(BlockRecord(renderable, text_payload, tight))
         block = CopyableBlock(renderable, text_payload, tight=tight)
         t = self._transcript()
         ind = self._working_indicator()
