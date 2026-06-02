@@ -50,6 +50,41 @@ def _app():
 
 
 @pytest.mark.asyncio
+async def test_replay_populates_full_history_but_mounts_at_most_n_max():
+    """_mount_replay fills _history from the full replay yet keeps the
+    mounted set bounded by N_MAX."""
+    from aegis.state.session_log import EventReplay
+    from aegis.tui.pane import N_MAX
+
+    events = [
+        ToolUse(name="Read", summary=f"f{i}.py", kind="read")
+        for i in range(N_MAX + 150)
+    ]
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        # Wipe any state from the default on_mount so we exercise replay
+        # on a clean pane.
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        pane._window_start = 0
+        pane._replay = EventReplay(events=events, interrupted=False)
+        await pilot.pause()
+
+        pane._mount_replay()
+        await pilot.pause()
+        await pilot.pause()
+
+        assert len(pane._history) == N_MAX + 150
+        assert len(pane._mounted_blocks) <= N_MAX
+        # _trim_to_window enforces the exact invariant at end-of-replay.
+        assert pane._window_start == len(pane._history) - N_MAX
+
+
+@pytest.mark.asyncio
 async def test_scroll_up_reloads_older_blocks():
     """Scrolling to the top re-mounts up to LOAD_BATCH older blocks."""
     import asyncio

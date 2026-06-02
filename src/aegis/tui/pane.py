@@ -415,7 +415,9 @@ class ConversationPane(Widget):
 
     def _mount_replay(self) -> None:
         """Paint prior events from a replay onto the transcript, then
-        mark an interrupted turn if the session ended mid-turn."""
+        mark an interrupted turn if the session ended mid-turn. Trims
+        the mounted set down to N_MAX so resumed long sessions don't
+        start out laggy."""
         if self._replay is None:
             return
         for ev in self._replay.events:
@@ -425,6 +427,17 @@ class ConversationPane(Widget):
             self._mount_block(
                 Text("⚠ interrupted", style="yellow"),
                 "⚠ interrupted")
+        self._trim_to_window()
+
+    def _trim_to_window(self) -> None:
+        """Reduce the mounted set to the last N_MAX records.
+
+        Used at startup after replay-driven mounting fills the history.
+        Equivalent to a forced eviction independent of the sticky flag.
+        """
+        excess = (len(self._history) - self._window_start) - N_MAX
+        if excess > 0:
+            self._evict_top(excess)
 
     def refresh_metrics(self) -> None:
         self.query_one(StatusBar).set_metrics(
