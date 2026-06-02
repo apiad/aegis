@@ -50,6 +50,56 @@ def _app():
 
 
 @pytest.mark.asyncio
+async def test_eviction_caps_mounted_widget_count():
+    """Once history exceeds N_MAX and user is at the bottom, eviction
+    keeps the mounted CopyableBlock count bounded."""
+    from aegis.tui.pane import N_MAX
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        # Pump enough non-streaming events to exceed N_MAX.
+        for i in range(N_MAX + 80):
+            pane._on_core_event(None, ToolUse(
+                name="Read", summary=f"f{i}.py", kind="read"))
+        await pilot.pause()
+        await pilot.pause()
+        assert len(pane._history) == N_MAX + 80
+        mounted = len(pane.query(CopyableBlock))
+        assert mounted <= N_MAX
+        # _window_start advanced past the first eviction.
+        assert pane._window_start >= 50
+
+
+@pytest.mark.asyncio
+async def test_no_eviction_while_user_scrolled_up():
+    """User reading old content does not get yanked when new events arrive."""
+    from textual.containers import VerticalScroll
+    from aegis.tui.pane import N_MAX
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        # Fill close to but under N_MAX so no eviction has run yet.
+        for i in range(N_MAX - 10):
+            pane._on_core_event(None, ToolUse(
+                name="Read", summary=f"a{i}.py", kind="read"))
+        await pilot.pause()
+        await pilot.pause()
+        # Scroll up.
+        t = pane.query_one("#transcript", VerticalScroll)
+        t.scroll_y = 0
+        await pilot.pause()
+        assert pane._stick_to_bottom is False
+        start_before = pane._window_start
+        # Pump more events that, with sticky=True, would have triggered eviction.
+        for i in range(50):
+            pane._on_core_event(None, ToolUse(
+                name="Read", summary=f"b{i}.py", kind="read"))
+        await pilot.pause()
+        # No eviction happened — user's scroll position protected.
+        assert pane._window_start == start_before
+
+
+@pytest.mark.asyncio
 async def test_sticky_bottom_flag_starts_true_and_flips_on_scroll_up():
     """Pane starts sticky; scrolling away from the bottom flips the flag."""
     from textual.containers import VerticalScroll

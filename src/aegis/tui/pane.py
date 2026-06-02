@@ -374,6 +374,11 @@ class ConversationPane(Widget):
         self._history: list[BlockRecord] = []
         self._window_start: int = 0
         self._streaming_history_idx: int | None = None
+        # Explicit list of currently-mounted CopyableBlocks in DOM order.
+        # Source of truth for eviction — Textual's .remove() defers until
+        # the next layout tick, so t.query(CopyableBlock) returns stale
+        # results for tight loops of mount+evict.
+        self._mounted_blocks: list[CopyableBlock] = []
         self._stick_to_bottom: bool = True
         self._loading_older: bool = False
         self._load_timer = None
@@ -452,9 +457,23 @@ class ConversationPane(Widget):
             t.mount(block, before=ind)
         else:
             t.mount(block)
+        self._mounted_blocks.append(block)
         if self._stick_to_bottom:
             t.scroll_end(animate=False)
+            if len(self._history) - self._window_start > N_MAX:
+                self._evict_top(EVICT_BATCH)
         return block
+
+    def _evict_top(self, n: int) -> None:
+        """Unmount the first n mounted CopyableBlocks and advance
+        _window_start. Safe to call only while _stick_to_bottom is True:
+        the user is at the tail, so removing widgets above the viewport
+        doesn't disturb them."""
+        for b in self._mounted_blocks[:n]:
+            with contextlib.suppress(Exception):
+                b.remove()
+        del self._mounted_blocks[:n]
+        self._window_start += n
 
     def _start_indicator(self) -> None:
         """Create + mount a WorkingIndicator at the bottom of the
