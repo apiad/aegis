@@ -437,6 +437,50 @@ class ConversationPane(Widget):
         t = self._transcript()
         self._stick_to_bottom = (
             (t.max_scroll_y - t.scroll_y) <= STICKY_EPS)
+        near_top = t.scroll_y <= LOAD_MORE_EPS
+        if near_top and self._window_start > 0 and not self._loading_older:
+            if self._load_timer is not None:
+                with contextlib.suppress(Exception):
+                    self._load_timer.stop()
+            self._load_timer = self.set_timer(
+                DEBOUNCE_S, self._load_older)
+
+    def _load_older(self) -> None:
+        if self._loading_older or self._window_start == 0:
+            return
+        self._loading_older = True
+        try:
+            t = self._transcript()
+            new_start = max(0, self._window_start - LOAD_BATCH)
+            anchor = self._mounted_blocks[0] if self._mounted_blocks else None
+            anchor_y_before = (
+                (anchor.region.y - t.region.y) if anchor is not None else 0)
+            new_blocks: list[CopyableBlock] = []
+            for rec in self._history[new_start : self._window_start]:
+                block = CopyableBlock(
+                    rec.renderable, rec.payload, tight=rec.tight)
+                if anchor is not None:
+                    t.mount(block, before=anchor)
+                else:
+                    t.mount(block)
+                new_blocks.append(block)
+            # Prepend new blocks to the explicit mounted list (DOM order).
+            self._mounted_blocks[:0] = new_blocks
+            self._window_start = new_start
+
+            def _restore() -> None:
+                if anchor is not None:
+                    anchor_y_after = anchor.region.y - t.region.y
+                    delta = anchor_y_after - anchor_y_before
+                    if delta:
+                        t.scroll_to(
+                            y=t.scroll_y + delta, animate=False)
+                self._loading_older = False
+
+            self.call_after_refresh(_restore)
+        except Exception:
+            self._loading_older = False
+            raise
 
     def _working_indicator(self) -> WorkingIndicator | None:
         matches = self.query(WorkingIndicator)

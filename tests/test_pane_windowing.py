@@ -50,6 +50,63 @@ def _app():
 
 
 @pytest.mark.asyncio
+async def test_scroll_up_reloads_older_blocks():
+    """Scrolling to the top re-mounts up to LOAD_BATCH older blocks."""
+    import asyncio
+    from textual.containers import VerticalScroll
+    from aegis.tui.pane import N_MAX, LOAD_BATCH, DEBOUNCE_S
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        # Build a history big enough that eviction has happened.
+        for i in range(N_MAX + 200):
+            pane._on_core_event(None, ToolUse(
+                name="Read", summary=f"f{i}.py", kind="read"))
+        await pilot.pause()
+        await pilot.pause()
+        start_before = pane._window_start
+        assert start_before > 0  # eviction ran
+
+        # Scroll to top to trigger load-older.
+        t = pane.query_one("#transcript", VerticalScroll)
+        t.scroll_y = 0
+        await asyncio.sleep(DEBOUNCE_S + 0.1)
+        await pilot.pause()
+        await pilot.pause()
+
+        # _window_start moved back by LOAD_BATCH (or to 0).
+        expected = max(0, start_before - LOAD_BATCH)
+        assert pane._window_start == expected
+
+
+@pytest.mark.asyncio
+async def test_load_older_is_idempotent_while_pending():
+    """Multiple rapid scroll events near the top coalesce into one load."""
+    import asyncio
+    from textual.containers import VerticalScroll
+    from aegis.tui.pane import N_MAX, LOAD_BATCH, DEBOUNCE_S
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        for i in range(N_MAX + 250):
+            pane._on_core_event(None, ToolUse(
+                name="Read", summary=f"f{i}.py", kind="read"))
+        await pilot.pause()
+        await pilot.pause()
+        start_before = pane._window_start
+
+        t = pane.query_one("#transcript", VerticalScroll)
+        # Burst of three scroll-near-top events before the timer fires.
+        t.scroll_y = 0
+        t.scroll_y = 1
+        t.scroll_y = 0
+        await asyncio.sleep(DEBOUNCE_S + 0.1)
+        await pilot.pause()
+        # Only one batch loaded, not three.
+        assert pane._window_start == max(0, start_before - LOAD_BATCH)
+
+
+@pytest.mark.asyncio
 async def test_eviction_caps_mounted_widget_count():
     """Once history exceeds N_MAX and user is at the bottom, eviction
     keeps the mounted CopyableBlock count bounded."""
