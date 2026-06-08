@@ -1,0 +1,8 @@
+[plugin]
+name           = "socks-proxy"
+version        = "0.1.0"
+description    = "Route harness subprocess traffic through a local SOCKS proxy via proxychains4."
+requires_aegis = ">=0.15"
+
+[default_config]
+endpoint  = "socks5 127.0.0.1 1080"

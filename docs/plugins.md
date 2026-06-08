@@ -30,19 +30,23 @@ async def inject_context(ctx: PreTurnContext) -> PreTurnResult | None:
     return None
 ```
 
-Four events fire from `AgentSession` at well-defined points:
+Five events fire at well-defined points:
 
 | Event             | Mutator?  | Fires                                    | Receives                |
 |-------------------|-----------|------------------------------------------|-------------------------|
+| `pre_spawn`       | **yes**   | before each harness subprocess starts    | `PreSpawnContext`       |
 | `pre_turn`        | **yes**   | before every turn                        | `PreTurnContext`        |
 | `post_turn`       | observer  | after every turn finishes                | `PostTurnEvent`         |
 | `session_start`   | observer  | once on session open                     | `SessionStartEvent`     |
 | `session_end`     | observer  | once on session close                    | `SessionEndEvent`       |
 
-Only `pre_turn` is a mutator: its `PreTurnResult` can prepend a system
+Two are mutators. `pre_turn`'s `PreTurnResult` can prepend a system
 message, rewrite the user message, block the turn entirely, or extend
-the history. The other three are observers — useful for logging,
-metrics, side-channel writes — but their return value is ignored.
+the history. `pre_spawn`'s `PreSpawnResult` can rewrite `argv` / `env`
+(proxy wrappers, sandboxers, per-agent credential injection) or block
+the spawn with a reason. The other three are observers — useful for
+logging, metrics, side-channel writes — but their return value is
+ignored.
 
 Hooks compose deterministically by registration order. The composer
 sums `prepend_system` results, applies `rewrite_user` last-wins, and
