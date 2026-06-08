@@ -9,8 +9,9 @@ from typing import Any
 
 from aegis.hooks.composer import compose_pre_turn
 from aegis.hooks.contexts import (
-    PostTurnEvent, PreTurnContext, PreTurnResult,
-    SessionEndEvent, SessionStartEvent,
+    PostTurnEvent, PreSpawnContext, PreSpawnResult,
+    PreTurnContext, PreTurnResult,
+    SessionEndEvent, SessionHandle, SessionStartEvent,
 )
 from aegis.hooks.decorator import HookEntry
 
@@ -46,6 +47,51 @@ async def run_pre_turn_hooks(
         if result is not None:
             results.append(result)
     return compose_pre_turn(results)
+
+
+async def run_pre_spawn_hooks(
+    *,
+    argv:      tuple[str, ...],
+    env:       dict[str, str],
+    session:   SessionHandle,
+    cwd:       str,
+    entries:   list[HookEntry],
+    state_dir: Path,
+    timeout:   float = DEFAULT_TIMEOUT_S,
+) -> PreSpawnResult:
+    """Run all pre_spawn hooks in declaration order, threading state.
+
+    Each hook receives the *accumulated* argv/env (initial values
+    transformed by every earlier hook). The final result carries the
+    last accumulated argv+env, or a ``block`` reason if any hook
+    refused (or a strict hook raised). A returned ``block`` short-
+    circuits the chain.
+    """
+    cur_argv = argv
+    cur_env = dict(env)
+    results: list[PreSpawnResult] = []
+    for entry in entries:
+        ctx = PreSpawnContext(
+            session=session,
+            argv=cur_argv,
+            env=dict(cur_env),
+            cwd=cwd,
+            prior_results=tuple(results),
+        )
+        result = await _invoke_with_timeout(
+            entry, ctx, state_dir=state_dir, timeout=timeout,
+        )
+        if result is None:
+            continue
+        results.append(result)
+        if result.block is not None:
+            return PreSpawnResult(
+                argv=cur_argv, env=cur_env, block=result.block)
+        if result.argv is not None:
+            cur_argv = tuple(result.argv)
+        if result.env is not None:
+            cur_env = dict(result.env)
+    return PreSpawnResult(argv=cur_argv, env=cur_env)
 
 
 async def run_observer_hooks(
@@ -89,6 +135,10 @@ async def _invoke_with_timeout(
              error=f"{type(exc).__name__}: {exc}")
         if entry.strict and entry.event == "pre_turn":
             return PreTurnResult(
+                block=f"strict hook {entry.qualname} raised: {exc}"
+            )
+        if entry.strict and entry.event == "pre_spawn":
+            return PreSpawnResult(
                 block=f"strict hook {entry.qualname} raised: {exc}"
             )
         return None

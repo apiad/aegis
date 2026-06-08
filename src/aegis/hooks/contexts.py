@@ -59,3 +59,32 @@ class SessionEndEvent:
     session:      SessionHandle
     project_root: Path
     reason:       str
+
+
+@dataclass(frozen=True)
+class PreSpawnResult:
+    """Optional transform from a pre_spawn hook.
+
+    A hook receives the current accumulated ``argv`` and ``env`` in
+    ``ctx`` and may return a new full ``argv`` / ``env`` to replace them
+    for the rest of the chain. Returning ``None`` is a no-op. Returning
+    ``block`` refuses the spawn and short-circuits the chain.
+    """
+    argv:  tuple[str, ...] | None = None
+    env:   dict[str, str] | None = None
+    block: str | None = None
+
+
+@dataclass(frozen=True)
+class PreSpawnContext:
+    """Payload for pre_spawn hooks. Read-only.
+
+    ``argv`` and ``env`` reflect the *accumulated* state — the initial
+    driver-built values transformed by every prior pre_spawn hook in
+    declaration order.
+    """
+    session:       SessionHandle
+    argv:          tuple[str, ...]
+    env:           dict[str, str]
+    cwd:           str
+    prior_results: tuple[PreSpawnResult, ...] = field(default_factory=tuple)

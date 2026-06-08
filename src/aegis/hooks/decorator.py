@@ -5,7 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-VALID_EVENTS = ("pre_turn", "post_turn", "session_start", "session_end")
+VALID_EVENTS = ("pre_turn", "pre_spawn", "post_turn",
+                "session_start", "session_end")
 
 
 @dataclass(frozen=True)
