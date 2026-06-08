@@ -24,12 +24,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import acp
 import acp.connection as _acp_connection
+
+from aegis.hooks import SessionHandle
+from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
+from aegis.hooks.runner import run_pre_spawn_hooks
 
 
 # ---------------------------------------------------------------------
@@ -326,6 +331,38 @@ class AcpSession(HarnessSession):
         # provider-specific flags like model selection.
         return list(self.BASE_CMD)
 
+    async def _apply_pre_spawn_hooks(
+        self,
+    ) -> tuple[list[str], dict[str, str] | None]:
+        """Run registered pre_spawn hooks against argv/env before exec.
+
+        Returns the (possibly-rewritten) argv and env-dict for
+        ``create_subprocess_exec``. ``env`` is ``None`` when no hooks
+        fired (so the subprocess inherits the parent env). Raises
+        ``RuntimeError`` if a hook returns a ``block`` reason.
+        """
+        entries = _HOOK_REG.get("pre_spawn", [])
+        base_argv = self._argv()
+        if not entries:
+            return base_argv, None
+        harness = getattr(self._agent, "harness", "") or ""
+        composed = await run_pre_spawn_hooks(
+            argv=tuple(base_argv),
+            env=dict(os.environ),
+            session=SessionHandle(
+                handle=self._handle,
+                agent_profile=self._handle,
+                harness=harness,
+            ),
+            cwd=self._cwd,
+            entries=entries,
+            state_dir=Path(self._cwd) / ".aegis" / "state",
+        )
+        if composed.block is not None:
+            raise RuntimeError(
+                f"pre_spawn hook blocked spawn: {composed.block}")
+        return list(composed.argv or base_argv), composed.env
+
     async def _drain_stderr(self) -> None:
         """Continuously read subprocess stderr into a ring buffer.
         Cap at ~64KB so a runaway log can't OOM us. The contents are
@@ -386,15 +423,17 @@ class AcpSession(HarnessSession):
         return wrapped
 
     async def start(self) -> None:
-        argv = self._argv()
-        self._proc = await asyncio.create_subprocess_exec(
-            *argv,
+        argv, env = await self._apply_pre_spawn_hooks()
+        kw: dict = dict(
             cwd=self._cwd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             limit=_STREAM_LIMIT,
         )
+        if env is not None:
+            kw["env"] = env
+        self._proc = await asyncio.create_subprocess_exec(*argv, **kw)
         # Drain subprocess stderr into a ring buffer in the background.
         # When a ConnectionError/EOF bubbles up from the SDK ("Connection
         # closed") it usually means the subprocess died with a real error
