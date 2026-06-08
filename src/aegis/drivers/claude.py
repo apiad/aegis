@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from aegis.config import Agent, Effort, Permission
 from aegis.events import Event, ParserState, Result, parse
 from aegis.drivers.base import HarnessDriver, HarnessSession
+from aegis.hooks import SessionHandle
+from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
+from aegis.hooks.runner import run_pre_spawn_hooks
 from aegis.mcp import PRIMING, mcp_config_json
 
 # claude stream-json emits one JSON object per line; a single line carries
@@ -37,9 +42,14 @@ class ClaudeSession(HarnessSession):
     # an idle watcher for these.
     supports_idle_events = True
 
-    def __init__(self, argv: list[str], cwd: str) -> None:
+    def __init__(self, argv: list[str], cwd: str, *,
+                 handle: str = "", harness: str = "claude-code",
+                 agent_profile: str = "") -> None:
         self._argv = argv
         self._cwd = cwd
+        self._handle = handle
+        self._harness = harness
+        self._agent_profile = agent_profile or handle
         self._proc: asyncio.subprocess.Process | None = None
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
         self._reader: asyncio.Task | None = None
@@ -64,15 +74,48 @@ class ClaudeSession(HarnessSession):
             self._session_id = ev.session_id
 
     async def start(self) -> None:
-        self._proc = await asyncio.create_subprocess_exec(
-            *self._argv,
+        argv, env = await self._apply_pre_spawn_hooks()
+        kw: dict = dict(
             cwd=self._cwd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             limit=_STREAM_LIMIT,
         )
+        if env is not None:
+            kw["env"] = env
+        self._proc = await asyncio.create_subprocess_exec(*argv, **kw)
         self._reader = asyncio.create_task(self._pump_stdout())
+
+    async def _apply_pre_spawn_hooks(
+        self,
+    ) -> tuple[list[str], dict[str, str] | None]:
+        """Run registered pre_spawn hooks against this session's argv/env.
+
+        Returns the (possibly-rewritten) argv and env-dict to exec with.
+        ``env`` is ``None`` when no hooks fired (preserves parent-env
+        inheritance via ``create_subprocess_exec``'s default). Raises
+        ``RuntimeError`` if any hook returns a ``block`` reason.
+        """
+        entries = _HOOK_REG.get("pre_spawn", [])
+        if not entries:
+            return list(self._argv), None
+        composed = await run_pre_spawn_hooks(
+            argv=tuple(self._argv),
+            env=dict(os.environ),
+            session=SessionHandle(
+                handle=self._handle,
+                agent_profile=self._agent_profile,
+                harness=self._harness,
+            ),
+            cwd=self._cwd,
+            entries=entries,
+            state_dir=Path(self._cwd) / ".aegis" / "state",
+        )
+        if composed.block is not None:
+            raise RuntimeError(
+                f"pre_spawn hook blocked spawn: {composed.block}")
+        return list(composed.argv or self._argv), composed.env
 
     async def _pump_stdout(self) -> None:
         assert self._proc and self._proc.stdout
@@ -141,7 +184,8 @@ class ClaudeDriver(HarnessDriver):
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> ClaudeSession:
         return ClaudeSession(
-            self.build_argv(agent, cwd, mcp_url, handle), cwd)
+            self.build_argv(agent, cwd, mcp_url, handle), cwd,
+            handle=handle, harness=agent.harness or "claude-code")
 
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str,
@@ -150,4 +194,6 @@ class ClaudeDriver(HarnessDriver):
         argv = self.build_argv(agent, cwd, mcp_url, handle)
         # Insert --resume <session_id> right after the "claude -p" prefix
         resumed_argv = argv[:2] + ["--resume", session_id] + argv[2:]
-        return ClaudeSession(resumed_argv, cwd)
+        return ClaudeSession(resumed_argv, cwd,
+                             handle=handle,
+                             harness=agent.harness or "claude-code")
