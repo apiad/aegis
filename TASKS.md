@@ -200,6 +200,25 @@ Different from ACP but documented and stable. Needs a custom `CodexDriver`
 implementing `HarnessSession` over JSON-RPC. Auth: `OPENAI_API_KEY` env var.
 No deadline pressure.
 
+### Web client + TUI WS-client migration *(designed, no plan yet)*
+
+First-class web frontend (desktop), feature parity with the TUI. Hybrid
+visual idiom (TUI-faithful transcript via `render_event_html`, native-web
+chrome via HTMX + Jinja). One multiplexed WS per browser window; subscribe
+sends full session history then live events; reconnect via `(session_id,
+last_seq)` resume against the existing JSONL persistence. Themes move to
+shared YAML (`src/aegis/data/themes/*.yaml`) so TUI and web stay visually
+identical. End-state: TUI also becomes a WS client of `aegis serve` so
+sessions are shared across TUI ↔ web ↔ Telegram.
+
+Ten slices, S1–S10, vertical, foundation-first. Earliest "usable single-tab
+web client" is end of S2; full TUI feature parity is end of S6; full
+architectural unification (TUI flipped to `--remote` default with `--classic`
+fallback) is S10. Each slice is an honest stop point.
+
+- Spec: `docs/superpowers/specs/2026-06-19-aegis-web-client-design.md`
+- Plan: *not yet drafted — start with S1 (theme YAML + shared render refactor)*
+
 ## Backlog
 
 ### Antigravity CLI (after June 18)
