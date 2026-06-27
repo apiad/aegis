@@ -5,6 +5,41 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-26
+
+### Unified input queue + click-to-dequeue chips
+
+Every inbound message — text typed into the box and agent handoffs —
+now flows through one inbox queue.
+
+- `AgentSession.deliver` returns a `Delivery(landed | queued, depth)`
+  receipt: `landed` when the agent was idle (consumed into a turn now),
+  `queued` with its position when mid-turn. A new `on_dispatch` observer
+  fires when a buffered batch starts its turn.
+- Text-box input is no longer blocked while the agent works. It's
+  delivered as a headerless `sender=user` message (a plain user turn)
+  and, when the agent is mid-turn, shows as a click-to-dequeue **chip**
+  above the input box (`PendingStrip`/`Chip`). Clicking a chip cancels
+  that message before it reaches the agent. The input stays enabled —
+  you can keep typing.
+- `aegis_handoff` to a busy peer no longer rejects — it queues and
+  returns `landed at <t>` or `queued for <t> (position N)`.
+
+### Transcript windowing for long sessions
+
+The TUI ConversationPane now keeps a bounded set of mounted blocks:
+evicts the top when the count exceeds `N_MAX`, restores older blocks on
+debounced scroll-up with anchor preservation, and trims the initial
+replay so resumed long sessions start snappy. Sticky-bottom tracking
+gates auto-scroll.
+
+### pre_spawn hooks + socks-proxy plugin
+
+- New `pre_spawn` hook event lets hooks rewrite a harness subprocess's
+  argv/env before exec (wired in the Claude and ACP drivers).
+- `socks-proxy` plugin tunnels harness subprocesses through
+  `proxychains4`, built on the new `pre_spawn` seam.
+
 ### memory-system plugin (v0.1.0)
 
 Second canonical plugin under `plugins/memory-system/`. Hermes-inspired
