@@ -77,7 +77,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker
-  modal (picker.py), Theme registry + AegisColors role map (themes.py;
+  modal (picker.py), PendingStrip/Chip — the click-to-dequeue queue of
+  text-box messages shown above the input while the agent is mid-turn
+  (pending.py), Theme registry + AegisColors role map (themes.py;
   `aegis-ink` default)
 - `src/aegis/mcp/` - FastMCP server (`server.py`: BRIEFING/PRIMING,
   `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
@@ -101,10 +103,15 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   under `.aegis/state/queues/<queue>.jsonl`; `start()` replays on
   boot and marks in-flight tasks `failed:interrupted`),
   `InboxRouter` (per-handle delivery; wake-on-idle / mid-turn buffer /
-  turn-end chain through `AgentSession.deliver`; JSONL writethrough
+  turn-end chain through `AgentSession.deliver`, which returns a
+  `Delivery(landed|queued, depth)` receipt; JSONL writethrough
   under `.aegis/state/inboxes/<handle>.jsonl`), schema records
-  (`Queue`, `Task`, `InboxMessage`) + helpers (`new_ulid`,
-  `now_iso`, `sender_agent`/`sender_queue`, `render_inbox_header`).
+  (`Queue`, `Task`, `InboxMessage`, `Delivery`) + helpers (`new_ulid`,
+  `now_iso`, `sender_agent`/`sender_queue`/`sender_user`,
+  `render_inbox_header`). Text-box input is delivered as a headerless
+  `sender_user` message (plain user turn); `AgentSession.cancel_pending`
+  drops a still-buffered message by identity (chip dequeue); the
+  `on_dispatch` observer fires when a buffered batch starts its turn.
   MCP surface: `aegis_enqueue` (queue, payload, from_handle,
   callback=True) and `aegis_task_status`. `aegis_handoff` now flows
   through the same inbox channel — target agents read handoffs and
