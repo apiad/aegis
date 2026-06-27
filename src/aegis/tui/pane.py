@@ -28,6 +28,7 @@ from aegis.render import (
 )
 from aegis.state.session_log import EventReplay
 from aegis.tui.state import AgentState
+from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 
@@ -357,6 +358,7 @@ class ConversationPane(Widget):
         self._core.add_event_observer(self._on_core_event)
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
+        self._core.add_dispatch_observer(self._on_core_dispatch)
         if state_dir_path is not None:
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, handle))
@@ -395,6 +397,8 @@ class ConversationPane(Widget):
         self._palette = palette
         for w in self.query(QueueStrip):
             w.set_palette(palette)
+        for w in self.query(PendingStrip):
+            w.set_palette(palette)
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -404,6 +408,7 @@ class ConversationPane(Widget):
             yield StatusBar(self.handle, self.agent_slug,
                             self._agent.model,
                             self._agent.permission.value, self._palette)
+            yield PendingStrip(self._palette)
             yield GrowingInput(placeholder="type a message…")
 
     async def on_mount(self) -> None:
@@ -567,22 +572,37 @@ class ConversationPane(Widget):
                                   event: GrowingInput.Submitted) -> None:
         event.stop()
         text = event.value.strip()
-        if not text or self.state is AgentState.working:
+        if not text:
             return
         inp = self.query_one(GrowingInput)
         inp.value = ""
-        self._submit(text)
+        # Every text-box message flows through the one inbox queue. When
+        # idle it lands immediately (rendered by _on_core_dispatch); when
+        # the agent is mid-turn it queues as a click-to-dequeue chip.
+        from aegis.queue import InboxMessage, now_iso, sender_user
+        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
+                           body=text)
+        self._flush_streaming()
+        receipt = await self._core.deliver(msg)
+        if receipt.disposition == "queued":
+            self.query_one(PendingStrip).add(msg)
 
     def _submit(self, text: str) -> None:
+        """Programmatic turn (opening prompt). Direct send — bypasses the
+        inbox queue; the text-box path uses deliver()."""
         self._flush_streaming()
-        inp = self.query_one(GrowingInput)
-        inp.disabled = True
         width = self._transcript().size.width or 80
         self._mount_block(
             render_user_line(text, self._palette, width), text)
         self._start_indicator()
         self.run_worker(self._core.send(text),
                         group="turn", exclusive=True)
+
+    def on_chip_dequeued(self, event: Chip.Dequeued) -> None:
+        """A queued user message was clicked: cancel it before dispatch."""
+        event.stop()
+        self._core.cancel_pending(event.msg)
+        self.query_one(PendingStrip).remove_msg(event.msg)
 
     async def deliver_handoff(self, from_handle: str,
                               context: str) -> None:
@@ -630,11 +650,29 @@ class ConversationPane(Widget):
 
     # --- event handlers --------------------------------------------
 
+    def _on_core_dispatch(self, _core, batch) -> None:
+        """A buffered batch is leaving the queue to start a turn. User
+        text-box messages render as user lines here (and shed their chip);
+        agent/queue/telegram messages were already rendered on arrival by
+        _on_core_inbox."""
+        strip = self.query_one(PendingStrip)
+        width = self._transcript().size.width or 80
+        for msg in batch:
+            if msg.sender == "user":
+                strip.remove_msg(msg)
+                self._flush_streaming()
+                self._mount_block(
+                    render_user_line(msg.body, self._palette, width),
+                    msg.body)
+
     def _on_core_inbox(self, _core, msg) -> None:
         """Render an incoming inbox message (handoff / queue callback /
         telegram) as a distinct block in the transcript before the agent
         reacts. Fires on every deliver(), whether the session was idle
-        or buffering mid-turn."""
+        or buffering mid-turn. User text-box messages are owned by the
+        chip/dispatch flow, so they're skipped here."""
+        if msg.sender == "user":
+            return
         self._flush_streaming()
         renderable = render_inbox_block(msg, self._palette)
         # Plain-text clipboard payload mirrors the substrate header
@@ -664,6 +702,11 @@ class ConversationPane(Widget):
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
         self.query_one(StatusBar).set_state(state)
+        # A turn is starting (landed input, chained inbox batch, or
+        # programmatic send) — keep the working indicator pinned. No-op if
+        # one is already mounted.
+        if not finished and state is AgentState.working:
+            self._start_indicator()
         if finished and state is AgentState.error \
                 and not self._transcript_has("⚠ harness"):
             self._flush_streaming()
