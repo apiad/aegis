@@ -14,7 +14,7 @@ from aegis.hooks import (
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
-from aegis.queue.schema import InboxMessage, render_inbox_header
+from aegis.queue.schema import Delivery, InboxMessage, render_inbox_header
 from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
@@ -23,12 +23,17 @@ log = logging.getLogger("aegis.core.session")
 EventCb = Callable[["AgentSession", Event], None]
 StateCb = Callable[["AgentSession", AgentState, bool], None]
 InboxCb = Callable[["AgentSession", InboxMessage], None]
+DispatchCb = Callable[["AgentSession", list[InboxMessage]], None]
 CloseCb = Callable[["AgentSession", str], None]
 
 
 def _render_batch(batch: list[InboxMessage]) -> str:
-    return "\n\n".join(
-        render_inbox_header(m) + "\n" + m.body for m in batch)
+    def _one(m: InboxMessage) -> str:
+        header = render_inbox_header(m)
+        # User text-box messages render headerless (plain user turn); inbox
+        # messages keep their `> from …` substrate header.
+        return f"{header}\n{m.body}" if header else m.body
+    return "\n\n".join(_one(m) for m in batch)
 
 
 class AgentSession:
@@ -80,10 +85,16 @@ class AgentSession:
         # immediately) or mid-turn (buffers for chain). Lets frontends
         # surface "received from <sender>" before the agent reacts.
         self.on_inbox: InboxCb | None = None
+        # Fired the instant a buffered batch leaves the buffer to start a
+        # turn (idle-drain or turn-end chain) — never for the plain
+        # send() path. Lets frontends learn which queued messages are now
+        # being sent (e.g. clear their chips, mount user lines).
+        self.on_dispatch: DispatchCb | None = None
         self.on_close: CloseCb | None = None
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
         self._extra_inbox_observers: list[InboxCb] = []
+        self._extra_dispatch_observers: list[DispatchCb] = []
         self._extra_close_observers: list[CloseCb] = []
         # Captured by _run_turn's except clause for postmortem inspection.
         # None until a harness error occurs; replaced on each new error.
@@ -110,6 +121,10 @@ class AgentSession:
         """Subscribe an additional inbox callback. Fires after on_inbox."""
         self._extra_inbox_observers.append(cb)
 
+    def add_dispatch_observer(self, cb: DispatchCb) -> None:
+        """Subscribe an additional dispatch callback. Fires after on_dispatch."""
+        self._extra_dispatch_observers.append(cb)
+
     def add_close_observer(self, cb: CloseCb) -> None:
         """Subscribe an additional close callback. Fires after on_close."""
         self._extra_close_observers.append(cb)
@@ -125,6 +140,18 @@ class AgentSession:
                 cb(self, reason)
             except Exception:
                 log.exception("close observer raised; continuing")
+
+    def _emit_dispatch(self, batch: list[InboxMessage]) -> None:
+        if self.on_dispatch is not None:
+            try:
+                self.on_dispatch(self, batch)
+            except Exception:
+                log.exception("on_dispatch raised; continuing")
+        for cb in self._extra_dispatch_observers:
+            try:
+                cb(self, batch)
+            except Exception:
+                log.exception("dispatch observer raised; continuing")
 
     def _emit_state(self, state: AgentState, *, finished: bool) -> None:
         self.state = state
@@ -165,9 +192,11 @@ class AgentSession:
         finally:
             self._extra_event_observers.remove(_capture)
 
-    async def deliver(self, msg: InboxMessage) -> None:
-        """Push an inbox message at this session. Wake if idle; buffer
-        if mid-turn; the turn-end hook will chain a follow-up turn."""
+    async def deliver(self, msg: InboxMessage) -> Delivery:
+        """Push an inbox message at this session. Wake if idle (the message
+        lands into a turn now); buffer if mid-turn (queued — the turn-end
+        hook chains a follow-up turn). Returns a receipt telling the sender
+        which happened and, when queued, the message's 1-based position."""
         if self.on_inbox is not None:
             try:
                 self.on_inbox(self, msg)
@@ -180,15 +209,28 @@ class AgentSession:
                 log.exception("inbox observer raised; continuing")
         self._inbox_buffer.append(msg)
         if self.state is AgentState.working:
-            return
+            return Delivery(disposition="queued",
+                            depth=len(self._inbox_buffer))
         await self._cancel_idle_watcher()
         # idle: drain everything we hold and wake
         batch = self._inbox_buffer
         self._inbox_buffer = []
+        self._emit_dispatch(batch)
         text = _render_batch(batch)
         self._emit_state(AgentState.working, finished=False)
         self.metrics.start_turn(self._now())
         self._task = asyncio.create_task(self._run_turn(text))
+        return Delivery(disposition="landed", depth=0)
+
+    def cancel_pending(self, msg: InboxMessage) -> bool:
+        """Remove a still-buffered message by object identity. Returns True
+        if it was removed before dispatch, False if already dispatched or
+        never queued here."""
+        for i, m in enumerate(self._inbox_buffer):
+            if m is msg:
+                del self._inbox_buffer[i]
+                return True
+        return False
 
     async def _run_turn(self, text: str) -> None:
         """Unified path. Runs hooks, then harness, then observers."""
@@ -325,6 +367,7 @@ class AgentSession:
         if self._inbox_buffer:
             batch = self._inbox_buffer
             self._inbox_buffer = []
+            self._emit_dispatch(batch)
             text = _render_batch(batch)
             self._emit_state(AgentState.working, finished=False)
             self.metrics.start_turn(self._now())

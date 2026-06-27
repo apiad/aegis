@@ -141,7 +141,7 @@ async def test_handoff_delivers_via_inbox_router():
                       from_handle="wry-hopper",
                       target_handle="lucid-knuth",
                       context="please continue the spec")
-    assert "delivered to lucid-knuth" in out
+    assert "landed at lucid-knuth" in out
     pending = br.inbox_router.pending("lucid-knuth")
     assert len(pending) == 1
     msg = pending[0]
@@ -166,7 +166,7 @@ async def test_handoff_self_and_unknown_still_reject():
 
 
 @pytest.mark.asyncio
-async def test_handoff_rejects_busy_target():
+async def test_handoff_queues_busy_target():
     br = FakeBridge()
     # Mutate the session into 'working' state for this test.
     br._sessions = [
@@ -176,8 +176,10 @@ async def test_handoff_rejects_busy_target():
     out = await _call(srv, "aegis_handoff",
                       from_handle="me", target_handle="busy-one",
                       context="now")
-    assert "busy" in out and "busy-one" in out
-    assert br.inbox_router.pending("busy-one") == []
+    # No longer rejected — the handoff queues and reports its position.
+    assert "queued for busy-one" in out and "position 1" in out
+    pending = br.inbox_router.pending("busy-one")
+    assert len(pending) == 1 and "now" in pending[0].body
 
 
 @pytest.mark.asyncio

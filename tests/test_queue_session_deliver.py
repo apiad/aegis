@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from aegis.core.session import AgentSession
+from aegis.core.session import AgentSession, _render_batch
 from aegis.events import AssistantText, Result
-from aegis.queue import InboxMessage
+from aegis.queue import InboxMessage, sender_user
 from aegis.tui.state import AgentState
 
 
@@ -35,6 +35,10 @@ class FakeHarness:
 def _msg(body, ts="2026-05-20T07:14:00Z"):
     return InboxMessage(sender="queue:impl", timestamp=ts, body=body,
                         task_id="01J42", status="ok")
+
+
+def _user(body, ts="2026-05-20T07:14:00Z"):
+    return InboxMessage(sender=sender_user(), timestamp=ts, body=body)
 
 
 async def test_idle_delivery_wakes_into_new_turn():
@@ -127,6 +131,102 @@ async def test_multiple_arrivals_batch_into_one_chain_turn():
     # both bodies present, each with own header
     assert body.count("> from queue:impl") == 2
     assert "a" in body and "b" in body
+
+
+async def test_deliver_returns_landed_when_idle():
+    evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    receipt = await s.deliver(_msg("hello"))
+    assert receipt.disposition == "landed" and receipt.depth == 0
+    await s._task
+
+
+async def test_deliver_returns_queued_with_depth_when_working():
+    evs = [
+        [AssistantText(text="working"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    await s.send("work")
+    r1 = await s.deliver(_msg("a"))
+    r2 = await s.deliver(_msg("b"))
+    assert (r1.disposition, r1.depth) == ("queued", 1)
+    assert (r2.disposition, r2.depth) == ("queued", 2)
+    await s._task
+    await s._task
+
+
+async def test_on_dispatch_fires_with_batch_on_idle_and_chain():
+    evs = [
+        [AssistantText(text="working"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    batches: list[list[InboxMessage]] = []
+    s.add_dispatch_observer(lambda _s, batch: batches.append(batch))
+
+    # idle deliver → dispatched immediately as its own batch
+    await s.deliver(_user("first"))
+    await s._task
+    assert [m.body for m in batches[0]] == ["first"]
+
+    # mid-turn deliver of two → one chained batch at turn end
+    await s.send("work")
+    await s.deliver(_user("a"))
+    await s.deliver(_user("b"))
+    await s._task          # send-turn
+    await s._task          # chained dispatch
+    assert [m.body for m in batches[-1]] == ["a", "b"]
+
+
+async def test_on_dispatch_does_not_fire_for_send():
+    evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    fired: list = []
+    s.add_dispatch_observer(lambda _s, batch: fired.append(batch))
+    await s.send("plain")
+    await s._task
+    assert fired == []
+
+
+async def test_cancel_pending_removes_by_identity():
+    evs = [
+        [AssistantText(text="working"),
+         Result(duration_ms=1, is_error=False, usage=None)],
+        [Result(duration_ms=1, is_error=False, usage=None)],
+    ]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    await s.send("work")
+    a, b = _user("a"), _user("b")
+    await s.deliver(a)
+    await s.deliver(b)
+    assert s.cancel_pending(a) is True
+    await s._task          # send-turn
+    await s._task          # chained dispatch of [b] only
+    # only b survived to reach the harness
+    assert "b" in s._session.sent[1] and "a" not in s._session.sent[1]
+
+
+async def test_cannot_cancel_dispatched_message():
+    evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    m = _user("gone")
+    await s.deliver(m)     # idle → dispatched immediately
+    await s._task
+    assert s.cancel_pending(m) is False
+
+
+def test_render_batch_user_is_headerless_handoff_keeps_header():
+    user = InboxMessage(sender=sender_user(),
+                        timestamp="2026-05-20T07:14:00Z", body="typed this")
+    handoff = InboxMessage(sender="agent:wry-hopper",
+                           timestamp="2026-05-20T07:14:00Z", body="peer work")
+    out = _render_batch([user, handoff])
+    assert out.startswith("typed this")
+    assert "> from agent:wry-hopper" in out
+    assert "> from user" not in out
 
 
 async def test_deliver_fires_on_inbox_observer():

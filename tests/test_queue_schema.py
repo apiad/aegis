@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 from aegis.queue.schema import (
+    Delivery,
     InboxMessage,
     Queue,
     Task,
@@ -11,6 +12,7 @@ from aegis.queue.schema import (
     render_inbox_header,
     sender_agent,
     sender_queue,
+    sender_user,
 )
 
 
@@ -63,3 +65,23 @@ def test_render_inbox_header_without_task():
                      body="ignored")
     assert render_inbox_header(m) == (
         "> from agent:wry-hopper · 2026-05-20T07:14:00Z")
+
+
+def test_sender_user_helper():
+    assert sender_user() == "user"
+
+
+def test_user_messages_render_headerless():
+    """A text-box message reaches the agent as a plain user turn — no
+    substrate '> from …' header."""
+    m = InboxMessage(sender=sender_user(),
+                     timestamp="2026-05-20T07:14:00Z",
+                     body="hello")
+    assert render_inbox_header(m) == ""
+
+
+def test_delivery_receipt():
+    landed = Delivery(disposition="landed", depth=0)
+    assert landed.disposition == "landed" and landed.depth == 0
+    queued = Delivery(disposition="queued", depth=3)
+    assert queued.disposition == "queued" and queued.depth == 3

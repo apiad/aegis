@@ -724,8 +724,11 @@ def build_server(bridge: AppBridge) -> FastMCP:
         agent reads handoffs and callbacks through one consistent surface.
 
         from_handle is your own aegis handle (read it from your system
-        prompt). Returns 'delivered to <target>' on success, or a
-        'handoff rejected: …' reason (self / unknown / busy).
+        prompt). On success returns 'landed at <target>' when the target was
+        idle (it starts on your context now) or
+        'queued for <target> (position N)' when the target is mid-turn (your
+        context is buffered and chains at its next turn boundary). Returns a
+        'handoff rejected: …' reason for self / unknown target.
         """
         from aegis.queue import InboxMessage, now_iso, sender_agent
 
@@ -737,16 +740,18 @@ def build_server(bridge: AppBridge) -> FastMCP:
         if target_info is None:
             return (f"handoff rejected: no session {target_handle!r} "
                     f"(use aegis_list_sessions)")
-        if target_info.state == "working":
-            return (f"handoff rejected: {target_handle!r} is busy, "
-                    f"retry shortly")
-        await bridge.inbox_router.deliver(
+        receipt = await bridge.inbox_router.deliver(
             target_handle,
             InboxMessage(
                 sender=sender_agent(from_handle),
                 timestamp=now_iso(),
                 body=context))
-        return f"delivered to {target_handle}"
+        # The sender's view of land-vs-queue follows the target's state at
+        # call time; the receipt depth gives the queue position.
+        if target_info.state == "working":
+            return (f"queued for {target_handle} "
+                    f"(position {receipt.depth})")
+        return f"landed at {target_handle}"
 
     @server.tool
     async def aegis_rename(old_handle: str, new_handle: str) -> dict:

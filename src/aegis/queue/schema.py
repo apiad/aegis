@@ -24,6 +24,13 @@ def sender_agent(handle: str) -> str:
     return f"agent:{handle}"
 
 
+def sender_user() -> str:
+    """Sender tag for a message Alex typed into the text box. Renders
+    headerless (a plain user turn), unlike agent/queue/telegram inbox
+    messages which carry a ``> from …`` substrate header."""
+    return "user"
+
+
 def new_ulid() -> str:
     """26-char Crockford-base32 ULID: 48-bit ms timestamp + 80-bit randomness.
 
@@ -73,6 +80,16 @@ class Task:
 
 
 @dataclass(frozen=True)
+class Delivery:
+    """Receipt returned by ``deliver``: did the message ``landed`` (consumed
+    immediately into a turn) or ``queued`` (buffered behind an in-flight
+    turn)? ``depth`` is the 1-based queue position when queued, 0 when
+    landed."""
+    disposition: str   # "landed" | "queued"
+    depth: int         # queue position; 0 when landed
+
+
+@dataclass(frozen=True)
 class InboxMessage:
     sender: str
     timestamp: str
@@ -82,7 +99,14 @@ class InboxMessage:
 
 
 def render_inbox_header(msg: InboxMessage) -> str:
-    """One-line substrate header prefixed to every delivered inbox message."""
+    """One-line substrate header prefixed to every delivered inbox message.
+
+    User text-box messages (``sender == "user"``) render headerless — they
+    reach the agent as a plain user turn, indistinguishable from today's
+    direct ``send``.
+    """
+    if msg.sender == "user":
+        return ""
     if msg.task_id is not None:
         status = msg.status or "?"
         return (

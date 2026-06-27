@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from aegis.queue import InboxMessage, InboxRouter
+from aegis.queue import Delivery, InboxMessage, InboxRouter
 
 
 class FakeSession:
-    def __init__(self):
+    def __init__(self, receipt: Delivery | None = None):
         self.delivered: list[InboxMessage] = []
+        self._receipt = receipt or Delivery(disposition="landed", depth=0)
 
-    async def deliver(self, msg: InboxMessage) -> None:
+    async def deliver(self, msg: InboxMessage) -> Delivery:
         self.delivered.append(msg)
+        return self._receipt
 
 
 def _msg(sender="queue:impl", body="hi", task_id="01J42", status="ok"):
@@ -20,6 +22,21 @@ async def test_deliver_to_unbound_handle_buffers():
     r = InboxRouter()
     await r.deliver("lucid-knuth", _msg())
     assert len(r.pending("lucid-knuth")) == 1
+
+
+async def test_deliver_to_unbound_handle_returns_queued_receipt():
+    r = InboxRouter()
+    r1 = await r.deliver("h", _msg(body="a"))
+    r2 = await r.deliver("h", _msg(body="b"))
+    assert (r1.disposition, r1.depth) == ("queued", 1)
+    assert (r2.disposition, r2.depth) == ("queued", 2)
+
+
+async def test_deliver_to_bound_session_returns_session_receipt():
+    r = InboxRouter()
+    r.bind_session("h", FakeSession(Delivery(disposition="landed", depth=0)))
+    receipt = await r.deliver("h", _msg())
+    assert (receipt.disposition, receipt.depth) == ("landed", 0)
 
 
 async def test_drain_returns_arrival_order_and_clears():

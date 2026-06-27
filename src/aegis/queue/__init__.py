@@ -11,6 +11,7 @@ from aegis.queue.events import (
 from aegis.queue.inbox import InboxRouter
 from aegis.queue.manager import QueueManager
 from aegis.queue.schema import (
+    Delivery,
     InboxMessage,
     Queue,
     Task,
@@ -19,9 +20,11 @@ from aegis.queue.schema import (
     render_inbox_header,
     sender_agent,
     sender_queue,
+    sender_user,
 )
 
 __all__ = [
+    "Delivery",
     "InboxMessage",
     "InboxRouter",
     "Queue",
@@ -43,4 +46,5 @@ __all__ = [
     "render_inbox_header",
     "sender_agent",
     "sender_queue",
+    "sender_user",
 ]
