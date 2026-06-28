@@ -2,7 +2,8 @@
 
 > **The programmable multi-agent meta-harness.**
 >
-> Drives Claude Code, Gemini CLI, and OpenCode in one terminal, gives
+> Drives Claude Code, Gemini CLI, OpenCode, and GitHub Copilot CLI in
+> one terminal, gives
 > them six primitives for working together, and lets you orchestrate
 > them with deterministic Python workflows and scheduled jobs.
 
@@ -513,8 +514,8 @@ aegis schedule logs morning-briefing -n 50
 pip install aegis-harness        # or: uv pip install aegis-harness
 ```
 
-Requires Python 3.13+ and at least one of: `claude`, `gemini`, or
-`opencode` on your `PATH`, signed-in.
+Requires Python 3.13+ and at least one of: `claude`, `gemini`,
+`opencode`, or `copilot` on your `PATH`, signed-in.
 
 ## Quickstart
 
@@ -635,7 +636,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Install](https://apiad.github.io/aegis/install/)
 - [Usage](https://apiad.github.io/aegis/usage/)
 - [Configuration](https://apiad.github.io/aegis/configuration/)
-- [Drivers](https://apiad.github.io/aegis/drivers/) — Claude / Gemini / OpenCode
+- [Drivers](https://apiad.github.io/aegis/drivers/) — Claude / Gemini / OpenCode / Copilot
 - [Queues](https://apiad.github.io/aegis/queues/) — inter-agent delegation
 - [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
 - [Terminals](https://apiad.github.io/aegis/terminals/) — shared live PTY

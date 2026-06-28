@@ -1,9 +1,10 @@
 from aegis.config import (
-    Agent, ClaudeCode, Effort, GeminiCLI, OpenCode, Permission, Provider,
+    Agent, ClaudeCode, CopilotCLI, Effort, GeminiCLI, OpenCode, Permission,
+    Provider,
 )
 from aegis.queue import Queue
 
 __all__ = [
-    "Agent", "ClaudeCode", "Effort", "GeminiCLI", "OpenCode",
+    "Agent", "ClaudeCode", "CopilotCLI", "Effort", "GeminiCLI", "OpenCode",
     "Permission", "Provider", "Queue",
 ]
