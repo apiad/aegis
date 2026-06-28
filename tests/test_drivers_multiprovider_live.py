@@ -1,4 +1,4 @@
-"""Live smoke tests for the Gemini and OpenCode drivers (ACP-based).
+"""Live smoke tests for the Gemini, OpenCode, and Copilot drivers (ACP-based).
 
 Three checks per provider against the real CLI subprocess:
 
@@ -21,7 +21,8 @@ import socket
 
 import pytest
 
-from aegis import Agent, GeminiCLI, OpenCode
+from aegis import Agent, CopilotCLI, GeminiCLI, OpenCode
+from aegis.drivers.copilot import CopilotDriver
 from aegis.drivers.gemini import GeminiDriver
 from aegis.drivers.opencode import OpenCodeDriver
 from aegis.events import AssistantText, Result
@@ -29,6 +30,7 @@ from aegis.events import AssistantText, Result
 
 _HAVE_GEMINI = shutil.which("gemini") is not None
 _HAVE_OPENCODE = shutil.which("opencode") is not None
+_HAVE_COPILOT = shutil.which("copilot") is not None
 
 
 pytestmark = pytest.mark.live
@@ -212,3 +214,40 @@ async def test_opencode_mcp_per_session_injection(tmp_path):
             f"MCP server received {received!r}; events={events!r}")
     finally:
         server_task.cancel()
+
+
+# ---------- Copilot -------------------------------------------------
+
+
+@pytest.mark.skipif(not _HAVE_COPILOT, reason="copilot CLI not on PATH")
+async def test_copilot_driver_round_trip(tmp_path):
+    agent = Agent(provider=CopilotCLI(model="auto", permission="full"))
+    sess = CopilotDriver().session(agent, str(tmp_path),
+                                   mcp_url="", handle="c1")
+    await sess.start()
+    await sess.send("Reply with the single word PING and stop.")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    text = _aggregate_text(events)
+    assert "PING" in text.upper(), text
+    result = next((e for e in events if isinstance(e, Result)), None)
+    assert result is not None and not result.is_error
+
+
+@pytest.mark.skipif(not _HAVE_COPILOT, reason="copilot CLI not on PATH")
+async def test_copilot_multi_turn_memory(tmp_path):
+    agent = Agent(provider=CopilotCLI(model="auto", permission="full"))
+    sess = CopilotDriver().session(agent, str(tmp_path),
+                                   mcp_url="", handle="c2")
+    await sess.start()
+
+    await sess.send("Remember the number 4217. Reply with just OK.")
+    turn1 = [ev async for ev in sess.events()]
+    assert "OK" in _aggregate_text(turn1).upper()
+
+    await sess.send("What number did I ask you to remember? "
+                    "Reply with just the digits.")
+    turn2 = [ev async for ev in sess.events()]
+    await sess.close()
+    assert "4217" in _aggregate_text(turn2)

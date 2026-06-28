@@ -71,8 +71,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `claude.py` (Claude Code, full-featured — multi-turn via stream-json INPUT,
   per-invocation MCP injection via `--mcp-config`). `acp.py` is the generic
   `AcpDriver`/`AcpSession` on the official `agent-client-protocol` SDK;
-  `gemini.py`, `opencode.py`, and `lovelaice.py` are thin `BASE_CMD` shims over
-  it (`gemini --acp`, `opencode acp`, `lovelaice-acp`). Registry is `DRIVERS`
+  `gemini.py`, `opencode.py`, `copilot.py`, and `lovelaice.py` are thin
+  `BASE_CMD` shims over it (`gemini --acp`, `opencode acp`, `copilot --acp`,
+  `lovelaice-acp`). Registry is `DRIVERS`
   in `drivers/__init__.py`, keyed by harness string.
   **`lovelaice.py` is the native, harness-free agent** — it spawns `lovelaice-acp`
   (lovelaice's ACP v1 server, a dependency of aegis) and runs local or direct-API
@@ -85,7 +86,8 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `AcpSession.session_id` (needed for `resume()`), `AcpSession.interrupt()` sends
   ACP `session/cancel`, and lovelaice streams deltas + supports `load_session`
   resume. Per-provider config classes (`ClaudeCode`, `GeminiCLI`, `OpenCode`,
-  `Lovelaice`) in `config/__init__.py` carry only the fields each provider uses;
+  `CopilotCLI`, `Lovelaice`) in `config/__init__.py` carry only the fields each
+  provider uses;
   legacy flat `Agent(harness="…", model=…, …)` still works via a back-compat shim.
   See `know-how/native-lovelaice-agent.md`.
 - `src/aegis/events.py` - stream-json parser (typed events). Events carry

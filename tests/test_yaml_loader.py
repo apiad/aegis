@@ -60,6 +60,19 @@ def test_missing_provider_fails(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
+def test_copilot_provider(tmp_path: Path) -> None:
+    (tmp_path / ".aegis.yaml").write_text(textwrap.dedent("""
+        default_agent: copilot
+        agents:
+          copilot:
+            provider: copilot
+            model: auto
+    """))
+    agent = load_config(tmp_path).agents["copilot"]
+    assert agent.harness == "copilot"
+    assert agent.model == "auto"
+
+
 def test_schedules_inline(tmp_path: Path) -> None:
     (tmp_path / ".aegis.yaml").write_text(textwrap.dedent("""
         schedules:
