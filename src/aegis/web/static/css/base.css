@@ -87,6 +87,30 @@ html, body {
 }
 .transcript > div { margin: 0.15rem 0; }
 
+/* queue strip — always-on summary when queues exist */
+#queuestrip {
+  display: none;
+  padding: 0.2rem 0.8rem;
+  border-bottom: 1px solid var(--aegis-rule);
+  color: var(--aegis-muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+/* queue dashboard */
+.qd-modal { min-width: 480px; max-width: 80vw; max-height: 80vh; overflow-y: auto; }
+.qd-queues { color: var(--aegis-accent); margin-bottom: 0.4rem; }
+.qd-band { margin-top: 0.5rem; }
+.qd-band-title { color: var(--aegis-muted); font-size: 0.8em; margin-bottom: 0.2rem; }
+.qd-task { padding: 0.2rem 0.4rem; border-radius: 3px; }
+.qd-task.running { color: var(--aegis-working); }
+.qd-task.ok { color: var(--aegis-ok); }
+.qd-task.err { color: var(--aegis-err); }
+.qd-task.jumpable { cursor: pointer; }
+.qd-task.jumpable:hover { background: var(--aegis-surface); }
+.qd-tail { padding: 0.2rem 0.8rem; white-space: pre-wrap; font-size: 0.85em; }
+
 /* agent picker modal */
 .modal-overlay {
   position: fixed;

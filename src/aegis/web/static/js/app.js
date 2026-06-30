@@ -6,6 +6,7 @@ import { WSClient } from "./ws.js";
 import { coalesceInto } from "./coalesce.js";
 import { renderMarkdown } from "./markdown.js";
 import { reconcileTabs, cycleHandle, gotoHandle } from "./tabs.js";
+import { formatStrip } from "./queues.js";
 
 // --- token: read ?t= once, persist, strip from the address bar ---------
 const params = new URLSearchParams(location.search);
@@ -26,12 +27,15 @@ const statusHandle = document.getElementById("status-handle");
 const statusMetrics = document.getElementById("status-metrics");
 const input = document.getElementById("input");
 const modalRoot = document.getElementById("modal-root");
+const queuestripEl = document.getElementById("queuestrip");
 
 const tabs = new Map();      // handle -> Tab
 let activeHandle = null;
 let client = null;
 let pendingActivate = null;  // activate this handle once its tab appears
 let modalClose = null;       // closes the open modal, or null
+let latestDigest = { queues: [], tasks: [], last_started: null };
+let dashboardBody = null;    // set while the queue dashboard is open
 
 // the "+" button lives at the end of the tabbar; chips insert before it
 const plusBtn = document.createElement("button");
@@ -295,6 +299,91 @@ function navTab(dir) {
   const next = cycleHandle([...tabs.keys()], activeHandle, dir);
   if (next) activateTab(next);
 }
+
+// --- queue strip + dashboard -------------------------------------------
+
+function onQueueDigest(frame) {
+  latestDigest = frame;
+  renderStrip();
+  if (dashboardBody) renderDashboardBody();
+}
+
+function renderStrip() {
+  const parts = formatStrip(latestDigest.queues);
+  if (!parts.length) { queuestripEl.style.display = "none"; return; }
+  queuestripEl.style.display = "block";
+  queuestripEl.textContent = parts.join("   ");
+}
+
+function taskRow(t) {
+  const row = document.createElement("div");
+  row.className = "qd-task " + t.state;
+  const jumpable = t.worker_handle && tabs.has(t.worker_handle);
+  if (jumpable) row.classList.add("jumpable");
+  row.textContent =
+    `${t.queue} · ${t.payload_summary} · ${t.worker_handle || "—"} · ${t.state}`;
+  row.addEventListener("click", async () => {
+    if (jumpable) { if (modalClose) modalClose(); activateTab(t.worker_handle); return; }
+    try {
+      const { lines } = await client.rpc("queue_tail", { task_id: t.task_id });
+      showTail(row, lines);
+    } catch { /* ignore */ }
+  });
+  return row;
+}
+
+function showTail(afterRow, lines) {
+  const existing = afterRow.nextElementSibling;
+  if (existing && existing.classList.contains("qd-tail")) { existing.remove(); return; }
+  const tail = document.createElement("div");
+  tail.className = "qd-tail muted";
+  tail.textContent = (lines && lines.length) ? lines.join("\n") : "(no output yet)";
+  afterRow.after(tail);
+}
+
+function band(title, tasks) {
+  const wrap = document.createElement("div");
+  wrap.className = "qd-band";
+  const h = document.createElement("div");
+  h.className = "qd-band-title";
+  h.textContent = `${title} (${tasks.length})`;
+  wrap.appendChild(h);
+  for (const t of tasks) wrap.appendChild(taskRow(t));
+  return wrap;
+}
+
+function renderDashboardBody() {
+  if (!dashboardBody) return;
+  dashboardBody.replaceChildren();
+  const qline = document.createElement("div");
+  qline.className = "qd-queues";
+  qline.textContent = formatStrip(latestDigest.queues).join("   ") || "no queues";
+  dashboardBody.appendChild(qline);
+  const tasks = latestDigest.tasks || [];
+  dashboardBody.appendChild(band("IN-FLIGHT", tasks.filter((t) => t.state === "running")));
+  dashboardBody.appendChild(band("QUEUED", tasks.filter((t) => t.state === "queued")));
+  dashboardBody.appendChild(band("RECENT",
+    tasks.filter((t) => t.state === "ok" || t.state === "err")));
+}
+
+function openDashboard() {
+  if (modalClose) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal qd-modal";
+  const title = document.createElement("div");
+  title.className = "modal-title";
+  title.textContent = "Queues";
+  dashboardBody = document.createElement("div");
+  dashboardBody.className = "qd-body";
+  box.append(title, dashboardBody);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => { overlay.remove(); modalClose = null; dashboardBody = null; };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+  renderDashboardBody();
+}
 function gotoTab(n) {
   const h = gotoHandle([...tabs.keys()], n);
   if (h) activateTab(h);
@@ -342,6 +431,7 @@ function wireKeys() {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const code = e.code;
     if (code === "KeyN") { e.preventDefault(); openPicker(); }
+    else if (code === "KeyD") { e.preventDefault(); openDashboard(); }
     else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
     else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
     else if (code === "KeyJ") { e.preventDefault(); navTab(1); }
@@ -362,12 +452,14 @@ async function boot() {
   client.on("inbox", onInbox);
   client.on("window_reset", onWindowReset);
   client.on("session_list", onSessionList);
+  client.on("queue_digest", onQueueDigest);
 
   wireComposer();
   wireKeys();
 
   await client.connect();
   client.subscribeGlobal("session_list");
+  client.subscribeGlobal("queue_digest");
 
   // empty-state default: spawn the first configured agent if none exist.
   const { sessions } = await client.rpc("list_sessions");
