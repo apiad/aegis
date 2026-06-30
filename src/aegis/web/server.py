@@ -64,6 +64,17 @@ def build_web_app(manager, web_cfg, state_dir, *,
                   server_version: str = "0") -> Starlette:
     registry = SubscriptionRegistry(manager, Path(state_dir))
     constants = _constants()
+
+    # Queue monitoring: build a digest over the attached QueueManager (the TUI
+    # does the same; aegis serve doesn't otherwise). Each queue event triggers
+    # a digest broadcast to subscribed web clients.
+    qm = getattr(manager, "queue_manager", None)
+    if qm is not None:
+        from aegis.queue import QueueDigest
+        digest = QueueDigest(qm)
+        digest.start()
+        registry.set_digest(digest)
+        qm.subscribe(lambda ev: registry.broadcast_queue_digest())
     static = Path(static_dir) if static_dir is not None else _PKG_STATIC
     index_html = (static / "index.html").read_text(encoding="utf-8")
     base_css = (static / "css" / "base.css").read_text(encoding="utf-8")

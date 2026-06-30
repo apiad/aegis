@@ -46,6 +46,8 @@ class SubscriptionRegistry:
         self._state_dir = Path(state_dir)
         self._handles: dict[str, _HandleState] = {}
         self._globals: set[Sink] = set()
+        self._queue_subs: set[Sink] = set()
+        self._digest = None
 
     # -- global session-list stream --------------------------------------
 
@@ -64,6 +66,40 @@ class SubscriptionRegistry:
     def broadcast_session_list(self) -> None:
         frame = self.session_list_frame()
         for sink in list(self._globals):
+            sink(frame)
+
+    # -- queue digest stream ---------------------------------------------
+
+    def set_digest(self, digest) -> None:
+        self._digest = digest
+
+    def subscribe_queue(self, sink: Sink) -> None:
+        self._queue_subs.add(sink)
+
+    def unsubscribe_queue(self, sink: Sink) -> None:
+        self._queue_subs.discard(sink)
+
+    def queue_digest_frame(self) -> dict:
+        if self._digest is None:
+            return {"type": "stream", "kind": "queue_digest",
+                    "queues": [], "tasks": [], "last_started": None}
+        snap = self._digest.snapshot()
+        return {
+            "type": "stream", "kind": "queue_digest",
+            "queues": [asdict(q) for q in snap.queues],
+            "tasks": [asdict(t) for t in snap.tasks],
+            "last_started": (asdict(snap.last_started)
+                             if snap.last_started else None),
+        }
+
+    def queue_tail(self, task_id: str) -> list[str]:
+        if self._digest is None:
+            return []
+        return self._digest.tail_of(task_id)
+
+    def broadcast_queue_digest(self) -> None:
+        frame = self.queue_digest_frame()
+        for sink in list(self._queue_subs):
             sink(frame)
 
     async def subscribe(self, handle: str, sink: Sink) -> int:

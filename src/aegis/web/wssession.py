@@ -24,7 +24,7 @@ PROTOCOL_VERSION = 1
 AUTH_TIMEOUT_S = 5.0
 DEFAULT_SEND_CAP = 10_000
 SUPPORTED_KINDS = [
-    "event", "state", "inbox", "session_list",
+    "event", "state", "inbox", "session_list", "queue_digest",
     "history_complete", "window_reset",
 ]
 
@@ -55,6 +55,8 @@ class WSSession:
         self._subs: dict[str, dict] = {}   # handle -> {sink, buffering, buffer}
         self._global_sink = lambda fr: self._emit(fr)
         self._global_on = False
+        self._queue_sink = lambda fr: self._emit(fr)
+        self._queue_on = False
 
     # -- lifecycle --------------------------------------------------------
 
@@ -79,6 +81,8 @@ class WSSession:
             self._detach_all()
             if self._global_on:
                 self._reg.unsubscribe_global(self._global_sink)
+            if self._queue_on:
+                self._reg.unsubscribe_queue(self._queue_sink)
 
     async def _read_loop(self) -> None:
         try:
@@ -188,6 +192,8 @@ class WSSession:
         if method == "interrupt_session":
             await self._m.interrupt(params["handle"])
             return {"ok": True}
+        if method == "queue_tail":
+            return {"lines": self._reg.queue_tail(params["task_id"])}
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:
@@ -210,6 +216,12 @@ class WSSession:
                 self._reg.subscribe_global(self._global_sink)
                 self._global_on = True
             self._emit(self._reg.session_list_frame())
+        elif (target.get("kind") == "global"
+              and target.get("stream") == "queue_digest"):
+            if not self._queue_on:
+                self._reg.subscribe_queue(self._queue_sink)
+                self._queue_on = True
+            self._emit(self._reg.queue_digest_frame())
 
     async def _resume(self, frame: dict) -> None:
         for sub in frame.get("subscriptions") or []:
