@@ -467,6 +467,100 @@ function openGroupDashboard() {
   groupTimer = setInterval(refreshGroups, 2000);
 }
 
+// --- file picker + viewer ----------------------------------------------
+
+let fileSearchTimer = null;
+
+function openFilePicker() {
+  if (modalClose) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal file-picker";
+  const inp = document.createElement("input");
+  inp.className = "file-search";
+  inp.placeholder = "Find file…";
+  const list = document.createElement("div");
+  list.className = "file-results";
+  box.append(inp, list);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => {
+    overlay.remove();
+    modalClose = null;
+    if (fileSearchTimer) { clearTimeout(fileSearchTimer); fileSearchTimer = null; }
+  };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+
+  const search = async () => {
+    try {
+      const { paths } = await client.rpc("file_search", { query: inp.value });
+      list.replaceChildren();
+      for (const p of (paths || [])) {
+        const row = document.createElement("div");
+        row.className = "file-result";
+        row.textContent = p;
+        row.addEventListener("click", () => { modalClose(); openFileViewer(p); });
+        list.appendChild(row);
+      }
+    } catch { /* ignore */ }
+  };
+  inp.addEventListener("input", () => {
+    if (fileSearchTimer) clearTimeout(fileSearchTimer);
+    fileSearchTimer = setTimeout(search, 120);
+  });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = list.querySelector(".file-result");
+      if (first) first.click();
+    }
+  });
+  search();
+  inp.focus();
+}
+
+async function openFileViewer(path) {
+  if (modalClose) return;
+  let data;
+  try { data = await client.rpc("file_read", { path }); }
+  catch (e) { showError("file_read failed: " + e.message); return; }
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal file-modal";
+  const header = document.createElement("div");
+  header.className = "file-header";
+  header.textContent = `${path}  ·  ${data.kind || ""}`;
+  const body = document.createElement("div");
+  body.className = "file-body";
+
+  if (data.error) {
+    body.classList.add("muted");
+    body.textContent = data.error;
+  } else if (data.kind === "markdown") {
+    body.classList.add("assistant-text");
+    body.innerHTML = renderMarkdown(data.content);
+  } else if (data.kind === "html") {
+    const frame = document.createElement("iframe");
+    frame.className = "file-frame";
+    frame.setAttribute("sandbox", "");   // render natively, no scripts
+    frame.srcdoc = data.content;
+    body.appendChild(frame);
+  } else {
+    const pre = document.createElement("pre");
+    pre.className = "file-source";
+    pre.textContent = data.content;
+    body.appendChild(pre);
+  }
+
+  box.append(header, body);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => { overlay.remove(); modalClose = null; };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+}
+
 // --- input + keys ------------------------------------------------------
 
 function wireComposer() {
@@ -511,6 +605,7 @@ function wireKeys() {
     if (code === "KeyN") { e.preventDefault(); openPicker(); }
     else if (code === "KeyQ") { e.preventDefault(); openDashboard(); }
     else if (code === "KeyG") { e.preventDefault(); openGroupDashboard(); }
+    else if (code === "KeyP") { e.preventDefault(); openFilePicker(); }
     else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
     else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
     else if (code === "KeyJ") { e.preventDefault(); navTab(1); }

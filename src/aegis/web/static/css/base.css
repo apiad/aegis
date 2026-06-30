@@ -111,6 +111,34 @@ html, body {
 .qd-task.jumpable:hover { background: var(--aegis-surface); }
 .qd-tail { padding: 0.2rem 0.8rem; white-space: pre-wrap; font-size: 0.85em; }
 
+/* file picker + viewer */
+.file-picker { min-width: 480px; max-width: 70vw; }
+.file-search {
+  width: 100%;
+  background: var(--aegis-surface);
+  color: var(--aegis-fg);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 4px;
+  padding: 0.4rem;
+  font: inherit;
+  margin-bottom: 0.4rem;
+}
+.file-results { max-height: 50vh; overflow-y: auto; }
+.file-result {
+  padding: 0.25rem 0.5rem; border-radius: 3px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-result:hover { background: var(--aegis-surface); color: var(--aegis-accent); }
+.file-modal { width: 82vw; height: 82vh; display: flex; flex-direction: column; }
+.file-header {
+  color: var(--aegis-accent);
+  border-bottom: 1px solid var(--aegis-rule);
+  padding-bottom: 0.3rem; margin-bottom: 0.4rem;
+}
+.file-body { flex: 1; min-height: 0; overflow: auto; }
+.file-source { margin: 0; white-space: pre; }
+.file-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+
 /* group dashboard */
 .gd-group { margin-bottom: 0.6rem; }
 .gd-group-title { color: var(--aegis-accent); font-weight: bold; margin-bottom: 0.2rem; }
