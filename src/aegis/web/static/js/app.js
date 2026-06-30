@@ -334,6 +334,11 @@ function wireKeys() {
       }
       return;
     }
+    // Ctrl+Arrows cycle tabs — not browser-reserved, so they reach the page.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      if (e.key === "ArrowRight") { e.preventDefault(); navTab(1); return; }
+      if (e.key === "ArrowLeft") { e.preventDefault(); navTab(-1); return; }
+    }
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const code = e.code;
     if (code === "KeyN") { e.preventDefault(); openPicker(); }
