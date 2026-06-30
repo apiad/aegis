@@ -61,6 +61,7 @@ class _StarletteTransport:
 
 def build_web_app(manager, web_cfg, state_dir, *,
                   static_dir: Path | None = None,
+                  files_root: Path | None = None,
                   server_version: str = "0") -> Starlette:
     registry = SubscriptionRegistry(manager, Path(state_dir))
     constants = _constants()
@@ -75,6 +76,13 @@ def build_web_app(manager, web_cfg, state_dir, *,
         digest.start()
         registry.set_digest(digest)
         qm.subscribe(lambda ev: registry.broadcast_queue_digest())
+
+    # File picker + viewer: index the served project tree.
+    if files_root is not None:
+        from aegis.tui.file_index import FileIndexer
+        indexer = FileIndexer()
+        indexer.start(Path(files_root))
+        registry.set_files(indexer, Path(files_root).resolve())
     static = Path(static_dir) if static_dir is not None else _PKG_STATIC
     index_html = (static / "index.html").read_text(encoding="utf-8")
     base_css = (static / "css" / "base.css").read_text(encoding="utf-8")

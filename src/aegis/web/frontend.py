@@ -37,6 +37,7 @@ class WebFrontend:
         self._state_dir = Path(state_dir)
         self._port = _resolve_port(web_cfg, self._state_dir)
         self._app = build_web_app(manager, web_cfg, self._state_dir,
+                                  files_root=Path.cwd(),
                                   server_version=server_version)
         self._server: uvicorn.Server | None = None
 

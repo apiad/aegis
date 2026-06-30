@@ -48,6 +48,8 @@ class SubscriptionRegistry:
         self._globals: set[Sink] = set()
         self._queue_subs: set[Sink] = set()
         self._digest = None
+        self._indexer = None
+        self._files_root: Path | None = None
 
     # -- global session-list stream --------------------------------------
 
@@ -96,6 +98,41 @@ class SubscriptionRegistry:
         if self._digest is None:
             return []
         return self._digest.tail_of(task_id)
+
+    # -- file picker + viewer --------------------------------------------
+
+    def set_files(self, indexer, root: Path) -> None:
+        self._indexer = indexer
+        self._files_root = Path(root)
+
+    def file_search(self, query: str) -> list[str]:
+        if self._indexer is None:
+            return []
+        q = (query or "").strip()
+        return self._indexer.filter(q) if q else self._indexer.paths[:50]
+
+    def file_read(self, path: str) -> dict:
+        if self._files_root is None:
+            return {"error": "files unavailable"}
+        root = self._files_root
+        target = (root / path).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return {"error": "path outside project"}
+        if not target.is_file():
+            return {"error": "not a file"}
+        try:
+            if target.stat().st_size > 2_000_000:
+                return {"error": "file too large"}
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return {"error": str(exc)}
+        ext = target.suffix.lower()
+        kind = ("markdown" if ext in (".md", ".markdown")
+                else "html" if ext in (".html", ".htm")
+                else "source")
+        return {"path": path, "kind": kind, "content": content}
 
     # -- group dashboard (poll-on-open) ----------------------------------
 

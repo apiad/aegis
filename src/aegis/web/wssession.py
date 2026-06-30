@@ -196,6 +196,10 @@ class WSSession:
             return {"lines": self._reg.queue_tail(params["task_id"])}
         if method == "group_status":
             return {"groups": await self._reg.group_status()}
+        if method == "file_search":
+            return {"paths": self._reg.file_search(params.get("query", ""))}
+        if method == "file_read":
+            return self._reg.file_read(params["path"])
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:
