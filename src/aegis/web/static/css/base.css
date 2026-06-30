@@ -111,6 +111,12 @@ html, body {
 .qd-task.jumpable:hover { background: var(--aegis-surface); }
 .qd-tail { padding: 0.2rem 0.8rem; white-space: pre-wrap; font-size: 0.85em; }
 
+/* config panel */
+.cfg-modal { min-width: 480px; max-width: 80vw; max-height: 80vh; overflow-y: auto; }
+.cfg-band { margin-bottom: 0.6rem; }
+.cfg-band-title { color: var(--aegis-muted); font-size: 0.8em; margin-bottom: 0.2rem; }
+.cfg-row { padding: 0.15rem 0.4rem; }
+
 /* file picker + viewer */
 .file-picker { min-width: 480px; max-width: 70vw; }
 .file-search {

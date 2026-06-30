@@ -561,6 +561,52 @@ async function openFileViewer(path) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
 }
 
+// --- config panel (read-only, F2) --------------------------------------
+
+function cfgBand(title, rows) {
+  const wrap = document.createElement("div");
+  wrap.className = "cfg-band";
+  const h = document.createElement("div");
+  h.className = "cfg-band-title";
+  h.textContent = `${title} (${rows.length})`;
+  wrap.appendChild(h);
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.className = "cfg-row";
+    row.textContent = r;
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+async function openConfigPanel() {
+  if (modalClose) return;
+  let cfg;
+  try { cfg = await client.rpc("config_show"); }
+  catch (e) { showError("config_show failed: " + e.message); return; }
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal cfg-modal";
+  const title = document.createElement("div");
+  title.className = "modal-title";
+  title.textContent = "Config";
+  const body = document.createElement("div");
+  body.className = "cfg-body";
+  body.appendChild(cfgBand("AGENTS", (cfg.agents || []).map(
+    (a) => `${a.slug} · ${a.model || a.harness} · ${a.effort || ""} · ${a.permission || ""}`)));
+  body.appendChild(cfgBand("QUEUES", (cfg.queues || []).map(
+    (q) => `${q.name} · ${q.agent} · ×${q.max_parallel}`)));
+  body.appendChild(cfgBand("SCHEDULES", (cfg.schedules || []).map(
+    (s) => `${s.name} · ${s.cron || ""} · ${s.workflow || ""}${s.enabled === false ? " · off" : ""}`)));
+  box.append(title, body);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => { overlay.remove(); modalClose = null; };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+}
+
 // --- input + keys ------------------------------------------------------
 
 function wireComposer() {
@@ -595,6 +641,7 @@ function wireKeys() {
       }
       return;
     }
+    if (e.key === "F2") { e.preventDefault(); openConfigPanel(); return; }
     // Ctrl+Arrows cycle tabs — not browser-reserved, so they reach the page.
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {
       if (e.key === "ArrowRight") { e.preventDefault(); navTab(1); return; }
