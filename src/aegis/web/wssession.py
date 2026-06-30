@@ -194,6 +194,8 @@ class WSSession:
             return {"ok": True}
         if method == "queue_tail":
             return {"lines": self._reg.queue_tail(params["task_id"])}
+        if method == "group_status":
+            return {"groups": await self._reg.group_status()}
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:

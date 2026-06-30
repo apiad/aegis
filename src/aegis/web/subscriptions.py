@@ -97,6 +97,30 @@ class SubscriptionRegistry:
             return []
         return self._digest.tail_of(task_id)
 
+    # -- group dashboard (poll-on-open) ----------------------------------
+
+    async def group_status(self) -> list[dict]:
+        """Snapshot of every live group with members (incl. session state)
+        and current broadcast. Best-effort — empty when no groups bridge."""
+        groups = getattr(self._m, "groups", None)
+        if groups is None:
+            return []
+        try:
+            names = groups.runtime.registry.names()
+        except Exception:
+            return []
+        states = {si.handle: si.state for si in self._m.list_sessions()}
+        out: list[dict] = []
+        for name in names:
+            try:
+                st = await groups.status(name)
+            except Exception:
+                continue
+            for m in st.get("members", []):
+                m["state"] = states.get(m["handle"], "")
+            out.append(st)
+        return out
+
     def broadcast_queue_digest(self) -> None:
         frame = self.queue_digest_frame()
         for sink in list(self._queue_subs):
