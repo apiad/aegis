@@ -1,7 +1,9 @@
 // Dependency-free node unit test for tab reconciliation.
 // Run: node tests/web/tabs.test.mjs
 import assert from "node:assert";
-import { reconcileTabs } from "../../src/aegis/web/static/js/tabs.js";
+import {
+  reconcileTabs, cycleHandle, gotoHandle,
+} from "../../src/aegis/web/static/js/tabs.js";
 
 const sess = (handle, agent_slug = "opus") => ({ handle, agent_slug });
 
@@ -39,5 +41,16 @@ const sess = (handle, agent_slug = "opus") => ({ handle, agent_slug });
   assert.deepEqual(added, []);
   assert.deepEqual(removed, ["x", "y"]);
 }
+
+// cycleHandle — next/prev with wraparound
+assert.equal(cycleHandle(["a", "b", "c"], "a", 1), "b", "next");
+assert.equal(cycleHandle(["a", "b", "c"], "c", 1), "a", "next wraps");
+assert.equal(cycleHandle(["a", "b", "c"], "a", -1), "c", "prev wraps");
+assert.equal(cycleHandle([], "x", 1), null, "empty → null");
+assert.equal(cycleHandle(["a", "b"], "missing", 1), "a", "unknown → first");
+
+// gotoHandle — 1-based index
+assert.equal(gotoHandle(["a", "b", "c"], 2), "b", "goto 2");
+assert.equal(gotoHandle(["a", "b"], 5), null, "goto out of range");
 
 console.log("tabs.test.mjs: all assertions passed");

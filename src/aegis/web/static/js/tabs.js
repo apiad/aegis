@@ -9,3 +9,18 @@ export function reconcileTabs(existingHandles, sessions) {
   const removed = existingHandles.filter((h) => !want.has(h));
   return { added, removed };
 }
+
+// Next/prev tab with wraparound (dir = +1 / -1). Mirrors the TUI's
+// ctrl+tab / ctrl+right / ctrl+left navigation.
+export function cycleHandle(handles, current, dir) {
+  if (!handles.length) return null;
+  const i = handles.indexOf(current);
+  if (i === -1) return handles[0];
+  const n = handles.length;
+  return handles[(i + dir + n) % n];
+}
+
+// 1-based tab index → handle (ctrl+1..9), or null when out of range.
+export function gotoHandle(handles, n) {
+  return handles[n - 1] ?? null;
+}

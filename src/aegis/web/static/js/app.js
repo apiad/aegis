@@ -5,7 +5,7 @@
 import { WSClient } from "./ws.js";
 import { coalesceInto } from "./coalesce.js";
 import { renderMarkdown } from "./markdown.js";
-import { reconcileTabs } from "./tabs.js";
+import { reconcileTabs, cycleHandle, gotoHandle } from "./tabs.js";
 
 // --- token: read ?t= once, persist, strip from the address bar ---------
 const params = new URLSearchParams(location.search);
@@ -282,6 +282,24 @@ async function openPicker() {
   }
 }
 
+async function spawnDefault() {
+  try {
+    const { agents } = await client.rpc("list_agents");
+    if (!agents || !agents.length) { showError("no agents configured"); return; }
+    const r = await client.rpc("spawn_session", { agent_profile: agents[0] });
+    pendingActivate = r.handle;
+  } catch (e) { showError("spawn failed: " + e.message); }
+}
+
+function navTab(dir) {
+  const next = cycleHandle([...tabs.keys()], activeHandle, dir);
+  if (next) activateTab(next);
+}
+function gotoTab(n) {
+  const h = gotoHandle([...tabs.keys()], n);
+  if (h) activateTab(h);
+}
+
 // --- input + keys ------------------------------------------------------
 
 function wireComposer() {
@@ -305,6 +323,9 @@ function wireComposer() {
 }
 
 function wireKeys() {
+  // Keyboard map mirrors the TUI's BINDINGS (src/aegis/tui/app.py) for the
+  // surfaces the web client has today. Browser-reserved chords (ctrl+t/n/w)
+  // are preventDefault'd best-effort; some browsers still intercept them.
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (modalClose) { modalClose(); return; }
@@ -313,13 +334,18 @@ function wireKeys() {
       }
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && (e.key === "n" || e.key === "N")) {
-      e.preventDefault();
-      openPicker();
-    } else if ((e.ctrlKey || e.metaKey) && (e.key === "w" || e.key === "W")) {
-      e.preventDefault();
-      if (activeHandle) closeTab(activeHandle);
-    }
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    const k = e.key.toLowerCase();
+
+    if (k === "n") { e.preventDefault(); openPicker(); }
+    else if (k === "t") { e.preventDefault(); spawnDefault(); }
+    else if (k === "w") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
+    else if (k === "tab" && !e.shiftKey) { e.preventDefault(); navTab(1); }
+    else if ((k === "tab" && e.shiftKey)) { e.preventDefault(); navTab(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); navTab(1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); navTab(-1); }
+    else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); gotoTab(Number(e.key)); }
   });
 }
 
@@ -341,13 +367,7 @@ async function boot() {
 
   // empty-state default: spawn the first configured agent if none exist.
   const { sessions } = await client.rpc("list_sessions");
-  if (!sessions || !sessions.length) {
-    const { agents } = await client.rpc("list_agents");
-    if (agents && agents.length) {
-      const r = await client.rpc("spawn_session", { agent_profile: agents[0] });
-      pendingActivate = r.handle;
-    }
-  }
+  if (!sessions || !sessions.length) await spawnDefault();
 }
 
 boot().catch((err) => showError("connection error: " + (err && err.message)));
