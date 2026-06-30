@@ -1,6 +1,7 @@
 // Boot + single-tab render loop for the aegis web client.
 import { WSClient } from "./ws.js";
 import { coalesceInto } from "./coalesce.js";
+import { renderMarkdown } from "./markdown.js";
 
 // --- token: read ?t= once, persist, strip from the address bar ---------
 const params = new URLSearchParams(location.search);
@@ -41,6 +42,18 @@ function textBlock(rec) {
   return div;
 }
 
+// Assistant replies render markdown; everything else uses the server's html.
+function blockEl(rec) {
+  if (rec.event_type === "AssistantText") {
+    const div = document.createElement("div");
+    div.className = "assistant-text";
+    div.innerHTML = renderMarkdown(rec.text);
+    return div;
+  }
+  if (rec.html) return nodeFromHtml(rec.html) || textBlock(rec);
+  return textBlock(rec);
+}
+
 function nearBottom() {
   return transcriptEl.scrollHeight - transcriptEl.scrollTop
     - transcriptEl.clientHeight < 48;
@@ -51,13 +64,19 @@ function onEvent(frame) {
   const { action, index } = coalesceInto(blocks, frame);
   const rec = blocks[index];
   if (action === "append") {
-    const node = (rec.html ? nodeFromHtml(rec.html) : null) || textBlock(rec);
+    const node = blockEl(rec);
     nodes[index] = node;
     transcriptEl.appendChild(node);
   } else {
-    // streaming update — overwrite the in-flight block's text
+    // streaming update — re-render the in-flight block
     const node = nodes[index];
-    if (node) node.textContent = rec.text;
+    if (node) {
+      if (rec.event_type === "AssistantText") {
+        node.innerHTML = renderMarkdown(rec.text);
+      } else {
+        node.textContent = rec.text;
+      }
+    }
   }
   if (stick) transcriptEl.scrollTop = transcriptEl.scrollHeight;
 }
@@ -111,7 +130,15 @@ async function boot() {
   statusHandle.textContent = activeHandle;
   client.subscribe(activeHandle);
 
+  // Auto-grow the composer up to a cap so Shift+Enter newlines are visible.
+  const autogrow = () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 200) + "px";
+  };
+  input.addEventListener("input", autogrow);
+
   input.addEventListener("keydown", (e) => {
+    // Enter sends; Shift+Enter inserts a newline (textarea default).
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const text = input.value.trim();
@@ -119,6 +146,7 @@ async function boot() {
         client.rpc("deliver", { handle: activeHandle, message: text })
           .catch((err) => showError("deliver failed: " + err.message));
         input.value = "";
+        autogrow();
       }
     }
   });

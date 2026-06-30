@@ -53,6 +53,32 @@ html, body {
 .thinking { font-style: italic; }
 .muted { color: var(--aegis-muted); }
 
+/* markdown elements inside assistant text */
+.assistant-text strong { font-weight: 700; }
+.assistant-text em { font-style: italic; }
+.assistant-text code {
+  background: var(--aegis-surface);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 3px;
+  padding: 0 0.25em;
+}
+.assistant-text pre {
+  background: var(--aegis-surface);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+}
+.assistant-text pre code { background: none; border: none; padding: 0; }
+.assistant-text h1, .assistant-text h2, .assistant-text h3,
+.assistant-text h4, .assistant-text h5, .assistant-text h6 {
+  color: var(--aegis-accent);
+  margin: 0.4em 0 0.2em;
+  font-size: 1.05em;
+}
+.assistant-text a { color: var(--aegis-accent); }
+.assistant-text ul { margin: 0.2em 0; padding-left: 1.4em; }
+
 .tool-use .icon { margin-right: 0.3rem; }
 .tool-use .tool-name { color: var(--aegis-accent); }
 .tool-use .tool-hint { color: var(--aegis-muted); }
@@ -84,6 +110,8 @@ html, body {
 #input {
   width: 100%;
   resize: none;
+  max-height: 200px;
+  overflow-y: auto;
   background: var(--aegis-surface);
   color: var(--aegis-fg);
   border: 1px solid var(--aegis-rule);
