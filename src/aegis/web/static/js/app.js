@@ -37,7 +37,7 @@ let modalClose = null;       // closes the open modal, or null
 const plusBtn = document.createElement("button");
 plusBtn.id = "tab-add";
 plusBtn.textContent = "+";
-plusBtn.title = "New agent (Ctrl+N)";
+plusBtn.title = "New agent (Alt+N)";
 plusBtn.addEventListener("click", () => openPicker());
 tabbarEl.appendChild(plusBtn);
 
@@ -323,9 +323,9 @@ function wireComposer() {
 }
 
 function wireKeys() {
-  // Keyboard map mirrors the TUI's BINDINGS (src/aegis/tui/app.py) for the
-  // surfaces the web client has today. Browser-reserved chords (ctrl+t/n/w)
-  // are preventDefault'd best-effort; some browsers still intercept them.
+  // App shortcuts use Alt — Ctrl chords (Ctrl+T/N/W/Tab/1-9) are reserved by
+  // the browser and never reach the page. We key off e.code (layout- and
+  // Alt-compose-independent). Esc stays plain.
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (modalClose) { modalClose(); return; }
@@ -334,18 +334,17 @@ function wireKeys() {
       }
       return;
     }
-    const mod = e.ctrlKey || e.metaKey;
-    if (!mod) return;
-    const k = e.key.toLowerCase();
-
-    if (k === "n") { e.preventDefault(); openPicker(); }
-    else if (k === "t") { e.preventDefault(); spawnDefault(); }
-    else if (k === "w") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
-    else if (k === "tab" && !e.shiftKey) { e.preventDefault(); navTab(1); }
-    else if ((k === "tab" && e.shiftKey)) { e.preventDefault(); navTab(-1); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); navTab(1); }
-    else if (e.key === "ArrowLeft") { e.preventDefault(); navTab(-1); }
-    else if (/^[1-9]$/.test(e.key)) { e.preventDefault(); gotoTab(Number(e.key)); }
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const code = e.code;
+    if (code === "KeyN") { e.preventDefault(); openPicker(); }
+    else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
+    else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
+    else if (code === "KeyJ") { e.preventDefault(); navTab(1); }
+    else if (code === "KeyK") { e.preventDefault(); navTab(-1); }
+    else if (/^Digit[1-9]$/.test(code)) {
+      e.preventDefault();
+      gotoTab(Number(code.slice(5)));
+    }
   });
 }
 
