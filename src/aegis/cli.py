@@ -303,7 +303,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
         tasks.append(asyncio.create_task(fe.run(bot)))
     if web is not None:
         from aegis.web.frontend import WebFrontend
-        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(root))
+        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(Path.cwd()))
         tasks.append(asyncio.create_task(web_fe.run()))
         _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
