@@ -31,14 +31,9 @@ from aegis.tui.state import AgentState
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
-
-
-N_MAX = 300
-EVICT_BATCH = 50
-LOAD_BATCH = 100
-STICKY_EPS = 2
-LOAD_MORE_EPS = 3
-DEBOUNCE_S = 0.15
+from aegis.transcript_constants import (  # noqa: F401  (re-exported)
+    N_MAX, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS, DEBOUNCE_S,
+)
 
 
 @dataclass(slots=True)
