@@ -10,65 +10,34 @@ from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
     ToolResult, Result, SystemInit, Unknown, Event,
 )
+from aegis.render_shared import (
+    KIND_ICON, PLAN_STATUS_GLYPH, diff_window, pathhint, result_parts,
+)
 
 
 def _render_diff(diff: tuple[str, str, str], colors,
                   max_lines: int = 6) -> "Text":
     """Render a (path, old_text, new_text) tuple as a small unified
-    preview — at most `max_lines` total visible removed+added rows,
-    with a "… N more" footer when truncated.
-
-    Pure removals from the old side render as `-` rows; pure additions
-    from the new side render as `+` rows. Common context lines are
-    elided — this is a change preview, not a diff viewer.
+    preview using the shared diff windowing — at most `max_lines` total
+    visible removed+added rows, with a "… N more" footer when truncated.
     """
     path, old_text, new_text = diff
-    old_lines = old_text.splitlines() if old_text else []
-    new_lines = new_text.splitlines() if new_text else []
-    # Trim a common prefix and suffix so we show only the changed
-    # window — cheap heuristic; sufficient for transcript previews.
-    head = 0
-    while (head < len(old_lines) and head < len(new_lines)
-           and old_lines[head] == new_lines[head]):
-        head += 1
-    tail = 0
-    while (tail < len(old_lines) - head
-           and tail < len(new_lines) - head
-           and old_lines[len(old_lines) - 1 - tail]
-               == new_lines[len(new_lines) - 1 - tail]):
-        tail += 1
-    removed = old_lines[head:len(old_lines) - tail]
-    added = new_lines[head:len(new_lines) - tail]
+    removed, added, elided = diff_window(old_text, new_text, max_lines)
 
     body = Text()
     body.append(f"  ┌ {path}\n", style=colors.muted)
-    shown = 0
     for line in removed:
-        if shown >= max_lines:
-            break
         body.append(f"  │ -", style=colors.err)
         body.append(f" {line}\n", style=colors.err)
-        shown += 1
     for line in added:
-        if shown >= max_lines:
-            break
         body.append(f"  │ +", style=colors.ok)
         body.append(f" {line}\n", style=colors.ok)
-        shown += 1
-    elided = max(0, (len(removed) + len(added)) - shown)
     if elided > 0:
         body.append(f"  │ … {elided} more line"
                     f"{'s' if elided != 1 else ''}\n",
                     style=colors.muted)
     body.append("  └", style=colors.muted)
     return body
-
-
-_PLAN_STATUS_GLYPH = {
-    "completed": "●",
-    "in_progress": "◐",
-    "pending": "○",
-}
 
 
 def _render_agent_plan(plan: AgentPlan, colors) -> "RenderableType":
@@ -85,7 +54,7 @@ def _render_agent_plan(plan: AgentPlan, colors) -> "RenderableType":
     body.append(f"📋 Plan — {done}/{total} done\n",
                 style=f"bold {colors.accent}")
     for entry in plan.entries:
-        glyph = _PLAN_STATUS_GLYPH.get(entry.status, "○")
+        glyph = PLAN_STATUS_GLYPH.get(entry.status, "○")
         glyph_style = (
             colors.ok if entry.status == "completed"
             else colors.accent if entry.status == "in_progress"
@@ -138,35 +107,6 @@ def coalesce_chunks(events: list[Event]) -> list[Event]:
     return out
 
 
-# Glyph per semantic kind (parity with ACP's tool_call kind enum;
-# claude paths derive kind from the tool name in events.py).
-_KIND_ICON = {
-    "read": "📖",
-    "edit": "✏️",
-    "execute": "⌬",
-    "search": "🔎",
-    "think": "✻",
-    "fetch": "🌐",
-    "move": "➡️",
-    "delete": "🗑",
-    "switch_mode": "🔄",
-    "other": "⏺",
-}
-
-
-def _pathhint(ev: ToolUse) -> str:
-    """One-line context for a tool call: the tail of the first known
-    location (with :line suffix when known), falling back to the tool's
-    legacy summary string."""
-    if ev.locations:
-        path, line = ev.locations[0]
-        tail = path.rsplit("/", 1)[-1] if path else ""
-        if line is not None:
-            return f"{tail}:{line}"
-        return tail
-    return ev.summary
-
-
 def render_event(ev: Event, colors) -> RenderableType | None:
     """Map one typed event to a Rich renderable (themed), or None."""
     if isinstance(ev, AssistantText):
@@ -178,8 +118,8 @@ def render_event(ev: Event, colors) -> RenderableType | None:
             return Text("✻ Thinking…", style=colors.muted)
         return Text(f"✻ {body}", style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
-        icon = _KIND_ICON.get(ev.kind or "", "⏺")
-        hint = _pathhint(ev)
+        icon = KIND_ICON.get(ev.kind or "", "⏺")
+        hint = pathhint(ev)
         # Suppress the parenthetical hint when it duplicates the name —
         # ACP titles are often the filename itself, so we'd otherwise
         # render "📖 target.txt(target.txt)".
@@ -199,17 +139,8 @@ def render_event(ev: Event, colors) -> RenderableType | None:
     if isinstance(ev, AgentPlan):
         return _render_agent_plan(ev, colors)
     if isinstance(ev, Result):
-        secs = (ev.duration_ms or 0) / 1000
-        parts = [f"done in {secs:.1f}s"]
-        if ev.cost_usd is not None and ev.cost_usd > 0:
-            from decimal import Decimal
-            from aegis.tui.metrics import _fmt_cost
-            parts.append(_fmt_cost(Decimal(str(ev.cost_usd))))
-        # Only surface stop_reason when it's something the user should
-        # notice — end_turn is the boring happy path.
-        if ev.stop_reason and ev.stop_reason != "end_turn":
-            parts.append(ev.stop_reason)
-        return Text(f"── {' · '.join(parts)} ──", style=colors.muted)
+        return Text(f"── {' · '.join(result_parts(ev))} ──",
+                    style=colors.muted)
     if isinstance(ev, (SystemInit, Unknown)):
         return None
     return None
