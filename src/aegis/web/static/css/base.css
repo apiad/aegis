@@ -39,15 +39,73 @@ html, body {
 .dot.working { background: var(--aegis-working); }
 .dot.error   { background: var(--aegis-error); }
 
-#transcript {
+/* tabbar — one chip per session + the new-agent button */
+#tabbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--aegis-rule);
+  overflow-x: auto;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--aegis-rule);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--aegis-muted);
+}
+.chip.active { color: var(--aegis-fg); border-color: var(--aegis-accent); }
+.chip .close { color: var(--aegis-muted); padding: 0 0.15rem; }
+.chip .close:hover { color: var(--aegis-err); }
+.chip.unseen .chip-label::after { content: " *"; color: var(--aegis-accent); }
+#tab-add {
+  background: none;
+  border: 1px solid var(--aegis-rule);
+  color: var(--aegis-fg);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+}
+#tab-add:hover { border-color: var(--aegis-accent); }
+
+/* panes — one per tab; only the active one shows */
+#panes { flex: 1; display: flex; min-height: 0; }
+.pane { flex: 1; display: flex; min-height: 0; }
+.pane.hidden { display: none; }
+.transcript {
   flex: 1;
   overflow-y: auto;
   padding: 0.8rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
+.transcript > div { margin: 0.15rem 0; }
 
-#transcript > div { margin: 0.15rem 0; }
+/* agent picker modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: var(--aegis-panel);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 6px;
+  min-width: 240px;
+  padding: 0.6rem;
+}
+.modal-title { color: var(--aegis-muted); margin-bottom: 0.4rem; font-size: 0.85em; }
+.agent-item { padding: 0.4rem 0.6rem; border-radius: 4px; cursor: pointer; }
+.agent-item:hover { background: var(--aegis-surface); color: var(--aegis-accent); }
 
 /* assistant text holds rendered markdown — block layout comes from the
    elements + margins below, not from the transcript's pre-wrap newlines. */

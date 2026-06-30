@@ -30,7 +30,8 @@ def test_index_served(tmp_path: Path):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     body = r.text
-    assert 'id="transcript"' in body
+    assert 'id="tabbar"' in body
+    assert 'id="panes"' in body
     assert "/theme.css" in body
     assert "/static/js/app.js" in body
 

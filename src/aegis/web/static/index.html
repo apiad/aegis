@@ -8,16 +8,18 @@
 </head>
 <body>
   <div id="app">
+    <nav id="tabbar"></nav>
     <header id="statusbar">
       <span id="status-dot" class="dot"></span>
       <span id="status-handle">—</span>
       <span id="status-metrics"></span>
     </header>
-    <main id="transcript" aria-live="polite"></main>
+    <main id="panes"></main>
     <footer id="composer">
-      <textarea id="input" rows="1" placeholder="Message the agent…  (Enter to send · Esc to interrupt)"></textarea>
+      <textarea id="input" rows="1" placeholder="Message the agent…  (Enter to send · Shift+Enter newline · Esc to interrupt)"></textarea>
     </footer>
   </div>
+  <div id="modal-root"></div>
   <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>
