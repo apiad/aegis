@@ -29,6 +29,7 @@ from aegis.config import (
     GeminiCLI,
     OpenCode,
     TelegramConfig,
+    WebConfig,
 )
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 
@@ -60,6 +61,7 @@ class AegisConfig:
     remotes: dict[str, RemoteSpec] = field(default_factory=dict)
     remote_plane: RemotePlaneSpec | None = None
     telegram: TelegramConfig | None = None
+    web: WebConfig | None = None
     root: Path | None = None
     inline_schedule_names: set[str] = field(default_factory=set)
 
@@ -195,6 +197,7 @@ def load_config(root: Path) -> AegisConfig:
                 f">= 1 (got {qspec.max_parallel!r}).")
 
     telegram = _build_telegram(raw.get("telegram") or {})
+    web = _build_web(raw.get("web"))
 
     return AegisConfig(
         default_agent=default_agent,
@@ -208,6 +211,7 @@ def load_config(root: Path) -> AegisConfig:
         remotes=remotes,
         remote_plane=remote_plane,
         telegram=telegram,
+        web=web,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
     )
@@ -229,6 +233,27 @@ def _build_telegram(raw: dict[str, Any]) -> TelegramConfig:
         token=token,
         chat_id=int(chat_id) if chat_id is not None else None,
         auto_prompt="" if auto == "" else str(auto),
+    )
+
+
+def _build_web(raw: dict[str, Any] | None) -> WebConfig | None:
+    """Build a WebConfig from a `web:` YAML block, or None when absent.
+
+    Token resolution mirrors telegram: `AEGIS_WEB_TOKEN` env var wins,
+    else the YAML `token:` field. `bind` defaults to localhost; `port`
+    None means auto-pick a free port at serve time.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("web: must be a mapping")
+    token = os.environ.get("AEGIS_WEB_TOKEN") or raw.get("token") or None
+    bind = str(raw.get("bind", "127.0.0.1"))
+    port = raw.get("port")
+    return WebConfig(
+        token=token,
+        bind=bind,
+        port=int(port) if port is not None else None,
     )
 
 

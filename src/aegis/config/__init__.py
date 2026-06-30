@@ -23,6 +23,13 @@ class TelegramConfig:
     auto_prompt: str
 
 
+@dataclass(frozen=True)
+class WebConfig:
+    token: str | None = None
+    bind: str = "127.0.0.1"
+    port: int | None = None
+
+
 class Permission(str, Enum):
     read = "read"
     write = "write"
