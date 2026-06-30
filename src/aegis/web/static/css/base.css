@@ -111,6 +111,14 @@ html, body {
 .qd-task.jumpable:hover { background: var(--aegis-surface); }
 .qd-tail { padding: 0.2rem 0.8rem; white-space: pre-wrap; font-size: 0.85em; }
 
+/* group dashboard */
+.gd-group { margin-bottom: 0.6rem; }
+.gd-group-title { color: var(--aegis-accent); font-weight: bold; margin-bottom: 0.2rem; }
+.gd-member { padding: 0.15rem 0.4rem; border-radius: 3px; }
+.gd-member.jumpable { cursor: pointer; }
+.gd-member.jumpable:hover { background: var(--aegis-surface); }
+.gd-broadcast { padding: 0.15rem 0.4rem; font-size: 0.9em; }
+
 /* agent picker modal */
 .modal-overlay {
   position: fixed;

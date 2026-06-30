@@ -389,6 +389,84 @@ function gotoTab(n) {
   if (h) activateTab(h);
 }
 
+// --- group dashboard (poll-on-open) ------------------------------------
+
+let groupBody = null;
+let groupTimer = null;
+
+function groupBlock(g) {
+  const wrap = document.createElement("div");
+  wrap.className = "gd-group";
+  const h = document.createElement("div");
+  h.className = "gd-group-title";
+  h.textContent = `${g.name} (${(g.members || []).length})`;
+  wrap.appendChild(h);
+  for (const m of (g.members || [])) {
+    const row = document.createElement("div");
+    row.className = "gd-member" + (tabs.has(m.handle) ? " jumpable" : "");
+    const dot = document.createElement("span");
+    dot.className = "dot " + (m.state || "");
+    const label = document.createElement("span");
+    label.textContent = ` ${m.handle} · ${m.profile}`;
+    row.append(dot, label);
+    if (tabs.has(m.handle)) {
+      row.addEventListener("click", () => {
+        if (modalClose) modalClose();
+        activateTab(m.handle);
+      });
+    }
+    wrap.appendChild(row);
+  }
+  const cb = g.current_broadcast;
+  const cbEl = document.createElement("div");
+  cbEl.className = "gd-broadcast muted";
+  cbEl.textContent = cb ? `▶ ${cb.objective} (${cb.started_at})` : "(idle)";
+  wrap.appendChild(cbEl);
+  return wrap;
+}
+
+async function refreshGroups() {
+  if (!groupBody) return;
+  try {
+    const { groups } = await client.rpc("group_status");
+    if (!groupBody) return;
+    groupBody.replaceChildren();
+    if (!groups || !groups.length) {
+      const e = document.createElement("div");
+      e.className = "muted";
+      e.textContent = "no groups";
+      groupBody.appendChild(e);
+      return;
+    }
+    for (const g of groups) groupBody.appendChild(groupBlock(g));
+  } catch { /* ignore */ }
+}
+
+function openGroupDashboard() {
+  if (modalClose) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal qd-modal";
+  const title = document.createElement("div");
+  title.className = "modal-title";
+  title.textContent = "Groups";
+  groupBody = document.createElement("div");
+  groupBody.className = "gd-body";
+  box.append(title, groupBody);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => {
+    overlay.remove();
+    modalClose = null;
+    groupBody = null;
+    if (groupTimer) { clearInterval(groupTimer); groupTimer = null; }
+  };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+  refreshGroups();
+  groupTimer = setInterval(refreshGroups, 2000);
+}
+
 // --- input + keys ------------------------------------------------------
 
 function wireComposer() {
@@ -432,6 +510,7 @@ function wireKeys() {
     const code = e.code;
     if (code === "KeyN") { e.preventDefault(); openPicker(); }
     else if (code === "KeyD") { e.preventDefault(); openDashboard(); }
+    else if (code === "KeyG") { e.preventDefault(); openGroupDashboard(); }
     else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
     else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
     else if (code === "KeyJ") { e.preventDefault(); navTab(1); }
