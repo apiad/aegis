@@ -22,6 +22,18 @@ from aegis.web.history import read_history
 Sink = Callable[[dict], None]
 
 
+def event_frame(handle: str, seq: int, ev) -> dict:
+    """The canonical ``stream/event`` frame shape, shared by history replay
+    (WSSession) and live fan-out (the per-handle observer)."""
+    return {
+        "type": "stream", "kind": "event",
+        "handle": handle, "seq": seq,
+        "event_type": type(ev).__name__,
+        "event": encode_event(ev),
+        "html": render_event_html(ev),
+    }
+
+
 @dataclass
 class _HandleState:
     sinks: set = field(default_factory=set)
@@ -52,6 +64,10 @@ class SubscriptionRegistry:
         if hs is not None:
             hs.sinks.discard(sink)
 
+    def history(self, handle: str) -> list[tuple[int, "object"]]:
+        """Persisted ``(seq, event)`` pairs for ``handle`` (subscribe/resume)."""
+        return read_history(self._state_dir, handle)
+
     def _attach(self, handle: str, hs: _HandleState) -> None:
         core = self._m.get(handle)
         if core is None:
@@ -62,13 +78,7 @@ class SubscriptionRegistry:
 
         def on_event(c, ev):
             hs.seq += 1
-            _fanout(hs, {
-                "type": "stream", "kind": "event",
-                "handle": handle, "seq": hs.seq,
-                "event_type": type(ev).__name__,
-                "event": encode_event(ev),
-                "html": render_event_html(ev),
-            })
+            _fanout(hs, event_frame(handle, hs.seq, ev))
 
         def on_state(c, state, finished):
             _fanout(hs, {
