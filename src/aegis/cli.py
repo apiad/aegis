@@ -193,7 +193,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
                  stop: asyncio.Event, queues: dict | None = None,
                  schedules: dict | None = None,
                  remotes: dict | None = None,
-                 remote_plane=None,
+                 remote_plane=None, web=None,
                  inline_schedule_names: set[str] | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
@@ -301,6 +301,11 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
                               auto_prompt=tg.auto_prompt,
                               state_dir=_state_dir(root))
         tasks.append(asyncio.create_task(fe.run(bot)))
+    if web is not None:
+        from aegis.web.frontend import WebFrontend
+        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(root))
+        tasks.append(asyncio.create_task(web_fe.run()))
+        _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
         await stop.wait()
     finally:
@@ -352,6 +357,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
         remotes = yaml_cfg.remotes
         remote_plane = yaml_cfg.remote_plane
         inline_schedule_names = yaml_cfg.inline_schedule_names
+        web = yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None
     except ConfigError as e:
         _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
         raise typer.Exit(1)
@@ -365,7 +371,7 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
                      make_session=make_session, mcp=AegisMCP(),
                      tg=tg, stop=stop, queues=queues,
                      schedules=schedules,
-                     remotes=remotes, remote_plane=remote_plane,
+                     remotes=remotes, remote_plane=remote_plane, web=web,
                      inline_schedule_names=inline_schedule_names)
 
     asyncio.run(main_async())
