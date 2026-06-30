@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>aegis</title>
+  <link rel="stylesheet" href="/theme.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="statusbar">
+      <span id="status-dot" class="dot"></span>
+      <span id="status-handle">—</span>
+      <span id="status-metrics"></span>
+    </header>
+    <main id="transcript" aria-live="polite"></main>
+    <footer id="composer">
+      <textarea id="input" rows="1" placeholder="Message the agent…  (Enter to send · Esc to interrupt)"></textarea>
+    </footer>
+  </div>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

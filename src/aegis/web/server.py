@@ -10,16 +10,19 @@ import contextlib
 from pathlib import Path
 
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from aegis import transcript_constants as _tc
+from aegis.themes import load_theme
 from aegis.web.subscriptions import SubscriptionRegistry
 from aegis.web.wssession import WSDisconnect, WSSession
 
 RESUME_GAP_CAP = 1000
+_PKG_STATIC = Path(__file__).resolve().parent / "static"
+WEB_THEME = "aegis-ink"
 
 
 def _constants() -> dict:
@@ -61,9 +64,19 @@ def build_web_app(manager, web_cfg, state_dir, *,
                   server_version: str = "0") -> Starlette:
     registry = SubscriptionRegistry(manager, Path(state_dir))
     constants = _constants()
+    static = Path(static_dir) if static_dir is not None else _PKG_STATIC
+    index_html = (static / "index.html").read_text(encoding="utf-8")
+    base_css = (static / "css" / "base.css").read_text(encoding="utf-8")
 
     async def healthz(request):
         return JSONResponse({"ok": True})
+
+    async def index(request):
+        return HTMLResponse(index_html)
+
+    async def theme_css(request):
+        css = load_theme(WEB_THEME).to_css_variables() + "\n" + base_css
+        return Response(css, media_type="text/css")
 
     async def ws_endpoint(ws: WebSocket) -> None:
         await ws.accept()
@@ -73,11 +86,10 @@ def build_web_app(manager, web_cfg, state_dir, *,
         await session.run()
 
     routes = [
+        Route("/", index),
         Route("/healthz", healthz),
+        Route("/theme.css", theme_css),
         WebSocketRoute("/ws", ws_endpoint),
+        Mount("/static", StaticFiles(directory=str(static)), name="static"),
     ]
-    if static_dir is not None:
-        routes.append(
-            Mount("/static", StaticFiles(directory=str(static_dir)),
-                  name="static"))
     return Starlette(routes=routes)

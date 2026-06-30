@@ -1,0 +1,94 @@
+/* Base transcript + chrome styles. Colors come from /theme.css variables
+   (generated from the aegis theme via to_css_variables()). */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--aegis-bg);
+  color: var(--aegis-fg);
+  font-family: 'Berkeley Mono', 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--aegis-rule);
+  color: var(--aegis-muted);
+  font-size: 0.85em;
+}
+
+#status-handle { color: var(--aegis-fg); }
+
+.dot {
+  width: 0.6rem; height: 0.6rem; border-radius: 50%;
+  background: var(--aegis-muted); display: inline-block;
+}
+.dot.ready   { background: var(--aegis-ready); }
+.dot.working { background: var(--aegis-working); }
+.dot.error   { background: var(--aegis-error); }
+
+#transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#transcript > div { margin: 0.15rem 0; }
+
+.assistant-text { color: var(--aegis-fg); }
+.thinking { font-style: italic; }
+.muted { color: var(--aegis-muted); }
+
+.tool-use .icon { margin-right: 0.3rem; }
+.tool-use .tool-name { color: var(--aegis-accent); }
+.tool-use .tool-hint { color: var(--aegis-muted); }
+
+.tool-result { color: var(--aegis-muted); }
+.tool-result.ok .status { color: var(--aegis-ok); }
+.tool-result.error .status { color: var(--aegis-err); }
+
+.diff-head { color: var(--aegis-muted); }
+.diff-row.removed { color: var(--aegis-err); }
+.diff-row.added   { color: var(--aegis-ok); }
+.diff-more { color: var(--aegis-muted); }
+
+.agent-plan .plan-head { color: var(--aegis-accent); font-weight: bold; }
+.plan-row.completed .glyph { color: var(--aegis-ok); }
+.plan-row.in_progress .glyph { color: var(--aegis-accent); }
+.plan-row.pending .glyph { color: var(--aegis-muted); }
+.plan-row.high { font-weight: bold; }
+.plan-row.low { color: var(--aegis-muted); }
+
+.result-sep { color: var(--aegis-muted); text-align: center; }
+
+.inbox { color: var(--aegis-accent); }
+
+#composer {
+  border-top: 1px solid var(--aegis-rule);
+  padding: 0.5rem 0.8rem;
+}
+#input {
+  width: 100%;
+  resize: none;
+  background: var(--aegis-surface);
+  color: var(--aegis-fg);
+  border: 1px solid var(--aegis-rule);
+  border-radius: 4px;
+  padding: 0.5rem;
+  font: inherit;
+}
+#input:focus { outline: 1px solid var(--aegis-accent); }
