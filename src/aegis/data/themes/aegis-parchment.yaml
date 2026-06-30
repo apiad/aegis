@@ -1,0 +1,17 @@
+name: aegis-parchment
+dark: true
+colors:
+  background: "#1c1a16"
+  surface: "#201e19"
+  panel: "#23211c"
+  foreground: "#E9E2D2"
+  primary: "#D97757"
+  accent: "#D97757"
+  success: "#9CAE78"
+  warning: "#E3B341"
+  error: "#E0775F"
+variables:
+  aegis-muted: "#8c8676"
+  aegis-faint: "#5c574a"
+  aegis-rule: "#3a362d"
+  aegis-userbg: "#2b281f"

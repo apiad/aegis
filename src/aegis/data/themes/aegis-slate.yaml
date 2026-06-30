@@ -1,0 +1,17 @@
+name: aegis-slate
+dark: true
+colors:
+  background: "#10141b"
+  surface: "#13171f"
+  panel: "#161b24"
+  foreground: "#CDD6E3"
+  primary: "#E0A35E"
+  accent: "#E0A35E"
+  success: "#5FB39A"
+  warning: "#E0A35E"
+  error: "#E07A86"
+variables:
+  aegis-muted: "#6b7686"
+  aegis-faint: "#454e5c"
+  aegis-rule: "#27303d"
+  aegis-userbg: "#1e2530"

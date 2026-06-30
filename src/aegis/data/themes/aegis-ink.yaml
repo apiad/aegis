@@ -1,0 +1,17 @@
+name: aegis-ink
+dark: true
+colors:
+  background: "#0e0e0d"
+  surface: "#141412"
+  panel: "#1a1a17"
+  foreground: "#DCD9CF"
+  primary: "#E0A872"
+  accent: "#E0A872"
+  success: "#9DB07E"
+  warning: "#E0A872"
+  error: "#C56B5C"
+variables:
+  aegis-muted: "#76736a"
+  aegis-faint: "#4a4843"
+  aegis-rule: "#26241f"
+  aegis-userbg: "#24241f"
