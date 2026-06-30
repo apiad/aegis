@@ -49,11 +49,15 @@ html, body {
 
 #transcript > div { margin: 0.15rem 0; }
 
-.assistant-text { color: var(--aegis-fg); }
+/* assistant text holds rendered markdown — block layout comes from the
+   elements + margins below, not from the transcript's pre-wrap newlines. */
+.assistant-text { color: var(--aegis-fg); white-space: normal; }
 .thinking { font-style: italic; }
 .muted { color: var(--aegis-muted); }
 
 /* markdown elements inside assistant text */
+.assistant-text p { margin: 0 0 0.5em; }
+.assistant-text p:last-child { margin-bottom: 0; }
 .assistant-text strong { font-weight: 700; }
 .assistant-text em { font-style: italic; }
 .assistant-text code {
@@ -67,7 +71,9 @@ html, body {
   border: 1px solid var(--aegis-rule);
   border-radius: 4px;
   padding: 0.6em 0.8em;
+  margin: 0.4em 0;
   overflow-x: auto;
+  white-space: pre;
 }
 .assistant-text pre code { background: none; border: none; padding: 0; }
 .assistant-text h1, .assistant-text h2, .assistant-text h3,
@@ -77,7 +83,8 @@ html, body {
   font-size: 1.05em;
 }
 .assistant-text a { color: var(--aegis-accent); }
-.assistant-text ul { margin: 0.2em 0; padding-left: 1.4em; }
+.assistant-text ul { margin: 0.3em 0; padding-left: 1.4em; }
+.assistant-text li { margin: 0; }
 
 .tool-use .icon { margin-right: 0.3rem; }
 .tool-use .tool-name { color: var(--aegis-accent); }
