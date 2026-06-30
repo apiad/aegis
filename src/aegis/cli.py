@@ -322,7 +322,51 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
 @app.command()
 def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
-    """Run the headless daemon (MCP plane + optional Telegram)."""
+    """Run the headless daemon (MCP plane + optional Telegram + web)."""
+    _run_serve(cwd)
+
+
+@app.command()
+def web(cwd: str = typer.Option(".", "--cwd"),
+        no_browser: bool = typer.Option(False, "--no-browser")) -> None:
+    """Launch the web client: ensure a token, open the browser, then serve."""
+    root = find_project_root() or Path.cwd()
+    if not (root / ".aegis.yaml").is_file():
+        _console.print("[red]No .aegis.yaml found.[/red]")
+        raise typer.Exit(1)
+    token = _ensure_web_token(root)
+    from aegis.config import edit as _edit
+    from aegis.config.yaml_loader import load_config as _load_yaml
+    from aegis.state.workspace import state_dir as _sd
+    from aegis.web.frontend import _resolve_port
+    web_cfg = _load_yaml(root).web
+    port = _resolve_port(web_cfg, _sd(root))
+    _edit.set_web(root, port=port)
+    url = f"http://{web_cfg.bind}:{port}/?t={token}"
+    _console.print(f"[green]aegis web → {url}[/green]")
+    if not no_browser:
+        import threading
+        import webbrowser
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    _run_serve(cwd)
+
+
+def _ensure_web_token(root: Path) -> str:
+    """Return the configured web token, generating + persisting a fresh one
+    into .aegis.yaml when none is set. Idempotent."""
+    import secrets
+
+    from aegis.config import edit as _edit
+    from aegis.config.yaml_loader import load_config as _load_yaml
+    cfg = _load_yaml(root)
+    if cfg.web and cfg.web.token:
+        return cfg.web.token
+    token = secrets.token_urlsafe(32)
+    _edit.set_web(root, token=token)
+    return token
+
+
+def _run_serve(cwd: str) -> None:
     try:
         agents, default_agent = load_config()
     except ConfigError as e:

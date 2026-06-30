@@ -307,6 +307,44 @@ def set_telegram(
     _atomic_write(base, payload)
 
 
+# --- web -------------------------------------------------------------
+
+def set_web(
+    root: Path,
+    *,
+    token: str | None | _Unchanged = UNCHANGED,
+    bind: str | None | _Unchanged = UNCHANGED,
+    port: int | None | _Unchanged = UNCHANGED,
+) -> None:
+    """Mutate the `web:` block. Pass a concrete value to set, `None` to
+    clear that field, or omit to leave it alone. An empty block is removed."""
+    base = root / ".aegis.yaml"
+    data = _load(base)
+    block = data.get("web") or {}
+    if not isinstance(block, dict):
+        raise ConfigError(f"{base}: web block must be a mapping")
+
+    def _apply(key: str, value):
+        if isinstance(value, _Unchanged):
+            return
+        if value is None:
+            block.pop(key, None)
+        else:
+            block[key] = value
+
+    _apply("token", token)
+    _apply("bind", bind)
+    _apply("port", port)
+
+    if block:
+        data["web"] = block
+    else:
+        data.pop("web", None)
+
+    payload = _validate_and_dump(root, data)
+    _atomic_write(base, payload)
+
+
 # --- default_agent ---------------------------------------------------
 
 def set_default_agent(root: Path, slug: str) -> None:
