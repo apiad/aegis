@@ -200,6 +200,8 @@ class WSSession:
             return {"paths": self._reg.file_search(params.get("query", ""))}
         if method == "file_read":
             return self._reg.file_read(params["path"])
+        if method == "config_show":
+            return self._reg.config_show()
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:

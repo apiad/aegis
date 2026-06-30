@@ -134,6 +134,41 @@ class SubscriptionRegistry:
                 else "source")
         return {"path": path, "kind": kind, "content": content}
 
+    # -- config panel (read-only) ----------------------------------------
+
+    def config_show(self) -> dict:
+        """Read-only snapshot of agents / queues / schedules from
+        .aegis.yaml. Mirrors the aegis_config_list_* MCP tools."""
+        empty = {"agents": [], "queues": [], "schedules": []}
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+        root = self._files_root or find_project_root()
+        if root is None:
+            return empty
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError:
+            return empty
+        return {
+            "agents": [
+                {"slug": slug, "harness": a.harness, "model": a.model,
+                 "effort": a.effort.value if a.effort else None,
+                 "permission": a.permission.value}
+                for slug, a in cfg.agents.items()
+            ],
+            "queues": [
+                {"name": name, "agent": q.agent,
+                 "max_parallel": q.max_parallel}
+                for name, q in (cfg.queues or {}).items()
+            ],
+            "schedules": [
+                {"name": name, "cron": s.get("cron"),
+                 "enabled": s.get("enabled", True),
+                 "workflow": s.get("workflow")}
+                for name, s in (cfg.schedules or {}).items()
+            ],
+        }
+
     # -- group dashboard (poll-on-open) ----------------------------------
 
     async def group_status(self) -> list[dict]:
