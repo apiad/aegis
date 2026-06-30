@@ -509,7 +509,7 @@ function wireKeys() {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const code = e.code;
     if (code === "KeyN") { e.preventDefault(); openPicker(); }
-    else if (code === "KeyD") { e.preventDefault(); openDashboard(); }
+    else if (code === "KeyQ") { e.preventDefault(); openDashboard(); }
     else if (code === "KeyG") { e.preventDefault(); openGroupDashboard(); }
     else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
     else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
