@@ -208,6 +208,32 @@ becomes a problem, a ring cache slots in transparently as a layer in front
 of the same resume path. Worth a quick audit of JSONL fsync semantics
 during S1 before S2 commits.
 
+### Persistence reality check (S1 audit, 2026-06-30)
+
+Grounding the resume protocol against `src/aegis/state/session_log.py` as it
+actually exists today surfaced four deltas S2 must design around:
+
+1. **Path is handle-named, not session-id-keyed.** Events persist at
+   `<state_dir>/sessions/<handle>.jsonl` (flat, one file per tab), via
+   `session_log_path(state_dir, handle)`. Update the protocol's
+   "JSONL under `.aegis/state/sessions/<session_id>/events.jsonl`" wording —
+   the resume reader keys off the tab handle.
+2. **No per-line `seq` on disk.** Each line is
+   `{"v": 1, "aegis_ts": <iso>, "event": <encoded>}`. `seq` must be
+   *synthesized* on read as the 1-based line index. The in-memory counter
+   for post-flush live events (S2's `current_seq`) starts from that line
+   count. There is no stored monotonic id to rely on.
+3. **No `fsync`.** `append_event` flushes on context-manager close but does
+   not `os.fsync`. Acceptable for v1 (single-user, append-only), but the
+   resume path must tolerate a partially-written trailing line after a crash.
+4. **`replay_events` is not torn-line tolerant.** It calls `json.loads`
+   per line with no guard; a torn final line raises. S2's history reader
+   must wrap the final-line decode in a try/except and drop an unparseable
+   trailing line — mirror the tolerant replay in `groups/persistence.py`.
+
+None of these block S1; they retarget S2's "JSONL history reader + resume"
+work at the real format.
+
 ### Auth
 
 First WS frame after upgrade: `{type: "auth", token: "..."}`. Server
