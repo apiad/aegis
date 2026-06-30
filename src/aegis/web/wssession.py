@@ -53,6 +53,8 @@ class WSSession:
         self._out: asyncio.Queue = asyncio.Queue(maxsize=send_cap)
         self._overflow = asyncio.Event()
         self._subs: dict[str, dict] = {}   # handle -> {sink, buffering, buffer}
+        self._global_sink = lambda fr: self._emit(fr)
+        self._global_on = False
 
     # -- lifecycle --------------------------------------------------------
 
@@ -75,6 +77,8 @@ class WSSession:
             if not self._overflow.is_set():
                 await self._drain_remaining()
             self._detach_all()
+            if self._global_on:
+                self._reg.unsubscribe_global(self._global_sink)
 
     async def _read_loop(self) -> None:
         try:
@@ -175,9 +179,11 @@ class WSSession:
             return {"sessions": [asdict(si) for si in self._m.list_sessions()]}
         if method == "spawn_session":
             handle = await self._m.spawn(params["agent_profile"])
+            self._reg.broadcast_session_list()
             return {"handle": handle}
         if method == "close_session":
             await self._m.close(params["handle"])
+            self._reg.broadcast_session_list()
             return {"ok": True}
         if method == "interrupt_session":
             await self._m.interrupt(params["handle"])
@@ -200,11 +206,10 @@ class WSSession:
             await self._open_session(target["handle"], from_seq=0)
         elif (target.get("kind") == "global"
               and target.get("stream") == "session_list"):
-            self._emit({
-                "type": "stream", "kind": "session_list",
-                "added": [asdict(si) for si in self._m.list_sessions()],
-                "removed": [], "updated": [],
-            })
+            if not self._global_on:
+                self._reg.subscribe_global(self._global_sink)
+                self._global_on = True
+            self._emit(self._reg.session_list_frame())
 
     async def _resume(self, frame: dict) -> None:
         for sub in frame.get("subscriptions") or []:

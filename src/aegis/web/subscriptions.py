@@ -11,7 +11,7 @@ persisted line count at attach time so it continues the JSONL line index.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -45,6 +45,26 @@ class SubscriptionRegistry:
         self._m = manager
         self._state_dir = Path(state_dir)
         self._handles: dict[str, _HandleState] = {}
+        self._globals: set[Sink] = set()
+
+    # -- global session-list stream --------------------------------------
+
+    def subscribe_global(self, sink: Sink) -> None:
+        self._globals.add(sink)
+
+    def unsubscribe_global(self, sink: Sink) -> None:
+        self._globals.discard(sink)
+
+    def session_list_frame(self) -> dict:
+        return {
+            "type": "stream", "kind": "session_list",
+            "sessions": [asdict(si) for si in self._m.list_sessions()],
+        }
+
+    def broadcast_session_list(self) -> None:
+        frame = self.session_list_frame()
+        for sink in list(self._globals):
+            sink(frame)
 
     async def subscribe(self, handle: str, sink: Sink) -> int:
         """Register ``sink`` for ``handle``; attach observers on first use.
