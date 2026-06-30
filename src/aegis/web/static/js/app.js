@@ -116,27 +116,13 @@ async function boot() {
   client.on("inbox", onInbox);
   client.on("window_reset", onWindowReset);
 
-  await client.connect();
-
-  const { sessions } = await client.rpc("list_sessions");
-  if (sessions && sessions.length) {
-    activeHandle = sessions[0].handle;
-  } else {
-    const { agents } = await client.rpc("list_agents");
-    if (!agents || !agents.length) { showError("no agents configured"); return; }
-    const r = await client.rpc("spawn_session", { agent_profile: agents[0] });
-    activeHandle = r.handle;
-  }
-  statusHandle.textContent = activeHandle;
-  client.subscribe(activeHandle);
-
-  // Auto-grow the composer up to a cap so Shift+Enter newlines are visible.
+  // Wire input handlers immediately (not after spawn) so a keystroke during
+  // the agent cold-start window isn't lost. They guard on activeHandle.
   const autogrow = () => {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 200) + "px";
   };
   input.addEventListener("input", autogrow);
-
   input.addEventListener("keydown", (e) => {
     // Enter sends; Shift+Enter inserts a newline (textarea default).
     if (e.key === "Enter" && !e.shiftKey) {
@@ -150,12 +136,25 @@ async function boot() {
       }
     }
   });
-
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.activeElement !== input && activeHandle) {
       client.rpc("interrupt_session", { handle: activeHandle });
     }
   });
+
+  await client.connect();
+
+  const { sessions } = await client.rpc("list_sessions");
+  if (sessions && sessions.length) {
+    activeHandle = sessions[0].handle;
+  } else {
+    const { agents } = await client.rpc("list_agents");
+    if (!agents || !agents.length) { showError("no agents configured"); return; }
+    const r = await client.rpc("spawn_session", { agent_profile: agents[0] });
+    activeHandle = r.handle;
+  }
+  statusHandle.textContent = activeHandle;
+  client.subscribe(activeHandle);
 }
 
 boot().catch((err) => showError("connection error: " + (err && err.message)));
