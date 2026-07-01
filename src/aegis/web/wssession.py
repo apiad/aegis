@@ -205,6 +205,19 @@ class WSSession:
         if method == "list_themes":
             from aegis.themes import list_theme_names
             return {"names": list_theme_names()}
+        if method == "config_add_agent":
+            return await self._reg.config_add_agent(
+                params["slug"], provider=params["provider"],
+                model=params["model"], effort=params.get("effort"),
+                permission=params.get("permission"))
+        if method == "config_remove_agent":
+            return await self._reg.config_remove_agent(params["slug"])
+        if method == "config_add_queue":
+            return await self._reg.config_add_queue(
+                params["name"], agent=params["agent"],
+                max_parallel=params["max_parallel"])
+        if method == "config_remove_queue":
+            return await self._reg.config_remove_queue(params["name"])
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:

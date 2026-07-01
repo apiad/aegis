@@ -10,6 +10,7 @@ persisted line count at attach time so it continues the JSONL line index.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -50,6 +51,7 @@ class SubscriptionRegistry:
         self._digest = None
         self._indexer = None
         self._files_root: Path | None = None
+        self._config_lock = asyncio.Lock()
 
     # -- global session-list stream --------------------------------------
 
@@ -168,6 +170,81 @@ class SubscriptionRegistry:
                 for name, s in (cfg.schedules or {}).items()
             ],
         }
+
+    # -- config editing (writes .aegis.yaml, best-effort hot-register) ---
+
+    def _config_root(self):
+        from aegis.config import find_project_root
+        return self._files_root or find_project_root()
+
+    async def config_add_agent(self, slug, *, provider, model,
+                               effort=None, permission=None) -> dict:
+        from aegis.config import Agent, ConfigError
+        from aegis.config.edit import add_agent as _add
+        root = self._config_root()
+        if root is None:
+            return {"error": "no project root"}
+        async with self._config_lock:
+            try:
+                _add(root, slug, provider=provider, model=model,
+                     effort=effort, permission=permission)
+            except ConfigError as e:
+                return {"error": str(e)}
+            try:
+                kw = {"harness": provider, "model": model}
+                if effort is not None:
+                    kw["effort"] = effort
+                if permission is not None:
+                    kw["permission"] = permission
+                if hasattr(self._m, "register_agent"):
+                    self._m.register_agent(slug, Agent(**kw))
+            except Exception as e:  # noqa: BLE001 — persisted; live is bonus
+                return {"ok": True, "live": False, "note": str(e)}
+        return {"ok": True, "live": True}
+
+    async def config_remove_agent(self, slug: str) -> dict:
+        from aegis.config import ConfigError
+        from aegis.config.edit import remove_agent as _rm
+        root = self._config_root()
+        if root is None:
+            return {"error": "no project root"}
+        async with self._config_lock:
+            try:
+                _rm(root, slug)
+            except ConfigError as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": False}
+
+    async def config_add_queue(self, name, *, agent, max_parallel) -> dict:
+        from aegis.config import ConfigError, load_queues
+        from aegis.config.edit import add_queue as _add
+        root = self._config_root()
+        if root is None:
+            return {"error": "no project root"}
+        async with self._config_lock:
+            try:
+                _add(root, name, agent=agent, max_parallel=int(max_parallel))
+            except ConfigError as e:
+                return {"error": str(e)}
+            try:
+                if hasattr(self._m, "register_queue"):
+                    self._m.register_queue(load_queues(root)[name])
+            except Exception as e:  # noqa: BLE001
+                return {"ok": True, "live": False, "note": str(e)}
+        return {"ok": True, "live": True}
+
+    async def config_remove_queue(self, name: str) -> dict:
+        from aegis.config import ConfigError
+        from aegis.config.edit import remove_queue as _rm
+        root = self._config_root()
+        if root is None:
+            return {"error": "no project root"}
+        async with self._config_lock:
+            try:
+                _rm(root, name)
+            except ConfigError as e:
+                return {"error": str(e)}
+        return {"ok": True, "live": False}
 
     # -- group dashboard (poll-on-open) ----------------------------------
 
