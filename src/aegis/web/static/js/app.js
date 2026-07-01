@@ -603,30 +603,143 @@ async function openThemePicker() {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
 }
 
-// --- config panel (read-only, F2) --------------------------------------
+// --- config panel (F2) — view + add/remove agents & queues -------------
 
-function cfgBand(title, rows) {
-  const wrap = document.createElement("div");
-  wrap.className = "cfg-band";
-  const h = document.createElement("div");
-  h.className = "cfg-band-title";
-  h.textContent = `${title} (${rows.length})`;
-  wrap.appendChild(h);
-  for (const r of rows) {
+function cfgInput(placeholder, width) {
+  const i = document.createElement("input");
+  i.className = "cfg-input";
+  i.placeholder = placeholder;
+  if (width) i.style.width = width;
+  return i;
+}
+function cfgSelect(options) {
+  const s = document.createElement("select");
+  s.className = "cfg-input";
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = opt.textContent = o;
+    s.appendChild(opt);
+  }
+  return s;
+}
+function cfgErr(afterEl, msg) {
+  const e = document.createElement("div");
+  e.className = "cfg-err err";
+  e.textContent = msg;
+  afterEl.after(e);
+  setTimeout(() => e.remove(), 4000);
+}
+
+async function refreshConfig(body) {
+  let cfg;
+  try { cfg = await client.rpc("config_show"); }
+  catch (e) { body.textContent = "config_show failed: " + e.message; return; }
+  body.replaceChildren();
+  const edit = async (method, params, el) => {
+    const r = await client.rpc(method, params).catch((e) => ({ error: e.message }));
+    if (r && r.error) cfgErr(el, r.error);
+    else refreshConfig(body);
+  };
+
+  // AGENTS
+  const agBand = document.createElement("div");
+  agBand.className = "cfg-band";
+  const agH = document.createElement("div");
+  agH.className = "cfg-band-title";
+  agH.textContent = `AGENTS (${cfg.agents.length})`;
+  agBand.appendChild(agH);
+  for (const a of cfg.agents) {
     const row = document.createElement("div");
     row.className = "cfg-row";
-    row.textContent = r;
-    wrap.appendChild(row);
+    const rm = document.createElement("span");
+    rm.className = "cfg-rm";
+    rm.textContent = "×";
+    rm.title = "remove";
+    rm.addEventListener("click", () => edit("config_remove_agent", { slug: a.slug }, row));
+    const txt = document.createElement("span");
+    txt.textContent = ` ${a.slug} · ${a.model || a.harness} · ${a.effort || ""} · ${a.permission || ""}`;
+    row.append(rm, txt);
+    agBand.appendChild(row);
   }
-  return wrap;
+  const agForm = document.createElement("div");
+  agForm.className = "cfg-form";
+  const aSlug = cfgInput("slug", "6rem");
+  const aProv = cfgSelect(["claude-code", "gemini", "opencode"]);
+  const aModel = cfgInput("model", "6rem");
+  const aEff = cfgInput("effort", "5rem");
+  const aPerm = cfgInput("permission", "6rem");
+  const aAdd = document.createElement("button");
+  aAdd.className = "cfg-add";
+  aAdd.textContent = "+ agent";
+  aAdd.addEventListener("click", () => {
+    if (!aSlug.value.trim() || !aModel.value.trim()) { cfgErr(agForm, "slug + model required"); return; }
+    edit("config_add_agent", {
+      slug: aSlug.value.trim(), provider: aProv.value, model: aModel.value.trim(),
+      effort: aEff.value.trim() || null, permission: aPerm.value.trim() || null,
+    }, agForm);
+  });
+  agForm.append(aSlug, aProv, aModel, aEff, aPerm, aAdd);
+  agBand.appendChild(agForm);
+  body.appendChild(agBand);
+
+  // QUEUES
+  const qBand = document.createElement("div");
+  qBand.className = "cfg-band";
+  const qH = document.createElement("div");
+  qH.className = "cfg-band-title";
+  qH.textContent = `QUEUES (${cfg.queues.length})`;
+  qBand.appendChild(qH);
+  for (const q of cfg.queues) {
+    const row = document.createElement("div");
+    row.className = "cfg-row";
+    const rm = document.createElement("span");
+    rm.className = "cfg-rm";
+    rm.textContent = "×";
+    rm.title = "remove";
+    rm.addEventListener("click", () => edit("config_remove_queue", { name: q.name }, row));
+    const txt = document.createElement("span");
+    txt.textContent = ` ${q.name} · ${q.agent} · ×${q.max_parallel}`;
+    row.append(rm, txt);
+    qBand.appendChild(row);
+  }
+  const qForm = document.createElement("div");
+  qForm.className = "cfg-form";
+  const qName = cfgInput("name", "6rem");
+  const qAgent = cfgSelect(cfg.agents.map((a) => a.slug));
+  const qPar = cfgInput("×N", "3rem");
+  qPar.value = "1";
+  const qAdd = document.createElement("button");
+  qAdd.className = "cfg-add";
+  qAdd.textContent = "+ queue";
+  qAdd.addEventListener("click", () => {
+    if (!qName.value.trim() || !qAgent.value) { cfgErr(qForm, "name + agent required"); return; }
+    edit("config_add_queue", {
+      name: qName.value.trim(), agent: qAgent.value,
+      max_parallel: Number(qPar.value) || 1,
+    }, qForm);
+  });
+  qForm.append(qName, qAgent, qPar, qAdd);
+  qBand.appendChild(qForm);
+  body.appendChild(qBand);
+
+  // SCHEDULES (read-only)
+  const scBand = document.createElement("div");
+  scBand.className = "cfg-band";
+  const scH = document.createElement("div");
+  scH.className = "cfg-band-title";
+  scH.textContent = `SCHEDULES (${cfg.schedules.length})`;
+  scBand.appendChild(scH);
+  for (const s of cfg.schedules) {
+    const row = document.createElement("div");
+    row.className = "cfg-row";
+    row.textContent = `${s.name} · ${s.cron || ""} · ${s.workflow || ""}${s.enabled === false ? " · off" : ""}`;
+    scBand.appendChild(row);
+  }
+  body.appendChild(scBand);
 }
 
 async function openConfigPanel() {
   if (modalClose) return;
-  let cfg;
-  try { cfg = await client.rpc("config_show"); }
-  catch (e) { showError("config_show failed: " + e.message); return; }
-
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   const box = document.createElement("div");
@@ -636,17 +749,12 @@ async function openConfigPanel() {
   title.textContent = "Config";
   const body = document.createElement("div");
   body.className = "cfg-body";
-  body.appendChild(cfgBand("AGENTS", (cfg.agents || []).map(
-    (a) => `${a.slug} · ${a.model || a.harness} · ${a.effort || ""} · ${a.permission || ""}`)));
-  body.appendChild(cfgBand("QUEUES", (cfg.queues || []).map(
-    (q) => `${q.name} · ${q.agent} · ×${q.max_parallel}`)));
-  body.appendChild(cfgBand("SCHEDULES", (cfg.schedules || []).map(
-    (s) => `${s.name} · ${s.cron || ""} · ${s.workflow || ""}${s.enabled === false ? " · off" : ""}`)));
   box.append(title, body);
   overlay.appendChild(box);
   modalRoot.appendChild(overlay);
   modalClose = () => { overlay.remove(); modalClose = null; };
   overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+  refreshConfig(body);
 }
 
 // --- input + keys ------------------------------------------------------

@@ -116,6 +116,20 @@ html, body {
 .cfg-band { margin-bottom: 0.6rem; }
 .cfg-band-title { color: var(--aegis-muted); font-size: 0.8em; margin-bottom: 0.2rem; }
 .cfg-row { padding: 0.15rem 0.4rem; }
+.cfg-rm { color: var(--aegis-muted); cursor: pointer; padding: 0 0.15rem; }
+.cfg-rm:hover { color: var(--aegis-err); }
+.cfg-form { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; padding: 0.15rem 0.4rem; }
+.cfg-input {
+  background: var(--aegis-surface); color: var(--aegis-fg);
+  border: 1px solid var(--aegis-rule); border-radius: 3px;
+  padding: 0.2rem 0.3rem; font: inherit;
+}
+.cfg-add {
+  background: none; border: 1px solid var(--aegis-rule); color: var(--aegis-fg);
+  border-radius: 3px; cursor: pointer; padding: 0.2rem 0.5rem; font: inherit;
+}
+.cfg-add:hover { border-color: var(--aegis-accent); }
+.cfg-err { padding: 0.15rem 0.4rem; font-size: 0.85em; }
 
 /* file picker + viewer */
 .file-picker { min-width: 480px; max-width: 70vw; }
