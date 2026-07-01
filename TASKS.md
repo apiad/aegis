@@ -38,6 +38,35 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
+### Web client S1–S8 *(shipped — browser-verified, on main)*
+
+Full web frontend of `aegis serve`: single-tab → multi-tab (picker, switching,
+unseen markers, title pulse, cross-window coherence), Alt-based keyboard,
+markdown/native-HTML/source file viewer (Alt+P), queue dashboard (Alt+Q),
+group dashboard (Alt+G), config panel with editing (F2), theme switcher with
+localStorage (Alt+Y). All slices specced + TDD'd + live-smoked in Chrome.
+
+- WS protocol: `docs/superpowers/specs/2026-06-30-aegis-web-ws-protocol-design.md`
+- Design + slice plans: `docs/superpowers/specs/2026-06-19-aegis-web-client-design.md`
+  and `docs/superpowers/plans/2026-06-30-aegis-web-client-s*.md`
+- Omnigent comparison that seeded the priority:
+  `docs/superpowers/specs/2026-06-30-omnigent-vs-aegis-adoption-report.md`
+
+### ⏭️ Web client S9–S10 — TUI becomes a WS client *(next; spec ready, not planned)*
+
+The architectural unification: run the Textual TUI as a WS client of
+`aegis serve` (via a `RemoteSessionManager` implementing `AppBridge` over the
+protocol S1–S8 built), so TUI + web + Telegram share one backend and sessions
+are visible across all three. Opt-in `--remote` → flip default with `--classic`
+fallback. Touches the daily-driver TUI + moves the MCP plane into serve, so it
+wants a fresh, deliberate pass. Prerequisite: extend the WS protocol to cover
+the auxiliary surfaces the TUI drives (handoff, rename, group *ops*, terminals,
+canvas, workflow) — staged surface-by-surface, each step shippable.
+
+- Spec: `docs/superpowers/specs/2026-07-01-aegis-tui-ws-client-design.md`
+- Slice breakdown (S9.0–S10) in the spec; start with S9.0 (conversation-loop
+  protocol parity: add `handoff` + `rename_handle` RPCs) then S9.1 `ws_client.py`.
+
 ### Plugin substrate v1 *(complete — all 5 slices shipped in 0.15.0)*
 
 Five-slice plan landed end-to-end on 2026-05-28: hooks (`@hook` — `pre_turn`
