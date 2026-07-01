@@ -20,6 +20,16 @@ if (token) {
 const scheme = location.protocol === "https:" ? "wss" : "ws";
 const wsUrl = `${scheme}://${location.host}/ws?t=${encodeURIComponent(token || "")}`;
 
+// --- theme: apply the persisted choice immediately ---------------------
+const THEME_KEY = "aegis_theme";
+function applyTheme(name) {
+  const link = document.getElementById("theme-link");
+  if (link) link.href = "/theme.css?name=" + encodeURIComponent(name);
+  localStorage.setItem(THEME_KEY, name);
+}
+const savedTheme = localStorage.getItem(THEME_KEY);
+if (savedTheme) applyTheme(savedTheme);
+
 const tabbarEl = document.getElementById("tabbar");
 const panesEl = document.getElementById("panes");
 const statusDot = document.getElementById("status-dot");
@@ -561,6 +571,38 @@ async function openFileViewer(path) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
 }
 
+// --- theme picker (Alt+Y) ----------------------------------------------
+
+async function openThemePicker() {
+  if (modalClose) return;
+  let names = [];
+  try { const r = await client.rpc("list_themes"); names = r.names || []; }
+  catch { names = []; }
+  const current = localStorage.getItem(THEME_KEY) || "aegis-ink";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const box = document.createElement("div");
+  box.className = "modal";
+  const title = document.createElement("div");
+  title.className = "modal-title";
+  title.textContent = "Theme";
+  const list = document.createElement("div");
+  list.className = "agent-list";
+  for (const name of names) {
+    const item = document.createElement("div");
+    item.className = "agent-item" + (name === current ? " current" : "");
+    item.textContent = name + (name === current ? "  ✓" : "");
+    item.addEventListener("click", () => { applyTheme(name); modalClose(); });
+    list.appendChild(item);
+  }
+  box.append(title, list);
+  overlay.appendChild(box);
+  modalRoot.appendChild(overlay);
+  modalClose = () => { overlay.remove(); modalClose = null; };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) modalClose(); });
+}
+
 // --- config panel (read-only, F2) --------------------------------------
 
 function cfgBand(title, rows) {
@@ -653,6 +695,7 @@ function wireKeys() {
     else if (code === "KeyQ") { e.preventDefault(); openDashboard(); }
     else if (code === "KeyG") { e.preventDefault(); openGroupDashboard(); }
     else if (code === "KeyP") { e.preventDefault(); openFilePicker(); }
+    else if (code === "KeyY") { e.preventDefault(); openThemePicker(); }
     else if (code === "KeyT") { e.preventDefault(); spawnDefault(); }
     else if (code === "KeyW") { e.preventDefault(); if (activeHandle) closeTab(activeHandle); }
     else if (code === "KeyJ") { e.preventDefault(); navTab(1); }
