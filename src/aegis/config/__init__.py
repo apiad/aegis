@@ -46,8 +46,8 @@ class Effort(str, Enum):
 
 class _ProviderBase(BaseModel):
     """Base for provider config objects. Subclasses bind to a specific
-    harness CLI (claude-code, gemini, opencode) and carry the per-provider
-    fields that matter for that CLI."""
+    harness CLI (claude-code, gemini, opencode, copilot) and carry the
+    per-provider fields that matter for that CLI."""
     model: str
     permission: Permission = Permission.auto
 
@@ -67,12 +67,18 @@ class OpenCode(_ProviderBase):
     permission: Permission = Permission.full
 
 
-Provider = ClaudeCode | GeminiCLI | OpenCode
+class CopilotCLI(_ProviderBase):
+    name: Literal["copilot"] = "copilot"
+    permission: Permission = Permission.full
+
+
+Provider = ClaudeCode | GeminiCLI | OpenCode | CopilotCLI
 
 _PROVIDERS_BY_NAME: dict[str, type[_ProviderBase]] = {
     "claude-code": ClaudeCode,
     "gemini":      GeminiCLI,
     "opencode":    OpenCode,
+    "copilot":     CopilotCLI,
 }
 
 
@@ -103,7 +109,7 @@ class Agent(BaseModel):
         if not self.harness:
             raise ValueError(
                 "Agent requires either provider=<ClaudeCode|GeminiCLI"
-                "|OpenCode> or the flat shape harness=+model=+...")
+                "|OpenCode|CopilotCLI> or the flat shape harness=+model=+...")
         klass = _PROVIDERS_BY_NAME.get(self.harness)
         if klass is None:
             raise ValueError(

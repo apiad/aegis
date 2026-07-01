@@ -6,9 +6,9 @@ yields typed events (`AssistantText`, `ToolUse`, `ToolResult`,
 `Result`, etc.) to the surrounding session. Above the driver, aegis
 treats every provider identically.
 
-Three drivers ship today: `claude-code`, `gemini`, `opencode`. All
-three give the same UX surface — multi-turn, streaming, cancellation,
-per-session MCP injection.
+Four drivers ship today: `claude-code`, `gemini`, `opencode`, and
+`copilot`. All give the same UX surface, multi-turn, streaming,
+cancellation, and per-session MCP injection.
 
 ## How drivers talk to each CLI
 
@@ -17,11 +17,12 @@ per-session MCP injection.
 | Claude Code | stream-json (bidirectional) | `claude -p` with `--input-format/--output-format stream-json` | `--mcp-config` per invocation | Native |
 | Gemini CLI  | [ACP](https://github.com/zed-industries/agent-client-protocol) | `gemini --acp` | `session/new(mcpServers=[…])` | Pass-through |
 | OpenCode    | ACP | `opencode acp` | `session/new(mcpServers=[…])` | Pass-through |
+| Copilot CLI | ACP | `copilot --acp` | `session/new(mcpServers=[…])` | Pass-through |
 
 ACP (Agent Client Protocol) is Zed's JSON-RPC-over-stdio specification
 for editor↔agent communication. Aegis uses the official Python SDK
 [`agent-client-protocol`](https://pypi.org/project/agent-client-protocol/)
-to drive Gemini and OpenCode through it.
+to drive Gemini, OpenCode, and Copilot through it.
 
 ## What "feature parity" means
 
@@ -49,16 +50,19 @@ Each provider's `model` string is whatever its native CLI accepts:
 | `ClaudeCode` | `opus`, `sonnet`, `haiku` |
 | `GeminiCLI`  | `gemini-3-flash-preview`, `gemini-3.1-pro-preview` |
 | `OpenCode`   | `opencode/kimi-k2.6`, `opencode/glm-5.1`, `opencode/minimax-m2.7`, `opencode/qwen3.6-plus` |
+| `CopilotCLI` | `claude-sonnet-4.5`, `gpt-5.4`, `auto` |
 
 For OpenCode, run `opencode models` to see what's installed on your
-machine. For Gemini, see Google's model docs.
+machine. For Gemini, see Google's model docs. For Copilot, run
+`copilot` and use `/model`, or pass `auto` to let Copilot pick.
 
 ## Authentication
 
 Drivers don't manage credentials. They inherit whatever the underlying
 CLI sees — your Claude Code login, your `gcloud auth` for Gemini, your
-OpenCode provider config. Run the CLI directly first to confirm it
-works, then aegis will see the same auth.
+OpenCode provider config, your `copilot`/`gh` login for Copilot. Run
+the CLI directly first to confirm it works, then aegis will see the
+same auth.
 
 ## Adding a new driver
 
