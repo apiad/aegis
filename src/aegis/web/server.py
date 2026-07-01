@@ -16,7 +16,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from aegis import transcript_constants as _tc
-from aegis.themes import load_theme
+from aegis.themes import list_theme_names, load_theme
 from aegis.web.subscriptions import SubscriptionRegistry
 from aegis.web.wssession import WSDisconnect, WSSession
 
@@ -94,7 +94,10 @@ def build_web_app(manager, web_cfg, state_dir, *,
         return HTMLResponse(index_html)
 
     async def theme_css(request):
-        css = load_theme(WEB_THEME).to_css_variables() + "\n" + base_css
+        name = request.query_params.get("name") or WEB_THEME
+        if name not in list_theme_names():
+            name = WEB_THEME
+        css = load_theme(name).to_css_variables() + "\n" + base_css
         return Response(css, media_type="text/css")
 
     async def ws_endpoint(ws: WebSocket) -> None:

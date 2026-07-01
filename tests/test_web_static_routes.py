@@ -40,8 +40,20 @@ def test_theme_css_has_ink_vars_and_base_rules(tmp_path: Path):
     r = _client(tmp_path).get("/theme.css")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/css")
-    assert "--aegis-bg: #0e0e0d" in r.text     # S1 ink value
+    assert "--aegis-bg: #0e0e0d" in r.text     # S1 ink value (default)
     assert ".tool-use" in r.text               # a base.css rule
+
+
+def test_theme_css_named_theme(tmp_path: Path):
+    r = _client(tmp_path).get("/theme.css?name=aegis-parchment")
+    assert r.status_code == 200
+    assert "--aegis-bg: #1c1a16" in r.text     # parchment background
+
+
+def test_theme_css_bogus_name_falls_back_to_ink(tmp_path: Path):
+    r = _client(tmp_path).get("/theme.css?name=does-not-exist")
+    assert r.status_code == 200
+    assert "--aegis-bg: #0e0e0d" in r.text
 
 
 def test_referenced_assets_are_served(tmp_path: Path):

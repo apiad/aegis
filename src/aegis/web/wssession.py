@@ -202,6 +202,9 @@ class WSSession:
             return self._reg.file_read(params["path"])
         if method == "config_show":
             return self._reg.config_show()
+        if method == "list_themes":
+            from aegis.themes import list_theme_names
+            return {"names": list_theme_names()}
         if method == "deliver":
             core = self._m.get(params["handle"])
             if core is None:
