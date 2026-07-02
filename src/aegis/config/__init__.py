@@ -30,6 +30,15 @@ class WebConfig:
     port: int | None = None
 
 
+@dataclass(frozen=True)
+class VoiceConfig:
+    enabled: bool = False
+    model: str = "base"
+    key: str = "ctrl+g"
+    preview: bool = False
+    language: str | None = None
+
+
 class Permission(str, Enum):
     read = "read"
     write = "write"

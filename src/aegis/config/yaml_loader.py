@@ -29,6 +29,7 @@ from aegis.config import (
     GeminiCLI,
     OpenCode,
     TelegramConfig,
+    VoiceConfig,
     WebConfig,
 )
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
@@ -62,6 +63,7 @@ class AegisConfig:
     remote_plane: RemotePlaneSpec | None = None
     telegram: TelegramConfig | None = None
     web: WebConfig | None = None
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
     root: Path | None = None
     inline_schedule_names: set[str] = field(default_factory=set)
 
@@ -198,6 +200,7 @@ def load_config(root: Path) -> AegisConfig:
 
     telegram = _build_telegram(raw.get("telegram") or {})
     web = _build_web(raw.get("web"))
+    voice = _build_voice(raw.get("voice"))
 
     return AegisConfig(
         default_agent=default_agent,
@@ -212,6 +215,7 @@ def load_config(root: Path) -> AegisConfig:
         remote_plane=remote_plane,
         telegram=telegram,
         web=web,
+        voice=voice,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
     )
@@ -254,6 +258,22 @@ def _build_web(raw: dict[str, Any] | None) -> WebConfig | None:
         token=token,
         bind=bind,
         port=int(port) if port is not None else None,
+    )
+
+
+def _build_voice(raw: Any) -> VoiceConfig:
+    """Build a VoiceConfig from a `voice:` YAML block. Absent -> disabled."""
+    if not raw:
+        return VoiceConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError("voice: must be a mapping")
+    defaults = VoiceConfig()
+    return VoiceConfig(
+        enabled=bool(raw.get("enabled", defaults.enabled)),
+        model=str(raw.get("model", defaults.model)),
+        key=str(raw.get("key", defaults.key)),
+        preview=bool(raw.get("preview", defaults.preview)),
+        language=raw.get("language", defaults.language),
     )
 
 
