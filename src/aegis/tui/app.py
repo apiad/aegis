@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import ContentSwitcher
 
-from aegis.config import Agent
+from aegis.config import Agent, VoiceConfig
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import InboxRouter, QueueDigest, QueueManager
@@ -17,6 +17,9 @@ from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
+from aegis.voice import (
+    VoiceSession, unavailable_reason, voice_available,
+)
 from aegis.tui.themes import (
     THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
 )
@@ -181,7 +184,8 @@ class AegisApp(App):
                  *, queues: "dict | None" = None,
                  clean: bool = False,
                  drivers: "dict | None" = None,
-                 cwd: "str | None" = None) -> None:
+                 cwd: "str | None" = None,
+                 voice: "VoiceConfig | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
@@ -201,6 +205,12 @@ class AegisApp(App):
         # to True after the resume decision lands.
         self._boot_done: bool = False
         self._panes: list[ConversationPane] = []
+        self._voice_cfg = voice or VoiceConfig()
+        self._voice: VoiceSession | None = None
+        self._voice_pane: ConversationPane | None = None
+        self._voice_base: str = ""
+        self._voice_session_factory = VoiceSession
+        self._loop = None
         self._palette: AegisColors = aegis_colors(INK)
         self._queues = queues or {}
         self._state_dir: Path = state_dir(Path.cwd())
@@ -263,6 +273,10 @@ class AegisApp(App):
         self.theme = DEFAULT_THEME
         self._palette = aegis_colors(self.current_theme)
         self.query_one(TabBar).set_palette(self._palette)
+        if self._voice_cfg.enabled:
+            import asyncio
+            self._loop = asyncio.get_running_loop()
+            self.bind(self._voice_cfg.key, "toggle_voice", description="Voice")
         await self._mcp.start()
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
@@ -694,7 +708,70 @@ class AegisApp(App):
         if active is not None and hasattr(active, "interrupt"):
             active.interrupt()
 
+    async def action_toggle_voice(self) -> None:
+        if self._voice is not None:
+            self._stop_voice()
+            return
+        if not voice_available():
+            self.notify(unavailable_reason(), severity="warning")
+            return
+        pane = self._active
+        if not isinstance(pane, ConversationPane):
+            return
+        self._voice_pane = pane
+        self._voice_base = pane.input_widget().value
+        try:
+            self._voice = self._voice_session_factory(
+                self._voice_cfg,
+                self._on_voice_update,
+                self._on_voice_final,
+            )
+            self._voice.start()
+        except Exception as exc:  # noqa: BLE001 — mic/model open failure
+            self._voice = None
+            self._voice_pane = None
+            self.notify(f"voice failed: {exc}", severity="error")
+            return
+        pane.set_recording(True)
+
+    def _on_voice_update(self, committed: str, transient: str) -> None:
+        # Called from the worker thread. Schedule the widget mutation on the
+        # UI loop WITHOUT blocking the worker — call_from_thread would block
+        # until serviced, and _stop_voice blocks the loop in thread.join(),
+        # so a blocking marshal here would deadlock the stop path.
+        self._marshal(self._apply_voice_text, committed, transient)
+
+    def _on_voice_final(self, text: str) -> None:
+        self._marshal(self._apply_voice_text, text, "")
+
+    def _marshal(self, fn, *args) -> None:
+        loop = self._loop
+        if loop is None:
+            fn(*args)
+        else:
+            loop.call_soon_threadsafe(fn, *args)
+
+    def _apply_voice_text(self, committed: str, transient: str) -> None:
+        if self._voice_pane is None:
+            return
+        tail = (committed + transient).strip()
+        joiner = "" if (not self._voice_base or
+                        self._voice_base.endswith((" ", "\n"))) else " "
+        self._voice_pane.input_widget().value = (
+            self._voice_base + (joiner + tail if tail else ""))
+
+    def _stop_voice(self) -> None:
+        voice, pane = self._voice, self._voice_pane
+        self._voice = None
+        if pane is not None:
+            pane.set_recording(False)
+        self._voice_pane = None
+        if voice is not None:
+            voice.stop()
+
     async def action_quit(self) -> None:
+        if self._voice is not None:
+            self._stop_voice()
         # Persist the current roster BEFORE teardown so any session_ids
         # latched mid-turn (after the last tab event) reach disk and the
         # next boot can resume.

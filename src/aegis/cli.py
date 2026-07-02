@@ -80,6 +80,7 @@ def run(
     # available (currently via app relaunch — slice 16 will make this
     # in-place via the watchdog reload path).
     root = find_project_root() or Path.cwd()
+    voice_cfg = None
     if not (root / ".aegis.yaml").is_file():
         agents: dict = {}
         default_agent = ""
@@ -102,6 +103,11 @@ def run(
         except ConfigError as e:
             _console.print(f"[red]{e}[/red]")
             raise typer.Exit(1)
+        from aegis.config.yaml_loader import load_config as _load_yaml
+        try:
+            voice_cfg = _load_yaml(root).voice
+        except ConfigError:
+            voice_cfg = None
 
     effective_cwd = str(root) if cwd == "." else cwd
 
@@ -132,7 +138,7 @@ def run(
     drivers = {slug: cls() for slug, cls in DRIVERS.items()}
     AegisApp(agents, default_agent, make_session, AegisMCP(),
              queues=queues, clean=clean, drivers=drivers,
-             cwd=effective_cwd).run()
+             cwd=effective_cwd, voice=voice_cfg).run()
 
 
 @dataclass
