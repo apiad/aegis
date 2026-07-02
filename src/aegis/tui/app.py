@@ -18,7 +18,7 @@ from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
 from aegis.voice import (
-    VoiceSession, unavailable_reason, voice_available,
+    VoiceSession, prewarm, unavailable_reason, voice_available,
 )
 from aegis.tui.themes import (
     THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
@@ -275,8 +275,14 @@ class AegisApp(App):
         self.query_one(TabBar).set_palette(self._palette)
         if self._voice_cfg.enabled:
             import asyncio
+            import threading
             self._loop = asyncio.get_running_loop()
             self.bind(self._voice_cfg.key, "toggle_voice", description="Voice")
+            # Load whisper + Silero in the background so the first ctrl+g is
+            # responsive instead of blocking several seconds on a cold model.
+            threading.Thread(
+                target=prewarm, args=(self._voice_cfg,),
+                name="voice-prewarm", daemon=True).start()
         await self._mcp.start()
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()

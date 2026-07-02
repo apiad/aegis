@@ -7,6 +7,7 @@ import threading
 from typing import Callable, Optional
 
 from aegis.config import VoiceConfig
+from aegis.voice.availability import voice_available
 
 
 # Whisper model load is the slow part (~1-2s even from cache); reuse one
@@ -40,6 +41,26 @@ def _get_engine(cfg: VoiceConfig):
             compute_type="default", beam_size=1)
         _ENGINE_CACHE[cfg.model] = engine
     return engine
+
+
+def prewarm(cfg: VoiceConfig) -> None:
+    """Eagerly load the whisper + Silero models so the first recording is
+    responsive. Both otherwise load lazily inside the streaming worker on the
+    first decode (several seconds cold), during which nothing is emitted —
+    a short push-to-talk would end before any text appeared. Best-effort:
+    swallows errors and no-ops when the voice extra isn't installed."""
+    if not voice_available():
+        return
+    try:
+        import numpy as np
+
+        from harp.vad import SileroDetector
+        engine = _get_engine(cfg)
+        engine.load_model()
+        # Warm Silero VAD (faster-whisper caches its model process-wide).
+        SileroDetector().speech_segments(np.zeros(1600, dtype=np.float32))
+    except Exception:
+        pass
 
 
 def _default_factory(cfg: VoiceConfig):

@@ -75,3 +75,40 @@ def test_engine_pins_cpu_default_to_avoid_fallback_prints(monkeypatch):
     vs._default_factory(VoiceConfig(model="base"))
     assert _SpyEngine.last_kwargs["device"] == "cpu"
     assert _SpyEngine.last_kwargs["compute_type"] == "default"
+
+
+class _LoadableEngine(_SpyEngine):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.loaded = False
+
+    def load_model(self):
+        self.loaded = True
+
+
+def test_prewarm_loads_model_when_available(monkeypatch):
+    _patch(monkeypatch)
+    monkeypatch.setattr(harp.whisper, "LocalWhisperEngine", _LoadableEngine,
+                        raising=False)
+    monkeypatch.setattr("aegis.voice.session.voice_available", lambda: True,
+                        raising=False)
+    # Silero warm-up is best-effort; stub it so the test needs no model.
+    monkeypatch.setattr(harp.vad, "SileroDetector",
+                        lambda *a, **k: type("D", (), {
+                            "speech_segments": lambda self, x: []})(),
+                        raising=False)
+    from aegis.voice import prewarm
+    from aegis.config import VoiceConfig
+    prewarm(VoiceConfig(model="base"))
+    eng = vs._ENGINE_CACHE["base"]
+    assert eng.loaded is True
+
+
+def test_prewarm_noop_when_unavailable(monkeypatch):
+    _patch(monkeypatch)
+    monkeypatch.setattr("aegis.voice.session.voice_available", lambda: False,
+                        raising=False)
+    from aegis.voice import prewarm
+    from aegis.config import VoiceConfig
+    prewarm(VoiceConfig(model="base"))  # must not raise, must not build
+    assert "base" not in vs._ENGINE_CACHE
