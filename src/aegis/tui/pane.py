@@ -334,6 +334,9 @@ class ConversationPane(Widget):
     ConversationPane GrowingInput:focus { border: none;
                              border-top: solid $foreground 20%;
                              border-bottom: solid $foreground 20%; }
+    ConversationPane.recording GrowingInput {
+                             border-top: solid $warning;
+                             border-bottom: solid $warning; }
     """
 
     def __init__(self, session: HarnessSession, agent: Agent,
@@ -562,6 +565,12 @@ class ConversationPane(Widget):
 
     def focus_input(self) -> None:
         self.query_one(GrowingInput).focus()
+
+    def input_widget(self) -> "GrowingInput":
+        return self.query_one(GrowingInput)
+
+    def set_recording(self, on: bool) -> None:
+        self.set_class(on, "recording")
 
     async def on_growing_input_submitted(self,
                                   event: GrowingInput.Submitted) -> None:
