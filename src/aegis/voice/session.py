@@ -9,19 +9,39 @@ from typing import Callable, Optional
 from aegis.config import VoiceConfig
 
 
-def _default_factory(cfg: VoiceConfig):
-    """Build a real harp session. Imports harp lazily so this module is
-    import-safe without the voice extra installed."""
-    from harp import HarpSession, MicrophoneSource
-    from harp.vad import SileroDetector
+# Whisper model load is the slow part (~1-2s even from cache); reuse one
+# engine per model size across recordings so repeated ctrl+g is instant.
+_ENGINE_CACHE: dict[str, object] = {}
+
+
+def _get_engine(cfg: VoiceConfig):
     from harp.whisper import LocalWhisperEngine
 
-    engine = LocalWhisperEngine(
-        model_size=cfg.model, compute_type="int8", beam_size=1)
+    engine = _ENGINE_CACHE.get(cfg.model)
+    if engine is None:
+        engine = LocalWhisperEngine(
+            model_size=cfg.model, compute_type="int8", beam_size=1)
+        _ENGINE_CACHE[cfg.model] = engine
+    return engine
+
+
+def _default_factory(cfg: VoiceConfig):
+    """Build a real harp session tuned for push-to-talk dictation. Imports
+    harp lazily so this module is import-safe without the voice extra."""
+    from harp import HarpSession, MicrophoneSource
+    from harp.vad import SileroDetector
+
+    engine = _get_engine(cfg)
     return HarpSession(
         audio=MicrophoneSource(),
         transcribe=engine.transcribe,
+        # Overlap-based finalization: without this harp falls back to a plain
+        # string decode that drops the chunk prefix. Essential for clean text.
+        transcribe_segments=engine.transcribe_segments,
         detector=SileroDetector(),
+        # No warm-up buffering: dictation must finalize at the first pause,
+        # not after harp's default 10s accumulation window.
+        warmup=0.0,
         transient=cfg.preview,
         language=cfg.language,
     )
