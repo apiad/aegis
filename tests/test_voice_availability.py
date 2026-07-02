@@ -17,7 +17,7 @@ def test_unavailable_names_missing_dep(monkeypatch):
     assert av.voice_available() is False
     reason = av.unavailable_reason()
     assert "sounddevice" in reason
-    assert "aegis[voice]" in reason
+    assert "aegis-harness[voice]" in reason
 
 
 def test_probe_uses_import(monkeypatch):

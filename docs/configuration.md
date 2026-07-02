@@ -143,6 +143,30 @@ structured error naming every blocking constraint and an `unblock_at`
 ETA. See [Budgets](budget.md) for the full model, rejection shape, and
 observability surface.
 
+## Voice input (push-to-talk)
+
+Optional, off by default. Install the extra: `pip install aegis-harness[voice]`
+(base `harpio` + `sounddevice`; NOT `harpio[cli]`). `sounddevice` needs the
+system PortAudio library — on Debian/Ubuntu: `sudo apt install libportaudio2`.
+
+Enable per project in `.aegis.yaml`:
+
+```yaml
+voice:
+  enabled: true
+  model: base        # tiny | base | small | medium | large-v3
+  key: ctrl+g        # Textual binding string
+  preview: false     # true = live word-by-word (~2-4x cost, may lag on CPU)
+  language: null     # e.g. "en", "es"; null autodetects
+```
+
+Press the key (default `ctrl+g`) to start dictating into the focused pane's
+input; press again — from any tab — to stop. Text is never auto-sent: edit and
+press Enter. One recording at a time, and it stays anchored to the input it
+started on even if you switch tabs. Transcription is fully on-device (via
+[harp](https://github.com/apiad/harp)). If the extra isn't installed, the key
+shows an install hint instead of recording.
+
 ## Headless / Telegram
 
 ```yaml

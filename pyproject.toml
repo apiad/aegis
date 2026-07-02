@@ -44,6 +44,17 @@ dependencies = [
     "watchdog>=4.0",
 ]
 
+[project.optional-dependencies]
+# Push-to-talk voice input. Base `harpio` (faster-whisper + numpy) supplies
+# the streaming engine, VAD, and whisper wrapper; `sounddevice` (PortAudio)
+# adds mic capture. Deliberately NOT `harpio[cli]` — that pulls Wayland
+# daemon deps (evdev/pynput/uinput/typer) aegis does not use. `sounddevice`
+# needs the system PortAudio lib (e.g. `apt install libportaudio2`).
+voice = [
+    "harpio>=0.9.0",
+    "sounddevice>=0.5.5",
+]
+
 [project.urls]
 Homepage      = "https://apiad.github.io/aegis/"
 Documentation = "https://apiad.github.io/aegis/"

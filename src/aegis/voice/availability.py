@@ -34,4 +34,4 @@ def unavailable_reason() -> str:
     if not missing:
         return ""
     return (f"voice input needs {', '.join(missing)} — "
-            f"install with `pip install aegis[voice]`")
+            f"install with `pip install aegis-harness[voice]`")
