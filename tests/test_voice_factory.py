@@ -19,9 +19,11 @@ class _SpyHarpSession:
 
 class _SpyEngine:
     instances = 0
+    last_kwargs = {}
 
     def __init__(self, **kwargs):
         _SpyEngine.instances += 1
+        _SpyEngine.last_kwargs = kwargs
         self.kwargs = kwargs
 
     def transcribe(self, *a, **k):
@@ -64,3 +66,12 @@ def test_engine_is_cached_across_recordings(monkeypatch):
     vs._default_factory(VoiceConfig(model="base"))
     vs._default_factory(VoiceConfig(model="base"))
     assert _SpyEngine.instances == 1
+
+
+def test_engine_pins_cpu_default_to_avoid_fallback_prints(monkeypatch):
+    # harp's whisper wrapper print()s to stdout on any device/compute
+    # fallback, corrupting the TUI. Pinning cpu+default disables that branch.
+    _patch(monkeypatch)
+    vs._default_factory(VoiceConfig(model="base"))
+    assert _SpyEngine.last_kwargs["device"] == "cpu"
+    assert _SpyEngine.last_kwargs["compute_type"] == "default"

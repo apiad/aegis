@@ -15,12 +15,29 @@ _ENGINE_CACHE: dict[str, object] = {}
 
 
 def _get_engine(cfg: VoiceConfig):
+    # ctranslate2 (under faster-whisper) logs compute-type conversion notices
+    # to stderr; in a full-screen TUI those corrupt the display. Silence them.
+    try:
+        import logging as _logging
+
+        import ctranslate2
+        ctranslate2.set_log_level(_logging.ERROR)
+    except Exception:
+        pass
+
     from harp.whisper import LocalWhisperEngine
 
     engine = _ENGINE_CACHE.get(cfg.model)
     if engine is None:
+        # device=cpu + compute_type=default is deliberate: harp's whisper
+        # wrapper print()s a raw stdout warning on ANY device/compute
+        # fallback (CUDA libs missing, int8 unsupported), which lands in the
+        # TUI input box. Pinning cpu+default keeps harp's fallback branch
+        # dormant (its guard is `device != "cpu" or compute != "default"`),
+        # so no stray prints ever reach the screen.
         engine = LocalWhisperEngine(
-            model_size=cfg.model, compute_type="int8", beam_size=1)
+            model_size=cfg.model, device="cpu",
+            compute_type="default", beam_size=1)
         _ENGINE_CACHE[cfg.model] = engine
     return engine
 
