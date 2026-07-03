@@ -48,12 +48,11 @@ def _app(*, voice):
 
 
 class _StubVoice:
-    """Captures callbacks; never touches harp. Drives updates on demand."""
+    """Full-mode stub: never touches harp. Delivers the final text on stop."""
     last = None
 
-    def __init__(self, cfg, on_update, on_final, **_):
+    def __init__(self, cfg, on_final, **_):
         self.cfg = cfg
-        self.on_update = on_update
         self.on_final = on_final
         self._running = False
         _StubVoice.last = self
@@ -67,11 +66,11 @@ class _StubVoice:
 
     def stop(self):
         self._running = False
-        self.on_final("done text")
+        self.on_final("hello world")   # deliver synchronously for the test
 
 
 @pytest.mark.asyncio
-async def test_toggle_starts_and_streams_into_focused_input(monkeypatch):
+async def test_stop_inserts_final_text_once(monkeypatch):
     monkeypatch.setattr("aegis.tui.app.voice_available", lambda: True)
     app = _app(voice=VoiceConfig(enabled=True))
     app._voice_session_factory = _StubVoice
@@ -79,13 +78,13 @@ async def test_toggle_starts_and_streams_into_focused_input(monkeypatch):
         pane = app._active
         assert isinstance(pane, ConversationPane)
         pane.input_widget().value = "prefix "
-        await app.action_toggle_voice()
+        await app.action_toggle_voice()      # start
         assert app._voice is not None and app._voice.is_running
         assert pane.has_class("recording")
-        # simulate a transcript update emitted from the worker thread
-        _StubVoice.last.on_update("hello world", "")
+        await app.action_toggle_voice()      # stop -> on_final("hello world")
         await pilot.pause()
         assert pane.input_widget().value == "prefix hello world"
+        assert not pane.has_class("recording")
 
 
 @pytest.mark.asyncio

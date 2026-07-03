@@ -208,7 +208,6 @@ class AegisApp(App):
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
         self._voice_pane: ConversationPane | None = None
-        self._voice_base: str = ""
         self._voice_session_factory = VoiceSession
         self._loop = None
         self._palette: AegisColors = aegis_colors(INK)
@@ -724,31 +723,23 @@ class AegisApp(App):
         pane = self._active
         if not isinstance(pane, ConversationPane):
             return
-        self._voice_pane = pane
-        self._voice_base = pane.input_widget().value
+        base = pane.input_widget().value
+
+        def on_final(text: str, pane=pane, base=base) -> None:
+            # Fires from the decode worker thread -> marshal onto the UI loop.
+            # Target pane + base are captured per-recording so a late decode
+            # always lands on the input it started from.
+            self._marshal(self._apply_voice_text, pane, base, text)
+
         try:
-            self._voice = self._voice_session_factory(
-                self._voice_cfg,
-                self._on_voice_update,
-                self._on_voice_final,
-            )
+            self._voice = self._voice_session_factory(self._voice_cfg, on_final)
             self._voice.start()
         except Exception as exc:  # noqa: BLE001 — mic/model open failure
             self._voice = None
-            self._voice_pane = None
             self.notify(f"voice failed: {exc}", severity="error")
             return
+        self._voice_pane = pane
         pane.set_recording(True)
-
-    def _on_voice_update(self, committed: str, transient: str) -> None:
-        # Called from the worker thread. Schedule the widget mutation on the
-        # UI loop WITHOUT blocking the worker — call_from_thread would block
-        # until serviced, and _stop_voice blocks the loop in thread.join(),
-        # so a blocking marshal here would deadlock the stop path.
-        self._marshal(self._apply_voice_text, committed, transient)
-
-    def _on_voice_final(self, text: str) -> None:
-        self._marshal(self._apply_voice_text, text, "")
 
     def _marshal(self, fn, *args) -> None:
         loop = self._loop
@@ -757,23 +748,21 @@ class AegisApp(App):
         else:
             loop.call_soon_threadsafe(fn, *args)
 
-    def _apply_voice_text(self, committed: str, transient: str) -> None:
-        if self._voice_pane is None:
+    def _apply_voice_text(self, pane, base: str, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
             return
-        tail = (committed + transient).strip()
-        joiner = "" if (not self._voice_base or
-                        self._voice_base.endswith((" ", "\n"))) else " "
-        self._voice_pane.input_widget().value = (
-            self._voice_base + (joiner + tail if tail else ""))
+        joiner = "" if (not base or base.endswith((" ", "\n"))) else " "
+        pane.input_widget().value = base + joiner + text
 
     def _stop_voice(self) -> None:
         voice, pane = self._voice, self._voice_pane
         self._voice = None
+        self._voice_pane = None
         if pane is not None:
             pane.set_recording(False)
-        self._voice_pane = None
         if voice is not None:
-            voice.stop()
+            voice.stop()   # non-blocking; decode + insert happen off-thread
 
     async def action_quit(self) -> None:
         if self._voice is not None:
