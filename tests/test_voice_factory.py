@@ -9,12 +9,12 @@ import aegis.voice.session as vs
 from aegis.config import VoiceConfig
 
 
-class _SpyHarpSession:
+class _SpyDictation:
     calls = []
 
-    def __init__(self, **kwargs):
-        _SpyHarpSession.calls.append(kwargs)
-        self.kwargs = kwargs
+    def __init__(self, audio, transcribe, **kwargs):
+        _SpyDictation.calls.append({"transcribe": transcribe, **kwargs})
+        self.audio = audio
 
 
 class _SpyEngine:
@@ -34,10 +34,10 @@ class _SpyEngine:
 
 
 def _patch(monkeypatch):
-    _SpyHarpSession.calls = []
+    _SpyDictation.calls = []
     _SpyEngine.instances = 0
     vs._ENGINE_CACHE.clear()
-    monkeypatch.setattr(harp, "HarpSession", _SpyHarpSession, raising=False)
+    monkeypatch.setattr(harp, "DictationSession", _SpyDictation, raising=False)
     monkeypatch.setattr(harp, "MicrophoneSource", lambda *a, **k: object(),
                         raising=False)
     monkeypatch.setattr(harp.vad, "SileroDetector", lambda *a, **k: object(),
@@ -46,19 +46,17 @@ def _patch(monkeypatch):
                         raising=False)
 
 
-def test_factory_disables_warmup(monkeypatch):
+def test_factory_builds_dictation_session(monkeypatch):
     _patch(monkeypatch)
-    vs._default_factory(VoiceConfig(model="base"))
-    kw = _SpyHarpSession.calls[-1]
-    assert kw["warmup"] == 0.0
+    session = vs._default_factory(VoiceConfig(model="base"))
+    assert isinstance(session, _SpyDictation)
+    assert callable(_SpyDictation.calls[-1]["transcribe"])
 
 
-def test_factory_passes_transcribe_segments(monkeypatch):
+def test_factory_passes_language(monkeypatch):
     _patch(monkeypatch)
-    vs._default_factory(VoiceConfig(model="base"))
-    kw = _SpyHarpSession.calls[-1]
-    # overlap-based finalization: the segments fn must be wired, not omitted
-    assert callable(kw.get("transcribe_segments"))
+    vs._default_factory(VoiceConfig(model="base", language="es"))
+    assert _SpyDictation.calls[-1].get("language") == "es"
 
 
 def test_engine_is_cached_across_recordings(monkeypatch):

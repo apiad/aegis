@@ -1,83 +1,57 @@
-import threading
 import time
-from dataclasses import dataclass
 
 from aegis.config import VoiceConfig
 from aegis.voice.session import VoiceSession
 
 
-@dataclass
-class _Ev:
-    committed: str
-    transient: str
-    is_final: bool
+class _FakeDictation:
+    def __init__(self, text="hello world"):
+        self._text = text
+        self.started = False
+        self.stopped = False
 
-
-class _FakeHarp:
-    """Yields scripted events then blocks until stop() is called."""
-
-    def __init__(self, events):
-        self._events = events
-        self._stop = threading.Event()
-        self.final_text = "".join(e.committed for e in events if e.is_final) \
-            or (events[-1].committed if events else "")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def events(self):
-        for e in self._events:
-            yield e
-        # emulate a live mic session: block until stopped
-        self._stop.wait(timeout=2.0)
+    def start(self):
+        self.started = True
 
     def stop(self):
-        self._stop.set()
+        self.stopped = True
+        return self._text
 
 
-def _drive(events):
-    updates, finals = [], []
-    fake = _FakeHarp(events)
-    vs = VoiceSession(
-        VoiceConfig(),
-        on_update=lambda c, t: updates.append((c, t)),
-        on_final=lambda text: finals.append(text),
-        _session_factory=lambda cfg: fake,
-    )
-    return vs, fake, updates, finals
-
-
-def test_updates_then_final_on_stop():
-    events = [
-        _Ev("hello", "", False),
-        _Ev("hello world", "", False),
-    ]
-    vs, fake, updates, finals = _drive(events)
+def test_start_then_stop_delivers_final_text():
+    fake = _FakeDictation("hello world")
+    finals = []
+    vs = VoiceSession(VoiceConfig(), on_final=finals.append,
+                      _session_factory=lambda cfg: fake)
     vs.start()
-    # wait for the two updates to be delivered
+    assert vs.is_running is True and fake.started is True
+    vs.stop()
     deadline = time.time() + 2
-    while len(updates) < 2 and time.time() < deadline:
+    while not finals and time.time() < deadline:
         time.sleep(0.01)
-    assert updates == [("hello", ""), ("hello world", "")]
-    vs.stop()
-    assert finals and finals[0] == "hello world"
-    assert vs.is_running is False
+    assert finals == ["hello world"]
+    assert vs.is_running is False and fake.stopped is True
 
 
-def test_stop_is_idempotent():
-    vs, fake, updates, finals = _drive([_Ev("hi", "", False)])
+def test_stop_without_start_is_noop():
+    finals = []
+    vs = VoiceSession(VoiceConfig(), on_final=finals.append,
+                      _session_factory=lambda cfg: _FakeDictation())
+    vs.stop()   # must not raise, must not deliver
+    assert finals == []
+
+
+def test_decode_error_delivers_empty_string():
+    class _Boom(_FakeDictation):
+        def stop(self):
+            raise RuntimeError("decode failed")
+
+    finals = []
+    vs = VoiceSession(VoiceConfig(), on_final=finals.append,
+                      _session_factory=lambda cfg: _Boom())
     vs.start()
     vs.stop()
-    vs.stop()  # must not raise
-    assert len(finals) == 1
-
-
-def test_start_when_already_running_is_noop():
-    vs, fake, updates, finals = _drive([_Ev("a", "", False)])
-    vs.start()
-    vs.start()  # second start must not spawn a second thread
-    vs.stop()
-    assert vs.is_running is False
+    deadline = time.time() + 2
+    while not finals and time.time() < deadline:
+        time.sleep(0.01)
+    assert finals == [""]
