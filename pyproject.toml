@@ -51,7 +51,7 @@ dependencies = [
 # daemon deps (evdev/pynput/uinput/typer) aegis does not use. `sounddevice`
 # needs the system PortAudio lib (e.g. `apt install libportaudio2`).
 voice = [
-    "harpio>=0.9.0",
+    "harpio>=0.10.0",
     "sounddevice>=0.5.5",
 ]
 

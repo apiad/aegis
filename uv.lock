@@ -49,7 +49,7 @@ requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.10" },
     { name = "croniter", specifier = ">=2.0" },
     { name = "fastmcp", specifier = ">=3.2.0" },
-    { name = "harpio", marker = "extra == 'voice'", specifier = ">=0.9.0" },
+    { name = "harpio", marker = "extra == 'voice'", specifier = ">=0.10.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "ptyprocess", specifier = ">=0.7.0" },
@@ -701,15 +701,15 @@ wheels = [
 
 [[package]]
 name = "harpio"
-version = "0.9.0"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "faster-whisper" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/33/02/5aaef534254aeddc48ba2bd892cad0d454b3dd0dd0ea5b3c807f40ba7d6e/harpio-0.9.0.tar.gz", hash = "sha256:6d8af5667724c2d61ada7d5762120244b86cf1a1538bcf8b0ec7c41316928d99", size = 1983851 }
+sdist = { url = "https://files.pythonhosted.org/packages/72/6a/473550fc95e2296fb39d75e4cb74c018d8219bc2d058470992aeca54f4c5/harpio-0.10.0.tar.gz", hash = "sha256:14698e675ef41baed4a443da87cf44d0c3443b3f653b410bf682f891487b385e", size = 1996667 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/48/c418ef8250e0933ea7f1e664934c12a7b18f9c82747cd8214c2b3464731e/harpio-0.9.0-py3-none-any.whl", hash = "sha256:26f874143ccfb1074d163da970424ac4ca90d196281112aa40e4ddacabab20ad", size = 28960 },
+    { url = "https://files.pythonhosted.org/packages/4e/6d/f07fc5686e26ce670f5593d62fe718164f97bd01f2515b309ec552b6c08f/harpio-0.10.0-py3-none-any.whl", hash = "sha256:5fbe3888cef69ed31fc842a229340bb916f0754420390a4303c0faedc399851c", size = 30714 },
 ]
 
 [[package]]
