@@ -156,16 +156,16 @@ voice:
   enabled: true
   model: base        # tiny | base | small | medium | large-v3
   key: ctrl+g        # Textual binding string
-  preview: false     # true = live word-by-word (~2-4x cost, may lag on CPU)
   language: null     # e.g. "en", "es"; null autodetects
 ```
 
-Press the key (default `ctrl+g`) to start dictating into the focused pane's
-input; press again — from any tab — to stop. Text is never auto-sent: edit and
-press Enter. One recording at a time, and it stays anchored to the input it
-started on even if you switch tabs. Transcription is fully on-device (via
-[harp](https://github.com/apiad/harp)). If the extra isn't installed, the key
-shows an install hint instead of recording.
+Press the key (default `ctrl+g`) to start recording into the focused pane's
+input; press again — from any tab — to stop. On stop, the whole utterance is
+transcribed at once (record-then-transcribe) and inserted at the input. Text is
+never auto-sent: edit and press Enter. One recording at a time, and it stays
+anchored to the input it started on even if you switch tabs. Transcription is
+fully on-device (via [harp](https://github.com/apiad/harp)). If the extra isn't
+installed, the key shows an install hint instead of recording.
 
 ## Headless / Telegram
 
