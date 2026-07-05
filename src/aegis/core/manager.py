@@ -45,6 +45,7 @@ class SessionManager:
         self.remote_plane = None  # populated by cli.serve from loaded YAML
         self.scheduler = None  # populated by cli.serve if schedules configured
         self.state_root: Path | None = None
+        self._persist_dir = None
         self.workflow_registry = None
         self._inline_schedule_names: set[str] = set()
         self._sessions: list[AgentSession] = []
@@ -78,6 +79,12 @@ class SessionManager:
 
     def inline_schedule_names(self) -> set[str]:
         return set(self._inline_schedule_names)
+
+    def attach_persistence(self, state_dir) -> None:
+        """Persist every spawned session's events to JSONL under state_dir.
+        Called by the serve path; the in-process TUI does not call it (it
+        persists via its own pane observer), so there is no double-write."""
+        self._persist_dir = state_dir
 
     def register_agent(self, slug: str, agent) -> None:
         existing = self._agents.get(slug)
@@ -117,6 +124,9 @@ class SessionManager:
         if self._inbox is not None:
             self._inbox.bind_session(h, s)
         self._sessions.append(s)
+        if self._persist_dir is not None:
+            from aegis.state.session_log import make_session_log_observer
+            s.add_event_observer(make_session_log_observer(self._persist_dir, h))
         self._touch(h)
         if opening_prompt is not None:
             asyncio.create_task(s.send(opening_prompt))

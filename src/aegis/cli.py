@@ -214,6 +214,9 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
     from aegis.canvas.manager import CanvasManager
     from aegis.canvas.notify import make_canvas_notifier
     from aegis.state.workspace import state_dir as _state_dir
+    # Persist every serve-spawned session to JSONL (same state_dir the
+    # WebFrontend reads from), so seq is a real disk line index in web mode.
+    mgr.attach_persistence(_state_dir(Path.cwd()))
     cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
                        notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)
