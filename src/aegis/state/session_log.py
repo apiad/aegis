@@ -44,6 +44,17 @@ def append_event(state_dir_path: Path, handle: str, ev: Event) -> None:
         f.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
 
+def make_session_log_observer(state_dir_path, handle: str):
+    """Returns an EventCb that appends every event to the per-handle JSONL.
+    Persistence must never break the live render, so it swallows errors."""
+    def _obs(_sess, ev) -> None:
+        try:
+            append_event(state_dir_path, handle, ev)
+        except Exception:
+            pass
+    return _obs
+
+
 # Event types that indicate an in-progress turn (must be followed by a
 # Result to be considered complete).
 _TURN_EVENTS = (AssistantText, AssistantThinking, ToolUse)

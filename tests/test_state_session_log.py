@@ -64,6 +64,15 @@ def test_replay_skips_blank_lines(tmp_path):
     assert len(replay_events(tmp_path, h).events) == 1
 
 
+def test_make_session_log_observer_appends(tmp_path):
+    from aegis.state.session_log import make_session_log_observer
+    obs = make_session_log_observer(tmp_path, "obs-handle")
+    obs(object(), AssistantText(text="persisted", usage=None))
+    r = replay_events(tmp_path, "obs-handle")
+    assert [type(e).__name__ for e in r.events] == ["AssistantText"]
+    assert r.events[0].text == "persisted"
+
+
 def test_envelope_carries_version_and_timestamp(tmp_path):
     import json
     h = "h"

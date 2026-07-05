@@ -26,7 +26,7 @@ from aegis.events import AssistantText, AssistantThinking, ToolUse
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_user_line,
 )
-from aegis.state.session_log import EventReplay
+from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.strip import QueueStrip
@@ -63,20 +63,6 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
     if replay.interrupted:
         blocks.append(Text("⚠ interrupted", style="yellow"))
     return blocks
-
-
-def make_session_log_observer(state_dir_path: Path, handle: str):
-    """Returns an EventCb that appends every event to the per-tab JSONL."""
-    from aegis.state.session_log import append_event
-
-    def _obs(_sess, ev):
-        try:
-            append_event(state_dir_path, handle, ev)
-        except Exception:
-            # Persistence must never break the live render.
-            pass
-
-    return _obs
 
 
 # ---------- WorkingIndicator -----------------------------------------
