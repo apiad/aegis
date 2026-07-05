@@ -81,6 +81,40 @@ it does not rebuild the working surfaces.
 - `src/aegis/telegram/` + `aegis serve` wiring in `src/aegis/cli.py` + the
   `telegram:` block in `src/aegis/config/` — the removal target (W6).
 
+## W0 — Centralize event persistence (prerequisite)
+
+**Finding (2026-07-05 grounding):** JSONL persistence (`append_event`) is
+attached *only by the TUI pane* (`tui/pane.py:361` via
+`make_session_log_observer`). The headless `serve`/web path
+(`cli.py::_serve` → `SessionManager`) never attaches it, so **pure web/serve
+sessions are not persisted to disk**. The web's live `seq` is an in-memory
+counter (`subscriptions.py::_attach.on_event` does `hs.seq += 1`, no write),
+initialized to `len(read_history(...))` at subscribe time. Two consequences:
+web sessions don't survive a `serve` restart, and `get_event`'s "read the full
+event at `seq` from disk" would find nothing for live serve-mode events.
+
+W0 makes persistence a backend concern so `seq` means the same thing (a JSONL
+line index) in every frontend:
+
+- Move `make_session_log_observer` out of `tui/pane.py` into
+  `state/session_log.py` (persistence has no TUI dependency; core must not
+  import `tui`).
+- Add `SessionManager.attach_persistence(state_dir)` (mirrors the existing
+  `attach_queue_manager` / `attach_canvas_manager` pattern — do **not** rely on
+  `state_root`, which `cli.py:262` only sets when schedules are configured).
+  `_sync_spawn` attaches `make_session_log_observer(persist_dir, handle)` to
+  every session it spawns when `persist_dir` is set.
+- `cli.py::_serve` calls `mgr.attach_persistence(_state_dir(Path.cwd()))` — the
+  same `state_dir` value passed to `WebFrontend`, so writes land where
+  `read_history` reads.
+- No double-write: the TUI's `AegisApp` spawn path is disjoint from
+  `SessionManager._sync_spawn`, so the pane's own persist observer is untouched.
+  (When S9–S10 makes the TUI a WS client, the pane persist attach retires
+  naturally.)
+
+With W0 in place, `seq` is disk-aligned in all modes and `get_event` is a
+straight `read_history` slice.
+
 ## W1 — Compact protocol v2
 
 ### Principle
@@ -98,9 +132,10 @@ New shape:
 {type:"stream", kind:"event", handle, seq, event_type, event:<compacted>, truncated:<bool>}
 ```
 
-- **`html` field removed.** Rendering moves fully client-side (W2). The
-  server's `render_event_html` stays for the TUI but is no longer serialized
-  onto the web wire.
+- **`html` field retired (in W2, not W1).** Rendering moves fully client-side
+  in W2; W1 keeps `html` additively so the shipped client keeps working (see
+  the non-breaking sequencing note). Once W2 lands, `html` is dropped and the
+  server's `render_event_html` stays only for the TUI's own use.
 - **`event`** is `encode_event(ev)` with heavy fields clipped per the table
   below.
 - **`truncated`** is `true` when any field was clipped — the client shows a
@@ -148,8 +183,9 @@ get_event  params:{handle, seq}  →  {event: <full un-truncated encode_event di
 
 Implementation reads the JSONL line at `seq` via `read_history` (or a
 seq-indexed read helper alongside it) and returns the full `encode_event`
-dict. Works identically for live-and-persisted and pure-history events, since
-both live on disk by the time a user taps. The client caches the result keyed
+dict. This depends on **W0** — with central persistence, live serve-mode events
+are on disk and `seq` is a true line index, so this works identically for
+live-and-persisted and pure-history events. The client caches the result keyed
 by `(handle, seq)`; a second tap is instant, no round-trip.
 
 ### Version negotiation
@@ -287,6 +323,7 @@ by grep.
 
 | # | Slice | Deliverable |
 |---|-------|-------------|
+| **W0** | Centralize event persistence | Move `make_session_log_observer` to `state/session_log.py`; `SessionManager.attach_persistence(state_dir)` + `_sync_spawn` attach; `_serve` wires it. Serve/web sessions persist to JSONL and survive restart; `seq` is disk-aligned in all modes. |
 | **W1** | Compact protocol v2 | `event_frame` drops `html`, truncates heavy fields with `truncated` marker; thinking-stream suppression; `get_event` RPC; `protocol_version:2` + compact capability; compaction constants in `transcript_constants`. Protocol tests. |
 | **W2** | Client-side rendering | JS per-kind renderer registry mirroring `render_html.py`; tap-to-expand → `get_event` + cache; drop server-`html` reliance; golden parity. |
 | **W3** | PWA shell | manifest + service worker (precache shell, cache-first); install; token persistence; offline/reconnecting states. No offline outbox. |
@@ -294,8 +331,16 @@ by grep.
 | **W5** | Web-default positioning | `aegis web` as first-class verb; README/AGENTS/docs reframed to co-equal UIs. |
 | **W6** | Telegram removal | delete frontend + serve wiring + config block + tests + docs (after W1–W4 daily-driven). |
 
-**Order:** W1 → W2 strictly first (protocol then rendering). W3 and W4 build on
-W2 and can partly parallelize. W5 anytime after W2. **W6 last.**
+**Order:** **W0 → W1 → W2** strictly (persistence, then protocol, then
+rendering). W3 and W4 build on W2 and can partly parallelize. W5 anytime after
+W2. **W6 last.**
+
+**Non-breaking sequencing note.** W1 lands the compact representation +
+`get_event` **additively** — the `event` frame keeps its `html` field while W1
+is in flight, so the shipped web client keeps working. The `html` field is
+removed in **W2**, at the same commit the client switches to rendering from the
+compact event. This keeps every intermediate state shippable; the wire only
+gets lighter once W2 lands, which is expected.
 
 ## Dependencies & downstream
 
