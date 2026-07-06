@@ -293,7 +293,9 @@ class WSSession:
 
         hstate["buffering"] = False
         for fr in hstate["buffer"]:
-            if fr.get("seq", 0) > current:
+            # Inbox frames carry no seq (they aren't persisted); pass them
+            # through. Event frames dedup against history by seq.
+            if fr.get("kind") == "inbox" or fr.get("seq", 0) > current:
                 self._emit(fr)
         hstate["buffer"].clear()
 

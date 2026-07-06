@@ -104,18 +104,25 @@ async def test_state_frame_shape(tmp_path: Path):
     assert "seq" not in f
 
 
-async def test_inbox_frame_increments_seq(tmp_path: Path):
+async def test_inbox_has_no_seq_and_preserves_event_seq(tmp_path: Path):
+    # Inbox messages are rendered but not persisted to the JSONL, so they must
+    # NOT consume an event seq — otherwise client seq drifts off the disk line
+    # index that get_event resolves against.
     core = _FakeCore("h")
     reg = _reg(tmp_path, {"h": core})
     a: list = []
     await reg.subscribe("h", a.append)
+    core.emit_event(AssistantText("one"))           # event seq 1
     msg = InboxMessage(sender="peer", timestamp="t", body="hello",
                        task_id="x", status="ok")
-    core.emit_inbox(msg)
-    f = a[0]
-    assert f["kind"] == "inbox" and f["seq"] == 1
-    assert f["msg"]["sender"] == "peer" and f["msg"]["body"] == "hello"
-    assert f["msg"]["task_id"] == "x"
+    core.emit_inbox(msg)                            # no seq, no bump
+    core.emit_event(AssistantText("two"))           # event seq 2, not 3
+    inbox = [f for f in a if f["kind"] == "inbox"][0]
+    assert "seq" not in inbox
+    assert inbox["msg"]["sender"] == "peer" and inbox["msg"]["body"] == "hello"
+    assert inbox["msg"]["task_id"] == "x"
+    events = [f for f in a if f["kind"] == "event"]
+    assert [e["seq"] for e in events] == [1, 2]
 
 
 async def test_unsubscribe_stops_delivery(tmp_path: Path):

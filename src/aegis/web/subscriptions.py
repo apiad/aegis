@@ -329,10 +329,13 @@ class SubscriptionRegistry:
             })
 
         def on_inbox(c, msg):
-            hs.seq += 1
+            # Inbox messages are rendered but not persisted to the session log,
+            # so they must NOT consume an event seq — otherwise every event
+            # after a delivered message drifts one ahead of its JSONL line
+            # index, which is what get_event resolves against.
             _fanout(hs, {
                 "type": "stream", "kind": "inbox",
-                "handle": handle, "seq": hs.seq,
+                "handle": handle,
                 "msg": _inbox_dict(msg),
             })
 
