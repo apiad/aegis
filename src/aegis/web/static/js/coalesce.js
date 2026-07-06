@@ -3,7 +3,9 @@
 // AssistantThinking) frames sharing the same message_id merge into one
 // block with concatenated text; anything else starts a new block.
 //
-// A block record is { seq, event_type, message_id, text, html }.
+// A block record is { seq, event_type, message_id, text, event, truncated,
+// handle, html }. `event` is the compact encoded dict; `truncated` flags a
+// clipped body that expands on tap; `html` is legacy (dropped in W2 Task 4).
 
 const STREAMING = new Set(["AssistantText", "AssistantThinking"]);
 
@@ -28,6 +30,9 @@ export function coalesceInto(history, frame) {
     event_type: eventType,
     message_id: messageId,
     text,
+    event: ev,
+    truncated: frame.truncated ?? false,
+    handle: frame.handle,
     html: frame.html ?? null,
   });
   return { action: "append", index: history.length - 1 };

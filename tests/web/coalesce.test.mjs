@@ -61,4 +61,20 @@ function evt(type, { message_id = null, text = "", html = null, seq = 0 } = {}) 
   assert.equal(history[0].text, "xy");
 }
 
+// 6) record carries the compact event dict + truncated + handle
+{
+  const history = [];
+  coalesceInto(history, {
+    type: "stream", kind: "event", handle: "h", seq: 9,
+    event_type: "ToolResult",
+    event: { t: "ToolResult", text: "big\noutput", is_error: false },
+    truncated: true,
+  });
+  const rec = history[0];
+  assert.equal(rec.event_type, "ToolResult");
+  assert.equal(rec.event.text, "big\noutput");
+  assert.equal(rec.truncated, true);
+  assert.equal(rec.handle, "h");
+}
+
 console.log("coalesce.test.mjs: all assertions passed");

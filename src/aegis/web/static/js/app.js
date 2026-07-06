@@ -5,6 +5,7 @@
 import { WSClient } from "./ws.js";
 import { coalesceInto } from "./coalesce.js";
 import { renderMarkdown } from "./markdown.js";
+import { renderEvent } from "./renderEvent.js";
 import { reconcileTabs, cycleHandle, gotoHandle } from "./tabs.js";
 import { formatStrip } from "./queues.js";
 
@@ -76,8 +77,8 @@ function blockEl(rec) {
     div.innerHTML = renderMarkdown(rec.text);
     return div;
   }
-  if (rec.html) return nodeFromHtml(rec.html) || textBlock(rec);
-  return textBlock(rec);
+  const html = renderEvent(rec);
+  return html ? (nodeFromHtml(html) || textBlock(rec)) : textBlock(rec);
 }
 function nearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 48;
