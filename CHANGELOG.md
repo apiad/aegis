@@ -5,6 +5,21 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Web protocol v2 — compact-by-default + central persistence
+
+- Events stream **compact-by-default**: heavy bodies are truncated on the
+  wire (`ToolResult` clipped to a head, `ToolUse.raw_input` dropped,
+  `AssistantThinking` body emptied) with a `truncated` flag; full detail is
+  fetched on demand via the new `get_event` RPC. Foundation for the mobile /
+  flaky-connection web PWA.
+- `aegis serve`/web now persists sessions to JSONL like the TUI does
+  (`SessionManager.attach_persistence`), so `seq` is a real disk line index in
+  every frontend and web sessions survive a `serve` restart.
+- `hello` advertises `protocol_version: 2` + `capabilities: ["compact"]`;
+  `TOOL_RESULT_HEAD_LINES` / `TOOL_INPUT_HEAD_LINES` join the constants block.
+- The `stream/event` frame still carries `html` (retired in the web
+  client-render slice), so the shipped client is unaffected.
+
 ## [0.16.0] - 2026-06-26
 
 ### Unified input queue + click-to-dequeue chips
