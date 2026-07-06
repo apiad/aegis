@@ -2,12 +2,21 @@
 
 ## Running
 
-    aegis                         # full-screen TUI (opens ConfigPanel
-                                  # when there's no .aegis.yaml)
-    aegis serve                   # headless: MCP plane + optional Telegram
+    aegis                         # full-screen TUI — first-class UI for
+                                  # local dev (opens ConfigPanel when
+                                  # there's no .aegis.yaml)
+    aegis web                     # installable PWA — first-class UI for
+                                  # remote (and local) dev; ensures a token,
+                                  # opens the browser, serves the web client
+    aegis serve                   # headless: MCP plane + web frontend
     aegis config ...              # scriptable .aegis.yaml authoring
-                                  # (agent / queue / telegram / default-agent
+                                  # (agent / queue / default-agent
                                   #  / plugin-dir / show)
+
+The TUI and the web/PWA client are **two co-equal first-class UIs** over
+one `aegis serve` backend: the TUI for local dev, the web client for
+remote dev over a flaky link (mobile-first, installable) and local dev
+too. Both render the same transcripts with the same fidelity.
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the

@@ -519,8 +519,16 @@ Requires Python 3.13+ and at least one of: `claude`, `gemini`, or
 ## Quickstart
 
 ```bash
-aegis          # full-screen TUI; opens ConfigPanel if no .aegis.yaml
+aegis          # full-screen TUI — first-class UI for local dev
+aegis web      # installable PWA — first-class UI for remote (and local) dev
 ```
+
+aegis has **two co-equal first-class UIs** over one backend: the
+full-screen **TUI** for local development, and an installable, mobile-first
+**web/PWA** client for remote development over a flaky link (and locally
+too). Both render the same transcripts with identical fidelity; sessions
+are shared across them. `aegis web` ensures a token, opens your browser,
+and serves the client.
 
 With no `.aegis.yaml` in the directory, `aegis` drops you straight
 into the TUI ConfigPanel — press `a` to add your first agent and
