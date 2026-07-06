@@ -50,4 +50,5 @@ def test_service_worker_served_root_scope_versioned(tmp_path):
     assert r.headers["service-worker-allowed"] == "/"
     assert "9.9.9" in r.text                 # version substituted
     assert "__SW_VERSION__" not in r.text
-    assert "/static/js/app.js" in r.text     # precaches the shell
+    assert 'addEventListener("fetch"' in r.text   # has a fetch handler (installable)
+    assert "aegis-shell-" in r.text               # versioned runtime cache
