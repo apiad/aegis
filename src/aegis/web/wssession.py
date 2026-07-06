@@ -226,6 +226,8 @@ class WSSession:
                                body=params["message"])
             receipt = await core.deliver(msg)
             return {"delivery": receipt.disposition, "depth": receipt.depth}
+        if method == "get_event":
+            return self._reg.get_event(params["handle"], int(params["seq"]))
         raise _RpcUnknown(method)
 
     # -- subscribe / resume ----------------------------------------------

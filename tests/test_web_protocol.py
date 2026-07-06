@@ -215,6 +215,23 @@ async def test_rpc_unknown_method_errors(tmp_path: Path):
     await task
 
 
+async def test_rpc_get_event_returns_full_body(tmp_path: Path):
+    from aegis.events import ToolResult
+    sd = tmp_path / "state"
+    body = "\n".join(f"L{i}" for i in range(30))
+    append_event(sd, "h", ToolResult(text=body, is_error=False))
+    mgr = FakeManager({"h": FakeCore("h")})
+    t, _, task = await _run_authed(tmp_path, mgr, cores_state_dir=sd)
+    t.feed({"type": "rpc", "id": 4, "method": "get_event",
+            "params": {"handle": "h", "seq": 1}})
+    await _settle()
+    resp = [s for s in t.sent if s.get("type") == "rpc_response"][-1]
+    assert resp["ok"] is True
+    assert resp["result"]["event"]["text"] == body   # full, un-truncated
+    t.disconnect()
+    await task
+
+
 # ---- subscribe + history + live ----------------------------------------
 
 async def test_subscribe_streams_history_then_live(tmp_path: Path):

@@ -302,6 +302,15 @@ class SubscriptionRegistry:
         """Persisted ``(seq, event)`` pairs for ``handle`` (subscribe/resume)."""
         return read_history(self._state_dir, handle)
 
+    def get_event(self, handle: str, seq: int) -> dict:
+        """Full (un-truncated) encoded event at ``seq`` for on-tap expansion.
+        Reads the persisted JSONL — relies on W0 central persistence so live
+        serve-mode events are on disk."""
+        for s, ev in read_history(self._state_dir, handle):
+            if s == seq:
+                return {"event": encode_event(ev)}
+        return {"event": None}
+
     def _attach(self, handle: str, hs: _HandleState) -> None:
         core = self._m.get(handle)
         if core is None:
