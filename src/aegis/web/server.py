@@ -88,12 +88,16 @@ def build_web_app(manager, web_cfg, state_dir, *,
     static = Path(static_dir) if static_dir is not None else _PKG_STATIC
     index_html = (static / "index.html").read_text(encoding="utf-8")
     base_css = (static / "css" / "base.css").read_text(encoding="utf-8")
+    manifest_json = (static / "manifest.webmanifest").read_text(encoding="utf-8")
 
     async def healthz(request):
         return JSONResponse({"ok": True})
 
     async def index(request):
         return HTMLResponse(index_html)
+
+    async def manifest(request):
+        return Response(manifest_json, media_type="application/manifest+json")
 
     async def theme_css(request):
         name = request.query_params.get("name") or WEB_THEME
@@ -112,6 +116,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
     routes = [
         Route("/", index),
         Route("/healthz", healthz),
+        Route("/manifest.webmanifest", manifest),
         Route("/theme.css", theme_css),
         WebSocketRoute("/ws", ws_endpoint),
         Mount("/static", StaticFiles(directory=str(static)), name="static"),
