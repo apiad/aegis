@@ -252,10 +252,10 @@ Newest first. Patch releases bundle under their minor parent.
 
 ### More drivers
 
-- **Copilot ACP driver** (after June 1 Copilot billing transition).
-  Copilot CLI supports ACP since Jan 2026: `copilot --acp` (stdio).
-  Driver is a small `AcpDriver` shim — same shape as `GeminiDriver`.
-  Auth via `gh auth login`.
+- **Copilot ACP driver** *(shipped)*. Copilot CLI supports ACP since
+  Jan 2026: `copilot --acp` (stdio). The `CopilotDriver` is a small
+  `AcpDriver` shim, same shape as `GeminiDriver`, with `--model`
+  passthrough. Auth via `copilot`/`gh` login.
 - **OpenAI Codex JSON-RPC driver.** Codex CLI exposes a bidirectional
   JSON-RPC app server (`codex exec --json`). Different from ACP but
   documented and stable. Auth: `OPENAI_API_KEY`.

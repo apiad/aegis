@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from aegis import (
-    Agent, ClaudeCode, Effort, GeminiCLI, OpenCode, Permission,
+    Agent, ClaudeCode, CopilotCLI, Effort, GeminiCLI, OpenCode, Permission,
 )
 
 
@@ -48,6 +48,16 @@ def test_opencode_provider_round_trip():
     assert a.permission is Permission.full
 
 
+def test_copilot_provider_round_trip():
+    p = CopilotCLI(model="claude-sonnet-4.5", permission=Permission.full)
+    assert p.name == "copilot"
+    a = Agent(provider=p)
+    assert a.harness == "copilot"
+    assert a.model == "claude-sonnet-4.5"
+    assert a.permission is Permission.full
+    assert not hasattr(p, "effort")
+
+
 def test_flat_shape_still_works_and_synthesizes_provider():
     """Legacy ``Agent(harness=, model=, effort=, permission=)`` keeps
     working; a Provider object is synthesized so internal code can
@@ -73,6 +83,13 @@ def test_flat_shape_for_opencode_synthesizes_opencode():
     assert a.provider.model == "opencode/gemini-3-flash"
 
 
+def test_flat_shape_for_copilot_synthesizes_copilotcli():
+    a = Agent(harness="copilot", model="gpt-5.4",
+              effort=Effort.high, permission=Permission.full)
+    assert isinstance(a.provider, CopilotCLI)
+    assert a.provider.model == "gpt-5.4"
+
+
 def test_flat_shape_unknown_harness_raises():
     with pytest.raises(ValidationError, match="unknown harness"):
         Agent(harness="ghost", model="x", effort=Effort.high,
@@ -93,4 +110,11 @@ def test_provider_defaults_for_gemini_are_full_permission():
 
 def test_provider_defaults_for_opencode_are_full_permission():
     p = OpenCode(model="opencode/claude-sonnet-4-6")
+    assert p.permission is Permission.full
+
+
+def test_provider_defaults_for_copilot_are_full_permission():
+    """Copilot runs over ACP (auto-approve at the protocol layer); full
+    is the sensible default for queue workers / workflow drive."""
+    p = CopilotCLI(model="claude-sonnet-4.5")
     assert p.permission is Permission.full

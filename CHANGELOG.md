@@ -5,6 +5,19 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Copilot CLI driver** (`copilot`). Copilot exposes an ACP
+  server over stdio (`copilot --acp`), the same protocol behind the
+  Gemini and OpenCode drivers, so the new `CopilotDriver` is a thin
+  `AcpDriver` shim with `--model` passthrough. Multi-turn, streaming,
+  cancellation, per-session MCP injection, and session resume
+  (`loadSession`) all come for free from the shared ACP path. Configure
+  with `provider: copilot` (or the flat `harness: copilot`) and a
+  `CopilotCLI` model such as `claude-sonnet-4.5`, `gpt-5.4`, or `auto`.
+  Auth rides the existing `copilot`/`gh` login. Closes the roadmap's
+  "Copilot ACP driver" item.
+
 ## [0.16.0] - 2026-06-26
 
 ### Unified input queue + click-to-dequeue chips
