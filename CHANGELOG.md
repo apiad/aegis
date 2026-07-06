@@ -22,6 +22,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   ships a rendered `html` blob per event. Truncated blocks (tool input/output,
   thinking) expand on tap via `get_event`, cached per tab. This completes the
   wire diet — tool-heavy turns stream a fraction of the previous bytes.
+- The web client is now an installable **PWA**: `manifest.webmanifest` + icon,
+  a service worker that precaches the app shell and serves it cache-first
+  (cache-busted per `server_version`), and a reconnecting banner for flaky
+  links. Launches instantly and works installed; live actions require the
+  connection (no offline outbox in v1).
 
 ## [0.16.0] - 2026-06-26
 
