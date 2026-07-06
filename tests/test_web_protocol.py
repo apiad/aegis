@@ -135,9 +135,10 @@ async def test_auth_success_sends_hello(tmp_path: Path):
     t, _, task = await _run_authed(tmp_path, FakeManager())
     hello = t.sent[0]
     assert hello["type"] == "hello"
-    assert hello["protocol_version"] == 1
+    assert hello["protocol_version"] == 2
     assert hello["constants"]["RESUME_GAP_CAP"] == 1000
     assert "event" in hello["supported_kinds"]
+    assert "compact" in hello["capabilities"]
     t.disconnect()
     await task
 

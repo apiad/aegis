@@ -20,7 +20,7 @@ from typing import Protocol
 from aegis.queue import InboxMessage, now_iso, sender_user
 from aegis.web.subscriptions import SubscriptionRegistry, event_frame
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 AUTH_TIMEOUT_S = 5.0
 DEFAULT_SEND_CAP = 10_000
 SUPPORTED_KINDS = [
@@ -115,6 +115,7 @@ class WSSession:
             "server_version": self._server_version,
             "protocol_version": PROTOCOL_VERSION,
             "constants": self._constants,
+            "capabilities": ["compact"],
             "supported_kinds": list(SUPPORTED_KINDS),
         }
 

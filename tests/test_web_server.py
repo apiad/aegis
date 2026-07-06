@@ -52,7 +52,7 @@ def test_ws_auth_then_hello_then_rpc(tmp_path: Path):
         ws.send_json({"type": "auth", "token": "secret"})
         hello = ws.receive_json()
         assert hello["type"] == "hello"
-        assert hello["protocol_version"] == 1
+        assert hello["protocol_version"] == 2
         assert "RESUME_GAP_CAP" in hello["constants"]
 
         ws.send_json({"type": "rpc", "id": 1, "method": "list_agents"})
@@ -80,3 +80,10 @@ def test_ws_bad_token_closes(tmp_path: Path):
         with client.websocket_connect("/ws?t=secret") as ws:
             ws.send_json({"type": "auth", "token": "WRONG"})
             ws.receive_json()  # server closes 4401 → disconnect
+
+
+def test_constants_include_compaction_knobs():
+    from aegis.web.server import _constants
+    c = _constants()
+    assert c["TOOL_RESULT_HEAD_LINES"] == 8
+    assert c["TOOL_INPUT_HEAD_LINES"] == 1

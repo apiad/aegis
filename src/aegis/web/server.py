@@ -34,6 +34,8 @@ def _constants() -> dict:
         "LOAD_MORE_EPS": _tc.LOAD_MORE_EPS,
         "DEBOUNCE_S": _tc.DEBOUNCE_S,
         "RESUME_GAP_CAP": RESUME_GAP_CAP,
+        "TOOL_RESULT_HEAD_LINES": _tc.TOOL_RESULT_HEAD_LINES,
+        "TOOL_INPUT_HEAD_LINES": _tc.TOOL_INPUT_HEAD_LINES,
     }
 
 
