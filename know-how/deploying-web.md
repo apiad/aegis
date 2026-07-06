@@ -55,12 +55,26 @@ ssh vps 'cd ~/Workspace/repos/aegis && git pull --ff-only origin main \
 
 Verify: `curl -u apiad:<pw> https://dev.apiad.net/healthz` → `{"ok":true}`.
 
-**Known gap:** the service worker cache name is `aegis-shell-0` because
-`aegis serve` doesn't pass its real version to `WebFrontend` (defaults to
-`"0"`). So a redeploy does NOT auto-bust the installed PWA shell cache — clients
-keep the old JS until they clear the SW. Fix = thread `aegis.__version__` into
-`WebFrontend(server_version=…)`. Until then, hard-refresh / update the SW
-manually after a redeploy that changes client JS.
+**SW cache busting** is wired: `cli.py::_aegis_version()` threads
+`aegis-harness`'s version into `WebFrontend(server_version=…)`, so the SW cache
+is `aegis-shell-<version>` and a version bump busts it. (Bump `pyproject`
+version when a client-JS change must force-refresh installed clients.)
+
+**SW + basic auth:** the SW uses **runtime caching, not install-time precache**
+(`service-worker.js`). Precaching (`caches.addAll`) behind HTTP basic auth 401s
+in the install context and aborts SW activation (→ no install prompt, no
+offline). Empty `install` (just `skipWaiting`) always activates; the `fetch`
+handler caches each shell asset on first load with the page's credentials. Do
+not reintroduce install-time precache while basic auth is on.
+
+**Installing the PWA:** installability needs PNG icons (192 + 512) — SVG-only
+manifests are NOT installable on Chrome. Once loaded (auth via the browser
+prompt, not URL-embedded creds — those pollute the SW scope), install via the
+in-page **⤓ Install app** button (appears when Chrome fires
+`beforeinstallprompt`, i.e. after some engagement) or Chrome's ⋮ menu →
+"Install aegis". Testing install via automation is unreliable — Chrome gates
+`beforeinstallprompt` on an engagement heuristic that headless/driven sessions
+don't satisfy.
 
 ## Rotate secrets
 
