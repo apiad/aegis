@@ -27,6 +27,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   (cache-busted per `server_version`), and a reconnecting banner for flaky
   links. Launches instantly and works installed; live actions require the
   connection (no offline outbox in v1).
+- Mobile-first web layout: below 640px the client shows a session **list** and
+  a full-screen **conversation** view (same DOM/state), with the composer
+  pinned above the keyboard and a back control. **Swipe** left/right moves
+  between agents. Desktop is unchanged; dashboards are desktop/TUI-only on
+  mobile v1.
 
 ## [0.16.0] - 2026-06-26
 
