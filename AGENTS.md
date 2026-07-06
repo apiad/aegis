@@ -18,6 +18,13 @@ one `aegis serve` backend: the TUI for local dev, the web client for
 remote dev over a flaky link (mobile-first, installable) and local dev
 too. Both render the same transcripts with the same fidelity.
 
+## Know-how
+
+Procedure docs under `know-how/` — match the task, load the doc before acting:
+
+- `know-how/deploying-web.md` — *reach for it when deploying / redeploying /
+  debugging the public aegis web UI (`dev.apiad.net`) on the VPS.*
+
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
 harness subprocess is rooted there unless `--cwd` overrides.
