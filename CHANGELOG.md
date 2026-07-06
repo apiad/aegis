@@ -17,8 +17,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   every frontend and web sessions survive a `serve` restart.
 - `hello` advertises `protocol_version: 2` + `capabilities: ["compact"]`;
   `TOOL_RESULT_HEAD_LINES` / `TOOL_INPUT_HEAD_LINES` join the constants block.
-- The `stream/event` frame still carries `html` (retired in the web
-  client-render slice), so the shipped client is unaffected.
+- The web client renders transcripts **client-side** from the compact `event`
+  payload (`renderEvent.js`, mirroring `render_html.py`); the server no longer
+  ships a rendered `html` blob per event. Truncated blocks (tool input/output,
+  thinking) expand on tap via `get_event`, cached per tab. This completes the
+  wire diet — tool-heavy turns stream a fraction of the previous bytes.
 
 ## [0.16.0] - 2026-06-26
 
