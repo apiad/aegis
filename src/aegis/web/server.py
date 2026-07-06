@@ -89,6 +89,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
     index_html = (static / "index.html").read_text(encoding="utf-8")
     base_css = (static / "css" / "base.css").read_text(encoding="utf-8")
     manifest_json = (static / "manifest.webmanifest").read_text(encoding="utf-8")
+    sw_src = (static / "service-worker.js").read_text(encoding="utf-8")
 
     async def healthz(request):
         return JSONResponse({"ok": True})
@@ -98,6 +99,12 @@ def build_web_app(manager, web_cfg, state_dir, *,
 
     async def manifest(request):
         return Response(manifest_json, media_type="application/manifest+json")
+
+    async def service_worker(request):
+        body = sw_src.replace("__SW_VERSION__", server_version)
+        return Response(body, media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/",
+                                 "Cache-Control": "no-cache"})
 
     async def theme_css(request):
         name = request.query_params.get("name") or WEB_THEME
@@ -117,6 +124,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
         Route("/", index),
         Route("/healthz", healthz),
         Route("/manifest.webmanifest", manifest),
+        Route("/service-worker.js", service_worker),
         Route("/theme.css", theme_css),
         WebSocketRoute("/ws", ws_endpoint),
         Mount("/static", StaticFiles(directory=str(static)), name="static"),
