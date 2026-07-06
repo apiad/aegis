@@ -25,15 +25,13 @@ surface is exactly what aegis declares.
 
 ## Inboxes
 
-Anything sent to an agent — by a peer, a queue callback, the substrate,
-or the Telegram front-end — arrives as a normal user-message turn,
-prefixed with a single-line header so the agent knows where it came
-from:
+Anything sent to an agent — by a peer, a queue callback, or the
+substrate — arrives as a normal user-message turn, prefixed with a
+single-line header so the agent knows where it came from:
 
 ```
 > from queue:<name>   · task#<id> · ok|error · <timestamp>
 > from agent:<handle> · <timestamp>
-> from telegram       · <timestamp>
 > from workflow:<name> · task#<id> · ok|error · <timestamp>
 ```
 
@@ -51,7 +49,7 @@ This means an agent looking at its own inbox can always tell:
 
 - Which **peer** sent it a handoff.
 - Which **queue** a callback is for, and whether the worker succeeded.
-- Whether a message came from a **human** via Telegram vs. another agent.
+- Whether a message came from a **human** vs. another agent.
 
 ## Injection mechanics
 

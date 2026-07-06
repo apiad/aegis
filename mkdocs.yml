@@ -87,7 +87,6 @@ nav:
       - Remote plane: remote.md
       - MCP plane: mcp.md
       - Budgets: budget.md
-      - Telegram: telegram.md
   - Plugins:
       - Overview: plugins.md
   - Reference:

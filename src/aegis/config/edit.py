@@ -259,7 +259,7 @@ def remove_queue(root: Path, name: str) -> None:
     _atomic_write(base, payload)
 
 
-# --- telegram --------------------------------------------------------
+# --- edit sentinel ---------------------------------------------------
 
 class _Unchanged:
     """Sentinel: distinguishes "leave alone" from "set to None / clear"."""
@@ -268,43 +268,6 @@ class _Unchanged:
 
 
 UNCHANGED = _Unchanged()
-
-
-def set_telegram(
-    root: Path,
-    *,
-    token: str | None | _Unchanged = UNCHANGED,
-    chat_id: int | None | _Unchanged = UNCHANGED,
-    auto_prompt: str | None | _Unchanged = UNCHANGED,
-) -> None:
-    """Mutate the `telegram:` block. Pass a concrete value to set,
-    `None` to clear that field, or omit (leaving the sentinel) to
-    leave it alone. An empty block is removed entirely."""
-    base = root / ".aegis.yaml"
-    data = _load(base)
-    block = data.get("telegram") or {}
-    if not isinstance(block, dict):
-        raise ConfigError(f"{base}: telegram block must be a mapping")
-
-    def _apply(key: str, value):
-        if isinstance(value, _Unchanged):
-            return
-        if value is None:
-            block.pop(key, None)
-        else:
-            block[key] = value
-
-    _apply("token", token)
-    _apply("chat_id", chat_id)
-    _apply("auto_prompt", auto_prompt)
-
-    if block:
-        data["telegram"] = block
-    else:
-        data.pop("telegram", None)
-
-    payload = _validate_and_dump(root, data)
-    _atomic_write(base, payload)
 
 
 # --- web -------------------------------------------------------------

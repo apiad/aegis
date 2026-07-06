@@ -1,5 +1,5 @@
 [Unit]
-Description=Aegis headless daemon (MCP plane + Telegram)
+Description=Aegis headless daemon (MCP plane + web frontend)
 After=network-online.target
 Wants=network-online.target
 

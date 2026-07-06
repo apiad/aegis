@@ -21,7 +21,7 @@ from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Input, Label, Select, Static
 
-from aegis.config import ConfigError, load_queues, load_telegram_config
+from aegis.config import ConfigError, load_queues
 from aegis.config.yaml_loader import load_config as _load_yaml_config
 from aegis.tui.state import AgentState
 
@@ -236,8 +236,6 @@ class ConfigPanel(Widget):
         out.append("\n\n")
         out.append(self._render_queues_panel())
         out.append("\n\n")
-        out.append(self._render_telegram_panel())
-        out.append("\n\n")
         out.append(self._render_plugin_dirs_panel(cfg))
         return out
 
@@ -291,29 +289,6 @@ class ConfigPanel(Widget):
             table.add_row(name, q.agent_profile,
                           str(q.max_parallel), budgets)
         return _rich_to_text(table)
-
-    def _render_telegram_panel(self) -> Text:
-        try:
-            tcfg = load_telegram_config(self._root)
-        except ConfigError:
-            return Text("TELEGRAM\n  (none)", style="dim")
-        if (tcfg.token is None and tcfg.chat_id is None
-                and not tcfg.auto_prompt):
-            return Text("TELEGRAM\n  (none)", style="dim")
-        t = Text()
-        t.append("TELEGRAM\n", style="bold")
-        if tcfg.token:
-            redacted = (tcfg.token[:4] + "…"
-                        + f"({len(tcfg.token)}ch)")
-            t.append(f"  token:       {redacted}\n")
-        else:
-            t.append("  token:       —\n", style="dim")
-        t.append(f"  chat_id:     {tcfg.chat_id or '—'}\n")
-        if tcfg.auto_prompt:
-            preview = (tcfg.auto_prompt[:60] + "…"
-                       if len(tcfg.auto_prompt) > 60 else tcfg.auto_prompt)
-            t.append(f"  auto_prompt: {preview!r}\n")
-        return t
 
     def _render_plugin_dirs_panel(self, cfg) -> Text:
         t = Text()

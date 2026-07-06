@@ -22,13 +22,11 @@ from typing import Any
 from ruamel.yaml import YAML
 
 from aegis.config import (
-    DEFAULT_TELEGRAM_PROMPT,
     Agent,
     ClaudeCode,
     ConfigError,
     GeminiCLI,
     OpenCode,
-    TelegramConfig,
     VoiceConfig,
     WebConfig,
 )
@@ -61,7 +59,6 @@ class AegisConfig:
     groups: dict[str, Any] = field(default_factory=dict)
     remotes: dict[str, RemoteSpec] = field(default_factory=dict)
     remote_plane: RemotePlaneSpec | None = None
-    telegram: TelegramConfig | None = None
     web: WebConfig | None = None
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     root: Path | None = None
@@ -198,7 +195,6 @@ def load_config(root: Path) -> AegisConfig:
                 f"{base}: queues[{qname!r}].max_parallel must be an int "
                 f">= 1 (got {qspec.max_parallel!r}).")
 
-    telegram = _build_telegram(raw.get("telegram") or {})
     web = _build_web(raw.get("web"))
     voice = _build_voice(raw.get("voice"))
 
@@ -213,7 +209,6 @@ def load_config(root: Path) -> AegisConfig:
         groups=groups,
         remotes=remotes,
         remote_plane=remote_plane,
-        telegram=telegram,
         web=web,
         voice=voice,
         root=root,
@@ -221,31 +216,12 @@ def load_config(root: Path) -> AegisConfig:
     )
 
 
-def _build_telegram(raw: dict[str, Any]) -> TelegramConfig:
-    """Build a TelegramConfig from a `telegram:` YAML block.
-
-    Token resolution: `AEGIS_TELEGRAM_TOKEN` env var wins, else the
-    YAML `token:` field. Either may be absent; the headless plane
-    only activates Telegram when both token and chat_id are present.
-    """
-    if not isinstance(raw, dict):
-        raise ConfigError("telegram: must be a mapping")
-    token = os.environ.get("AEGIS_TELEGRAM_TOKEN") or raw.get("token") or None
-    chat_id = raw.get("chat_id")
-    auto = raw.get("auto_prompt", DEFAULT_TELEGRAM_PROMPT)
-    return TelegramConfig(
-        token=token,
-        chat_id=int(chat_id) if chat_id is not None else None,
-        auto_prompt="" if auto == "" else str(auto),
-    )
-
-
 def _build_web(raw: dict[str, Any] | None) -> WebConfig | None:
     """Build a WebConfig from a `web:` YAML block, or None when absent.
 
-    Token resolution mirrors telegram: `AEGIS_WEB_TOKEN` env var wins,
-    else the YAML `token:` field. `bind` defaults to localhost; `port`
-    None means auto-pick a free port at serve time.
+    Token resolution: `AEGIS_WEB_TOKEN` env var wins, else the YAML
+    `token:` field. `bind` defaults to localhost; `port` None means
+    auto-pick a free port at serve time.
     """
     if raw is None:
         return None

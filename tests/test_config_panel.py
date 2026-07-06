@@ -30,8 +30,6 @@ _FULL = (
     "  impl:\n"
     "    agent: main\n"
     "    max_parallel: 2\n"
-    "telegram:\n"
-    "  chat_id: 42\n"
 )
 
 
@@ -84,16 +82,6 @@ async def test_config_panel_renders_queues(tmp_path: Path) -> None:
         await pilot.pause()
         text = app.query_one(ConfigPanel).rendered_text()
     assert "impl" in text
-
-
-@pytest.mark.asyncio
-async def test_config_panel_renders_telegram(tmp_path: Path) -> None:
-    _seed(tmp_path, _FULL)
-    app = _Host(tmp_path)
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        text = app.query_one(ConfigPanel).rendered_text()
-    assert "42" in text  # chat_id
 
 
 @pytest.mark.asyncio

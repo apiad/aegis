@@ -2,12 +2,8 @@ import pytest
 from aegis.config import (
     Agent, Permission, Effort,
     load_config, ConfigError,
-    find_project_root, load_telegram_config,
+    find_project_root,
 )
-
-DEFAULT_PROMPT = (
-    "You are replying via telegram, keep response compact and "
-    "focused if possible, only resort to long responses if it really matters")
 
 
 _MIN_AGENT = (
@@ -97,24 +93,3 @@ def test_find_project_root_closest_wins(tmp_path):
 def test_find_project_root_none(tmp_path):
     assert find_project_root(tmp_path) is None
 
-
-def test_telegram_config_defaults(tmp_path, monkeypatch):
-    (tmp_path / ".aegis.yaml").write_text(
-        _MIN_AGENT + "telegram:\n  chat_id: 5\n")
-    monkeypatch.delenv("AEGIS_TELEGRAM_TOKEN", raising=False)
-    cfg = load_telegram_config(tmp_path)
-    assert cfg.chat_id == 5 and cfg.token is None
-    assert cfg.auto_prompt == DEFAULT_PROMPT
-
-
-def test_env_token_wins(tmp_path, monkeypatch):
-    (tmp_path / ".aegis.yaml").write_text(
-        _MIN_AGENT + "telegram:\n  token: infile\n")
-    monkeypatch.setenv("AEGIS_TELEGRAM_TOKEN", "fromenv")
-    assert load_telegram_config(tmp_path).token == "fromenv"
-
-
-def test_empty_auto_prompt_disables(tmp_path):
-    (tmp_path / ".aegis.yaml").write_text(
-        _MIN_AGENT + "telegram:\n  auto_prompt: ''\n")
-    assert load_telegram_config(tmp_path).auto_prompt == ""

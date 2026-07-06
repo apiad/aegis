@@ -258,7 +258,7 @@ plan → dispatch implementer per task with durable resume),
   and `Ctrl+click` on a backtick-wrapped filename in any agent
   response opens it directly.
 - **Config panel.** `F2` opens the live `.aegis.yaml` editor inside
-  the TUI — see agents/queues/telegram at a glance, add an agent
+  the TUI — see agents/queues at a glance, add an agent
   through a validated modal. Same edit helpers back the scriptable
   `aegis config` CLI verbs and a parallel MCP surface
   (`aegis_config_add_agent`, `…_add_queue`, `…_add_plugin_dir`,
@@ -275,9 +275,9 @@ plan → dispatch implementer per task with durable resume),
   `tdd_cycle`); importing them registers. Engine offers `ask_human`,
   explicit `checkpoint` + durable resume, `bash_predicate` retry
   loops, and `parallel` fan-out.
-- **Headless + Telegram.** `aegis serve` runs the SessionManager + MCP
-  plane without a TUI. Add a Telegram token to drive the team from your
-  phone.
+- **Headless + web.** `aegis serve` runs the SessionManager + MCP
+  plane without a TUI; add a `web:` token to drive the team from an
+  installable, mobile-first web/PWA client (`aegis web`).
 - **MCP plane.** Every spawned agent is injected with the aegis MCP
   server: orientation (`aegis_meta`), session listing, handoff, queue
   dispatch, canvas ops, terminal ops, group broadcast/gather, workflow
@@ -542,7 +542,7 @@ aegis                       # start the TUI normally
 
 `.aegis.yaml` is declarative YAML — edit it by hand or use
 `aegis config` verbs (every section reachable: agents, queues,
-telegram, default-agent, plugin-dir). Mid-session, reach the
+default-agent, plugin-dir). Mid-session, reach the
 ConfigPanel via `F2`.
 
 ## Keys
@@ -568,7 +568,7 @@ A backgrounded tab that finishes shows a `*` and rings the bell.
 `.aegis.yaml` is declarative YAML. Author it interactively (the TUI
 ConfigPanel — boot-into-panel when no config exists, `F2` mid-session)
 or with the scriptable CLI (`aegis config agent add`, `aegis config
-queue add`, `aegis config telegram set`, …). Shape:
+queue add`, `aegis config default-agent`, …). Shape:
 
 ```yaml
 default_agent: default
@@ -603,38 +603,24 @@ queues:
 
 Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 
-## Headless + Telegram
+## Headless + web
 
 `aegis serve` runs the SessionManager and MCP plane without the TUI; add
-a Telegram token to drive it from your phone:
+a `web:` block to serve the installable, mobile-first web/PWA client and
+drive the team from any browser:
 
 ```yaml
 # .aegis.yaml
-telegram:
-  token: "…"               # or set AEGIS_TELEGRAM_TOKEN (env wins)
-  chat_id: 123456          # the single allowed chat
+web:
+  bind: 127.0.0.1          # front with a reverse proxy for remote access
+  port: 8899               # omit to auto-pick
+  # token: "…"             # or set AEGIS_WEB_TOKEN (env wins) — keeps it out of git
 ```
 
-v0.10 ships a full **substrate command surface** alongside the original
-session-spawn verbs:
-
-| Command | Action |
-|---|---|
-| `/new [agent]` | Spawn a new session |
-| `/close [handle]` | Close a session |
-| `/interrupt` | Interrupt the active turn |
-| `/queue list` | Per-queue depth + in-flight (local) |
-| `/queue show <name>` | Full queue detail (local) |
-| `/schedule list [@peer]` | All schedules with next fire |
-| `/schedule show <name> [@peer]` | Full schedule detail |
-| `/schedule run <name>` | Force-fire a schedule now (local) |
-| `/budget list [@peer]` | Budget state per queue |
-| `/budget show <queue> [@peer]` | Per-constraint budget detail |
-| `/peers` | Remotes with reachability probe |
-| `/help [command]` | Registry-driven help |
-
-A systemd unit template lives at `scripts/aegis-serve.service`.
-Full setup, output examples, and FAQ: [docs/telegram.md](docs/telegram.md).
+`aegis web` ensures a token, opens your browser, and serves. The TUI, the
+web client, and (eventually) a remote TUI all speak the same WebSocket
+protocol over one backend, so sessions are shared across them. A systemd
+unit template lives at `scripts/aegis-serve.service`.
 
 ## Docs
 
@@ -651,7 +637,6 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Remote plane](https://apiad.github.io/aegis/remote/) — laptop ↔ VPS enqueue over HTTP
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [Budgets](https://apiad.github.io/aegis/budget/)
-- [Telegram](https://apiad.github.io/aegis/telegram/) — substrate commands from the phone
 - [MCP plane](https://apiad.github.io/aegis/mcp/) — the tool surface
 - [Architecture](https://apiad.github.io/aegis/architecture/)
 - [Roadmap](https://apiad.github.io/aegis/roadmap/)

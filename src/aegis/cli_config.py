@@ -67,13 +67,6 @@ def show_cmd(
                     ] or None,
                 } for name, q in queues.items()
             },
-            "telegram": {
-                "token": (cfg.telegram.token[:4] + "…"
-                          if cfg.telegram and cfg.telegram.token else None),
-                "chat_id": cfg.telegram.chat_id if cfg.telegram else None,
-                "auto_prompt": cfg.telegram.auto_prompt
-                               if cfg.telegram else None,
-            },
             "plugin_dirs": [str(p) for p in cfg.plugin_dirs],
         }
         typer.echo(json.dumps(out, indent=2))
@@ -261,64 +254,6 @@ def queue_remove_cmd(
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     _console.print(f"[green]removed queue {name!r}[/green]")
-
-
-# --- telegram group --------------------------------------------------
-
-telegram_app = typer.Typer(add_completion=False, no_args_is_help=True,
-                           help="Configure the Telegram bot integration.")
-app.add_typer(telegram_app, name="telegram")
-
-
-@telegram_app.command("show")
-def telegram_show_cmd() -> None:
-    """Show telegram config (token is redacted)."""
-    from aegis.config import load_telegram_config
-    root = _resolve_root()
-    try:
-        tcfg = load_telegram_config(root)
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
-    redacted = (tcfg.token[:4] + "…(" + str(len(tcfg.token)) + "ch)"
-                if tcfg.token else "—")
-    typer.echo(f"token:       {redacted}")
-    typer.echo(f"chat_id:     {tcfg.chat_id if tcfg.chat_id else '—'}")
-    typer.echo(f"auto_prompt: {tcfg.auto_prompt!r}")
-
-
-@telegram_app.command("set")
-def telegram_set_cmd(
-    token: str | None = typer.Option(None, "--token"),
-    clear_token: bool = typer.Option(False, "--clear-token"),
-    chat_id: int | None = typer.Option(None, "--chat-id"),
-    clear_chat_id: bool = typer.Option(False, "--clear-chat-id"),
-    auto_prompt: str | None = typer.Option(None, "--auto-prompt"),
-    clear_auto_prompt: bool = typer.Option(False, "--clear-auto-prompt"),
-) -> None:
-    """Set or clear fields in the `telegram:` block. Unspecified flags
-    leave the corresponding field alone."""
-    from aegis.config.edit import UNCHANGED, set_telegram
-    if token is not None and clear_token:
-        raise typer.BadParameter("--token and --clear-token are mutually exclusive")
-    if chat_id is not None and clear_chat_id:
-        raise typer.BadParameter("--chat-id and --clear-chat-id are mutually exclusive")
-    if auto_prompt is not None and clear_auto_prompt:
-        raise typer.BadParameter(
-            "--auto-prompt and --clear-auto-prompt are mutually exclusive")
-
-    t_arg = None if clear_token else (token if token is not None else UNCHANGED)
-    c_arg = None if clear_chat_id else (chat_id if chat_id is not None else UNCHANGED)
-    a_arg = (None if clear_auto_prompt
-             else (auto_prompt if auto_prompt is not None else UNCHANGED))
-
-    root = _resolve_root()
-    try:
-        set_telegram(root, token=t_arg, chat_id=c_arg, auto_prompt=a_arg)
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
-    _console.print("[green]telegram updated[/green]")
 
 
 # --- plugin-dir group ------------------------------------------------

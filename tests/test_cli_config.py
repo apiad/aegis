@@ -246,55 +246,6 @@ def test_queue_remove(tmp_path: Path) -> None:
     assert "impl:" not in text
 
 
-# --- telegram --------------------------------------------------------
-
-def test_telegram_set_token_and_chat_id(tmp_path: Path) -> None:
-    _seed_minimal(tmp_path)
-    prev = _chdir(tmp_path)
-    try:
-        res = runner.invoke(
-            app, ["config", "telegram", "set",
-                  "--token", "secret-token",
-                  "--chat-id", "42"])
-    finally:
-        os.chdir(prev)
-    assert res.exit_code == 0, res.output
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "token: secret-token" in text
-    assert "chat_id: 42" in text
-
-
-def test_telegram_show_redacts_token(tmp_path: Path) -> None:
-    _seed_minimal(tmp_path)
-    prev = _chdir(tmp_path)
-    try:
-        runner.invoke(app, ["config", "telegram", "set",
-                            "--token", "very-secret-1234",
-                            "--chat-id", "42"])
-        res = runner.invoke(app, ["config", "telegram", "show"])
-    finally:
-        os.chdir(prev)
-    assert res.exit_code == 0, res.output
-    assert "very-secret-1234" not in res.output
-    assert "42" in res.output
-
-
-def test_telegram_clear_chat_id(tmp_path: Path) -> None:
-    _seed_minimal(tmp_path)
-    prev = _chdir(tmp_path)
-    try:
-        runner.invoke(app, ["config", "telegram", "set",
-                            "--token", "t", "--chat-id", "42"])
-        res = runner.invoke(app, ["config", "telegram", "set",
-                                  "--clear-chat-id"])
-    finally:
-        os.chdir(prev)
-    assert res.exit_code == 0, res.output
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "chat_id:" not in text
-    assert "token: t" in text
-
-
 # --- plugin-dir ------------------------------------------------------
 
 def test_plugin_dir_add_list_remove(tmp_path: Path) -> None:

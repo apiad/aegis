@@ -1,6 +1,5 @@
-"""WebFrontend — uvicorn lifecycle owner for the web client, mirroring
-``TelegramFrontend``. Built by ``aegis serve`` when a ``web:`` block is
-configured; run as an asyncio task.
+"""WebFrontend — uvicorn lifecycle owner for the web client. Built by
+``aegis serve`` when a ``web:`` block is configured; run as an asyncio task.
 """
 from __future__ import annotations
 

@@ -11,7 +11,6 @@ from rich.console import Console
 
 from aegis.config import (
     ConfigError, find_project_root, load_config, load_queues,
-    load_telegram_config,
 )
 from aegis.core.manager import SessionManager
 from aegis.drivers import DRIVERS, get_driver
@@ -204,7 +203,7 @@ def _aegis_version() -> str:
         return "0"
 
 
-async def _serve(*, agents, default_agent, make_session, mcp, tg,
+async def _serve(*, agents, default_agent, make_session, mcp,
                  stop: asyncio.Event, queues: dict | None = None,
                  schedules: dict | None = None,
                  remotes: dict | None = None,
@@ -296,29 +295,6 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
         await reload_watcher.start()
 
     tasks = []
-    if tg is not None:
-        from types import SimpleNamespace as _SN2
-
-        from aegis.telegram.bot import BotClient
-        from aegis.telegram.frontend import TelegramFrontend
-        bot = BotClient(tg.token)
-        # Telegram needs read access to queue_manager + scheduler + cfg.remotes.
-        # If remote_plane is not configured, the regular _PlaneBridge wasn't
-        # built — construct a minimal one with just the fields Telegram needs.
-        if plane_bridge is None:
-            tg_bridge = _SN2(
-                queue_manager=qm, scheduler=scheduler,
-                inbox_router=None, workflow_registry=None,
-                state_root=None,
-            )
-        else:
-            tg_bridge = plane_bridge
-        tg_cfg = _SN2(remotes=remotes or {})
-        fe = TelegramFrontend(bot, mgr, tg_bridge, tg_cfg,
-                              chat_id=tg.chat_id,
-                              auto_prompt=tg.auto_prompt,
-                              state_dir=_state_dir(root))
-        tasks.append(asyncio.create_task(fe.run(bot)))
     if web is not None:
         from aegis.web.frontend import WebFrontend
         web_fe = WebFrontend(mgr, web, state_dir=_state_dir(Path.cwd()),
@@ -341,7 +317,7 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
 
 @app.command()
 def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
-    """Run the headless daemon (MCP plane + optional Telegram + web)."""
+    """Run the headless daemon (MCP plane + optional web frontend)."""
     _run_serve(cwd)
 
 
@@ -404,12 +380,6 @@ def _run_serve(cwd: str) -> None:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    tcfg = load_telegram_config(root)
-    tg = tcfg if tcfg.token and tcfg.chat_id else None
-    if tg is None:
-        _console.print("[yellow]No telegram_token/chat_id — "
-                       "headless MCP-only.[/yellow]")
-
     try:
         from aegis.config.yaml_loader import (
             import_plugins, load_config as _load_yaml,
@@ -432,7 +402,7 @@ def _run_serve(cwd: str) -> None:
             loop.add_signal_handler(sig, stop.set)
         await _serve(agents=agents, default_agent=default_agent,
                      make_session=make_session, mcp=AegisMCP(),
-                     tg=tg, stop=stop, queues=queues,
+                     stop=stop, queues=queues,
                      schedules=schedules,
                      remotes=remotes, remote_plane=remote_plane, web=web,
                      inline_schedule_names=inline_schedule_names)

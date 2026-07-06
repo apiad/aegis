@@ -7,7 +7,6 @@ import pytest
 
 from aegis.config import ConfigError
 from aegis.config.edit import (
-    UNCHANGED,
     add_agent,
     add_plugin_dir,
     add_queue,
@@ -16,7 +15,6 @@ from aegis.config.edit import (
     remove_queue,
     set_default_agent,
     set_schedule_enabled,
-    set_telegram,
     toggle_schedule_enabled,
 )
 
@@ -245,49 +243,9 @@ def test_remove_queue_unknown_name_fails(tmp_path: Path) -> None:
         remove_queue(tmp_path, "ghost")
 
 
-# --- telegram --------------------------------------------------------
-
 def _seed_one_agent(p: Path) -> None:
     add_agent(p, "main", provider="claude-code",
               model="opus", effort="high")
-
-
-def test_set_telegram_creates_block_in_minimal_file(tmp_path: Path) -> None:
-    _seed_one_agent(tmp_path)
-    set_telegram(tmp_path, token="abc", chat_id=42)
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "telegram:" in text
-    assert "token: abc" in text
-    assert "chat_id: 42" in text
-
-
-def test_set_telegram_token_only_preserves_chat_id(tmp_path: Path) -> None:
-    _seed_one_agent(tmp_path)
-    set_telegram(tmp_path, token="abc", chat_id=42)
-    set_telegram(tmp_path, token="def")
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "token: def" in text
-    assert "chat_id: 42" in text
-
-
-def test_set_telegram_clear_chat_id(tmp_path: Path) -> None:
-    _seed_one_agent(tmp_path)
-    set_telegram(tmp_path, token="abc", chat_id=42)
-    set_telegram(tmp_path, chat_id=None)
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "chat_id:" not in text
-    assert "token: abc" in text
-
-
-def test_set_telegram_unchanged_sentinel_is_noop(tmp_path: Path) -> None:
-    _seed_one_agent(tmp_path)
-    set_telegram(tmp_path, token="abc", chat_id=42, auto_prompt="hi")
-    set_telegram(tmp_path, token=UNCHANGED,
-                 chat_id=UNCHANGED, auto_prompt=UNCHANGED)
-    text = (tmp_path / ".aegis.yaml").read_text()
-    assert "token: abc" in text
-    assert "chat_id: 42" in text
-    assert "auto_prompt: hi" in text
 
 
 # --- default_agent ---------------------------------------------------

@@ -33,7 +33,7 @@ async def test_serve_headless_binds_and_stops():
     asyncio.get_event_loop().call_soon(stop.set)
     await _serve(agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
-                 tg=None, stop=stop)
+                 stop=stop)
     assert mcp.started and mcp.stopped
     assert isinstance(mcp.bound, AppBridge)
 
@@ -47,7 +47,7 @@ async def test_serve_wires_inbox_and_queue_manager():
     asyncio.get_event_loop().call_soon(stop.set)
     await _serve(agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
-                 tg=None, stop=stop)
+                 stop=stop)
     bridge = mcp.bound
     assert isinstance(bridge.inbox_router, InboxRouter)
     assert isinstance(bridge.queue_manager, QueueManager)
@@ -64,7 +64,7 @@ async def test_serve_passes_queues_into_queue_manager():
                             max_parallel=2)}
     await _serve(agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
-                 tg=None, stop=stop, queues=queues)
+                 stop=stop, queues=queues)
     bridge = mcp.bound
     assert isinstance(bridge.inbox_router, InboxRouter)
     assert bridge.queue_manager.list_queues() == ["impl"]

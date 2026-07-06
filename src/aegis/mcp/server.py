@@ -225,7 +225,7 @@ BRIEFING = (
     "final result lands in your inbox tagged sender=workflow:<name> "
     "with task_id matching workflow_run_id.\n\n"
     "CONFIG EDIT — extend the substrate from inside.\n"
-    "  - aegis_config_show() : full parsed .aegis.yaml (telegram token redacted).\n"
+    "  - aegis_config_show() : full parsed .aegis.yaml (secrets redacted).\n"
     "  - aegis_config_list_agents() : configured agent profiles with full metadata "
     "(harness, model, effort, permission).\n"
     "  - aegis_config_list_queues() : configured queues with agent + max_parallel + budgets.\n"
@@ -260,9 +260,6 @@ BRIEFING = (
     "  > from agent:<handle> · <timestamp>\n"
     "      A peer agent handed you context via aegis_handoff. Treat "
     "the body as a fresh user instruction from that peer.\n"
-    "  > from telegram · <timestamp>\n"
-    "      A user message from Alex (or whoever owns the Telegram "
-    "chat) — same as anything else they would type.\n"
     "  > from canvas:<name> · <timestamp>\n"
     "      A subscriber notification: another agent wrote to a section "
     "of a canvas you subscribed to. The body carries the section name, "
@@ -331,7 +328,7 @@ PRIMING = (
     "peer (aegis_handoff) or delegating "
     "via a queue (aegis_enqueue), pass your handle '{handle}' as "
     "from_handle — that is how queue callbacks find their way back to "
-    "you. Messages from queue callbacks, peer handoffs, Telegram, and "
+    "you. Messages from queue callbacks, peer handoffs, and "
     "the substrate all arrive as user-message turns prefixed with a "
     "'> from <sender> · …' header line — recognise the sender to know "
     "what kind of message it is."
@@ -408,7 +405,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     @server.tool
     async def aegis_config_show() -> dict:
-        """Full parsed .aegis.yaml view. Telegram token redacted."""
+        """Full parsed .aegis.yaml view. Secrets redacted."""
         from aegis.config import ConfigError, find_project_root
         from aegis.config.yaml_loader import load_config as _load_yaml
 
@@ -441,12 +438,6 @@ def build_server(bridge: AppBridge) -> FastMCP:
             "plugin_dirs": [str(p) for p in (cfg.plugin_dirs or [])],
             "default_agent": cfg.default_agent,
         }
-        if cfg.telegram is not None:
-            out["telegram"] = {
-                "token": "<set>" if cfg.telegram.token else "<unset>",
-                "chat_id": cfg.telegram.chat_id,
-                "auto_prompt": cfg.telegram.auto_prompt,
-            }
         return out
 
     @server.tool

@@ -317,10 +317,9 @@ def test_briefing_explains_inbox_header_and_delegation():
     """Spawned agents must know (a) what arrives in their inbox and how
     to recognise it, and (b) when to enqueue vs. hand off."""
     b = BRIEFING
-    # Inbox header shapes — the three sender prefixes a v1 agent meets.
+    # Inbox header shapes — the sender prefixes a v1 agent meets.
     assert "queue:<name>" in b and "task_id" in b
     assert "agent:<handle>" in b
-    assert "telegram" in b.lower()
     # Wake-on-idle / batched-at-turn-boundary semantics named explicitly.
     assert "turn boundary" in b.lower()
     assert "wakes you" in b.lower() or "wake" in b.lower()

@@ -93,19 +93,6 @@ async def test_config_show_returns_parsed_yaml(root_with_yaml):
     assert data["agents"]["researcher"]["harness"] == "claude-code"
 
 
-async def test_config_show_redacts_telegram_token(tmp_path, monkeypatch):
-    (tmp_path / ".aegis.yaml").write_text(
-        "agents:\n  r:\n    provider: claude-code\n    model: opus\n"
-        "default_agent: r\n"
-        "telegram:\n  token: SECRET_TOKEN\n  chat_id: 42\n"
-    )
-    monkeypatch.chdir(tmp_path)
-    server = build_server(_StubBridge())
-    data = await _call(server, "aegis_config_show")
-    assert data["telegram"]["token"] == "<set>"
-    assert data["telegram"]["chat_id"] == 42
-
-
 async def test_config_show_no_root_returns_error(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     server = build_server(_StubBridge())

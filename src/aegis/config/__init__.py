@@ -11,18 +11,6 @@ if TYPE_CHECKING:
     from aegis.queue.schema import Queue
 
 
-DEFAULT_TELEGRAM_PROMPT = (
-    "You are replying via telegram, keep response compact and focused "
-    "if possible, only resort to long responses if it really matters")
-
-
-@dataclass(frozen=True)
-class TelegramConfig:
-    token: str | None
-    chat_id: int | None
-    auto_prompt: str
-
-
 @dataclass(frozen=True)
 class WebConfig:
     token: str | None = None
@@ -199,13 +187,3 @@ def load_queues(root: Path | None = None) -> "dict[str, Queue]":
             budgets=budgets,
         )
     return out
-
-
-def load_telegram_config(root: Path | None = None) -> TelegramConfig:
-    """Load the telegram block from .aegis.yaml. Returns a TelegramConfig
-    with token=None/chat_id=None when no telegram section is declared."""
-    from aegis.config.yaml_loader import load_config as _load_yaml
-    target = _resolve_root(root)
-    cfg = _load_yaml(target)
-    assert cfg.telegram is not None  # always built by yaml_loader
-    return cfg.telegram
