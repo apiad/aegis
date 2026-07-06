@@ -24,3 +24,11 @@ export function cycleHandle(handles, current, dir) {
 export function gotoHandle(handles, n) {
   return handles[n - 1] ?? null;
 }
+
+// Classify a touch gesture into a tab direction. +1 = next (swipe left),
+// -1 = prev (swipe right), 0 = ignore (too short, or vertical-dominant so
+// transcript scrolling is never hijacked).
+export function swipeDirection(dx, dy, threshold = 60) {
+  if (Math.abs(dx) < threshold || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}

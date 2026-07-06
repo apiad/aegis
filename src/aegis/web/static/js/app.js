@@ -6,7 +6,7 @@ import { WSClient } from "./ws.js";
 import { coalesceInto } from "./coalesce.js";
 import { renderMarkdown } from "./markdown.js";
 import { renderEvent } from "./renderEvent.js";
-import { reconcileTabs, cycleHandle, gotoHandle } from "./tabs.js";
+import { reconcileTabs, cycleHandle, gotoHandle, swipeDirection } from "./tabs.js";
 import { formatStrip } from "./queues.js";
 
 // --- token: read ?t= once, persist, strip from the address bar ---------
@@ -143,6 +143,20 @@ panesEl.addEventListener("click", async (e) => {
   pre.textContent = fullBody(ev);
   block.insertAdjacentElement("afterend", pre);
 });
+
+// --- swipe between agents (mobile conversation view) -------------------
+
+let _touchX = 0, _touchY = 0;
+panesEl.addEventListener("touchstart", (e) => {
+  const t = e.changedTouches[0]; _touchX = t.clientX; _touchY = t.clientY;
+}, { passive: true });
+panesEl.addEventListener("touchend", (e) => {
+  const t = e.changedTouches[0];
+  const dir = swipeDirection(t.clientX - _touchX, t.clientY - _touchY);
+  if (!dir) return;
+  const next = cycleHandle([...tabs.keys()], activeHandle, dir);
+  if (next && next !== activeHandle) activateTab(next);
+}, { passive: true });
 
 // --- tab lifecycle -----------------------------------------------------
 

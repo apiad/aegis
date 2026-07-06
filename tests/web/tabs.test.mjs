@@ -2,7 +2,7 @@
 // Run: node tests/web/tabs.test.mjs
 import assert from "node:assert";
 import {
-  reconcileTabs, cycleHandle, gotoHandle,
+  reconcileTabs, cycleHandle, gotoHandle, swipeDirection,
 } from "../../src/aegis/web/static/js/tabs.js";
 
 const sess = (handle, agent_slug = "opus") => ({ handle, agent_slug });
@@ -52,5 +52,11 @@ assert.equal(cycleHandle(["a", "b"], "missing", 1), "a", "unknown → first");
 // gotoHandle — 1-based index
 assert.equal(gotoHandle(["a", "b", "c"], 2), "b", "goto 2");
 assert.equal(gotoHandle(["a", "b"], 5), null, "goto out of range");
+
+// swipeDirection — horizontal-dominant gestures pick a direction
+assert.equal(swipeDirection(-100, 5), 1, "swipe left → next");
+assert.equal(swipeDirection(100, -5), -1, "swipe right → prev");
+assert.equal(swipeDirection(-20, 0), 0, "too short → ignore");
+assert.equal(swipeDirection(-100, -120), 0, "vertical-dominant → ignore");
 
 console.log("tabs.test.mjs: all assertions passed");
