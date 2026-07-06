@@ -43,6 +43,25 @@ const queuestripEl = document.getElementById("queuestrip");
 const tabs = new Map();      // handle -> Tab
 let activeHandle = null;
 let client = null;
+
+// --- PWA install button (registered early so beforeinstallprompt is caught) -
+let _deferredInstall = null;
+const installBtn = document.getElementById("install-btn");
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _deferredInstall = e;
+  if (installBtn) installBtn.hidden = false;
+});
+if (installBtn) installBtn.addEventListener("click", async () => {
+  if (!_deferredInstall) return;
+  _deferredInstall.prompt();
+  await _deferredInstall.userChoice;
+  _deferredInstall = null;
+  installBtn.hidden = true;
+});
+window.addEventListener("appinstalled", () => {
+  if (installBtn) installBtn.hidden = true;
+});
 let pendingActivate = null;  // activate this handle once its tab appears
 let modalClose = null;       // closes the open modal, or null
 let latestDigest = { queues: [], tasks: [], last_started: null };
