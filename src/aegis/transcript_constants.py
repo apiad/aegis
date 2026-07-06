@@ -7,3 +7,5 @@ LOAD_BATCH = 100       # older blocks re-mounted per scroll-up load
 STICKY_EPS = 2         # px/row tolerance for "stuck to bottom"
 LOAD_MORE_EPS = 3      # scroll-from-top tolerance to trigger load-older
 DEBOUNCE_S = 0.15      # debounce window for scroll-up load-older
+TOOL_RESULT_HEAD_LINES = 8   # lines of a tool result kept in the compact wire
+TOOL_INPUT_HEAD_LINES = 1    # lines of tool input kept in the compact wire
