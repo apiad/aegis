@@ -207,6 +207,7 @@ function activateTab(handle) {
   const tab = tabs.get(handle);
   if (!tab) return;
   activeHandle = handle;
+  document.getElementById("app").classList.add("conversation");
   for (const t of tabs.values()) {
     t.paneEl.classList.toggle("hidden", t !== tab);
     t.chipEl.classList.toggle("active", t === tab);
@@ -855,6 +856,15 @@ function wireKeys() {
   });
 }
 
+// --- mobile view -------------------------------------------------------
+
+function wireMobile() {
+  const back = document.getElementById("back-btn");
+  if (back) back.addEventListener("click", () => {
+    document.getElementById("app").classList.remove("conversation");
+  });
+}
+
 // --- boot --------------------------------------------------------------
 
 async function boot() {
@@ -869,6 +879,7 @@ async function boot() {
 
   wireComposer();
   wireKeys();
+  wireMobile();
 
   await client.connect();
   client.subscribeGlobal("session_list");

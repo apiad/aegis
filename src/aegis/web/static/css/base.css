@@ -279,3 +279,34 @@ pre.expanded { white-space: pre-wrap; word-break: break-word;
                text-align: center; padding: 0.25rem;
                font-size: 0.85em; background: #7a5; color: #111; }
 #conn-banner[hidden] { display: none; }
+
+/* Back control: hidden on desktop and in the mobile list; shown only in the
+   mobile conversation view (rule inside the media query below). */
+#back-btn { display: none; background: none; border: 0; color: inherit;
+            font: inherit; text-align: left; cursor: pointer;
+            padding: 0.6rem 0.9rem; }
+
+@media (max-width: 640px) {
+  #app { height: 100dvh; }
+
+  /* Dashboards / desktop-only chrome dropped on mobile v1 */
+  #queuestrip { display: none !important; }
+  .qd-modal, .cfg-modal, .file-modal {
+    min-width: 0; width: 94vw; max-width: 94vw; }
+
+  /* LIST VIEW (default): the tab bar becomes a full-screen vertical list. */
+  #app:not(.conversation) #statusbar,
+  #app:not(.conversation) #panes,
+  #app:not(.conversation) #composer,
+  #app:not(.conversation) #back-btn { display: none; }
+  #app:not(.conversation) #tabbar {
+    flex-direction: column; flex: 1; overflow-y: auto;
+    gap: 0.25rem; padding: 0.5rem; }
+  #app:not(.conversation) #tabbar .chip {
+    width: 100%; box-sizing: border-box; padding: 0.9rem; font-size: 1.05rem; }
+
+  /* CONVERSATION VIEW */
+  #app.conversation #tabbar { display: none; }
+  #app.conversation #back-btn { display: block; }
+  #app.conversation #composer { position: sticky; bottom: 0; }
+}
