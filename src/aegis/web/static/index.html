@@ -31,8 +31,16 @@
   <script type="module" src="/static/js/app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+      window.addEventListener("load", async () => {
+        try {
+          await navigator.serviceWorker.register("/service-worker.js");
+          await navigator.serviceWorker.ready;
+          // First load registers the SW but the page stays uncontrolled;
+          // Chrome needs a controlling SW for installability. Reload once so
+          // the next navigation is controlled. After the reload the page loads
+          // controlled, so this is a no-op (no loop).
+          if (!navigator.serviceWorker.controller) location.reload();
+        } catch (e) {}
       });
     }
   </script>
