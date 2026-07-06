@@ -62,6 +62,18 @@ if (installBtn) installBtn.addEventListener("click", async () => {
 window.addEventListener("appinstalled", () => {
   if (installBtn) installBtn.hidden = true;
 });
+
+// Reload once when a service worker first takes control, so the page becomes
+// SW-controlled without a manual refresh (required for installability, and it
+// pulls the latest client after a deploy). Guarded against reload loops.
+let _swRefreshing = false;
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (_swRefreshing) return;
+    _swRefreshing = true;
+    location.reload();
+  });
+}
 let pendingActivate = null;  // activate this handle once its tab appears
 let modalClose = null;       // closes the open modal, or null
 let latestDigest = { queues: [], tasks: [], last_started: null };
