@@ -195,6 +195,15 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None"
     return bridge
 
 
+def _aegis_version() -> str:
+    """aegis package version, used as the web PWA cache-bust key."""
+    try:
+        from importlib.metadata import version
+        return version("aegis-harness")
+    except Exception:
+        return "0"
+
+
 async def _serve(*, agents, default_agent, make_session, mcp, tg,
                  stop: asyncio.Event, queues: dict | None = None,
                  schedules: dict | None = None,
@@ -312,7 +321,8 @@ async def _serve(*, agents, default_agent, make_session, mcp, tg,
         tasks.append(asyncio.create_task(fe.run(bot)))
     if web is not None:
         from aegis.web.frontend import WebFrontend
-        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(Path.cwd()))
+        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(Path.cwd()),
+                             server_version=_aegis_version())
         tasks.append(asyncio.create_task(web_fe.run()))
         _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
