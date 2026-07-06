@@ -109,6 +109,41 @@ function showError(text) {
   (tab ? tab.transcriptEl : panesEl).appendChild(div);
 }
 
+// --- tap-to-expand truncated blocks ------------------------------------
+
+const detailCache = new Map();   // `${handle}:${seq}` -> full event dict
+
+function fullBody(event) {
+  if (event.t === "ToolUse") return JSON.stringify(event.raw_input ?? {}, null, 2);
+  return event.text || "";       // ToolResult / AssistantThinking
+}
+
+panesEl.addEventListener("click", async (e) => {
+  const ctl = e.target.closest(".expand");
+  if (!ctl) return;
+  const handle = ctl.dataset.handle;
+  const seq = Number(ctl.dataset.seq);
+  const block = ctl.closest(".tool-use, .tool-result, .thinking");
+  if (!block) return;
+  const existing = block.parentElement.querySelector(
+    `pre.expanded[data-seq="${seq}"]`);
+  if (existing) { existing.remove(); return; }   // toggle off
+  const key = `${handle}:${seq}`;
+  let ev = detailCache.get(key);
+  if (!ev) {
+    ctl.classList.add("loading");
+    try { ev = (await client.getEvent(handle, seq)).event; }
+    finally { ctl.classList.remove("loading"); }
+    if (!ev) return;
+    detailCache.set(key, ev);
+  }
+  const pre = document.createElement("pre");
+  pre.className = "expanded";
+  pre.dataset.seq = String(seq);
+  pre.textContent = fullBody(ev);
+  block.insertAdjacentElement("afterend", pre);
+});
+
 // --- tab lifecycle -----------------------------------------------------
 
 function createTab(handle, agent) {

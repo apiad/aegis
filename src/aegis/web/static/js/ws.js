@@ -106,6 +106,10 @@ export class WSClient {
     this._send({ type: "subscribe", target: { kind: "session", handle } });
   }
 
+  getEvent(handle, seq) {
+    return this.rpc("get_event", { handle, seq });
+  }
+
   subscribeGlobal(stream) {
     this._globals.add(stream);
     this._send({ type: "subscribe", target: { kind: "global", stream } });
