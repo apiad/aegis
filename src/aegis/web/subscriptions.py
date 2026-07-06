@@ -16,7 +16,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from aegis.render_html import render_event_html
 from aegis.state.event_codec import encode_event
 from aegis.web.compact import compact_encoded
 from aegis.web.history import read_history
@@ -27,8 +26,8 @@ Sink = Callable[[dict], None]
 def event_frame(handle: str, seq: int, ev) -> dict:
     """The canonical ``stream/event`` frame shape, shared by history replay
     (WSSession) and live fan-out (the per-handle observer). The ``event`` field
-    is compacted (heavy bodies truncated); ``html`` keeps the full render for
-    the current client (removed in W2)."""
+    is compacted (heavy bodies truncated); full detail is fetched on demand via
+    the ``get_event`` RPC and rendered client-side."""
     compact, truncated = compact_encoded(encode_event(ev))
     return {
         "type": "stream", "kind": "event",
@@ -36,7 +35,6 @@ def event_frame(handle: str, seq: int, ev) -> dict:
         "event_type": type(ev).__name__,
         "event": compact,
         "truncated": truncated,
-        "html": render_event_html(ev),
     }
 
 

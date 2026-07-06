@@ -41,11 +41,11 @@ def test_assistant_text_passes_through():
     assert truncated is False and out == d
 
 
-def test_event_frame_is_compact_but_keeps_html():
+def test_event_frame_is_compact_no_html():
     from aegis.web.subscriptions import event_frame
     body = "\n".join(f"row{i}" for i in range(40))
     fr = event_frame("h", 5, ToolResult(text=body, is_error=False))
     assert fr["kind"] == "event" and fr["seq"] == 5
     assert fr["truncated"] is True
     assert fr["event"]["text"].count("\n") < body.count("\n")   # compacted
-    assert "row0" in fr["html"]                                  # full in html
+    assert "html" not in fr                                      # rendered client-side

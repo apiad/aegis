@@ -85,7 +85,8 @@ async def test_event_fans_out_with_monotonic_seq(tmp_path: Path):
     assert f["type"] == "stream" and f["kind"] == "event"
     assert f["handle"] == "h" and f["seq"] == 1
     assert f["event_type"] == "AssistantText"
-    assert "hi" in f["html"]
+    assert "html" not in f  # rendered client-side
+    assert f["event"]["text"] == "hi"
     assert f["event"]["t"] == "AssistantText"  # encoded event dict present
     core.emit_event(AssistantText("two"))
     assert a[1]["seq"] == 2

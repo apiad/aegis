@@ -247,14 +247,15 @@ async def test_subscribe_streams_history_then_live(tmp_path: Path):
     await _settle()
     events = [s for s in t.sent if s.get("kind") == "event"]
     assert [e["seq"] for e in events] == [1, 2]
-    assert "one" in events[0]["html"]
+    assert events[0]["event"]["text"] == "one"
+    assert "html" not in events[0]
     hc = [s for s in t.sent if s.get("kind") == "history_complete"][-1]
     assert hc["current_seq"] == 2
     # a live event continues at seq 3
     core.emit_event(AssistantText("three"))
     await _settle()
     live = [s for s in t.sent if s.get("kind") == "event"][-1]
-    assert live["seq"] == 3 and "three" in live["html"]
+    assert live["seq"] == 3 and live["event"]["text"] == "three"
     t.disconnect()
     await task
 

@@ -43,13 +43,14 @@ function evt(type, { message_id = null, text = "", html = null, seq = 0 } = {}) 
   assert.equal(history.length, 3);
 }
 
-// 4) a unit block with html and no message_id → appended verbatim
+// 4) a unit block with no message_id → appended verbatim, carrying its event
 {
   const history = [];
   const r = coalesceInto(history, evt("ToolResult",
-    { html: '<div class="tool-result ok">ok</div>', seq: 1 }));
+    { text: "ok", seq: 1 }));
   assert.equal(r.action, "append");
-  assert.equal(history[0].html, '<div class="tool-result ok">ok</div>');
+  assert.equal(history[0].event_type, "ToolResult");
+  assert.equal(history[0].event.text, "ok");
 }
 
 // 5) AssistantThinking coalesces independently of AssistantText
