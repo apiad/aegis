@@ -72,7 +72,7 @@ manifests are NOT installable on Chrome. Once loaded (auth via the browser
 prompt, not URL-embedded creds — those pollute the SW scope), install via the
 in-page **⤓ Install app** button (appears when Chrome fires
 `beforeinstallprompt`, i.e. after some engagement) or Chrome's ⋮ menu →
-"Install aegis". Testing install via automation is unreliable — Chrome gates
+"Install aegis". The client reloads once on first load if the page is uncontrolled (Chrome needs a *controlling* SW for installability). Testing install via automation is unreliable — Chrome gates
 `beforeinstallprompt` on an engagement heuristic that headless/driven sessions
 don't satisfy.
 
