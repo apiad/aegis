@@ -274,3 +274,8 @@ pre.expanded { white-space: pre-wrap; word-break: break-word;
                margin: 0.25rem 0 0.5rem 1rem; padding: 0.5rem;
                border-left: 2px solid var(--muted, #888);
                font-size: 0.85em; overflow-x: auto; }
+
+#conn-banner { position: sticky; top: 0; z-index: 20;
+               text-align: center; padding: 0.25rem;
+               font-size: 0.85em; background: #7a5; color: #111; }
+#conn-banner[hidden] { display: none; }

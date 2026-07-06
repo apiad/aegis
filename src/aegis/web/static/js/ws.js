@@ -32,6 +32,10 @@ export class WSClient {
     if (set) for (const fn of set) fn(frame);
   }
 
+  _emitConnection(connected) {
+    this._dispatch("connection", { connected });
+  }
+
   connect() {
     return new Promise((resolve, reject) => {
       this._helloResolve = resolve;
@@ -52,6 +56,7 @@ export class WSClient {
     };
     this.ws.onclose = () => {
       this.connected = false;
+      this._emitConnection(false);
       if (!this._authed) {
         // initial connect failed (e.g. bad token → 4401). Do not loop.
         if (this._helloReject) { this._helloReject(new Error("auth failed")); this._helloReject = null; }
@@ -67,6 +72,7 @@ export class WSClient {
       this.connected = true;
       this._authed = true;
       this._backoff = 500;
+      this._emitConnection(true);
       this.constants = msg.constants || {};
       this._resume();
       if (this._helloResolve) { this._helloResolve(msg); this._helloResolve = null; }

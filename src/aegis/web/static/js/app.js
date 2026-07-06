@@ -263,6 +263,10 @@ function onState(frame) {
     statusMetrics.textContent = tab.metrics;
   }
 }
+const connBanner = document.getElementById("conn-banner");
+function onConnection(frame) {
+  if (connBanner) connBanner.hidden = frame.connected;
+}
 function onInbox(frame) {
   const tab = tabs.get(frame.handle);
   if (!tab) return;
@@ -861,6 +865,7 @@ async function boot() {
   client.on("window_reset", onWindowReset);
   client.on("session_list", onSessionList);
   client.on("queue_digest", onQueueDigest);
+  client.on("connection", onConnection);
 
   wireComposer();
   wireKeys();
