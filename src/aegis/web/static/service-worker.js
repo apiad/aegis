@@ -22,9 +22,17 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
-  );
+  // Credentialed + non-fatal: behind HTTP basic auth, the install-context
+  // fetches must carry credentials, and one failure must not abort activation
+  // (all-or-nothing addAll would leave the SW stuck installing → no install
+  // prompt, no offline). Precache best-effort; activate regardless.
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.allSettled(
+      SHELL.map((u) => cache.add(new Request(u, { credentials: "include" })))
+    );
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (e) => {
