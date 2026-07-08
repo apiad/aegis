@@ -50,11 +50,13 @@ def _app():
 
 
 @pytest.mark.asyncio
-async def test_replay_populates_full_history_but_mounts_at_most_n_max():
-    """_mount_replay fills _history from the full replay yet keeps the
-    mounted set bounded by N_MAX."""
+async def test_replay_populates_full_history_but_mounts_only_tail():
+    """_mount_replay fills _history from the full replay but mounts only the
+    last REPLAY_TAIL blocks — so a long resumed session paints instantly
+    instead of mounting (then evicting) hundreds of widgets. The rest come
+    back on scroll-up from the retained _history."""
     from aegis.state.session_log import EventReplay
-    from aegis.tui.pane import N_MAX
+    from aegis.tui.pane import N_MAX, REPLAY_TAIL
 
     events = [
         ToolUse(name="Read", summary=f"f{i}.py", kind="read")
@@ -78,10 +80,13 @@ async def test_replay_populates_full_history_but_mounts_at_most_n_max():
         await pilot.pause()
         await pilot.pause()
 
+        # Full history retained (for scroll-up), but only the tail mounted.
         assert len(pane._history) == N_MAX + 150
-        assert len(pane._mounted_blocks) <= N_MAX
-        # _trim_to_window enforces the exact invariant at end-of-replay.
-        assert pane._window_start == len(pane._history) - N_MAX
+        assert len(pane._mounted_blocks) == REPLAY_TAIL
+        assert pane._window_start == len(pane._history) - REPLAY_TAIL
+        # The mounted tail is the *last* REPLAY_TAIL records, in order.
+        assert (pane._mounted_blocks[-1].text_payload()
+                == pane._history[-1].payload)
 
 
 @pytest.mark.asyncio

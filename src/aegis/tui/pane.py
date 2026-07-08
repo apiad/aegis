@@ -32,7 +32,8 @@ from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
-    N_MAX, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS, DEBOUNCE_S,
+    N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
+    DEBOUNCE_S,
 )
 
 
@@ -403,30 +404,35 @@ class ConversationPane(Widget):
         self.watch(t, "scroll_y", self._on_scroll_y)
 
     def _mount_replay(self) -> None:
-        """Paint prior events from a replay onto the transcript, then
-        mark an interrupted turn if the session ended mid-turn. Trims
-        the mounted set down to N_MAX so resumed long sessions don't
-        start out laggy."""
+        """Paint prior events onto the transcript on resume.
+
+        Builds the full ``_history`` cheaply — plain dataclass records off
+        the coalesced event stream, no widgets — then mounts only the last
+        ``REPLAY_TAIL`` blocks. A long resumed session paints instantly
+        instead of mounting (and immediately evicting) hundreds of widgets.
+        Older blocks are reconstructed on demand by ``_load_older`` when
+        Alex scrolls up."""
         if self._replay is None:
             return
-        for ev in self._replay.events:
-            self._on_core_event(None, ev)
+        records: list[BlockRecord] = []
+        for ev in coalesce_chunks(self._replay.events):
+            r = render_event(ev, self._palette)
+            if r is None:
+                continue
+            records.append(BlockRecord(
+                r, _payload_for_event(ev), isinstance(ev, ToolUse)))
         if self._replay.interrupted:
-            self._flush_streaming()
-            self._mount_block(
-                Text("⚠ interrupted", style="yellow"),
-                "⚠ interrupted")
-        self._trim_to_window()
+            records.append(BlockRecord(
+                Text("⚠ interrupted", style="yellow"), "⚠ interrupted", False))
 
-    def _trim_to_window(self) -> None:
-        """Reduce the mounted set to the last N_MAX records.
-
-        Used at startup after replay-driven mounting fills the history.
-        Equivalent to a forced eviction independent of the sticky flag.
-        """
-        excess = (len(self._history) - self._window_start) - N_MAX
-        if excess > 0:
-            self._evict_top(excess)
+        self._history = records
+        self._window_start = max(0, len(records) - REPLAY_TAIL)
+        t = self._transcript()
+        for rec in records[self._window_start:]:
+            block = CopyableBlock(rec.renderable, rec.payload, tight=rec.tight)
+            t.mount(block)
+            self._mounted_blocks.append(block)
+        t.scroll_end(animate=False)
 
     def refresh_metrics(self) -> None:
         self.query_one(StatusBar).set_metrics(

@@ -2,6 +2,7 @@
 the TUI pane and (later) the web client's `hello` constants block."""
 
 N_MAX = 300            # max mounted transcript blocks before eviction
+REPLAY_TAIL = 10       # blocks mounted on resume (rest load on scroll-up)
 EVICT_BATCH = 50       # blocks dropped per eviction when over N_MAX
 LOAD_BATCH = 100       # older blocks re-mounted per scroll-up load
 STICKY_EPS = 2         # px/row tolerance for "stuck to bottom"
