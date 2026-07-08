@@ -17,10 +17,40 @@ import contextlib
 from dataclasses import asdict
 from typing import Protocol
 
+from aegis.events import AssistantText, AssistantThinking
 from aegis.queue import InboxMessage, now_iso, sender_user
 from aegis.web.subscriptions import SubscriptionRegistry, event_frame
 
 PROTOCOL_VERSION = 2
+
+
+def _tail_lower_seq(history: list[tuple[int, object]], tail: int) -> int:
+    """Exclusive lower-bound seq so that streaming events with ``seq >
+    result`` yields the last ``tail`` *coalesced* blocks. Returns 0 ("send
+    everything") when there are ``tail`` or fewer blocks or tail<=0.
+
+    Mirrors ``render.coalesce_chunks``' grouping — adjacent AssistantText /
+    AssistantThinking sharing ``(type, message_id)`` are one block; any other
+    event always starts a new block — so the cut never lands mid-message.
+    """
+    if tail <= 0:
+        return 0
+    starts: list[int] = []
+    buf_type: type | None = None
+    buf_mid: object = None
+    have_buf = False
+    for seq, ev in history:
+        if isinstance(ev, (AssistantText, AssistantThinking)):
+            mid = getattr(ev, "message_id", None)
+            if have_buf and buf_type is type(ev) and buf_mid == mid:
+                continue
+            buf_type, buf_mid, have_buf = type(ev), mid, True
+        else:
+            buf_type, buf_mid, have_buf = None, None, False
+        starts.append(seq)
+    if len(starts) <= tail:
+        return 0
+    return starts[-tail] - 1
 AUTH_TIMEOUT_S = 5.0
 DEFAULT_SEND_CAP = 10_000
 SUPPORTED_KINDS = [
@@ -276,16 +306,22 @@ class WSSession:
         self._subs[handle] = hstate
         current = await self._reg.subscribe(handle, sink)
 
+        hist = self._reg.history(handle)
         gap_cap = self._constants.get("RESUME_GAP_CAP", 1000)
         large_gap = resume and (current - from_seq > gap_cap or from_seq > current)
         if resume and large_gap:
             self._emit({"type": "stream", "kind": "window_reset",
                         "handle": handle, "dropped_through_seq": from_seq})
             lower = 0
+        elif resume:
+            lower = from_seq
         else:
-            lower = from_seq if resume else 0
+            # Fresh open: send only the last REPLAY_TAIL blocks so a long
+            # session reloads fast. Older history stays on disk (reachable
+            # via get_event / the TUI's full scroll-back).
+            lower = _tail_lower_seq(hist, self._constants.get("REPLAY_TAIL", 0))
 
-        for seq, ev in self._reg.history(handle):
+        for seq, ev in hist:
             if lower < seq <= current:
                 self._emit(event_frame(handle, seq, ev))
         self._emit({"type": "stream", "kind": "history_complete",

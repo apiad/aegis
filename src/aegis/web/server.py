@@ -10,7 +10,8 @@ import contextlib
 from pathlib import Path
 
 from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import (
+    FileResponse, HTMLResponse, JSONResponse, Response)
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -28,6 +29,7 @@ WEB_THEME = "aegis-ink"
 def _constants() -> dict:
     return {
         "N_MAX": _tc.N_MAX,
+        "REPLAY_TAIL": _tc.REPLAY_TAIL,
         "EVICT_BATCH": _tc.EVICT_BATCH,
         "LOAD_BATCH": _tc.LOAD_BATCH,
         "STICKY_EPS": _tc.STICKY_EPS,
@@ -97,6 +99,22 @@ def build_web_app(manager, web_cfg, state_dir, *,
     async def index(request):
         return HTMLResponse(index_html)
 
+    async def download(request):
+        if request.query_params.get("t") != web_cfg.token:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if files_root is None:
+            return JSONResponse({"error": "files unavailable"}, status_code=404)
+        root = Path(files_root).resolve()
+        target = (root / request.query_params.get("path", "")).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return JSONResponse({"error": "path outside project"},
+                                status_code=403)
+        if not target.is_file():
+            return JSONResponse({"error": "not a file"}, status_code=404)
+        return FileResponse(target, filename=target.name)
+
     async def manifest(request):
         return Response(manifest_json, media_type="application/manifest+json")
 
@@ -122,6 +140,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
 
     routes = [
         Route("/", index),
+        Route("/download", download),
         Route("/healthz", healthz),
         Route("/manifest.webmanifest", manifest),
         Route("/service-worker.js", service_worker),

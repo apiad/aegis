@@ -10,7 +10,9 @@ from aegis.state.session_log import append_event
 from aegis.web.subscriptions import SubscriptionRegistry
 from aegis.web.wssession import WSSession, WSDisconnect
 
-CONSTANTS = {"N_MAX": 300, "RESUME_GAP_CAP": 1000}
+from aegis.transcript_constants import REPLAY_TAIL as _REPLAY_TAIL
+
+CONSTANTS = {"N_MAX": 300, "RESUME_GAP_CAP": 1000, "REPLAY_TAIL": _REPLAY_TAIL}
 _DISCO = object()
 
 
@@ -256,6 +258,53 @@ async def test_subscribe_streams_history_then_live(tmp_path: Path):
     await _settle()
     live = [s for s in t.sent if s.get("kind") == "event"][-1]
     assert live["seq"] == 3 and live["event"]["text"] == "three"
+    t.disconnect()
+    await task
+
+
+async def test_subscribe_streams_only_replay_tail(tmp_path: Path):
+    """Fresh open sends only the last REPLAY_TAIL coalesced blocks, not the
+    whole history — so a long session reloads fast on the web too."""
+    from aegis.events import ToolUse
+    from aegis.transcript_constants import REPLAY_TAIL
+
+    sd = tmp_path / "state"
+    n = REPLAY_TAIL + 12
+    for i in range(n):  # each ToolUse is its own coalesced block
+        append_event(sd, "h", ToolUse(name="Read", summary=f"f{i}", kind="read"))
+    mgr = FakeManager({"h": FakeCore("h")})
+    t, reg, task = await _run_authed(tmp_path, mgr, cores_state_dir=sd)
+    t.feed({"type": "subscribe",
+            "target": {"kind": "session", "handle": "h"}})
+    await _settle()
+    events = [s for s in t.sent if s.get("kind") == "event"]
+    # Only the last REPLAY_TAIL events (1-based seqs n-REPLAY_TAIL+1 .. n).
+    assert [e["seq"] for e in events] == list(range(n - REPLAY_TAIL + 1, n + 1))
+    hc = [s for s in t.sent if s.get("kind") == "history_complete"][-1]
+    assert hc["current_seq"] == n  # live continues from the true tip
+    # A live event still lands at the next seq.
+    core = mgr.get("h")
+    core.emit_event(ToolUse(name="Read", summary="live", kind="read"))
+    await _settle()
+    live = [s for s in t.sent if s.get("kind") == "event"][-1]
+    assert live["seq"] == n + 1
+    t.disconnect()
+    await task
+
+
+async def test_subscribe_tail_keeps_whole_coalesced_block(tmp_path: Path):
+    """A run of streaming chunks is ONE block: the tail must not cut it in
+    the middle. 20 same-message AssistantText chunks = 1 block ≤ tail."""
+    sd = tmp_path / "state"
+    for i in range(20):
+        append_event(sd, "h", AssistantText(f"chunk{i}"))  # message_id None → one block
+    mgr = FakeManager({"h": FakeCore("h")})
+    t, reg, task = await _run_authed(tmp_path, mgr, cores_state_dir=sd)
+    t.feed({"type": "subscribe",
+            "target": {"kind": "session", "handle": "h"}})
+    await _settle()
+    events = [s for s in t.sent if s.get("kind") == "event"]
+    assert [e["seq"] for e in events] == list(range(1, 21))  # all 20, uncut
     t.disconnect()
     await task
 
