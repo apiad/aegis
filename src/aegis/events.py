@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,7 @@ class AssistantText:
     text: str
     usage: TokenUsage | None = None
     message_id: str | None = None
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -49,6 +50,7 @@ class AssistantThinking:
     text: str
     usage: TokenUsage | None = None
     message_id: str | None = None
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -61,6 +63,7 @@ class ToolUse:
     tool_call_id: str | None = None
     locations: tuple[tuple[str, int | None], ...] = ()
     status: str | None = None
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -72,6 +75,7 @@ class ToolResult:
     # (path, old_text, new_text) for edit/write tool calls. None for
     # everything else. Drivers populate; renderer shows a 3-line preview.
     diff: tuple[str, str, str] | None = None
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -147,6 +151,7 @@ class AgentPlan:
     in the same turn as a replacement for any earlier one.
     """
     entries: tuple[PlanEntry, ...] = ()
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -242,6 +247,16 @@ def parse(line: str, state: ParserState | None = None) -> Event:
     if not isinstance(obj, dict):
         return Unknown(raw=line)
 
+    ev = _classify_event(obj, line, state)
+    # Subagent (Task) events carry parent_tool_use_id pointing at the
+    # dispatching Task tool_use; stamp it uniformly so the UIs can group them.
+    parent = obj.get("parent_tool_use_id")
+    if parent is not None and hasattr(ev, "parent_tool_use_id"):
+        ev = replace(ev, parent_tool_use_id=parent)
+    return ev
+
+
+def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
     etype = obj.get("type")
 
     if etype == "system" and obj.get("subtype") == "init":
