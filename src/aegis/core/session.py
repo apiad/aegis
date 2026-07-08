@@ -471,12 +471,20 @@ class AgentSession:
         await self._cancel_idle_watcher()
         if self.state is not AgentState.working:
             return
+        # Stop consuming events first so the driver's interrupt drain (below)
+        # owns the queue without a competing reader.
         if self._task is not None:
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        # Signal the harness subprocess to actually abort the turn — without
+        # this, cancelling the read task alone leaves claude running to
+        # completion (burning tokens, running tools) in the background.
+        interrupt = getattr(self._session, "interrupt", None)
+        if interrupt is not None:
+            await interrupt()
         self.metrics.cancel_turn(self._now())
         self._emit_state(AgentState.ready, finished=False)
 

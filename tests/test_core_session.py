@@ -78,6 +78,32 @@ async def test_interrupt_cancels_and_resets():
     assert st[-1] == (AgentState.ready, False)
 
 
+@pytest.mark.asyncio
+async def test_interrupt_signals_the_harness():
+    """interrupt() must tell the driver session to abort — cancelling the
+    local read task alone leaves the real subprocess running."""
+    class Hang(FakeSession):
+        def __init__(self, events):
+            super().__init__(events)
+            self.interrupted = False
+
+        async def events(self):
+            while True:
+                await asyncio.sleep(0.01)
+                yield  # never reached
+
+        async def interrupt(self):
+            self.interrupted = True
+
+    sess = Hang([])
+    s = AgentSession(sess, None, "default", "h1")
+    await s.send("x")
+    await asyncio.sleep(0.02)
+    await s.interrupt()
+    assert sess.interrupted
+    assert s.state is AgentState.ready
+
+
 class WakeableFakeSession:
     """Models a harness like Claude that can spontaneously emit events
     after a Result (e.g. a Monitor background task firing). The pending

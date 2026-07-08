@@ -54,6 +54,7 @@ class ClaudeSession(HarnessSession):
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
         self._reader: asyncio.Task | None = None
         self._session_id: str | None = None
+        self._control_seq: int = 0
         # One ParserState per session — remembers each tool_use.id →
         # kind so the matching tool_result can carry kind too.
         self._parser_state = ParserState()
@@ -149,6 +150,38 @@ class ClaudeSession(HarnessSession):
                 return
             yield ev
             if isinstance(ev, Result):
+                return
+
+    async def interrupt(self) -> None:
+        """Abort the in-flight turn without killing the subprocess.
+
+        Sends a stream-json ``control_request/interrupt``; ``claude -p``
+        honours it by aborting the current turn and emitting a terminal
+        error result, keeping the process alive for the next send. Then
+        drains those terminal events so they don't bleed into the next
+        turn's ``events()`` loop. Bounded so a harness that never emits a
+        result can't hang the caller.
+        """
+        proc = self._proc
+        if not (proc and proc.stdin and proc.returncode is None):
+            return
+        self._control_seq += 1
+        msg = {"type": "control_request",
+               "request_id": f"aegis_interrupt_{self._control_seq}",
+               "request": {"subtype": "interrupt"}}
+        try:
+            proc.stdin.write((json.dumps(msg) + "\n").encode())
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        # Drain the aborted turn's terminal events (the interrupt result,
+        # any [Request interrupted] echo) so the next turn starts clean.
+        for _ in range(64):
+            try:
+                ev = await asyncio.wait_for(self._queue.get(), timeout=5)
+            except asyncio.TimeoutError:
+                return
+            if ev is None or isinstance(ev, Result):
                 return
 
     async def close(self) -> None:

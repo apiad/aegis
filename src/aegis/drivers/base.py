@@ -31,6 +31,17 @@ class HarnessSession(abc.ABC):
     @abc.abstractmethod
     async def close(self) -> None: ...
 
+    async def interrupt(self) -> None:
+        """Abort the in-flight turn while keeping the session alive.
+
+        Signals the underlying harness to stop the current turn (so a
+        cancelled read task doesn't leave a live subprocess churning) and
+        drains any terminal events the abort produced. Default no-op —
+        drivers that can't interrupt mid-turn rely on the caller's read-task
+        cancellation alone.
+        """
+        return
+
     def has_pending_event(self) -> bool:
         """Whether the harness has events buffered and waiting to be
         consumed. Used by AgentSession at turn-end to detect spontaneous
