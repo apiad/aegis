@@ -456,6 +456,12 @@ class ConversationPane(Widget):
         # trailing one. Parallel tool calls emit all uses first, then all
         # results — folding by id keeps each result under its own call.
         self._tool_use_idx: dict[str, int] = {}
+        # Task tool_call_id → its SubagentBox. Events tagged with a known
+        # parent_tool_use_id route into the matching box instead of the
+        # transcript; the Task's own tool_result closes it.
+        self._subagent_boxes: dict[str, SubagentBox] = {}
+        self._subagent_counts: dict[str, int] = {}
+        self._subagent_summary: dict[str, str] = {}
         # Explicit list of currently-mounted CopyableBlocks in DOM order.
         # Source of truth for eviction — Textual's .remove() defers until
         # the next layout tick, so t.query(CopyableBlock) returns stale
@@ -511,21 +517,40 @@ class ConversationPane(Widget):
             return
         records: list[BlockRecord] = []
         use_idx: dict[str, int] = {}   # tool_call_id → record index
+        box_idx: dict[str, int] = {}   # Task tool_call_id → box record index
+        open_box: dict[str, int] = {}  # still-open Task tool_call_id → index
+
+        def _fold_into(idx: int, ev) -> None:
+            r = render_event(ev, self._palette)
+            if r is None:
+                return
+            rec = records[idx]
+            rec.renderable = Group(rec.renderable, r)
+            rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
+
         for ev in coalesce_chunks(self._replay.events):
+            # Subagent child → fold flat into its Task box record.
+            parent = getattr(ev, "parent_tool_use_id", None)
+            if parent is not None and parent in box_idx:
+                _fold_into(box_idx[parent], ev)
+                continue
+            # Task's own result closes its box (footer).
+            if isinstance(ev, ToolResult) and ev.tool_call_id in open_box:
+                _fold_into(open_box.pop(ev.tool_call_id), ev)
+                continue
             # Fold a ToolResult into its matching ToolUse record so the pair
             # renders as one block — mirrors the live _fold_tool_result path.
             if isinstance(ev, ToolResult) and ev.tool_call_id in use_idx:
-                result_r = render_event(ev, self._palette)
-                if result_r is not None:
-                    rec = records[use_idx[ev.tool_call_id]]
-                    rec.renderable = Group(rec.renderable, result_r)
-                    rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
+                _fold_into(use_idx[ev.tool_call_id], ev)
                 continue
             r = render_event(ev, self._palette)
             if r is None:
                 continue
             records.append(BlockRecord(r, _payload_for_event(ev), False))
-            if isinstance(ev, ToolUse) and ev.tool_call_id:
+            if isinstance(ev, ToolUse) and ev.name == "Task" and ev.tool_call_id:
+                box_idx[ev.tool_call_id] = len(records) - 1
+                open_box[ev.tool_call_id] = len(records) - 1
+            elif isinstance(ev, ToolUse) and ev.tool_call_id:
                 use_idx[ev.tool_call_id] = len(records) - 1
         if self._replay.interrupted:
             records.append(BlockRecord(
@@ -784,6 +809,19 @@ class ConversationPane(Widget):
         self._mount_block(renderable, payload)
 
     def _on_core_event(self, _core, ev) -> None:
+        parent = getattr(ev, "parent_tool_use_id", None)
+        if parent and parent in self._subagent_boxes:
+            self._route_into_box(parent, ev)     # subagent child → its box
+            self.refresh_metrics()
+            return
+        if isinstance(ev, ToolResult) and ev.tool_call_id in self._subagent_boxes:
+            self._close_box(ev.tool_call_id, ev)  # Task result closes its box
+            self.refresh_metrics()
+            return
+        if isinstance(ev, ToolUse) and ev.name == "Task" and ev.tool_call_id:
+            self._open_box(ev)
+            self.refresh_metrics()
+            return
         if isinstance(ev, AssistantText):
             if ev.text:
                 self._stream_append("text", ev.text)
@@ -823,6 +861,67 @@ class ConversationPane(Widget):
             if self._stick_to_bottom:
                 self._transcript().scroll_end(animate=False)
         return True
+
+    # --- subagent (Task) grouping ----------------------------------
+
+    def _open_box(self, ev: ToolUse) -> None:
+        """A Task dispatch opens a SubagentBox, mounted as ONE transcript
+        block. Its child events (parent_tool_use_id == this id) route inside."""
+        self._flush_streaming()
+        summary = ev.summary or ev.name
+        self._subagent_summary[ev.tool_call_id] = summary
+        self._subagent_counts[ev.tool_call_id] = 0
+        header = self._box_header(summary, running=True, count=0)
+        payload = _payload_for_event(ev)
+        box = SubagentBox(header, payload, self._palette)
+        self._history.append(BlockRecord(header, payload, False))
+        t = self._transcript()
+        ind = self._working_indicator()
+        if ind is not None and ind.parent is t:
+            t.mount(box, before=ind)
+        else:
+            t.mount(box)
+        self._mounted_blocks.append(box)
+        self._subagent_boxes[ev.tool_call_id] = box
+        if self._stick_to_bottom:
+            t.scroll_end(animate=False)
+
+    def _route_into_box(self, tid: str, ev) -> None:
+        box = self._subagent_boxes[tid]
+        result_r = (render_event(ev, self._palette)
+                    if isinstance(ev, ToolResult) else None)
+        if result_r is not None and box.fold_child_result(
+                result_r, _payload_for_event(ev)):
+            pass  # folded into the box's last child (in-box tool pairing)
+        else:
+            r = render_event(ev, self._palette)
+            if r is not None:
+                box.add_child(r, _payload_for_event(ev),
+                              tight=isinstance(ev, ToolUse))
+        self._subagent_counts[tid] += 1
+        box.set_header(
+            self._box_header(self._subagent_summary[tid], running=True,
+                             count=self._subagent_counts[tid]),
+            box._header_payload)
+        if self._stick_to_bottom:
+            self._transcript().scroll_end(animate=False)
+
+    def _close_box(self, tid: str, ev: ToolResult) -> None:
+        box = self._subagent_boxes[tid]
+        icon = "✗" if ev.is_error else "✓"
+        box.set_header(
+            self._box_header(self._subagent_summary[tid], running=False,
+                             count=self._subagent_counts[tid], icon=icon),
+            box._header_payload)
+        result_r = render_event(ev, self._palette)
+        if result_r is not None:
+            box.close(result_r, _payload_for_event(ev))
+
+    def _box_header(self, summary: str, *, running: bool, count: int,
+                    icon: str = "✓") -> Text:
+        status = "⏳" if running else icon
+        return Text.assemble(("🤖 ", self._palette.accent),
+                             f"{summary} · {status} {count} events")
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
