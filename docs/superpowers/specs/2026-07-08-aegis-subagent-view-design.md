@@ -1,7 +1,7 @@
 # Subagent view — design
 
 **Date:** 2026-07-08
-**Status:** approved (brainstorm) — ready for implementation plan
+**Status:** implemented (commits `4f9146e`…`7f61a70`)
 **Scope:** group `Task`-tool subagent events into collapsible inline
 "ventanitas" in both the TUI and the web transcript.
 
@@ -50,8 +50,9 @@ the grouping on both UIs.
 
 ## 2. Grouping logic (shared concept)
 
-- A `ToolUse` with `name == "Task"` **opens a container**, keyed by its own
-  `tool_call_id`.
+- A `ToolUse` whose name is a **subagent-dispatch tool** — matched against
+  `{"Task", "Agent"}` (Claude Code has used both across versions; 2.1.x emits
+  `Agent`) — **opens a container**, keyed by its own `tool_call_id`.
 - An event with `parent_tool_use_id == T` routes into container `T`
   (appends to its child list; updates the live header).
 - The `tool_result` for `T` folds in as the container's footer.
@@ -123,3 +124,23 @@ One visual nesting level. No sub-tabs, no side panel, no persisted collapse
 state, no animations. Touches: `events.py`, `state/event_codec.py`,
 `pane.py` (+ new `SubagentBox`), `coalesce.js`, `renderEvent.js`, `app.js`,
 `base.css`, and their tests.
+
+## 8. Driver applicability (claude-only today)
+
+The grouping key `parent_tool_use_id` is populated **only** by the Claude
+stream-json parser (`events.py::parse`), which reads Claude's own
+`parent_tool_use_id` stream field. Other drivers:
+
+- **ACP drivers** (`AcpDriver`, and its `GeminiDriver` / OpenCode shims) build
+  events directly from ACP `session_update` notifications
+  (`ToolCallStart` / `ToolCallProgress` / message chunks). Those notifications
+  carry `tool_call_id` but **no parent linkage**, so `parent_tool_use_id`
+  stays `None` and every event renders **flat inline** — identical to
+  pre-feature behavior. Zero regression.
+- The tool-use ↔ tool-result **fold** (paired by `tool_call_id`) *does* apply
+  to ACP, since ACP sets `tool_call_id` on both.
+
+Because the grouping key lives in the shared event model (not the Claude
+parser), ACP subagent grouping would light up for free if a future ACP
+version exposes subagent parentage: set `parent_tool_use_id` when
+constructing events in `_AegisAcpClient` — no render changes needed.

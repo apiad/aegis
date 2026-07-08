@@ -74,7 +74,10 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   in `config.py` carry only the fields each provider actually uses;
   legacy flat `Agent(harness="…", model=…, effort=…, permission=…)`
   shape still works via a back-compat shim.
-- `src/aegis/events.py` - stream-json parser (typed events)
+- `src/aegis/events.py` - stream-json parser (typed events). Events carry
+  `parent_tool_use_id` (set only by the claude parser, from claude's stream
+  field) — the grouping key for the subagent view. ACP-built events leave it
+  `None`, so ACP renders flat.
 - `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
 - `src/aegis/core/` - harness-agnostic session core: `AgentSession`
   (turn loop, metrics, state, observer callbacks — `session.py`) and
@@ -96,7 +99,11 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   modal (picker.py), PendingStrip/Chip — the click-to-dequeue queue of
   text-box messages shown above the input while the agent is mid-turn
   (pending.py), Theme registry + AegisColors role map (themes.py;
-  `aegis-ink` default)
+  `aegis-ink` default). `pane.py` also renders the subagent view: a
+  `Task`/`Agent` tool_use opens a collapsible `SubagentBox`; events tagged
+  with that `parent_tool_use_id` route inside (the web mirrors this in
+  `coalesce.js`/`renderEvent.js`). tool_use↔tool_result pairing folds by
+  `tool_call_id` (works for all drivers).
 - `src/aegis/mcp/` - FastMCP server (`server.py`: BRIEFING/PRIMING,
   `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
   `aegis_list_agents`, `aegis_handoff` + queue-v1 tools `aegis_enqueue`,
