@@ -70,4 +70,28 @@ const rec = (event_type, event, extra = {}) => ({
 // SystemInit → empty (no visible block)
 assert.equal(renderEvent(rec("SystemInit", { t: "SystemInit" })), "");
 
+// ToolUse with a folded result → one .tool-call wrapper containing both,
+// the result carrying its own seq for expand.
+{
+  const html = renderEvent(rec("ToolUse",
+    { t: "ToolUse", name: "Read", kind: "read", summary: "x.py",
+      tool_call_id: "A" },
+    { result: { t: "ToolResult", text: "the answer", is_error: false },
+      resultSeq: 7, resultTruncated: true }));
+  assert.ok(html.includes("tool-call"));
+  assert.ok(html.includes("tool-use") && html.includes("Read"));
+  assert.ok(html.includes("tool-result ok") && html.includes("the answer"));
+  assert.ok(html.includes('data-seq="7"'));   // expand points at the result
+}
+
+// ToolUse without a result → bare tool-use, no wrapper.
+{
+  const html = renderEvent(rec("ToolUse",
+    { t: "ToolUse", name: "Bash", kind: "execute", summary: "ls",
+      tool_call_id: "B" }));
+  assert.ok(html.includes("tool-use") && html.includes("Bash"));
+  assert.ok(!html.includes("tool-call"));
+  assert.ok(!html.includes("tool-result"));
+}
+
 console.log("renderEvent.test.mjs OK");

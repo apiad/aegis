@@ -76,6 +76,17 @@ function diffHtml(diff) {
   return `<div class="tool-result diff">${rows.join("")}</div>`;
 }
 
+function toolResultHtml(ev, { handle, seq, truncated }) {
+  if (ev.diff && !ev.is_error) return diffHtml(ev.diff);
+  const raw = ev.text || "";
+  let first = raw.trim() ? raw.split("\n")[0] : "";
+  if (first.length > 100) first = first.slice(0, 100) + "…";
+  const cls = ev.is_error ? "error" : "ok";
+  const ctl = truncated ? " " + expandControl({ handle, seq }, "⋯") : "";
+  return `<div class="tool-result ${cls}">└ `
+    + `<span class="status">${cls}</span> ${esc(first)}${ctl}</div>`;
+}
+
 function planHtml(ev) {
   const entries = ev.entries || [];
   if (!entries.length) return '<div class="agent-plan muted">📋 (no plan)</div>';
@@ -113,18 +124,24 @@ export function renderEvent(rec) {
     const arg = (hint && hint !== ev.name)
       ? `<span class="tool-hint">(${esc(hint)})</span>` : "";
     const ctl = rec.truncated ? " " + expandControl(rec, "⋯") : "";
-    return `<div class="tool-use"><span class="icon">${icon}</span> `
+    const useHtml = `<div class="tool-use"><span class="icon">${icon}</span> `
       + `<span class="tool-name">${esc(ev.name)}</span>${arg}${ctl}</div>`;
+    // A folded result (paired by tool_call_id in coalesceInto) renders
+    // directly under its call so parallel results don't pile up.
+    if (rec.result) {
+      const resHtml = toolResultHtml(rec.result, {
+        handle: rec.handle, seq: rec.resultSeq,
+        truncated: rec.resultTruncated,
+      });
+      return `<div class="tool-call">${useHtml}${resHtml}</div>`;
+    }
+    return useHtml;
   }
   if (t === "ToolResult") {
-    if (ev.diff && !ev.is_error) return diffHtml(ev.diff);
-    const raw = ev.text || "";
-    let first = raw.trim() ? raw.split("\n")[0] : "";
-    if (first.length > 100) first = first.slice(0, 100) + "…";
-    const cls = ev.is_error ? "error" : "ok";
-    const ctl = rec.truncated ? " " + expandControl(rec, "⋯") : "";
-    return `<div class="tool-result ${cls}">└ `
-      + `<span class="status">${cls}</span> ${esc(first)}${ctl}</div>`;
+    // Standalone result (no matching use found) — fold path is preferred.
+    return toolResultHtml(ev, {
+      handle: rec.handle, seq: rec.seq, truncated: rec.truncated,
+    });
   }
   if (t === "AgentPlan") return planHtml(ev);
   if (t === "Result") {

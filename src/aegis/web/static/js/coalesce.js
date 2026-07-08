@@ -24,6 +24,22 @@ export function coalesceInto(history, frame) {
     }
   }
 
+  // Fold a ToolResult into its matching ToolUse block by tool_call_id, so
+  // parallel results land under their own call instead of piling up as
+  // trailing blocks. Search backward for the still-unpaired use.
+  if (eventType === "ToolResult" && ev.tool_call_id != null) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const b = history[i];
+      if (b.event_type === "ToolUse"
+          && (b.event || {}).tool_call_id === ev.tool_call_id) {
+        b.result = ev;
+        b.resultSeq = frame.seq;
+        b.resultTruncated = frame.truncated ?? false;
+        return { action: "update", index: i };
+      }
+    }
+  }
+
   history.push({
     seq: frame.seq,
     event_type: eventType,

@@ -113,8 +113,16 @@ function renderInto(tab, frame) {
   } else {
     const node = tab.nodes[index];
     if (node) {
-      if (rec.event_type === "AssistantText") node.innerHTML = renderMarkdown(rec.text);
-      else node.textContent = rec.text;
+      if (rec.event_type === "AssistantText") {
+        node.innerHTML = renderMarkdown(rec.text);
+      } else if (rec.event_type === "ToolUse") {
+        // A folded ToolResult arrived — re-render the whole call block.
+        const fresh = blockEl(rec);
+        tab.nodes[index] = fresh;
+        node.replaceWith(fresh);
+      } else {
+        node.textContent = rec.text;
+      }
     }
   }
   if (stick) tab.transcriptEl.scrollTop = tab.transcriptEl.scrollHeight;

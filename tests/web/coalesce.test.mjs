@@ -78,4 +78,46 @@ function evt(type, { message_id = null, text = "", html = null, seq = 0 } = {}) 
   assert.equal(rec.handle, "h");
 }
 
+// 7) parallel tool results fold into their own use block by tool_call_id
+{
+  const use = (id, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: "ToolUse",
+    event: { t: "ToolUse", name: "Read", tool_call_id: id },
+  });
+  const res = (id, text, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: "ToolResult",
+    event: { t: "ToolResult", text, is_error: false, tool_call_id: id },
+  });
+  const history = [];
+  coalesceInto(history, use("A", 1));
+  coalesceInto(history, use("B", 2));
+  // results arrive out of order (B before A) — each must fold into its own use
+  const rb = coalesceInto(history, res("B", "res-B", 3));
+  const ra = coalesceInto(history, res("A", "res-A", 4));
+  assert.equal(history.length, 2);               // no trailing result blocks
+  assert.equal(rb.action, "update");
+  assert.equal(rb.index, 1);
+  assert.equal(ra.action, "update");
+  assert.equal(ra.index, 0);
+  assert.equal(history[0].result.text, "res-A");
+  assert.equal(history[0].resultSeq, 4);
+  assert.equal(history[1].result.text, "res-B");
+}
+
+// 8) a result whose use isn't present appends as a standalone block
+{
+  const history = [];
+  const r = coalesceInto(history, {
+    type: "stream", kind: "event", handle: "h", seq: 1,
+    event_type: "ToolResult",
+    event: { t: "ToolResult", text: "orphan", is_error: false,
+             tool_call_id: "ZZZ" },
+  });
+  assert.equal(r.action, "append");
+  assert.equal(history.length, 1);
+  assert.equal(history[0].event_type, "ToolResult");
+}
+
 console.log("coalesce.test.mjs: all assertions passed");

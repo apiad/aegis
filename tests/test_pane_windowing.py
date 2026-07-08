@@ -254,3 +254,56 @@ async def test_history_records_every_event():
         for rec in pane._history:
             assert rec.renderable is not None
             assert isinstance(rec.payload, str)
+
+
+@pytest.mark.asyncio
+async def test_parallel_tool_results_fold_into_their_use():
+    """Parallel tool calls emit all uses first, then results (often out of
+    order). Each result must fold into its OWN use block by tool_call_id —
+    not pile up as trailing blocks."""
+    from aegis.events import ToolResult
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        pane._window_start = 0
+        pane._tool_use_idx.clear()
+        # Two parallel uses, then results in REVERSE order.
+        pane._on_core_event(None, ToolUse(
+            name="Read", summary="a.py", kind="read", tool_call_id="A"))
+        pane._on_core_event(None, ToolUse(
+            name="Read", summary="b.py", kind="read", tool_call_id="B"))
+        pane._on_core_event(None, ToolResult(
+            text="result-of-B", is_error=False, tool_call_id="B"))
+        pane._on_core_event(None, ToolResult(
+            text="result-of-A", is_error=False, tool_call_id="A"))
+        await pilot.pause()
+        # One block per call, in use order — results folded in, not appended.
+        assert len(pane._history) == 2
+        assert "a.py" in pane._history[0].payload
+        assert "result-of-A" in pane._history[0].payload
+        assert "b.py" in pane._history[1].payload
+        assert "result-of-B" in pane._history[1].payload
+
+
+@pytest.mark.asyncio
+async def test_tool_result_without_known_use_appends():
+    """A ToolResult with no matching use (e.g. use scrolled out) falls back
+    to a standalone block rather than being dropped."""
+    from aegis.events import ToolResult
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        pane._window_start = 0
+        pane._tool_use_idx.clear()
+        pane._on_core_event(None, ToolResult(
+            text="orphan", is_error=False, tool_call_id="ZZZ"))
+        assert len(pane._history) == 1
+        assert "orphan" in pane._history[0].payload

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
 from rich.text import Text
 from textual import work
@@ -22,7 +22,7 @@ from textual.widgets import Static
 from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
-from aegis.events import AssistantText, AssistantThinking, ToolUse
+from aegis.events import AssistantText, AssistantThinking, ToolResult, ToolUse
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_user_line,
 )
@@ -361,6 +361,11 @@ class ConversationPane(Widget):
         self._history: list[BlockRecord] = []
         self._window_start: int = 0
         self._streaming_history_idx: int | None = None
+        # tool_call_id → history index of that tool call's ToolUse block, so
+        # its ToolResult folds into the *same* block instead of appending a
+        # trailing one. Parallel tool calls emit all uses first, then all
+        # results — folding by id keeps each result under its own call.
+        self._tool_use_idx: dict[str, int] = {}
         # Explicit list of currently-mounted CopyableBlocks in DOM order.
         # Source of truth for eviction — Textual's .remove() defers until
         # the next layout tick, so t.query(CopyableBlock) returns stale
@@ -415,12 +420,23 @@ class ConversationPane(Widget):
         if self._replay is None:
             return
         records: list[BlockRecord] = []
+        use_idx: dict[str, int] = {}   # tool_call_id → record index
         for ev in coalesce_chunks(self._replay.events):
+            # Fold a ToolResult into its matching ToolUse record so the pair
+            # renders as one block — mirrors the live _fold_tool_result path.
+            if isinstance(ev, ToolResult) and ev.tool_call_id in use_idx:
+                result_r = render_event(ev, self._palette)
+                if result_r is not None:
+                    rec = records[use_idx[ev.tool_call_id]]
+                    rec.renderable = Group(rec.renderable, result_r)
+                    rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
+                continue
             r = render_event(ev, self._palette)
             if r is None:
                 continue
-            records.append(BlockRecord(
-                r, _payload_for_event(ev), isinstance(ev, ToolUse)))
+            records.append(BlockRecord(r, _payload_for_event(ev), False))
+            if isinstance(ev, ToolUse) and ev.tool_call_id:
+                use_idx[ev.tool_call_id] = len(records) - 1
         if self._replay.interrupted:
             records.append(BlockRecord(
                 Text("⚠ interrupted", style="yellow"), "⚠ interrupted", False))
@@ -683,17 +699,40 @@ class ConversationPane(Widget):
                 self._stream_append("text", ev.text)
         elif isinstance(ev, AssistantThinking):
             self._stream_append("thinking", ev.text or "")
+        elif isinstance(ev, ToolResult) and self._fold_tool_result(ev):
+            pass  # folded into its ToolUse block
         else:
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
             if renderable is not None:
-                # ToolUse mounts tight (no margin-bottom) so the
-                # following ToolResult sits flush against it — the
-                # ⏺ / └ pair reads as one visual unit.
-                self._mount_block(
-                    renderable, _payload_for_event(ev),
-                    tight=isinstance(ev, ToolUse))
+                block = self._mount_block(renderable, _payload_for_event(ev))
+                if isinstance(ev, ToolUse) and ev.tool_call_id:
+                    # Remember this call's block so its (possibly out-of-order,
+                    # parallel) ToolResult folds in below instead of appending.
+                    self._tool_use_idx[ev.tool_call_id] = len(self._history) - 1
+                    del block  # (retained via _mounted_blocks / _history)
         self.refresh_metrics()
+
+    def _fold_tool_result(self, ev: ToolResult) -> bool:
+        """Render a ToolResult *inside* its matching ToolUse block. Returns
+        False (→ caller appends it as a standalone block) when there's no
+        known matching call — e.g. the use scrolled out of the window."""
+        idx = self._tool_use_idx.get(ev.tool_call_id or "")
+        if idx is None:
+            return False
+        self._flush_streaming()
+        result_r = render_event(ev, self._palette)
+        if result_r is None:
+            return True
+        rec = self._history[idx]
+        rec.renderable = Group(rec.renderable, result_r)
+        rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
+        pos = idx - self._window_start
+        if 0 <= pos < len(self._mounted_blocks):
+            self._mounted_blocks[pos].update_content(rec.renderable, rec.payload)
+            if self._stick_to_bottom:
+                self._transcript().scroll_end(animate=False)
+        return True
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
