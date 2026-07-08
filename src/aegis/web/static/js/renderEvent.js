@@ -126,6 +126,17 @@ export function renderEvent(rec) {
     const ctl = rec.truncated ? " " + expandControl(rec, "⋯") : "";
     const useHtml = `<div class="tool-use"><span class="icon">${icon}</span> `
       + `<span class="tool-name">${esc(ev.name)}</span>${arg}${ctl}</div>`;
+    // A Task with routed children renders as a collapsible subagent box:
+    // header (the Task call) + body (the subagent's events).
+    if (rec.children && rec.children.length) {
+      const n = rec.children.length;
+      const header = `<div class="subagent-header">🤖 `
+        + `<span class="tool-name">${esc(ev.summary || ev.name)}</span> `
+        + `<span class="sa-count">· ${n} events</span></div>`;
+      const body = rec.children.map((c) => renderEvent(c)).join("");
+      return `<div class="subagent" data-collapsed>${header}`
+        + `<div class="subagent-body">${body}</div></div>`;
+    }
     // A folded result (paired by tool_call_id in coalesceInto) renders
     // directly under its call so parallel results don't pile up.
     if (rec.result) {

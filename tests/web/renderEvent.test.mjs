@@ -94,4 +94,27 @@ assert.equal(renderEvent(rec("SystemInit", { t: "SystemInit" })), "");
   assert.ok(!html.includes("tool-result"));
 }
 
+// Task with children → collapsible subagent box (header + hidden body)
+{
+  const html = renderEvent(rec("ToolUse",
+    { t: "ToolUse", name: "Task", summary: "explore X", tool_call_id: "T1" },
+    { children: [
+        { event_type: "ToolUse", handle: "h", seq: 2,
+          event: { t: "ToolUse", name: "Read", summary: "a.py" } },
+      ] }));
+  assert.ok(html.includes("subagent"));
+  assert.ok(html.includes("subagent-header"));
+  assert.ok(html.includes("data-collapsed"));
+  assert.ok(html.includes("explore X"));
+  assert.ok(html.includes("Read"));            // child rendered in the body
+}
+
+// Task without children → plain tool-use, no subagent box
+{
+  const html = renderEvent(rec("ToolUse",
+    { t: "ToolUse", name: "Task", summary: "noop", tool_call_id: "T2" }));
+  assert.ok(html.includes("tool-use"));
+  assert.ok(!html.includes("subagent"));
+}
+
 console.log("renderEvent.test.mjs OK");

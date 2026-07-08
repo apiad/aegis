@@ -232,6 +232,11 @@ html, body {
 .tool-result.ok .status { color: var(--aegis-ok); }
 .tool-result.error .status { color: var(--aegis-err); }
 
+.subagent { border-left: 2px solid var(--aegis-surface); padding-left: 0.5rem; }
+.subagent-header { cursor: pointer; color: var(--aegis-accent); }
+.subagent .sa-count { color: var(--aegis-muted); }
+.subagent[data-collapsed] .subagent-body { display: none; }
+
 .diff-head { color: var(--aegis-muted); }
 .diff-row.removed { color: var(--aegis-err); }
 .diff-row.added   { color: var(--aegis-ok); }

@@ -145,6 +145,14 @@ function fullBody(event) {
   return event.text || "";       // ToolResult / AssistantThinking
 }
 
+// Click a subagent box header to collapse/expand its body.
+panesEl.addEventListener("click", (e) => {
+  const head = e.target.closest(".subagent-header");
+  if (!head) return;
+  const box = head.closest(".subagent");
+  if (box) box.toggleAttribute("data-collapsed");
+});
+
 panesEl.addEventListener("click", async (e) => {
   const ctl = e.target.closest(".expand");
   if (!ctl) return;
