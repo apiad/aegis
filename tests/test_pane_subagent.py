@@ -76,6 +76,23 @@ async def test_task_children_group_into_a_subagent_box():
 
 
 @pytest.mark.asyncio
+async def test_agent_named_dispatcher_also_opens_a_box():
+    """Claude Code 2.1.x names the dispatch tool 'Agent' (not 'Task'); both
+    must open a subagent box."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        _reset(pane)
+        pane._on_core_event(None, ToolUse(
+            name="Agent", summary="explore Y", kind="think", tool_call_id="A1"))
+        pane._on_core_event(None, AssistantText(
+            text="child of agent", parent_tool_use_id="A1"))
+        await pilot.pause()
+        assert "A1" in pane._subagent_boxes
+        assert "child of agent" in pane._subagent_boxes["A1"].text_payload()
+
+
+@pytest.mark.asyncio
 async def test_parallel_tasks_route_to_their_own_boxes():
     app = _app()
     async with app.run_test() as pilot:

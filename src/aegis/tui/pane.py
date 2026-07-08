@@ -38,6 +38,12 @@ from aegis.transcript_constants import (  # noqa: F401  (re-exported)
 )
 
 
+# Names of the tool that dispatches a subagent. Claude Code has used both
+# across versions ("Task" historically, "Agent" as of 2.1.x); match both so
+# subagent events group into a box regardless of the running CLI's naming.
+_SUBAGENT_TOOLS = frozenset({"Task", "Agent"})
+
+
 @dataclass(slots=True)
 class BlockRecord:
     """One transcript entry. Mutable so streaming aggregation can update
@@ -547,7 +553,8 @@ class ConversationPane(Widget):
             if r is None:
                 continue
             records.append(BlockRecord(r, _payload_for_event(ev), False))
-            if isinstance(ev, ToolUse) and ev.name == "Task" and ev.tool_call_id:
+            if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
+                    and ev.tool_call_id):
                 box_idx[ev.tool_call_id] = len(records) - 1
                 open_box[ev.tool_call_id] = len(records) - 1
             elif isinstance(ev, ToolUse) and ev.tool_call_id:
@@ -818,7 +825,8 @@ class ConversationPane(Widget):
             self._close_box(ev.tool_call_id, ev)  # Task result closes its box
             self.refresh_metrics()
             return
-        if isinstance(ev, ToolUse) and ev.name == "Task" and ev.tool_call_id:
+        if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
+                and ev.tool_call_id):
             self._open_box(ev)
             self.refresh_metrics()
             return

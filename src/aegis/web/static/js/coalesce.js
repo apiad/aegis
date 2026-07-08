@@ -30,8 +30,9 @@ export function coalesceInto(history, frame) {
   if (parentId !== null) {
     for (let i = history.length - 1; i >= 0; i--) {
       const b = history[i];
+      const bn = (b.event || {}).name;
       if (b.event_type === "ToolUse"
-          && (b.event || {}).name === "Task"
+          && (bn === "Task" || bn === "Agent")
           && (b.event || {}).tool_call_id === parentId) {
         const kids = (b.children ||= []);
         // In-box tool pairing: fold a child result into its child use.

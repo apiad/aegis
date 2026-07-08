@@ -166,4 +166,20 @@ function evt(type, { message_id = null, text = "", html = null, seq = 0 } = {}) 
   assert.ok(!boxB.children || boxB.children.length === 0);
 }
 
+// 11) the "Agent"-named dispatcher (Claude Code 2.1.x) also groups children
+{
+  const frame = (type, ev, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: type, event: { t: type, ...ev },
+  });
+  const history = [];
+  coalesceInto(history, frame("ToolUse",
+    { name: "Agent", summary: "explore", tool_call_id: "A1" }, 1));
+  const r = coalesceInto(history, frame("AssistantText",
+    { text: "child", parent_tool_use_id: "A1" }, 2));
+  assert.equal(r.action, "update");
+  assert.equal(history.length, 1);
+  assert.equal(history[0].children.length, 1);
+}
+
 console.log("coalesce.test.mjs: all assertions passed");
