@@ -121,6 +121,37 @@ async def test_resumes_tabs_from_workspace_on_boot(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_only_active_pane_visible_after_resume(tmp_path, monkeypatch):
+    """Regression: resuming N tabs mounted every pane display=True, so N
+    query bars stacked. ContentSwitcher only hides on its own mount or on a
+    current old→new transition — with old=None nothing gets hidden. Exactly
+    one pane (the active) must be visible after boot."""
+    monkeypatch.chdir(tmp_path)
+    sd = state_dir(tmp_path)
+    save(sd, Workspace(active_handle="beta", tabs=[
+        WorkspaceTab(handle="alpha", profile="default", order=0,
+                     provider="claude-code", session_id="sid-A",
+                     created_at="2026-05-27T00:00:00Z"),
+        WorkspaceTab(handle="beta", profile="default", order=1,
+                     provider="claude-code", session_id="sid-B",
+                     created_at="2026-05-27T00:00:00Z"),
+    ]))
+    append_event(sd, "alpha", SystemInit(session_id="sid-A"))
+    append_event(sd, "beta", SystemInit(session_id="sid-B"))
+
+    drv = StubResumeDriver([FakeSession(session_id="sid-A"),
+                            FakeSession(session_id="sid-B")])
+    from aegis.tui.pane import ConversationPane
+    app = AegisApp({"default": _agent()}, "default", _factory(FakeSession()),
+                   FakeMCP(), drivers={"claude-code": drv}, cwd=str(tmp_path))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        visible = [p for p in app._panes
+                   if isinstance(p, ConversationPane) and p.display]
+        assert [p.handle for p in visible] == ["beta"]
+
+
+@pytest.mark.asyncio
 async def test_no_resume_when_clean_flag_set(tmp_path, monkeypatch):
     """`aegis --clean` overrides the resume path even if workspace.json
     is intact."""

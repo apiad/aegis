@@ -359,6 +359,12 @@ class AegisApp(App):
                 replay=replay)
             self._panes.append(pane)
             self.inbox_router.bind_session(tab.handle, pane._core)
+            # Mount hidden. ContentSwitcher only hides children at its own
+            # mount or on a current old→new transition; setting cs.current
+            # once after the loop (old=None) would leave every prior pane
+            # display=True — N stacked query bars. Revealing just the active
+            # tab below keeps exactly one visible.
+            pane.display = False
             await cs.mount(pane)
 
         if not self._panes:
