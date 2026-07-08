@@ -16,6 +16,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
@@ -277,6 +278,95 @@ class CopyableBlock(Widget):
         path = await self.app.push_screen_wait(FilePickerModal(prefill=token))
         if path is not None and opener is not None:
             await opener(path)
+
+
+class SubagentBox(Widget):
+    """Collapsible container for one Task subagent's events. The header is the
+    Task call; the body is the routed child events; the footer is the Task
+    result. Counts as ONE transcript block — its children live inside."""
+
+    DEFAULT_CSS = """
+    SubagentBox { height: auto; padding: 0 1; margin-bottom: 1;
+                  background: $background; }
+    SubagentBox > .sa-header { height: auto; }
+    SubagentBox > .sa-body { height: auto; padding: 0 0 0 2;
+                             border-left: solid $surface; }
+    SubagentBox:hover { background: $surface; }
+    """
+
+    collapsed: reactive[bool] = reactive(True)
+
+    def __init__(self, header: RenderableType, header_payload: str,
+                 palette, *, collapsed: bool = True) -> None:
+        super().__init__()
+        self._palette = palette
+        self._header = header
+        self._header_payload = header_payload
+        self._children: list[BlockRecord] = []
+        self._footer: RenderableType | None = None
+        self._footer_payload = ""
+        self.set_reactive(SubagentBox.collapsed, collapsed)
+
+    def set_header(self, renderable: RenderableType, payload: str) -> None:
+        self._header = renderable
+        self._header_payload = payload
+        self._refresh()
+
+    def add_child(self, renderable: RenderableType, payload: str,
+                  *, tight: bool = False) -> None:
+        self._children.append(BlockRecord(renderable, payload, tight))
+        self._refresh()
+
+    def fold_child_result(self, renderable: RenderableType,
+                          payload: str) -> bool:
+        """Fold a tool result into the box's last child (mirror of the
+        top-level tool pairing). False when there's no child to fold into."""
+        if not self._children:
+            return False
+        rec = self._children[-1]
+        rec.renderable = Group(rec.renderable, renderable)
+        rec.payload = f"{rec.payload}\n{payload}"
+        self._refresh()
+        return True
+
+    def close(self, renderable: RenderableType, payload: str) -> None:
+        self._footer = renderable
+        self._footer_payload = payload
+        self._refresh()
+
+    def toggle(self) -> None:
+        self.collapsed = not self.collapsed
+
+    def watch_collapsed(self, _old: bool, _new: bool) -> None:
+        self._refresh()
+
+    def text_payload(self) -> str:
+        parts = [self._header_payload]
+        parts += [c.payload for c in self._children]
+        if self._footer_payload:
+            parts.append(self._footer_payload)
+        return "\n".join(p for p in parts if p)
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._header, classes="sa-header")
+        yield Static(self._body_renderable(), classes="sa-body")
+
+    def _body_renderable(self) -> RenderableType:
+        if self.collapsed:
+            return Text("")
+        rends: list[RenderableType] = [c.renderable for c in self._children]
+        if self._footer is not None:
+            rends.append(self._footer)
+        return Group(*rends) if rends else Text("")
+
+    def _refresh(self) -> None:
+        with contextlib.suppress(Exception):
+            self.query_one(".sa-header", Static).update(self._header)
+        with contextlib.suppress(Exception):
+            self.query_one(".sa-body", Static).update(self._body_renderable())
+
+    def on_click(self, event: Click) -> None:
+        self.toggle()
 
 
 def _payload_for_event(ev) -> str:
