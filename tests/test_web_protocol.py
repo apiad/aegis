@@ -309,6 +309,27 @@ async def test_subscribe_tail_keeps_whole_coalesced_block(tmp_path: Path):
     await task
 
 
+async def test_subagent_parent_id_survives_history_replay(tmp_path: Path):
+    """A subagent child's parent_tool_use_id must round-trip through history
+    replay so the client can group it under its Task."""
+    from aegis.events import ToolUse, AssistantText
+    sd = tmp_path / "state"
+    append_event(sd, "h", ToolUse(name="Task", summary="explore",
+                                  tool_call_id="T1"))
+    append_event(sd, "h", AssistantText(text="child",
+                                        parent_tool_use_id="T1"))
+    mgr = FakeManager({"h": FakeCore("h")})
+    t, reg, task = await _run_authed(tmp_path, mgr, cores_state_dir=sd)
+    t.feed({"type": "subscribe",
+            "target": {"kind": "session", "handle": "h"}})
+    await _settle()
+    events = [s for s in t.sent if s.get("kind") == "event"]
+    child = [e for e in events if e["event"].get("t") == "AssistantText"][-1]
+    assert child["event"]["parent_tool_use_id"] == "T1"
+    t.disconnect()
+    await task
+
+
 # ---- resume -------------------------------------------------------------
 
 async def test_resume_small_gap_streams_only_tail(tmp_path: Path):
