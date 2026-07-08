@@ -120,4 +120,50 @@ function evt(type, { message_id = null, text = "", html = null, seq = 0 } = {}) 
   assert.equal(history[0].event_type, "ToolResult");
 }
 
+// 9) subagent children route onto their Task record's .children
+{
+  const task = (id, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: "ToolUse",
+    event: { t: "ToolUse", name: "Task", summary: "explore", tool_call_id: id },
+  });
+  const child = (parent, type, ev, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: type, event: { t: type, ...ev, parent_tool_use_id: parent },
+  });
+  const history = [];
+  coalesceInto(history, task("T1", 1));
+  const r = coalesceInto(history, child("T1", "ToolUse",
+    { name: "Read", tool_call_id: "c1" }, 2));
+  assert.equal(r.action, "update");
+  assert.equal(r.index, 0);
+  assert.equal(history.length, 1);              // no top-level child block
+  assert.equal(history[0].children.length, 1);
+  assert.equal(history[0].children[0].event.name, "Read");
+}
+
+// 10) parallel Tasks route children to their own boxes; in-box tool pairing
+{
+  const frame = (type, ev, seq) => ({
+    type: "stream", kind: "event", handle: "h", seq,
+    event_type: type, event: { t: type, ...ev },
+  });
+  const history = [];
+  coalesceInto(history, frame("ToolUse",
+    { name: "Task", summary: "A", tool_call_id: "TA" }, 1));
+  coalesceInto(history, frame("ToolUse",
+    { name: "Task", summary: "B", tool_call_id: "TB" }, 2));
+  coalesceInto(history, frame("ToolUse",
+    { name: "Read", tool_call_id: "c1", parent_tool_use_id: "TA" }, 3));
+  coalesceInto(history, frame("ToolResult",
+    { text: "body", is_error: false, tool_call_id: "c1",
+      parent_tool_use_id: "TA" }, 4));
+  assert.equal(history.length, 2);
+  const boxA = history.find((b) => b.event.tool_call_id === "TA");
+  const boxB = history.find((b) => b.event.tool_call_id === "TB");
+  assert.equal(boxA.children.length, 1);        // the Read, with folded result
+  assert.equal(boxA.children[0].result.text, "body");
+  assert.ok(!boxB.children || boxB.children.length === 0);
+}
+
 console.log("coalesce.test.mjs: all assertions passed");

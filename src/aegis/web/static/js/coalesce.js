@@ -24,6 +24,37 @@ export function coalesceInto(history, frame) {
     }
   }
 
+  // Route a subagent's event into its Task record's children (grouped view).
+  // Task children carry parent_tool_use_id == the dispatching Task's id.
+  const parentId = ev.parent_tool_use_id ?? null;
+  if (parentId !== null) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const b = history[i];
+      if (b.event_type === "ToolUse"
+          && (b.event || {}).name === "Task"
+          && (b.event || {}).tool_call_id === parentId) {
+        const kids = (b.children ||= []);
+        // In-box tool pairing: fold a child result into its child use.
+        if (eventType === "ToolResult" && ev.tool_call_id != null
+            && kids.length) {
+          const prev = kids[kids.length - 1];
+          if (prev.event_type === "ToolUse"
+              && (prev.event || {}).tool_call_id === ev.tool_call_id) {
+            prev.result = ev;
+            prev.resultSeq = frame.seq;
+            prev.resultTruncated = frame.truncated ?? false;
+            return { action: "update", index: i };
+          }
+        }
+        kids.push({
+          seq: frame.seq, event_type: eventType, event: ev,
+          truncated: frame.truncated ?? false, handle: frame.handle,
+        });
+        return { action: "update", index: i };
+      }
+    }
+  }
+
   // Fold a ToolResult into its matching ToolUse block by tool_call_id, so
   // parallel results land under their own call instead of piling up as
   // trailing blocks. Search backward for the still-unpaired use.
