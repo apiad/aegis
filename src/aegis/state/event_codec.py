@@ -6,6 +6,8 @@ transcript redraw on resume. Type tag is the dataclass name under
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, ContextUpdate,
     CostUsage, Event, PlanEntry, Result, SystemInit, TokenUsage,
@@ -30,6 +32,16 @@ def _decode_usage(d: dict | None) -> TokenUsage | None:
 
 
 def encode_event(ev: Event) -> dict:
+    out = _encode_inner(ev)
+    # Uniformly persist the subagent grouping key for any event that carries
+    # one (Task-child events), so replay can reconstruct the grouping.
+    pid = getattr(ev, "parent_tool_use_id", None)
+    if pid is not None:
+        out["parent_tool_use_id"] = pid
+    return out
+
+
+def _encode_inner(ev: Event) -> dict:
     if isinstance(ev, SystemInit):
         out = {"t": "SystemInit", "session_id": ev.session_id}
         if ev.model is not None:
@@ -124,6 +136,14 @@ def encode_event(ev: Event) -> dict:
 
 
 def decode_event(d: dict) -> Event:
+    ev = _decode_inner(d)
+    pid = d.get("parent_tool_use_id")
+    if pid is not None and hasattr(ev, "parent_tool_use_id"):
+        ev = replace(ev, parent_tool_use_id=pid)
+    return ev
+
+
+def _decode_inner(d: dict) -> Event:
     t = d.get("t")
     if t is None:
         raise ValueError("event dict missing type tag 't'")
