@@ -108,7 +108,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
   `aegis_list_agents`, `aegis_handoff`, `aegis_spawn` (genuine
   fire-and-forget peer spawn — new top-level agent + opening prompt +
-  `spawned_by` provenance) + queue-v1 tools `aegis_enqueue`,
+  `spawned_by` provenance) + claims tools `aegis_claim` /
+  `aegis_release` / `aegis_claims` (inter-agent file-claims registry)
+  + queue-v1 tools `aegis_enqueue`,
   `aegis_task_status`; `mcp_config_json`) + `AppBridge`/`SessionInfo`
   (`bridge.py`: pure Protocol the server consumes; `AegisApp` and
   `SessionManager` both implement it) + `AegisMCP` runtime
@@ -187,6 +189,20 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   YAML config at `.aegis.yaml` `groups:` + overlays under
   `.aegis/groups/<name>.yaml`; `aegis_group_spawn_mixed(preset=...)`
   resolves named presets.
+- `src/aegis/locks/` - inter-agent file-claims registry (seventh
+  coordination primitive; supersedes `bin/ws-lock` for aegis agents).
+  `models.py` (`Claim` + `claims_overlap` — prefix-containment ∪
+  set-intersection); `resolver.py` (`resolve_paths` — prefixes/files/glob
+  split, globs resolved to concrete paths at claim time); `registry.py`
+  (`ClaimRegistry` — grant rule, `release`, `reap`, `start` boot-replay,
+  and a `live_handles` filter that drops a dead session's claims);
+  `persistence.py` (JSONL log + boot replay under `.aegis/state/locks/`);
+  `bridge.py` (`_LocksBridge` + `make_locks_bridge`). Intents: `shared`
+  ("I'm working here, FYI" — shared∩shared coexist) vs `exclusive`
+  ("keep out" — denied on any overlap); a denied claim is not recorded.
+  Claims auto-reap on session close (the live-handle filter). MCP surface:
+  `aegis_claim` / `aegis_release` / `aegis_claims`. New store, coexists
+  with `bin/ws-lock`; per-host v1.
 - `src/aegis/tui/groups/` - TUI surface for groups. `state.py`
   (`GroupTabState` + aggregate-state emoji); `dashboard.py`
   (`GroupDashboard` widget with `render_dashboard` pure function —

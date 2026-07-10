@@ -62,6 +62,16 @@ async def test_boot_session_has_no_spawned_by():
 
 
 @pytest.mark.asyncio
+async def test_claim_reaped_when_session_closes():
+    m = make_mgr()
+    m._sync_spawn("default", handle="worker-1")
+    m.locks.claim("worker-1", ["src/x/"], intent="exclusive")
+    assert [c.handle for c in m.locks.active()] == ["worker-1"]
+    await m.close("worker-1")
+    assert m.locks.active() == []
+
+
+@pytest.mark.asyncio
 async def test_handoff_rejects_self_and_unknown():
     m = make_mgr()
     a = m._sync_spawn("default")
