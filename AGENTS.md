@@ -106,7 +106,9 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `tool_call_id` (works for all drivers).
 - `src/aegis/mcp/` - FastMCP server (`server.py`: BRIEFING/PRIMING,
   `aegis_meta` + slice-2 inter-agent tools `aegis_list_sessions`,
-  `aegis_list_agents`, `aegis_handoff` + queue-v1 tools `aegis_enqueue`,
+  `aegis_list_agents`, `aegis_handoff`, `aegis_spawn` (genuine
+  fire-and-forget peer spawn — new top-level agent + opening prompt +
+  `spawned_by` provenance) + queue-v1 tools `aegis_enqueue`,
   `aegis_task_status`; `mcp_config_json`) + `AppBridge`/`SessionInfo`
   (`bridge.py`: pure Protocol the server consumes; `AegisApp` and
   `SessionManager` both implement it) + `AegisMCP` runtime
