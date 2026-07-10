@@ -797,6 +797,72 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return {"handle": handle}
 
     @server.tool
+    async def aegis_claim(paths: list[str], from_handle: str,
+                          intent: str = "shared", desc: str = "") -> dict:
+        """Register that you're working on a set of files, and find out who
+        else is. Returns whether your claim was granted plus the overlapping
+        claims of other agents.
+
+        ``intent="shared"`` (default) means "I'm working here, FYI" — other
+        agents may hold overlapping shared claims too; you'll simply see each
+        other in ``overlaps``. ``intent="exclusive"`` means "keep out" and is
+        refused if it overlaps ANY existing claim.
+
+        Grant rule: a shared claim is denied only if it overlaps an EXCLUSIVE
+        claim; an exclusive claim is denied if it overlaps anything. A denied
+        claim (``granted: false``) is NOT recorded.
+
+        ``paths`` may list subtree prefixes (end with "/", e.g.
+        ``src/aegis/tui/``), concrete files, or globs (resolved to concrete
+        paths now). ``overlaps`` gives you the other agents' handles + intent.
+        **When you overlap someone, coordinate — don't barge in:**
+        ``aegis_handoff`` a holder to ask what they're doing, agree who owns
+        what, wait for them to ``aegis_release``, or narrow your claim. If your
+        exclusive claim was denied, resolve the conflict with the listed
+        holders first, then re-claim. Claims are held across turns until you
+        ``aegis_release`` (or your session ends). See the whole board with
+        ``aegis_claims``.
+
+        Args:
+            paths: prefixes / files / globs you intend to work on.
+            from_handle: your own aegis handle.
+            intent: "shared" (default) or "exclusive".
+            desc: short note on what you're doing (shown to others).
+        """
+        claim, granted, overlaps = bridge.locks.claim(
+            from_handle, paths, intent=intent, desc=desc)
+        return {
+            "claim_id": claim.claim_id,
+            "granted": granted,
+            "overlaps": [
+                {"handle": c.handle,
+                 "paths": sorted(set(c.prefixes) | set(c.files)),
+                 "intent": c.intent, "desc": c.desc}
+                for c in overlaps
+            ],
+        }
+
+    @server.tool
+    async def aegis_release(claim_id: str, from_handle: str) -> dict:
+        """Release a file claim you hold (idempotent; releasing a claim you
+        don't own is a no-op). Claims also auto-release when your session ends.
+        """
+        return {"released": bridge.locks.release(claim_id, from_handle)}
+
+    @server.tool
+    async def aegis_claims() -> list[dict]:
+        """The board: every active file claim across all agents — who is
+        working on what, with which intent. Use this to see where others are
+        before you claim, or to decide whom to coordinate with.
+        """
+        return [
+            {"claim_id": c.claim_id, "handle": c.handle,
+             "paths": sorted(set(c.prefixes) | set(c.files)),
+             "intent": c.intent, "desc": c.desc, "since": c.since}
+            for c in bridge.locks.active()
+        ]
+
+    @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,
                             callback: bool | None = None,
                             target: str | None = None) -> dict:

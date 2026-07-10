@@ -19,6 +19,7 @@ class FakeBridge:
     # aegis_handoff now delivers through it (T4.2), and the tests assert
     # against its pending buffer rather than a side-channel attribute.
     queue_manager = None
+    locks = None   # set to a real _LocksBridge by tests that exercise locks tools
 
     def __init__(self):
         from aegis.queue import InboxRouter
@@ -92,6 +93,7 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
         "aegis_spawn",
+        "aegis_claim", "aegis_release", "aegis_claims",
         "aegis_enqueue", "aegis_task_status",
         "aegis_run_workflow",
         "aegis_workflow_status", "aegis_workflow_cancel",
