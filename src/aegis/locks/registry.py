@@ -60,3 +60,10 @@ class ClaimRegistry:
             self._claims.pop(cid)
             if self._log is not None:
                 self._log.write(self._log.reaped(cid, handle, now_iso()))
+
+    def start(self) -> None:
+        """Boot replay: rebuild the live claim set from the log, then drop
+        any claim whose holder is no longer a live session."""
+        if self._log is not None:
+            self._claims = dict(self._log.replay())
+        self._prune_dead()
