@@ -311,11 +311,16 @@ class AcpSession(HarnessSession):
 
     def __init__(self, agent: Agent, cwd: str,
                  mcp_url: str, handle: str,
-                 *, resume_session_id: str | None = None) -> None:
+                 *, resume_session_id: str | None = None,
+                 extra_env: dict[str, str] | None = None) -> None:
         self._agent = agent
         self._cwd = cwd
         self._mcp_url = mcp_url
         self._handle = handle
+        # Driver-supplied env merged into the subprocess at spawn (e.g.
+        # LOVELAICE_MODEL / LOVELAICE_BASE_URL / OPENROUTER_API_KEY). Composes
+        # with pre-spawn-hook env; extra_env wins on key conflicts.
+        self._extra_env = dict(extra_env or {})
         # When set, start() calls load_session(session_id=...) instead of
         # new_session(...) so the agent re-attaches to an existing
         # conversation rather than starting fresh.
@@ -424,6 +429,9 @@ class AcpSession(HarnessSession):
 
     async def start(self) -> None:
         argv, env = await self._apply_pre_spawn_hooks()
+        if self._extra_env:
+            base = env if env is not None else dict(os.environ)
+            env = {**base, **self._extra_env}
         kw: dict = dict(
             cwd=self._cwd,
             stdin=asyncio.subprocess.PIPE,
@@ -659,9 +667,16 @@ class AcpDriver(HarnessDriver):
         # / queue routing; the CLI uses its own default config.
         return list(self.BASE_CMD)
 
+    def extra_env(self, agent: Agent) -> dict[str, str]:
+        """Provider env injected into the subprocess at spawn. Default none;
+        provider drivers (e.g. LovelaiceDriver) override to pass model /
+        endpoint / key through the environment."""
+        return {}
+
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> AcpSession:
-        s = self.SESSION_CLS(agent, cwd, mcp_url, handle)
+        s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
+                             extra_env=self.extra_env(agent))
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
@@ -671,6 +686,7 @@ class AcpDriver(HarnessDriver):
                mcp_url: str, handle: str,
                session_id: str) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
-                             resume_session_id=session_id)
+                             resume_session_id=session_id,
+                             extra_env=self.extra_env(agent))
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
