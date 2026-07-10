@@ -221,6 +221,29 @@ async def test_background_finish_sets_unseen_and_one_bell():
 
 
 @pytest.mark.asyncio
+async def test_background_finish_does_not_steal_focus():
+    slow = FakeSession(lambda t: [AssistantText("bg done"),
+                                  Result(duration_ms=1, is_error=False)])
+    app = _app(_factory(slow, FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")          # tab 1 now active
+        await pilot.pause()
+        p0 = app._panes[0]                   # background tab
+        p1 = app._panes[1]                   # visible/active tab
+        active_input = p1.query_one(Input)
+        active_input.focus()
+        await pilot.pause()
+        # background pane runs a turn to completion
+        p0.query_one(Input).value = "hi"
+        await p0.query_one(Input).action_submit()
+        await pilot.pause()
+        await pilot.pause()
+        # the just-finished background pane must NOT grab focus away
+        assert app.focused is not p0.query_one(Input)
+        assert app.focused is active_input
+
+
+@pytest.mark.asyncio
 async def test_ctrl_w_closes_last_tab_exits():
     f = _factory()
     app = AegisApp({"default": _agent()}, "default", f, FakeMCP())

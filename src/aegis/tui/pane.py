@@ -952,7 +952,11 @@ class ConversationPane(Widget):
             self._stop_indicator()
             inp = self.query_one(GrowingInput)
             inp.disabled = False
-            inp.focus()
+            # Only re-focus the input if this pane is the visible one.
+            # A background pane finishing its turn must not steal focus
+            # from whatever the user is typing into the active tab.
+            if self.display:
+                inp.focus()
         self.refresh_metrics()
 
     def interrupt(self) -> None:
