@@ -64,12 +64,20 @@ class OpenCode(_ProviderBase):
     permission: Permission = Permission.full
 
 
-Provider = ClaudeCode | GeminiCLI | OpenCode
+class Lovelaice(_ProviderBase):
+    name: Literal["lovelaice"] = "lovelaice"
+    permission: Permission = Permission.full
+    base_url: str | None = None
+    api_key_file: str | None = None
+
+
+Provider = ClaudeCode | GeminiCLI | OpenCode | Lovelaice
 
 _PROVIDERS_BY_NAME: dict[str, type[_ProviderBase]] = {
     "claude-code": ClaudeCode,
     "gemini":      GeminiCLI,
     "opencode":    OpenCode,
+    "lovelaice":   Lovelaice,
 }
 
 
