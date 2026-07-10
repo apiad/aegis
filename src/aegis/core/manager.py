@@ -62,6 +62,17 @@ class SessionManager:
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
 
+    def attach_locks_state(self, state_dir) -> None:
+        """Turn on JSONL persistence for the claims registry (serve/web).
+        Call once at boot before any claim exists; replays any prior log so
+        claims survive a `serve` restart, matching the TUI which persists by
+        default."""
+        from aegis.locks.bridge import make_locks_bridge
+        self.locks = make_locks_bridge(
+            live_handles=self.live_handles,
+            root_fn=lambda: self.state_root or Path.cwd(),
+            state_dir=state_dir)
+
     def attach_remotes(self, remotes: dict) -> None:
         self.remotes = remotes
 

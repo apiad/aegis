@@ -225,6 +225,9 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     # Persist every serve-spawned session to JSONL (same state_dir the
     # WebFrontend reads from), so seq is a real disk line index in web mode.
     mgr.attach_persistence(_state_dir(Path.cwd()))
+    # Persist the claims registry to the same state_dir the TUI uses, so
+    # aegis_claim survives a serve restart and both frontends share one store.
+    mgr.attach_locks_state(_state_dir(Path.cwd()))
     cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
                        notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)

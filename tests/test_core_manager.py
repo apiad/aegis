@@ -62,6 +62,15 @@ async def test_boot_session_has_no_spawned_by():
 
 
 @pytest.mark.asyncio
+async def test_attach_locks_state_enables_persistence(tmp_path):
+    m = make_mgr()
+    m.attach_locks_state(tmp_path)
+    m._sync_spawn("default", handle="w1")
+    m.locks.claim("w1", ["src/x/"], intent="exclusive")
+    assert (tmp_path / "locks" / "claims.jsonl").is_file()
+
+
+@pytest.mark.asyncio
 async def test_claim_reaped_when_session_closes():
     m = make_mgr()
     m._sync_spawn("default", handle="worker-1")
