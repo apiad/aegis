@@ -244,6 +244,23 @@ async def test_background_finish_does_not_steal_focus():
 
 
 @pytest.mark.asyncio
+async def test_appbridge_spawn_delivers_prompt_and_records_spawner():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        parent = app._panes[0]
+        handle = await app.spawn("default", handle="child-one",
+                                 opening_prompt="go audit",
+                                 spawned_by=parent.handle)
+        await pilot.pause()
+        await pilot.pause()
+        child = next(p for p in app._panes
+                     if getattr(p, "handle", None) == "child-one")
+        assert child._core._session.sent == ["go audit"]
+        info = next(i for i in app.list_sessions() if i.handle == handle)
+        assert info.spawned_by == parent.handle
+
+
+@pytest.mark.asyncio
 async def test_ctrl_w_closes_last_tab_exits():
     f = _factory()
     app = AegisApp({"default": _agent()}, "default", f, FakeMCP())

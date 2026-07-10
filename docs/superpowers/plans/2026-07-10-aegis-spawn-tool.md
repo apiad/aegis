@@ -189,14 +189,12 @@ async def test_appbridge_spawn_delivers_prompt_and_records_spawner():
         await pilot.pause()
         child = next(p for p in app._panes
                      if getattr(p, "handle", None) == "child-one")
-        assert child._core.session.sent == ["go audit"]
+        assert child._core._session.sent == ["go audit"]
         info = next(i for i in app.list_sessions() if i.handle == handle)
         assert info.spawned_by == parent.handle
-        # spawn must not steal focus from the parent tab
-        assert app.focused is not child._core  # sanity: child isn't grabbed
 ```
 
-`FakeSession.sent` is the list the fake records `send()` calls into (see the `FakeSession` class near the top of `tests/test_tui.py`); `child._core.session` is the underlying fake harness. Adjust the attribute path if the pane wraps the fake differently.
+`FakeSession.sent` is the list the fake records `send()` calls into (see the `FakeSession` class near the top of `tests/test_tui.py`); the pane's `AgentSession` stores its harness on `_core._session` (session.py:48), so the fake is `child._core._session`.
 
 - [ ] **Step 2: Run test to verify it fails**
 

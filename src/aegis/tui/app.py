@@ -796,7 +796,8 @@ class AegisApp(App):
         return [
             SessionInfo(handle=p.handle, agent_slug=p.agent_slug,
                         state=p.state.value, active=(p is active),
-                        unseen=p.unseen)
+                        unseen=p.unseen,
+                        spawned_by=getattr(p._core, "spawned_by", None))
             for p in self._panes
             if isinstance(p, ConversationPane)
         ]
@@ -840,10 +841,14 @@ class AegisApp(App):
         return f"delivered to {target_handle}"
 
     async def spawn(self, profile: str, *,
-                    handle: str | None = None) -> str:
+                    handle: str | None = None,
+                    opening_prompt: str | None = None,
+                    spawned_by: str | None = None) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
         sm_adapter = _SessionManagerAdapter(self)
-        sess = sm_adapter.spawn(profile, handle=handle)
+        sess = sm_adapter.spawn(profile, handle=handle,
+                                opening_prompt=opening_prompt,
+                                spawned_by=spawned_by)
         return sess.handle
 
     async def close(self, handle: str) -> None:
@@ -963,13 +968,15 @@ class _SessionManagerAdapter:
 
     def spawn(self, slug: str, *,
               opening_prompt: str | None = None,
-              handle: str | None = None):
+              handle: str | None = None,
+              spawned_by: str | None = None):
         agent = self._app._agents[slug]
         h = handle or generate_name({p.handle for p in self._app._panes})
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h), agent,
             slug, h, self._app._palette, digest=self._app.queue_digest,
             state_dir_path=self._app._state_dir)
+        pane._core.spawned_by = spawned_by
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
         # App.run_worker (not asyncio.create_task) so the mount task runs
