@@ -30,6 +30,9 @@ class PersistedClaimLog:
         return {"kind": "reaped", "claim_id": claim_id,
                 "handle": handle, "at": at}
 
+    def renamed(self, old: str, new: str, at: str) -> dict[str, Any]:
+        return {"kind": "renamed", "old": old, "new": new, "at": at}
+
     # --- io --------------------------------------------------------------
     def write(self, record: dict[str, Any]) -> None:
         with self.path().open("a", encoding="utf-8") as f:
@@ -41,7 +44,7 @@ class PersistedClaimLog:
         if not p.is_file():
             return []
         out: list[dict[str, Any]] = []
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8").splitlines():
             try:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
@@ -62,4 +65,10 @@ class PersistedClaimLog:
                     desc=rec.get("desc", ""), since=rec.get("since", ""))
             elif kind in ("released", "reaped"):
                 live.pop(rec.get("claim_id"), None)
+            elif kind == "renamed":
+                from dataclasses import replace
+                old, new = rec.get("old"), rec.get("new")
+                for cid, c in list(live.items()):
+                    if c.handle == old:
+                        live[cid] = replace(c, handle=new)
         return live

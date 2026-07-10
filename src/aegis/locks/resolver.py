@@ -14,8 +14,18 @@ def resolve_paths(paths: list[str],
         if not p:
             continue
         if any(ch in p for ch in _GLOB_CHARS):
-            for m in root.glob(p):
-                rel = m.relative_to(root).as_posix()
+            # Globs are agent-controllable; an absolute pattern (glob raises
+            # NotImplementedError) or a match escaping root (relative_to raises
+            # ValueError) must be skipped, not crash the claim.
+            try:
+                matches = list(root.glob(p))
+            except (NotImplementedError, ValueError):
+                continue
+            for m in matches:
+                try:
+                    rel = m.relative_to(root).as_posix()
+                except ValueError:
+                    continue
                 if m.is_dir():
                     prefixes.add(rel + "/")
                 else:

@@ -49,6 +49,19 @@ def test_release_is_idempotent_and_ownership_scoped():
     assert r.active() == []
 
 
+def test_rename_preserves_claims():
+    live = {"old-name"}
+    r = ClaimRegistry(live_handles=lambda: set(live))
+    c, g, _ = r.claim("old-name", ["src/x/"], [], intent="exclusive")
+    # session renames itself: live set flips, then registry.rename is called
+    live.discard("old-name")
+    live.add("new-name")
+    r.rename("old-name", "new-name")
+    active = r.active()
+    assert [c.handle for c in active] == ["new-name"]
+    assert active[0].claim_id == c.claim_id      # same claim, new owner
+
+
 def test_dead_holder_claim_is_reaped_from_active():
     live = {"a"}
     r = ClaimRegistry(live_handles=lambda: set(live))

@@ -54,6 +54,19 @@ class ClaimRegistry:
         self._prune_dead()
         return list(self._claims.values())
 
+    def rename(self, old: str, new: str) -> None:
+        """Rewrite the owner handle of every live claim held by ``old`` to
+        ``new``. Called when a session renames itself (``aegis_rename``) so
+        its claims are not orphaned and reaped as a dead holder. Operates on
+        the stored claims directly (not via liveness), so it is correct even
+        after the live-handle set has already flipped to ``new``."""
+        from dataclasses import replace
+        hit = [cid for cid, c in self._claims.items() if c.handle == old]
+        for cid in hit:
+            self._claims[cid] = replace(self._claims[cid], handle=new)
+        if hit and self._log is not None:
+            self._log.write(self._log.renamed(old, new, now_iso()))
+
     def reap(self, handle: str) -> None:
         gone = [cid for cid, c in self._claims.items() if c.handle == handle]
         for cid in gone:

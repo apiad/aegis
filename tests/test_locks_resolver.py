@@ -18,6 +18,14 @@ def test_glob_expands_to_concrete_files(tmp_path):
     assert prefixes == frozenset()
 
 
+def test_glob_escaping_root_does_not_crash(tmp_path):
+    # absolute and parent-escaping globs are agent-controllable input; they
+    # must not raise — just yield nothing usable.
+    prefixes, files = resolve_paths(["/etc/*", "../*"], tmp_path)
+    assert isinstance(files, frozenset)
+    assert isinstance(prefixes, frozenset)
+
+
 def test_blank_entries_ignored(tmp_path):
     prefixes, files = resolve_paths(["", "  ", "x.py"], tmp_path)
     assert files == frozenset({"x.py"})

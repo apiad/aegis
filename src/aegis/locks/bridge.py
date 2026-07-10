@@ -23,6 +23,9 @@ class _LocksBridge:
     def release(self, claim_id: str, handle: str) -> bool:
         return self.registry.release(claim_id, handle)
 
+    def rename(self, old: str, new: str) -> None:
+        self.registry.rename(old, new)
+
     def active(self):
         return self.registry.active()
 

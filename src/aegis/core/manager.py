@@ -241,6 +241,7 @@ class SessionManager:
             self._mru[idx] = new
         if self._inbox is not None:
             self._inbox.rename(old, new)
+        self.locks.rename(old, new)
         return {"ok": True, "old": old, "new": new}
 
     async def handoff(self, from_handle: str, target_handle: str,

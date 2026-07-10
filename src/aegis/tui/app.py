@@ -900,6 +900,7 @@ class AegisApp(App):
         pane.handle = new
         pane._core.handle = new
         self.inbox_router.rename(old, new)
+        self.locks.rename(old, new)
         self._refresh_tabbar()
         return {"ok": True, "old": old, "new": new}
 

@@ -71,6 +71,16 @@ async def test_attach_locks_state_enables_persistence(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_claim_survives_session_rename():
+    m = make_mgr()
+    m._sync_spawn("default", handle="old-name")
+    m.locks.claim("old-name", ["src/x/"], intent="exclusive")
+    await m.rename_handle("old-name", "new-name")
+    active = m.locks.active()
+    assert [c.handle for c in active] == ["new-name"]
+
+
+@pytest.mark.asyncio
 async def test_claim_reaped_when_session_closes():
     m = make_mgr()
     m._sync_spawn("default", handle="worker-1")

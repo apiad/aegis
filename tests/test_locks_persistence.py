@@ -30,6 +30,18 @@ def test_replay_reaps_dead_holder(tmp_path):
     assert r2.active() == []
 
 
+def test_rename_survives_replay(tmp_path):
+    log = PersistedClaimLog(tmp_path)
+    r = ClaimRegistry(live_handles=lambda: {"old-name"}, log=log)
+    r.claim("old-name", ["src/x/"], [], intent="exclusive")
+    r.rename("old-name", "new-name")
+
+    log2 = PersistedClaimLog(tmp_path)
+    r2 = ClaimRegistry(live_handles=lambda: {"new-name"}, log=log2)
+    r2.start()
+    assert [c.handle for c in r2.active()] == ["new-name"]
+
+
 def test_torn_trailing_line_tolerated(tmp_path):
     log = PersistedClaimLog(tmp_path)
     r = ClaimRegistry(live_handles=lambda: {"a"}, log=log)
