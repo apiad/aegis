@@ -110,7 +110,8 @@ class SessionManager:
 
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,
-                    handle: str | None = None) -> AgentSession:
+                    handle: str | None = None,
+                    spawned_by: str | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
@@ -121,6 +122,7 @@ class SessionManager:
                          agent, slug, h,
                          inbox=self._inbox,
                          opening_prompt=opening_prompt)
+        s.spawned_by = spawned_by
         if self._inbox is not None:
             self._inbox.bind_session(h, s)
         self._sessions.append(s)
@@ -133,9 +135,13 @@ class SessionManager:
         return s
 
     async def spawn(self, profile: str, *,
-                    handle: str | None = None) -> str:
+                    handle: str | None = None,
+                    opening_prompt: str | None = None,
+                    spawned_by: str | None = None) -> str:
         """AppBridge-shaped async spawn. Returns the new handle."""
-        sess = self._sync_spawn(profile, handle=handle)
+        sess = self._sync_spawn(profile, handle=handle,
+                                opening_prompt=opening_prompt,
+                                spawned_by=spawned_by)
         return sess.handle
 
     def _touch(self, handle: str) -> None:
@@ -176,7 +182,8 @@ class SessionManager:
         return [
             SessionInfo(handle=s.handle, agent_slug=s.agent_slug,
                         state=s.state.value, active=(s.handle == top),
-                        unseen=False)
+                        unseen=False,
+                        spawned_by=getattr(s, "spawned_by", None))
             for s in self._sessions
         ]
 

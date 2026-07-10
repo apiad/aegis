@@ -11,6 +11,7 @@ class SessionInfo:
     state: str          # AgentState.value: "ready" | "working" | "error"
     active: bool
     unseen: bool
+    spawned_by: str | None = None
 
 
 class GroupsBridge(Protocol):
@@ -64,7 +65,9 @@ class AppBridge(Protocol):
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str: ...
     async def spawn(self, profile: str, *,
-                    handle: str | None = None) -> str: ...
+                    handle: str | None = None,
+                    opening_prompt: str | None = None,
+                    spawned_by: str | None = None) -> str: ...
     async def close(self, handle: str) -> None: ...
     async def rename_handle(self, old: str, new: str) -> dict: ...
 

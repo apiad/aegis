@@ -42,6 +42,26 @@ async def test_spawn_list_close():
 
 
 @pytest.mark.asyncio
+async def test_spawn_records_spawned_by_and_surfaces_it():
+    m = make_mgr()
+    h = await m.spawn("default", handle="child-one",
+                      opening_prompt="do the thing", spawned_by="parent-x")
+    sess = m.get(h)
+    assert sess is not None
+    assert sess.spawned_by == "parent-x"
+    info = next(i for i in m.list_sessions() if i.handle == h)
+    assert info.spawned_by == "parent-x"
+
+
+@pytest.mark.asyncio
+async def test_boot_session_has_no_spawned_by():
+    m = make_mgr()
+    s = m._sync_spawn("default")
+    info = next(i for i in m.list_sessions() if i.handle == s.handle)
+    assert info.spawned_by is None
+
+
+@pytest.mark.asyncio
 async def test_handoff_rejects_self_and_unknown():
     m = make_mgr()
     a = m._sync_spawn("default")
