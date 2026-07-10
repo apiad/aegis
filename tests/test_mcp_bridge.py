@@ -16,6 +16,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        locks = object()
         remotes = {}
         scheduler = None
         state_root = object()
@@ -43,6 +44,7 @@ def test_appbridge_requires_full_surface():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        locks = object()
         remotes = {}
         scheduler = None
         state_root = object()
@@ -64,6 +66,7 @@ def test_appbridge_requires_full_surface():
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
+        locks = object()
         remotes = {}
         scheduler = None
         state_root = object()
