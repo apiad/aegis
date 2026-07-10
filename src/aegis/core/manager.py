@@ -53,6 +53,11 @@ class SessionManager:
         from aegis.groups.bridge import make_groups_bridge
         self.groups = make_groups_bridge(
             session_manager=self, inbox_router=inbox)
+        from aegis.locks.bridge import make_locks_bridge
+        self.locks = make_locks_bridge(
+            live_handles=self.live_handles,
+            root_fn=lambda: self.state_root or Path.cwd(),
+            state_dir=None)  # in-memory v1; live-handle filter reaps dead holders
 
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm

@@ -53,6 +53,7 @@ class AppBridge(Protocol):
     canvas_manager: object       # CanvasManager
     terminal_manager: object     # TerminalManager
     groups: object               # GroupsBridge
+    locks: object                # _LocksBridge
     remotes: object              # dict[str, RemoteSpec]; empty when none configured
     scheduler: object            # Scheduler | None
     state_root: object           # Path — workspace root

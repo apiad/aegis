@@ -242,6 +242,12 @@ class AegisApp(App):
         self.groups = make_groups_bridge(
             session_manager=_GroupSessionAdapter(self),
             inbox_router=self.inbox_router)
+        from aegis.locks.bridge import make_locks_bridge
+        self.locks = make_locks_bridge(
+            live_handles=lambda: {p.handle for p in self._panes
+                                  if isinstance(p, ConversationPane)},
+            root_fn=lambda: self.state_root or Path.cwd(),
+            state_dir=self._state_dir)
         self.remotes: dict = {}  # populated later from loaded YAML
         # Scheduler-context stubs to satisfy AppBridge. The TUI does not
         # run a scheduler; the aegis_schedule_* MCP tools will gracefully
