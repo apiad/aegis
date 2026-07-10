@@ -771,6 +771,32 @@ def build_server(bridge: AppBridge) -> FastMCP:
             bridge, old_handle=old_handle, new_handle=new_handle)
 
     @server.tool
+    async def aegis_spawn(agent: str, prompt: str, from_handle: str,
+                          slug: str | None = None) -> dict:
+        """Create a NEW INDEPENDENT top-level agent and hand it an opening
+        prompt. Unlike a harness subagent (the ``Task`` tool), this agent is a
+        real peer: it gets its own handle and session, appears as its own tab,
+        and keeps running after you finish — you are only its midwife, not its
+        owner.
+
+        Fire-and-forget: returns immediately with the new handle and does NOT
+        wait for or collect the agent's output. To get results back, either
+        tell the new agent *in its prompt* to ``aegis_handoff`` you when done,
+        or ``aegis_handoff`` it yourself later. ``aegis_list_sessions`` shows
+        agents you spawned (they carry ``spawned_by``).
+
+        Args:
+            agent: profile name from the loaded .aegis.yaml ``agents:``.
+            prompt: delivered as the new agent's first user-message turn.
+            from_handle: your own aegis handle (recorded as ``spawned_by``).
+            slug: desired handle for the new agent; auto-generated if omitted.
+        """
+        handle = await bridge.spawn(agent, handle=slug,
+                                    opening_prompt=prompt,
+                                    spawned_by=from_handle)
+        return {"handle": handle}
+
+    @server.tool
     async def aegis_enqueue(queue: str, payload: str, from_handle: str,
                             callback: bool | None = None,
                             target: str | None = None) -> dict:

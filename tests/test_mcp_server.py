@@ -40,8 +40,12 @@ class FakeBridge:
         # protocol surface for back-compat with any external caller.
         return f"ignored: {a}->{b}"
 
-    async def spawn(self, profile, *, handle=None):
-        return handle or "stub-handle"
+    async def spawn(self, profile, *, handle=None,
+                    opening_prompt=None, spawned_by=None):
+        self.spawned = {"profile": profile, "handle": handle,
+                        "opening_prompt": opening_prompt,
+                        "spawned_by": spawned_by}
+        return handle or "auto-handle"
 
     async def close(self, handle):
         return None
@@ -87,6 +91,7 @@ def test_build_server_registers_all_aegis_tools():
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
+        "aegis_spawn",
         "aegis_enqueue", "aegis_task_status",
         "aegis_run_workflow",
         "aegis_workflow_status", "aegis_workflow_cancel",
@@ -116,6 +121,28 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_config_add_plugin_dir", "aegis_config_remove_plugin_dir",
         "aegis_config_set_schedule_enabled",
         "aegis_config_toggle_schedule_enabled"}
+
+
+@pytest.mark.asyncio
+async def test_aegis_spawn_creates_peer():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_spawn", agent="default",
+                      prompt="do the thing", from_handle="parent-x",
+                      slug="child-one")
+    assert out == {"handle": "child-one"}
+    assert br.spawned == {"profile": "default", "handle": "child-one",
+                          "opening_prompt": "do the thing",
+                          "spawned_by": "parent-x"}
+
+
+@pytest.mark.asyncio
+async def test_aegis_spawn_auto_handle():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_spawn", agent="default",
+                      prompt="hi", from_handle="parent-x")
+    assert out == {"handle": "auto-handle"}
 
 
 @pytest.mark.asyncio
