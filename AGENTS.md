@@ -29,7 +29,7 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
 harness subprocess is rooted there unless `--cwd` overrides.
 `.aegis.yaml` is the single config substrate — it carries `agents:`,
-`queues:`, `telegram:`, `schedules:`, `remotes:`, `groups:`, and
+`queues:`, `schedules:`, `remotes:`, `groups:`, `web:`, and
 `plugin_dirs:` sections. Drop-in overlays live under
 `.aegis/{agents,queues,schedules,groups}/*.yaml` and merge fail-loud
 with inline entries. `@workflow`-decorated functions are registered by
@@ -43,7 +43,8 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 ## Layout
 
 - `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis serve`,
-  `aegis workflow`, `aegis budget`, `aegis schedule`)
+  `aegis web`, `aegis workflow`, `aegis budget`, `aegis schedule`,
+  `aegis models`, `aegis plugin`)
 - `src/aegis/cli_config.py` - the `aegis config ...` subapp; all writing
   verbs route through `aegis.config.edit` helpers.
 - `src/aegis/tui/config_panel.py` - the TUI ConfigPanel tab + AddAgentModal;
@@ -83,16 +84,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (turn loop, metrics, state, observer callbacks — `session.py`) and
   `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over
   many AgentSessions — `manager.py`). The TUI's ConversationPane and the
-  Telegram frontend both delegate to these.
-- `src/aegis/telegram/` - Telegram bot front-end: `BotClient` (long-poll
-  Bot API with exponential backoff + `retry_after` handling — `bot.py`),
-  pure formatting helpers (`format.py`: `escape_md`, `status_line`,
-  `chunk`), and `TelegramFrontend` (`/new /close /interrupt /agents
-  /sessions /<handle> /help`, bare-text routing with auto_prompt suffix,
-  mid-turn status refresher — `frontend.py`). Activated by `aegis serve`
-  when the `telegram:` block (`token` + `chat_id`) is configured in
-  `.aegis.yaml` (token also accepted via `AEGIS_TELEGRAM_TOKEN`, which
-  wins over the YAML value).
+  web frontend both delegate to these.
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker
@@ -214,8 +206,10 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   passed into `render_event`/`dot`/widgets) — not a module global; the
   app attribute is `palette` (not `colors`) to avoid shadowing Textual's
   `App.colors`
-- `docs/superpowers/{specs,plans}/*.html` - specs & plans are self-contained
-  HTML (house format), not Markdown
+- `docs/superpowers/{specs,plans}/*.md` - specs & plans are **Markdown**
+  (canonical, source of truth). A handful of older Phase-2 docs remain as
+  `.html`; Markdown is the default for all new specs/plans and the only
+  format that propagates across hosts.
 
 ## Tests
 
@@ -230,6 +224,13 @@ filter to include the live round-trip tests against the real CLI subprocesses
 The `live` marker is registered in `pyproject.toml`; do not use
 `-k "not live"` — it matches `live` as a substring and silently eats
 unrelated names (e.g. anything containing `deliver`).
+
+On zion the full suite intermittently flakes 1–2 TUI/watchdog tests
+(inotify watch limit) — non-deterministic, and they pass in isolation.
+Prefer `uv run python -m pytest`; when a TUI test fails in a full run,
+re-run it alone (`uv run python -m pytest <path>::<test> -v`) before
+treating it as a real failure. Gate on a blast-radius subset, not the
+full suite, during iteration.
 
 Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 `claude` stream-json output, then sanitizes identifiers/paths before commit).
