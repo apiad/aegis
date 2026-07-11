@@ -52,7 +52,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "harpio", marker = "extra == 'voice'", specifier = ">=0.10.0" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "lovelaice", editable = "../lovelaice" },
+    { name = "lovelaice", specifier = ">=2.7,<3" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "ptyprocess", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
@@ -239,7 +239,7 @@ wheels = [
 [[package]]
 name = "beaver-db"
 version = "2.0.0"
-source = { editable = "../beaver" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "numpy" },
@@ -247,30 +247,9 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.21.0" },
-    { name = "beaver-db", extras = ["remote"], marker = "extra == 'full'" },
-    { name = "beaver-db", extras = ["security"], marker = "extra == 'full'" },
-    { name = "cryptography", marker = "extra == 'security'", specifier = ">=46.0.3" },
-    { name = "fastapi", extras = ["standard"], marker = "extra == 'remote'", specifier = ">=0.118.0" },
-    { name = "httpx", marker = "extra == 'remote'", specifier = ">=0.27.0" },
-    { name = "numpy", specifier = ">=2.3.4" },
-    { name = "pydantic", specifier = ">=2.12.3" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "typer", specifier = ">=0.20.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=25.11.0" },
-    { name = "mypy", specifier = ">=1.19.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
-    { name = "pytest-asyncio", specifier = ">=1.2.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-timeout", specifier = ">=2.4.0" },
-    { name = "textual", specifier = ">=6.1.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/51/16/099f7cb1dde8be17c77d1cfbaa1c78673826fcdf4b2d4ecd6700a9e0073f/beaver_db-2.0.0.tar.gz", hash = "sha256:1bb152a6b47b9be6a7c4985588c775d632afb20f00e41993b700010425571331", size = 1275834 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/ec/f1b9e07b24c83c437a411858d1c558819fe1e50df985de8e5dc06888d7e8/beaver_db-2.0.0-py3-none-any.whl", hash = "sha256:2050ee98fe5325daedbabe199acdccfdd8bd62611a05fd4196a843464df97a6d", size = 70095 },
 ]
 
 [[package]]
@@ -1124,7 +1103,7 @@ wheels = [
 [[package]]
 name = "lovelaice"
 version = "2.7.0"
-source = { editable = "../lovelaice" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "beaver-db" },
@@ -1138,27 +1117,9 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = ">=0.10,<1" },
-    { name = "beaver-db", editable = "../beaver" },
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "lingo-ai", specifier = ">=2.1.0" },
-    { name = "markdownify", specifier = ">=0.13" },
-    { name = "mcp", specifier = ">=1.2" },
-    { name = "pathspec", specifier = ">=0.12" },
-    { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "readabilipy", specifier = ">=0.3" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "typer", specifier = ">=0.21.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-mock", specifier = ">=3.14" },
+sdist = { url = "https://files.pythonhosted.org/packages/cf/89/7e2bb9187414c4d0ad0c97ec43ae2b6f484645daa9bd8a42d28ab0a4c6bf/lovelaice-2.7.0.tar.gz", hash = "sha256:b2c418743f16843a2e438292d24a23265c88f8ad6ef49f6e4e5cfaae968c180e", size = 183151 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/b4/77ef4c8fd26e0e8de6874cb69969c5bf982245b5558a9b30676902cd1427/lovelaice-2.7.0-py3-none-any.whl", hash = "sha256:8716225902a3d6567a71ca12c3c0ea6ef4e97686f732e437cb703fa38e5ae55e", size = 50025 },
 ]
 
 [[package]]

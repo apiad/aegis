@@ -104,9 +104,6 @@ exclude_lines = [
     "if __name__ == .__main__.:",
 ]
 
-[tool.uv.sources]
-lovelaice = { path = "../lovelaice", editable = true }
-
 [dependency-groups]
 dev = [
     "ruff>=0.15.9",
