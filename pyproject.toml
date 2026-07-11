@@ -31,6 +31,7 @@ dependencies = [
     "croniter>=2.0",
     "fastmcp>=3.2.0",
     "httpx>=0.28",
+    "lovelaice>=2.7,<3",
     "markdown-it-py>=3.0",
     "ptyprocess>=0.7.0",
     "pydantic>=2.12.5",
@@ -102,6 +103,9 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
+
+[tool.uv.sources]
+lovelaice = { path = "../lovelaice", editable = true }
 
 [dependency-groups]
 dev = [
