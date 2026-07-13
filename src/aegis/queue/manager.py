@@ -272,6 +272,56 @@ class QueueManager:
         return {"ok": True, "status": "cancelled",
                 "was": ("pending" if t.status == "pending" else "in_flight")}
 
+    async def run(self, queue: str, payload: str, *,
+                  enqueued_by: str,
+                  timeout: float | None = None) -> dict:
+        """Enqueue a task and await its terminal result — the synchronous
+        shape of ``enqueue`` + wait, for callers that want the result
+        returned directly rather than as an inbox callback.
+
+        Composes on the existing primitives: enqueues with ``callback=False``
+        (the result is the return value, not an inbox message) and resolves
+        on a one-shot completion subscription — no polling. Returns
+        ``{task_id, status, result?, error?}`` where status is
+        ``completed`` / ``failed``. Unknown queue → ``{"error": …}``.
+
+        With ``timeout`` set, gives up after that many seconds and returns
+        ``{task_id, status: "timeout"}`` — the worker keeps running (use
+        ``cancel(task_id)`` to stop it).
+        """
+        if queue not in self._queues:
+            return {"error": f"unknown queue {queue!r}; known: {self.list_queues()}"}
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future = loop.create_future()
+        target = {"id": None}
+
+        def _obs(ev: QueueEvent) -> None:
+            if (isinstance(ev, QueueCompleted)
+                    and ev.task_id == target["id"]
+                    and not fut.done()):
+                fut.set_result(ev)
+
+        unsub = self.subscribe(_obs)
+        try:
+            result = self.enqueue(queue, payload,
+                                  enqueued_by=enqueued_by, callback=False)
+            if isinstance(result, dict):   # budget rejection etc.
+                return result
+            tid, _pos = result
+            target["id"] = tid
+            try:
+                if timeout is not None:
+                    ev = await asyncio.wait_for(fut, timeout)
+                else:
+                    ev = await fut
+            except asyncio.TimeoutError:
+                return {"task_id": tid, "status": "timeout"}
+            status = "completed" if ev.outcome == "completed" else "failed"
+            return {"task_id": tid, "status": status,
+                    "result": ev.result, "error": ev.error}
+        finally:
+            unsub()
+
     def worker_label(self, handle: str) -> str | None:
         """``<queue>#<short-id>`` for a currently in-flight worker handle,
         else None. The TUI suffixes worker tabs with this while they run

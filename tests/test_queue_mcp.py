@@ -119,3 +119,10 @@ async def test_aegis_cancel_pending_and_unknown():
     assert qm.status(tid)["status"] == "cancelled"
     miss = await _call(srv, "aegis_cancel", task_id="nope")
     assert miss["ok"] is False and "unknown" in miss["error"]
+
+
+async def test_aegis_delegate_unknown_queue():
+    srv, _qm = _build(cap=0)
+    out = await _call(srv, "aegis_delegate",
+                      queue="ghost", payload="x", from_handle="h")
+    assert "error" in out and "ghost" in out["error"]

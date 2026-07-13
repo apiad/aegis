@@ -326,6 +326,51 @@ async def test_cancel_inflight_frees_slot_for_next():
     assert sm.spawns[1][2] == "b"   # opening_prompt of the second spawn
 
 
+async def test_run_awaits_result_and_returns_it():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="the answer"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    res = await qm.run("impl", "go", enqueued_by=sender_agent("boss"))
+    assert res["status"] == "completed"
+    assert "the answer" in res["result"]
+    # sync shape returns the result directly — no inbox callback spam
+    assert inbox.pending("boss") == []
+
+
+async def test_run_failed_worker_returns_failed():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
+    res = await qm.run("impl", "go", enqueued_by=sender_agent("boss"))
+    assert res["status"] == "failed"
+
+
+async def test_run_unknown_queue_returns_error():
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q()}, sm, inbox)
+    res = await qm.run("ghost", "x", enqueued_by=sender_agent("p"))
+    assert "error" in res and "ghost" in res["error"]
+
+
+async def test_run_timeout_leaves_worker_running():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", HANG)
+    res = await qm.run("impl", "go",
+                       enqueued_by=sender_agent("p"), timeout=0.05)
+    assert res["status"] == "timeout"
+    assert res["task_id"]
+    # worker keeps running (delegate gave up waiting, didn't kill it)
+    assert qm.status(res["task_id"])["status"] == "dispatched"
+
+
 async def test_state_dir_none_writes_nothing(tmp_path):
     # Sanity: VS1 in-memory mode unchanged when state_dir is omitted.
     sm = StubSessionManager(); inbox = InboxRouter()

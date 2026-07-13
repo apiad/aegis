@@ -95,6 +95,7 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_spawn",
         "aegis_claim", "aegis_release", "aegis_claims",
         "aegis_enqueue", "aegis_task_status",
+        "aegis_cancel", "aegis_delegate",
         "aegis_run_workflow",
         "aegis_workflow_status", "aegis_workflow_cancel",
         "aegis_canvas_open", "aegis_canvas_read",

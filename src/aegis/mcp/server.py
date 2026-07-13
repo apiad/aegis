@@ -166,6 +166,9 @@ BRIEFING = (
     "task. Use when callback was false or you want to poll mid-flight.\n"
     "  - aegis_cancel(task_id) : cancel a task — drop it if still pending, "
     "or interrupt + close its worker if in-flight. Idempotent.\n"
+    "  - aegis_delegate(queue, payload, from_handle, timeout_s?) : the "
+    "synchronous shape — enqueue and block until the worker finishes, "
+    "returning its result directly (no inbox callback).\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -1621,6 +1624,31 @@ def build_server(bridge: AppBridge) -> FastMCP:
         Unknown task_id returns {"ok": false, "error": …}.
         """
         return await bridge.queue_manager.cancel(task_id)
+
+    @server.tool
+    async def aegis_delegate(queue: str, payload: str, from_handle: str,
+                             timeout_s: float | None = None) -> dict:
+        """Delegate a task and block until it finishes, returning the
+        worker's result directly — the synchronous shape of
+        aegis_enqueue + await-callback in one call.
+
+        The substrate spawns a worker of the queue's configured agent
+        profile, runs ``payload`` as its opening prompt, and returns
+        ``{task_id, status, result?, error?}`` once the worker terminates
+        (``status`` is ``completed`` or ``failed``). No inbox callback is
+        delivered — the result is the return value. This blocks your MCP
+        turn until the worker is done; the worker is an independent session,
+        so it cannot deadlock against your own inbox.
+
+        ``timeout_s`` (optional): give up waiting after this many seconds
+        and return ``{task_id, status: "timeout"}``; the worker keeps
+        running — use aegis_cancel(task_id) to stop it. Unknown queue
+        returns ``{"error": …}``.
+        """
+        from aegis.queue import sender_agent
+        return await bridge.queue_manager.run(
+            queue, payload,
+            enqueued_by=sender_agent(from_handle), timeout=timeout_s)
 
     # Register user-declared @tool functions.
     from aegis.tools import _REGISTRY as _TOOL_REG
