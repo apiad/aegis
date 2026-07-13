@@ -25,6 +25,15 @@ def test_acp_session_accepts_extra_env():
     assert s._extra_env == {"LOVELAICE_MODEL": "x"}
 
 
+def test_acp_session_exposes_latched_session_id():
+    # session_id must be retrievable so callers can pass it to resume().
+    from aegis.drivers.acp import AcpSession
+    s = AcpSession(agent=None, cwd="/tmp", mcp_url="", handle="h")
+    assert s.session_id is None
+    s._session_id = "abc123"
+    assert s.session_id == "abc123"
+
+
 def test_driver_registered():
     from aegis.drivers import get_driver
     from aegis.drivers.lovelaice import LovelaiceDriver

@@ -621,6 +621,12 @@ class AcpSession(HarnessSession):
         # End-of-turn sentinel so events() returns.
         self._queue.put_nowait(None)
 
+    @property
+    def session_id(self) -> str | None:
+        """The ACP session id latched at start(). Needed so callers can pass
+        it back to the driver's resume() to reload the conversation."""
+        return self._session_id
+
     async def events(self) -> AsyncIterator[Event]:
         while True:
             ev = await self._queue.get()
