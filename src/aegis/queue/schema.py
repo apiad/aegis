@@ -70,7 +70,8 @@ class Task:
     enqueued_by: str       # SenderTag
     enqueued_at: str       # iso8601
     callback: bool
-    status: str            # "pending" | "dispatched" | "completed" | "failed"
+    status: str            # "pending" | "dispatched" | "completed"
+                           #   | "failed" | "cancelled"
     worker_handle: str | None = None
     result: str | None = None
     error: str | None = None

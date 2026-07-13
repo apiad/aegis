@@ -220,6 +220,58 @@ class QueueManager:
             "queued_position": self._position_of(t),
         }
 
+    async def cancel(self, task_id: str) -> dict:
+        """Cancel a task. Pending → dropped from the FIFO; in-flight → the
+        worker is interrupted and closed. Marks the task ``cancelled`` and,
+        if it had a callback, delivers one error notice to the producer so an
+        awaiting caller unblocks. Idempotent for already-terminal tasks."""
+        t = self._all.get(task_id)
+        if t is None:
+            return {"ok": False, "error": f"unknown task {task_id!r}"}
+        if t.status in ("completed", "failed", "cancelled"):
+            return {"ok": True, "status": t.status, "note": "already terminal"}
+
+        worker_handle = t.worker_handle
+        if t.status == "pending":
+            self._pending[t.queue] = [
+                x for x in self._pending[t.queue] if x.id != task_id]
+        else:  # dispatched / in-flight
+            # Pop from _workers first so any finalize the close triggers
+            # early-returns and can't overwrite the cancelled status.
+            self._workers.pop(worker_handle, None)
+            self._inflight[t.queue] = [
+                x for x in self._inflight[t.queue] if x.id != task_id]
+
+        cancelled = Task(**{**t.__dict__,
+                            "status": "cancelled",
+                            "completed_at": self._now()})
+        self._all[task_id] = cancelled
+        self._log(t.queue, {
+            "event": "failed", "task_id": task_id,
+            "result": None, "error": "cancelled",
+            "completed_at": cancelled.completed_at, "cost": {}})
+        self._emit(QueueCompleted(
+            task_id=task_id, queue=t.queue, outcome="interrupted",
+            result=None, error="cancelled",
+            completed_at=cancelled.completed_at))
+        if t.callback:
+            msg = InboxMessage(
+                sender=sender_queue(t.queue),
+                timestamp=self._now(),
+                body="cancelled",
+                task_id=task_id,
+                status="error")
+            await self._inbox.deliver(_handle_of(t.enqueued_by), msg)
+
+        if worker_handle is not None and t.status != "pending":
+            with contextlib.suppress(Exception):
+                await self._sm.interrupt(worker_handle)
+            with contextlib.suppress(Exception):
+                await self._sm.close(worker_handle)
+            self._try_dispatch(t.queue)
+        return {"ok": True, "status": "cancelled",
+                "was": ("pending" if t.status == "pending" else "in_flight")}
+
     def _position_of(self, t: Task) -> int | None:
         if t.status != "pending":
             return None

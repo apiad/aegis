@@ -108,3 +108,14 @@ async def test_aegis_enqueue_default_callback_is_true():
                       from_handle="h")    # no callback kwarg
     t = next(t for t in qm._all.values() if t.id == out["task_id"])
     assert t.callback is True
+
+
+async def test_aegis_cancel_pending_and_unknown():
+    srv, qm = _build(cap=0)   # cap=0 → task stays pending
+    tid, _ = qm.enqueue("impl", "x",
+                        enqueued_by=sender_agent("p"), callback=False)
+    out = await _call(srv, "aegis_cancel", task_id=tid)
+    assert out["ok"] is True and out["status"] == "cancelled"
+    assert qm.status(tid)["status"] == "cancelled"
+    miss = await _call(srv, "aegis_cancel", task_id="nope")
+    assert miss["ok"] is False and "unknown" in miss["error"]

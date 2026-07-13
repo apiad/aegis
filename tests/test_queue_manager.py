@@ -84,6 +84,13 @@ class StubSessionManager:
         self.closed.append(handle)
         self._sessions = [s for s in self._sessions if s.handle != handle]
 
+    async def interrupt(self, handle: str) -> None:
+        self.interrupted = getattr(self, "interrupted", [])
+        self.interrupted.append(handle)
+        s = next((s for s in self._sessions if s.handle == handle), None)
+        if s is not None:
+            await s.interrupt()
+
 
 def _q(name="impl", profile="claude-impl", cap=2,
        provider="", model=""):
@@ -203,6 +210,102 @@ async def test_queue_manager_persists_lifecycle(tmp_path):
     assert events == ["enqueued", "dispatched", "completed"]
     assert log[0]["task_id"] == tid
     assert log[2]["result"] == "r"
+
+
+async def test_cancel_pending_drops_from_fifo():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: f"w{len(used) + 1}")
+    sm.script("w1", HANG)  # first worker occupies the only slot
+    qm.enqueue("impl", "a", enqueued_by=sender_agent("p"), callback=False)
+    tid2, _ = qm.enqueue("impl", "b",
+                         enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.02)
+    # b is still pending (cap=1) — cancel it
+    res = await qm.cancel(tid2)
+    assert res["ok"] and res["status"] == "cancelled"
+    assert qm.status(tid2)["status"] == "cancelled"
+    # b never spawned
+    assert [h for _s, h, _p, _ss in sm.spawns] == ["w1"]
+
+
+async def test_cancel_pending_notifies_producer_when_callback():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: f"w{len(used) + 1}")
+    sm.script("w1", HANG)
+    qm.enqueue("impl", "a", enqueued_by=sender_agent("p"), callback=False)
+    tid2, _ = qm.enqueue("impl", "b",
+                         enqueued_by=sender_agent("boss"), callback=True)
+    await asyncio.sleep(0.02)
+    await qm.cancel(tid2)
+    pending = inbox.pending("boss")
+    assert len(pending) == 1 and pending[0].status == "error"
+    assert pending[0].task_id == tid2
+
+
+async def test_cancel_inflight_interrupts_and_closes_worker():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", HANG)  # in-flight, never finishes on its own
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("boss"), callback=True)
+    await asyncio.sleep(0.02)
+    assert qm.status(tid)["status"] == "dispatched"
+    res = await qm.cancel(tid)
+    assert res["ok"] and res["status"] == "cancelled"
+    assert "w1" in getattr(sm, "interrupted", [])
+    assert "w1" in sm.closed
+    # the pre-empted finalizer must not overwrite the cancelled status
+    await asyncio.sleep(0.02)
+    assert qm.status(tid)["status"] == "cancelled"
+    # producer got exactly one cancellation notice (no double callback)
+    pending = inbox.pending("boss")
+    assert len(pending) == 1 and pending[0].status == "error"
+
+
+async def test_cancel_terminal_is_idempotent():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", [AssistantText(text="done"),
+                     Result(duration_ms=1, is_error=False, usage=None)])
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.05)
+    assert qm.status(tid)["status"] == "completed"
+    res = await qm.cancel(tid)
+    assert res["ok"] and res["status"] == "completed"
+
+
+async def test_cancel_unknown_task():
+    sm = StubSessionManager(); inbox = InboxRouter()
+    qm = QueueManager({"impl": _q()}, sm, inbox)
+    res = await qm.cancel("nope")
+    assert res["ok"] is False and "unknown" in res["error"]
+
+
+async def test_cancel_inflight_frees_slot_for_next():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: f"w{len(used) + 1}")
+    sm.script("w1", HANG)
+    tid1, _ = qm.enqueue("impl", "a",
+                         enqueued_by=sender_agent("p"), callback=False)
+    qm.enqueue("impl", "b", enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.02)
+    assert [h for _s, h, _p, _ss in sm.spawns] == ["w1"]
+    await qm.cancel(tid1)          # free the only slot
+    await asyncio.sleep(0.02)
+    # b now dispatches into the freed slot (a second spawn happened)
+    assert len(sm.spawns) == 2
+    assert sm.spawns[1][2] == "b"   # opening_prompt of the second spawn
 
 
 async def test_state_dir_none_writes_nothing(tmp_path):

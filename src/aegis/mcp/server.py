@@ -164,6 +164,8 @@ BRIEFING = (
     "callback arrival.\n"
     "  - aegis_task_status(task_id) : inspect a previously-enqueued "
     "task. Use when callback was false or you want to poll mid-flight.\n"
+    "  - aegis_cancel(task_id) : cancel a task — drop it if still pending, "
+    "or interrupt + close its worker if in-flight. Idempotent.\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -1602,6 +1604,23 @@ def build_server(bridge: AppBridge) -> FastMCP:
         if st is None:
             return {"status": "unknown"}
         return st
+
+    @server.tool
+    async def aegis_cancel(task_id: str) -> dict:
+        """Cancel a previously-enqueued task by its task_id.
+
+        Pending tasks are dropped from the queue before they dispatch;
+        an in-flight worker is interrupted and closed, freeing its slot for
+        the next task. If the task had a callback, one error notice
+        (``status="error"``, body ``"cancelled"``) is delivered to the
+        producer so an awaiting caller unblocks.
+
+        Returns {"ok": true, "status": "cancelled", "was": "pending"|
+        "in_flight"}. Idempotent: already-terminal tasks return
+        {"ok": true, "status": <terminal>, "note": "already terminal"}.
+        Unknown task_id returns {"ok": false, "error": …}.
+        """
+        return await bridge.queue_manager.cancel(task_id)
 
     # Register user-declared @tool functions.
     from aegis.tools import _REGISTRY as _TOOL_REG
