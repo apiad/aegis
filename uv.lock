@@ -52,7 +52,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "harpio", marker = "extra == 'voice'", specifier = ">=0.10.0" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "lovelaice", specifier = ">=2.9,<3" },
+    { name = "lovelaice", specifier = ">=2.10,<3" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "ptyprocess", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
@@ -1102,7 +1102,7 @@ wheels = [
 
 [[package]]
 name = "lovelaice"
-version = "2.9.0"
+version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -1117,9 +1117,9 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/75/96b90a5595e29960706d7dee5707ee67e750e6c12f347b190cdfdb8d9b26/lovelaice-2.9.0.tar.gz", hash = "sha256:76d991e7dd79da15337eb921f0bfa1553f97672a31da5d938ff30d81b93c78ea", size = 187910 }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/84/c7905c63a5483027d94b7db7ff116f813688a80f85b66958207aa9894588/lovelaice-2.10.0.tar.gz", hash = "sha256:0cfd9e241a723b447f89103f9832a8ebea8b83a713282716921c537ca7d9920e", size = 188390 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/c2/ca0f8cf0726139039878b1e7e2877a4ac1f69ea4d542a89ea5f057381c85/lovelaice-2.9.0-py3-none-any.whl", hash = "sha256:15480723d45c70c1fad524cceda23ac1d28d036ed86b6253736a30eac6eb719c", size = 53956 },
+    { url = "https://files.pythonhosted.org/packages/d0/82/bb330c5cfde9b7c86b768fb83514a7fcbc7229cccf132412f397b28dce06/lovelaice-2.10.0-py3-none-any.whl", hash = "sha256:17b64611a96323b001371ab49ef4481d9a21b98d6512a75fec4b154d774bf419", size = 54191 },
 ]
 
 [[package]]
