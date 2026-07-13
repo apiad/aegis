@@ -15,14 +15,70 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function pathhint(ev) {
-  const locs = ev.locations || [];
-  if (locs.length) {
+function trunc(s, n) {
+  s = String(s ?? "").split(/\s+/).filter(Boolean).join(" ");
+  return s.length <= n ? s : s.slice(0, n - 1) + "…";
+}
+
+function locTail(locs) {
+  if (locs && locs.length) {
     const [path, line] = locs[0];
     const tail = path ? path.split("/").pop() : "";
     return line != null ? `${tail}:${line}` : tail;
   }
-  return ev.summary || "";
+  return "";
+}
+
+// Browser mirror of aegis.render_shared.describe_tool. On the compact wire
+// `ev.desc` is precomputed server-side (raw_input is stripped there); this
+// runs only when desc is absent (raw_input None, or the full get_event dict).
+function describeTool(ev) {
+  const name = ev.name || "";
+  const inp = ev.raw_input || {};
+  const summary = ev.summary || "";
+  const locs = ev.locations || [];
+
+  if (name === "Bash") {
+    const d = inp.description;
+    const cmd = trunc(inp.command || "", 60);
+    if (d && cmd) return `${d}  ·  ${cmd}`;
+    return d ? String(d) : (cmd || summary);
+  }
+  if (name === "Read" || name === "Write") {
+    const p = inp.file_path || "";
+    const tail = p ? p.split("/").pop() : locTail(locs);
+    const verb = name === "Read" ? "read" : "write";
+    return tail ? `${verb} ${tail}` : (summary || verb);
+  }
+  if (name === "Edit") {
+    const p = inp.file_path || "";
+    const tail = p ? p.split("/").pop() : locTail(locs);
+    const old = trunc(inp.old_string || "", 30);
+    if (tail && old) return `edit ${tail}: ${old}`;
+    return tail ? `edit ${tail}` : (summary || "edit");
+  }
+  if (name === "Grep" || name === "Glob") {
+    const pat = inp.pattern || "";
+    const where = inp.path || inp.glob || "";
+    const wt = where ? where.split("/").pop() : "";
+    const verb = name === "Grep" ? "grep" : "glob";
+    if (!pat) return summary || verb;
+    return wt ? `${verb} '${pat}' in ${wt}` : `${verb} '${pat}'`;
+  }
+  if (name === "WebFetch" || name === "WebSearch") {
+    return trunc(inp.url || inp.query || summary, 70);
+  }
+  if (name === "Task" || name === "Agent") {
+    const d = inp.description || inp.subagent_type || summary;
+    return d ? `subagent: ${d}` : "subagent";
+  }
+  if (name === "TodoWrite") {
+    return `update plan (${(inp.todos || []).length} items)`;
+  }
+  for (const v of Object.values(inp)) {
+    if (typeof v === "string" && v.trim()) return trunc(v, 60);
+  }
+  return summary || locTail(locs) || name;
 }
 
 function diffWindow(oldText, newText, maxLines = 6) {
@@ -120,12 +176,10 @@ export function renderEvent(rec) {
   }
   if (t === "ToolUse") {
     const icon = KIND_ICON[ev.kind || ""] || "⏺";
-    const hint = pathhint(ev);
-    const arg = (hint && hint !== ev.name)
-      ? `<span class="tool-hint">(${esc(hint)})</span>` : "";
+    const desc = ev.desc || describeTool(ev);
     const ctl = rec.truncated ? " " + expandControl(rec, "⋯") : "";
     const useHtml = `<div class="tool-use"><span class="icon">${icon}</span> `
-      + `<span class="tool-name">${esc(ev.name)}</span>${arg}${ctl}</div>`;
+      + `<span class="tool-desc">${esc(desc)}</span>${ctl}</div>`;
     // A Task with routed children renders as a collapsible subagent box:
     // header (the Task call) + body (the subagent's events).
     if (rec.children && rec.children.length) {

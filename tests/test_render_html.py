@@ -22,10 +22,12 @@ def test_html_escaping_neutralizes_markup():
 
 
 def test_tool_use_read_icon_name_and_class():
-    h = render_event_html(ToolUse(name="Read", summary="foo.py", kind="read"))
+    h = render_event_html(ToolUse(name="Read", summary="foo.py", kind="read",
+                                  raw_input={"file_path": "a/foo.py"}))
     assert "📖" in h
-    assert "Read" in h
+    assert "read foo.py" in h
     assert "tool-use" in h
+    assert "tool-desc" in h
 
 
 def test_tool_use_hint_suppressed_when_equal_to_name():

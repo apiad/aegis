@@ -3,6 +3,7 @@ wire. The result stays valid input to ``decode_event`` (extra keys ignored);
 the full event is fetched on demand via the ``get_event`` RPC."""
 from __future__ import annotations
 
+from aegis.render_shared import describe_tool
 from aegis.transcript_constants import TOOL_RESULT_HEAD_LINES
 
 
@@ -27,7 +28,13 @@ def compact_encoded(d: dict) -> tuple[dict, bool]:
     if t == "ToolUse":
         if d.get("raw_input") is None:
             return d, False
+        # Precompute the human description server-side (raw_input has the
+        # Bash `description` arg etc.), then drop raw_input from the wire —
+        # the full args are fetched on demand via get_event when expanded.
         out = dict(d)
+        out["desc"] = describe_tool(d.get("name", ""), d.get("raw_input"),
+                                    d.get("summary", ""),
+                                    d.get("locations") or ())
         out.pop("raw_input", None)
         return out, True
     if t == "AssistantThinking":

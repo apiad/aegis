@@ -13,7 +13,7 @@ from aegis.events import (
     ToolResult, ToolUse, Unknown,
 )
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, diff_window, pathhint, result_parts,
+    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
 )
 
 
@@ -35,13 +35,10 @@ def render_event_html(ev: Event) -> str | None:
 
     if isinstance(ev, ToolUse):
         icon = KIND_ICON.get(ev.kind or "", "⏺")
-        hint = pathhint(ev)
-        arg = (f'<span class="tool-hint">({escape(hint)})</span>'
-               if hint and hint != ev.name else "")
+        desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
         return (f'<div class="tool-use">'
                 f'<span class="icon">{icon}</span> '
-                f'<span class="tool-name">{escape(ev.name)}</span>'
-                f'{arg}</div>')
+                f'<span class="tool-desc">{escape(desc)}</span></div>')
 
     if isinstance(ev, ToolResult):
         if ev.diff is not None and not ev.is_error:

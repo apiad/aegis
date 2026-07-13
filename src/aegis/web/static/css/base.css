@@ -225,8 +225,7 @@ html, body {
 .assistant-text li { margin: 0; }
 
 .tool-use .icon { margin-right: 0.3rem; }
-.tool-use .tool-name { color: var(--aegis-accent); }
-.tool-use .tool-hint { color: var(--aegis-muted); }
+.tool-use .tool-desc { color: var(--aegis-accent); }
 
 .tool-result { color: var(--aegis-muted); }
 .tool-result.ok .status { color: var(--aegis-ok); }

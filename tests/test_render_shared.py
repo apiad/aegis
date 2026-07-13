@@ -1,7 +1,63 @@
 from aegis.events import Result, ToolUse
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, diff_window, pathhint, result_parts,
+    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, pathhint,
+    result_parts,
 )
+
+
+def test_describe_bash_prefers_description_then_command():
+    d = describe_tool("Bash", {"command": "uv run pytest -q",
+                               "description": "Run tests"})
+    assert d.startswith("Run tests")
+    assert "uv run pytest -q" in d
+
+
+def test_describe_bash_command_only():
+    assert describe_tool("Bash", {"command": "git status -sb"}) \
+        == "git status -sb"
+
+
+def test_describe_bash_truncates_long_command():
+    long = "x" * 200
+    d = describe_tool("Bash", {"command": long})
+    assert len(d) < 200 and d.endswith("…")
+
+
+def test_describe_read_uses_filename_tail():
+    assert describe_tool("Read",
+                         {"file_path": "/a/b/render.py"}) == "read render.py"
+
+
+def test_describe_edit_shows_file_and_old_snippet():
+    d = describe_tool("Edit", {"file_path": "pane.py",
+                               "old_string": "def foo(): pass"})
+    assert d.startswith("edit pane.py")
+
+
+def test_describe_grep_shows_pattern():
+    d = describe_tool("Grep", {"pattern": "render_event", "path": "src/aegis"})
+    assert "render_event" in d and "aegis" in d
+
+
+def test_describe_task_names_the_subagent_work():
+    d = describe_tool("Task", {"description": "Search code",
+                               "subagent_type": "Explore"})
+    assert "Search code" in d
+
+
+def test_describe_unknown_tool_uses_first_string_arg():
+    assert describe_tool("SlackPost",
+                         {"channel": "general", "text": "hi"}) == "general"
+
+
+def test_describe_falls_back_to_summary_when_no_raw_input():
+    # Compact-wire safety: raw_input stripped, but summary survives.
+    assert describe_tool("Bash", None, summary="echo hi") == "echo hi"
+
+
+def test_describe_falls_back_to_location_tail():
+    d = describe_tool("Read", None, locations=(("/deep/foo.py", 10),))
+    assert d == "read foo.py:10"
 
 
 def test_kind_icon_and_glyph_tables():

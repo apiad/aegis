@@ -11,7 +11,7 @@ from aegis.events import (
     ToolResult, Result, SystemInit, Unknown, Event,
 )
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, diff_window, pathhint, result_parts,
+    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
 )
 
 
@@ -119,12 +119,12 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         return Text(f"✻ {body}", style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
         icon = KIND_ICON.get(ev.kind or "", "⏺")
-        hint = pathhint(ev)
-        # Suppress the parenthetical hint when it duplicates the name —
-        # ACP titles are often the filename itself, so we'd otherwise
-        # render "📖 target.txt(target.txt)".
-        arg = f"({hint})" if hint and hint != ev.name else ""
-        return Text.assemble((f"{icon} ", colors.accent), f"{ev.name}{arg}")
+        # Show a human description of the call (the args stay collapsed;
+        # click-to-expand reveals raw_input). Bash surfaces Claude's own
+        # `description` arg; file tools show the path tail; unknown tools
+        # fall back to their first stringy arg.
+        desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
+        return Text.assemble((f"{icon} ", colors.accent), desc)
     if isinstance(ev, ToolResult):
         if ev.diff is not None and not ev.is_error:
             return _render_diff(ev.diff, colors)

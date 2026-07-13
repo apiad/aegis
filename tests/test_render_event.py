@@ -21,16 +21,27 @@ def test_assistant_text_is_renderable():
 
 
 def test_tool_use_one_liner():
-    out = as_text(render_event(ToolUse(name="Read", summary="foo.py"), C))
-    assert "Read" in out and "foo.py" in out
+    out = as_text(render_event(
+        ToolUse(name="Read", summary="foo.py",
+                raw_input={"file_path": "a/foo.py"}), C))
+    assert "read foo.py" in out
     assert out.count("\n") <= 2
 
 
 def test_tool_use_kind_read_renders_book_icon():
     out = as_text(render_event(
-        ToolUse(name="Read", summary="foo.py", kind="read"), C))
+        ToolUse(name="Read", summary="foo.py", kind="read",
+                raw_input={"file_path": "a/foo.py"}), C))
     assert "📖" in out
-    assert "Read" in out
+    assert "read foo.py" in out
+
+
+def test_tool_use_bash_shows_description():
+    out = as_text(render_event(
+        ToolUse(name="Bash", summary="uv run pytest", kind="execute",
+                raw_input={"command": "uv run pytest",
+                           "description": "Run the suite"}), C))
+    assert "Run the suite" in out and "Bash" not in out
 
 
 def test_tool_use_kind_execute_renders_terminal_icon():
