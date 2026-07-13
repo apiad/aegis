@@ -24,6 +24,9 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 
 - `know-how/deploying-web.md` — *reach for it when deploying / redeploying /
   debugging the public aegis web UI (`dev.apiad.net`) on the VPS.*
+- `know-how/native-lovelaice-agent.md` — *reach for it when working on the
+  native (harness-free) `lovelaice` agent / driver: config, MCP injection,
+  streaming, resume, cancel, and the real-model-probe discipline.*
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
@@ -58,23 +61,27 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `.aegis.yaml` + overlays → `AegisConfig` (agents, queues, schedules,
   remotes, groups, telegram, plugin_dirs). Fail-loud on default_agent /
   queue-agent / max_parallel violations.
-- `src/aegis/drivers/` - HarnessDriver seam + concrete drivers:
-  `claude.py` (Claude Code, full-featured — multi-turn via stream-json
-  INPUT, per-invocation MCP injection via `--mcp-config`),
-  `gemini.py` (Gemini CLI, v1 one-shot — `gemini -p <prompt>
-  --output-format stream-json --approval-mode <mode>`),
-  `opencode.py` (OpenCode, v1 one-shot — `opencode run <message>
-  --format json -m <provider/model>`). Per-driver stream parsers in
-  `gemini_parse.py` and `opencode_parse.py` map each CLI's events into
-  the canonical `aegis.events` types. Gemini and OpenCode workers do
-  NOT inject aegis MCP in v1 (their MCP config is global, not
-  per-invocation) — workers can do their task but cannot call back to
-  `aegis_enqueue`; sufficient for queue-worker semantics where the
-  substrate captures the worker's final assistant text as the result.
-  Per-provider config classes (`ClaudeCode`, `GeminiCLI`, `OpenCode`)
-  in `config.py` carry only the fields each provider actually uses;
-  legacy flat `Agent(harness="…", model=…, effort=…, permission=…)`
-  shape still works via a back-compat shim.
+- `src/aegis/drivers/` - HarnessDriver seam + concrete drivers.
+  `claude.py` (Claude Code, full-featured — multi-turn via stream-json INPUT,
+  per-invocation MCP injection via `--mcp-config`). `acp.py` is the generic
+  `AcpDriver`/`AcpSession` on the official `agent-client-protocol` SDK;
+  `gemini.py`, `opencode.py`, and `lovelaice.py` are thin `BASE_CMD` shims over
+  it (`gemini --acp`, `opencode acp`, `lovelaice-acp`). Registry is `DRIVERS`
+  in `drivers/__init__.py`, keyed by harness string.
+  **`lovelaice.py` is the native, harness-free agent** — it spawns `lovelaice-acp`
+  (lovelaice's ACP v1 server, a dependency of aegis) and runs local or direct-API
+  models with no external CLI. Model / `base_url` / API key are injected as env at
+  spawn via the `AcpDriver.extra_env(agent)` seam (from the `Lovelaice` provider's
+  `model` / `base_url` / `api_key_file`). Because ACP `new_session` carries
+  `mcp_servers`, the lovelaice agent gets **per-session** aegis-MCP injection
+  (can call `aegis_enqueue` / `aegis_claim` / …) — unlike Gemini/OpenCode workers,
+  whose MCP config is global, so they run their task but can't call back. Also:
+  `AcpSession.session_id` (needed for `resume()`), `AcpSession.interrupt()` sends
+  ACP `session/cancel`, and lovelaice streams deltas + supports `load_session`
+  resume. Per-provider config classes (`ClaudeCode`, `GeminiCLI`, `OpenCode`,
+  `Lovelaice`) in `config/__init__.py` carry only the fields each provider uses;
+  legacy flat `Agent(harness="…", model=…, …)` still works via a back-compat shim.
+  See `know-how/native-lovelaice-agent.md`.
 - `src/aegis/events.py` - stream-json parser (typed events). Events carry
   `parent_tool_use_id` (set only by the claude parser, from claude's stream
   field) — the grouping key for the subagent view. ACP-built events leave it

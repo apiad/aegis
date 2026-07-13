@@ -38,6 +38,23 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
+### Native lovelaice agent (harness-free) *(VS1–VS5 shipped — on main + PyPI)*
+
+aegis ships `lovelaice` as a dependency and drives `lovelaice-acp` over official
+ACP v1 — a native agent that runs local or direct-API models with no external
+harness. Shipped across lovelaice 2.7.0→2.11.0: v1 ACP server (legacy `AcpServer`
+frozen for warden), per-session MCP attach (calls the aegis plane), full toolset
+(read/bash/write/edit/glob/list_dir), token usage, streaming, `load_session`
+resume, and cancel. aegis side: `Lovelaice` provider + `LovelaiceDriver` +
+`extra_env`/`session_id`/`interrupt` on the generic ACP driver.
+
+- Docs: `know-how/native-lovelaice-agent.md`; spec
+  `docs/superpowers/specs/2026-07-10-lovelaice-native-acp-agent-design.md`;
+  plans `docs/superpowers/plans/2026-07-{10,13}-lovelaice-native-agent-*`.
+- **Deferred (own slice):** `workflow/run` + `conversation/archive` as ACP
+  ext-methods — no consumer until warden migrates off the legacy dialect.
+- Open: human eyeball of the native-agent render in a real TUI tab.
+
 ### Web client S1–S8 *(shipped — browser-verified, on main)*
 
 Full web frontend of `aegis serve`: single-tab → multi-tab (picker, switching,
