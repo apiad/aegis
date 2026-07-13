@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
 from rich.text import Text
 
@@ -11,8 +11,44 @@ from aegis.events import (
     ToolResult, Result, SystemInit, Unknown, Event,
 )
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
+    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window,
+    format_tool_args, result_parts,
 )
+
+# Per-tool-call spinner (mirrors the turn-level WorkingIndicator glyphs).
+_TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+def _fmt_dur(secs: float) -> str:
+    if secs < 60:
+        return f"{int(secs)}s"
+    m, s = divmod(int(secs), 60)
+    return f"{m}m{s:02d}s"
+
+
+def render_tool_use(ev, colors, *, elapsed: float | None = None,
+                    running: bool = False, frame: int = 0,
+                    expanded: bool = False) -> RenderableType:
+    """One tool-call line: kind icon + human description, with an optional
+    per-tool spinner+timer (while running), a frozen duration (once done, if
+    ≥1s), and the full args block (when expanded). The args stay collapsed by
+    default — the pane expands them on click."""
+    icon = KIND_ICON.get(ev.kind or "", "⏺")
+    desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
+    line = Text.assemble((f"{icon} ", colors.accent), desc)
+    if running and elapsed is not None:
+        spin = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)]
+        line.append(f"  {spin} {_fmt_dur(elapsed)}", style=colors.muted)
+    elif not running and elapsed is not None and elapsed >= 1.0:
+        line.append(f"  · {_fmt_dur(elapsed)}", style=colors.muted)
+    if expanded:
+        args = format_tool_args(ev.name, ev.raw_input, ev.summary)
+        if args:
+            body = Text()
+            for ln in args.splitlines():
+                body.append(f"    {ln}\n", style=colors.muted)
+            return Group(line, body)
+    return line
 
 
 def _render_diff(diff: tuple[str, str, str], colors,
@@ -118,13 +154,9 @@ def render_event(ev: Event, colors) -> RenderableType | None:
             return Text("✻ Thinking…", style=colors.muted)
         return Text(f"✻ {body}", style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
-        icon = KIND_ICON.get(ev.kind or "", "⏺")
-        # Show a human description of the call (the args stay collapsed;
-        # click-to-expand reveals raw_input). Bash surfaces Claude's own
-        # `description` arg; file tools show the path tail; unknown tools
-        # fall back to their first stringy arg.
-        desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
-        return Text.assemble((f"{icon} ", colors.accent), desc)
+        # Static path (replay / non-live). The live pane re-renders through
+        # render_tool_use with a per-tool timer + click-to-expand args.
+        return render_tool_use(ev, colors)
     if isinstance(ev, ToolResult):
         if ev.diff is not None and not ev.is_error:
             return _render_diff(ev.diff, colors)

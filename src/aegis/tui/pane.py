@@ -25,7 +25,8 @@ from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import AssistantText, AssistantThinking, ToolResult, ToolUse
 from aegis.render import (
-    coalesce_chunks, render_event, render_inbox_block, render_user_line,
+    coalesce_chunks, render_event, render_inbox_block, render_tool_use,
+    render_user_line,
 )
 from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
@@ -52,6 +53,21 @@ class BlockRecord:
     renderable: RenderableType
     payload: str
     tight: bool
+    tool_call_id: str | None = None
+
+
+@dataclass(slots=True)
+class _ToolTrack:
+    """Live state for one tool call: enough to re-render its block with a
+    ticking timer while running, a frozen duration once done, and the full
+    args when expanded."""
+    ev: object                      # the ToolUse event
+    idx: int                        # history index of its block
+    start: float                    # time.monotonic() at dispatch
+    done: bool = False
+    elapsed: float | None = None    # frozen duration once done
+    result_r: RenderableType | None = None
+    expanded: bool = False
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -196,18 +212,29 @@ class CopyableBlock(Widget):
     CopyableBlock > .content { background: transparent; height: auto; }
     """
 
+    class ToolExpandToggle(Message):
+        """A tool-call block was clicked — toggle its collapsed args."""
+        def __init__(self, tool_call_id: str) -> None:
+            super().__init__()
+            self.tool_call_id = tool_call_id
+
     def __init__(self, renderable: RenderableType,
-                 text_payload: str, *, tight: bool = False) -> None:
+                 text_payload: str, *, tight: bool = False,
+                 tool_call_id: str | None = None) -> None:
         super().__init__(classes="-tight" if tight else None)
         self._renderable = renderable
         self._text_payload = text_payload
+        self._tool_call_id = tool_call_id
         self._backtick_tokens: list[str] = _extract_backtick_tokens(
             text_payload)
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        self.tooltip = (
-            "click to copy | ctrl+click to open file" if self._backtick_tokens else "click to copy"
-        )
+        if tool_call_id is not None:
+            self.tooltip = "click to expand args"
+        else:
+            self.tooltip = (
+                "click to copy | ctrl+click to open file"
+                if self._backtick_tokens else "click to copy")
 
     def compose(self) -> ComposeResult:
         yield Static(self._renderable, classes="content")
@@ -227,6 +254,10 @@ class CopyableBlock(Widget):
         return self._text_payload
 
     def on_click(self, event: Click) -> None:
+        # Tool-call blocks toggle their collapsed args instead of copying.
+        if self._tool_call_id is not None:
+            self.post_message(self.ToolExpandToggle(self._tool_call_id))
+            return
         if event.ctrl and self._backtick_tokens:
             self._open_file_from_tokens()
             return
@@ -462,6 +493,12 @@ class ConversationPane(Widget):
         # trailing one. Parallel tool calls emit all uses first, then all
         # results — folding by id keeps each result under its own call.
         self._tool_use_idx: dict[str, int] = {}
+        # Per-tool-call live track (spinner + timer + expandable args).
+        # tool_call_id → _ToolTrack; a single set_interval ticks all
+        # not-yet-done tracks once a second.
+        self._tools: dict[str, _ToolTrack] = {}
+        self._tool_timer = None
+        self._spin_frame = 0
         # Task tool_call_id → its SubagentBox. Events tagged with a known
         # parent_tool_use_id route into the matching box instead of the
         # transcript; the Task's own tool_result closes it.
@@ -604,7 +641,8 @@ class ConversationPane(Widget):
             new_blocks: list[CopyableBlock] = []
             for rec in self._history[new_start : self._window_start]:
                 block = CopyableBlock(
-                    rec.renderable, rec.payload, tight=rec.tight)
+                    rec.renderable, rec.payload, tight=rec.tight,
+                    tool_call_id=rec.tool_call_id)
                 if anchor is not None:
                     t.mount(block, before=anchor)
                 else:
@@ -634,9 +672,12 @@ class ConversationPane(Widget):
 
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
-                     *, tight: bool = False) -> CopyableBlock:
-        self._history.append(BlockRecord(renderable, text_payload, tight))
-        block = CopyableBlock(renderable, text_payload, tight=tight)
+                     *, tight: bool = False,
+                     tool_call_id: str | None = None) -> CopyableBlock:
+        self._history.append(
+            BlockRecord(renderable, text_payload, tight, tool_call_id))
+        block = CopyableBlock(renderable, text_payload, tight=tight,
+                              tool_call_id=tool_call_id)
         t = self._transcript()
         ind = self._working_indicator()
         if ind is not None and ind.parent is t:
@@ -837,38 +878,113 @@ class ConversationPane(Widget):
             self._stream_append("thinking", ev.text or "")
         elif isinstance(ev, ToolResult) and self._fold_tool_result(ev):
             pass  # folded into its ToolUse block
+        elif isinstance(ev, ToolUse) and ev.tool_call_id:
+            self._flush_streaming()
+            # Open a live track: render the line with a running spinner+timer
+            # and make the block click-to-expand its args.
+            track = _ToolTrack(ev=ev, idx=len(self._history),
+                               start=time.monotonic())
+            renderable = render_tool_use(ev, self._palette, elapsed=0.0,
+                                         running=True, frame=self._spin_frame)
+            self._mount_block(renderable, _payload_for_event(ev),
+                              tool_call_id=ev.tool_call_id)
+            # Remember this call's block so its (possibly out-of-order,
+            # parallel) ToolResult folds in below instead of appending.
+            self._tool_use_idx[ev.tool_call_id] = track.idx
+            self._tools[ev.tool_call_id] = track
+            self._ensure_tool_timer()
         else:
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
             if renderable is not None:
-                block = self._mount_block(renderable, _payload_for_event(ev))
-                if isinstance(ev, ToolUse) and ev.tool_call_id:
-                    # Remember this call's block so its (possibly out-of-order,
-                    # parallel) ToolResult folds in below instead of appending.
-                    self._tool_use_idx[ev.tool_call_id] = len(self._history) - 1
-                    del block  # (retained via _mounted_blocks / _history)
+                self._mount_block(renderable, _payload_for_event(ev))
         self.refresh_metrics()
 
     def _fold_tool_result(self, ev: ToolResult) -> bool:
         """Render a ToolResult *inside* its matching ToolUse block. Returns
         False (→ caller appends it as a standalone block) when there's no
         known matching call — e.g. the use scrolled out of the window."""
-        idx = self._tool_use_idx.get(ev.tool_call_id or "")
-        if idx is None:
+        tid = ev.tool_call_id or ""
+        track = self._tools.get(tid)
+        if track is None:
             return False
         self._flush_streaming()
         result_r = render_event(ev, self._palette)
         if result_r is None:
-            return True
-        rec = self._history[idx]
-        rec.renderable = Group(rec.renderable, result_r)
+            result_r = Text("")
+        # Freeze the timer and attach the result to the track, then re-render.
+        track.done = True
+        track.elapsed = time.monotonic() - track.start
+        track.result_r = result_r
+        rec = self._history[track.idx]
         rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
-        pos = idx - self._window_start
-        if 0 <= pos < len(self._mounted_blocks):
-            self._mounted_blocks[pos].update_content(rec.renderable, rec.payload)
-            if self._stick_to_bottom:
-                self._transcript().scroll_end(animate=False)
+        self._render_tool_block(track, scroll=True)
+        if not self._any_tool_running():
+            self._stop_tool_timer()
         return True
+
+    # --- per-tool spinner + timer + expandable args ----------------
+
+    def _any_tool_running(self) -> bool:
+        return any(not t.done for t in self._tools.values())
+
+    def _ensure_tool_timer(self) -> None:
+        if self._tool_timer is None:
+            self._tool_timer = self.set_interval(1.0, self._tick_tools)
+
+    def _stop_tool_timer(self) -> None:
+        if self._tool_timer is not None:
+            with contextlib.suppress(Exception):
+                self._tool_timer.stop()
+            self._tool_timer = None
+
+    def _tick_tools(self) -> None:
+        if not self._any_tool_running():
+            self._stop_tool_timer()
+            return
+        self._spin_frame += 1
+        for track in self._tools.values():
+            if not track.done:
+                self._render_tool_block(track)
+
+    def _render_tool_block(self, track: "_ToolTrack",
+                           *, scroll: bool = False) -> None:
+        """(Re)render a tool-call block from its track — running spinner+timer,
+        frozen duration, folded result, and expanded args as applicable."""
+        running = not track.done
+        elapsed = (time.monotonic() - track.start) if running else track.elapsed
+        line = render_tool_use(track.ev, self._palette, elapsed=elapsed,
+                               running=running, frame=self._spin_frame,
+                               expanded=track.expanded)
+        rend = Group(line, track.result_r) if track.result_r is not None \
+            else line
+        rec = self._history[track.idx]
+        rec.renderable = rend
+        pos = track.idx - self._window_start
+        if 0 <= pos < len(self._mounted_blocks):
+            self._mounted_blocks[pos].update_content(rend, rec.payload)
+            if scroll and self._stick_to_bottom:
+                self._transcript().scroll_end(animate=False)
+
+    def _freeze_all_tools(self) -> None:
+        """Turn ended (or was interrupted): stop every running tool timer,
+        freeze its elapsed, and stop the ticker."""
+        for track in self._tools.values():
+            if not track.done:
+                track.done = True
+                if track.elapsed is None:
+                    track.elapsed = time.monotonic() - track.start
+                self._render_tool_block(track)
+        self._stop_tool_timer()
+
+    def on_copyable_block_tool_expand_toggle(
+            self, event: "CopyableBlock.ToolExpandToggle") -> None:
+        event.stop()
+        track = self._tools.get(event.tool_call_id)
+        if track is None:
+            return
+        track.expanded = not track.expanded
+        self._render_tool_block(track, scroll=True)
 
     # --- subagent (Task) grouping ----------------------------------
 
@@ -949,6 +1065,7 @@ class ConversationPane(Widget):
                 Text(label, style=self._palette.err), label)
         self.post_message(PaneStateChanged(self, finished))
         if finished:
+            self._freeze_all_tools()
             self._stop_indicator()
             inp = self.query_one(GrowingInput)
             inp.disabled = False

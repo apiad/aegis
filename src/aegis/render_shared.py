@@ -99,6 +99,33 @@ def describe_tool(name: str, raw_input: dict | None,
     return summary or _loc_tail(locations) or name
 
 
+def format_tool_args(name: str, raw_input: dict | None,
+                     summary: str = "") -> str:
+    """The full-args view revealed when a collapsed tool call is expanded.
+    Bash shows its command verbatim (with the description as a leading
+    comment); other tools show ``key: value`` lines with long values capped.
+    Pure — no Rich, no HTML."""
+    import json
+
+    inp = raw_input or {}
+    if not inp:
+        return summary or ""
+    if name == "Bash" and inp.get("command"):
+        out = []
+        if inp.get("description"):
+            out.append(f"# {inp['description']}")
+        out.append(str(inp["command"]))
+        return "\n".join(out)
+    lines = []
+    for k, v in inp.items():
+        val = v if isinstance(v, str) else json.dumps(
+            v, ensure_ascii=False, default=str)
+        if len(val) > 500:
+            val = val[:500] + "…"
+        lines.append(f"{k}: {val}")
+    return "\n".join(lines)
+
+
 def pathhint(ev) -> str:
     """One-line context for a tool call: the tail of the first known
     location (with :line suffix when known), falling back to the tool's

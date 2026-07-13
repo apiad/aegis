@@ -1,8 +1,29 @@
 from aegis.events import Result, ToolUse
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, pathhint,
-    result_parts,
+    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window,
+    format_tool_args, pathhint, result_parts,
 )
+
+
+def test_format_args_bash_shows_command_and_description_comment():
+    out = format_tool_args("Bash", {"command": "ls -la",
+                                    "description": "list files"})
+    assert "# list files" in out
+    assert "ls -la" in out
+
+
+def test_format_args_generic_key_value():
+    out = format_tool_args("Grep", {"pattern": "foo", "path": "src"})
+    assert "pattern: foo" in out and "path: src" in out
+
+
+def test_format_args_caps_long_values():
+    out = format_tool_args("X", {"blob": "y" * 900})
+    assert out.endswith("…") and len(out) < 900
+
+
+def test_format_args_falls_back_to_summary():
+    assert format_tool_args("Bash", None, summary="echo hi") == "echo hi"
 
 
 def test_describe_bash_prefers_description_then_command():
