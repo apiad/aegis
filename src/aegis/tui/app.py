@@ -498,9 +498,11 @@ class AegisApp(App):
 
     def _refresh_tabbar(self) -> None:
         cs = self.query_one(ContentSwitcher)
+        qm = self.queue_manager
         items = [
             (i + 1, p.handle, p.agent_slug, p.state, p.unseen,
-             p.id == cs.current)
+             p.id == cs.current,
+             qm.worker_label(p.handle) if qm is not None else None)
             for i, p in enumerate(self._panes)
         ]
         self.query_one(TabBar).set_tabs(items)

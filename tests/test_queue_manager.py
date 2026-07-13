@@ -283,6 +283,24 @@ async def test_cancel_terminal_is_idempotent():
     assert res["ok"] and res["status"] == "completed"
 
 
+async def test_worker_label_reflects_inflight_then_clears():
+    sm = StubSessionManager()
+    inbox = InboxRouter()
+    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+                      handle_factory=lambda used: "w1")
+    sm.script("w1", HANG)
+    tid, _ = qm.enqueue("impl", "go",
+                        enqueued_by=sender_agent("p"), callback=False)
+    await asyncio.sleep(0.02)
+    label = qm.worker_label("w1")
+    assert label == f"impl#{tid[-4:]}"
+    # unknown handle → None
+    assert qm.worker_label("ghost") is None
+    # once cancelled (worker popped), the label clears
+    await qm.cancel(tid)
+    assert qm.worker_label("w1") is None
+
+
 async def test_cancel_unknown_task():
     sm = StubSessionManager(); inbox = InboxRouter()
     qm = QueueManager({"impl": _q()}, sm, inbox)

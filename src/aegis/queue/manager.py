@@ -272,6 +272,16 @@ class QueueManager:
         return {"ok": True, "status": "cancelled",
                 "was": ("pending" if t.status == "pending" else "in_flight")}
 
+    def worker_label(self, handle: str) -> str | None:
+        """``<queue>#<short-id>`` for a currently in-flight worker handle,
+        else None. The TUI suffixes worker tabs with this while they run
+        so a background worker is legible at a glance."""
+        entry = self._workers.get(handle)
+        if entry is None:
+            return None
+        task = entry[0]
+        return f"{task.queue}#{task.id[-4:]}"
+
     def _position_of(self, t: Task) -> int | None:
         if t.status != "pending":
             return None
