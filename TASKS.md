@@ -4,7 +4,7 @@ Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
 the public roadmap is `docs/roadmap.md`. This file is the scratch /
 priority list — keep it terse and current.
 
-Current release: **v0.11.2** (file indexer + picker UX, 2026-05-26).
+Current release: **v0.16.0** (2026-07-13).
 
 ## Time-sensitive (June 2026 billing changes)
 
@@ -213,20 +213,22 @@ for worktrees.
 - Spec: `docs/superpowers/specs/2026-05-27-agent-sandbox-design.md`
 - Plan: *not yet drafted*
 
-### Queue v1 polish
+### Queue v1 polish *(shipped 2026-07-13)*
 
 Small follow-ups on top of the shipped substrate:
 
-- **Worker tab handle suffix** (T4.1 deferred) — `<handle> · <queue>#<task>`
-  in the TUI tab bar so workers are visible at a glance. Touches
-  `tui/widgets.py`, `tui/app.py`, `tui/pane.py`.
-- **`aegis_cancel(task_id)` MCP tool** — cancellation currently flows through
-  `aegis_handoff` to the worker's inbox; a dedicated tool would be cleaner.
-- **`aegis_delegate` sync wrapper** — single MCP call that does enqueue + await
-  internally for callers that want the simple sync shape. Composes on the
-  existing primitives.
-- **Telegram delivery sanity test** (T4.3 deferred) — verify the substrate
-  header survives chunking and reaches the Telegram chat.
+- **Worker tab handle suffix** *(shipped)* — in-flight worker tabs now
+  show `<queue>#<task>` in muted after the slug, via
+  `QueueManager.worker_label` threaded through `_refresh_tabbar` +
+  `_TabCell.render_tab`. Clears on finalize/cancel.
+- **`aegis_cancel(task_id)` MCP tool** *(shipped)* — `QueueManager.cancel`
+  drops pending / interrupts+closes in-flight, marks `cancelled`, delivers
+  one error callback so awaiting producers unblock. Idempotent.
+- **`aegis_delegate` sync wrapper** *(shipped)* — `QueueManager.run`
+  enqueues (callback off) + awaits a one-shot completion subscription,
+  returning the worker's result directly; optional `timeout_s`.
+- ~~**Telegram delivery sanity test** (T4.3)~~ — **obsolete**: the Telegram
+  frontend was removed in v-W6 (`0e26312`); the web client replaced it.
 
 ### Sequential handoff — re-scope
 

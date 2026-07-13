@@ -139,8 +139,12 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   drops a still-buffered message by identity (chip dequeue); the
   `on_dispatch` observer fires when a buffered batch starts its turn.
   MCP surface: `aegis_enqueue` (queue, payload, from_handle,
-  callback=True) and `aegis_task_status`. `aegis_handoff` now flows
-  through the same inbox channel — target agents read handoffs and
+  callback=True), `aegis_task_status`, `aegis_cancel` (drop-if-pending /
+  interrupt+close-if-in-flight, idempotent), and `aegis_delegate`
+  (synchronous enqueue+await — returns the worker's result directly,
+  optional `timeout_s`, no inbox callback). `QueueManager.worker_label`
+  suffixes in-flight worker tabs with `<queue>#<task>`. `aegis_handoff`
+  flows through the same inbox channel — target agents read handoffs and
   callbacks through one consistent surface (universal tagging).
   Queues are declared in `.aegis.yaml` under `queues:` as
   `<name>: {agent: <profile>, max_parallel: N}`; unknown agent
