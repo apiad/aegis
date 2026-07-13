@@ -21,7 +21,7 @@ _TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 def _fmt_dur(secs: float) -> str:
     if secs < 60:
-        return f"{int(secs)}s"
+        return f"{secs:.1f}s"
     m, s = divmod(int(secs), 60)
     return f"{m}m{s:02d}s"
 

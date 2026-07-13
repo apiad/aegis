@@ -3,7 +3,7 @@ from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
     ToolResult, Result, SystemInit, Unknown,
 )
-from aegis.render import render_event, render_user_line
+from aegis.render import render_event, render_tool_use, render_user_line
 from aegis.tui.themes import aegis_colors, INK
 
 C = aegis_colors(INK)
@@ -202,6 +202,31 @@ def test_tool_use_hint_suppressed_when_equal_to_name():
                 locations=(("/some/path/target.txt", None),)), C))
     # The name shows once; no parenthetical duplicate.
     assert out.count("target.txt") == 1
+
+
+def test_running_tool_timer_shows_subsecond():
+    """Live per-tool timer ticks in tenths (like the WorkingIndicator),
+    not whole seconds — so the digits visibly move at the 0.1s cadence."""
+    ev = ToolUse(name="Bash", summary="sleep", kind="execute",
+                 raw_input={"command": "sleep 5"})
+    out = as_text(render_tool_use(ev, C, elapsed=3.4, running=True, frame=0))
+    assert "3.4s" in out
+
+
+def test_frozen_tool_duration_keeps_subsecond():
+    """Once folded, the duration freezes at the tenths value last shown —
+    no jump back to a rounded whole second."""
+    ev = ToolUse(name="Bash", summary="sleep", kind="execute",
+                 raw_input={"command": "sleep 5"})
+    out = as_text(render_tool_use(ev, C, elapsed=3.4, running=False))
+    assert "3.4s" in out
+
+
+def test_tool_duration_minutes_unchanged():
+    ev = ToolUse(name="Bash", summary="build", kind="execute",
+                 raw_input={"command": "make"})
+    out = as_text(render_tool_use(ev, C, elapsed=125.0, running=True, frame=0))
+    assert "2m05s" in out
 
 
 def test_thinking_content_shown():

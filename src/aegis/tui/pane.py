@@ -930,7 +930,9 @@ class ConversationPane(Widget):
 
     def _ensure_tool_timer(self) -> None:
         if self._tool_timer is None:
-            self._tool_timer = self.set_interval(1.0, self._tick_tools)
+            # 0.1s cadence + tenths in _fmt_dur → the timer visibly ticks
+            # sub-second, like the WorkingIndicator.
+            self._tool_timer = self.set_interval(0.1, self._tick_tools)
 
     def _stop_tool_timer(self) -> None:
         if self._tool_timer is not None:
