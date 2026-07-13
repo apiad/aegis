@@ -34,6 +34,24 @@ def test_acp_session_exposes_latched_session_id():
     assert s.session_id == "abc123"
 
 
+async def test_acp_session_interrupt_sends_cancel():
+    # Escape / interrupt must send ACP session/cancel so a running turn stops.
+    from aegis.drivers.acp import AcpSession
+
+    class _Conn:
+        def __init__(self):
+            self.cancelled = []
+
+        async def cancel(self, session_id):
+            self.cancelled.append(session_id)
+
+    s = AcpSession(agent=None, cwd="/tmp", mcp_url="", handle="h")
+    s._conn = _Conn()
+    s._session_id = "sid-9"
+    await s.interrupt()
+    assert s._conn.cancelled == ["sid-9"]
+
+
 def test_driver_registered():
     from aegis.drivers import get_driver
     from aegis.drivers.lovelaice import LovelaiceDriver

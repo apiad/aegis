@@ -627,6 +627,16 @@ class AcpSession(HarnessSession):
         it back to the driver's resume() to reload the conversation."""
         return self._session_id
 
+    async def interrupt(self) -> None:
+        """Abort the in-flight turn while keeping the session alive. Sends ACP
+        ``session/cancel``; the agent stops generating and the terminal Result
+        flows out through the normal event stream (so the surrounding read
+        loop sees the turn end). Without this, aegis's Escape is a no-op for
+        ACP sessions and a running native-agent turn can't be stopped."""
+        if self._conn and self._session_id:
+            with contextlib.suppress(Exception):
+                await self._conn.cancel(session_id=self._session_id)
+
     async def events(self) -> AsyncIterator[Event]:
         while True:
             ev = await self._queue.get()
