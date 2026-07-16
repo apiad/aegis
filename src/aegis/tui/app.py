@@ -724,6 +724,10 @@ class AegisApp(App):
             self.screen.dismiss()
             return
         active = self._active
+        # Esc clears a half-typed message before it interrupts the turn.
+        if active is not None and hasattr(active, "clear_input_if_present"):
+            if active.clear_input_if_present():
+                return
         if active is not None and hasattr(active, "interrupt"):
             active.interrupt()
 

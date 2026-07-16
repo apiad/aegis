@@ -740,6 +740,15 @@ class ConversationPane(Widget):
     def input_widget(self) -> "GrowingInput":
         return self.query_one(GrowingInput)
 
+    def clear_input_if_present(self) -> bool:
+        """Esc handler: clear a non-empty input and report we consumed the
+        key. Empty input → no-op, return False so the app interrupts."""
+        inp = self.query_one(GrowingInput)
+        if inp.value.strip():
+            inp.value = ""
+            return True
+        return False
+
     def set_recording(self, on: bool) -> None:
         self.set_class(on, "recording")
 
