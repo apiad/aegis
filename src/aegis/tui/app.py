@@ -872,6 +872,15 @@ class AegisApp(App):
             await self._close_pane(pane)
             self._refresh_tabbar()
 
+    async def interrupt(self, handle: str) -> None:
+        """AppBridge-shaped: cut the named pane's live turn (a peer's, not
+        just the active one). Unknown handle → no-op."""
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is not None:
+            pane.interrupt()
+
     async def rename_handle(self, old: str, new: str) -> dict:
         """AppBridge-shaped: rename a live pane's handle in-place.
 
