@@ -7,6 +7,9 @@
 # Runtime state — queue lifecycle logs + per-handle inbox logs (JSONL).
 .aegis/state/
 
+# SDD worktrees for parallel/isolated feature branches
+.worktrees/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
