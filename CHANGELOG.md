@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-16
+
 ### Slash commands + shell escape (TUI input)
 
 - **`!<command>` shell escape.** Typing `!cmd` in the input runs `cmd` in a
