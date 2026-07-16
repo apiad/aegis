@@ -349,6 +349,16 @@ def web(cwd: str = typer.Option(".", "--cwd"),
     _run_serve(cwd)
 
 
+@app.command()
+def token() -> None:
+    """Print the aegis web token (create one if missing)."""
+    root = find_project_root() or Path.cwd()
+    if not (root / ".aegis.yaml").is_file():
+        _console.print("[red]No .aegis.yaml found.[/red]")
+        raise typer.Exit(1)
+    typer.echo(_ensure_web_token(root))
+
+
 def _ensure_web_token(root: Path) -> str:
     """Return the configured web token, generating + persisting a fresh one
     into .aegis.yaml when none is set. Idempotent."""
