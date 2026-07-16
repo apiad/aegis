@@ -146,15 +146,18 @@ BRIEFING = (
     "hyphens, starting with a letter. Also call this when Alex asks you "
     "to rename. Returns {ok, old, new} on success or {error: ...} on "
     "format failure / collision.\n"
-    "  - aegis_handoff(from_handle, target_handle, context) : one-way "
-    "(fire-and-forget) context transfer to a live peer session. You pass "
-    "your own aegis handle as from_handle — it is in your system prompt. "
-    "The target receives a tagged user turn; you do not wait for its "
-    "reply. A busy target no longer rejects — the handoff queues and "
-    "chains at its next turn boundary. Returns 'landed at <handle>' when "
-    "the target was idle (starts on your context now) or 'queued for "
-    "<handle> (position N)' when it was mid-turn, or a 'handoff rejected: "
-    "…' reason (self / unknown target).\n"
+    "  - aegis_handoff(from_handle, target_handle, context, interrupt=False) "
+    ": one-way (fire-and-forget) context transfer to a live peer session. "
+    "You pass your own aegis handle as from_handle — it is in your system "
+    "prompt. The target receives a tagged user turn; you do not wait for "
+    "its reply. A busy target no longer rejects — the handoff queues and "
+    "chains at its next turn boundary. Pass interrupt=True ONLY to cut a "
+    "busy peer's current turn when it needs a blocking correction NOW "
+    "(discards its in-progress work; lands your context as its next turn). "
+    "Returns 'landed at <handle>' when the target was idle (starts on your "
+    "context now), 'queued for <handle> (position N)' when it was mid-turn, "
+    "'interrupted & landed at <handle>' when interrupt cut a busy target, "
+    "or a 'handoff rejected: …' reason (self / unknown target).\n"
     "  - aegis_enqueue(queue, payload, from_handle, callback=true) : "
     "delegate a task onto a named queue; the substrate spawns a worker "
     "of the queue's configured agent profile, runs the payload as its "
@@ -301,9 +304,10 @@ BRIEFING = (
     "the worker's natural final answer is the thing you want back.\n\n"
     "Use aegis_handoff (not enqueue) when you want a SPECIFIC live "
     "peer to take over — handoff targets a handle, runs in an "
-    "existing session, and is fire-and-forget. Use aegis_enqueue when "
-    "you want a FRESH worker spawned for one task and the result "
-    "returned to you.\n\n"
+    "existing session, and is fire-and-forget; pass interrupt=True to "
+    "cut its current turn when it needs a blocking correction now. Use "
+    "aegis_enqueue when you want a FRESH worker spawned for one task and "
+    "the result returned to you.\n\n"
     "SHARED CANVAS PATTERN. When multiple agents need to shape one "
     "artifact (a report, a plan, a shared notes file), open a canvas "
     "with aegis_canvas_open(name, file, from_handle=<your handle>). "
@@ -398,6 +402,65 @@ def _write_result_to_dict(res) -> dict:
         "removed": res.removed,
         "timestamp": res.timestamp,
     }
+
+
+def make_handoff(bridge):
+    """Factory for the ``aegis_handoff`` tool callable, kept module-level so
+    its logic is unit-testable without standing up FastMCP. The returned
+    async function is registered verbatim via ``server.tool(...)``."""
+    async def aegis_handoff(from_handle: str, target_handle: str,
+                            context: str, interrupt: bool = False) -> str:
+        """One-way context transfer to a live peer aegis session.
+
+        Delivered via the universal inbox channel: the target receives a
+        normal user-message tagged ``sender=agent:<from_handle>`` — the same
+        shape queue callbacks use, so peers read handoffs and callbacks
+        through one surface.
+
+        from_handle is your own aegis handle (read it from your system
+        prompt).
+
+        interrupt (default False): when False, a busy target buffers your
+        context and chains it at its next turn boundary. Set interrupt=True
+        ONLY when you have a blocking correction the peer needs NOW — e.g. it
+        is about to act on a wrong assumption. interrupt=True cuts the peer's
+        in-progress turn (discarding its current work) and lands your context
+        as its next turn. It is a deliberate act, not the default.
+
+        Returns 'landed at <target>' (idle target), 'queued for <target>
+        (position N)' (busy, not interrupted), or 'interrupted & landed at
+        <target>' (busy, interrupted). Returns 'handoff rejected: …' for
+        self / unknown target.
+        """
+        from aegis.queue import InboxMessage, now_iso, sender_agent
+
+        if from_handle == target_handle:
+            return "handoff rejected: cannot hand off to yourself"
+        sessions = list(bridge.list_sessions())
+        target_info = next(
+            (s for s in sessions if s.handle == target_handle), None)
+        if target_info is None:
+            return (f"handoff rejected: no session {target_handle!r} "
+                    f"(use aegis_list_sessions)")
+        was_working = target_info.state == "working"
+        if interrupt and was_working:
+            await bridge.interrupt(target_handle)
+        receipt = await bridge.inbox_router.deliver(
+            target_handle,
+            InboxMessage(
+                sender=sender_agent(from_handle),
+                timestamp=now_iso(),
+                body=context))
+        if interrupt and was_working:
+            return f"interrupted & landed at {target_handle}"
+        # The sender's view of land-vs-queue follows the target's state at
+        # call time; the receipt depth gives the queue position.
+        if target_info.state == "working":
+            return (f"queued for {target_handle} "
+                    f"(position {receipt.depth})")
+        return f"landed at {target_handle}"
+
+    return aegis_handoff
 
 
 def build_server(bridge: AppBridge) -> FastMCP:
@@ -711,46 +774,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
             return {"status": "no_tui"}
         return await open_file(path)
 
-    @server.tool
-    async def aegis_handoff(from_handle: str, target_handle: str,
-                            context: str) -> str:
-        """One-way context transfer to a live peer aegis session.
-
-        Delivered via the universal inbox channel: the target receives a
-        normal user-message whose substrate header carries
-        ``sender=agent:<from_handle>`` and an ISO timestamp — same
-        universal-tagging shape that queue callbacks use, so the target
-        agent reads handoffs and callbacks through one consistent surface.
-
-        from_handle is your own aegis handle (read it from your system
-        prompt). On success returns 'landed at <target>' when the target was
-        idle (it starts on your context now) or
-        'queued for <target> (position N)' when the target is mid-turn (your
-        context is buffered and chains at its next turn boundary). Returns a
-        'handoff rejected: …' reason for self / unknown target.
-        """
-        from aegis.queue import InboxMessage, now_iso, sender_agent
-
-        if from_handle == target_handle:
-            return "handoff rejected: cannot hand off to yourself"
-        sessions = list(bridge.list_sessions())
-        target_info = next(
-            (s for s in sessions if s.handle == target_handle), None)
-        if target_info is None:
-            return (f"handoff rejected: no session {target_handle!r} "
-                    f"(use aegis_list_sessions)")
-        receipt = await bridge.inbox_router.deliver(
-            target_handle,
-            InboxMessage(
-                sender=sender_agent(from_handle),
-                timestamp=now_iso(),
-                body=context))
-        # The sender's view of land-vs-queue follows the target's state at
-        # call time; the receipt depth gives the queue position.
-        if target_info.state == "working":
-            return (f"queued for {target_handle} "
-                    f"(position {receipt.depth})")
-        return f"landed at {target_handle}"
+    server.tool(make_handoff(bridge))
 
     @server.tool
     async def aegis_rename(old_handle: str, new_handle: str) -> dict:
