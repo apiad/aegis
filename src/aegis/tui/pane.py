@@ -455,7 +455,14 @@ class ConversationPane(Widget):
     ConversationPane.working GrowingInput:focus {
                              border-top: solid $foreground 30%;
                              border-bottom: solid $foreground 30%; }
-    /* Voice recording overrides both. */
+    /* Shell escape: the input starts with `!` — it runs as a local shell
+       command, not a message to the agent. Magenta flags the difference.
+       After .working so it wins when you type `!` mid-turn. */
+    ConversationPane.shell-escape GrowingInput,
+    ConversationPane.shell-escape GrowingInput:focus {
+                             border-top: solid #C77DBB;
+                             border-bottom: solid #C77DBB; }
+    /* Voice recording overrides all. */
     ConversationPane.recording GrowingInput,
     ConversationPane.recording GrowingInput:focus {
                              border-top: solid $warning;
@@ -769,6 +776,14 @@ class ConversationPane(Widget):
 
     def set_recording(self, on: bool) -> None:
         self.set_class(on, "recording")
+
+    def on_text_area_changed(self, _event) -> None:
+        # Flag `!` shell-escape input with a magenta outline so it reads as
+        # distinct from a normal message. Idempotent; clears when the input
+        # is emptied (on submit) or no longer starts with `!`.
+        self.set_class(
+            self.query_one(GrowingInput).value.startswith("!"),
+            "shell-escape")
 
     async def on_growing_input_submitted(self,
                                   event: GrowingInput.Submitted) -> None:
