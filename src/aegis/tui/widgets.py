@@ -223,6 +223,8 @@ class StatusBar(Static):
             f"{model} · {permission}")
         self._state = AgentState.ready
         self._metrics = ""
+        self._connection_banner: str = ""
+        self._plain_content: str = ""
 
     def on_mount(self) -> None:
         self._refresh()
@@ -235,8 +237,36 @@ class StatusBar(Static):
         self._metrics = text
         self._refresh()
 
+    def set_connection_state(self, up: bool, reason: str = "") -> None:
+        """Show/hide a disconnected indicator on the right of the bar.
+
+        ``up=False`` renders ``⚠ disconnected — reconnecting…``; ``up=True``
+        clears the indicator.  Suitable for wiring to WsClient.on_connection.
+        """
+        if up:
+            self._connection_banner = ""
+        else:
+            self._connection_banner = "⚠ disconnected — reconnecting…"
+        self._refresh()
+
+    def render_plain(self) -> str:
+        """Return the current bar content as a plain string (strips Rich markup).
+
+        Used by tests to assert on visible text without a live Textual render.
+        """
+        import re
+        raw = self._plain_content
+        # Strip Rich markup tags like [bold], [red], [/], etc.
+        return re.sub(r"\[[^\]]*\]", "", raw)
+
     def _refresh(self) -> None:
+        import contextlib
         line = f"{self._identity}    {self._state.label}"
         if self._metrics:
             line += f"    {self._metrics}"
-        self.update(line)
+        if self._connection_banner:
+            line += f"    {self._connection_banner}"
+        # Keep a plain copy for render_plain() (no Textual dependency).
+        self._plain_content = line
+        with contextlib.suppress(Exception):
+            self.update(line)

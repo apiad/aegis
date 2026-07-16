@@ -236,6 +236,8 @@ class AegisApp(App):
             # Skip all local plane construction; point aux surfaces at the
             # manager's _DisabledPlane sentinels (or whatever it exposes).
             self._remote_manager = manager
+            # Expose _ws so tests (and on_mount wiring) can reach the client.
+            self._ws = getattr(manager, "_ws", None)
             self.inbox_router = getattr(manager, "inbox_router",
                                         _DisabledPlaneStub("inbox_router"))
             self.queue_manager = getattr(manager, "queue_manager",
@@ -330,6 +332,12 @@ class AegisApp(App):
             threading.Thread(
                 target=prewarm, args=(self._voice_cfg,),
                 name="voice-prewarm", daemon=True).start()
+        if hasattr(self, "_remote_manager"):
+            # Remote mode: skip local planes and wire reconnect + reset handlers.
+            self._wire_remote_handlers()
+            self.set_interval(1.0, self._tick)
+            return
+
         await self._mcp.start()
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
@@ -922,6 +930,47 @@ class AegisApp(App):
                      and p.handle == handle), None)
         if pane is not None:
             pane.interrupt()
+
+    def _wire_remote_handlers(self) -> None:
+        """Register WsClient observers for reconnect banner + window_reset.
+
+        Called once from on_mount when AegisApp runs in remote mode
+        (manager != None). Only wired when _ws is available (it is always
+        set to manager._ws in __init__ when manager is provided).
+        """
+        ws = getattr(self, "_ws", None)
+        if ws is None:
+            return
+        if hasattr(ws, "on_connection"):
+            ws.on_connection(self._on_ws_connection)
+        ws.on("window_reset", self._on_window_reset)
+
+    def _on_ws_connection(self, up: bool) -> None:
+        """Propagate WS connect/disconnect state to all live pane status bars."""
+        from aegis.tui.widgets import StatusBar
+        for p in self._panes:
+            if isinstance(p, ConversationPane):
+                try:
+                    p.query_one(StatusBar).set_connection_state(up)
+                except Exception:  # noqa: BLE001 — pane may not be mounted yet
+                    pass
+
+    def pane_for(self, handle: str) -> "ConversationPane | None":
+        """Return the ConversationPane for the given handle, or None."""
+        for p in self._panes:
+            if isinstance(p, ConversationPane) and p.handle == handle:
+                return p
+        return None
+
+    def _on_window_reset(self, fr: dict) -> None:
+        """Stream handler for ``window_reset`` frames (remote mode only).
+
+        Clears the matching pane's transcript so replayed content does not
+        append to stale blocks.
+        """
+        pane = self.pane_for(fr.get("handle", ""))
+        if pane is not None:
+            pane.clear_transcript()
 
     async def rename_handle(self, old: str, new: str) -> dict:
         """AppBridge-shaped: rename a live pane's handle in-place.

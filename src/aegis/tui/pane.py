@@ -1150,5 +1150,32 @@ class ConversationPane(Widget):
         self._transcript().mount(banner, before=self._transcript().children[0]
                                  if self._transcript().children else None)
 
+    def clear_transcript(self) -> None:
+        """Clear _history and remove all mounted transcript blocks.
+
+        Called on ``window_reset`` stream events so stale content is wiped
+        before the server replays fresh events for this session.
+        """
+        import contextlib
+        self._history.clear()
+        self._window_start = 0
+        if hasattr(self, "_streaming_block"):
+            self._flush_streaming()
+        for b in list(getattr(self, "_mounted_blocks", [])):
+            with contextlib.suppress(Exception):
+                b.remove()
+        if hasattr(self, "_mounted_blocks"):
+            self._mounted_blocks.clear()
+        if hasattr(self, "_tool_use_idx"):
+            self._tool_use_idx.clear()
+        if hasattr(self, "_tools"):
+            self._tools.clear()
+        if hasattr(self, "_subagent_boxes"):
+            self._subagent_boxes.clear()
+        if hasattr(self, "_subagent_counts"):
+            self._subagent_counts.clear()
+        if hasattr(self, "_subagent_summary"):
+            self._subagent_summary.clear()
+
     async def close(self) -> None:
         await self._core.close()
