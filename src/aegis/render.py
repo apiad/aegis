@@ -192,6 +192,24 @@ def render_user_line(text: str, colors, width: int | None = None) -> Text:
     return line
 
 
+def render_command_block(result, colors, width: int | None = None) -> Text:
+    """Visible block for a slash-command result (`/help`, `/spawn`, …).
+
+    A `/`-glyph header in the accent colour with the result title, then the
+    body dimmed beneath. The whole block tints `colors.error` when the
+    command failed (unknown command, bad args, handler exception).
+    """
+    tint = colors.error if not result.ok else colors.accent
+    line = Text()
+    line.append("/ ", style=f"bold {tint}")
+    line.append(result.title, style=tint)
+    if result.body:
+        line.append("\n")
+        for ln in result.body.splitlines():
+            line.append(f"  {ln}\n", style=colors.muted)
+    return line
+
+
 def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
     """Visible block for an incoming inbox message.
 

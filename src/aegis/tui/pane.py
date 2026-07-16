@@ -462,6 +462,12 @@ class ConversationPane(Widget):
     ConversationPane.shell-escape GrowingInput:focus {
                              border-top: solid #C77DBB;
                              border-bottom: solid #C77DBB; }
+    /* Slash command: the input starts with `/` — aegis runs it directly.
+       Bright blue, distinct from magenta shell / green message. */
+    ConversationPane.slash-command GrowingInput,
+    ConversationPane.slash-command GrowingInput:focus {
+                             border-top: solid #4DA6FF;
+                             border-bottom: solid #4DA6FF; }
     /* Voice recording overrides all. */
     ConversationPane.recording GrowingInput,
     ConversationPane.recording GrowingInput:focus {
@@ -778,12 +784,13 @@ class ConversationPane(Widget):
         self.set_class(on, "recording")
 
     def on_text_area_changed(self, _event) -> None:
-        # Flag `!` shell-escape input with a magenta outline so it reads as
-        # distinct from a normal message. Idempotent; clears when the input
-        # is emptied (on submit) or no longer starts with `!`.
-        self.set_class(
-            self.query_one(GrowingInput).value.startswith("!"),
-            "shell-escape")
+        # Flag special input prefixes with a distinct outline colour so they
+        # read as different from a plain message: `!` shell-escape → magenta,
+        # `/` slash command → bright blue. Idempotent; both clear when the
+        # input is emptied (on submit) or no longer starts with the prefix.
+        value = self.query_one(GrowingInput).value
+        self.set_class(value.startswith("!"), "shell-escape")
+        self.set_class(value.startswith("/"), "slash-command")
 
     async def on_growing_input_submitted(self,
                                   event: GrowingInput.Submitted) -> None:
@@ -802,6 +809,19 @@ class ConversationPane(Widget):
                 return
             from aegis.tui.shell_escape import run_shell_escape
             text = await run_shell_escape(command, self._core.project_root)
+        elif text.startswith("/"):
+            # Slash command: aegis executes it directly and renders the
+            # result in the transcript — never delivered to the agent.
+            from aegis.commands import CommandContext, dispatch
+            from aegis.render import render_command_block
+            width = self._transcript().size.width or 80
+            result = await dispatch(
+                text, CommandContext(bridge=self.app, handle=self.handle))
+            self._flush_streaming()
+            self._mount_block(
+                render_command_block(result, self._palette, width),
+                f"{result.title}\n{result.body}".strip())
+            return
         # Every text-box message flows through the one inbox queue. When
         # idle it lands immediately (rendered by _on_core_dispatch); when
         # the agent is mid-turn it queues as a click-to-dequeue chip.

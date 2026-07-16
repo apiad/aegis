@@ -1,0 +1,141 @@
+"""Unit tests for the slash-command dispatcher with a fake AppBridge."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from aegis.commands import CommandContext, dispatch
+
+
+@dataclass
+class FakeSession:
+    handle: str
+    agent_slug: str
+    state: str = "ready"
+    active: bool = False
+
+
+class FakeQueueManager:
+    def __init__(self):
+        self.enqueued = []
+
+    def enqueue(self, queue, payload, *, enqueued_by, callback):
+        if queue not in ("build",):
+            raise KeyError(queue)
+        self.enqueued.append((queue, payload))
+        return ("task-1", 0)
+
+
+class FakeBridge:
+    def __init__(self):
+        self.spawned = []
+        self.registered = []
+        self._sessions = [FakeSession("alpha", "opus", active=True)]
+        self.queue_manager = FakeQueueManager()
+
+    def list_agents(self):
+        return ["default", "opus"]
+
+    def list_sessions(self):
+        return self._sessions
+
+    async def spawn(self, profile, *, handle=None, opening_prompt=None,
+                    spawned_by=None):
+        self.spawned.append((profile, opening_prompt, spawned_by))
+        return "beta"
+
+    def register_queue(self, queue):
+        if any(q.name == queue.name for q in self.registered):
+            raise ValueError(f"queue {queue.name!r} already exists")
+        self.registered.append(queue)
+
+
+def _ctx():
+    return CommandContext(bridge=FakeBridge(), handle="me")
+
+
+async def test_help_lists_commands():
+    res = await dispatch("/help", _ctx())
+    assert res.ok
+    assert "/spawn" in res.body and "/enqueue" in res.body
+
+
+async def test_bare_slash_is_help():
+    res = await dispatch("/", _ctx())
+    assert res.ok and "/help" in res.body
+
+
+async def test_unknown_command_errors():
+    res = await dispatch("/nope", _ctx())
+    assert not res.ok
+    assert "unknown command" in res.title
+
+
+async def test_sessions_lists_live():
+    res = await dispatch("/sessions", _ctx())
+    assert res.ok
+    assert "alpha" in res.body and "opus" in res.body
+    assert res.body.startswith("*")          # active session marked
+
+
+async def test_spawn_unknown_agent_errors():
+    ctx = _ctx()
+    res = await dispatch("/spawn ghost do stuff", ctx)
+    assert not res.ok
+    assert "unknown agent" in res.title
+    assert not ctx.bridge.spawned
+
+
+async def test_spawn_passes_agent_prompt_and_spawned_by():
+    ctx = _ctx()
+    res = await dispatch("/spawn opus go analyze the logs", ctx)
+    assert res.ok and "beta" in res.title
+    assert ctx.bridge.spawned == [("opus", "go analyze the logs", "me")]
+
+
+async def test_spawn_without_prompt():
+    ctx = _ctx()
+    res = await dispatch("/spawn opus", ctx)
+    assert res.ok
+    assert ctx.bridge.spawned == [("opus", None, "me")]
+
+
+async def test_queue_new_registers():
+    ctx = _ctx()
+    res = await dispatch("/queue new build opus", ctx)
+    assert res.ok and "build" in res.title
+    assert [q.name for q in ctx.bridge.registered] == ["build"]
+    assert ctx.bridge.registered[0].agent_profile == "opus"
+
+
+async def test_queue_new_defaults_to_first_agent():
+    ctx = _ctx()
+    await dispatch("/queue new build", ctx)
+    assert ctx.bridge.registered[0].agent_profile == "default"
+
+
+async def test_queue_new_usage_on_missing_args():
+    res = await dispatch("/queue", _ctx())
+    assert not res.ok and "usage" in res.title
+
+
+async def test_enqueue_drops_task():
+    ctx = _ctx()
+    res = await dispatch("/enqueue build deploy the thing", ctx)
+    assert res.ok and "task-1" in res.title
+    assert ctx.bridge.queue_manager.enqueued == [("build", "deploy the thing")]
+
+
+async def test_enqueue_unknown_queue_errors():
+    res = await dispatch("/enqueue ghost payload", _ctx())
+    assert not res.ok and "unknown queue" in res.title
+
+
+async def test_handler_exception_becomes_error_result():
+    class Boom(FakeBridge):
+        def list_sessions(self):
+            raise RuntimeError("kaboom")
+
+    ctx = CommandContext(bridge=Boom(), handle="me")
+    res = await dispatch("/sessions", ctx)
+    assert not res.ok
+    assert "failed" in res.title and "kaboom" in res.body
