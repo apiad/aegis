@@ -323,18 +323,24 @@ class WSSession:
             self._emit({"type": "stream", "kind": "window_reset",
                         "handle": handle, "dropped_through_seq": from_seq})
             # Apply per-subscription tail on the fresh-history replay after window_reset
-            effective_tail = (tail if tail is not None
-                              else self._constants.get("REPLAY_TAIL", 0))
-            lower = _tail_lower_seq(hist, effective_tail)
+            if tail == 0:
+                lower = hist[-1][0] if hist else 0  # skip all history
+            else:
+                effective_tail = (tail if tail is not None
+                                  else self._constants.get("REPLAY_TAIL", 0))
+                lower = _tail_lower_seq(hist, effective_tail)
         elif resume:
             lower = from_seq
         else:
             # Fresh open: send only the last REPLAY_TAIL blocks so a long
             # session reloads fast. Older history stays on disk (reachable
             # via get_event / the TUI's full scroll-back).
-            effective_tail = (tail if tail is not None
-                              else self._constants.get("REPLAY_TAIL", 0))
-            lower = _tail_lower_seq(hist, effective_tail)
+            if tail == 0:
+                lower = hist[-1][0] if hist else 0  # skip all history
+            else:
+                effective_tail = (tail if tail is not None
+                                  else self._constants.get("REPLAY_TAIL", 0))
+                lower = _tail_lower_seq(hist, effective_tail)
 
         for seq, ev in hist:
             if lower < seq <= current:

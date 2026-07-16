@@ -176,3 +176,51 @@ async def test_resume_per_subscription_tail_used_on_large_gap(tmp_path: Path):
 
     t.disconnect()
     await task
+
+
+# ---------------------------------------------------------------------------
+# Test 3: subscribe with tail=0 replays no history
+# ---------------------------------------------------------------------------
+
+async def test_subscribe_tail_zero_replays_nothing(tmp_path: Path):
+    """subscribe(tail=0) must send history_complete with no event frames before it,
+    going live-only even when REPLAY_TAIL is 10."""
+    sd = tmp_path / "state"
+    # Seed 5 ToolUse events — each is its own coalesced block (seq 1..5)
+    for i in range(1, 6):
+        append_event(sd, "swift-bohr",
+                     ToolUse(name="Read", summary=f"f{i}", kind="read"))
+
+    mgr = FakeManager({"swift-bohr": FakeCore("swift-bohr")})
+    constants = {"REPLAY_TAIL": 10, "RESUME_GAP_CAP": 1000}
+
+    t, reg, task = await _run_authed(sd, mgr, constants)
+    t.feed({
+        "type": "subscribe",
+        "tail": 0,
+        "target": {"kind": "session", "handle": "swift-bohr"},
+    })
+    await _settle()
+
+    # No event frames should be sent
+    event_seqs = [fr["seq"] for fr in t.sent if fr.get("kind") == "event"]
+    assert event_seqs == [], f"expected no event frames, got {event_seqs}"
+
+    # history_complete must appear and show current_seq=5
+    hc_frames = [fr for fr in t.sent if fr.get("kind") == "history_complete"]
+    assert hc_frames, "expected a history_complete frame"
+    assert hc_frames[0]["current_seq"] == 5
+
+    # Verify live observer is still wired: inject a live event (seq 6)
+    core = mgr.get("swift-bohr")
+    t.sent.clear()
+    for cb in core._ev:
+        cb(6, ToolUse(name="Read", summary="f6", kind="read"))
+    await _settle()
+
+    # The live event should arrive
+    live_seqs = [fr["seq"] for fr in t.sent if fr.get("kind") == "event"]
+    assert live_seqs == [6], f"expected live event [6], got {live_seqs}"
+
+    t.disconnect()
+    await task
