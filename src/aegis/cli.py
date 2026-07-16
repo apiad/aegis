@@ -87,8 +87,33 @@ def run(
 
     if remote is not None:
         url = remote or "ws://localhost:8080"
-        _maybe_autolaunch_serve(url)
-        mgr = asyncio.run(_build_remote_manager(url=url, token=token, tail=tail))
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(url)
+        if parsed.scheme == "ssh":
+            host = parsed.hostname
+            port = parsed.port or 8080
+            fetched_token = _ssh_fetch_token(host)
+            from aegis.remote.ssh_tunnel import SSHTunnel
+            tunnel = SSHTunnel(host, port)
+            async def _boot():
+                await tunnel.__aenter__()
+                try:
+                    mgr = await _build_remote_manager(
+                        url=f"ws://localhost:{tunnel.local_port}",
+                        token=fetched_token, tail=tail)
+                    mgr._tunnel = tunnel   # keep alive for TUI lifetime
+                    return mgr
+                except Exception:
+                    await tunnel.__aexit__(None, None, None)
+                    raise
+            mgr = asyncio.run(_boot())
+        elif parsed.scheme == "ws":
+            _maybe_autolaunch_serve(url)
+            mgr = asyncio.run(_build_remote_manager(url=url, token=token,
+                                                     tail=tail))
+        else:
+            raise typer.BadParameter(
+                f"--remote: unsupported scheme {parsed.scheme!r}")
         _run_tui_with_manager(mgr, cwd=cwd, clean=clean, agent=agent)
         return
     # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
@@ -177,6 +202,14 @@ async def _build_remote_manager(*, url: str, token: str | None,
     mgr = RemoteSessionManager(ws)
     await mgr.start()
     return mgr
+
+
+def _ssh_fetch_token(host: str) -> str:
+    """Shell out to `ssh <host> aegis token` and return the printed token."""
+    import subprocess
+    r = subprocess.run(["ssh", host, "aegis", "token"],
+                       capture_output=True, text=True, check=True)
+    return r.stdout.strip()
 
 
 def _maybe_autolaunch_serve(url: str) -> None:

@@ -129,6 +129,41 @@ def test_remote_ws_remote_host_does_not_autolaunch(monkeypatch, tmp_path):
     assert called.get("url") == "ws://otherhost:8080"
 
 
+def test_remote_ssh_fetches_token_and_opens_tunnel(monkeypatch):
+    fetched: dict = {}
+
+    class FakeTunnel:
+        local_port = 41234
+        async def __aenter__(self):
+            fetched["opened"] = True
+            return self
+        async def __aexit__(self, *a): fetched["closed"] = True
+
+    def fake_ssh_token(host):
+        fetched["host"] = host
+        return "server-token"
+
+    monkeypatch.setattr("aegis.cli._ssh_fetch_token", fake_ssh_token)
+    monkeypatch.setattr("aegis.remote.ssh_tunnel.SSHTunnel",
+                        lambda host, port: FakeTunnel())
+
+    async def fake_build(*, url, token, tail):
+        fetched["url"] = url
+        fetched["token"] = token
+        return _FakeManager()
+
+    monkeypatch.setattr("aegis.cli._build_remote_manager", fake_build)
+    monkeypatch.setattr("aegis.tui.app.AegisApp.run", lambda self: None)
+
+    from typer.testing import CliRunner
+    r = CliRunner().invoke(app, ["--remote", "ssh://vps:8080"])
+    assert r.exit_code == 0, r.output
+    assert fetched["host"] == "vps"
+    assert fetched["token"] == "server-token"
+    assert fetched["url"] == "ws://localhost:41234"
+    assert fetched["opened"] is True
+
+
 def test_app_launched_with_manager_kwarg(monkeypatch, tmp_path):
     """When --remote is given, AegisApp must receive a manager= kwarg."""
     monkeypatch.chdir(tmp_path)
