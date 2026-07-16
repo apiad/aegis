@@ -77,6 +77,30 @@ async def test_sessions_lists_live():
     assert res.body.startswith("*")          # active session marked
 
 
+@dataclass
+class FakeAgent:
+    harness: str
+    model: str
+    permission: str
+
+
+async def test_agents_lists_names_when_no_detail():
+    res = await dispatch("/agents", _ctx())      # FakeBridge has no _agents
+    assert res.ok
+    assert "default" in res.body and "opus" in res.body
+
+
+async def test_agents_enriches_with_config_detail():
+    bridge = FakeBridge()
+    bridge._agents = {
+        "default": FakeAgent("claude-code", "sonnet", "auto"),
+        "opus": FakeAgent("claude-code", "opus", "full"),
+    }
+    res = await dispatch("/agents", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok and "2 agents" in res.title
+    assert "claude-code · opus · full" in res.body
+
+
 async def test_spawn_unknown_agent_errors():
     ctx = _ctx()
     res = await dispatch("/spawn ghost do stuff", ctx)

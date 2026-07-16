@@ -27,6 +27,28 @@ async def _sessions(ctx: CommandContext, argstr: str) -> CommandResult:
                          "\n".join(lines))
 
 
+async def _agents(ctx: CommandContext, argstr: str) -> CommandResult:
+    names = ctx.bridge.list_agents()
+    if not names:
+        return CommandResult(True, "no agents configured")
+    # Enrich each with its config (harness · model · permission) when the
+    # bridge exposes the agent map; fall back to bare names otherwise.
+    configs = getattr(ctx.bridge, "_agents", {}) or {}
+    lines = []
+    for name in names:
+        a = configs.get(name)
+        if a is None:
+            lines.append(f"  {name}")
+            continue
+        harness = getattr(a, "harness", "") or "?"
+        model = getattr(a, "model", "") or "?"
+        perm = getattr(a, "permission", "")
+        perm = getattr(perm, "value", perm) or "?"
+        lines.append(f"  {name} · {harness} · {model} · {perm}")
+    plural = "" if len(names) == 1 else "s"
+    return CommandResult(True, f"{len(names)} agent{plural}", "\n".join(lines))
+
+
 async def _spawn(ctx: CommandContext, argstr: str) -> CommandResult:
     parts = argstr.split(None, 1)
     if not parts:
@@ -87,6 +109,7 @@ for _cmd in (
     SlashCommand("help", "list slash commands", "/help", _help),
     SlashCommand("sessions", "list live agent sessions", "/sessions",
                  _sessions),
+    SlashCommand("agents", "list configured agents", "/agents", _agents),
     SlashCommand("spawn", "start a new top-level agent",
                  "/spawn <agent> [prompt]", _spawn),
     SlashCommand("queue", "create a queue", "/queue new <name> [agent]",

@@ -116,6 +116,7 @@ is in the larger spec).
 |---|---|---|
 | `/help` | registry read | Lists every command: `usage — summary`. |
 | `/sessions` | `bridge.list_sessions()` | Table of `handle · agent · state` (marks the active one). |
+| `/agents` | `bridge.list_agents()` (+ `_agents` detail) | Configured agent profiles: `name · harness · model · permission` (bare names if detail unavailable). |
 | `/spawn <agent> [prompt]` | `bridge.spawn(agent, opening_prompt=prompt or None, spawned_by=ctx.handle)` | `spawned <handle>`; error if `<agent>` not in `bridge.list_agents()`. |
 | `/queue new <name> [agent]` | build `Queue(name, agent_profile=agent-or-default, max_parallel=1)`, `bridge.register_queue(q)` | `queue <name> created`; error (collision / unknown agent) surfaces `ValueError`. |
 | `/enqueue <queue> <payload>` | `bridge.queue_manager.enqueue(queue, payload, enqueued_by=sender_user(), callback=False)` | `queued task <id> at position <n>`; error on unknown queue. |
@@ -136,10 +137,10 @@ any other block — scrollable, leaves a trace.
 
 Mirroring the `!` shell-escape magenta outline: while the input starts with
 `/`, the pane carries a `slash-command` class that turns the input outline
-**bright blue**, so a command reads as visually distinct from a message
-(green idle) or a shell escape (magenta). Precedence of outline states:
-recording > shell-escape > slash-command > working > idle. Toggled in the
-same `on_text_area_changed` handler.
+**and the typed text** bright blue, so a command reads as visually distinct
+from a message (green idle) or a shell escape (magenta text + outline).
+Precedence of outline states: recording > shell-escape > slash-command >
+working > idle. Toggled in the same `on_text_area_changed` handler.
 
 ## Testing (Phase 1)
 

@@ -460,12 +460,14 @@ class ConversationPane(Widget):
        After .working so it wins when you type `!` mid-turn. */
     ConversationPane.shell-escape GrowingInput,
     ConversationPane.shell-escape GrowingInput:focus {
+                             color: #C77DBB;
                              border-top: solid #C77DBB;
                              border-bottom: solid #C77DBB; }
     /* Slash command: the input starts with `/` — aegis runs it directly.
        Bright blue, distinct from magenta shell / green message. */
     ConversationPane.slash-command GrowingInput,
     ConversationPane.slash-command GrowingInput:focus {
+                             color: #4DA6FF;
                              border-top: solid #4DA6FF;
                              border-bottom: solid #4DA6FF; }
     /* Voice recording overrides all. */
