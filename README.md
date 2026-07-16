@@ -550,6 +550,8 @@ ConfigPanel via `F2`.
 | Key | Action |
 |---|---|
 | `Enter` | Send |
+| `!cmd` | **Shell escape** — run `cmd` locally, inject its output as your message |
+| `/cmd` | **Slash command** — aegis runs it directly (`/help` lists them); never reaches the agent |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+E` | New terminal tab (`term:<name>`) |
 | `Ctrl+W` | Close tab (last → quit) |

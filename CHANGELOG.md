@@ -5,6 +5,52 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Slash commands + shell escape (TUI input)
+
+- **`!<command>` shell escape.** Typing `!cmd` in the input runs `cmd` in a
+  local shell (in the session's project root) and injects `$ cmd` plus its
+  combined stdout/stderr into the conversation as your next message, so the
+  agent sees the result. Output is capped, merges stderr, notes a non-zero
+  exit, and times out after 60s. A bare `!` is a no-op.
+- **`/<command>` slash commands (Phase 1).** Control commands aegis executes
+  itself — a human-facing front-end over the same `AppBridge` surface agents
+  drive through MCP; they never reach the harness. Results render as a
+  `/`-glyph transcript block (red on failure); unknown commands point at
+  `/help`. Builtins: `/help`, `/sessions`, `/agents`, `/spawn <agent>
+  [prompt]`, `/queue new <name> [agent]`, `/enqueue <queue> <payload>`. The
+  registry + pure `dispatch()` are harness-agnostic so the web client can
+  reuse them. Spec:
+  `docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md`.
+- **Input-prefix accents.** While the input starts with `!` / `/`, its
+  outline **and text** turn magenta / bright blue so a shell escape or command
+  reads as distinct from a plain message (green) at a glance. Precedence:
+  recording > shell-escape > slash-command > working > idle.
+
+### Live terminals — correctness fixes
+
+- **OSC 133 parser handles ST-terminated sequences**, not just BEL. Modern
+  shell integrations (starship, VTE, Ghostty) terminate `]133;C` with ST
+  (`ESC \`); the old BEL-only scan ran past it and **swallowed the following
+  `]133;D` exit marker**, so `aegis_term_run` never saw command-end and always
+  timed out on those machines. The parser now strips *all* OSC sequences (VTE
+  / title / cwd noise no longer leaks into captured output), recognizes the
+  `C` (output-start) marker, and returns an **ordered** output/event stream so
+  a same-read `B…C…output…D` no longer wipes the output.
+- **Marker-injection fallback** when shell integration is unavailable: aegis
+  injects its own `printf` boundary markers so command-boundary + exit
+  detection still work instead of hanging (the fallback the spec promised but
+  never wired).
+- **Bounded default `run()` timeout (120s)** so an interactive/never-returning
+  command can't hang the per-terminal lock forever; a reader-loop crash now
+  finalizes the pending command instead of stranding it.
+- **Cleaner capture**: the echoed command line + prompt redraw are stripped
+  (reset at the command-start / output-start markers).
+- **Stops clobbering your shell**: array-aware prepend into `PROMPT_COMMAND`
+  (starship / atuin / direnv / VTE render through it); zsh uses the
+  `precmd_functions` / `preexec_functions` arrays instead of replacing hooks.
+- **Multi-line commands rejected** with a clear error (each newline is a fresh
+  prompt cycle → multiple `D` markers → corrupted correlation).
+
 ### Status-line tok/s meter
 
 - The status line now carries a rolling **`⚡ N tok/s`** generation-speed

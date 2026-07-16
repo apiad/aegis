@@ -18,6 +18,46 @@
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 
+## Input prefixes: `!` shell and `/` commands
+
+Two leading characters route the input line to **aegis itself** instead of
+the agent. The input outline **and text** change colour so you can tell at a
+glance what a line will do: green message · magenta shell · blue command.
+
+### `!` — shell escape
+
+`!<command>` runs `<command>` in a local shell (in the session's project
+root) and injects `$ <command>` plus its combined stdout/stderr into the
+conversation as your next message — so the agent sees the result. The input
+turns **magenta** while the line starts with `!`.
+
+```
+!git status --short
+!ls -la src/
+```
+
+Output is capped, merges stderr, notes a non-zero exit, and times out after
+60s. A bare `!` is a no-op.
+
+### `/` — slash commands
+
+`/<command>` is a **control command aegis executes directly** — it never
+reaches the agent. The result renders as a `/`-glyph block in the transcript
+(red when it fails). The input turns **bright blue** while the line starts
+with `/`.
+
+| Command | What it does |
+|---|---|
+| `/help` | List the available slash commands |
+| `/sessions` | List live agent tabs (`handle · agent · state`) |
+| `/agents` | List configured agent profiles (`name · harness · model · permission`) |
+| `/spawn <agent> [prompt]` | Start a new top-level agent, optionally with an opening prompt |
+| `/queue new <name> [agent]` | Create a queue |
+| `/enqueue <queue> <payload>` | Drop a task on a queue |
+
+Precedence: `!` shell escape > `/` slash command > a plain message to the
+agent. An unknown command shows an error block pointing at `/help`.
+
 ## Tabs
 
 Each tab is an independent agent session with:
