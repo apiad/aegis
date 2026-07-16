@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 
 from aegis.events import TokenUsage
+
+# How many recent completed turns feed the rolling tok/s meter.
+TPS_WINDOW = 5
 
 
 def context_window_for(harness: str, model: str) -> int:
@@ -78,6 +82,9 @@ class SessionMetrics:
     # cost rendering is skipped (no $ segment in the status line).
     provider: str = ""
     model: str = ""
+    # Rolling (output_tokens, turn_seconds) samples for the tok/s meter —
+    # last TPS_WINDOW completed turns that actually generated output.
+    _turn_rates: deque = field(default_factory=lambda: deque(maxlen=TPS_WINDOW))
 
     # ----- properties consumed by aegis.budget.cost.compute() -----
     # The Cost computation reads input_tokens / output_tokens /
@@ -142,6 +149,19 @@ class SessionMetrics:
         self.p_in = self.p_out = self.p_cached = 0
         self._provisional = False
         self._end_time(now)
+        # Feed the tok/s meter: only real generation turns (positive output
+        # over a measured duration) so tool-only or instant turns don't skew it.
+        if usage is not None and usage.output > 0 and self.last_turn_seconds > 0:
+            self._turn_rates.append((usage.output, self.last_turn_seconds))
+
+    def recent_tps(self) -> float | None:
+        """Token-weighted output tokens/sec over the last TPS_WINDOW turns, or
+        None when no generation turn has completed yet."""
+        total_out = sum(o for o, _ in self._turn_rates)
+        total_sec = sum(s for _, s in self._turn_rates)
+        if total_sec <= 0:
+            return None
+        return total_out / total_sec
 
     def cancel_turn(self, now: float) -> None:
         self.p_in = self.p_out = self.p_cached = 0
@@ -177,9 +197,12 @@ class SessionMetrics:
             ctx_pct = round(100 * live / self.context_window)
             ctx = f"ctx {_fmt_tokens(live)} ({ctx_pct}%) · "
         cost = self._render_cost()
+        tps = self.recent_tps()
+        tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
         return (
             f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
             f"↓{_fmt_tokens(out)} · "
+            f"{tps_seg}"
             f"{ctx}"
             f"{cost}"
             f"{tool} · "

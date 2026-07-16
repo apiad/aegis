@@ -233,3 +233,50 @@ def test_time_formatting_tail():
     m2 = SessionMetrics(session_start=0.0)
     m2.start_turn(0.0)
     assert m2.render(243.0).endswith("4m03s / 4m03s")
+
+
+# --- tok/s meter (rolling generation speed) --------------------------
+
+def _turn(m, out, seconds):
+    """Run one turn of `seconds` wall-clock that generated `out` tokens."""
+    m.start_turn(0.0)
+    m.commit(_u(out=out), float(seconds))
+
+
+def test_recent_tps_none_before_any_turn():
+    m = SessionMetrics()
+    assert m.recent_tps() is None
+    assert "tok/s" not in m.render(0.0)
+
+
+def test_recent_tps_single_turn():
+    m = SessionMetrics()
+    _turn(m, out=100, seconds=2)      # 100 tok / 2 s = 50 tok/s
+    assert m.recent_tps() == 50.0
+    assert "⚡ 50 tok/s" in m.render(0.0)
+
+
+def test_recent_tps_is_token_weighted_over_turns():
+    m = SessionMetrics()
+    _turn(m, out=100, seconds=2)      # 50 tok/s
+    _turn(m, out=300, seconds=2)      # 150 tok/s
+    # token-weighted: (100+300) / (2+2) = 100 tok/s, not (50+150)/2
+    assert m.recent_tps() == 100.0
+
+
+def test_recent_tps_window_caps_at_five_turns():
+    m = SessionMetrics()
+    _turn(m, out=10_000, seconds=1)   # huge, should fall out of the window
+    for _ in range(5):
+        _turn(m, out=50, seconds=1)   # 50 tok/s each
+    # only the last 5 counted: 250 tok / 5 s = 50 tok/s
+    assert m.recent_tps() == 50.0
+
+
+def test_recent_tps_skips_zero_duration_and_zero_output():
+    m = SessionMetrics()
+    m.commit(_u(out=100), 1.0)        # no start_turn → duration 0, skipped
+    _turn(m, out=0, seconds=2)        # zero output, skipped
+    assert m.recent_tps() is None
+    _turn(m, out=80, seconds=2)       # 40 tok/s
+    assert m.recent_tps() == 40.0

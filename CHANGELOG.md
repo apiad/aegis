@@ -5,6 +5,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Status-line tok/s meter
+
+- The status line now carries a rolling **`⚡ N tok/s`** generation-speed
+  segment (right after the `↓output` tokens): token-weighted output
+  tokens/sec over the last 5 completed turns (`SessionMetrics.recent_tps()`,
+  fed from a `(output, turn_seconds)` ring buffer on `commit`). Only real
+  generation turns count — tool-only or instant turns are skipped — and the
+  segment is hidden until the first such turn completes. Shows in both the TUI
+  and the web status bar (both render from `SessionMetrics.render`).
+
 ### TUI input handling + handoff interrupt
 
 - Richer chat-input gestures in `GrowingInput`: `Alt+Enter` (and `Ctrl+Enter`
