@@ -1,12 +1,19 @@
 """The real harp-session factory must be tuned for push-to-talk dictation:
 no warm-up delay, overlap-based finalization (transcribe_segments), and a
 process-cached engine so repeated recordings don't reload the model."""
-import harp
-import harp.vad
-import harp.whisper
+import pytest
 
-import aegis.voice.session as vs
-from aegis.config import VoiceConfig
+# Voice is an optional extra (`harpio`, imported as `harp`); the hermetic CI
+# run doesn't install it. Skip the whole module rather than erroring at
+# collection when the dep is absent.
+pytest.importorskip("harp")
+
+import harp  # noqa: E402
+import harp.vad  # noqa: E402
+import harp.whisper  # noqa: E402
+
+import aegis.voice.session as vs  # noqa: E402
+from aegis.config import VoiceConfig  # noqa: E402
 
 
 class _SpyDictation:
