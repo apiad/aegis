@@ -38,6 +38,41 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
+### Slash commands — Phase 2 *(continue tomorrow: "commands spec 2")*
+
+Phase 1 shipped (v0.17.0): control commands `/help /sessions /agents /spawn
+/queue /enqueue` + `!` shell escape, harness-agnostic registry + pure
+`dispatch()`, magenta/blue input accents. Spec:
+`docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md` (its
+"Later" section is the Phase 2 scope).
+
+Phase 2 = the powerful system. Start by writing **commands spec 2**
+(brainstorm → plan → implement):
+
+- [ ] **Prompt commands** — user-authored `.aegis/commands/<name>.md`
+  (frontmatter + `$1`/`$ARGUMENTS` template, `@file` includes, embedded
+  `!shell`) → expand and send as a message to the agent (Claude-Code parity).
+- [ ] **Full builtin coverage** — `/group`, `/schedule`, `/handoff`,
+  `/rename`, `/model`, `/effort`, `/theme`, `/clear`, `/close`, terminals,
+  config.
+- [ ] **Plugin `@command`** decorator beside `@workflow`/`@hook`/`@tool`.
+- [ ] **Discovery UX** — `/` autocomplete dropdown / palette, fuzzy match,
+  tab-completion of agent/queue/session names.
+- [ ] **Typed args** — usage specs, quoting, flags.
+- [ ] **Web parity** — web input dispatches through the same registry via a
+  new WS `slash` message; same block type in the web transcript.
+- [ ] **Escaping & queue persistence** — `//` literal slash; builtin/user/
+  plugin resolution order; persist `/queue new` to `.aegis.yaml`.
+
+### CI test selector uses the buggy `-k "not live"`
+
+- [ ] `.github/workflows/{ci,release}.yml` run `pytest -q -k "not live"`, which
+  matches `live` as a *substring* and silently deselects unrelated tests (73
+  deselected in CI vs 23 locally with the correct `-m "not live"`). Switch both
+  to the marker form `-m "not live"` (the `live` marker is registered in
+  `pyproject.toml`). Flagged during the v0.17.0 release; AGENTS.md already warns
+  against `-k "not live"`.
+
 ### Native lovelaice agent (harness-free) *(VS1–VS5 shipped — on main + PyPI)*
 
 aegis ships `lovelaice` as a dependency and drives `lovelaice-acp` over official
