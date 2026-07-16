@@ -273,8 +273,9 @@ class WSSession:
 
     async def _subscribe(self, frame: dict) -> None:
         target = frame.get("target") or {}
+        tail = frame.get("tail")           # optional per-subscription override
         if target.get("kind") == "session":
-            await self._open_session(target["handle"], from_seq=0)
+            await self._open_session(target["handle"], from_seq=0, tail=tail)
         elif (target.get("kind") == "global"
               and target.get("stream") == "session_list"):
             if not self._global_on:
@@ -292,13 +293,14 @@ class WSSession:
         for sub in frame.get("subscriptions") or []:
             await self._open_session(
                 sub["handle"], from_seq=int(sub.get("last_seq", 0)),
-                resume=True)
+                resume=True, tail=sub.get("tail"))
         if "session_list" in (frame.get("globals") or []):
             await self._subscribe(
                 {"target": {"kind": "global", "stream": "session_list"}})
 
     async def _open_session(self, handle: str, *, from_seq: int,
-                            resume: bool = False) -> None:
+                            resume: bool = False,
+                            tail: int | None = None) -> None:
         """Attach a sink, then stream history (sliced for resume) and go
         live. Live frames that fire during setup are buffered, then flushed
         with seq-dedup so history and live never overlap or gap."""
@@ -320,14 +322,19 @@ class WSSession:
         if resume and large_gap:
             self._emit({"type": "stream", "kind": "window_reset",
                         "handle": handle, "dropped_through_seq": from_seq})
-            lower = 0
+            # Apply per-subscription tail on the fresh-history replay after window_reset
+            effective_tail = (tail if tail is not None
+                              else self._constants.get("REPLAY_TAIL", 0))
+            lower = _tail_lower_seq(hist, effective_tail)
         elif resume:
             lower = from_seq
         else:
             # Fresh open: send only the last REPLAY_TAIL blocks so a long
             # session reloads fast. Older history stays on disk (reachable
             # via get_event / the TUI's full scroll-back).
-            lower = _tail_lower_seq(hist, self._constants.get("REPLAY_TAIL", 0))
+            effective_tail = (tail if tail is not None
+                              else self._constants.get("REPLAY_TAIL", 0))
+            lower = _tail_lower_seq(hist, effective_tail)
 
         for seq, ev in hist:
             if lower < seq <= current:
