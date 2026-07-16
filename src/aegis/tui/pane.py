@@ -441,14 +441,23 @@ class ConversationPane(Widget):
     ConversationPane GrowingInput { height: 3; background: $surface;
                              color: $foreground; padding: 0 2;
                              border: none;
-                             border-top: solid $foreground 20%;
-                             border-bottom: solid $foreground 20%;
                              margin-top: 1;
                              scrollbar-size: 0 0; }
+    /* Idle (default): vivid outline — a live agent that acts on your
+       message immediately. */
+    ConversationPane GrowingInput,
     ConversationPane GrowingInput:focus { border: none;
-                             border-top: solid $foreground 20%;
-                             border-bottom: solid $foreground 20%; }
-    ConversationPane.recording GrowingInput {
+                             border-top: solid $success;
+                             border-bottom: solid $success; }
+    /* Working: subdued outline — the agent is mid-turn and your message
+       queues behind it. */
+    ConversationPane.working GrowingInput,
+    ConversationPane.working GrowingInput:focus {
+                             border-top: solid $foreground 30%;
+                             border-bottom: solid $foreground 30%; }
+    /* Voice recording overrides both. */
+    ConversationPane.recording GrowingInput,
+    ConversationPane.recording GrowingInput:focus {
                              border-top: solid $warning;
                              border-bottom: solid $warning; }
     """
@@ -1066,6 +1075,10 @@ class ConversationPane(Widget):
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
         self.query_one(StatusBar).set_state(state)
+        # Input outline echoes the state dot: vivid when idle (a live agent
+        # that acts on your message now) vs subdued while working (the message
+        # queues behind the turn). See the `.working` CSS rule.
+        self.set_class(state is AgentState.working, "working")
         # A turn is starting (landed input, chained inbox batch, or
         # programmatic send) — keep the working indicator pinned. No-op if
         # one is already mounted.

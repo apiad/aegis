@@ -275,7 +275,9 @@ To force the local cache to refresh immediately:
   `Shift+Enter` / `Ctrl+J` insert a newline; `Esc` clears a non-empty input,
   else interrupts the turn; `Up`/`Down` recall sent-message history
   (boundary-aware — only at the first/last line — per-pane, session-lifetime,
-  draft-preserving).
+  draft-preserving). The input outline echoes the state dot: vivid `$success`
+  when idle, subdued `$foreground 30%` while working (`.working` class toggled
+  in `_on_core_state`), amber `$warning` while voice-recording.
 - `aegis_handoff(from_handle, target_handle, context, interrupt=False)`:
   `interrupt=True` cuts a busy peer's current turn before delivering (via
   `AppBridge.interrupt(handle)`) so the handoff lands as the peer's next turn.

@@ -16,6 +16,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   intact — per-pane, session-lifetime, draft-preserving). `Enter` still
   enqueues; `Shift+Enter` / `Ctrl+J` still insert a newline (`Alt+Enter` moved
   off newline duty).
+- The input outline now echoes the agent state dot: a **vivid green** outline
+  when the agent is idle (live — your message acts immediately) versus a
+  **subdued** outline while it is working (your message queues behind the
+  turn), so you can tell at a glance whether you are writing against a live or
+  busy agent. Voice recording still overrides with the amber outline.
 - `aegis_handoff` gains `interrupt: bool = False`. `interrupt=True` cuts a busy
   peer's in-progress turn (via the new `AppBridge.interrupt(handle)`) before
   delivering, so the handoff lands as the peer's next turn instead of buffering
