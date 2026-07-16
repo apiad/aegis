@@ -5,6 +5,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### TUI input handling + handoff interrupt
+
+- Richer chat-input gestures in `GrowingInput`: `Alt+Enter` (and `Ctrl+Enter`
+  where the terminal distinguishes it) **send-with-interrupt** — cut the live
+  turn and send the message now instead of queuing it behind the turn; `Esc`
+  **clears a non-empty input** first and only interrupts the turn when the
+  input is empty; `Up`/`Down` **recall previously-sent messages**
+  (boundary-aware — active only at the first/last line so multi-line editing is
+  intact — per-pane, session-lifetime, draft-preserving). `Enter` still
+  enqueues; `Shift+Enter` / `Ctrl+J` still insert a newline (`Alt+Enter` moved
+  off newline duty).
+- `aegis_handoff` gains `interrupt: bool = False`. `interrupt=True` cuts a busy
+  peer's in-progress turn (via the new `AppBridge.interrupt(handle)`) before
+  delivering, so the handoff lands as the peer's next turn instead of buffering
+  — for blocking corrections a peer needs *now*. Returns `interrupted & landed
+  at <target>` in that case. Default is byte-for-byte the old behavior.
+
 ### Web protocol v2 — compact-by-default + central persistence
 
 - Events stream **compact-by-default**: heavy bodies are truncated on the

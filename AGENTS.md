@@ -269,6 +269,16 @@ To force the local cache to refresh immediately:
 - The TUI is Textual 8.x. Interrupt is `Escape` (Textual reserves `ctrl+c`).
   The line REPL was removed in Phase 1.5; there is no `--plain` mode, so the
   TUI requires a TTY. Live/driver tests do not go through the App.
+- Input gestures (`GrowingInput`): `Enter` enqueues (chips mid-turn);
+  `Alt+Enter` / `Ctrl+Enter` send-with-interrupt (cut the live turn, send now;
+  `Alt+Enter` is the portable key, `Ctrl+Enter` needs the Kitty protocol);
+  `Shift+Enter` / `Ctrl+J` insert a newline; `Esc` clears a non-empty input,
+  else interrupts the turn; `Up`/`Down` recall sent-message history
+  (boundary-aware — only at the first/last line — per-pane, session-lifetime,
+  draft-preserving).
+- `aegis_handoff(from_handle, target_handle, context, interrupt=False)`:
+  `interrupt=True` cuts a busy peer's current turn before delivering (via
+  `AppBridge.interrupt(handle)`) so the handoff lands as the peer's next turn.
 
 ## Plugins
 
