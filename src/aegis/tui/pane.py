@@ -465,7 +465,8 @@ class ConversationPane(Widget):
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette,
                  *, digest=None, state_dir_path: Path | None = None,
-                 replay: EventReplay | None = None) -> None:
+                 replay: EventReplay | None = None,
+                 core=None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -475,7 +476,12 @@ class ConversationPane(Widget):
         self._created_at: str = (
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         self.unseen = False
-        self._core = AgentSession(session, agent, agent_slug, handle)
+        # ``core`` allows remote mode to inject a RemotePaneCore directly,
+        # bypassing the AgentSession wrapping that requires a real HarnessSession.
+        if core is not None:
+            self._core = core
+        else:
+            self._core = AgentSession(session, agent, agent_slug, handle)
         self._core.add_event_observer(self._on_core_event)
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
@@ -543,9 +549,12 @@ class ConversationPane(Widget):
             yield VerticalScroll(id="transcript")
             if self._digest is not None:
                 yield QueueStrip(self._digest, self._palette)
+            # In remote mode, agent may be None; fall back to empty strings.
+            _model = getattr(self._agent, "model", "") if self._agent else ""
+            _perm = (getattr(self._agent.permission, "value", "")
+                     if self._agent else "")
             yield StatusBar(self.handle, self.agent_slug,
-                            self._agent.model,
-                            self._agent.permission.value, self._palette)
+                            _model, _perm, self._palette)
             yield PendingStrip(self._palette)
             yield GrowingInput(placeholder="type a message…")
 

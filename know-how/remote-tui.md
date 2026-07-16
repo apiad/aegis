@@ -113,32 +113,58 @@ raises `RemoteUnsupportedError` and the TUI shows a "not available in
 
 S9.3 (aux-surface RPCs) is the follow-up slice for these.
 
+## Ctrl+N (spawn session) in remote mode
+
+`Ctrl+N` calls `_remote_manager.spawn(slug)` via `_action_new_tab_remote()`.
+The session is created on the server; the resulting `session_list` stream event
+and the direct RPC response together drive pane creation on the client. The
+agent slug is resolved from `_default_agent` (or the first key in `_agents` if
+empty). `_agents` is populated from `rpc("list_agents")` during `start()`.
+
+## Session hydration on connect
+
+When the TUI opens in remote mode, `on_mount` calls `list_sessions()` and
+creates one `ConversationPane` per pre-existing session using `_spawn_remote_pane`.
+The pane's `_core` is a `RemotePaneCore` adapter (in `remote_manager.py`) that
+forwards observer calls to `RemoteAgentSession` and stubs local-only methods
+(session log, hooks, opening-prompt send, cancel_pending).
+
+## Quit teardown in remote mode
+
+`Ctrl+Q` calls `await self._remote_manager.shutdown()` which:
+1. Calls `await self._ws.close()` (stops reconnect loop, closes socket).
+2. Calls `await self._tunnel.__aexit__(None, None, None)` if a tunnel is set.
+3. Is idempotent (safe to call twice).
+
+`shutdown()` is distinct from `close(handle)` which closes a single session.
+
 ## Known limitations
 
 1. **No `wss://` support.** TLS WebSocket connections are rejected by
    `_build_remote_manager` (`unsupported scheme 'wss'`). For secure
    access over the open internet, use `ssh://` (tunnel is TLS-equivalent).
 
-2. **Tunnel not torn down on `RemoteSessionManager.close()`.** The SSH
-   subprocess is stashed as `mgr._tunnel` but `RemoteSessionManager`
-   has no `close()` / `__aexit__` hook that calls `tunnel.__aexit__()`.
-   The subprocess is killed at process exit. Follow-up flagged in the
-   Task 10 report; wire teardown into `RemoteSessionManager.close()`.
-
-3. **No `protocol_version` validation on reconnect.** The reconnect
+2. **No `protocol_version` validation on reconnect.** The reconnect
    loop in `WsClient._reconnect_loop` re-reads the `hello` frame but
    does not re-check `protocol_version` (Task 6 follow-up). A server
    upgrade during a live TUI session could silently mismatch.
 
-4. **No aux-surface support (S9.3 deferred).** Queue / canvas /
+3. **No aux-surface support (S9.3 deferred).** Queue / canvas /
    terminal / group dashboards raise `RemoteUnsupportedError` in remote
    mode. Use the web client (`aegis web`) for those surfaces remotely.
 
-5. **`user@host` in `ssh://` URL partially supported.** `urlparse`
+4. **`user@host` in `ssh://` URL partially supported.** `urlparse`
    extracts `hostname` correctly but `_ssh_fetch_token` passes only
    the hostname to `ssh`, ignoring any user@ prefix. If your SSH config
    does not handle the user mapping, the fetch may fail. Workaround:
    set `User` in `~/.ssh/config` for the host.
+
+5. **`RemotePaneCore.send()` goes through deliver() not a direct turn.**
+   The opening-prompt path (`_submit`) calls `_core.send(text)`, which in
+   remote mode routes through `deliver()` (inbox queue). This means the
+   initial prompt may behave as a queued inbox message on the server rather
+   than a direct turn. This is harmless in v1 since opening prompts are rare
+   in the remote TUI flow.
 
 ## Debug checklist
 
