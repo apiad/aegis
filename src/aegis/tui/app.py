@@ -28,6 +28,20 @@ from aegis.tui.widgets import TabBar
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+class _DisabledPlaneStub:
+    """Raised on any attribute access when an aux plane is unavailable
+    in --remote mode (mirrors _DisabledPlane in remote_manager.py but lives
+    here to avoid a circular import)."""
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __getattr__(self, item: str):
+        from aegis.tui.remote_manager import RemoteUnsupportedError
+        raise RemoteUnsupportedError(
+            f"{self._name}.{item}: not available in --remote v1")
+
+
 def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
                      open_tab, open_failed_tab=None):
     """Drive the resume flow. Pure orchestrator.
@@ -180,12 +194,13 @@ class AegisApp(App):
     ]
 
     def __init__(self, agents: dict[str, Agent], default_agent: str,
-                 make_session: SessionFactory, mcp,
+                 make_session: "SessionFactory | None", mcp,
                  *, queues: "dict | None" = None,
                  clean: bool = False,
                  drivers: "dict | None" = None,
                  cwd: "str | None" = None,
-                 voice: "VoiceConfig | None" = None) -> None:
+                 voice: "VoiceConfig | None" = None,
+                 manager: "object | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
@@ -215,6 +230,33 @@ class AegisApp(App):
         self._state_dir: Path = state_dir(Path.cwd())
         from aegis.tui.file_index import FileIndexer
         self._file_indexer = FileIndexer()
+
+        if manager is not None:
+            # --remote path: use the externally-built manager as the AppBridge.
+            # Skip all local plane construction; point aux surfaces at the
+            # manager's _DisabledPlane sentinels (or whatever it exposes).
+            self._remote_manager = manager
+            self.inbox_router = getattr(manager, "inbox_router",
+                                        _DisabledPlaneStub("inbox_router"))
+            self.queue_manager = getattr(manager, "queue_manager",
+                                         _DisabledPlaneStub("queue_manager"))
+            self.queue_digest = _DisabledPlaneStub("queue_digest")
+            self.canvas_manager = getattr(manager, "canvas_manager",
+                                          _DisabledPlaneStub("canvas_manager"))
+            self.terminal_manager = getattr(manager, "terminal_manager",
+                                             _DisabledPlaneStub("terminal_manager"))
+            self.groups = getattr(manager, "groups",
+                                   _DisabledPlaneStub("groups"))
+            self.locks = getattr(manager, "locks",
+                                  _DisabledPlaneStub("locks"))
+            self.remotes = getattr(manager, "remotes", {})
+            self.scheduler = getattr(manager, "scheduler", None)
+            self.state_root = getattr(manager, "state_root", Path.cwd())
+            self.workflow_registry = getattr(manager, "workflow_registry",
+                                              _SN(get=lambda _: None))
+            # MCP is not used in remote mode; skip binding.
+            return
+
         # AppBridge surface. AegisApp is the bridge in the interactive
         # (TUI) path. QueueManager spawns workers through an adapter that
         # creates real ConversationPanes (so workers are visible tabs Alex

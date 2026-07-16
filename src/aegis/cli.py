@@ -69,9 +69,27 @@ def run(
     clean: bool = typer.Option(
         False, "--clean",
         help="Ignore prior workspace state; start fresh"),
+    remote: str = typer.Option(
+        None, "--remote",
+        help="Run against a remote aegis serve. "
+             "ws://host:port or wss://host:port. "
+             "Empty value = ws://localhost:8080."),
+    token: str = typer.Option(
+        None, "--token",
+        help="Web token for --remote ws://. Required for ws:// remotes."),
+    tail: int = typer.Option(
+        10, "--tail",
+        help="On subscribe/resume, replay last N coalesced blocks."),
 ) -> None:
     """Run the interactive aegis session (default when no subcommand)."""
     if ctx.invoked_subcommand is not None:
+        return
+
+    if remote is not None:
+        url = remote or "ws://localhost:8080"
+        _maybe_autolaunch_serve(url)
+        mgr = asyncio.run(_build_remote_manager(url=url, token=token, tail=tail))
+        _run_tui_with_manager(mgr, cwd=cwd, clean=clean, agent=agent)
         return
     # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
     # TUI ConfigPanel instead of refusing. Once the user saves at least
@@ -138,6 +156,69 @@ def run(
     AegisApp(agents, default_agent, make_session, AegisMCP(),
              queues=queues, clean=clean, drivers=drivers,
              cwd=effective_cwd, voice=voice_cfg).run()
+
+
+async def _build_remote_manager(*, url: str, token: str | None,
+                                tail: int) -> "RemoteSessionManager":
+    """Build and start a RemoteSessionManager over a WsClient connection."""
+    from aegis.tui.remote_manager import RemoteSessionManager
+    from aegis.tui.ws_client import WsClient
+    if not token:
+        raise typer.BadParameter(
+            "--token is required for --remote ws://; "
+            "obtain it with `aegis token` on the remote host.")
+    ws = WsClient(url, token, default_tail=tail)
+    await ws.connect()
+    mgr = RemoteSessionManager(ws)
+    await mgr.start()
+    return mgr
+
+
+def _maybe_autolaunch_serve(url: str) -> None:
+    """If URL points at localhost and nothing is listening on the port,
+    spawn a background `aegis serve` subprocess and wait until the WS port
+    accepts connections (5 s cap)."""
+    import socket
+    import subprocess
+    import sys
+    import time
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        return
+    port = parsed.port or 8080
+    with socket.socket() as probe:
+        probe.settimeout(0.1)
+        try:
+            probe.connect(("127.0.0.1", port))
+            return  # already listening
+        except OSError:
+            pass
+    subprocess.Popen([sys.executable, "-m", "aegis", "serve"],
+                     stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        with socket.socket() as probe:
+            probe.settimeout(0.1)
+            try:
+                probe.connect(("127.0.0.1", port))
+                return
+            except OSError:
+                time.sleep(0.1)
+    raise typer.Exit(f"aegis serve failed to start on port {port}")
+
+
+def _run_tui_with_manager(mgr, *, cwd: str, clean: bool,
+                           agent: str | None) -> None:
+    """Launch AegisApp with an externally-built manager (--remote path)."""
+    root = find_project_root() or Path.cwd()
+    effective_cwd = str(root) if cwd == "." else cwd
+    AegisApp(agents={}, default_agent=agent or "",
+             make_session=None, mcp=None,
+             clean=clean, cwd=effective_cwd,
+             manager=mgr).run()
 
 
 @dataclass
