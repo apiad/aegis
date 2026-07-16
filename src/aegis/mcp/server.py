@@ -1257,9 +1257,14 @@ def build_server(bridge: AppBridge) -> FastMCP:
         name: str, cmd: str, timeout: float | None = None,
         from_handle: str = "",
     ) -> dict:
-        """Run a command in a terminal. Blocks until the shell's OSC 133
-        D marker arrives (or ``timeout`` elapses). Holds a per-terminal
+        """Run a single command in a terminal. Blocks until the shell's
+        OSC 133 D marker arrives (or ``timeout`` — default 120s — elapses,
+        yielding a record with ``timed_out: true``). Holds a per-terminal
         lock so concurrent ``run`` calls serialize FIFO.
+
+        Single command only: a newline is a fresh prompt cycle, so
+        multi-line input is rejected — join with ``;`` / ``&&`` or run a
+        script file. For interactive input, use ``aegis_term_keys``.
 
         Pass your aegis handle as ``from_handle`` — recorded as the
         writer, and used to suppress your own command's wake from your
@@ -1274,6 +1279,8 @@ def build_server(bridge: AppBridge) -> FastMCP:
             rec = await tm.run(name, cmd, writer=writer, timeout=timeout)
         except TerminalNotFound:
             return {"error": f"term_run rejected: unknown terminal {name!r}"}
+        except ValueError as e:
+            return {"error": f"term_run rejected: {e}"}
         return _command_record_to_dict(rec)
 
     @server.tool

@@ -1,7 +1,11 @@
 """OSC 133 escape-sequence parser for live terminals.
 
-Pure byte-level. No I/O, no asyncio. Yields stripped output chunks and
-prompt/command-boundary events.
+Pure byte-level. No I/O, no asyncio. Yields output with *all* OSC
+sequences stripped, plus prompt/command-boundary events for the OSC 133
+subset. Both OSC terminators are handled: BEL (``\\a``) and ST
+(``ESC \\``) — modern shell integrations (VTE, starship, Ghostty) mix
+them, and mishandling ST swallows the very ``D`` marker that reports the
+exit code.
 """
 from __future__ import annotations
 
@@ -20,68 +24,113 @@ class CommandStart:
 
 
 @dataclass(frozen=True)
+class CommandOutputStart:
+    pass
+
+
+@dataclass(frozen=True)
 class CommandEnd:
     exit_code: int | None
 
 
-Event = Union[PromptStart, CommandStart, CommandEnd]
+Event = Union[PromptStart, CommandStart, CommandOutputStart, CommandEnd]
 
 _ESC = 0x1B
 _BEL = 0x07
-_OSC133_PREFIX = b"\x1b]133;"
+_RBRACKET = 0x5D  # ']'
+_ST = b"\x1b\\"
+
+
+Segment = Union[bytes, Event]
 
 
 class OSC133Parser:
-    """Stateful parser. Holds back trailing bytes that might be the start
-    of an incomplete OSC sequence, so split-across-chunks is safe."""
+    """Stateful parser. Strips every OSC sequence from the output and
+    emits events for the OSC 133 markers (A/B/C/D). Holds back a trailing
+    partial escape sequence so a split-across-chunks marker is safe.
+
+    ``feed`` returns an *ordered* list of segments — output ``bytes`` and
+    ``Event`` objects interleaved in stream order. Ordering matters: a
+    reset event (B/C) must be applied relative to the output around it, or
+    output arriving in the same read as its trailing markers gets wiped.
+    Use :func:`split_segments` for the bulk ``(bytes, events)`` view."""
 
     def __init__(self) -> None:
         self._buf = bytearray()
 
-    def feed(self, chunk: bytes) -> tuple[bytes, list[Event]]:
+    def feed(self, chunk: bytes) -> list[Segment]:
         self._buf.extend(chunk)
+        segments: list[Segment] = []
         out = bytearray()
-        events: list[Event] = []
+
+        def flush() -> None:
+            if out:
+                segments.append(bytes(out))
+                out.clear()
+
         i = 0
-        while i < len(self._buf):
+        n = len(self._buf)
+        while i < n:
             b = self._buf[i]
             if b != _ESC:
                 out.append(b)
                 i += 1
                 continue
-            # Possible OSC 133 sequence. Need at least len(_OSC133_PREFIX)
-            # bytes to confirm; otherwise hold back.
-            if i + len(_OSC133_PREFIX) > len(self._buf):
+            # An ESC: might introduce an OSC (ESC ]). Need the next byte
+            # to tell; if it's not here yet, hold back from this ESC.
+            if i + 1 >= n:
                 break
-            if bytes(self._buf[i:i + len(_OSC133_PREFIX)]) != _OSC133_PREFIX:
-                # ESC followed by something else (e.g. another OSC, CSI).
+            if self._buf[i + 1] != _RBRACKET:
+                # Not an OSC (CSI colours, cursor moves, …). Pass the ESC
+                # through verbatim — downstream renders ANSI itself.
                 out.append(b)
                 i += 1
                 continue
-            end = self._buf.find(_BEL, i + len(_OSC133_PREFIX))
-            if end < 0:
-                # Incomplete; hold from i.
-                break
-            body = bytes(self._buf[i + len(_OSC133_PREFIX):end])
-            ev = _parse_body(body)
+            # OSC: ESC ] <body> (BEL | ESC \). Find the nearest terminator.
+            bel = self._buf.find(_BEL, i + 2)
+            st = self._buf.find(_ST, i + 2)
+            ends = [t for t in (bel, st) if t != -1]
+            if not ends:
+                break  # incomplete OSC — hold the whole thing back
+            end = min(ends)
+            body = bytes(self._buf[i + 2:end])
+            ev = _parse_osc_body(body)
             if ev is not None:
-                events.append(ev)
-            i = end + 1
-        remainder = bytes(self._buf[i:])
-        self._buf.clear()
-        self._buf.extend(remainder)
-        return bytes(out), events
+                flush()
+                segments.append(ev)
+            i = end + (2 if end == st and (bel == -1 or st < bel) else 1)
+        flush()
+        self._buf = bytearray(self._buf[i:])
+        return segments
 
 
-def _parse_body(body: bytes) -> Event | None:
-    if body == b"A":
+def split_segments(segments: list[Segment]) -> tuple[bytes, list[Event]]:
+    """Bulk view of a :meth:`OSC133Parser.feed` result: concatenated
+    output bytes and the events in order (discarding their interleaving)."""
+    out = bytearray()
+    events: list[Event] = []
+    for seg in segments:
+        if isinstance(seg, (bytes, bytearray)):
+            out.extend(seg)
+        else:
+            events.append(seg)
+    return bytes(out), events
+
+
+def _parse_osc_body(body: bytes) -> Event | None:
+    if not body.startswith(b"133;"):
+        return None  # some other OSC (title, cwd, VTE) — stripped, no event
+    rest = body[4:]
+    if rest == b"A":
         return PromptStart()
-    if body == b"B":
+    if rest == b"B":
         return CommandStart()
-    if body.startswith(b"D"):
-        rest = body[1:]
-        if rest.startswith(b";"):
-            payload = rest[1:]
+    if rest == b"C":
+        return CommandOutputStart()
+    if rest.startswith(b"D"):
+        tail = rest[1:]
+        if tail.startswith(b";"):
+            payload = tail[1:]
             if not payload:
                 return CommandEnd(exit_code=None)
             try:

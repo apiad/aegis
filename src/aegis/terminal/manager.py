@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import IO
 
 from aegis.terminal.pty import AsyncPty
-from aegis.terminal.parser import CommandEnd, CommandStart, OSC133Parser, PromptStart
+from aegis.terminal.parser import (
+    CommandEnd, CommandOutputStart, CommandStart, OSC133Parser, PromptStart,
+)
 
 
 class TerminalAlreadyExists(Exception):
@@ -19,6 +21,12 @@ class TerminalAlreadyExists(Exception):
 
 class TerminalNotFound(Exception):
     pass
+
+
+# A bounded default so a command that never emits a D marker (interactive
+# program, REPL, `cat` waiting on stdin) can't hang run() — and its lock —
+# forever. Callers pass an explicit timeout to override.
+DEFAULT_RUN_TIMEOUT_S = 120.0
 
 
 @dataclass
@@ -233,6 +241,14 @@ class TerminalManager:
         state = self._terminals.get(name)
         if state is None:
             raise TerminalNotFound(name)
+        if "\n" in cmd or "\r" in cmd:
+            # A newline is a prompt cycle: bash/zsh would emit one B/D pair
+            # per line, but run() correlates on the first D only, so the
+            # extra lines run detached and corrupt the next command's
+            # capture. Reject rather than silently mangle.
+            raise ValueError(
+                "multi-line commands are not supported; join with ';' or "
+                "'&&', or write a script file and run it")
         async with state.lock:
             loop = asyncio.get_running_loop()
             waiter: asyncio.Future = loop.create_future()
@@ -243,12 +259,10 @@ class TerminalManager:
                 started_monotonic=loop.time(),
                 waiter=waiter,
             )
-            state.pty.write((cmd + "\n").encode("utf-8"))
+            state.pty.write(_encode_command(cmd, state.osc133_ok))
+            effective = timeout if timeout is not None else DEFAULT_RUN_TIMEOUT_S
             try:
-                if timeout is None:
-                    record = await waiter
-                else:
-                    record = await asyncio.wait_for(waiter, timeout=timeout)
+                record = await asyncio.wait_for(waiter, timeout=effective)
             except asyncio.TimeoutError:
                 pending = state.pending
                 state.pending = None
@@ -304,24 +318,42 @@ class TerminalManager:
                 if state.raw_log_fh is not None:
                     state.raw_log_fh.write(chunk)
                     state.raw_log_fh.flush()
-                stripped, events = state.parser.feed(chunk)
-                if state.pending is not None and stripped:
-                    state.pending.stdout.extend(stripped)
-                if stripped:
-                    self._fire_observers(state, "chunk", {"data": stripped})
-                for ev in events:
-                    self._handle_event(state, ev)
+                # Process output and markers in stream order: a B/C reset
+                # must land relative to the output around it, else output
+                # arriving in the same read as its trailing markers is wiped.
+                for seg in state.parser.feed(chunk):
+                    if isinstance(seg, (bytes, bytearray)):
+                        if state.pending is not None:
+                            state.pending.stdout.extend(seg)
+                        self._fire_observers(state, "chunk", {"data": bytes(seg)})
+                    else:
+                        self._handle_event(state, seg)
         except asyncio.CancelledError:
             return
         except Exception:
             import traceback
             traceback.print_exc()
+            # Don't strand a caller: resolve any in-flight run() with an
+            # error record instead of leaving its waiter to time out.
+            try:
+                self._finalize_pending_on_error(state, "reader loop crashed")
+            except Exception:
+                traceback.print_exc()
 
     def _handle_event(self, state: _TerminalState, ev) -> None:
         if isinstance(ev, PromptStart):
             state.ready.set()
             return
-        if isinstance(ev, CommandStart):
+        if isinstance(ev, (CommandStart, CommandOutputStart)):
+            # Everything captured before real output starts is the echoed
+            # command line + prompt redraw noise. B (CommandStart) brackets
+            # it for shells that echo before the marker; C (output-start,
+            # from starship/VTE and our PS0) is the precise cut for shells
+            # that redraw after. Reset on both so the record holds only
+            # real output, and tell observers to reset their live view.
+            if state.pending is not None:
+                state.pending.stdout.clear()
+            self._fire_observers(state, "command_start", {})
             return
         if isinstance(ev, CommandEnd) and state.pending is not None:
             pending = state.pending
@@ -359,6 +391,10 @@ class TerminalManager:
                 traceback.print_exc()
 
     def _finalize_pending_on_eof(self, state: _TerminalState) -> None:
+        self._finalize_pending_on_error(state, "pty closed")
+
+    def _finalize_pending_on_error(self, state: _TerminalState,
+                                   reason: str) -> None:
         pending = state.pending
         if pending is None or pending.waiter is None or pending.waiter.done():
             return
@@ -372,12 +408,31 @@ class TerminalManager:
             duration_s=loop.time() - pending.started_monotonic,
             exit=None,
             stdout=_decode_capped(pending.stdout),
-            stderr="pty closed",
+            stderr=reason,
         )
         state.next_seq += 1
         _append_ledger(state.ledger_path, record)
         pending.waiter.set_result(record)
         state.pending = None
+
+
+def _encode_command(cmd: str, osc133_ok: bool) -> bytes:
+    """Bytes to write for a run() command.
+
+    With working shell integration the shell's own OSC 133 markers bracket
+    the command, so we write it verbatim. Without it (spec fallback), we
+    inject our own B/D markers via ``printf`` so command-boundary and
+    exit-code detection still work — the trailing ``printf`` reads ``$?``,
+    which is the user command's exit because the leading ``printf`` ran
+    before it."""
+    if osc133_ok:
+        return (cmd + "\n").encode("utf-8")
+    line = (
+        "printf '\\033]133;B\\007'; "
+        + cmd
+        + "; printf '\\033]133;D;%d\\007' \"$?\"\n"
+    )
+    return line.encode("utf-8")
 
 
 def _build_argv(shell: str, term_dir: Path) -> list[str]:
@@ -432,7 +487,18 @@ def _write_bash_init(path: Path) -> None:
         '    printf "\\033]133;B\\007"\n'
         '  fi\n'
         '}\n'
-        'PROMPT_COMMAND=\'__aegis_precmd\'\n'
+        '# Prepend our precmd so it reads $? before any user PROMPT_COMMAND\n'
+        '# runs, preserving the user\'s (string OR bash array — starship /\n'
+        '# atuin / vte all register here, often as an array).\n'
+        'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then\n'
+        '  PROMPT_COMMAND=(__aegis_precmd "${PROMPT_COMMAND[@]}")\n'
+        'else\n'
+        '  PROMPT_COMMAND=(__aegis_precmd ${PROMPT_COMMAND:+"$PROMPT_COMMAND"})\n'
+        'fi\n'
+        '# We take the DEBUG trap for command-start detection. (Unlike\n'
+        '# PROMPT_COMMAND above, a pre-existing DEBUG trap is only used for\n'
+        '# duration timing by starship et al. — chaining it reliably is\n'
+        '# fragile and can swallow our B/D markers, so we set ours cleanly.)\n'
         "trap '__aegis_preexec' DEBUG\n"
     )
 
@@ -442,7 +508,7 @@ def _write_zsh_init(path: Path) -> None:
         '# Sourced by aegis-spawned zsh for OSC 133 shell integration.\n'
         '[ -f ~/.zshrc ] && . ~/.zshrc\n'
         '__aegis_in_cmd=\n'
-        'precmd() {\n'
+        '__aegis_precmd() {\n'
         '  local ec=$?\n'
         '  if [ -n "$__aegis_in_cmd" ]; then\n'
         '    print -n "\\033]133;D;$ec\\007"\n'
@@ -450,10 +516,16 @@ def _write_zsh_init(path: Path) -> None:
         '  __aegis_in_cmd=\n'
         '  print -n "\\033]133;A\\007"\n'
         '}\n'
-        'preexec() {\n'
+        '__aegis_preexec() {\n'
         '  __aegis_in_cmd=1\n'
         '  print -n "\\033]133;B\\007"\n'
         '}\n'
+        '# Register as hook functions (dedup, prepend precmd so it reads\n'
+        '# $? first) instead of clobbering the user\'s precmd/preexec —\n'
+        '# oh-my-zsh / p10k / starship register through these arrays too.\n'
+        'typeset -ga precmd_functions preexec_functions\n'
+        'precmd_functions=(__aegis_precmd ${precmd_functions:#__aegis_precmd})\n'
+        'preexec_functions=(${preexec_functions:#__aegis_preexec} __aegis_preexec)\n'
     )
 
 

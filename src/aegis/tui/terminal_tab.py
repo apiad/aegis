@@ -365,6 +365,13 @@ class TerminalTab(Widget):
     # --- render-observer callback -----------------------------------
 
     def _on_render_event(self, kind: str, payload: dict) -> None:
+        if kind == "command_start":
+            # The echoed command line was captured before this marker;
+            # drop it from the live view so only real output shows.
+            self._running_stdout = ""
+            if self._running_block is not None:
+                self._running_block.output.set_text("")
+            return
         if kind == "chunk":
             data: bytes = payload.get("data", b"")
             if self._running_block is None:
