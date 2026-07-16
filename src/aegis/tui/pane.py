@@ -769,6 +769,15 @@ class ConversationPane(Widget):
             return
         inp = self.query_one(GrowingInput)
         inp.value = ""
+        # `!command` shell escape: run it locally in the project root and
+        # inject the output as the message the agent sees. A bare `!` is a
+        # no-op.
+        if text.startswith("!"):
+            command = text[1:].strip()
+            if not command:
+                return
+            from aegis.tui.shell_escape import run_shell_escape
+            text = await run_shell_escape(command, self._core.project_root)
         # Every text-box message flows through the one inbox queue. When
         # idle it lands immediately (rendered by _on_core_dispatch); when
         # the agent is mid-turn it queues as a click-to-dequeue chip.
