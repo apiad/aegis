@@ -69,20 +69,23 @@ localStorage (Alt+Y). All slices specced + TDD'd + live-smoked in Chrome.
 - Omnigent comparison that seeded the priority:
   `docs/superpowers/specs/2026-06-30-omnigent-vs-aegis-adoption-report.md`
 
-### ⏭️ Web client S9–S10 — TUI becomes a WS client *(next; spec ready, not planned)*
+### ✅ Web client S9.0–S9.2 — TUI becomes a WS client *(shipped 2026-07-16 as `aegis --remote`)*
 
-The architectural unification: run the Textual TUI as a WS client of
-`aegis serve` (via a `RemoteSessionManager` implementing `AppBridge` over the
-protocol S1–S8 built), so TUI + web + Telegram share one backend and sessions
-are visible across all three. Opt-in `--remote` → flip default with `--classic`
-fallback. Touches the daily-driver TUI + moves the MCP plane into serve, so it
-wants a fresh, deliberate pass. Prerequisite: extend the WS protocol to cover
-the auxiliary surfaces the TUI drives (handoff, rename, group *ops*, terminals,
-canvas, workflow) — staged surface-by-surface, each step shippable.
+S9.0–S9.2 shipped 2026-07-16 as `aegis --remote` (conversation loop).
+`RemoteSessionManager` implements the conversation-loop `AppBridge` subset over
+`WsClient`; `SSHTunnel` handles `ssh://` forwarding; `--remote` dispatches
+scheme (ws/ssh) and auto-launches a local `aegis serve` for bare localhost invocations.
+
+Deferred: **S9.3 (aux-surface RPCs)** — queue / canvas / terminal / group
+dashboards raise `RemoteUnsupportedError` in remote mode; follow-up slice needed
+to expose them over the WS protocol. **S10 (default flip)** — flip `--remote`
+to the default and add `--classic` fallback; needs ≥1 week of daily remote use
+before committing. See `know-how/remote-tui.md` for operational details and
+known limitations.
 
 - Spec: `docs/superpowers/specs/2026-07-01-aegis-tui-ws-client-design.md`
-- Slice breakdown (S9.0–S10) in the spec; start with S9.0 (conversation-loop
-  protocol parity: add `handoff` + `rename_handle` RPCs) then S9.1 `ws_client.py`.
+- Live smoke (loopback + zion→vps): **not yet done** — Steps 1–2 of Task 12
+  require Alex's manual verification.
 
 ### Plugin substrate v1 *(complete — all 5 slices shipped in 0.15.0)*
 

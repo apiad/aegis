@@ -27,6 +27,9 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 - `know-how/native-lovelaice-agent.md` — *reach for it when working on the
   native (harness-free) `lovelaice` agent / driver: config, MCP injection,
   streaming, resume, cancel, and the real-model-probe discipline.*
+- `know-how/remote-tui.md` — *reach for it when running the TUI against a
+  remote or auto-launched aegis serve (via `--remote ws://…` or
+  `ssh://…`), or debugging the WS client / SSH tunnel path.*
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
