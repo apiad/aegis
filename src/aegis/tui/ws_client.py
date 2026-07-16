@@ -24,16 +24,20 @@ PROTOCOL_MAJOR = 2   # bump in lockstep with wssession.PROTOCOL_VERSION
 
 
 class WsClient:
-    def __init__(self, url: str, token: str) -> None:
+    def __init__(self, url: str, token: str, *, default_tail: int = 10) -> None:
         self._url = url
         self._token = token
+        self._default_tail = default_tail
         self._ws: ClientConnection | None = None
         self._reader: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
         self._pending: dict[int, asyncio.Future] = {}
         self._next_id = 0
         self._constants: dict = {}
         self._closed = False
+        self._authed_once = False
         self._handlers: dict[str, list[Callable[[dict], None]]] = {}
+        self._connection_handlers: list[Callable[[bool], None]] = []
         self._subs: dict[str, int] = {}       # handle -> last_seq
         self._globals: set[str] = set()
 
@@ -60,7 +64,9 @@ class WsClient:
                 f"server protocol {hello.get('protocol_version')} "
                 f"!= client {PROTOCOL_MAJOR}")
         self._constants = hello.get("constants", {})
+        self._authed_once = True
         self._reader = asyncio.create_task(self._read_loop())
+        self._emit_connection(True)
         return hello
 
     async def rpc(self, method: str, params: dict | None = None) -> dict:
@@ -73,6 +79,17 @@ class WsClient:
             "type": "rpc", "id": rid, "method": method, "params": params or {},
         }))
         return await fut
+
+    def on_connection(self, fn: Callable[[bool], None]) -> None:
+        """Register an observer fired with True on (re)connect, False on drop."""
+        self._connection_handlers.append(fn)
+
+    def _emit_connection(self, up: bool) -> None:
+        for fn in list(self._connection_handlers):
+            try:
+                fn(up)
+            except Exception:
+                pass
 
     def on(self, kind: str, fn: Callable[[dict], None]) -> None:
         self._handlers.setdefault(kind, []).append(fn)
@@ -106,6 +123,8 @@ class WsClient:
 
     async def close(self) -> None:
         self._closed = True
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
         if self._reader:
             self._reader.cancel()
         if self._ws:
@@ -118,7 +137,42 @@ class WsClient:
                 msg = json.loads(raw)
                 self._handle(msg)
         except ConnectionClosed:
-            self._fail_pending("connection closed")
+            pass
+        self._fail_pending("connection closed")
+        self._emit_connection(False)
+        if not self._closed and self._authed_once:
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self) -> None:
+        delay = 1.0
+        while not self._closed:
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30.0)
+            try:
+                self._ws = await websockets.connect(self._url)
+            except OSError:
+                continue
+            try:
+                await self._ws.send(json.dumps({"type": "auth",
+                                                "token": self._token}))
+                hello = json.loads(await self._ws.recv())
+                if hello.get("type") != "hello":
+                    await self._ws.close()
+                    continue
+            except (ConnectionClosed, OSError):
+                continue
+            self._constants = hello.get("constants", self._constants)
+            # Send resume with recorded subscriptions + tail
+            await self._ws.send(json.dumps({
+                "type": "resume",
+                "subscriptions": [
+                    {"handle": h, "last_seq": s, "tail": self._default_tail}
+                    for h, s in self._subs.items()],
+                "globals": list(self._globals),
+            }))
+            self._emit_connection(True)
+            self._reader = asyncio.create_task(self._read_loop())
+            return
 
     def _handle(self, msg: dict) -> None:
         t = msg.get("type")
