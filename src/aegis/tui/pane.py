@@ -758,6 +758,11 @@ class ConversationPane(Widget):
         msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
                            body=text)
         self._flush_streaming()
+        # Interrupt-send (alt/ctrl+enter): cut the live turn first so the
+        # message lands now as the next turn instead of queuing behind it.
+        # Idle → nothing to interrupt; falls through to a normal deliver.
+        if event.kind == "interrupt" and self.state is AgentState.working:
+            await self._core.interrupt()
         receipt = await self._core.deliver(msg)
         if receipt.disposition == "queued":
             self.query_one(PendingStrip).add(msg)
