@@ -259,6 +259,14 @@ class WSSession:
             return {"delivery": receipt.disposition, "depth": receipt.depth}
         if method == "get_event":
             return self._reg.get_event(params["handle"], int(params["seq"]))
+        if method == "handoff":
+            result = await self._m.handoff(
+                params["from_handle"], params["target_handle"],
+                params["context"])
+            return {"result": result}
+        if method == "rename_handle":
+            return await self._m.rename_handle(
+                params["old"], params["new"])
         raise _RpcUnknown(method)
 
     # -- subscribe / resume ----------------------------------------------
