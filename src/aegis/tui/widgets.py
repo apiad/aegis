@@ -14,18 +14,22 @@ class GrowingInput(TextArea):
     content, then scrolls. Drops in where Textual's ``Input`` was used:
     exposes ``value`` and a ``Submitted`` message with ``.value``.
 
-    Plain ``enter`` submits; ``shift+enter`` / ``ctrl+j`` / ``alt+enter``
-    insert a newline (terminals vary on which one they emit, so all three
-    are wired).
+    ``enter`` submits with ``kind="enqueue"``; ``alt+enter`` / ``ctrl+enter``
+    submit with ``kind="interrupt"`` (send-with-interrupt); ``shift+enter`` /
+    ``ctrl+j`` insert a newline. ``alt+enter`` reliably distinguishes across
+    terminals; ``ctrl+enter`` only does under the Kitty keyboard protocol, so
+    it is a bonus alias.
     """
 
     MAX_LINES = 5
 
     class Submitted(Message):
-        def __init__(self, sender: "GrowingInput", value: str) -> None:
+        def __init__(self, sender: "GrowingInput", value: str,
+                     kind: str = "enqueue") -> None:
             super().__init__()
             self.input = sender
             self.value = value
+            self.kind = kind
 
         @property
         def control(self) -> "GrowingInput":
@@ -74,16 +78,21 @@ class GrowingInput(TextArea):
         # the row count can shift even though the text didn't change.
         self._resize_to_content()
 
-    async def action_submit(self) -> None:
-        self.post_message(self.Submitted(self, self.text))
+    async def action_submit(self, kind: str = "enqueue") -> None:
+        self.post_message(self.Submitted(self, self.text, kind))
 
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "enter":
             event.stop()
             event.prevent_default()
-            await self.action_submit()
+            await self.action_submit("enqueue")
             return
-        if event.key in ("shift+enter", "ctrl+j", "alt+enter"):
+        if event.key in ("alt+enter", "ctrl+enter"):
+            event.stop()
+            event.prevent_default()
+            await self.action_submit("interrupt")
+            return
+        if event.key in ("shift+enter", "ctrl+j"):
             event.stop()
             event.prevent_default()
             start, end = self.selection
