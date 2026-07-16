@@ -44,6 +44,10 @@ class GrowingInput(TextArea):
             placeholder=placeholder,
             id=id,
         )
+        # Session-lifetime recall ring of sent messages (per widget = per pane).
+        self._history: list[str] = []
+        self._hist_idx: int | None = None
+        self._hist_draft: str = ""
 
     @property
     def value(self) -> str:
@@ -79,7 +83,40 @@ class GrowingInput(TextArea):
         self._resize_to_content()
 
     async def action_submit(self, kind: str = "enqueue") -> None:
+        self._record_history(self.text)
         self.post_message(self.Submitted(self, self.text, kind))
+
+    def _record_history(self, text: str) -> None:
+        text = text.strip()
+        if text and (not self._history or self._history[-1] != text):
+            self._history.append(text)
+        self._hist_idx = None
+        self._hist_draft = ""
+
+    def _history_prev(self) -> None:
+        if not self._history:
+            return
+        if self._hist_idx is None:
+            self._hist_draft = self.text
+            self._hist_idx = len(self._history) - 1
+        elif self._hist_idx > 0:
+            self._hist_idx -= 1
+        else:
+            return
+        self.value = self._history[self._hist_idx]
+        self.move_cursor(self.document.end)
+
+    def _history_next(self) -> None:
+        if self._hist_idx is None:
+            return
+        if self._hist_idx < len(self._history) - 1:
+            self._hist_idx += 1
+            self.value = self._history[self._hist_idx]
+        else:
+            self._hist_idx = None
+            self.value = self._hist_draft
+            self._hist_draft = ""
+        self.move_cursor(self.document.end)
 
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "enter":
@@ -97,6 +134,17 @@ class GrowingInput(TextArea):
             event.prevent_default()
             start, end = self.selection
             self._replace_via_keyboard("\n", start, end)
+            return
+        if event.key == "up" and self.cursor_at_first_line and self._history:
+            event.stop()
+            event.prevent_default()
+            self._history_prev()
+            return
+        if event.key == "down" and self.cursor_at_last_line \
+                and self._hist_idx is not None:
+            event.stop()
+            event.prevent_default()
+            self._history_next()
             return
         await super()._on_key(event)
 
