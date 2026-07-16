@@ -74,6 +74,18 @@ def test_remote_ws_url_parses_and_builds_remote_manager(monkeypatch):
     assert mgr.__class__.__name__ == "RemoteSessionManager"
 
 
+def test_remote_rejects_non_ws_scheme(monkeypatch):
+    """--remote wss://... or http://... should raise BadParameter."""
+    from aegis.cli import _build_remote_manager
+    monkeypatch.setattr("aegis.tui.ws_client.WsClient", _FakeWsClient)
+    import typer
+    with pytest.raises(typer.BadParameter) as exc_info:
+        asyncio.run(_build_remote_manager(
+            url="wss://localhost:8080", token="t", tail=10))
+    assert "unsupported scheme" in str(exc_info.value)
+    assert "ws://" in str(exc_info.value)
+
+
 def test_remote_localhost_autolaunches_serve_if_port_free(monkeypatch,
                                                            tmp_path):
     """When --remote targets localhost and nothing is listening, spawn

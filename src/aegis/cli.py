@@ -163,6 +163,11 @@ async def _build_remote_manager(*, url: str, token: str | None,
     """Build and start a RemoteSessionManager over a WsClient connection."""
     from aegis.tui.remote_manager import RemoteSessionManager
     from aegis.tui.ws_client import WsClient
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme != "ws":
+        raise typer.BadParameter(
+            f"unsupported scheme {parsed.scheme!r}; use ws://")
     if not token:
         raise typer.BadParameter(
             "--token is required for --remote ws://; "
@@ -215,9 +220,13 @@ def _run_tui_with_manager(mgr, *, cwd: str, clean: bool,
     """Launch AegisApp with an externally-built manager (--remote path)."""
     root = find_project_root() or Path.cwd()
     effective_cwd = str(root) if cwd == "." else cwd
-    AegisApp(agents={}, default_agent=agent or "",
+    from aegis.drivers import DRIVERS
+    drivers = {slug: cls() for slug, cls in DRIVERS.items()}
+    agents = {slug: None for slug in mgr.list_agents()}
+    AegisApp(agents=agents, default_agent=agent or "",
              make_session=None, mcp=None,
-             clean=clean, cwd=effective_cwd,
+             queues={}, clean=clean, drivers=drivers,
+             cwd=effective_cwd, voice=None,
              manager=mgr).run()
 
 
