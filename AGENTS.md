@@ -90,6 +90,16 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   field) — the grouping key for the subagent view. ACP-built events leave it
   `None`, so ACP renders flat.
 - `src/aegis/render.py` - pure render_event(ev) -> Rich renderable | None
+- `src/aegis/commands/` - slash commands: aegis-executed control commands
+  typed into the input box (never sent to the harness), a second front-end
+  over the `AppBridge` parallel to the MCP plane. `args.py` (declarative
+  `ArgSpec`/`Args` parser), `__init__.py` (registry + `dispatch()` +
+  `classify_input()` + `CommandResult.effect`), `builtins/` (one module per
+  family: `core` = help/sessions/agents/spawn/queues/enqueue,
+  `coordination` = groups/schedules, `terminals`, `session_ctl` =
+  rename/close/themes/clear). Harness-agnostic; the TUI (`tui/pane.py`) and
+  web (`web/wssession.py` + `app.js`) seams both call `dispatch()` and apply
+  any `effect`. Specs/plans: `docs/superpowers/{specs,plans}/*slash-commands*`.
 - `src/aegis/core/` - harness-agnostic session core: `AgentSession`
   (turn loop, metrics, state, observer callbacks — `session.py`) and
   `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over

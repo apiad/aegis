@@ -5,6 +5,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Slash commands 2B — full builtin coverage
+
+- **Operator-useful builtins over the `AppBridge`.** New commands drive the
+  meta-harness from the keyboard: `/groups` (list / status / dissolve),
+  `/schedules` (list / show / enable / disable / remove / logs), `/terminals`
+  (list / new / run / close), `/rename`, `/close`, `/themes`, and `/clear`.
+  Agent management folds into `/agents` (`add` / `remove`); queue listing
+  lands on `/queues` (**renamed from `/queue`** — 2A was unreleased, so no
+  alias).
+- **Conventions.** Collection nouns are plural (`/agents`, `/groups`,
+  `/schedules`, `/terminals`, `/themes`, `/queues`); a bare noun-command is
+  equivalent to its `list`.
+- **Effect channel.** `CommandResult` gains an optional `effect` dict the
+  frontend seams apply after rendering the block — `/themes <name>` switches
+  the live theme (TUI `app.theme`, web stylesheet + localStorage) and
+  `/clear` cosmetically wipes the transcript, leaving a marker that shows the
+  context tokens still in play (the agent's context is untouched). Threaded
+  through both the TUI pane and the web client.
+- **Builtins are a package.** `commands/builtins.py` became a `builtins/`
+  package (one module per command family). Added a `list_groups` method to the
+  groups bridge.
+- **Deferred / dropped.** `/model` and `/effort` (mid-session model/effort
+  change) are deferred to a 2B.1 session-mutation slice — they require a
+  resume-restart, not a thin call. `/handoff` is intentionally not a command
+  (redundant with switching tabs for the operator; agent→agent handoff stays
+  the MCP tool); `/config` is dropped (agent verbs live on `/agents`).
+
 ### Slash commands 2A — parser + resolution core
 
 - **Declarative typed arguments.** Commands now declare an `ArgSpec`
@@ -21,9 +48,10 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 - **`//` literal-slash escape.** Typing `//foo` delivers a literal `/foo`
   message to the agent instead of running a command, via a shared
   `classify_input()` helper used by both the TUI and web seams.
-- **`/queue new` persistence.** `/queue new <name> [agent]` now writes to
+- **`/queues new` persistence.** `/queues new <name> [agent]` writes to
   `.aegis.yaml` (comment-preserving, same path as `aegis config add-queue`)
   and hot-registers; `--ephemeral` keeps the old session-only behavior.
+  (2B renamed `/queue` → `/queues`.)
 - **Web parity.** The web `deliver` RPC routes `/command` through the same
   `dispatch()` and returns a `command_result` frame the client renders as a
   transcript block; `//` unescapes there too. The slash surface now works

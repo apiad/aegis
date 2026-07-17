@@ -55,9 +55,20 @@ spec → plan → implement cycle; web parity threaded through each:
   out), and web-input parity (`deliver` routes slash → `command_result`).
   Spec: `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design.md`;
   plan: `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2a.md`.
-- [ ] **2B — full builtin coverage** — `/group`, `/schedule`, `/handoff`,
-  `/rename`, `/model`, `/effort`, `/theme`, `/clear`, `/close`, terminals,
-  config. Depends on 2A's parser. *(next up)*
+- [x] **2B — full builtin coverage** *(shipped)* — operator-useful subset
+  over the `AppBridge`: `/groups`, `/schedules`, `/terminals`, `/rename`,
+  `/close`, `/themes`, `/clear`, plus agent management folded into `/agents`
+  and queue listing on `/queues` (renamed from `/queue`). Collection nouns are
+  plural and a bare noun-command lists. Adds the `CommandResult.effect`
+  channel (frontend-applied theme/clear) and a `list_groups` bridge method.
+  `/handoff` dropped (redundant with tab-switch for the operator; agent→agent
+  stays MCP); `/config` dropped (agent verbs live on `/agents`). Spec:
+  `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2b.md`.
+- [ ] **2B.1 — session-mutation slice** — `/model`, `/effort` via
+  resume-restart (mutate the live `Agent`, tear down + `resume()` with the new
+  argv so the conversation survives). Deferred from 2B: driver-capability-
+  dependent session surgery that warrants its own spec + TDD pass.
 - [ ] **2C — prompt commands + plugin `@command`** — user-authored
   `.aegis/commands/<name>.md` (frontmatter + `$1`/`$ARGUMENTS` template,
   `@file` includes, embedded `!shell`) → expand and send as a message to the
