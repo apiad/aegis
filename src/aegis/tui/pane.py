@@ -812,18 +812,24 @@ class ConversationPane(Widget):
             from aegis.tui.shell_escape import run_shell_escape
             text = await run_shell_escape(command, self._core.project_root)
         elif text.startswith("/"):
-            # Slash command: aegis executes it directly and renders the
-            # result in the transcript — never delivered to the agent.
-            from aegis.commands import CommandContext, dispatch
+            # Slash family: `/cmd` is a command aegis executes directly and
+            # renders in the transcript (never delivered to the agent); `//x`
+            # is an escape that delivers a literal `/x` message.
+            from aegis.commands import (
+                CommandContext, classify_input, dispatch)
             from aegis.render import render_command_block
-            width = self._transcript().size.width or 80
-            result = await dispatch(
-                text, CommandContext(bridge=self.app, handle=self.handle))
-            self._flush_streaming()
-            self._mount_block(
-                render_command_block(result, self._palette, width),
-                f"{result.title}\n{result.body}".strip())
-            return
+            kind, payload = classify_input(text)
+            if kind == "command":
+                width = self._transcript().size.width or 80
+                result = await dispatch(
+                    payload, CommandContext(bridge=self.app,
+                                            handle=self.handle))
+                self._flush_streaming()
+                self._mount_block(
+                    render_command_block(result, self._palette, width),
+                    f"{result.title}\n{result.body}".strip())
+                return
+            text = payload   # "//foo" → deliver "/foo" as a normal message
         # Every text-box message flows through the one inbox queue. When
         # idle it lands immediately (rendered by _on_core_dispatch); when
         # the agent is mid-turn it queues as a click-to-dequeue chip.

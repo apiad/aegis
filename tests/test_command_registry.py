@@ -1,7 +1,19 @@
 import pytest
 from aegis.commands import (
-    REGISTRY, SlashCommand, register, CommandCollision,
+    REGISTRY, SlashCommand, register, CommandCollision, classify_input,
 )
+
+
+def test_classify_single_slash_is_command():
+    assert classify_input("/sessions") == ("command", "/sessions")
+
+
+def test_classify_double_slash_is_literal_message():
+    assert classify_input("//not a command") == ("message", "/not a command")
+
+
+def test_classify_plain_is_message():
+    assert classify_input("hello there") == ("message", "hello there")
 
 
 async def _noop(ctx, args):  # signature is irrelevant to this task's checks

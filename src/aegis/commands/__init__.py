@@ -89,6 +89,18 @@ async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
         return CommandResult(False, f"/{verb} failed", f"{type(e).__name__}: {e}")
 
 
+def classify_input(text: str) -> "tuple[str, str]":
+    """Route an input line for the slash family. ``//foo`` is a literal
+    message ``/foo`` (one slash stripped); a single leading ``/`` is a
+    command; anything else is a plain message. The TUI's ``!`` shell escape
+    is handled before this call and is not represented here."""
+    if text.startswith("//"):
+        return "message", text[1:]
+    if text.startswith("/"):
+        return "command", text
+    return "message", text
+
+
 # Register the builtins. Import at the bottom so the types above exist when
 # builtins.py imports them (avoids a circular import).
 from aegis.commands import builtins as _builtins  # noqa: E402,F401

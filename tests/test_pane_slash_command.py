@@ -82,6 +82,19 @@ async def test_slash_command_runs_and_is_not_sent():
 
 
 @pytest.mark.asyncio
+async def test_double_slash_delivers_literal_message():
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await _submit(pane, "//hello there")
+        await pilot.pause()
+        # "//foo" is an escape: delivered to the agent as a literal "/foo",
+        # not executed as a command.
+        assert sess.sent == ["/hello there"]
+
+
+@pytest.mark.asyncio
 async def test_slash_prefix_toggles_blue_outline_class():
     sess = GatedSession()
     app = _app(sess)
