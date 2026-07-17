@@ -48,6 +48,9 @@ class GrowingInput(TextArea):
         self._history: list[str] = []
         self._hist_idx: int | None = None
         self._hist_draft: str = ""
+        # Optional key hook: returns True if it consumed the key (the command
+        # palette uses this to grab Up/Down/Tab/Enter/Esc while it is open).
+        self.key_interceptor = None
 
     @property
     def value(self) -> str:
@@ -119,6 +122,10 @@ class GrowingInput(TextArea):
         self.move_cursor(self.document.end)
 
     async def _on_key(self, event: events.Key) -> None:
+        if self.key_interceptor is not None and self.key_interceptor(event):
+            event.stop()
+            event.prevent_default()
+            return
         if event.key == "enter":
             event.stop()
             event.prevent_default()

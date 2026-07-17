@@ -30,6 +30,7 @@ from aegis.render import (
 )
 from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
+from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
@@ -570,6 +571,7 @@ class ConversationPane(Widget):
                      if self._agent else "")
             yield StatusBar(self.handle, self.agent_slug,
                             _model, _perm, self._palette)
+            yield CommandPalette(self._palette)
             yield PendingStrip(self._palette)
             yield GrowingInput(placeholder="type a message…")
 
@@ -579,6 +581,7 @@ class ConversationPane(Widget):
         self.refresh_metrics()
         t = self._transcript()
         self.watch(t, "scroll_y", self._on_scroll_y)
+        self.query_one(GrowingInput).key_interceptor = self._palette_key
 
     def _mount_replay(self) -> None:
         """Paint prior events onto the transcript on resume.
@@ -816,6 +819,45 @@ class ConversationPane(Widget):
         value = self.query_one(GrowingInput).value
         self.set_class(value.startswith("!"), "shell-escape")
         self.set_class(value.startswith("/"), "slash-command")
+        pal = self.query_one(CommandPalette)
+        if value.startswith("/"):
+            from aegis.commands import complete
+            pal.update(complete(value, self.app))
+        else:
+            pal.hide()
+
+    def _palette_key(self, event) -> bool:
+        """Key hook the GrowingInput consults first: while the palette is open,
+        Up/Down move the highlight, Tab/Enter accept, Esc dismisses."""
+        pal = self.query_one(CommandPalette)
+        if not pal.display:
+            return False
+        if event.key in ("up", "down"):
+            pal.move(-1 if event.key == "up" else 1)
+            return True
+        if event.key in ("tab", "enter"):
+            choice = pal.current()
+            if choice is None:
+                return False
+            self._accept_completion(choice)
+            return True
+        if event.key == "escape":
+            pal.hide()
+            return True
+        return False
+
+    def _accept_completion(self, choice) -> None:
+        inp = self.query_one(GrowingInput)
+        value = inp.value
+        if value.startswith("/") and " " not in value:
+            new = choice.insert                      # completing the verb
+        else:
+            head = value.rsplit(" ", 1)[0] if " " in value else ""
+            new = (head + " " if head else "") + choice.insert
+        inp.value = new
+        inp.move_cursor(inp.document.end)
+        from aegis.commands import complete
+        self.query_one(CommandPalette).update(complete(new, self.app))
 
     async def on_growing_input_submitted(self,
                                   event: GrowingInput.Submitted) -> None:
