@@ -34,6 +34,7 @@ class FakeBridge:
         self.spawned = []
         self.registered = []
         self.registered_agents = []
+        self.closed, self.renamed = [], []
         self._sessions = [FakeSession("alpha", "opus", active=True)]
         self.queue_manager = FakeQueueManager()
         import pathlib
@@ -61,6 +62,13 @@ class FakeBridge:
 
     def register_agent(self, slug, agent):
         self.registered_agents.append((slug, agent))
+
+    async def close(self, handle):
+        self.closed.append(handle)
+
+    async def rename_handle(self, old, new):
+        self.renamed.append((old, new))
+        return {"old": old, "new": new}
 
 
 def _ctx():
@@ -274,6 +282,28 @@ async def test_terminals_new_and_close():
     await dispatch("/terminals close t2", ctx)
     assert bridge.terminal_manager.spawned == ["t2"]
     assert bridge.terminal_manager.closed == ["t2"]
+
+
+async def test_rename_current_pane():
+    bridge = FakeBridge()
+    res = await dispatch("/rename newname",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert bridge.renamed == [("me", "newname")]
+
+
+async def test_close_defaults_to_current():
+    bridge = FakeBridge()
+    res = await dispatch("/close", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert bridge.closed == ["me"]
+
+
+async def test_close_named_handle():
+    bridge = FakeBridge()
+    res = await dispatch("/close other",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert bridge.closed == ["other"]
 
 
 async def test_spawn_unknown_agent_errors():
