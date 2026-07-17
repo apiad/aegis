@@ -38,7 +38,7 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
-### Dynamic workflows — Track 2 JSON DSL *(designed 2026-07-17, plan being written)*
+### Dynamic workflows — Track 2 JSON DSL *(designed 2026-07-17, plan ready — not yet started)*
 
 Agent-authorable dynamic workflows as a validated JSON DSL — the safe/data
 counterpart to Track-1 durable `@workflow` Python. Premise: harnesses now own
@@ -55,10 +55,27 @@ threshold. Also lands the missing **Track-1 gating** (operator implicit / agent
 prompts, showing the script).
 
 - Spec: `docs/superpowers/specs/2026-07-17-aegis-json-dsl-dynamic-workflows-design.md`
-- Open questions: `equals` predicate (avoid a `judge` agent-call when branching
-  on a known value — felt at the design-thinking gate); plan-preview cost
-  estimate is a static upper bound, not a prediction.
-- Plan: *being written by a fresh planning agent (spec-only context handoff)*.
+- Open questions (explicit decision points, not resolved in v1): `equals`
+  predicate (avoid a `judge` agent-call when branching on a known value — felt
+  at the design-thinking gate; `AnyPredicate` union left extensible); plan-preview
+  cost estimate is a labelled static upper bound, not a prediction.
+- Plan: `docs/superpowers/plans/2026-07-17-aegis-json-dsl-dynamic-workflows.md`
+  — 6 vertical slices, thinnest-first, TDD per slice:
+  1. walking skeleton (`sequence` + `agent`/`spawn`, `dynamic` @workflow);
+  2. data-flow (`refs` selectors/templates, agent `inputs`/`schema`, semantic
+     `validate`) + per-node checkpoint/resume durability;
+  3. fan-out (`map` bounded concurrency + `parallel` barrier);
+  4. bounded control flow (`loop`/`if` with `shell`+`judge` predicates,
+     decision replay);
+  5. `human` node (TUI via `ask_human`);
+  6. `aegis_run_dynamic_workflow` MCP tool + `plan.py` preview + cost gate +
+     the missing Track-1 gating rule + config threshold key.
+- Grounding caveats flagged in the plan: no gating machinery exists to inherit
+  (built from scratch in slice 6); durability rides `engine.checkpoint`/
+  `resume_state` (not a bespoke ledger); `engine.parallel` has no concurrency
+  cap (interpreter adds a `Semaphore`); shell predicate uses `engine.bash`
+  (not `bash_predicate`); structured output is prompt-engineered + parsed;
+  `jsonschema` promoted from transitive to direct dependency.
 
 ### Slash commands — Phase 2 *(decomposed into 2A–2D)*
 
