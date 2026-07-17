@@ -79,7 +79,8 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
 
 async def _queue(ctx: CommandContext, args) -> CommandResult:
     if args["subverb"] != "new":
-        return CommandResult(False, "usage: /queue new <name> [agent]")
+        return CommandResult(False,
+                             "usage: /queue new <name> [agent] [--ephemeral]")
     name = args["name"]
     agents = ctx.bridge.list_agents()
     agent = args.get("agent") or (agents[0] if agents else "")
@@ -88,14 +89,39 @@ async def _queue(ctx: CommandContext, args) -> CommandResult:
     if agent not in agents:
         return CommandResult(False, f"unknown agent: {agent}",
                              "available: " + ", ".join(agents))
-    from aegis.queue import Queue
-    q = Queue(name=name, agent_profile=agent, max_parallel=1)
+
+    if args.flags.get("ephemeral"):
+        from aegis.queue import Queue
+        q = Queue(name=name, agent_profile=agent, max_parallel=1)
+        try:
+            ctx.bridge.register_queue(q)
+        except ValueError as e:
+            return CommandResult(False, f"queue rejected: {e}")
+        return CommandResult(True, f"queue {name} created (ephemeral)",
+                             f"agent {agent} · max_parallel 1")
+
+    # persist to .aegis.yaml, then hot-register from the reloaded config
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    root = cfg.find_project_root()
+    if root is None:
+        return CommandResult(
+            False, "no .aegis.yaml found",
+            "run /queue new … --ephemeral for a session-only queue")
     try:
-        ctx.bridge.register_queue(q)
-    except ValueError as e:
+        cfg_edit.add_queue(root, name, agent=agent, max_parallel=1)
+    except cfg.ConfigError as e:
         return CommandResult(False, f"queue rejected: {e}")
+    try:
+        fresh = cfg.load_queues(root)[name]
+        ctx.bridge.register_queue(fresh)
+    except Exception as e:                                    # noqa: BLE001
+        return CommandResult(
+            True, f"queue {name} saved",
+            f"persisted to .aegis.yaml; restart to activate "
+            f"(live register failed: {e})")
     return CommandResult(True, f"queue {name} created",
-                         f"agent {agent} · max_parallel 1")
+                         f"agent {agent} · persisted to .aegis.yaml")
 
 
 async def _enqueue(ctx: CommandContext, args) -> CommandResult:
@@ -124,11 +150,12 @@ for _cmd in (
                  spec=ArgSpec(positionals=(
                      Arg("agent"),
                      Arg("prompt", required=False, greedy=True)))),
-    SlashCommand("queue", "create a queue", "/queue new <name> [agent]",
-                 _queue,
-                 spec=ArgSpec(positionals=(
-                     Arg("subverb"), Arg("name"),
-                     Arg("agent", required=False)))),
+    SlashCommand("queue", "create a queue",
+                 "/queue new <name> [agent] [--ephemeral]", _queue,
+                 spec=ArgSpec(
+                     positionals=(Arg("subverb"), Arg("name"),
+                                  Arg("agent", required=False)),
+                     flags=(Flag("ephemeral", takes_value=False),))),
     SlashCommand("enqueue", "drop a task on a queue",
                  "/enqueue <queue> <payload>", _enqueue,
                  spec=ArgSpec(positionals=(

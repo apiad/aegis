@@ -123,9 +123,9 @@ async def test_spawn_without_prompt():
     assert ctx.bridge.spawned == [("opus", None, "me")]
 
 
-async def test_queue_new_registers():
+async def test_queue_new_ephemeral_registers():
     ctx = _ctx()
-    res = await dispatch("/queue new build opus", ctx)
+    res = await dispatch("/queue new build opus --ephemeral", ctx)
     assert res.ok and "build" in res.title
     assert [q.name for q in ctx.bridge.registered] == ["build"]
     assert ctx.bridge.registered[0].agent_profile == "opus"
@@ -133,7 +133,7 @@ async def test_queue_new_registers():
 
 async def test_queue_new_defaults_to_first_agent():
     ctx = _ctx()
-    await dispatch("/queue new build", ctx)
+    await dispatch("/queue new build --ephemeral", ctx)
     assert ctx.bridge.registered[0].agent_profile == "default"
 
 
@@ -183,3 +183,41 @@ async def test_typed_handler_receives_parsed_args():
     res = await dispatch("/spawn opus write the report", ctx)
     assert res.ok is True
     assert ctx.bridge.spawned[-1] == ("opus", "write the report", "me")
+
+
+async def test_queue_new_persists_by_default(monkeypatch):
+    import pathlib
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    calls = {}
+    monkeypatch.setattr(cfg, "find_project_root",
+                        lambda: pathlib.Path("/tmp/proj"))
+    monkeypatch.setattr(
+        cfg_edit, "add_queue",
+        lambda root, name, **kw: calls.__setitem__("add", (str(root), name, kw)))
+
+    class _Q:
+        name = "build"
+        agent_profile = "opus"
+    monkeypatch.setattr(cfg, "load_queues", lambda root: {"build": _Q()})
+
+    ctx = _ctx()
+    res = await dispatch("/queue new build opus", ctx)
+    assert res.ok is True
+    assert calls["add"][1] == "build"
+    assert calls["add"][2] == {"agent": "opus", "max_parallel": 1}
+    assert [q.name for q in ctx.bridge.registered] == ["build"]  # hot-registered
+
+
+async def test_queue_new_ephemeral_skips_persistence(monkeypatch):
+    import aegis.config.edit as cfg_edit
+
+    def _boom(*a, **k):
+        raise AssertionError("should not persist for --ephemeral")
+    monkeypatch.setattr(cfg_edit, "add_queue", _boom)
+
+    ctx = _ctx()
+    res = await dispatch("/queue new build opus --ephemeral", ctx)
+    assert res.ok is True
+    assert "ephemeral" in res.title
+    assert [q.name for q in ctx.bridge.registered] == ["build"]
