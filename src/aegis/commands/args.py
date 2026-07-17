@@ -10,6 +10,7 @@ Pure: no registry, no UI.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -17,11 +18,20 @@ class ArgError(ValueError):
     """Human-facing argument parse error (message is shown to the user)."""
 
 
+# A completer yields choices for an argument (used only by the palette's
+# complete(); the parser ignores it). Each choice is a bare "value" string or
+# a "(value, detail)" pair. Static tuple, or a callable of the bridge (typed
+# ``object`` to keep this module dependency-free).
+Choice = "str | tuple[str, str]"
+Completer = "tuple[Choice, ...] | Callable[[object], list]"
+
+
 @dataclass(frozen=True)
 class Arg:
     name: str
     required: bool = True
     greedy: bool = False          # last positional only; takes raw remainder
+    completer: "Completer | None" = None   # palette candidate source
 
 
 @dataclass(frozen=True)
