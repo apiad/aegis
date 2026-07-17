@@ -225,6 +225,57 @@ async def test_schedules_enable(monkeypatch):
     assert seen["call"] == ("nightly", True)
 
 
+class FakeTerm:
+    def __init__(self):
+        self.spawned, self.closed, self.ran = [], [], []
+
+    def list(self):
+        from types import SimpleNamespace
+        return [SimpleNamespace(name="t1", pid=42, shell="/bin/bash")]
+
+    async def spawn(self, *, name):
+        self.spawned.append(name)
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, pid=99, shell="/bin/bash")
+
+    async def run(self, name, cmd, *, writer):
+        self.ran.append((name, cmd, writer))
+        from types import SimpleNamespace
+        return SimpleNamespace(cmd=cmd, exit=0, stdout="hi\n", duration_s=0.1)
+
+    async def close(self, name):
+        self.closed.append(name)
+
+
+async def test_terminals_bare_lists():
+    bridge = FakeBridge()
+    bridge.terminal_manager = FakeTerm()
+    res = await dispatch("/terminals",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert "t1" in res.body
+
+
+async def test_terminals_run_surfaces_output():
+    bridge = FakeBridge()
+    bridge.terminal_manager = FakeTerm()
+    res = await dispatch("/terminals run t1 echo hi",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert bridge.terminal_manager.ran == [("t1", "echo hi", "me")]
+    assert "hi" in res.body
+
+
+async def test_terminals_new_and_close():
+    bridge = FakeBridge()
+    bridge.terminal_manager = FakeTerm()
+    ctx = CommandContext(bridge=bridge, handle="me")
+    await dispatch("/terminals new t2", ctx)
+    await dispatch("/terminals close t2", ctx)
+    assert bridge.terminal_manager.spawned == ["t2"]
+    assert bridge.terminal_manager.closed == ["t2"]
+
+
 async def test_spawn_unknown_agent_errors():
     ctx = _ctx()
     res = await dispatch("/spawn ghost do stuff", ctx)
