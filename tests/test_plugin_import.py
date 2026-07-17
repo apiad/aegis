@@ -25,6 +25,29 @@ def test_plugin_registers_workflow(tmp_path: Path) -> None:
     assert "my_test_wf" in REGISTRY
 
 
+def test_plugin_registers_command(tmp_path: Path) -> None:
+    from aegis.commands import REGISTRY
+    REGISTRY.pop("zzhi", None)
+
+    (tmp_path / ".aegis.yaml").write_text("")
+    plugins = tmp_path / ".aegis" / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "myc.py").write_text(
+        "from aegis.commands import command, CommandResult\n"
+        "@command\n"
+        "async def zzhi(ctx, args):\n"
+        "    'plugin hi'\n"
+        "    return CommandResult(True, 'hi')\n"
+    )
+    cfg = load_config(tmp_path)
+    try:
+        import_plugins(cfg)
+        assert "zzhi" in REGISTRY
+        assert REGISTRY["zzhi"].source == "plugin"
+    finally:
+        REGISTRY.pop("zzhi", None)
+
+
 def test_plugin_import_error_fails(tmp_path: Path) -> None:
     (tmp_path / ".aegis.yaml").write_text("")
     plugins = tmp_path / ".aegis" / "plugins"
