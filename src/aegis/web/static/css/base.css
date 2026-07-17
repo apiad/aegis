@@ -193,6 +193,13 @@ html, body {
 .thinking { font-style: italic; }
 .muted { color: var(--aegis-muted); }
 
+/* slash-command result blocks (mounted locally, not session events) */
+.command-block { border-left: 2px solid var(--aegis-accent); padding: 0.2em 0.6em; margin: 0.3em 0; }
+.command-block.error { border-left-color: var(--aegis-error); }
+.command-title { font-weight: 700; color: var(--aegis-accent); }
+.command-block.error .command-title { color: var(--aegis-error); }
+.command-body { white-space: pre-wrap; margin: 0.2em 0 0; color: var(--aegis-fg); }
+
 /* markdown elements inside assistant text */
 .assistant-text p { margin: 0 0 0.5em; }
 .assistant-text p:last-child { margin-bottom: 0; }

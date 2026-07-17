@@ -1,0 +1,71 @@
+"""Web parity: the ``deliver`` RPC routes `/command` through the shared
+dispatcher (returning a command_result frame, never reaching the agent) and
+unescapes `//x` to a literal `/x` delivery."""
+from __future__ import annotations
+
+import pytest
+
+from aegis.web.wssession import WSSession
+
+
+class FakeReceipt:
+    disposition = "landed"
+    depth = 0
+
+
+class FakeCore:
+    def __init__(self):
+        self.delivered: list[str] = []
+
+    async def deliver(self, msg):
+        self.delivered.append(msg.body)
+        return FakeReceipt()
+
+
+class FakeManager:
+    """The AppBridge subset the slash commands touch here."""
+    def __init__(self, core):
+        self._core = core
+
+    def get(self, handle):
+        return self._core
+
+    def list_sessions(self):
+        return []
+
+    def list_agents(self):
+        return []
+
+
+def _session(core):
+    session = WSSession.__new__(WSSession)   # bypass the full ctor
+    session._m = FakeManager(core)
+    return session
+
+
+@pytest.mark.asyncio
+async def test_web_slash_command_returns_command_result_and_skips_deliver():
+    core = FakeCore()
+    session = _session(core)
+    res = await session._deliver_or_command("h", "/sessions")
+    assert "command_result" in res
+    assert res["command_result"]["ok"] is True
+    assert core.delivered == []              # never reached the agent
+
+
+@pytest.mark.asyncio
+async def test_web_double_slash_delivers_literal():
+    core = FakeCore()
+    session = _session(core)
+    res = await session._deliver_or_command("h", "//hello")
+    assert core.delivered == ["/hello"]
+    assert "delivery" in res
+
+
+@pytest.mark.asyncio
+async def test_web_plain_message_delivers_normally():
+    core = FakeCore()
+    session = _session(core)
+    res = await session._deliver_or_command("h", "just a message")
+    assert core.delivered == ["just a message"]
+    assert res["delivery"] == "landed"

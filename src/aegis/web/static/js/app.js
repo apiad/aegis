@@ -102,6 +102,25 @@ function blockEl(rec) {
 function nearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 48;
 }
+function mountCommandBlock(handle, cr) {
+  const tab = tabs.get(handle);
+  if (!tab) return;
+  const stick = nearBottom(tab.transcriptEl);
+  const div = document.createElement("div");
+  div.className = "command-block" + (cr.ok ? "" : " error");
+  const head = document.createElement("div");
+  head.className = "command-title";
+  head.textContent = "/ " + cr.title;
+  div.appendChild(head);
+  if (cr.body) {
+    const body = document.createElement("pre");
+    body.className = "command-body";
+    body.textContent = cr.body;
+    div.appendChild(body);
+  }
+  tab.transcriptEl.appendChild(div);
+  if (stick) tab.transcriptEl.scrollTop = tab.transcriptEl.scrollHeight;
+}
 function renderInto(tab, frame) {
   const stick = nearBottom(tab.transcriptEl);
   const { action, index } = coalesceInto(tab.blocks, frame);
@@ -860,7 +879,13 @@ function wireComposer() {
       e.preventDefault();
       const text = input.value.trim();
       if (text && activeHandle) {
-        client.rpc("deliver", { handle: activeHandle, message: text })
+        const handle = activeHandle;
+        client.rpc("deliver", { handle, message: text })
+          .then((res) => {
+            if (res && res.command_result) {
+              mountCommandBlock(handle, res.command_result);
+            }
+          })
           .catch((err) => showError("deliver failed: " + err.message));
         input.value = "";
         autogrow();

@@ -167,6 +167,26 @@ class WSSession:
             with contextlib.suppress(Exception):
                 await self._t.send_json(self._out.get_nowait())
 
+    async def _deliver_or_command(self, handle: str, message: str) -> dict:
+        """Route a web input line: a `/command` runs through the shared
+        dispatcher and returns a ``command_result`` frame (never reaching the
+        agent); ``//x`` unescapes to a literal ``/x`` message; anything else
+        is delivered normally."""
+        from aegis.commands import CommandContext, classify_input, dispatch
+        kind, payload = classify_input(message)
+        if kind == "command":
+            result = await dispatch(
+                payload, CommandContext(bridge=self._m, handle=handle))
+            return {"command_result": {
+                "ok": result.ok, "title": result.title, "body": result.body}}
+        core = self._m.get(handle)
+        if core is None:
+            raise ValueError("unknown handle")
+        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
+                           body=payload)
+        receipt = await core.deliver(msg)
+        return {"delivery": receipt.disposition, "depth": receipt.depth}
+
     # -- dispatch ---------------------------------------------------------
 
     async def _dispatch(self, frame: dict) -> None:
@@ -250,13 +270,8 @@ class WSSession:
         if method == "config_remove_queue":
             return await self._reg.config_remove_queue(params["name"])
         if method == "deliver":
-            core = self._m.get(params["handle"])
-            if core is None:
-                raise ValueError("unknown handle")
-            msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
-                               body=params["message"])
-            receipt = await core.deliver(msg)
-            return {"delivery": receipt.disposition, "depth": receipt.depth}
+            return await self._deliver_or_command(
+                params["handle"], params["message"])
         if method == "get_event":
             return self._reg.get_event(params["handle"], int(params["seq"]))
         if method == "handoff":
