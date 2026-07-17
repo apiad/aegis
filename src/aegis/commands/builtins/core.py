@@ -11,6 +11,24 @@ from aegis.commands import (
     REGISTRY, CommandContext, CommandResult, SlashCommand, register,
 )
 from aegis.commands.args import Arg, ArgSpec, Flag
+from aegis.config.edit import _VALID_PROVIDERS
+
+
+def _agent_choices(bridge) -> list:
+    """Palette completer for an agent-slug argument: slug + config detail
+    (harness · model · permission) when the bridge exposes the agent map."""
+    cfgs = getattr(bridge, "_agents", {}) or {}
+    out: list = []
+    for name in bridge.list_agents():
+        a = cfgs.get(name)
+        if a is None:
+            out.append(name)
+            continue
+        perm = getattr(getattr(a, "permission", ""), "value",
+                       getattr(a, "permission", "")) or "?"
+        out.append((name, f"{getattr(a, 'harness', '?')} · "
+                          f"{getattr(a, 'model', '?')} · {perm}"))
+    return out
 
 
 async def _help(ctx: CommandContext, args) -> CommandResult:
@@ -234,26 +252,34 @@ for _cmd in (
                  "/agents [add <slug> <harness> <model> "
                  "[--effort E] [--permission P] | remove <slug>]", _agents,
                  spec=ArgSpec(
-                     positionals=(Arg("subverb", required=False),
-                                  Arg("slug", required=False),
-                                  Arg("harness", required=False),
-                                  Arg("model", required=False)),
+                     positionals=(
+                         Arg("subverb", required=False,
+                             completer=("list", "add", "remove")),
+                         Arg("slug", required=False),
+                         Arg("harness", required=False,
+                             completer=tuple(sorted(_VALID_PROVIDERS))),
+                         Arg("model", required=False)),
                      flags=(Flag("effort"), Flag("permission")))),
     SlashCommand("spawn", "start a new top-level agent",
                  "/spawn <agent> [prompt]", _spawn,
                  spec=ArgSpec(positionals=(
-                     Arg("agent"),
+                     Arg("agent", completer=_agent_choices),
                      Arg("prompt", required=False, greedy=True)))),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(
-                     positionals=(Arg("subverb", required=False),
-                                  Arg("name", required=False),
-                                  Arg("agent", required=False)),
+                     positionals=(
+                         Arg("subverb", required=False,
+                             completer=("list", "new")),
+                         Arg("name", required=False),
+                         Arg("agent", required=False,
+                             completer=_agent_choices)),
                      flags=(Flag("ephemeral", takes_value=False),))),
     SlashCommand("enqueue", "drop a task on a queue",
                  "/enqueue <queue> <payload>", _enqueue,
                  spec=ArgSpec(positionals=(
-                     Arg("queue"), Arg("payload", greedy=True)))),
+                     Arg("queue",
+                         completer=lambda b: b.queue_manager.list_queues()),
+                     Arg("payload", greedy=True)))),
 ):
     register(_cmd)

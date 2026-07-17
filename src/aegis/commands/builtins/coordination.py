@@ -8,6 +8,13 @@ from aegis.commands import (
 from aegis.commands.args import Arg, ArgSpec
 
 
+def _schedule_names(bridge) -> list:
+    from aegis.scheduler.push import list_payload
+    rows = list_payload(getattr(bridge, "scheduler", None), bridge.state_root,
+                        bridge.inline_schedule_names()).get("schedules", [])
+    return [r["name"] for r in rows]
+
+
 async def _groups(ctx: CommandContext, args) -> CommandResult:
     g = ctx.bridge.groups
     sub = args.get("subverb")
@@ -92,12 +99,19 @@ async def _schedules(ctx: CommandContext, args) -> CommandResult:
 for _cmd in (
     SlashCommand("groups", "list groups, or status/dissolve one",
                  "/groups [status|dissolve <name>]", _groups,
-                 spec=ArgSpec(positionals=(Arg("subverb", required=False),
-                                           Arg("name", required=False)))),
+                 spec=ArgSpec(positionals=(
+                     Arg("subverb", required=False,
+                         completer=("list", "status", "dissolve")),
+                     Arg("name", required=False,
+                         completer=lambda b: [g["name"]
+                                              for g in b.groups.list_groups()])))),
     SlashCommand(
         "schedules", "list schedules, or show/enable/disable/remove/logs one",
         "/schedules [show|enable|disable|remove|logs <name>]", _schedules,
-        spec=ArgSpec(positionals=(Arg("subverb", required=False),
-                                  Arg("name", required=False)))),
+        spec=ArgSpec(positionals=(
+            Arg("subverb", required=False,
+                completer=("list", "show", "enable", "disable", "remove",
+                           "logs")),
+            Arg("name", required=False, completer=_schedule_names)))),
 ):
     register(_cmd)

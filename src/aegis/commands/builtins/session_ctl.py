@@ -55,10 +55,15 @@ for _cmd in (
                  spec=ArgSpec(positionals=(Arg("new"),))),
     SlashCommand("close", "close the current or a named session",
                  "/close [handle]", _close,
-                 spec=ArgSpec(positionals=(Arg("handle", required=False),))),
+                 spec=ArgSpec(positionals=(
+                     Arg("handle", required=False,
+                         completer=lambda b: [
+                             (s.handle, f"{s.agent_slug} · {s.state}")
+                             for s in b.list_sessions()]),))),
     SlashCommand("themes", "list themes, or switch to one",
                  "/themes [name]", _themes,
-                 spec=ArgSpec(positionals=(Arg("name", required=False),))),
+                 spec=ArgSpec(positionals=(
+                     Arg("name", required=False, completer=THEME_NAMES),))),
     SlashCommand("clear", "clear the visible transcript (cosmetic)",
                  "/clear", _clear),
 ):

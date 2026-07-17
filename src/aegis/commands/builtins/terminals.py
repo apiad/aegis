@@ -45,8 +45,11 @@ for _cmd in (
                  "/terminals [new <name> | run <name> <cmd> | close <name>]",
                  _terminals,
                  spec=ArgSpec(positionals=(
-                     Arg("subverb", required=False),
-                     Arg("name", required=False),
+                     Arg("subverb", required=False,
+                         completer=("list", "new", "run", "close")),
+                     Arg("name", required=False,
+                         completer=lambda b: [i.name
+                                              for i in b.terminal_manager.list()]),
                      Arg("cmd", required=False, greedy=True)))),
 ):
     register(_cmd)

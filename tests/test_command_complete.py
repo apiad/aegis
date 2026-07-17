@@ -70,6 +70,75 @@ def test_greedy_positional_yields_no_items():
     assert res.items == ()
 
 
+class RichBridge:
+    def list_agents(self):
+        return ["default", "opus"]
+
+    def list_sessions(self):
+        from types import SimpleNamespace
+        return [SimpleNamespace(handle="alpha", agent_slug="opus",
+                                state="ready")]
+
+    class _G:
+        def list_groups(self):
+            return [{"name": "g1", "members": 1}]
+    groups = _G()
+
+    class _Q:
+        def list_queues(self):
+            return ["build"]
+    queue_manager = _Q()
+
+    class _T:
+        def list(self):
+            from types import SimpleNamespace
+            return [SimpleNamespace(name="t1")]
+    terminal_manager = _T()
+
+    _agents = {}
+
+
+def test_spawn_completes_agents():
+    res = complete("/spawn op", RichBridge())
+    assert [c.label for c in res.items] == ["opus"]
+
+
+def test_close_completes_sessions():
+    res = complete("/close al", RichBridge())
+    assert [c.label for c in res.items] == ["alpha"]
+    assert "opus" in res.items[0].detail          # agent_slug · state
+
+
+def test_themes_completes_theme_names():
+    from aegis.theme_names import THEME_NAMES
+    res = complete("/themes ", RichBridge())
+    assert [c.label for c in res.items] == list(THEME_NAMES)
+
+
+def test_groups_subverb_then_name():
+    sub = complete("/groups ", RichBridge())
+    assert {"list", "status", "dissolve"} <= {c.label for c in sub.items}
+    name = complete("/groups status g", RichBridge())
+    assert [c.label for c in name.items] == ["g1"]
+
+
+def test_terminals_completes_names():
+    res = complete("/terminals close t", RichBridge())
+    assert [c.label for c in res.items] == ["t1"]
+
+
+def test_queues_completes_names_and_agent():
+    subs = complete("/queues ", RichBridge())
+    assert {"list", "new"} <= {c.label for c in subs.items}
+    agent = complete("/queues new q ", RichBridge())
+    assert {"default", "opus"} <= {c.label for c in agent.items}
+
+
+def test_agents_add_harness_completes_providers():
+    res = complete("/agents add slug cla", RichBridge())
+    assert any(c.label == "claude-code" for c in res.items)
+
+
 def test_throwing_completer_is_swallowed():
     def _boom(b):
         raise RuntimeError("nope")
