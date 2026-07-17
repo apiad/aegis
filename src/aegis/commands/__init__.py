@@ -120,6 +120,7 @@ class Completion:
     insert: str       # text spliced into the input for this choice
     label: str        # matched text shown (e.g. "/spawn" or "opus")
     detail: str = ""  # dim right-column (summary / agent config / "")
+    source: str = "builtin"  # command origin (builtin|user|plugin) for tinting
 
 
 @dataclass(frozen=True)
@@ -156,7 +157,7 @@ def complete(text: str, bridge: object) -> Completions:
         ranked.sort(key=lambda c: 0 if c.source == "builtin" else 1)
         items = tuple(
             Completion(insert=f"/{c.name} ", label=f"/{c.name}",
-                       detail=c.summary)
+                       detail=c.summary, source=c.source)
             for c in ranked)
         return Completions(items=items)
 

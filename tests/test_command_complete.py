@@ -151,3 +151,21 @@ def test_throwing_completer_is_swallowed():
         assert res.items == ()
     finally:
         REGISTRY.pop("probe2dboom", None)
+
+
+def test_command_completions_carry_source():
+    REGISTRY["zzuser"] = SlashCommand("zzuser", "s", "/zzuser", _noop,
+                                      source="user")
+    REGISTRY["zzplug"] = SlashCommand("zzplug", "s", "/zzplug", _noop,
+                                      source="plugin")
+    try:
+        got = {c.label: c.source for c in complete("/zz", bridge=None).items}
+        assert got["/zzuser"] == "user"
+        assert got["/zzplug"] == "plugin"
+        # builtins keep the default source:
+        helpc = [c for c in complete("/help", bridge=None).items
+                 if c.label == "/help"]
+        assert helpc and helpc[0].source == "builtin"
+    finally:
+        REGISTRY.pop("zzuser", None)
+        REGISTRY.pop("zzplug", None)
