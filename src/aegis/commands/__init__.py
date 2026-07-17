@@ -201,6 +201,9 @@ def complete(text: str, bridge: object) -> Completions:
     return Completions(items=items, hint=hint)
 
 
+# The @command plugin decorator (imports the types + register defined above).
+from aegis.commands.decorator import command  # noqa: E402,F401
+
 # Register the builtins. Import at the bottom so the types above exist when
 # builtins.py imports them (avoids a circular import).
 from aegis.commands import builtins as _builtins  # noqa: E402,F401
