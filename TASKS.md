@@ -69,11 +69,18 @@ spec → plan → implement cycle; web parity threaded through each:
   resume-restart (mutate the live `Agent`, tear down + `resume()` with the new
   argv so the conversation survives). Deferred from 2B: driver-capability-
   dependent session surgery that warrants its own spec + TDD pass.
-- [ ] **2C — prompt commands + plugin `@command`** — user-authored
-  `.aegis/commands/<name>.md` (frontmatter + `$1`/`$ARGUMENTS` template,
-  `@file` includes, embedded `!shell`) → expand and send as a message to the
-  agent (Claude-Code parity); plus a `@command` decorator beside
-  `@workflow`/`@hook`/`@tool`. Both plug into 2A's `source`-tagged registry.
+- [x] **2C — prompt commands + plugin `@command`** *(shipped)* — user-authored
+  `.aegis/commands/<name>.md` (frontmatter `description`/`argument-hint` +
+  `$1..$9`/`$ARGUMENTS` template, `@file` includes, embedded `` !`shell` ``,
+  args-first expansion) expand and ride the `CommandResult.effect`
+  `{"kind":"deliver"}` channel so both seams send them to the agent as a
+  message (Claude-Code parity); plus a `@command` decorator beside
+  `@workflow`/`@hook`/`@tool`, auto-registered on the plugin import sweep. Both
+  plug into 2A's `source`-tagged registry, now with a full precedence rule
+  (builtin > user > plugin) in `register()`. Palette (2D) color-codes the three
+  sources. Boot-load at TUI `on_mount` + `serve`; no live watch. Spec:
+  `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2c.md`.
 - [x] **2D — discovery UX** *(shipped)* — inline **drop-up** command palette:
   type `/` and a panel rises above the input with fuzzy-matched commands,
   subverbs, and **live argument values** (agent/session/queue/group/schedule/
