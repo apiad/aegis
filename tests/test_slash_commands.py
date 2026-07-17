@@ -163,3 +163,23 @@ async def test_handler_exception_becomes_error_result():
     res = await dispatch("/sessions", ctx)
     assert not res.ok
     assert "failed" in res.title and "kaboom" in res.body
+
+
+async def test_argerror_returns_usage_and_skips_handler():
+    # /spawn with no agent → parse fails on the required positional
+    ctx = _ctx()
+    res = await dispatch("/spawn", ctx)
+    assert res.ok is False
+    assert res.title.startswith("usage:")
+    assert "/spawn" in res.title
+    # dispatch-level parse populates the body with the parse error; the old
+    # hand-rolled handler left it empty.
+    assert "missing required argument" in res.body
+    assert not ctx.bridge.spawned
+
+
+async def test_typed_handler_receives_parsed_args():
+    ctx = _ctx()
+    res = await dispatch("/spawn opus write the report", ctx)
+    assert res.ok is True
+    assert ctx.bridge.spawned[-1] == ("opus", "write the report", "me")

@@ -1,22 +1,37 @@
-"""Phase 1 builtin slash commands: /help, /sessions, /spawn, /queue, /enqueue.
+"""Phase 1 builtin slash commands: /help, /sessions, /agents, /spawn, /queue,
+/enqueue.
 
 Each is a thin call into the ``AppBridge`` (``ctx.bridge``) — the same
-surface agents drive through MCP.
+surface agents drive through MCP. Handlers receive a validated ``Args``
+(parsed from the command's declared ``ArgSpec`` by ``dispatch``).
 """
 from __future__ import annotations
 
 from aegis.commands import (
     REGISTRY, CommandContext, CommandResult, SlashCommand, register,
 )
+from aegis.commands.args import Arg, ArgSpec, Flag
 
 
-async def _help(ctx: CommandContext, argstr: str) -> CommandResult:
-    lines = [f"{c.usage} — {c.summary}"
-             for _, c in sorted(REGISTRY.items())]
+async def _help(ctx: CommandContext, args) -> CommandResult:
+    order = ["builtin", "user", "plugin"]
+    by_source: dict[str, list] = {}
+    for c in REGISTRY.values():
+        by_source.setdefault(c.source, []).append(c)
+    show_headers = len(by_source) > 1
+    lines: list[str] = []
+    for src in order + [s for s in by_source if s not in order]:
+        cmds = by_source.pop(src, None)
+        if not cmds:
+            continue
+        if show_headers:
+            lines.append(f"[{src}]")
+        for c in sorted(cmds, key=lambda c: c.name):
+            lines.append(f"{c.usage} — {c.summary}")
     return CommandResult(True, "commands", "\n".join(lines))
 
 
-async def _sessions(ctx: CommandContext, argstr: str) -> CommandResult:
+async def _sessions(ctx: CommandContext, args) -> CommandResult:
     sessions = list(ctx.bridge.list_sessions())
     if not sessions:
         return CommandResult(True, "no live sessions")
@@ -27,7 +42,7 @@ async def _sessions(ctx: CommandContext, argstr: str) -> CommandResult:
                          "\n".join(lines))
 
 
-async def _agents(ctx: CommandContext, argstr: str) -> CommandResult:
+async def _agents(ctx: CommandContext, args) -> CommandResult:
     names = ctx.bridge.list_agents()
     if not names:
         return CommandResult(True, "no agents configured")
@@ -49,12 +64,9 @@ async def _agents(ctx: CommandContext, argstr: str) -> CommandResult:
     return CommandResult(True, f"{len(names)} agent{plural}", "\n".join(lines))
 
 
-async def _spawn(ctx: CommandContext, argstr: str) -> CommandResult:
-    parts = argstr.split(None, 1)
-    if not parts:
-        return CommandResult(False, "usage: /spawn <agent> [prompt]")
-    agent = parts[0]
-    prompt = parts[1] if len(parts) > 1 else None
+async def _spawn(ctx: CommandContext, args) -> CommandResult:
+    agent = args["agent"]
+    prompt = args.get("prompt")
     agents = ctx.bridge.list_agents()
     if agent not in agents:
         return CommandResult(False, f"unknown agent: {agent}",
@@ -65,13 +77,12 @@ async def _spawn(ctx: CommandContext, argstr: str) -> CommandResult:
     return CommandResult(True, f"spawned {handle}", detail)
 
 
-async def _queue(ctx: CommandContext, argstr: str) -> CommandResult:
-    parts = argstr.split()
-    if len(parts) < 2 or parts[0] != "new":
+async def _queue(ctx: CommandContext, args) -> CommandResult:
+    if args["subverb"] != "new":
         return CommandResult(False, "usage: /queue new <name> [agent]")
-    name = parts[1]
+    name = args["name"]
     agents = ctx.bridge.list_agents()
-    agent = parts[2] if len(parts) > 2 else (agents[0] if agents else "")
+    agent = args.get("agent") or (agents[0] if agents else "")
     if not agent:
         return CommandResult(False, "no agent available for the queue")
     if agent not in agents:
@@ -87,11 +98,9 @@ async def _queue(ctx: CommandContext, argstr: str) -> CommandResult:
                          f"agent {agent} · max_parallel 1")
 
 
-async def _enqueue(ctx: CommandContext, argstr: str) -> CommandResult:
-    parts = argstr.split(None, 1)
-    if len(parts) < 2:
-        return CommandResult(False, "usage: /enqueue <queue> <payload>")
-    queue, payload = parts[0], parts[1]
+async def _enqueue(ctx: CommandContext, args) -> CommandResult:
+    queue = args["queue"]
+    payload = args["payload"]
     from aegis.queue import sender_user
     try:
         result = ctx.bridge.queue_manager.enqueue(
@@ -111,10 +120,18 @@ for _cmd in (
                  _sessions),
     SlashCommand("agents", "list configured agents", "/agents", _agents),
     SlashCommand("spawn", "start a new top-level agent",
-                 "/spawn <agent> [prompt]", _spawn),
+                 "/spawn <agent> [prompt]", _spawn,
+                 spec=ArgSpec(positionals=(
+                     Arg("agent"),
+                     Arg("prompt", required=False, greedy=True)))),
     SlashCommand("queue", "create a queue", "/queue new <name> [agent]",
-                 _queue),
+                 _queue,
+                 spec=ArgSpec(positionals=(
+                     Arg("subverb"), Arg("name"),
+                     Arg("agent", required=False)))),
     SlashCommand("enqueue", "drop a task on a queue",
-                 "/enqueue <queue> <payload>", _enqueue),
+                 "/enqueue <queue> <payload>", _enqueue,
+                 spec=ArgSpec(positionals=(
+                     Arg("queue"), Arg("payload", greedy=True)))),
 ):
     register(_cmd)

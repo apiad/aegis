@@ -32,7 +32,7 @@ class CommandContext:
     handle: str
 
 
-Handler = Callable[[CommandContext, str], Awaitable[CommandResult]]
+Handler = Callable[[CommandContext, Args], Awaitable[CommandResult]]
 
 
 class CommandCollision(ValueError):
@@ -65,10 +65,11 @@ def register(cmd: SlashCommand) -> None:
 
 
 async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
-    """Parse ``/verb rest-of-line`` and run the command. Pure (no UI).
+    """Parse ``/verb rest-of-line``, parse its typed args, run the command.
+    Pure (no UI).
 
-    A bare ``/`` is treated as ``/help``. An unknown verb, a missing
-    command, or any exception raised by a handler comes back as an error
+    A bare ``/`` is treated as ``/help``. An unknown verb, an ``ArgError`` from
+    parsing, or any exception raised by a handler comes back as an error
     ``CommandResult`` — a bad command never crashes the turn loop.
     """
     body = text[1:] if text.startswith("/") else text
@@ -79,7 +80,11 @@ async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
     if cmd is None:
         return CommandResult(False, f"unknown command: /{verb}", "try /help")
     try:
-        return await cmd.run(ctx, argstr)
+        args = parse(cmd.spec, argstr)
+    except ArgError as e:
+        return CommandResult(False, f"usage: {cmd.usage}", str(e))
+    try:
+        return await cmd.run(ctx, args)
     except Exception as e:  # noqa: BLE001 — a bad command must not kill the turn
         return CommandResult(False, f"/{verb} failed", f"{type(e).__name__}: {e}")
 
