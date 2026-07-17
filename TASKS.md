@@ -38,6 +38,28 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
+### Dynamic workflows — Track 2 JSON DSL *(designed 2026-07-17, plan being written)*
+
+Agent-authorable dynamic workflows as a validated JSON DSL — the safe/data
+counterpart to Track-1 durable `@workflow` Python. Premise: harnesses now own
+intra-harness fan-out (Claude Dynamic Workflows, Codex/Gemini subagents), so
+aegis workflows reposition to what a single harness structurally can't do —
+cross-harness, cross-restart/host durability, and mid-run human-in-the-loop.
+
+Key decisions (see spec): the interpreter is itself a `@workflow` (inherits
+durability/resume/gating); control flow = static shapes + hard-bounded
+`loop`/`if` with typed `shell`|`judge` predicates; data flow =
+select-never-compute selectors; leaf `target` = `spawn`|`session`|`queue`;
+`human` node (TUI-only); gating = operator-implicit / agent-prompt-above-a-cost-
+threshold. Also lands the missing **Track-1 gating** (operator implicit / agent
+prompts, showing the script).
+
+- Spec: `docs/superpowers/specs/2026-07-17-aegis-json-dsl-dynamic-workflows-design.md`
+- Open questions: `equals` predicate (avoid a `judge` agent-call when branching
+  on a known value — felt at the design-thinking gate); plan-preview cost
+  estimate is a static upper bound, not a prediction.
+- Plan: *being written by a fresh planning agent (spec-only context handoff)*.
+
 ### Slash commands — Phase 2 *(decomposed into 2A–2D)*
 
 Phase 1 shipped (v0.17.0): control commands `/help /sessions /agents /spawn
