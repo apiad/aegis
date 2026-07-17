@@ -174,13 +174,23 @@ class WSSession:
         is delivered normally."""
         from aegis.commands import CommandContext, classify_input, dispatch
         kind, payload = classify_input(message)
+        core = self._m.get(handle)
         if kind == "command":
             result = await dispatch(
                 payload, CommandContext(bridge=self._m, handle=handle))
+            eff = result.effect or {}
+            if eff.get("kind") == "deliver":
+                # Prompt command: deliver the expansion to the agent like a
+                # normal message (renders via the inbox stream frame).
+                if core is None:
+                    raise ValueError("unknown handle")
+                msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
+                                   body=eff["text"])
+                receipt = await core.deliver(msg)
+                return {"delivery": receipt.disposition, "depth": receipt.depth}
             return {"command_result": {
                 "ok": result.ok, "title": result.title,
                 "body": result.body, "effect": result.effect}}
-        core = self._m.get(handle)
         if core is None:
             raise ValueError("unknown handle")
         msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),

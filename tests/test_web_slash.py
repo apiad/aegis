@@ -54,6 +54,30 @@ async def test_web_slash_command_returns_command_result_and_skips_deliver():
 
 
 @pytest.mark.asyncio
+async def test_web_prompt_command_delivers_not_command_result(tmp_path):
+    from aegis.commands import REGISTRY
+    from aegis.commands.prompt_loader import load_prompt_commands
+
+    async def _fake_shell(cmd, cwd):
+        return ""
+
+    d = tmp_path / ".aegis" / "commands"
+    d.mkdir(parents=True)
+    (d / "hi.md").write_text("---\ndescription: h\n---\nHi $1", encoding="utf-8")
+    names = load_prompt_commands(tmp_path, run_shell=_fake_shell)
+    core = FakeCore()
+    session = _session(core)
+    try:
+        res = await session._deliver_or_command("h", "/hi there")
+        assert "command_result" not in res
+        assert res["delivery"] == "landed"
+        assert core.delivered == ["Hi there"]
+    finally:
+        for n in names:
+            REGISTRY.pop(n, None)
+
+
+@pytest.mark.asyncio
 async def test_web_double_slash_delivers_literal():
     core = FakeCore()
     session = _session(core)
