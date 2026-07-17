@@ -897,7 +897,8 @@ function renderPalette(items) {
   if (!palItems.length) { paletteEl.style.display = "none"; return; }
   palItems.forEach((it, i) => {
     const row = document.createElement("div");
-    row.className = "palette-row" + (i === 0 ? " current" : "");
+    row.className = "palette-row" + (i === 0 ? " current" : "")
+                    + " pl-source-" + (it.source || "builtin");
     const label = document.createElement("span");
     label.className = "pl-label";
     label.textContent = it.label;

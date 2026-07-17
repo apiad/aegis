@@ -340,3 +340,7 @@ pre.expanded { white-space: pre-wrap; word-break: break-word;
 .palette-row.current .pl-label { color: #111; }
 .pl-detail { color: var(--aegis-muted, #888); margin-left: 1rem; }
 .palette-row.current .pl-detail { color: #333; }
+/* command origin tint: user → success/green, plugin → working/amber,
+   builtin → default fg. Overridden by the .current highlight above. */
+.pl-source-user   .pl-label { color: var(--aegis-ok, #7ec87e); }
+.pl-source-plugin .pl-label { color: var(--aegis-working, #e6b450); }

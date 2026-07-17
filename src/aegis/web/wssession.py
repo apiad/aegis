@@ -203,7 +203,8 @@ class WSSession:
         from aegis.commands import complete
         c = complete(message, self._m)
         return {"items": [{"insert": it.insert, "label": it.label,
-                           "detail": it.detail} for it in c.items],
+                           "detail": it.detail, "source": it.source}
+                          for it in c.items],
                 "hint": c.hint}
 
     # -- dispatch ---------------------------------------------------------

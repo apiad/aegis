@@ -11,6 +11,16 @@ from textual.widgets.option_list import Option
 from aegis.commands import Completion, Completions
 
 
+def _source_style(palette, source: str) -> str:
+    """Label colour by command origin: user → success/green, plugin →
+    working/amber, builtin (default) → accent."""
+    if source == "user":
+        return palette.ok
+    if source == "plugin":
+        return palette.working
+    return palette.accent
+
+
 class CommandPalette(OptionList):
     DEFAULT_CSS = """
     CommandPalette {
@@ -34,7 +44,9 @@ class CommandPalette(OptionList):
             return
         rows = []
         for c in self._items:
-            t = Text(c.label, style=self._palette.accent)
+            t = Text(c.label,
+                     style=_source_style(self._palette,
+                                         getattr(c, "source", "builtin")))
             if c.detail:
                 t.append(f"   {c.detail}", style=self._palette.muted)
             rows.append(Option(t))
