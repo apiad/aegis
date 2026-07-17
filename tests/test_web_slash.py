@@ -69,3 +69,29 @@ async def test_web_plain_message_delivers_normally():
     res = await session._deliver_or_command("h", "just a message")
     assert core.delivered == ["just a message"]
     assert res["delivery"] == "landed"
+
+
+@pytest.mark.asyncio
+async def test_web_command_frame_includes_effect_key():
+    # A no-effect command still carries the effect key (value None).
+    core = FakeCore()
+    session = _session(core)
+    res = await session._deliver_or_command("h", "/sessions")
+    assert "effect" in res["command_result"]
+    assert res["command_result"]["effect"] is None
+
+
+@pytest.mark.asyncio
+async def test_web_command_frame_carries_effect(monkeypatch):
+    import aegis.commands as commands
+    from aegis.commands import CommandResult
+
+    async def _fake_dispatch(payload, ctx):
+        return CommandResult(True, "theme set",
+                             effect={"kind": "theme", "name": "aegis-ink"})
+    monkeypatch.setattr(commands, "dispatch", _fake_dispatch)
+
+    session = _session(FakeCore())
+    res = await session._deliver_or_command("h", "/themes aegis-ink")
+    assert res["command_result"]["effect"] == {"kind": "theme",
+                                               "name": "aegis-ink"}

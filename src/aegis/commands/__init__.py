@@ -21,6 +21,7 @@ class CommandResult:
     ok: bool          # False → rendered as an error block
     title: str        # one-line headline, e.g. "spawned researcher-1"
     body: str = ""    # optional multi-line detail
+    effect: dict | None = None   # frontend-applied side-effect, or None
 
 
 @dataclass

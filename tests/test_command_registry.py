@@ -1,7 +1,17 @@
 import pytest
 from aegis.commands import (
     REGISTRY, SlashCommand, register, CommandCollision, classify_input,
+    CommandResult,
 )
+
+
+def test_command_result_effect_defaults_none():
+    assert CommandResult(True, "t").effect is None
+
+
+def test_command_result_carries_effect():
+    r = CommandResult(True, "t", effect={"kind": "clear"})
+    assert r.effect == {"kind": "clear"}
 
 
 def test_classify_single_slash_is_command():

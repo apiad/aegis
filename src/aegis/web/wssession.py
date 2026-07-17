@@ -178,7 +178,8 @@ class WSSession:
             result = await dispatch(
                 payload, CommandContext(bridge=self._m, handle=handle))
             return {"command_result": {
-                "ok": result.ok, "title": result.title, "body": result.body}}
+                "ok": result.ok, "title": result.title,
+                "body": result.body, "effect": result.effect}}
         core = self._m.get(handle)
         if core is None:
             raise ValueError("unknown handle")
