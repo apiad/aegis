@@ -30,6 +30,9 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 - `know-how/remote-tui.md` — *reach for it when running the TUI against a
   remote or auto-launched aegis serve (via `--remote ws://…` or
   `ssh://…`), or debugging the WS client / SSH tunnel path.*
+- `know-how/releasing.md` — *reach for it when cutting a release / bumping
+  the version / pushing a `vX.Y.Z` tag — especially the `uv.lock` re-lock
+  gate that has failed the PyPI publish twice.*
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
