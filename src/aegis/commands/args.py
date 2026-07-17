@@ -1,10 +1,11 @@
 """Declarative argument parsing for slash commands.
 
 A command declares an ``ArgSpec`` (positionals + flags); ``parse`` turns the
-raw argument string into a validated ``Args``. Parsing rule: *flags lead* —
-``--flag`` tokens are consumed from the front while they name a declared
-flag, then positionals bind in order. A trailing ``greedy`` positional takes
-the raw, un-tokenized remainder so free-text (prompts) survives verbatim.
+raw argument string into a validated ``Args``. Parsing rule: ``--flag`` tokens
+are recognized anywhere among the non-greedy positionals (so a boolean flag
+may lead or trail), while positionals bind in order. A trailing ``greedy``
+positional stops flag parsing and takes the raw, un-tokenized remainder, so
+free-text (prompts) survives verbatim — including any ``--x`` inside it.
 Pure: no registry, no UI.
 """
 from __future__ import annotations
@@ -89,12 +90,14 @@ def parse(spec: ArgSpec, argstr: str) -> Args:
             f.default if f.default is not None
             else (False if not f.takes_value else None))
 
-    s = argstr
-    # --- flag run (flags lead) ---
-    while True:
+    def _consume_flag(s: str) -> "tuple[bool, str]":
+        """If ``s`` starts with a recognized ``--flag``, consume it (and its
+        value) into ``flag_values`` and return ``(True, remainder)``. A
+        leading ``--`` that names no declared flag raises. Otherwise
+        ``(False, s)``."""
         token, rest = _pop_token(s)
         if token is None or not token.startswith("--"):
-            break
+            return False, s
         name = token[2:]
         inline = None
         if "=" in name:
@@ -104,36 +107,53 @@ def parse(spec: ArgSpec, argstr: str) -> Args:
             raise ArgError(f"unknown flag: --{name}")
         if not f.takes_value:
             flag_values[name] = True
-            s = rest
-            continue
+            return True, rest
         if inline is not None:
             flag_values[name] = inline
-            s = rest
-            continue
+            return True, rest
         value, rest2 = _pop_token(rest)
         if value is None:
             raise ArgError(f"flag --{name} needs a value")
         flag_values[name] = value
-        s = rest2
+        return True, rest2
 
-    # --- positionals ---
+    positionals = list(spec.positionals)
     positional: dict = {}
-    for p in spec.positionals:
-        if p.greedy:
-            value = s.strip()
-            if value:
-                positional[p.name] = value
-            elif p.required:
-                raise ArgError(f"missing required argument: {p.name}")
-            s = ""
+    s = argstr
+    i = 0
+
+    # Interleave flags + non-greedy positionals, left to right.
+    while i < len(positionals) and not positionals[i].greedy:
+        consumed, s = _consume_flag(s)
+        if consumed:
             continue
+        p = positionals[i]
         token, rest = _pop_token(s)
         if token is None:
             if p.required:
                 raise ArgError(f"missing required argument: {p.name}")
+            i += 1
             continue
         positional[p.name] = token
         s = rest
+        i += 1
+
+    # Flags may sit between the last non-greedy positional and the greedy
+    # region (or trail a spec that has no greedy positional at all).
+    while True:
+        consumed, s = _consume_flag(s)
+        if not consumed:
+            break
+
+    # Greedy positional (if any) takes the raw remainder verbatim.
+    if i < len(positionals) and positionals[i].greedy:
+        p = positionals[i]
+        value = s.strip()
+        if value:
+            positional[p.name] = value
+        elif p.required:
+            raise ArgError(f"missing required argument: {p.name}")
+        s = ""
 
     if s.strip():
         raise ArgError(f"unexpected extra arguments: {s.strip()}")
