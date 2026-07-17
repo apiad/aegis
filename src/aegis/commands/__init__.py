@@ -10,8 +10,10 @@ See ``docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md``.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable
+
+from aegis.commands.args import Args, ArgError, ArgSpec, parse
 
 
 @dataclass(frozen=True)
@@ -33,20 +35,32 @@ class CommandContext:
 Handler = Callable[[CommandContext, str], Awaitable[CommandResult]]
 
 
+class CommandCollision(ValueError):
+    """A non-builtin command tried to shadow a protected builtin name."""
+
+
 @dataclass(frozen=True)
 class SlashCommand:
     name: str
     summary: str          # one line, shown by /help
     usage: str            # e.g. "/spawn <agent> [prompt]"
     run: Handler
+    source: str = "builtin"          # builtin | user | plugin
+    spec: ArgSpec = field(default_factory=ArgSpec)
 
 
 REGISTRY: dict[str, SlashCommand] = {}
 
 
 def register(cmd: SlashCommand) -> None:
-    """Add a command to the registry (last write wins — lets builtins be
-    overridden later by user/plugin commands)."""
+    """Add a command to the registry. Builtins are protected: a non-builtin
+    command whose name already exists as a builtin is rejected."""
+    existing = REGISTRY.get(cmd.name)
+    if (existing is not None and existing.source == "builtin"
+            and cmd.source != "builtin"):
+        raise CommandCollision(
+            f"/{cmd.name} is a builtin and cannot be overridden by a "
+            f"{cmd.source} command")
     REGISTRY[cmd.name] = cmd
 
 
