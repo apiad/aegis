@@ -889,14 +889,22 @@ class ConversationPane(Widget):
                 result = await dispatch(
                     payload, CommandContext(bridge=self.app,
                                             handle=self.handle))
-                self._flush_streaming()
-                self._mount_block(
-                    render_command_block(result, self._palette, width),
-                    f"{result.title}\n{result.body}".strip())
-                if result.effect:
-                    self._apply_command_effect(result.effect)
-                return
-            text = payload   # "//foo" → deliver "/foo" as a normal message
+                eff = result.effect or {}
+                if eff.get("kind") == "deliver":
+                    # Prompt command: its expansion is delivered to the agent as
+                    # a normal user message (rendered as a user line by
+                    # _on_core_dispatch), not a command-result block.
+                    text = eff["text"]
+                else:
+                    self._flush_streaming()
+                    self._mount_block(
+                        render_command_block(result, self._palette, width),
+                        f"{result.title}\n{result.body}".strip())
+                    if result.effect:
+                        self._apply_command_effect(result.effect)
+                    return
+            else:
+                text = payload   # "//foo" → deliver "/foo" as a normal message
         # Every text-box message flows through the one inbox queue. When
         # idle it lands immediately (rendered by _on_core_dispatch); when
         # the agent is mid-turn it queues as a click-to-dequeue chip.

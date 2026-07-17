@@ -95,6 +95,37 @@ async def test_double_slash_delivers_literal_message():
 
 
 @pytest.mark.asyncio
+async def test_prompt_command_delivers_expansion_to_agent(tmp_path):
+    from aegis.commands import REGISTRY
+    from aegis.commands.prompt_loader import load_prompt_commands
+
+    async def _fake_shell(cmd, cwd):
+        return ""
+
+    d = tmp_path / ".aegis" / "commands"
+    d.mkdir(parents=True)
+    (d / "poem.md").write_text(
+        "---\ndescription: p\n---\nWrite about $1", encoding="utf-8")
+    names = load_prompt_commands(tmp_path, run_shell=_fake_shell)
+    sess = GatedSession()
+    app = _app(sess)
+    try:
+        async with app.run_test() as pilot:
+            pane = app._panes[0]
+            await _submit(pane, "/poem cats")
+            await pilot.pause()
+            # Prompt command: its expansion is DELIVERED to the agent (unlike a
+            # control command, which renders a block and is never sent).
+            assert sess.sent == ["Write about cats"]
+            # No command-result block — the last block is the user line.
+            blocks = pane._transcript_blocks()
+            assert blocks[-1].text_payload() == "Write about cats"
+    finally:
+        for n in names:
+            REGISTRY.pop(n, None)
+
+
+@pytest.mark.asyncio
 async def test_themes_command_applies_theme():
     from aegis.theme_names import THEME_NAMES
     sess = GatedSession()
