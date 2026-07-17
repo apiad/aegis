@@ -31,6 +31,9 @@ app.add_typer(_budget_app, name="budget")
 from aegis.cli_models import app as _models_app  # noqa: E402
 app.add_typer(_models_app, name="models")
 
+from aegis.cli_usage import app as _usage_app  # noqa: E402
+app.add_typer(_usage_app, name="usage")
+
 from aegis.cli_config import app as _config_app  # noqa: E402
 app.add_typer(_config_app, name="config")
 
