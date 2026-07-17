@@ -44,11 +44,11 @@ threaded through: result-block commands work in the web input box for free
   `/sessions` (already), `/groups`, `/schedules`, `/terminals`, `/themes`,
   and `/queues` all list when invoked with no subverb. Uniform.
 - **Convention: collection nouns are plural.** `/agents` and `/sessions`
-  shipped plural; the rest of 2B follows — `/groups`, `/schedules`,
+  are already plural; the rest of 2B follows — `/groups`, `/schedules`,
   `/terminals`, `/themes`, `/queues`. Action verbs stay singular
   (`/handoff`, `/rename`, `/close`, `/clear`, `/spawn`, `/enqueue`, `/help`).
-  The 2A `/queue` name is kept as a **back-compat alias** for `/queues`
-  (the same `SlashCommand` registered under both names).
+  The 2A `/queue` command is **renamed** to `/queues` (2A is on `main` but
+  unreleased — no back-compat alias needed).
 
 ## Design
 
@@ -104,12 +104,12 @@ sub-parsers; this mirrors how `/queue new` already works).
 | `/agents add <slug> <harness> <model> [--effort E] [--permission P]` | `config.edit.add_agent(root, slug, harness=…, model=…, effort=…, permission=…)` then `bridge.register_agent(slug, fresh)` |
 | `/agents remove <slug>` | `config.edit.remove_agent(root, slug)` (persisted; live drop needs restart — reported in the result body) |
 
-**Queues** (extend the existing `/queue` for the bare-list convention)
+**Queues** (rename the 2A `/queue` → `/queues`, add the bare-list branch)
 
 | Command | Behavior |
 |---|---|
-| `/queues` \| `/queues list` (alias `/queue`) | list configured queues (`name · agent · max_parallel`) — new bare-list branch |
-| `/queues new <name> [agent] [--ephemeral]` (alias `/queue new`) | unchanged from 2A |
+| `/queues` \| `/queues list` | list configured queues (`name · agent · max_parallel`) — new bare-list branch |
+| `/queues new <name> [agent] [--ephemeral]` | 2A behavior, renamed from `/queue new` |
 
 ### 2. `/clear` semantics — cosmetic + honesty marker
 
@@ -196,9 +196,9 @@ single file balloons; each submodule registers its commands on import:
   side-effects fire (keeps `from aegis.commands import builtins` working, as
   the bottom-of-`__init__.py` import in the commands package expects).
 - `builtins/core.py` — the 2A six moved verbatim (`help`, `sessions`,
-  `agents`, `spawn`, `queue`, `enqueue`) **plus** the `/agents` add/remove
-  branches, the `/queues` bare-list branch, and the `/queues`↔`/queue` alias
-  registration (they extend existing commands).
+  `agents`, `spawn`, `queue`→`queues`, `enqueue`) **plus** the `/agents`
+  add/remove branches and the `/queues` bare-list branch (they extend
+  existing commands; `/queue` is renamed to `/queues`).
 - `builtins/coordination.py` — `handoff`, `groups`, `schedules`.
 - `builtins/session_ctl.py` — `rename`, `close`, `themes`, `clear`.
 - `builtins/terminals.py` — `terminals`.
@@ -237,8 +237,7 @@ surface (`handoff`, `close`, `rename_handle`, fake `groups` with
   closes.
 - **Agents / queues** — `/agents add r claude sonnet` persists +
   hot-registers; `/agents remove r` persists; bare `/agents` still lists;
-  bare `/queues` lists; `/queues new …` unchanged; `/queue` alias resolves to
-  `/queues`.
+  bare `/queues` lists; `/queues new …` behaves as the 2A `/queue new` did.
 - **Effect channel** — `CommandResult.effect` defaults `None`; a result with
   an effect round-trips through `dispatch`.
 - **TUI seam** (`tests/test_pane_slash_command.py`) — `/themes <name>` mutates
