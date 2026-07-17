@@ -79,6 +79,7 @@ nav:
       - Configuration: configuration.md
   - Concepts:
       - Drivers: drivers.md
+      - Slash commands: commands.md
       - Queues: queues.md
       - Canvas: canvas.md
       - Terminals: terminals.md
