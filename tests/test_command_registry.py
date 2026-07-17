@@ -63,3 +63,49 @@ def test_user_fresh_name_registers():
         assert REGISTRY["t_reg_c"].source == "user"
     finally:
         _restore(snap)
+
+
+def _cmd(name, source):
+    return SlashCommand(name, "s", f"/{name}", _noop, source=source)
+
+
+def test_user_replaces_plugin_regardless_of_order():
+    snap = dict(REGISTRY)
+    try:
+        register(_cmd("t_reg_d", "plugin"))
+        register(_cmd("t_reg_d", "user"))            # higher priority replaces
+        assert REGISTRY["t_reg_d"].source == "user"
+    finally:
+        _restore(snap)
+
+
+def test_plugin_cannot_shadow_user():
+    snap = dict(REGISTRY)
+    try:
+        register(_cmd("t_reg_e", "user"))
+        with pytest.raises(CommandCollision):
+            register(_cmd("t_reg_e", "plugin"))
+        assert REGISTRY["t_reg_e"].source == "user"
+    finally:
+        _restore(snap)
+
+
+def test_same_source_second_raises():
+    snap = dict(REGISTRY)
+    try:
+        register(_cmd("t_reg_f", "user"))
+        with pytest.raises(CommandCollision):
+            register(_cmd("t_reg_f", "user"))
+    finally:
+        _restore(snap)
+
+
+def test_same_object_reregistration_is_idempotent():
+    snap = dict(REGISTRY)
+    try:
+        c = _cmd("t_reg_g", "user")
+        register(c)
+        register(c)                                  # same object → no raise
+        assert REGISTRY["t_reg_g"] is c
+    finally:
+        _restore(snap)

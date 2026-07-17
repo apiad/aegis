@@ -53,16 +53,27 @@ class SlashCommand:
 REGISTRY: dict[str, SlashCommand] = {}
 
 
+_SOURCE_RANK = {"builtin": 0, "user": 1, "plugin": 2}
+
+
 def register(cmd: SlashCommand) -> None:
-    """Add a command to the registry. Builtins are protected: a non-builtin
-    command whose name already exists as a builtin is rejected."""
+    """Add a command, honoring source precedence: builtin > user > plugin.
+    A higher-priority source (lower rank) replaces a lower one regardless of
+    load order; a lower-or-equal-priority source shadowing an existing command
+    raises CommandCollision — except idempotent re-registration of the very
+    same command object (a reloaded plugin module re-running its decorator)."""
     existing = REGISTRY.get(cmd.name)
-    if (existing is not None and existing.source == "builtin"
-            and cmd.source != "builtin"):
-        raise CommandCollision(
-            f"/{cmd.name} is a builtin and cannot be overridden by a "
-            f"{cmd.source} command")
-    REGISTRY[cmd.name] = cmd
+    if existing is None or existing is cmd:
+        REGISTRY[cmd.name] = cmd
+        return
+    new_rank = _SOURCE_RANK.get(cmd.source, 99)
+    old_rank = _SOURCE_RANK.get(existing.source, 99)
+    if new_rank < old_rank:
+        REGISTRY[cmd.name] = cmd            # strictly higher priority wins
+        return
+    raise CommandCollision(
+        f"/{cmd.name} is already registered by a {existing.source} command "
+        f"and cannot be overridden by a {cmd.source} command")
 
 
 async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
