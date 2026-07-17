@@ -17,6 +17,7 @@ class SessionInfo:
 class GroupsBridge(Protocol):
     """Concrete surface for the aegis_group_* MCP tools."""
 
+    def list_groups(self) -> list[dict]: ...
     async def spawn(self, *, profile: str, group: str,
                     handle: str | None = None) -> str: ...
     async def broadcast(self, group: str, *, sender: str,

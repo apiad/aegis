@@ -150,6 +150,47 @@ async def test_agents_bare_still_lists():
     assert "default" in res.body and "opus" in res.body
 
 
+class FakeGroups:
+    def __init__(self):
+        self.dissolved = []
+
+    def list_groups(self):
+        return [{"name": "g1", "members": 2}]
+
+    async def status(self, name):
+        return {"name": name, "members": [{"handle": "a", "profile": "opus"}]}
+
+    async def dissolve(self, name):
+        self.dissolved.append(name)
+        return {"dissolved": name}
+
+
+async def test_groups_bare_lists():
+    bridge = FakeBridge()
+    bridge.groups = FakeGroups()
+    res = await dispatch("/groups", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert "g1" in res.body
+
+
+async def test_groups_status():
+    bridge = FakeBridge()
+    bridge.groups = FakeGroups()
+    res = await dispatch("/groups status g1",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert "a(opus)" in res.body
+
+
+async def test_groups_dissolve():
+    bridge = FakeBridge()
+    bridge.groups = FakeGroups()
+    res = await dispatch("/groups dissolve g1",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert bridge.groups.dissolved == ["g1"]
+
+
 async def test_spawn_unknown_agent_errors():
     ctx = _ctx()
     res = await dispatch("/spawn ghost do stuff", ctx)

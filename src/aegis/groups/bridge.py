@@ -44,6 +44,11 @@ class _GroupsBridge:
                           profiles: list[str]) -> list[str]:
         return await self.wiring.spawn_group(group, profiles)
 
+    def list_groups(self) -> list[dict]:
+        reg = self.runtime.registry
+        return [{"name": n, "members": len(reg.get(n).members)}
+                for n in reg.names()]
+
     async def status(self, group: str) -> dict:
         g = self.runtime.registry.get(group)
         rec = self.runtime.tracker.current(group)
