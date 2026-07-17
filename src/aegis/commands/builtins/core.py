@@ -78,10 +78,30 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
 
 
 async def _queue(ctx: CommandContext, args) -> CommandResult:
-    if args["subverb"] != "new":
-        return CommandResult(False,
-                             "usage: /queue new <name> [agent] [--ephemeral]")
-    name = args["name"]
+    sub = args.get("subverb")
+    if sub is None:                       # bare /queues → list
+        qm = ctx.bridge.queue_manager
+        names = qm.list_queues()
+        if not names:
+            return CommandResult(True, "no queues configured")
+        lines = []
+        for n in names:
+            q = qm._queues.get(n)
+            if q is None:
+                lines.append(f"  {n}")
+            else:
+                lines.append(f"  {n} · {q.agent_profile} · "
+                             f"max_parallel {q.max_parallel}")
+        plural = "" if len(names) == 1 else "s"
+        return CommandResult(True, f"{len(names)} queue{plural}",
+                             "\n".join(lines))
+    if sub != "new":
+        return CommandResult(
+            False, "usage: /queues new <name> [agent] [--ephemeral]")
+    name = args.get("name")
+    if not name:
+        return CommandResult(
+            False, "usage: /queues new <name> [agent] [--ephemeral]")
     agents = ctx.bridge.list_agents()
     agent = args.get("agent") or (agents[0] if agents else "")
     if not agent:
@@ -107,7 +127,7 @@ async def _queue(ctx: CommandContext, args) -> CommandResult:
     if root is None:
         return CommandResult(
             False, "no .aegis.yaml found",
-            "run /queue new … --ephemeral for a session-only queue")
+            "run /queues new … --ephemeral for a session-only queue")
     try:
         cfg_edit.add_queue(root, name, agent=agent, max_parallel=1)
     except cfg.ConfigError as e:
@@ -150,10 +170,11 @@ for _cmd in (
                  spec=ArgSpec(positionals=(
                      Arg("agent"),
                      Arg("prompt", required=False, greedy=True)))),
-    SlashCommand("queue", "create a queue",
-                 "/queue new <name> [agent] [--ephemeral]", _queue,
+    SlashCommand("queues", "list or create queues",
+                 "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(
-                     positionals=(Arg("subverb"), Arg("name"),
+                     positionals=(Arg("subverb", required=False),
+                                  Arg("name", required=False),
                                   Arg("agent", required=False)),
                      flags=(Flag("ephemeral", takes_value=False),))),
     SlashCommand("enqueue", "drop a task on a queue",

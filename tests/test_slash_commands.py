@@ -17,6 +17,10 @@ class FakeSession:
 class FakeQueueManager:
     def __init__(self):
         self.enqueued = []
+        self._queues = {}
+
+    def list_queues(self):
+        return sorted(self._queues)
 
     def enqueue(self, queue, payload, *, enqueued_by, callback):
         if queue not in ("build",):
@@ -125,7 +129,7 @@ async def test_spawn_without_prompt():
 
 async def test_queue_new_ephemeral_registers():
     ctx = _ctx()
-    res = await dispatch("/queue new build opus --ephemeral", ctx)
+    res = await dispatch("/queues new build opus --ephemeral", ctx)
     assert res.ok and "build" in res.title
     assert [q.name for q in ctx.bridge.registered] == ["build"]
     assert ctx.bridge.registered[0].agent_profile == "opus"
@@ -133,13 +137,30 @@ async def test_queue_new_ephemeral_registers():
 
 async def test_queue_new_defaults_to_first_agent():
     ctx = _ctx()
-    await dispatch("/queue new build --ephemeral", ctx)
+    await dispatch("/queues new build --ephemeral", ctx)
     assert ctx.bridge.registered[0].agent_profile == "default"
 
 
-async def test_queue_new_usage_on_missing_args():
-    res = await dispatch("/queue", _ctx())
+async def test_queues_new_usage_on_missing_name():
+    res = await dispatch("/queues new", _ctx())
     assert not res.ok and "usage" in res.title
+
+
+async def test_queues_bare_lists():
+    from aegis.queue import Queue
+    bridge = FakeBridge()
+    bridge.queue_manager._queues = {
+        "build": Queue(name="build", agent_profile="opus", max_parallel=2)}
+    res = await dispatch("/queues", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert "build" in res.body
+    assert "opus" in res.body
+
+
+async def test_queue_old_name_is_gone():
+    res = await dispatch("/queue", _ctx())
+    assert res.ok is False
+    assert "unknown command" in res.title
 
 
 async def test_enqueue_drops_task():
@@ -202,7 +223,7 @@ async def test_queue_new_persists_by_default(monkeypatch):
     monkeypatch.setattr(cfg, "load_queues", lambda root: {"build": _Q()})
 
     ctx = _ctx()
-    res = await dispatch("/queue new build opus", ctx)
+    res = await dispatch("/queues new build opus", ctx)
     assert res.ok is True
     assert calls["add"][1] == "build"
     assert calls["add"][2] == {"agent": "opus", "max_parallel": 1}
@@ -217,7 +238,7 @@ async def test_queue_new_ephemeral_skips_persistence(monkeypatch):
     monkeypatch.setattr(cfg_edit, "add_queue", _boom)
 
     ctx = _ctx()
-    res = await dispatch("/queue new build opus --ephemeral", ctx)
+    res = await dispatch("/queues new build opus --ephemeral", ctx)
     assert res.ok is True
     assert "ephemeral" in res.title
     assert [q.name for q in ctx.bridge.registered] == ["build"]
