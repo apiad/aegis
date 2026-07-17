@@ -74,8 +74,15 @@ spec → plan → implement cycle; web parity threaded through each:
   `@file` includes, embedded `!shell`) → expand and send as a message to the
   agent (Claude-Code parity); plus a `@command` decorator beside
   `@workflow`/`@hook`/`@tool`. Both plug into 2A's `source`-tagged registry.
-- [ ] **2D — discovery UX** — `/` autocomplete dropdown / palette, fuzzy
-  match, tab-completion of agent/queue/session names (introspects `ArgSpec`).
+- [x] **2D — discovery UX** *(shipped)* — inline **drop-up** command palette:
+  type `/` and a panel rises above the input with fuzzy-matched commands,
+  subverbs, and **live argument values** (agent/session/queue/group/schedule/
+  terminal/theme names). Built on one pure `complete(text, bridge)` + an
+  `Arg.completer` seam (static tuple or `(bridge) -> choices`) + a `fuzzy`
+  scorer; TUI (`CommandPalette` widget + `GrowingInput.key_interceptor`) and
+  web (`complete` RPC + drop-up `<div>`) render the same data. Spec:
+  `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2d-command-palette-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2d.md`.
 
 ### Native lovelaice agent (harness-free) *(VS1–VS5 shipped — on main + PyPI)*
 

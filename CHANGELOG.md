@@ -5,6 +5,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Slash commands 2D — command palette (drop-up typeahead)
+
+- **Inline drop-up completion panel.** Typing `/` raises a panel above the
+  input with fuzzy-matched commands and their one-line summaries; past the
+  verb it completes subverbs and **live argument values** — agent slugs (with
+  `harness · model · permission`), session handles (`agent · state`), queue /
+  group / schedule / terminal names, theme ids, and flag names. A ghost usage
+  hint shows the remaining arguments. Up/Down navigate, Tab/Enter accept, Esc
+  dismisses; Enter with the panel closed submits as before.
+- **One engine, two frontends.** A pure `complete(text, bridge) -> Completions`
+  in the harness-agnostic commands core drives both the TUI (`CommandPalette`
+  widget mounted above the input, with a `GrowingInput.key_interceptor` hook)
+  and the web client (a `complete` WS RPC feeding a drop-up `<div>`), so both
+  show identical candidates.
+- **Completer seam.** `Arg` gains an optional `completer` (a static tuple or a
+  `(bridge) -> choices` callable, each choice a value or `(value, detail)`
+  pair). Subverbs are the first positional's completer; dynamic values are a
+  later positional's bridge-driven completer. A new `fuzzy` scorer ranks
+  matches. `complete()` never raises — a throwing completer contributes no
+  items.
+
 ### Slash commands 2B — full builtin coverage
 
 - **Operator-useful builtins over the `AppBridge`.** New commands drive the

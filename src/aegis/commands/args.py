@@ -10,7 +10,6 @@ Pure: no registry, no UI.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 

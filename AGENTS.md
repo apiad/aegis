@@ -99,7 +99,10 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `coordination` = groups/schedules, `terminals`, `session_ctl` =
   rename/close/themes/clear). Harness-agnostic; the TUI (`tui/pane.py`) and
   web (`web/wssession.py` + `app.js`) seams both call `dispatch()` and apply
-  any `effect`. Specs/plans: `docs/superpowers/{specs,plans}/*slash-commands*`.
+  any `effect`. Palette (2D): `fuzzy.py` (scorer) + `complete(text, bridge)`
+  (introspects the registry + `Arg.completer` seam) drive the TUI drop-up
+  `tui/palette.py` (`CommandPalette` + `GrowingInput.key_interceptor`) and the
+  web `complete` RPC. Specs/plans: `docs/superpowers/{specs,plans}/*slash-commands*`.
 - `src/aegis/core/` - harness-agnostic session core: `AgentSession`
   (turn loop, metrics, state, observer callbacks — `session.py`) and
   `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over
