@@ -188,6 +188,14 @@ class WSSession:
         receipt = await core.deliver(msg)
         return {"delivery": receipt.disposition, "depth": receipt.depth}
 
+    async def _complete(self, message: str) -> dict:
+        """Palette completions for a web input line (mirrors the TUI panel)."""
+        from aegis.commands import complete
+        c = complete(message, self._m)
+        return {"items": [{"insert": it.insert, "label": it.label,
+                           "detail": it.detail} for it in c.items],
+                "hint": c.hint}
+
     # -- dispatch ---------------------------------------------------------
 
     async def _dispatch(self, frame: dict) -> None:
@@ -273,6 +281,8 @@ class WSSession:
         if method == "deliver":
             return await self._deliver_or_command(
                 params["handle"], params["message"])
+        if method == "complete":
+            return await self._complete(params["message"])
         if method == "get_event":
             return self._reg.get_event(params["handle"], int(params["seq"]))
         if method == "handoff":

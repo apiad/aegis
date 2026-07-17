@@ -328,3 +328,15 @@ pre.expanded { white-space: pre-wrap; word-break: break-word;
                font: inherit; font-weight: 600; cursor: pointer;
                box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
 #install-btn[hidden] { display: none; }
+
+/* Command palette — drop-up completion panel above the input. */
+#palette { border: 1px solid var(--aegis-accent, #e6b450); border-radius: 6px;
+           background: var(--aegis-panel, #1a1a1a); max-height: 12rem;
+           overflow-y: auto; margin-bottom: 4px; }
+.palette-row { display: flex; justify-content: space-between; padding: 2px 8px;
+               cursor: pointer; }
+.palette-row.current { background: var(--aegis-accent, #e6b450); color: #111; }
+.pl-label { color: var(--aegis-fg, #ddd); }
+.palette-row.current .pl-label { color: #111; }
+.pl-detail { color: var(--aegis-muted, #888); margin-left: 1rem; }
+.palette-row.current .pl-detail { color: #333; }

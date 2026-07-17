@@ -884,13 +884,79 @@ async function openConfigPanel() {
 
 // --- input + keys ------------------------------------------------------
 
+const paletteEl = document.createElement("div");
+paletteEl.id = "palette";
+paletteEl.style.display = "none";
+let palItems = [];
+let palIdx = 0;
+
+function renderPalette(items) {
+  palItems = items || [];
+  palIdx = 0;
+  paletteEl.innerHTML = "";
+  if (!palItems.length) { paletteEl.style.display = "none"; return; }
+  palItems.forEach((it, i) => {
+    const row = document.createElement("div");
+    row.className = "palette-row" + (i === 0 ? " current" : "");
+    const label = document.createElement("span");
+    label.className = "pl-label";
+    label.textContent = it.label;
+    const detail = document.createElement("span");
+    detail.className = "pl-detail";
+    detail.textContent = it.detail || "";
+    row.append(label, detail);
+    row.addEventListener("mousedown", (e) => { e.preventDefault(); acceptPalette(i); });
+    paletteEl.appendChild(row);
+  });
+  paletteEl.style.display = "block";
+}
+
+function movePalette(delta) {
+  if (!palItems.length) return;
+  paletteEl.children[palIdx].classList.remove("current");
+  palIdx = (palIdx + delta + palItems.length) % palItems.length;
+  paletteEl.children[palIdx].classList.add("current");
+}
+
+function acceptPalette(i) {
+  const it = palItems[i];
+  if (!it) return;
+  const v = input.value;
+  if (v.startsWith("/") && !v.includes(" ")) {
+    input.value = it.insert;                      // completing the verb
+  } else {
+    const head = v.includes(" ") ? v.slice(0, v.lastIndexOf(" ")) : "";
+    input.value = (head ? head + " " : "") + it.insert;
+  }
+  refreshPalette();
+  input.focus();
+}
+
+function refreshPalette() {
+  const v = input.value;
+  if (!v.startsWith("/") || !activeHandle) { renderPalette([]); return; }
+  client.rpc("complete", { message: v })
+    .then((res) => renderPalette(res.items))
+    .catch(() => renderPalette([]));
+}
+
 function wireComposer() {
+  if (paletteEl.parentElement === null) {
+    input.parentElement.insertBefore(paletteEl, input);   // drop-up: above input
+  }
   const autogrow = () => {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 200) + "px";
   };
-  input.addEventListener("input", autogrow);
+  input.addEventListener("input", () => { autogrow(); refreshPalette(); });
   input.addEventListener("keydown", (e) => {
+    if (paletteEl.style.display === "block") {
+      if (e.key === "ArrowUp") { e.preventDefault(); movePalette(-1); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); movePalette(1); return; }
+      if (e.key === "Tab") { e.preventDefault(); acceptPalette(palIdx); return; }
+      if (e.key === "Enter") { e.preventDefault(); acceptPalette(palIdx); return; }
+      if (e.key === "Escape") { e.preventDefault(); renderPalette([]); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const text = input.value.trim();
