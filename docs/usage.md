@@ -109,6 +109,38 @@ handle ·profile· model · permission   state   ↑<input> (<n>% cached) ↓<ou
 Numbers are **provisional** (`~` prefix) while a turn is streaming and
 **exact** at turn end.
 
+## Usage analytics (`aegis usage`)
+
+Where the status line reports *this* session, `aegis usage` aggregates
+**every** session log under `.aegis/state/sessions/` into a cost and
+usage dashboard. It is read-only and recomputes on each run.
+
+```
+aegis usage                     # dashboard: cost, averages, models, tools, top sessions
+aegis usage --by month|dow|hour # turns bucketed over time (local timezone)
+aegis usage --sessions          # cost-per-session distribution + top 15
+aegis usage --tools             # per-tool average turn cost vs. baseline
+aegis usage --since 2026-07-01  # only sessions active on/after a date
+aegis usage --session <handle>  # a single session
+aegis usage --model <id>        # filter to one model
+aegis usage --tz <IANA>         # override the local timezone for bucketing
+```
+
+**Two-layer cost model.** The headline **billed** figure is authoritative
+— the segment-aware sum of each turn's `cost_usd` (claude-code's own
+`total_cost_usd`, which is cumulative-with-resets across resumes). Beneath
+it, an **analytical split** prices the token counts against the model
+registry to separate *generation* (input + cache-write + output) from
+*context replay* (cache reads). Replay is a genuine billed cost but is
+context re-read, not new work — so it is shown apart from generation
+rather than folded into the headline. On long Claude sessions replay is
+often the majority of the token-priced total.
+
+Sessions with no recorded `cost_usd` (older logs) fall back to a
+token-priced estimate, flagged `~est`. The model per session comes from
+each log's `SystemInit.model`; sessions predating that field are attributed
+to the `.aegis.yaml` `default_agent`'s model.
+
 ## Themes
 
 The default **Ink** theme is calm near-black with one amber accent.

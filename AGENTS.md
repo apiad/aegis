@@ -53,7 +53,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 
 - `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis serve`,
   `aegis web`, `aegis workflow`, `aegis budget`, `aegis schedule`,
-  `aegis models`, `aegis plugin`)
+  `aegis models`, `aegis usage`, `aegis plugin`)
 - `src/aegis/cli_config.py` - the `aegis config ...` subapp; all writing
   verbs route through `aegis.config.edit` helpers.
 - `src/aegis/tui/config_panel.py` - the TUI ConfigPanel tab + AddAgentModal;
