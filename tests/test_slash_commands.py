@@ -310,6 +310,12 @@ async def test_themes_unknown_errors():
     assert res.ok is False
 
 
+async def test_clear_returns_clear_effect():
+    res = await dispatch("/clear", _ctx())
+    assert res.ok is True
+    assert res.effect == {"kind": "clear"}
+
+
 async def test_rename_current_pane():
     bridge = FakeBridge()
     res = await dispatch("/rename newname",

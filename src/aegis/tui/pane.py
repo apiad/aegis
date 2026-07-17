@@ -709,6 +709,22 @@ class ConversationPane(Widget):
         kind = effect.get("kind")
         if kind == "theme":
             self.app.theme = effect["name"]
+        elif kind == "clear":
+            from rich.text import Text
+
+            from aegis.tui.metrics import _fmt_tokens
+            for b in self._mounted_blocks:
+                with contextlib.suppress(Exception):
+                    b.remove()
+            self._mounted_blocks.clear()
+            self._history.clear()
+            self._window_start = 0
+            ctx_tokens = self._core.metrics.last_true_input
+            marker = (f"──── transcript cleared · {_fmt_tokens(ctx_tokens)} "
+                      f"context tokens still in play ────")
+            self._mount_block(
+                Text(marker, style=self._palette.muted, justify="center"),
+                marker)
 
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,

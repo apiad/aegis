@@ -108,6 +108,22 @@ async def test_themes_command_applies_theme():
 
 
 @pytest.mark.asyncio
+async def test_clear_command_wipes_transcript_and_marks():
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await _submit(pane, "/sessions")     # mount a command block first
+        await pilot.pause()
+        await _submit(pane, "/clear")
+        await pilot.pause()
+        blocks = pane._transcript_blocks()
+        assert len(blocks) == 1              # only the marker remains
+        assert "cleared" in blocks[0].text_payload()
+        assert sess.sent == []
+
+
+@pytest.mark.asyncio
 async def test_slash_prefix_toggles_blue_outline_class():
     sess = GatedSession()
     app = _app(sess)

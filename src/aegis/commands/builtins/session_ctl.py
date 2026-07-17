@@ -30,6 +30,11 @@ async def _themes(ctx: CommandContext, args) -> CommandResult:
                          effect={"kind": "theme", "name": full})
 
 
+async def _clear(ctx: CommandContext, args) -> CommandResult:
+    return CommandResult(True, "transcript cleared",
+                         effect={"kind": "clear"})
+
+
 async def _rename(ctx: CommandContext, args) -> CommandResult:
     new = args["new"]
     res = await ctx.bridge.rename_handle(ctx.handle, new)
@@ -54,5 +59,7 @@ for _cmd in (
     SlashCommand("themes", "list themes, or switch to one",
                  "/themes [name]", _themes,
                  spec=ArgSpec(positionals=(Arg("name", required=False),))),
+    SlashCommand("clear", "clear the visible transcript (cosmetic)",
+                 "/clear", _clear),
 ):
     register(_cmd)

@@ -125,6 +125,16 @@ function applyCommandEffect(handle, effect) {
   if (!effect) return;
   if (effect.kind === "theme") {
     applyTheme(effect.name);
+  } else if (effect.kind === "clear") {
+    const tab = tabs.get(handle);
+    if (!tab) return;
+    tab.blocks.length = 0;
+    tab.nodes.length = 0;
+    tab.transcriptEl.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "command-block cleared-marker";
+    div.textContent = "──── transcript cleared ────";
+    tab.transcriptEl.appendChild(div);
   }
 }
 function renderInto(tab, frame) {
