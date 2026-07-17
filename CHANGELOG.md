@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [v0.18.0] - 2026-07-17
+
 ### Slash commands 2D — command palette (drop-up typeahead)
 
 - **Inline drop-up completion panel.** Typing `/` raises a panel above the
