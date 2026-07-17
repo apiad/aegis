@@ -14,9 +14,9 @@ web-input parity. It shipped six builtins (`/help /sessions /agents /spawn
 
 2B exposes the rest of the operator-useful `AppBridge` surface as builtin
 commands, so the meta-harness can be driven from the keyboard without an
-agent round-trip: coordination (`/handoff`, `/group`, `/schedule`), session
-control (`/rename`, `/close`, `/theme`, `/clear`), terminals (`/term`), and
-agent management (folded into `/agents`). Every command is a thin call over
+agent round-trip: coordination (`/handoff`, `/groups`, `/schedules`), session
+control (`/rename`, `/close`, `/themes`, `/clear`), terminals (`/terminals`),
+and agent management (folded into `/agents`). Every command is a thin call over
 an existing bridge attribute, a `config.edit` helper, or the small new
 **effect channel** (for the two frontend-mutating commands). Web parity is
 threaded through: result-block commands work in the web input box for free
@@ -41,8 +41,14 @@ threaded through: result-block commands work in the web input box for free
   `/queue new`. Raw-config viewing is not operator-essential; the
   noun-commands surface everything.
 - **Convention: a bare noun-command is equivalent to its `list`.** `/agents`,
-  `/sessions` (already), `/group`, `/schedule`, `/term`, `/theme`, and
-  (newly) `/queue` all list when invoked with no subverb. Uniform.
+  `/sessions` (already), `/groups`, `/schedules`, `/terminals`, `/themes`,
+  and `/queues` all list when invoked with no subverb. Uniform.
+- **Convention: collection nouns are plural.** `/agents` and `/sessions`
+  shipped plural; the rest of 2B follows — `/groups`, `/schedules`,
+  `/terminals`, `/themes`, `/queues`. Action verbs stay singular
+  (`/handoff`, `/rename`, `/close`, `/clear`, `/spawn`, `/enqueue`, `/help`).
+  The 2A `/queue` name is kept as a **back-compat alias** for `/queues`
+  (the same `SlashCommand` registered under both names).
 
 ## Design
 
@@ -59,14 +65,14 @@ sub-parsers; this mirrors how `/queue new` already works).
 | Command | Bridge / helper call |
 |---|---|
 | `/handoff <target> <context…>` | `await bridge.handoff(ctx.handle, target, context)` — `context` greedy/verbatim |
-| `/group` \| `/group list` | new `bridge.groups` list method (§3) → `name · N members` per group |
-| `/group status <name>` | `await bridge.groups.status(name)` |
-| `/group dissolve <name>` | `await bridge.groups.dissolve(name)` |
-| `/schedule` \| `/schedule list` | `list_payload(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names())` |
-| `/schedule show <name>` | `show_payload(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names(), name)` |
-| `/schedule enable <name>` \| `/schedule disable <name>` | `config.edit.set_schedule_enabled(root, name, value)` |
-| `/schedule remove <name>` | `remove_schedule(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names(), name)` |
-| `/schedule logs <name>` | `logs_payload(bridge.state_root, name)` |
+| `/groups` \| `/groups list` | new `bridge.groups` list method (§3) → `name · N members` per group |
+| `/groups status <name>` | `await bridge.groups.status(name)` |
+| `/groups dissolve <name>` | `await bridge.groups.dissolve(name)` |
+| `/schedules` \| `/schedules list` | `list_payload(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names())` |
+| `/schedules show <name>` | `show_payload(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names(), name)` |
+| `/schedules enable <name>` \| `/schedules disable <name>` | `config.edit.set_schedule_enabled(root, name, value)` |
+| `/schedules remove <name>` | `remove_schedule(bridge.scheduler, bridge.state_root, bridge.inline_schedule_names(), name)` |
+| `/schedules logs <name>` | `logs_payload(bridge.state_root, name)` |
 
 (`list_payload`/`show_payload`/`remove_schedule`/`logs_payload` are the same
 `aegis.scheduler.push` helpers the MCP `aegis_schedule_*` tools call.)
@@ -77,18 +83,18 @@ sub-parsers; this mirrors how `/queue new` already works).
 |---|---|
 | `/rename <new>` | `await bridge.rename_handle(ctx.handle, new)` — renames the current pane |
 | `/close [handle]` | `await bridge.close(handle or ctx.handle)` — defaults to the current pane |
-| `/theme` \| `/theme list` | list available theme names (§3) in the result body |
-| `/theme <name>` | result `ok`, `effect={"kind": "theme", "name": <name>}` |
+| `/themes` \| `/themes list` | list available theme names (§3) in the result body |
+| `/themes <name>` | result `ok`, `effect={"kind": "theme", "name": <name>}` |
 | `/clear` | result `ok`, `effect={"kind": "clear"}` — cosmetic (§2) |
 
 **Terminals** (over `bridge.terminal_manager`)
 
 | Command | Manager call |
 |---|---|
-| `/term` \| `/term list` | `terminal_manager.list()` → `name · pid · shell` |
-| `/term new <name>` | `await terminal_manager.spawn(name, from_handle=ctx.handle)` |
-| `/term run <name> <cmd…>` | `await terminal_manager.run(name, cmd, writer=ctx.handle)` — blocks until the command finishes; returns its `stdout`/`exit` as the result block (matches `aegis_term_run`) |
-| `/term close <name>` | `await terminal_manager.close(name)` |
+| `/terminals` \| `/terminals list` | `terminal_manager.list()` → `name · pid · shell` |
+| `/terminals new <name>` | `await terminal_manager.spawn(name, from_handle=ctx.handle)` |
+| `/terminals run <name> <cmd…>` | `await terminal_manager.run(name, cmd, writer=ctx.handle)` — blocks until the command finishes; returns its `stdout`/`exit` as the result block (matches `aegis_term_run`) |
+| `/terminals close <name>` | `await terminal_manager.close(name)` |
 
 **Agents** (extend the existing `/agents`)
 
@@ -102,8 +108,8 @@ sub-parsers; this mirrors how `/queue new` already works).
 
 | Command | Behavior |
 |---|---|
-| `/queue` \| `/queue list` | list configured queues (`name · agent · max_parallel`) — new bare-list branch |
-| `/queue new <name> [agent] [--ephemeral]` | unchanged from 2A |
+| `/queues` \| `/queues list` (alias `/queue`) | list configured queues (`name · agent · max_parallel`) — new bare-list branch |
+| `/queues new <name> [agent] [--ephemeral]` (alias `/queue new`) | unchanged from 2A |
 
 ### 2. `/clear` semantics — cosmetic + honesty marker
 
@@ -129,7 +135,7 @@ rides with the deferred 2B.1 session-mutation slice, not here.
 Everything above is an existing bridge attr / `config.edit` helper / effect,
 **except** two small additions:
 
-1. **`/group list` needs a group-listing method.** `bridge.groups`
+1. **`/groups list` needs a group-listing method.** `bridge.groups`
    (`_GroupsBridge` + the `GroupsBridge` Protocol in `groups/bridge.py`)
    today exposes `status`/`dissolve`/`rename`/`move_member`/`spawn`/… but no
    "list all groups". Add one method — `list_groups() -> list[dict]` (or
@@ -138,7 +144,7 @@ Everything above is an existing bridge attr / `config.edit` helper / effect,
    `_GroupsBridge`; the `make_groups_bridge` factory already closes over the
    registry.
 
-2. **`/theme` name list must be harness-agnostic.** `aegis.tui.themes`
+2. **`/themes` name list must be harness-agnostic.** `aegis.tui.themes`
    imports Textual (`Theme`), so the commands core cannot import it. Expose
    the small, stable set of theme names (`ink`/`parchment`/`slate`, i.e. the
    `aegis-ink`/`aegis-parchment`/`aegis-slate` Textual theme ids) as a plain
@@ -191,16 +197,17 @@ single file balloons; each submodule registers its commands on import:
   the bottom-of-`__init__.py` import in the commands package expects).
 - `builtins/core.py` — the 2A six moved verbatim (`help`, `sessions`,
   `agents`, `spawn`, `queue`, `enqueue`) **plus** the `/agents` add/remove
-  branches and the `/queue` bare-list branch (they extend existing commands).
-- `builtins/coordination.py` — `handoff`, `group`, `schedule`.
-- `builtins/session_ctl.py` — `rename`, `close`, `theme`, `clear`.
-- `builtins/terminals.py` — `term`.
+  branches, the `/queues` bare-list branch, and the `/queues`↔`/queue` alias
+  registration (they extend existing commands).
+- `builtins/coordination.py` — `handoff`, `groups`, `schedules`.
+- `builtins/session_ctl.py` — `rename`, `close`, `themes`, `clear`.
+- `builtins/terminals.py` — `terminals`.
 
 ## Component boundaries
 
 - Commands core (`commands/`) stays **harness-agnostic** — no Textual/web
   imports. `CommandResult.effect` is a plain dict; the frontends interpret
-  it. `/theme` sources names from a Textual-free constant.
+  it. `/themes` sources names from a Textual-free constant.
 - `builtins/*` — concrete commands; depend on the registry + `args` + the
   bridge protocol + `config.edit` + `scheduler.push` helpers.
 - Seams (`tui/pane.py`, `web/wssession.py` + `app.js`) — the only
@@ -217,27 +224,30 @@ surface (`handoff`, `close`, `rename_handle`, fake `groups` with
 `state_root` + `inline_schedule_names`).
 
 - **Coordination** — `/handoff a hello world` calls `bridge.handoff("me",
-  "a", "hello world")` (greedy context verbatim); bare `/group` lists;
-  `/group dissolve g` calls `dissolve`; `/schedule list` returns the payload;
-  `/schedule enable s` calls `set_schedule_enabled(root, "s", True)`.
+  "a", "hello world")` (greedy context verbatim); bare `/groups` lists;
+  `/groups dissolve g` calls `dissolve`; `/schedules list` returns the
+  payload; `/schedules enable s` calls `set_schedule_enabled(root, "s",
+  True)`.
 - **Session control** — `/rename new` calls `rename_handle("me", "new")`;
-  `/close` closes `ctx.handle`, `/close other` closes `other`; `/theme dark`
+  `/close` closes `ctx.handle`, `/close other` closes `other`; `/themes dark`
   returns `effect={"kind":"theme","name":…}`; `/clear` returns
   `effect={"kind":"clear"}`.
-- **Terminals** — bare `/term` lists; `/term new t` spawns; `/term run t ls`
-  runs and surfaces output; `/term close t` closes.
+- **Terminals** — bare `/terminals` lists; `/terminals new t` spawns;
+  `/terminals run t ls` runs and surfaces output; `/terminals close t`
+  closes.
 - **Agents / queues** — `/agents add r claude sonnet` persists +
   hot-registers; `/agents remove r` persists; bare `/agents` still lists;
-  bare `/queue` lists; `/queue new …` unchanged.
+  bare `/queues` lists; `/queues new …` unchanged; `/queue` alias resolves to
+  `/queues`.
 - **Effect channel** — `CommandResult.effect` defaults `None`; a result with
   an effect round-trips through `dispatch`.
-- **TUI seam** (`tests/test_pane_slash_command.py`) — `/theme <name>` mutates
+- **TUI seam** (`tests/test_pane_slash_command.py`) — `/themes <name>` mutates
   `app.theme`; `/clear` empties the transcript and mounts the marker
   (flaky-aware: re-run alone per AGENTS.md before believing an inotify
   failure).
-- **Web seam** (`tests/test_web_slash.py`) — a subset command (`/group`)
+- **Web seam** (`tests/test_web_slash.py`) — a subset command (`/groups`)
   returns a `command_result` and does not call `core.deliver`; the frame
-  carries `effect` for `/theme`/`/clear`.
+  carries `effect` for `/themes`/`/clear`.
 - **Group bridge** — `list_groups()` returns the expected shape off a
   registry with two groups.
 
