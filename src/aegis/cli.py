@@ -522,6 +522,8 @@ def _run_serve(cwd: str) -> None:
         )
         yaml_cfg = _load_yaml(root)
         import_plugins(yaml_cfg)
+        from aegis.commands.prompt_loader import load_prompt_commands
+        load_prompt_commands(root)
         schedules = yaml_cfg.schedules
         remotes = yaml_cfg.remotes
         remote_plane = yaml_cfg.remote_plane

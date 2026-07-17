@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from aegis.commands import REGISTRY, CommandContext
 from aegis.commands.args import parse
 from aegis.commands.prompt_loader import load_prompt_commands
@@ -74,3 +76,55 @@ def test_reload_is_idempotent(tmp_path):
         assert "greet" in a and "greet" in b
     finally:
         _clear(a)
+
+
+# --- boot wiring (TUI on_mount) ----------------------------------------
+
+class _FakeMCP:
+    url = "http://127.0.0.1:0/mcp/"
+
+    def bind(self, bridge):
+        pass
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+
+class _GatedSession:
+    async def start(self):
+        pass
+
+    async def send(self, text):
+        pass
+
+    async def events(self):
+        import asyncio as _a
+        await _a.Event().wait()
+        yield None
+
+    async def interrupt(self):
+        pass
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_tui_boot_loads_prompt_commands(tmp_path):
+    from aegis.config import Agent
+    from aegis.tui.app import AegisApp
+
+    _mk(tmp_path, "boothi", "---\ndescription: b\n---\nHi")
+    agent = Agent(harness="claude-code", model="opus",
+                  effort="high", permission="auto")
+    app = AegisApp({"default": agent}, "default",
+                   lambda a, u, h: _GatedSession(), _FakeMCP())
+    app.state_root = tmp_path
+    try:
+        async with app.run_test():
+            assert "boothi" in REGISTRY
+    finally:
+        REGISTRY.pop("boothi", None)

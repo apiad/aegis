@@ -357,6 +357,14 @@ class AegisApp(App):
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
 
+        # Load user-authored prompt commands (.aegis/commands/*.md) for this
+        # project so they are dispatchable from the input box.
+        import contextlib
+
+        from aegis.commands.prompt_loader import load_prompt_commands
+        with contextlib.suppress(Exception):
+            load_prompt_commands(self.state_root)
+
         # Bootstrap mode: no agents declared yet → open ConfigPanel as
         # the only tab and skip the normal session spawn. The watchdog
         # / explicit F2 refresh path picks up the first agent and
