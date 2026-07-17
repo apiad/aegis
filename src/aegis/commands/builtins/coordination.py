@@ -34,10 +34,70 @@ async def _groups(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(False, "usage: /groups [status|dissolve <name>]")
 
 
+async def _schedules(ctx: CommandContext, args) -> CommandResult:
+    from aegis.scheduler.push import (
+        list_payload, logs_payload, remove_schedule, show_payload)
+    b = ctx.bridge
+    sub = args.get("subverb")
+    if sub in (None, "list"):
+        rows = list_payload(getattr(b, "scheduler", None), b.state_root,
+                            b.inline_schedule_names()).get("schedules", [])
+        if not rows:
+            return CommandResult(True, "no schedules")
+        lines = [f"  {'●' if r.get('enabled') else '○'} {r['name']} · "
+                 f"next {r.get('next_fire', '?')}" for r in rows]
+        return CommandResult(True, f"{len(rows)} schedule"
+                             f"{'' if len(rows) == 1 else 's'}",
+                             "\n".join(lines))
+    name = args.get("name")
+    if not name:
+        return CommandResult(
+            False, "usage: /schedules show|enable|disable|remove|logs <name>")
+    if sub == "show":
+        p = show_payload(getattr(b, "scheduler", None), b.state_root,
+                         b.inline_schedule_names(), name)
+        if p is None:
+            return CommandResult(False, f"schedule {name} not found")
+        return CommandResult(True, f"schedule {name}",
+                             "\n".join(f"{k}: {v}" for k, v in p.items()))
+    if sub in ("enable", "disable"):
+        import aegis.config as cfg
+        import aegis.config.edit as cfg_edit
+        root = cfg.find_project_root()
+        if root is None:
+            return CommandResult(False, "no .aegis.yaml found")
+        try:
+            cfg_edit.set_schedule_enabled(root, name, sub == "enable")
+        except (KeyError, cfg.ConfigError, FileNotFoundError) as e:
+            return CommandResult(False, f"cannot {sub} {name}: {e}")
+        return CommandResult(True, f"schedule {name} {sub}d")
+    if sub == "remove":
+        r = remove_schedule(getattr(b, "scheduler", None), b.state_root,
+                            b.inline_schedule_names(), name)
+        if getattr(r, "status", None) == "ok":
+            return CommandResult(True, f"schedule {name} removed")
+        return CommandResult(False, f"cannot remove {name}",
+                             getattr(r, "status", "error"))
+    if sub == "logs":
+        recs = logs_payload(b.state_root, name).get("records", [])
+        if not recs:
+            return CommandResult(True, f"no logs for {name}")
+        lines = [str(rec) for rec in recs[-20:]]
+        return CommandResult(True, f"schedule {name} · {len(recs)} records",
+                             "\n".join(lines))
+    return CommandResult(
+        False, "usage: /schedules [show|enable|disable|remove|logs <name>]")
+
+
 for _cmd in (
     SlashCommand("groups", "list groups, or status/dissolve one",
                  "/groups [status|dissolve <name>]", _groups,
                  spec=ArgSpec(positionals=(Arg("subverb", required=False),
                                            Arg("name", required=False)))),
+    SlashCommand(
+        "schedules", "list schedules, or show/enable/disable/remove/logs one",
+        "/schedules [show|enable|disable|remove|logs <name>]", _schedules,
+        spec=ArgSpec(positionals=(Arg("subverb", required=False),
+                                  Arg("name", required=False)))),
 ):
     register(_cmd)

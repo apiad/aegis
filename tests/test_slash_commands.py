@@ -36,6 +36,12 @@ class FakeBridge:
         self.registered_agents = []
         self._sessions = [FakeSession("alpha", "opus", active=True)]
         self.queue_manager = FakeQueueManager()
+        import pathlib
+        self.scheduler = None
+        self.state_root = pathlib.Path("/tmp/proj")
+
+    def inline_schedule_names(self):
+        return set()
 
     def list_agents(self):
         return ["default", "opus"]
@@ -189,6 +195,34 @@ async def test_groups_dissolve():
                          CommandContext(bridge=bridge, handle="me"))
     assert res.ok is True
     assert bridge.groups.dissolved == ["g1"]
+
+
+async def test_schedules_list(monkeypatch):
+    import aegis.scheduler.push as push
+    monkeypatch.setattr(push, "list_payload",
+                        lambda sched, root, inline: {"schedules": [
+                            {"name": "nightly", "enabled": True,
+                             "next_fire": "2026-07-18T00:00:00Z"}]})
+    res = await dispatch("/schedules",
+                         CommandContext(bridge=FakeBridge(), handle="me"))
+    assert res.ok is True
+    assert "nightly" in res.body
+
+
+async def test_schedules_enable(monkeypatch):
+    import pathlib
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    seen = {}
+    monkeypatch.setattr(cfg, "find_project_root",
+                        lambda: pathlib.Path("/tmp/proj"))
+    monkeypatch.setattr(
+        cfg_edit, "set_schedule_enabled",
+        lambda root, name, value: seen.__setitem__("call", (name, value)) or value)
+    res = await dispatch("/schedules enable nightly",
+                         CommandContext(bridge=FakeBridge(), handle="me"))
+    assert res.ok is True
+    assert seen["call"] == ("nightly", True)
 
 
 async def test_spawn_unknown_agent_errors():
