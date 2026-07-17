@@ -38,31 +38,33 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
-### Slash commands — Phase 2 *(continue tomorrow: "commands spec 2")*
+### Slash commands — Phase 2 *(decomposed into 2A–2D)*
 
 Phase 1 shipped (v0.17.0): control commands `/help /sessions /agents /spawn
 /queue /enqueue` + `!` shell escape, harness-agnostic registry + pure
 `dispatch()`, magenta/blue input accents. Spec:
-`docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md` (its
-"Later" section is the Phase 2 scope).
+`docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md`.
 
-Phase 2 = the powerful system. Start by writing **commands spec 2**
-(brainstorm → plan → implement):
+Phase 2 (the powerful system) is decomposed into sub-specs, each its own
+spec → plan → implement cycle; web parity threaded through each:
 
-- [ ] **Prompt commands** — user-authored `.aegis/commands/<name>.md`
-  (frontmatter + `$1`/`$ARGUMENTS` template, `@file` includes, embedded
-  `!shell`) → expand and send as a message to the agent (Claude-Code parity).
-- [ ] **Full builtin coverage** — `/group`, `/schedule`, `/handoff`,
+- [x] **2A — parser + resolution core** *(shipped)* — declarative typed args
+  (`ArgSpec`/`Args`, flags-anywhere, greedy-verbatim), protected-builtin
+  resolution with `source` tags + `CommandCollision`, `//` literal-slash
+  escape (`classify_input`), `/queue new` persistence (`--ephemeral` opts
+  out), and web-input parity (`deliver` routes slash → `command_result`).
+  Spec: `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2a.md`.
+- [ ] **2B — full builtin coverage** — `/group`, `/schedule`, `/handoff`,
   `/rename`, `/model`, `/effort`, `/theme`, `/clear`, `/close`, terminals,
-  config.
-- [ ] **Plugin `@command`** decorator beside `@workflow`/`@hook`/`@tool`.
-- [ ] **Discovery UX** — `/` autocomplete dropdown / palette, fuzzy match,
-  tab-completion of agent/queue/session names.
-- [ ] **Typed args** — usage specs, quoting, flags.
-- [ ] **Web parity** — web input dispatches through the same registry via a
-  new WS `slash` message; same block type in the web transcript.
-- [ ] **Escaping & queue persistence** — `//` literal slash; builtin/user/
-  plugin resolution order; persist `/queue new` to `.aegis.yaml`.
+  config. Depends on 2A's parser. *(next up)*
+- [ ] **2C — prompt commands + plugin `@command`** — user-authored
+  `.aegis/commands/<name>.md` (frontmatter + `$1`/`$ARGUMENTS` template,
+  `@file` includes, embedded `!shell`) → expand and send as a message to the
+  agent (Claude-Code parity); plus a `@command` decorator beside
+  `@workflow`/`@hook`/`@tool`. Both plug into 2A's `source`-tagged registry.
+- [ ] **2D — discovery UX** — `/` autocomplete dropdown / palette, fuzzy
+  match, tab-completion of agent/queue/session names (introspects `ArgSpec`).
 
 ### Native lovelaice agent (harness-free) *(VS1–VS5 shipped — on main + PyPI)*
 

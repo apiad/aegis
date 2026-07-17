@@ -5,6 +5,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Slash commands 2A — parser + resolution core
+
+- **Declarative typed arguments.** Commands now declare an `ArgSpec`
+  (positionals — required / optional / greedy — plus boolean and valued
+  `--flags`); `dispatch()` parses the input against it and hands the handler a
+  validated `Args`, replacing per-handler `.split()`. Flags are recognized
+  anywhere among the non-greedy positionals (a boolean flag may lead or
+  trail); a trailing greedy positional stops flag parsing so free-text
+  (prompts) survives verbatim, `--x` and quotes included.
+- **Protected builtins + command sources.** The registry tags each command
+  with a `source` (`builtin` / `user` / `plugin`); a non-builtin command that
+  collides with a builtin name is rejected (`CommandCollision`). `/help`
+  groups by source. This is the seam the 2C user/plugin loaders plug into.
+- **`//` literal-slash escape.** Typing `//foo` delivers a literal `/foo`
+  message to the agent instead of running a command, via a shared
+  `classify_input()` helper used by both the TUI and web seams.
+- **`/queue new` persistence.** `/queue new <name> [agent]` now writes to
+  `.aegis.yaml` (comment-preserving, same path as `aegis config add-queue`)
+  and hot-registers; `--ephemeral` keeps the old session-only behavior.
+- **Web parity.** The web `deliver` RPC routes `/command` through the same
+  `dispatch()` and returns a `command_result` frame the client renders as a
+  transcript block; `//` unescapes there too. The slash surface now works
+  identically from the TUI and web input boxes.
+- Spec/plan:
+  `docs/superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design.md`,
+  `docs/superpowers/plans/2026-07-17-aegis-slash-commands-2a.md`.
+
 ## [0.17.0] - 2026-07-16
 
 ### Slash commands + shell escape (TUI input)
