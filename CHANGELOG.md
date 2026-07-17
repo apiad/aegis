@@ -26,6 +26,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   matches. `complete()` never raises — a throwing completer contributes no
   items.
 
+### Slash commands 2C — prompt commands + plugin `@command`
+
+- **User-authored prompt commands.** `.aegis/commands/<name>.md` files register
+  as `source=user` commands: frontmatter carries `description` / `argument-hint`,
+  and the body is a template with `$1..$9` / `$ARGUMENTS` substitution, `@file`
+  includes, and embedded `` !`shell` `` expansion (args-first, so a `$1` inside
+  an `@file` or `` !`…` `` resolves before the include/shell runs). Expansion
+  rides the `CommandResult.effect` `{"kind":"deliver"}` channel, so both the TUI
+  and web seams send the rendered text to the agent as a normal message —
+  Claude-Code slash-command parity.
+- **Plugin `@command` decorator.** A `@command` decorator sits beside
+  `@workflow` / `@hook` / `@tool`; commands defined in a plugin are
+  auto-registered (`source=plugin`) on the plugin import sweep. An example ships
+  in the bundled plugin.
+- **Source precedence.** Both loaders plug into 2A's `source`-tagged registry,
+  now with a full precedence rule in `register()` — **builtin > user > plugin** —
+  so a user file shadows a plugin command of the same name but can never override
+  a protected builtin. The 2D palette color-codes the three sources.
+- **Boot-load, no live watch.** Prompt + plugin commands load at TUI `on_mount`
+  and at `serve` boot; there is no filesystem watch in this slice.
+
 ### Slash commands 2B — full builtin coverage
 
 - **Operator-useful builtins over the `AppBridge`.** New commands drive the
