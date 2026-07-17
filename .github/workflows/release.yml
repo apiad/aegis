@@ -40,7 +40,7 @@ jobs:
       - name: Run hermetic tests
         run: |
           uv sync --locked
-          uv run pytest -q -k "not live"
+          uv run pytest -q -m "not live"
 
       - name: Build sdist + wheel
         run: uv build

@@ -64,15 +64,6 @@ Phase 2 = the powerful system. Start by writing **commands spec 2**
 - [ ] **Escaping & queue persistence** — `//` literal slash; builtin/user/
   plugin resolution order; persist `/queue new` to `.aegis.yaml`.
 
-### CI test selector uses the buggy `-k "not live"`
-
-- [ ] `.github/workflows/{ci,release}.yml` run `pytest -q -k "not live"`, which
-  matches `live` as a *substring* and silently deselects unrelated tests (73
-  deselected in CI vs 23 locally with the correct `-m "not live"`). Switch both
-  to the marker form `-m "not live"` (the `live` marker is registered in
-  `pyproject.toml`). Flagged during the v0.17.0 release; AGENTS.md already warns
-  against `-k "not live"`.
-
 ### Native lovelaice agent (harness-free) *(VS1–VS5 shipped — on main + PyPI)*
 
 aegis ships `lovelaice` as a dependency and drives `lovelaice-acp` over official
