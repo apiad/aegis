@@ -121,11 +121,12 @@ Expansion is **args-first**, Claude-Code order:
 3. **`` !`cmd` `` embeds** — an `` !`...` `` segment runs the command via the
    injected `run_shell` (in `root`) and inlines its stdout.
 
-Args substitute **before** includes/shell run, so `` !`git log $1` `` works
-(CC parity). This means an argument whose value contains `@x` or `` !`x` `` is
-*not* re-interpreted as an include/embed — the include/embed scan runs on the
-template text, and substituted argument values are literal. (In-trust-boundary;
-see Security.) `ExpandError(ValueError)` carries a human-facing message.
+Args substitute **before** includes/shell are processed, so `` !`git log $1` ``
+works (CC parity): the `@file`/`` !`…` `` scan runs over the already-substituted
+text, so an argument value *can* influence an include path or a shell command.
+That is the accepted consequence of the trust boundary (both the command file
+and the invocation are Alex's; see Security), not a defect. `ExpandError(ValueError)`
+carries a human-facing message.
 
 ### 3. Prompt-command loader — new module `commands/prompt_loader.py`
 
@@ -294,9 +295,9 @@ Keep test-writing inline (the verification layer). TUI tests are flake-aware
 `.aegis/commands/*.md` is **trusted local project config**, the same trust tier
 as `.aegis.yaml`: `@file` reads arbitrary files and `` !`cmd` `` executes
 arbitrary shell on every expansion, in the project root. Operator-typed
-arguments substitute *before* includes/shell run (Claude-Code parity), so a
-prompt command author can write `` !`git log $ARGUMENTS` ``; the accepted
-consequence is that argument text is spliced into shell/file context. Because
+arguments substitute *before* the include/shell scan (Claude-Code parity), so a
+prompt command author can write `` !`git log $ARGUMENTS` `` and argument text is
+spliced into the shell/file context that then executes. Because
 both the command file (authored by Alex) and the invocation (typed by Alex) are
 inside the trust boundary, this is not a privilege-escalation surface — it is
 the same capability the `!` shell escape and any `.aegis.yaml`-declared command
