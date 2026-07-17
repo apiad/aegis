@@ -14,7 +14,7 @@ web-input parity. It shipped six builtins (`/help /sessions /agents /spawn
 
 2B exposes the rest of the operator-useful `AppBridge` surface as builtin
 commands, so the meta-harness can be driven from the keyboard without an
-agent round-trip: coordination (`/handoff`, `/groups`, `/schedules`), session
+agent round-trip: coordination (`/groups`, `/schedules`), session
 control (`/rename`, `/close`, `/themes`, `/clear`), terminals (`/terminals`),
 and agent management (folded into `/agents`). Every command is a thin call over
 an existing bridge attribute, a `config.edit` helper, or the small new
@@ -40,13 +40,19 @@ threaded through: result-block commands work in the web input box for free
   (the command that already lists agents). Queue creation already lives in
   `/queue new`. Raw-config viewing is not operator-essential; the
   noun-commands surface everything.
+- **No `/handoff` command.** For the operator, `/handoff <target> <ctx>`
+  is redundant with switching to the target's tab and typing (the pane's
+  send-with-interrupt gesture even covers `interrupt=True`), and an
+  operator-typed handoff would misleadingly render as `from agent:<current
+  pane>`. Handoff's real value is agent→agent, which the MCP `aegis_handoff`
+  tool already covers in full.
 - **Convention: a bare noun-command is equivalent to its `list`.** `/agents`,
   `/sessions` (already), `/groups`, `/schedules`, `/terminals`, `/themes`,
   and `/queues` all list when invoked with no subverb. Uniform.
 - **Convention: collection nouns are plural.** `/agents` and `/sessions`
   are already plural; the rest of 2B follows — `/groups`, `/schedules`,
   `/terminals`, `/themes`, `/queues`. Action verbs stay singular
-  (`/handoff`, `/rename`, `/close`, `/clear`, `/spawn`, `/enqueue`, `/help`).
+  (`/rename`, `/close`, `/clear`, `/spawn`, `/enqueue`, `/help`).
   The 2A `/queue` command is **renamed** to `/queues` (2A is on `main` but
   unreleased — no back-compat alias needed).
 
@@ -64,7 +70,6 @@ sub-parsers; this mirrors how `/queue new` already works).
 
 | Command | Bridge / helper call |
 |---|---|
-| `/handoff <target> <context…>` | `await bridge.handoff(ctx.handle, target, context)` — `context` greedy/verbatim |
 | `/groups` \| `/groups list` | new `bridge.groups` list method (§3) → `name · N members` per group |
 | `/groups status <name>` | `await bridge.groups.status(name)` |
 | `/groups dissolve <name>` | `await bridge.groups.dissolve(name)` |
@@ -199,7 +204,7 @@ single file balloons; each submodule registers its commands on import:
   `agents`, `spawn`, `queue`→`queues`, `enqueue`) **plus** the `/agents`
   add/remove branches and the `/queues` bare-list branch (they extend
   existing commands; `/queue` is renamed to `/queues`).
-- `builtins/coordination.py` — `handoff`, `groups`, `schedules`.
+- `builtins/coordination.py` — `groups`, `schedules`.
 - `builtins/session_ctl.py` — `rename`, `close`, `themes`, `clear`.
 - `builtins/terminals.py` — `terminals`.
 
@@ -219,14 +224,13 @@ single file balloons; each submodule registers its commands on import:
 
 Hermetic (`-m "not live"`), TDD — failing test first per unit. Extend the
 `FakeBridge` in `tests/test_slash_commands.py` to record/serve the new
-surface (`handoff`, `close`, `rename_handle`, fake `groups` with
+surface (`close`, `rename_handle`, fake `groups` with
 `list_groups`/`status`/`dissolve`, fake `terminal_manager`, `scheduler` +
 `state_root` + `inline_schedule_names`).
 
-- **Coordination** — `/handoff a hello world` calls `bridge.handoff("me",
-  "a", "hello world")` (greedy context verbatim); bare `/groups` lists;
-  `/groups dissolve g` calls `dissolve`; `/schedules list` returns the
-  payload; `/schedules enable s` calls `set_schedule_enabled(root, "s",
+- **Coordination** — bare `/groups` lists; `/groups dissolve g` calls
+  `dissolve`; `/groups status g` calls `status`; `/schedules list` returns
+  the payload; `/schedules enable s` calls `set_schedule_enabled(root, "s",
   True)`.
 - **Session control** — `/rename new` calls `rename_handle("me", "new")`;
   `/close` closes `ctx.handle`, `/close other` closes `other`; `/themes dark`
