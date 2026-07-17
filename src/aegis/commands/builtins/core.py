@@ -43,6 +43,19 @@ async def _sessions(ctx: CommandContext, args) -> CommandResult:
 
 
 async def _agents(ctx: CommandContext, args) -> CommandResult:
+    sub = args.get("subverb")
+    if sub in (None, "list"):
+        return _agents_list(ctx)
+    if sub == "add":
+        return await _agents_add(ctx, args)
+    if sub == "remove":
+        return await _agents_remove(ctx, args)
+    return CommandResult(
+        False, "usage: /agents [add <slug> <harness> <model> "
+        "[--effort E] [--permission P] | remove <slug>]")
+
+
+def _agents_list(ctx: CommandContext) -> CommandResult:
     names = ctx.bridge.list_agents()
     if not names:
         return CommandResult(True, "no agents configured")
@@ -62,6 +75,59 @@ async def _agents(ctx: CommandContext, args) -> CommandResult:
         lines.append(f"  {name} · {harness} · {model} · {perm}")
     plural = "" if len(names) == 1 else "s"
     return CommandResult(True, f"{len(names)} agent{plural}", "\n".join(lines))
+
+
+async def _agents_add(ctx: CommandContext, args) -> CommandResult:
+    slug = args.get("slug")
+    harness = args.get("harness")
+    model = args.get("model")
+    if not (slug and harness and model):
+        return CommandResult(False,
+                             "usage: /agents add <slug> <harness> <model>"
+                             " [--effort E] [--permission P]")
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    root = cfg.find_project_root()
+    if root is None:
+        return CommandResult(False, "no .aegis.yaml found")
+    effort = args.get("effort")
+    permission = args.get("permission")
+    try:
+        cfg_edit.add_agent(root, slug, provider=harness, model=model,
+                           effort=effort, permission=permission)
+    except cfg.ConfigError as e:
+        return CommandResult(False, f"agent rejected: {e}")
+    kw = {"harness": harness, "model": model}
+    if effort is not None:
+        kw["effort"] = effort
+    if permission is not None:
+        kw["permission"] = permission
+    try:
+        ctx.bridge.register_agent(slug, cfg.Agent(**kw))
+    except Exception as e:                                    # noqa: BLE001
+        return CommandResult(True, f"agent {slug} saved",
+                             f"persisted to .aegis.yaml; restart to activate "
+                             f"(live register failed: {e})")
+    return CommandResult(True, f"agent {slug} added",
+                         f"{harness} · {model} · persisted + hot-registered")
+
+
+async def _agents_remove(ctx: CommandContext, args) -> CommandResult:
+    slug = args.get("slug")
+    if not slug:
+        return CommandResult(False, "usage: /agents remove <slug>")
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    root = cfg.find_project_root()
+    if root is None:
+        return CommandResult(False, "no .aegis.yaml found")
+    try:
+        cfg_edit.remove_agent(root, slug)
+    except cfg.ConfigError as e:
+        return CommandResult(False, f"cannot remove agent: {e}")
+    return CommandResult(True, f"agent {slug} removed",
+                         "persisted to .aegis.yaml; restart to drop the live "
+                         "profile")
 
 
 async def _spawn(ctx: CommandContext, args) -> CommandResult:
@@ -164,7 +230,15 @@ for _cmd in (
     SlashCommand("help", "list slash commands", "/help", _help),
     SlashCommand("sessions", "list live agent sessions", "/sessions",
                  _sessions),
-    SlashCommand("agents", "list configured agents", "/agents", _agents),
+    SlashCommand("agents", "list or manage agents",
+                 "/agents [add <slug> <harness> <model> "
+                 "[--effort E] [--permission P] | remove <slug>]", _agents,
+                 spec=ArgSpec(
+                     positionals=(Arg("subverb", required=False),
+                                  Arg("slug", required=False),
+                                  Arg("harness", required=False),
+                                  Arg("model", required=False)),
+                     flags=(Flag("effort"), Flag("permission")))),
     SlashCommand("spawn", "start a new top-level agent",
                  "/spawn <agent> [prompt]", _spawn,
                  spec=ArgSpec(positionals=(

@@ -33,6 +33,7 @@ class FakeBridge:
     def __init__(self):
         self.spawned = []
         self.registered = []
+        self.registered_agents = []
         self._sessions = [FakeSession("alpha", "opus", active=True)]
         self.queue_manager = FakeQueueManager()
 
@@ -51,6 +52,9 @@ class FakeBridge:
         if any(q.name == queue.name for q in self.registered):
             raise ValueError(f"queue {queue.name!r} already exists")
         self.registered.append(queue)
+
+    def register_agent(self, slug, agent):
+        self.registered_agents.append((slug, agent))
 
 
 def _ctx():
@@ -103,6 +107,47 @@ async def test_agents_enriches_with_config_detail():
     res = await dispatch("/agents", CommandContext(bridge=bridge, handle="me"))
     assert res.ok and "2 agents" in res.title
     assert "claude-code · opus · full" in res.body
+
+
+async def test_agents_add_persists_and_hot_registers(monkeypatch):
+    import pathlib
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    calls = {}
+    monkeypatch.setattr(cfg, "find_project_root",
+                        lambda: pathlib.Path("/tmp/proj"))
+    monkeypatch.setattr(cfg_edit, "add_agent",
+                        lambda root, slug, **kw: calls.__setitem__("add", (slug, kw)))
+    bridge = FakeBridge()
+    res = await dispatch("/agents add r claude-code sonnet --effort high",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert calls["add"][0] == "r"
+    assert calls["add"][1]["provider"] == "claude-code"
+    assert calls["add"][1]["model"] == "sonnet"
+    assert calls["add"][1]["effort"] == "high"
+    assert bridge.registered_agents and bridge.registered_agents[0][0] == "r"
+
+
+async def test_agents_remove_persists(monkeypatch):
+    import pathlib
+    import aegis.config as cfg
+    import aegis.config.edit as cfg_edit
+    removed = {}
+    monkeypatch.setattr(cfg, "find_project_root",
+                        lambda: pathlib.Path("/tmp/proj"))
+    monkeypatch.setattr(cfg_edit, "remove_agent",
+                        lambda root, slug: removed.__setitem__("slug", slug))
+    res = await dispatch("/agents remove r",
+                         CommandContext(bridge=FakeBridge(), handle="me"))
+    assert res.ok is True
+    assert removed["slug"] == "r"
+
+
+async def test_agents_bare_still_lists():
+    res = await dispatch("/agents", _ctx())
+    assert res.ok is True
+    assert "default" in res.body and "opus" in res.body
 
 
 async def test_spawn_unknown_agent_errors():
