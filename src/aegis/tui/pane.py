@@ -703,6 +703,13 @@ class ConversationPane(Widget):
         matches = self.query(WorkingIndicator)
         return matches.first() if len(matches) else None
 
+    def _apply_command_effect(self, effect: dict) -> None:
+        """Apply a slash-command frontend effect (theme switch, transcript
+        clear). Unknown kinds are ignored (forward-compatible)."""
+        kind = effect.get("kind")
+        if kind == "theme":
+            self.app.theme = effect["name"]
+
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
                      *, tight: bool = False,
@@ -828,6 +835,8 @@ class ConversationPane(Widget):
                 self._mount_block(
                     render_command_block(result, self._palette, width),
                     f"{result.title}\n{result.body}".strip())
+                if result.effect:
+                    self._apply_command_effect(result.effect)
                 return
             text = payload   # "//foo" → deliver "/foo" as a normal message
         # Every text-box message flows through the one inbox queue. When

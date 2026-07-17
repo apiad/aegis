@@ -95,6 +95,19 @@ async def test_double_slash_delivers_literal_message():
 
 
 @pytest.mark.asyncio
+async def test_themes_command_applies_theme():
+    from aegis.theme_names import THEME_NAMES
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await _submit(pane, f"/themes {THEME_NAMES[1]}")
+        await pilot.pause()
+        assert app.theme == THEME_NAMES[1]
+        assert sess.sent == []          # not forwarded to the agent
+
+
+@pytest.mark.asyncio
 async def test_slash_prefix_toggles_blue_outline_class():
     sess = GatedSession()
     app = _app(sess)

@@ -121,6 +121,12 @@ function mountCommandBlock(handle, cr) {
   tab.transcriptEl.appendChild(div);
   if (stick) tab.transcriptEl.scrollTop = tab.transcriptEl.scrollHeight;
 }
+function applyCommandEffect(handle, effect) {
+  if (!effect) return;
+  if (effect.kind === "theme") {
+    applyTheme(effect.name);
+  }
+}
 function renderInto(tab, frame) {
   const stick = nearBottom(tab.transcriptEl);
   const { action, index } = coalesceInto(tab.blocks, frame);
@@ -884,6 +890,7 @@ function wireComposer() {
           .then((res) => {
             if (res && res.command_result) {
               mountCommandBlock(handle, res.command_result);
+              applyCommandEffect(handle, res.command_result.effect);
             }
           })
           .catch((err) => showError("deliver failed: " + err.message));

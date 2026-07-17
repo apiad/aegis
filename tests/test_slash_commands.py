@@ -284,6 +284,32 @@ async def test_terminals_new_and_close():
     assert bridge.terminal_manager.closed == ["t2"]
 
 
+async def test_themes_bare_lists():
+    from aegis.theme_names import THEME_NAMES
+    res = await dispatch("/themes", _ctx())
+    assert res.ok is True
+    assert THEME_NAMES[0] in res.body
+
+
+async def test_themes_set_returns_effect():
+    from aegis.theme_names import THEME_NAMES
+    res = await dispatch(f"/themes {THEME_NAMES[0]}", _ctx())
+    assert res.ok is True
+    assert res.effect == {"kind": "theme", "name": THEME_NAMES[0]}
+
+
+async def test_themes_short_suffix_normalizes():
+    from aegis.theme_names import THEME_NAMES
+    short = THEME_NAMES[0].split("aegis-", 1)[1]   # "ink"
+    res = await dispatch(f"/themes {short}", _ctx())
+    assert res.effect == {"kind": "theme", "name": THEME_NAMES[0]}
+
+
+async def test_themes_unknown_errors():
+    res = await dispatch("/themes bogus", _ctx())
+    assert res.ok is False
+
+
 async def test_rename_current_pane():
     bridge = FakeBridge()
     res = await dispatch("/rename newname",

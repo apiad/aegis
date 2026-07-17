@@ -7,6 +7,27 @@ from aegis.commands import (
     CommandContext, CommandResult, SlashCommand, register,
 )
 from aegis.commands.args import Arg, ArgSpec
+from aegis.theme_names import THEME_NAMES
+
+
+def _normalize_theme(name: str) -> str | None:
+    if name in THEME_NAMES:
+        return name
+    prefixed = f"aegis-{name}"
+    return prefixed if prefixed in THEME_NAMES else None
+
+
+async def _themes(ctx: CommandContext, args) -> CommandResult:
+    name = args.get("name")
+    if name is None or name == "list":
+        return CommandResult(True, "themes",
+                             "\n".join(f"  {t}" for t in THEME_NAMES))
+    full = _normalize_theme(name)
+    if full is None:
+        return CommandResult(False, f"unknown theme: {name}",
+                             "available: " + ", ".join(THEME_NAMES))
+    return CommandResult(True, f"theme → {full}",
+                         effect={"kind": "theme", "name": full})
 
 
 async def _rename(ctx: CommandContext, args) -> CommandResult:
@@ -30,5 +51,8 @@ for _cmd in (
     SlashCommand("close", "close the current or a named session",
                  "/close [handle]", _close,
                  spec=ArgSpec(positionals=(Arg("handle", required=False),))),
+    SlashCommand("themes", "list themes, or switch to one",
+                 "/themes [name]", _themes,
+                 spec=ArgSpec(positionals=(Arg("name", required=False),))),
 ):
     register(_cmd)
