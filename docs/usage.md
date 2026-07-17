@@ -113,7 +113,10 @@ Numbers are **provisional** (`~` prefix) while a turn is streaming and
 
 Where the status line reports *this* session, `aegis usage` aggregates
 **every** session log under `.aegis/state/sessions/` into a cost and
-usage dashboard. It is read-only and recomputes on each run.
+usage dashboard. It is read-only and recomputes on each run. The same
+dashboard is available inside a running session as the **`/usage`** slash
+command (`/usage`, `/usage tools`, `/usage sessions`, `/usage month|dow|hour`),
+rendered as a transcript block — identical data in the TUI and web client.
 
 ```
 aegis usage                     # dashboard: cost, averages, models, tools, top sessions
