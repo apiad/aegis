@@ -63,6 +63,7 @@ class AegisConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     root: Path | None = None
     inline_schedule_names: set[str] = field(default_factory=set)
+    dynamic_workflow_autoapprove_agents: int = 5
 
 
 _PROVIDERS: dict[str, type] = {
@@ -213,6 +214,8 @@ def load_config(root: Path) -> AegisConfig:
         voice=voice,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
+        dynamic_workflow_autoapprove_agents=int(
+            raw.get("dynamic_workflow_autoapprove_agents", 5)),
     )
 
 
