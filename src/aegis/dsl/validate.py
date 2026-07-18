@@ -30,6 +30,20 @@ def _walk(node, seen_ids, *, agents, queues, default_agent,
         if node.id:
             _add_id(node.id, seen_ids)
         return
+    if t == "parallel":
+        for child in node.children:
+            _walk(child, seen_ids, agents=agents, queues=queues,
+                  default_agent=default_agent, scope_binds=scope_binds)
+        if node.id:
+            _add_id(node.id, seen_ids)
+        return
+    if t == "map":
+        _check_ref(node.over, seen_ids, scope_binds)
+        body_scope = scope_binds | {"item", "index"}
+        _walk(node.body, seen_ids, agents=agents, queues=queues,
+              default_agent=default_agent, scope_binds=body_scope)
+        _add_id(node.id, seen_ids)
+        return
     if t == "agent":
         for selector in node.inputs.values():
             _check_ref(selector, seen_ids, scope_binds)

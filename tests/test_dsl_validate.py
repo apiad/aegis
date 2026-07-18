@@ -53,3 +53,42 @@ def test_missing_target_without_default_rejected():
         _v({"meta": {"name": "bad"},
             "root": {"type": "agent", "id": "x", "prompt": "p"}},
            default_agent=None)
+
+
+def test_map_over_upstream_ok():
+    _v({"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+        {"type": "agent", "id": "list", "prompt": "p",
+         "target": {"kind": "spawn", "profile": "lister"}},
+        {"type": "map", "id": "audits", "over": "list.files",
+         "body": {"type": "agent", "prompt": "{{item}}",
+                  "target": {"kind": "spawn", "profile": "worker"}}}]}})
+
+
+def test_map_over_downstream_rejected():
+    with pytest.raises(DslValidationError):
+        _v({"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+            {"type": "map", "id": "audits", "over": "later.files",
+             "body": {"type": "agent", "prompt": "{{item}}",
+                      "target": {"kind": "spawn", "profile": "worker"}}},
+            {"type": "agent", "id": "later", "prompt": "p",
+             "target": {"kind": "spawn", "profile": "lister"}}]}})
+
+
+def test_map_body_item_index_not_treated_as_ref():
+    # `{{item}}` in a body input selector would be an error; but the
+    # validator treats item/index as reserved scope names.
+    _v({"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+        {"type": "agent", "id": "src", "prompt": "p",
+         "target": {"kind": "spawn", "profile": "lister"}},
+        {"type": "map", "id": "m", "over": "src.files",
+         "body": {"type": "agent", "prompt": "{{x}}",
+                  "inputs": {"x": "item"},
+                  "target": {"kind": "spawn", "profile": "worker"}}}]}})
+
+
+def test_parallel_children_recursion_finds_bad_ref():
+    with pytest.raises(DslValidationError):
+        _v({"meta": {"name": "s"}, "root": {"type": "parallel", "children": [
+            {"type": "agent", "id": "x", "prompt": "{{a}}",
+             "inputs": {"a": "nope"},
+             "target": {"kind": "spawn", "profile": "worker"}}]}})
