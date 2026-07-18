@@ -20,11 +20,21 @@ class Interpreter:
         self.store = Store()
 
     async def run_node(self, node, *, path: str, scope: dict) -> Any:
+        if path in self.store.outputs:
+            return self.store.outputs[path]           # replay — do not re-run
         if node.type == "sequence":
             return await self._run_sequence(node, path=path, scope=scope)
         if node.type == "agent":
-            return await self._run_agent(node, path=path, scope=scope)
+            out = await self._run_agent(node, path=path, scope=scope)
+            await self._checkpoint()
+            return out
         raise NotImplementedError(f"node type not supported yet: {node.type}")
+
+    async def _checkpoint(self) -> None:
+        try:
+            await self.engine.checkpoint("dsl", self.store.snapshot())
+        except RuntimeError:
+            pass  # no runner/state_dir — durability is opt-in
 
     async def _run_sequence(self, node, *, path, scope) -> dict:
         out: dict[str, Any] = {}
@@ -106,4 +116,10 @@ async def dynamic(engine, *, spec, kwargs=None, default_profile=None):
     model = spec if isinstance(spec, Spec) else Spec.model_validate(spec)
     interp = Interpreter(
         engine, args=kwargs or {}, default_profile=default_profile)
+    try:
+        snap = await engine.resume_state()
+    except RuntimeError:
+        snap = None
+    if snap:
+        interp.store.load(snap)
     return await interp.run_node(model.root, path="root", scope={})
