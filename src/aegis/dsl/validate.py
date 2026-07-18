@@ -44,6 +44,26 @@ def _walk(node, seen_ids, *, agents, queues, default_agent,
               default_agent=default_agent, scope_binds=body_scope)
         _add_id(node.id, seen_ids)
         return
+    if t == "loop":
+        _check_predicate(node.until, seen_ids, scope_binds | {"last"})
+        _walk(node.body, seen_ids, agents=agents, queues=queues,
+              default_agent=default_agent, scope_binds=scope_binds)
+        _add_id(node.id, seen_ids)
+        return
+    if t == "if":
+        _check_predicate(node.cond, seen_ids, scope_binds | {"last"})
+        _walk(node.then, seen_ids, agents=agents, queues=queues,
+              default_agent=default_agent, scope_binds=scope_binds)
+        if node.else_ is not None:
+            _walk(node.else_, seen_ids, agents=agents, queues=queues,
+                  default_agent=default_agent, scope_binds=scope_binds)
+        if node.id:
+            _add_id(node.id, seen_ids)
+        return
+    if t == "human":
+        if node.id:
+            _add_id(node.id, seen_ids)
+        return
     if t == "agent":
         for selector in node.inputs.values():
             _check_ref(selector, seen_ids, scope_binds)
@@ -52,6 +72,13 @@ def _walk(node, seen_ids, *, agents, queues, default_agent,
             _add_id(node.id, seen_ids)
         return
     raise DslValidationError(f"unknown node type in validate: {t!r}")
+
+
+def _check_predicate(pred, seen_ids: set[str],
+                     scope_binds: frozenset[str]) -> None:
+    if pred.kind == "judge":
+        for selector in pred.inputs:
+            _check_ref(selector, seen_ids, scope_binds)
 
 
 def _add_id(node_id: str, seen_ids: set[str]) -> None:

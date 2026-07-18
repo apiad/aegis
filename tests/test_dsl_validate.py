@@ -92,3 +92,35 @@ def test_parallel_children_recursion_finds_bad_ref():
             {"type": "agent", "id": "x", "prompt": "{{a}}",
              "inputs": {"a": "nope"},
              "target": {"kind": "spawn", "profile": "worker"}}]}})
+
+
+def test_judge_input_downstream_ref_rejected():
+    with pytest.raises(DslValidationError):
+        _v({"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+            {"type": "if", "id": "gate",
+             "cond": {"kind": "judge", "condition": "?",
+                      "inputs": ["later"]},
+             "then": {"type": "agent", "id": "t", "prompt": "p",
+                      "target": {"kind": "spawn", "profile": "worker"}}},
+            {"type": "agent", "id": "later", "prompt": "p",
+             "target": {"kind": "spawn", "profile": "worker"}}]}})
+
+
+def test_human_id_referenceable_by_downstream_judge():
+    _v({"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+        {"type": "human", "id": "gate1", "question": "Proceed?",
+         "schema": {"type": "string", "enum": ["proceed", "revise"]}},
+        {"type": "if", "id": "gate",
+         "cond": {"kind": "judge", "condition": "Did the operator proceed?",
+                  "inputs": ["gate1"]},
+         "then": {"type": "agent", "id": "go", "prompt": "p",
+                  "target": {"kind": "spawn", "profile": "worker"}}}]}})
+
+
+def test_loop_body_can_reference_loop_last_via_judge():
+    _v({"meta": {"name": "s"},
+        "root": {"type": "loop", "id": "rounds", "max_rounds": 3,
+                 "until": {"kind": "judge", "condition": "good?",
+                           "inputs": []},  # default -> body's last result
+                 "body": {"type": "agent", "id": "b", "prompt": "p",
+                          "target": {"kind": "spawn", "profile": "worker"}}}})
