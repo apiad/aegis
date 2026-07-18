@@ -38,6 +38,17 @@ class Interpreter:
             self.store.record(path, node.id, out)
             await self._checkpoint()
             return out
+        if node.type == "loop":
+            out = await self._run_loop(node, path=path, scope=scope)
+            self.store.record(path, node.id, out)
+            await self._checkpoint()
+            return out
+        if node.type == "if":
+            out = await self._run_if(node, path=path, scope=scope)
+            if node.id:
+                self.store.record(path, node.id, out)
+            await self._checkpoint()
+            return out
         if node.type == "agent":
             out = await self._run_agent(node, path=path, scope=scope)
             await self._checkpoint()
@@ -127,6 +138,42 @@ class Interpreter:
         raise WorkflowError(
             f"agent {node.id!r} did not return schema-valid JSON "
             f"after retry: {last_err}")
+
+    async def _run_loop(self, node, *, path, scope) -> list:
+        rounds: list[Any] = []
+        for n in range(node.max_rounds):
+            round_path = f"{path}#round{n}"
+            body_out = await self.run_node(
+                node.body, path=round_path, scope=scope)
+            rounds.append(body_out)
+            pred_key = f"{round_path}::pred"
+            if pred_key in self.store.outputs:
+                stop = bool(self.store.outputs[pred_key])
+            else:
+                stop = await self._eval_predicate(
+                    node.until, path=round_path, scope=scope, last=body_out)
+                self.store.outputs[pred_key] = stop
+            await self._checkpoint()
+            if stop:
+                break
+        return rounds
+
+    async def _run_if(self, node, *, path, scope) -> Any:
+        cond_key = f"{path}::cond"
+        if cond_key in self.store.outputs:
+            taken = bool(self.store.outputs[cond_key])
+        else:
+            taken = await self._eval_predicate(
+                node.cond, path=path, scope=scope, last=None)
+            self.store.outputs[cond_key] = taken
+        await self._checkpoint()
+        if taken:
+            return await self.run_node(
+                node.then, path=f"{path}.then", scope=scope)
+        if node.else_ is not None:
+            return await self.run_node(
+                node.else_, path=f"{path}.else", scope=scope)
+        return None
 
     async def _eval_predicate(self, pred, *, path, scope, last) -> bool:
         if pred.kind == "shell":

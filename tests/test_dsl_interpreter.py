@@ -86,6 +86,58 @@ async def test_map_fans_out_over_list(fake_bridge):
     assert any("audit b.ts idx 1" in p for p in prompts)
 
 
+async def test_loop_stops_on_shell_green(fake_bridge):
+    fake_bridge.set_bash_sequence([{"exit": 1, "stdout": "", "stderr": ""},
+                                   {"exit": 0, "stdout": "", "stderr": ""}])
+    fake_bridge.set_reply_sequence("fixer-1", ["fixed round 1"])
+    fake_bridge.set_reply_sequence("fixer-2", ["fixed round 2"])
+    spec = {"meta": {"name": "s"},
+            "root": {"type": "loop", "id": "rounds", "max_rounds": 4,
+                     "until": {"kind": "shell", "cmd": "tsc --noEmit"},
+                     "body": {"type": "agent", "prompt": "fix",
+                              "target": {"kind": "spawn", "profile": "fixer"}}}}
+    out = await dynamic(_engine(fake_bridge), spec=spec, default_profile="fixer")
+    assert out == ["fixed round 1", "fixed round 2"]
+
+
+async def test_loop_respects_max_rounds(fake_bridge):
+    fake_bridge.set_bash_sequence([{"exit": 1}, {"exit": 1}])
+    fake_bridge.set_reply_sequence("fixer-1", ["r1"])
+    fake_bridge.set_reply_sequence("fixer-2", ["r2"])
+    spec = {"meta": {"name": "s"},
+            "root": {"type": "loop", "id": "rounds", "max_rounds": 2,
+                     "until": {"kind": "shell", "cmd": "false"},
+                     "body": {"type": "agent", "prompt": "fix",
+                              "target": {"kind": "spawn", "profile": "fixer"}}}}
+    out = await dynamic(_engine(fake_bridge), spec=spec, default_profile="fixer")
+    assert len(out) == 2
+
+
+async def test_if_shell_true_takes_then(fake_bridge):
+    fake_bridge.set_bash_sequence([{"exit": 0}])
+    fake_bridge.set_reply_sequence("w-1", ["did-then"])
+    spec = {"meta": {"name": "s"},
+            "root": {"type": "if", "id": "gate",
+                     "cond": {"kind": "shell", "cmd": "true"},
+                     "then": {"type": "agent", "id": "t", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}},
+                     "else": {"type": "agent", "id": "e", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}}
+    out = await dynamic(_engine(fake_bridge), spec=spec, default_profile="w")
+    assert out == "did-then"
+
+
+async def test_if_shell_false_takes_else_or_none(fake_bridge):
+    fake_bridge.set_bash_sequence([{"exit": 1}])
+    spec = {"meta": {"name": "s"},
+            "root": {"type": "if", "id": "gate",
+                     "cond": {"kind": "shell", "cmd": "false"},
+                     "then": {"type": "agent", "id": "t", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}}
+    out = await dynamic(_engine(fake_bridge), spec=spec, default_profile="w")
+    assert out is None
+
+
 async def test_shell_predicate_exit0_true_exit1_false(fake_bridge):
     fake_bridge.set_bash_sequence([{"exit": 0, "stdout": "", "stderr": ""},
                                    {"exit": 1, "stdout": "", "stderr": ""}])
