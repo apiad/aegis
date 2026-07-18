@@ -128,6 +128,37 @@ class Interpreter:
             f"agent {node.id!r} did not return schema-valid JSON "
             f"after retry: {last_err}")
 
+    async def _eval_predicate(self, pred, *, path, scope, last) -> bool:
+        if pred.kind == "shell":
+            res = await self.engine.bash(
+                pred.cmd, cwd=pred.cwd, timeout=pred.timeout)
+            return res["exit"] == 0
+        if pred.kind == "judge":
+            return await self._run_judge(pred, path=path, scope=scope, last=last)
+        raise NotImplementedError(f"predicate kind: {pred.kind}")
+
+    async def _run_judge(self, pred, *, path, scope, last) -> bool:
+        bindings: dict[str, Any] = {"args": self.args, "last": last}
+        bindings.update(scope)
+        for selector in pred.inputs:
+            head = selector.split(".")[0]
+            bindings[head] = resolve_selector(selector, self.store)
+        rendered_inputs = {k: bindings[k] for k in
+                           ({s.split(".")[0] for s in pred.inputs} or {"last"})}
+        prompt = (
+            f"Decide: {pred.condition}\n\n"
+            f"Context: {json.dumps(rendered_inputs, default=str)}\n\n"
+            'Return ONLY JSON: {"decision": true|false, "reason": "..."}')
+        handle = await self.engine.spawn(self.default_profile)
+        try:
+            reply = await self.engine.send(handle, prompt)
+            parsed = json.loads(_extract_json(reply))
+            decision = bool(parsed.get("decision"))
+        finally:
+            await self.engine.close(handle)
+        self.store.outputs[f"{path}::pred"] = decision
+        return decision
+
     def _profile_of(self, node) -> str:
         if node.target is not None:
             return node.target.profile

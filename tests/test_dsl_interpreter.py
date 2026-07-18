@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from aegis.dsl.interpreter import dynamic
+from aegis.dsl.interpreter import Interpreter, dynamic
+from aegis.dsl.models import JudgePredicate, ShellPredicate
 from aegis.workflow.decorator import WorkflowError
 from aegis.workflow.engine import WorkflowEngine
 
@@ -83,6 +84,26 @@ async def test_map_fans_out_over_list(fake_bridge):
     prompts = fake_bridge.sends_to("auditor-2") + fake_bridge.sends_to("auditor-3")
     assert any("audit a.ts idx 0" in p for p in prompts)
     assert any("audit b.ts idx 1" in p for p in prompts)
+
+
+async def test_shell_predicate_exit0_true_exit1_false(fake_bridge):
+    fake_bridge.set_bash_sequence([{"exit": 0, "stdout": "", "stderr": ""},
+                                   {"exit": 1, "stdout": "", "stderr": ""}])
+    interp = Interpreter(_engine(fake_bridge), args={}, default_profile="w")
+    pred = ShellPredicate(cmd="tsc --noEmit")
+    assert await interp._eval_predicate(
+        pred, path="root::pred", scope={}, last=None) is True
+    assert await interp._eval_predicate(
+        pred, path="root::pred", scope={}, last=None) is False
+
+
+async def test_judge_predicate_returns_decision(fake_bridge):
+    fake_bridge.set_reply_sequence(
+        "w-1", [json.dumps({"decision": True, "reason": "ok"})])
+    interp = Interpreter(_engine(fake_bridge), args={}, default_profile="w")
+    pred = JudgePredicate(condition="is it green?", inputs=[])
+    assert await interp._eval_predicate(
+        pred, path="root::pred", scope={}, last="green") is True
 
 
 async def test_parallel_runs_children_and_keyed_by_id(fake_bridge):
