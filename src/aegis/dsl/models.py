@@ -61,8 +61,42 @@ class MapNode(BaseModel):
     concurrency: int | None = None
 
 
+class ShellPredicate(BaseModel):
+    kind: Literal["shell"] = "shell"
+    cmd: str
+    cwd: str | None = None
+    timeout: int | None = None
+
+
+class JudgePredicate(BaseModel):
+    kind: Literal["judge"] = "judge"
+    condition: str
+    inputs: list[str] = Field(default_factory=list)
+
+
+AnyPredicate = Annotated[
+    Union[ShellPredicate, JudgePredicate], Field(discriminator="kind")]
+
+
+class LoopNode(BaseModel):
+    type: Literal["loop"] = "loop"
+    id: str
+    body: "AnyNode"
+    until: AnyPredicate
+    max_rounds: int = Field(gt=0)
+
+
+class IfNode(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    type: Literal["if"] = "if"
+    id: str | None = None
+    cond: AnyPredicate
+    then: "AnyNode"
+    else_: "AnyNode | None" = Field(default=None, alias="else")
+
+
 AnyNode = Annotated[
-    Union[SequenceNode, ParallelNode, MapNode, AgentNode],
+    Union[SequenceNode, ParallelNode, MapNode, LoopNode, IfNode, AgentNode],
     Field(discriminator="type"),
 ]
 
@@ -76,3 +110,5 @@ class Spec(BaseModel):
 SequenceNode.model_rebuild()
 ParallelNode.model_rebuild()
 MapNode.model_rebuild()
+LoopNode.model_rebuild()
+IfNode.model_rebuild()

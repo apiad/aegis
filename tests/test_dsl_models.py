@@ -84,3 +84,43 @@ def test_parallel_and_map_parse():
     assert spec.root.over == "list.files"
     assert spec.root.concurrency == 4
     assert spec.root.body.type == "parallel"
+
+
+def test_loop_requires_max_rounds():
+    with pytest.raises(ValidationError):
+        Spec.model_validate({"meta": {"name": "s"},
+            "root": {"type": "loop", "id": "r",
+                     "until": {"kind": "shell", "cmd": "true"},
+                     "body": {"type": "agent", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}})
+
+
+def test_loop_zero_max_rounds_rejected():
+    with pytest.raises(ValidationError):
+        Spec.model_validate({"meta": {"name": "s"},
+            "root": {"type": "loop", "id": "r", "max_rounds": 0,
+                     "until": {"kind": "shell", "cmd": "true"},
+                     "body": {"type": "agent", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}})
+
+
+def test_if_with_else_alias_parses():
+    spec = Spec.model_validate({"meta": {"name": "s"},
+        "root": {"type": "if",
+                 "cond": {"kind": "shell", "cmd": "test -f x"},
+                 "then": {"type": "agent", "prompt": "y",
+                          "target": {"kind": "spawn", "profile": "w"}},
+                 "else": {"type": "agent", "prompt": "n",
+                          "target": {"kind": "spawn", "profile": "w"}}}})
+    assert spec.root.type == "if"
+    assert spec.root.then.prompt == "y"
+    assert spec.root.else_.prompt == "n"
+
+
+def test_unknown_predicate_kind_rejected():
+    with pytest.raises(ValidationError):
+        Spec.model_validate({"meta": {"name": "s"},
+            "root": {"type": "if",
+                     "cond": {"kind": "frobnicate"},
+                     "then": {"type": "agent", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}})
