@@ -8,6 +8,7 @@ remains the module, not the function (important for ``monkeypatch``).
 """
 from aegis.workflows import (  # noqa: F401
     brainstorm_to_spec,
+    dynamic,
     execute_plan,
     review_branch,
     tdd_cycle,
