@@ -41,3 +41,23 @@ def test_agent_requires_prompt():
             "root": {"type": "agent",
                      "target": {"kind": "spawn", "profile": "w"}},
         })
+
+
+def test_agent_inputs_and_schema_parse():
+    spec = Spec.model_validate({
+        "meta": {"name": "s"},
+        "root": {"type": "agent", "id": "r", "prompt": "merge {{all}}",
+                 "inputs": {"all": "audits"},
+                 "schema": {"type": "object",
+                            "properties": {"x": {"type": "string"}}}},
+    })
+    assert spec.root.inputs == {"all": "audits"}
+    assert spec.root.schema_["type"] == "object"
+
+
+def test_agent_invalid_json_schema_rejected():
+    with pytest.raises(ValidationError):
+        Spec.model_validate({
+            "meta": {"name": "s"},
+            "root": {"type": "agent", "prompt": "x",
+                     "schema": {"type": "not-a-real-type"}}})
