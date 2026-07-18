@@ -117,6 +117,17 @@ def test_if_with_else_alias_parses():
     assert spec.root.else_.prompt == "n"
 
 
+def test_human_node_with_enum_schema_parses():
+    spec = Spec.model_validate({"meta": {"name": "s"},
+        "root": {"type": "human", "id": "gate1",
+                 "question": "Proceed?",
+                 "schema": {"type": "string",
+                            "enum": ["proceed", "revise"]}}})
+    assert spec.root.type == "human"
+    assert spec.root.question == "Proceed?"
+    assert spec.root.schema_["enum"] == ["proceed", "revise"]
+
+
 def test_unknown_predicate_kind_rejected():
     with pytest.raises(ValidationError):
         Spec.model_validate({"meta": {"name": "s"},

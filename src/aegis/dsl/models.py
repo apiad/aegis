@@ -95,8 +95,17 @@ class IfNode(BaseModel):
     else_: "AnyNode | None" = Field(default=None, alias="else")
 
 
+class HumanNode(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    type: Literal["human"] = "human"
+    id: str | None = None
+    question: str
+    schema_: dict | None = Field(default=None, alias="schema")
+
+
 AnyNode = Annotated[
-    Union[SequenceNode, ParallelNode, MapNode, LoopNode, IfNode, AgentNode],
+    Union[SequenceNode, ParallelNode, MapNode, LoopNode, IfNode,
+          HumanNode, AgentNode],
     Field(discriminator="type"),
 ]
 
