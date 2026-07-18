@@ -47,7 +47,24 @@ class SequenceNode(BaseModel):
     children: list["AnyNode"]
 
 
-AnyNode = Annotated[Union[SequenceNode, AgentNode], Field(discriminator="type")]
+class ParallelNode(BaseModel):
+    type: Literal["parallel"] = "parallel"
+    id: str | None = None
+    children: list["AnyNode"]
+
+
+class MapNode(BaseModel):
+    type: Literal["map"] = "map"
+    id: str
+    over: str
+    body: "AnyNode"
+    concurrency: int | None = None
+
+
+AnyNode = Annotated[
+    Union[SequenceNode, ParallelNode, MapNode, AgentNode],
+    Field(discriminator="type"),
+]
 
 
 class Spec(BaseModel):
@@ -57,3 +74,5 @@ class Spec(BaseModel):
 
 
 SequenceNode.model_rebuild()
+ParallelNode.model_rebuild()
+MapNode.model_rebuild()

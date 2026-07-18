@@ -61,3 +61,26 @@ def test_agent_invalid_json_schema_rejected():
             "meta": {"name": "s"},
             "root": {"type": "agent", "prompt": "x",
                      "schema": {"type": "not-a-real-type"}}})
+
+
+def test_map_requires_id_and_over():
+    from aegis.dsl.models import Spec
+    with pytest.raises(ValidationError):
+        Spec.model_validate({"meta": {"name": "s"},
+            "root": {"type": "map", "over": "list.files",
+                     "body": {"type": "agent", "prompt": "p",
+                              "target": {"kind": "spawn", "profile": "w"}}}})
+
+
+def test_parallel_and_map_parse():
+    from aegis.dsl.models import Spec
+    spec = Spec.model_validate({"meta": {"name": "s"},
+        "root": {"type": "map", "id": "audits", "over": "list.files",
+                 "concurrency": 4,
+                 "body": {"type": "parallel", "children": [
+                     {"type": "agent", "prompt": "{{item}}",
+                      "target": {"kind": "spawn", "profile": "w"}}]}}})
+    assert spec.root.type == "map"
+    assert spec.root.over == "list.files"
+    assert spec.root.concurrency == 4
+    assert spec.root.body.type == "parallel"
