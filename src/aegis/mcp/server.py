@@ -231,7 +231,14 @@ BRIEFING = (
     "between its bash predicates, and you must be free to process "
     "them, which is why this tool can't block. With callback=true the "
     "final result lands in your inbox tagged sender=workflow:<name> "
-    "with task_id matching workflow_run_id.\n\n"
+    "with task_id matching workflow_run_id.\n"
+    "  - aegis_run_dynamic_workflow(spec, kwargs?, from_handle, callback?) : "
+    "run a JSON DSL spec (sequence/parallel/map/loop/if/agent/human nodes; "
+    "shell/judge predicates). Validates structurally + semantically; if the "
+    "projected agent count exceeds the configured threshold and the caller "
+    "is an agent (not operator), returns {status: 'gated', plan, "
+    "projected_agents} for you to surface to the operator. Under threshold "
+    "or operator-invoked → launches like aegis_run_workflow.\n\n"
     "CONFIG EDIT — extend the substrate from inside.\n"
     "  - aegis_config_show() : full parsed .aegis.yaml (secrets redacted).\n"
     "  - aegis_config_list_agents() : configured agent profiles with full metadata "
@@ -1065,6 +1072,107 @@ def build_server(bridge: AppBridge) -> FastMCP:
             "host": from_handle or None,
             "status": "running",
         }
+
+    @server.tool
+    async def aegis_run_dynamic_workflow(
+        spec: dict, kwargs: dict | None = None,
+        from_handle: str = "", callback: bool = True,
+    ) -> dict:
+        """Run a JSON DSL spec as a dynamic workflow.
+
+        Validates structurally (pydantic) and semantically (upstream refs,
+        id uniqueness, agent profiles, queue names). Projects the
+        node-count "cost"; if the caller is an agent and the projection
+        exceeds the configured threshold, returns a gated preview instead
+        of launching. Operator-invoked (empty ``from_handle``) always
+        launches. Under threshold or operator-invoked → non-blocking
+        launch, same wiring as ``aegis_run_workflow``."""
+        from aegis.config import ConfigError, find_project_root
+        from aegis.config.yaml_loader import load_config as _load_yaml
+        from aegis.dsl import DslValidationError, PlanPreview, Spec, validate
+        from aegis.dsl.gate import gate_decision
+        from aegis.dsl.plan import build_plan
+        from aegis.queue.schema import new_ulid, now_iso
+        from aegis.workflow.runner import WorkflowRunner
+        from pydantic import ValidationError as _PydanticValidationError
+
+        try:
+            model = Spec.model_validate(spec)
+        except _PydanticValidationError as e:
+            return {"error": str(e)}
+
+        root = find_project_root()
+        if root is None:
+            return {"error": "no .aegis.yaml found (project root not detected)"}
+        try:
+            cfg = _load_yaml(root)
+        except ConfigError as e:
+            return {"error": f"config load failed: {e}"}
+
+        try:
+            validate(model,
+                     agents=set(cfg.agents.keys()),
+                     queues=set(cfg.queues.keys()),
+                     default_agent=cfg.default_agent)
+        except DslValidationError as e:
+            return {"error": f"semantic validation: {e}"}
+
+        plan: PlanPreview = build_plan(model, kwargs=kwargs)
+        operator_invoked = (from_handle == "")
+        decision = gate_decision(
+            projected_agents=plan.projected_agents,
+            threshold=cfg.dynamic_workflow_autoapprove_agents,
+            operator_invoked=operator_invoked)
+        if decision == "prompt":
+            return {"status": "gated", "plan": plan.render(),
+                    "projected_agents": plan.projected_agents}
+
+        runner: WorkflowRunner | None = getattr(bridge, "workflow_runner", None)
+        if runner is None:
+            runner = WorkflowRunner(bridge)
+            try:
+                bridge.workflow_runner = runner  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+
+        run_id = new_ulid()
+        qm = bridge.queue_manager
+        state_dir = (getattr(qm, "_state_dir", None)
+                     if qm is not None else None)
+
+        async def _deliver_callback() -> None:
+            if not callback or not from_handle:
+                return
+            from aegis.queue import InboxMessage
+            st = runner.status(run_id)
+            ok = st.get("status") == "ok"
+            body = st.get("result") if ok else st.get("error", "")
+            msg = InboxMessage(
+                sender=f"workflow:{model.meta.name}",
+                timestamp=now_iso(),
+                body=str(body) if body is not None else "",
+                task_id=run_id,
+                status=("ok" if ok else "error"))
+            await bridge.inbox_router.deliver(from_handle, msg)
+
+        rw = getattr(bridge, "run_worker", None)
+        if rw is not None:
+            def _sched(coro, *, name):  # noqa: ANN001
+                return rw(coro, name=name, exclusive=False)
+        else:
+            _sched = None
+
+        await runner.start(
+            "dynamic",
+            {"spec": spec, "kwargs": kwargs or {},
+             "default_profile": cfg.default_agent},
+            host=from_handle or None,
+            state_dir=state_dir,
+            workflow_id=run_id,
+            scheduler=_sched,
+            done_callback=_deliver_callback)
+        return {"workflow_id": run_id, "workflow_run_id": run_id,
+                "host": from_handle or None, "status": "running"}
 
     @server.tool
     async def aegis_workflow_status(workflow_id: str) -> dict:
