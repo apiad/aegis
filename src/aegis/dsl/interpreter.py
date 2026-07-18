@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -7,6 +8,8 @@ from aegis.dsl.models import Spec
 from aegis.dsl.refs import Store, resolve_selector, substitute
 from aegis.workflow import workflow
 from aegis.workflow.decorator import WorkflowError
+
+DEFAULT_CONCURRENCY = 8
 
 _SCHEMA_HINT = (
     "\n\nReturn ONLY a JSON object matching this JSON Schema, no prose:\n{schema}")
@@ -24,11 +27,45 @@ class Interpreter:
             return self.store.outputs[path]           # replay — do not re-run
         if node.type == "sequence":
             return await self._run_sequence(node, path=path, scope=scope)
+        if node.type == "parallel":
+            out = await self._run_parallel(node, path=path, scope=scope)
+            if node.id:
+                self.store.record(path, node.id, out)
+            await self._checkpoint()
+            return out
+        if node.type == "map":
+            out = await self._run_map(node, path=path, scope=scope)
+            self.store.record(path, node.id, out)
+            await self._checkpoint()
+            return out
         if node.type == "agent":
             out = await self._run_agent(node, path=path, scope=scope)
             await self._checkpoint()
             return out
         raise NotImplementedError(f"node type not supported yet: {node.type}")
+
+    async def _run_parallel(self, node, *, path, scope) -> dict:
+        idx_children = list(enumerate(node.children))
+        results = await self.engine.parallel([
+            self.run_node(c, path=f"{path}.{i}", scope=scope)
+            for i, c in idx_children])
+        return {c.id: r for (i, c), r in zip(idx_children, results) if c.id}
+
+    async def _run_map(self, node, *, path, scope) -> list:
+        items = resolve_selector(node.over, self.store)
+        if not isinstance(items, list):
+            raise WorkflowError(
+                f"map.over {node.over!r} did not resolve to a list")
+        sem = asyncio.Semaphore(node.concurrency or DEFAULT_CONCURRENCY)
+
+        async def _one(i, item):
+            async with sem:
+                child_scope = {**scope, "item": item, "index": i}
+                return await self.run_node(
+                    node.body, path=f"{path}#{i}", scope=child_scope)
+
+        return list(await asyncio.gather(
+            *[_one(i, it) for i, it in enumerate(items)]))
 
     async def _checkpoint(self) -> None:
         try:

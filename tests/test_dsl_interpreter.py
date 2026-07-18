@@ -64,3 +64,36 @@ async def test_agent_schema_violation_after_retry_raises(fake_bridge):
                                 "properties": {"k": {"type": "string"}}}}}
     with pytest.raises(WorkflowError):
         await dynamic(_engine(fake_bridge), spec=spec)
+
+
+async def test_map_fans_out_over_list(fake_bridge):
+    fake_bridge.set_reply_sequence(
+        "lister-1", [json.dumps({"files": ["a.ts", "b.ts"]})])
+    fake_bridge.set_reply_sequence("auditor-2", ["found in a"])
+    fake_bridge.set_reply_sequence("auditor-3", ["found in b"])
+    spec = {"meta": {"name": "s"}, "root": {"type": "sequence", "children": [
+        {"type": "agent", "id": "list", "prompt": "list",
+         "target": {"kind": "spawn", "profile": "lister"},
+         "schema": {"type": "object", "properties": {"files": {"type": "array"}}}},
+        {"type": "map", "id": "audits", "over": "list.files", "concurrency": 2,
+         "body": {"type": "agent", "prompt": "audit {{item}} idx {{index}}",
+                  "target": {"kind": "spawn", "profile": "auditor"}}}]}}
+    out = await dynamic(_engine(fake_bridge), spec=spec)
+    assert out["audits"] == ["found in a", "found in b"]
+    prompts = fake_bridge.sends_to("auditor-2") + fake_bridge.sends_to("auditor-3")
+    assert any("audit a.ts idx 0" in p for p in prompts)
+    assert any("audit b.ts idx 1" in p for p in prompts)
+
+
+async def test_parallel_runs_children_and_keyed_by_id(fake_bridge):
+    fake_bridge.set_reply_sequence("w-1", ["A"])
+    fake_bridge.set_reply_sequence("w-2", ["B"])
+    spec = {"meta": {"name": "s"}, "root": {
+        "type": "parallel", "children": [
+            {"type": "agent", "id": "x", "prompt": "px",
+             "target": {"kind": "spawn", "profile": "w"}},
+            {"type": "agent", "id": "y", "prompt": "py",
+             "target": {"kind": "spawn", "profile": "w"}},
+        ]}}
+    out = await dynamic(_engine(fake_bridge), spec=spec)
+    assert out == {"x": "A", "y": "B"}
