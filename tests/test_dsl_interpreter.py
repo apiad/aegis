@@ -138,6 +138,18 @@ async def test_if_shell_false_takes_else_or_none(fake_bridge):
     assert out is None
 
 
+async def test_human_node_asks_and_records_choice(fake_bridge):
+    fake_bridge.enqueue_reply("h", "proceed")
+    spec = {"meta": {"name": "s"},
+            "root": {"type": "human", "id": "gate1",
+                     "question": "Proceed or revise?",
+                     "schema": {"type": "string",
+                                "enum": ["proceed", "revise"]}}}
+    out = await dynamic(_engine(fake_bridge), spec=spec)
+    assert out == "proceed"
+    assert fake_bridge.last_options("h") == ["proceed", "revise"]
+
+
 async def test_shell_predicate_exit0_true_exit1_false(fake_bridge):
     fake_bridge.set_bash_sequence([{"exit": 0, "stdout": "", "stderr": ""},
                                    {"exit": 1, "stdout": "", "stderr": ""}])

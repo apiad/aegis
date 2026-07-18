@@ -49,6 +49,12 @@ class Interpreter:
                 self.store.record(path, node.id, out)
             await self._checkpoint()
             return out
+        if node.type == "human":
+            out = await self._run_human(node, path=path, scope=scope)
+            if node.id:
+                self.store.record(path, node.id, out)
+            await self._checkpoint()
+            return out
         if node.type == "agent":
             out = await self._run_agent(node, path=path, scope=scope)
             await self._checkpoint()
@@ -138,6 +144,27 @@ class Interpreter:
         raise WorkflowError(
             f"agent {node.id!r} did not return schema-valid JSON "
             f"after retry: {last_err}")
+
+    async def _run_human(self, node, *, path, scope) -> Any:
+        bindings: dict[str, Any] = {"args": self.args}
+        bindings.update(scope)
+        question = substitute(node.question, bindings)
+        options: list[str] | None = None
+        schema = node.schema_
+        if schema and schema.get("type") == "string" and "enum" in schema:
+            options = list(schema["enum"])
+        reply = await self.engine.ask_human(question, options=options)
+        if schema is None:
+            return reply
+        if options is not None:
+            if reply not in options:
+                raise WorkflowError(
+                    f"human {node.id!r} reply {reply!r} not in enum {options}")
+            return reply
+        from jsonschema import Draft202012Validator
+        parsed = json.loads(_extract_json(reply))
+        Draft202012Validator(schema).validate(parsed)
+        return parsed
 
     async def _run_loop(self, node, *, path, scope) -> list:
         rounds: list[Any] = []
