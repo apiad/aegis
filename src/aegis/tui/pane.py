@@ -32,6 +32,7 @@ from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
+from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
@@ -480,7 +481,8 @@ class ConversationPane(Widget):
 
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette,
-                 *, digest=None, state_dir_path: Path | None = None,
+                 *, digest=None, monitor_manager=None,
+                 state_dir_path: Path | None = None,
                  replay: EventReplay | None = None,
                  core=None) -> None:
         super().__init__(id=f"pane-{handle}")
@@ -489,6 +491,7 @@ class ConversationPane(Widget):
         self.handle = handle
         self._palette = palette
         self._digest = digest
+        self._monitor_manager = monitor_manager
         self._created_at: str = (
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         self.unseen = False
@@ -557,6 +560,8 @@ class ConversationPane(Widget):
         self._palette = palette
         for w in self.query(QueueStrip):
             w.set_palette(palette)
+        for w in self.query(MonitorStrip):
+            w.set_palette(palette)
         for w in self.query(PendingStrip):
             w.set_palette(palette)
 
@@ -565,6 +570,8 @@ class ConversationPane(Widget):
             yield VerticalScroll(id="transcript")
             if self._digest is not None:
                 yield QueueStrip(self._digest, self._palette)
+            if self._monitor_manager is not None:
+                yield MonitorStrip(self._monitor_manager, self._palette)
             # In remote mode, agent may be None; fall back to empty strings.
             _model = getattr(self._agent, "model", "") if self._agent else ""
             _perm = (getattr(self._agent.permission, "value", "")

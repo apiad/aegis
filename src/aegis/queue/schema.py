@@ -24,6 +24,11 @@ def sender_agent(handle: str) -> str:
     return f"agent:{handle}"
 
 
+def sender_monitor(name: str) -> str:
+    """Sender tag for an ``aegis_monitor`` completion/failure callback."""
+    return f"monitor:{name}"
+
+
 def sender_user() -> str:
     """Sender tag for a message Alex typed into the text box. Renders
     headerless (a plain user turn), unlike agent/queue/telegram inbox

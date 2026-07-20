@@ -12,6 +12,7 @@ from textual.widgets import ContentSwitcher
 from aegis.config import Agent, VoiceConfig
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
+from aegis.monitor import MonitorManager
 from aegis.queue import InboxRouter, QueueDigest, QueueManager
 from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.names import generate_name
@@ -242,6 +243,8 @@ class AegisApp(App):
                                         _DisabledPlaneStub("inbox_router"))
             self.queue_manager = getattr(manager, "queue_manager",
                                          _DisabledPlaneStub("queue_manager"))
+            self.monitor_manager = getattr(manager, "monitor_manager",
+                                           _DisabledPlaneStub("monitor_manager"))
             self.queue_digest = _DisabledPlaneStub("queue_digest")
             self.canvas_manager = getattr(manager, "canvas_manager",
                                           _DisabledPlaneStub("canvas_manager"))
@@ -268,6 +271,10 @@ class AegisApp(App):
             self._queues, _SessionManagerAdapter(self), self.inbox_router)
         self.queue_digest = QueueDigest(self.queue_manager)
         self.queue_digest.start()
+        # Process-monitor plane — polls agent-supplied bash and wakes the
+        # agent on the outcome (interrupting a busy turn). AegisApp is the
+        # session-manager seam (list_sessions / interrupt).
+        self.monitor_manager = MonitorManager(self.inbox_router, self)
         # Canvas plane — shared markdown blackboards. Notifier dispatches
         # write events to subscribers via the inbox router.
         from aegis.canvas.manager import CanvasManager
@@ -434,7 +441,8 @@ class AegisApp(App):
             replay = replay_events(self._state_dir, tab.handle)
             pane = ConversationPane(
                 session, agent, tab.profile, tab.handle, self._palette,
-                digest=self.queue_digest, state_dir_path=self._state_dir,
+                digest=self.queue_digest, monitor_manager=self.monitor_manager,
+                state_dir_path=self._state_dir,
                 replay=replay)
             self._panes.append(pane)
             self.inbox_router.bind_session(tab.handle, pane._core)
@@ -538,6 +546,7 @@ class AegisApp(App):
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
             slug, h, self._palette, digest=self.queue_digest,
+            monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the

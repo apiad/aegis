@@ -39,6 +39,7 @@ class SessionManager:
         # pass `self` to the QueueManager (avoids the chicken/egg).
         self.inbox_router = inbox
         self.queue_manager = None
+        self.monitor_manager = None
         self.canvas_manager = None
         self.terminal_manager = None
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
@@ -61,6 +62,9 @@ class SessionManager:
 
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
+
+    def attach_monitor_manager(self, mm) -> None:
+        self.monitor_manager = mm
 
     def attach_locks_state(self, state_dir) -> None:
         """Turn on JSONL persistence for the claims registry (serve/web).

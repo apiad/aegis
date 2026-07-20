@@ -5,6 +5,28 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Process monitors — `aegis_monitor` (poll, visualize, auto-wake)
+
+- **Wait on a long process without polling.** A new MCP tool `aegis_monitor`
+  replaces the agent's `while …; sleep; tail` pattern. aegis does *not* own the
+  process — the agent launches it (or it already runs, like a dev server) and
+  hands aegis bash conditions evaluated on an interval in the session cwd:
+  `done` (exit 0 ⇒ complete), optional `fail` (exit 0 ⇒ failed), optional
+  `progress` (echoes 0–100 for a bar + ETA). A `timeout_s` backstop is terminal.
+- **Auto-wake on the outcome.** On any terminal state the agent is woken via its
+  inbox — the same `InboxRouter.deliver` path as queue callbacks — **interrupting
+  its current turn if busy** so the notice lands immediately; an idle agent is
+  woken directly. The agent fires the monitor, ends its turn, and continues when
+  it completes — no turns burned polling.
+- **TUI strip.** A `MonitorStrip` above the status bar (mirrors `QueueStrip`)
+  shows one row per live monitor: `pytest ▓▓▓░░ 62% · ETA 0:18`, or
+  `dev server ⣾ 0:42 watching` when there's no progress. Drops off on completion.
+- **Surface.** `aegis_monitor`, `aegis_monitors` (list), `aegis_monitor_cancel`
+  (no agent callback on cancel); monitors auto-reap on session close. The agent
+  priming instructs *always* using this over sleep/tail loops. Backed by a new
+  `MonitorManager` (poll loop + interrupt-if-working delivery), memory-only in
+  v1. Remote mode shows the TUI host's monitors; web-client parity is a follow-up.
+
 ### Status-bar system meter
 
 - **CPU / RAM / disk at a glance.** The status bar gains a

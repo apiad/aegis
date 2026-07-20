@@ -172,6 +172,17 @@ BRIEFING = (
     "  - aegis_delegate(queue, payload, from_handle, timeout_s?) : the "
     "synchronous shape — enqueue and block until the worker finishes, "
     "returning its result directly (no inbox callback).\n"
+    "  - aegis_monitor(from_handle, description, done, progress?, fail?, "
+    "interval_s?, timeout_s?) : watch a long-running process you launched "
+    "(tests, build, download, dev server) WITHOUT polling. aegis does not "
+    "own the process — you give it bash conditions it evaluates on an "
+    "interval: `done` (exit 0 ⇒ complete), optional `fail` (exit 0 ⇒ "
+    "failed), optional `progress` (echoes 0–100 for a bar+ETA). Returns "
+    "{monitor_id} immediately; END YOUR TURN. You are woken via your inbox "
+    "(interrupting your current turn if busy) the moment it finishes, "
+    "fails, or times out. ALWAYS use this instead of sleep/tail poll loops.\n"
+    "  - aegis_monitors() / aegis_monitor_cancel(monitor_id) : list live "
+    "monitors / stop one (no agent callback on cancel).\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -347,7 +358,11 @@ PRIMING = (
     "you. Messages from queue callbacks, peer handoffs, and "
     "the substrate all arrive as user-message turns prefixed with a "
     "'> from <sender> · …' header line — recognise the sender to know "
-    "what kind of message it is."
+    "what kind of message it is. To WAIT on any long-running process "
+    "(tests, build, download, dev server), NEVER poll with a sleep/tail "
+    "loop — call aegis_monitor(from_handle='{handle}', …) with a `done` "
+    "bash condition and end your turn; you'll be re-invoked automatically "
+    "when it finishes or fails."
 )
 
 
@@ -983,6 +998,47 @@ def build_server(bridge: AppBridge) -> FastMCP:
             return result
         tid, pos = result
         return {"task_id": tid, "queued_position": pos}
+
+    @server.tool
+    async def aegis_monitor(from_handle: str, description: str, done: str,
+                            progress: str | None = None,
+                            fail: str | None = None,
+                            interval_s: float = 2.0,
+                            timeout_s: float = 3600.0) -> dict:
+        """Watch a long-running process without polling; wake on the outcome.
+
+        aegis does NOT launch or own the process — you start it yourself
+        (background it, or it already runs like a dev server). You hand aegis
+        bash conditions it evaluates every ``interval_s`` in the session cwd:
+
+        - ``done`` — exit 0 ⇒ complete (nonzero just means "not yet", so
+          ``grep -q "Listening on" dev.log`` or ``test -f build/out`` work).
+        - ``fail`` — exit 0 ⇒ failed (optional; checked before ``done``).
+        - ``progress`` — echoes a number 0–100 for a live bar + ETA (optional;
+          omit for a "watch until ready" spinner).
+
+        Returns ``{monitor_id}`` immediately — END YOUR TURN. When ``done`` /
+        ``fail`` trips (or ``timeout_s`` elapses) you are woken via your inbox,
+        interrupting your current turn if you are busy, so it lands at once.
+        ``from_handle`` is your own aegis handle (from your system prompt).
+        """
+        root = getattr(bridge, "state_root", None)
+        mid = bridge.monitor_manager.start_monitor(
+            from_handle=from_handle, description=description, done=done,
+            fail=fail, progress=progress,
+            cwd=str(root) if root else None,
+            interval_s=interval_s, timeout_s=timeout_s)
+        return {"monitor_id": mid}
+
+    @server.tool
+    async def aegis_monitors() -> list[dict]:
+        """List live + recently-terminal monitors (id, description, state)."""
+        return bridge.monitor_manager.list_monitors()
+
+    @server.tool
+    async def aegis_monitor_cancel(monitor_id: str) -> dict:
+        """Stop a monitor. No agent callback is delivered on cancel."""
+        return await bridge.monitor_manager.cancel(monitor_id)
 
     @server.tool
     async def aegis_run_workflow(
