@@ -4,7 +4,7 @@ Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
 the public roadmap is `docs/roadmap.md`. This file is the scratch /
 priority list — keep it terse and current.
 
-Current release: **v0.18.0** (2026-07-17).
+Current release: **v0.19.0** (2026-07-20).
 
 ## Time-sensitive (June 2026 billing changes)
 
@@ -38,7 +38,15 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Active
 
-### Dynamic workflows — Track 2 JSON DSL *(designed 2026-07-17, plan ready — not yet started)*
+### ✅ Dynamic workflows — Track 2 JSON DSL *(all 6 slices shipped — v0.19.0)*
+
+Shipped end-to-end: `src/aegis/dsl/` (`models`/`interpreter`/`refs`/`validate`/
+`plan`/`gate`), `aegis_run_dynamic_workflow` MCP tool, per-node checkpoint/
+resume durability, bounded `map`/`parallel`/`loop`/`if` + `shell`/`judge`
+predicates, `human` node via `ask_human`, and the cost gate
+(`dynamic_workflow_autoapprove_agents`) — the first landing of the Track-1
+gating rule too. 59 DSL tests green. **Deferred follow-on:** wire the same
+cost-gate into the existing `aegis_run_workflow` (Track-1 Python) path.
 
 Agent-authorable dynamic workflows as a validated JSON DSL — the safe/data
 counterpart to Track-1 durable `@workflow` Python. Premise: harnesses now own

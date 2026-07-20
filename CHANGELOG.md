@@ -5,6 +5,55 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [v0.19.0] - 2026-07-20
+
+### Dynamic Workflows — Track 2 JSON DSL
+
+- **Agent-authorable dynamic workflows as a validated JSON document.** The
+  safe/data counterpart to Track-1 durable `@workflow` Python: a JSON spec
+  describing a fan-out/pipeline orchestration of **real aegis agents across
+  harnesses**, licensed by schema validation (a malformed spec is rejected at
+  the tool boundary; a valid spec is safe by construction). Where a single
+  in-harness feature cannot, a dynamic workflow spawns any profile / hands to a
+  live session / delegates to a queue, is **durable across process restarts and
+  hosts**, and can **pause for the operator** mid-run.
+- **Node families.** `sequence` + `agent` (with `target` = `spawn` | `session`
+  | `queue`); `map` (bounded-concurrency fan-out via an `asyncio.Semaphore`) +
+  `parallel` (barrier); `loop` (hard-bounded `max_rounds`) + `if` (branch
+  routing) with typed `shell` (true iff exit 0) and `judge` (agent-call)
+  predicates; a TUI-only `human` node via `ask_human` (an `enum` schema becomes
+  selectable options).
+- **Data flow.** `refs` selectors and templates resolve against a run-scoped
+  `Store`; `agent` nodes take `inputs` substitution and a JSON-Schema `schema`
+  that coerces structured output (prompt-engineered + `jsonschema`-validated,
+  one bounded reparse-retry).
+- **Durability.** Per-node checkpoint/resume — on resume only the in-flight
+  node re-runs; `loop`/`if` decisions replay deterministically.
+- **Semantic validator.** Rejects id collisions, selectors referencing an id
+  not declared earlier in document order, an `agent` node with no `target` when
+  there is no default agent, and unknown `spawn.profile` / `queue.queue`
+  references — before the workflow runs.
+- **Cost gate + MCP surface.** `aegis_run_dynamic_workflow` validates, gates,
+  and launches; a plan-preview reports the projected agent count (a labelled
+  static upper bound); the gate is operator-implicit or prompts the agent above
+  a cost threshold (`dynamic_workflow_autoapprove_agents` config key). This is
+  also the first landing of the Track-1 gating rule the design called out as
+  missing.
+- Spec: `docs/superpowers/specs/2026-07-17-aegis-json-dsl-dynamic-workflows-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-json-dsl-dynamic-workflows.md`.
+
+### `aegis usage` — session usage & cost analytics
+
+- **Read-only usage-and-cost dashboard over the session logs.** Aggregates the
+  per-tab event streams already persisted to `.aegis/state/sessions/<handle>.jsonl`
+  into a dashboard plus deeper cuts — temporal (usage over time), per-session,
+  and per-tool — with segment-aware cost and token-split math and price
+  resolution against the model registry.
+- **`/usage` slash command (TUI + web).** Reuses the shared renderer so the
+  in-app command and the `aegis usage` CLI surface identical figures.
+- Spec: `docs/superpowers/specs/2026-07-17-aegis-usage-command-design.md`;
+  plan: `docs/superpowers/plans/2026-07-17-aegis-usage-command.md`.
+
 ## [v0.18.0] - 2026-07-17
 
 ### Slash commands 2D — command palette (drop-up typeahead)
