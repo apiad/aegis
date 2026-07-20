@@ -5,6 +5,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Status-bar system meter
+
+- **CPU / RAM / disk at a glance.** The status bar gains a
+  `CPU 23% · RAM 38% · DSK 71%` segment — all system-wide percentages, sampled
+  once per app tick (not per pane) from the local host. `DSK` reports the
+  filesystem holding the project root (the disk agents write into). A metric
+  turns amber past 90% so a hot machine catches the eye. Backed by `psutil`;
+  remote mode shows the TUI host's figures (per-remote stats deferred).
+
 ## [v0.19.0] - 2026-07-20
 
 ### Dynamic Workflows — Track 2 JSON DSL

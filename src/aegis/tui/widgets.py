@@ -230,6 +230,7 @@ class StatusBar(Static):
             f"{model} · {permission}")
         self._state = AgentState.ready
         self._metrics = ""
+        self._system: str = ""
         self._connection_banner: str = ""
         self._plain_content: str = ""
 
@@ -242,6 +243,11 @@ class StatusBar(Static):
 
     def set_metrics(self, text: str) -> None:
         self._metrics = text
+        self._refresh()
+
+    def set_system(self, text: str) -> None:
+        """System-stats segment (CPU/RAM/disk); empty string hides it."""
+        self._system = text
         self._refresh()
 
     def set_connection_state(self, up: bool, reason: str = "") -> None:
@@ -271,6 +277,8 @@ class StatusBar(Static):
         line = f"{self._identity}    {self._state.label}"
         if self._metrics:
             line += f"    {self._metrics}"
+        if self._system:
+            line += f"    {self._system}"
         if self._connection_banner:
             line += f"    {self._connection_banner}"
         # Keep a plain copy for render_plain() (no Textual dependency).

@@ -652,6 +652,12 @@ class ConversationPane(Widget):
         if bars:
             bars.first().set_metrics(self._core.metrics.render(time.monotonic()))
 
+    def set_system(self, text: str) -> None:
+        """Push the system-stats segment (sampled app-side) to the StatusBar."""
+        bars = self.query(StatusBar)
+        if bars:
+            bars.first().set_system(text)
+
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
 
