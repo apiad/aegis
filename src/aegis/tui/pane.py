@@ -646,8 +646,11 @@ class ConversationPane(Widget):
         t.scroll_end(animate=False)
 
     def refresh_metrics(self) -> None:
-        self.query_one(StatusBar).set_metrics(
-            self._core.metrics.render(time.monotonic()))
+        # Core observer callbacks (`_on_core_event`/`_on_core_state`) can fire
+        # before this pane finishes mounting its StatusBar; no-op until it's up.
+        bars = self.query(StatusBar)
+        if bars:
+            bars.first().set_metrics(self._core.metrics.render(time.monotonic()))
 
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
@@ -1210,7 +1213,9 @@ class ConversationPane(Widget):
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
-        self.query_one(StatusBar).set_state(state)
+        bars = self.query(StatusBar)
+        if bars:
+            bars.first().set_state(state)
         # Input outline echoes the state dot: vivid when idle (a live agent
         # that acts on your message now) vs subdued while working (the message
         # queues behind the turn). See the `.working` CSS rule.
