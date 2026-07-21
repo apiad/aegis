@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [v0.20.0] - 2026-07-21
+
 ### Working-indicator lifecycle + compact 'thought' blocks
 
 - **Fixed: the working spinner could linger after Escape-interrupt.**

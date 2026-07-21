@@ -13,6 +13,7 @@ def test_appbridge_is_runtime_checkable_protocol():
     class Impl:
         queue_manager = object()
         inbox_router = InboxRouter()
+        monitor_manager = object()
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
@@ -42,6 +43,7 @@ def test_appbridge_requires_full_surface():
     class FullImpl:
         queue_manager = object()
         inbox_router = InboxRouter()
+        monitor_manager = object()
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
@@ -65,6 +67,7 @@ def test_appbridge_requires_full_surface():
     class MissingSpawn:
         queue_manager = object()
         inbox_router = InboxRouter()
+        monitor_manager = object()
         canvas_manager = object()
         terminal_manager = object()
         groups = object()
