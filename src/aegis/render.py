@@ -149,10 +149,13 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         text = ev.text.strip()
         return Markdown(text) if text else None
     if isinstance(ev, AssistantThinking):
-        body = (ev.text or "").strip()
-        if not body:
-            return Text("✻ Thinking…", style=colors.muted)
-        return Text(f"✻ {body}", style=f"italic {colors.muted}")
+        # Compact 'thought' summary (matches the live pane). Replay has no
+        # recorded duration, so only the approximate token count is shown;
+        # the full reasoning stays in the copy payload.
+        from aegis.tui.metrics import _fmt_tokens
+        approx = max(1, len((ev.text or "").strip()) // 4)
+        return Text(f"💭 thought · ~{_fmt_tokens(approx)} tok",
+                    style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
         # Static path (replay / non-live). The live pane re-renders through
         # render_tool_use with a per-tool timer + click-to-expand args.

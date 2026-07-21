@@ -120,6 +120,19 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{m}m {s:02d}s"
 
 
+def _thought_summary(elapsed_s: float, char_len: int, palette) -> "Text":
+    """A completed reasoning block renders as a compact one-liner rather than
+    a wall of streamed reasoning: ``💭 thought · 0:42 · ~1.2k tok``. Token
+    count is approximated from the reasoning length (~4 chars/token) — the
+    harness does not report thinking tokens separately. The full reasoning
+    is preserved as the block's copy payload."""
+    from aegis.tui.metrics import _fmt_tokens
+    approx = max(1, char_len // 4)
+    return Text(
+        f"💭 thought · {_fmt_elapsed(elapsed_s)} · ~{_fmt_tokens(approx)} tok",
+        style=f"italic {palette.muted}")
+
+
 class WorkingIndicator(Static):
     """Inline 'agent is working' row. Hidden (0-height) when idle,
     one row when active. Cycles spinner glyph + verb + elapsed timer."""
@@ -139,7 +152,18 @@ class WorkingIndicator(Static):
         self._tick_timer = None
         self._verb_timer = None
 
+    @property
+    def is_active(self) -> bool:
+        return self._started_at is not None
+
     def start(self) -> None:
+        # Idempotent: cancel any prior timers first so re-starting a
+        # lingering indicator (chained / self-woken turn) neither leaks
+        # timers nor leaves a frozen spinner.
+        for t in (self._tick_timer, self._verb_timer):
+            if t is not None:
+                with contextlib.suppress(Exception):
+                    t.stop()
         self.add_class("-active")
         self._started_at = time.monotonic()
         self._frame = 0
@@ -515,6 +539,7 @@ class ConversationPane(Widget):
         self._streaming_block: CopyableBlock | None = None
         self._streaming_kind: str | None = None     # "text" | "thinking"
         self._streaming_text: str = ""
+        self._thinking_started_at: float | None = None
         # Windowing: every rendered block lives here; only
         # _history[_window_start:] is mounted. _streaming_history_idx
         # points at the record currently being mutated by streaming
@@ -782,13 +807,13 @@ class ConversationPane(Widget):
         self._window_start += n
 
     def _start_indicator(self) -> None:
-        """Create + mount a WorkingIndicator at the bottom of the
-        transcript, then start its animation. No-op if one is already
-        mounted."""
-        if self._working_indicator() is not None:
-            return
-        ind = WorkingIndicator(self._palette)
-        self._transcript().mount(ind)
+        """Ensure a live, animating WorkingIndicator at the bottom of the
+        transcript. Idempotent — (re)starts a lingering or frozen one so a
+        self-woken or chained turn always shows a fresh spinner."""
+        ind = self._working_indicator()
+        if ind is None:
+            ind = WorkingIndicator(self._palette)
+            self._transcript().mount(ind)
         ind.start()
         self._transcript().scroll_end(animate=False)
 
@@ -969,11 +994,9 @@ class ConversationPane(Widget):
     def _render_for_stream(self, kind: str,
                             text: str) -> RenderableType:
         if kind == "thinking":
-            body = text.strip()
-            if not body:
-                return Text("✻ Thinking…", style=self._palette.muted)
-            return Text(f"✻ {body}",
-                        style=f"italic {self._palette.muted}")
+            started = self._thinking_started_at or time.monotonic()
+            return _thought_summary(
+                time.monotonic() - started, len(text), self._palette)
         return Markdown(text) if text.strip() else Text("")
 
     def _stream_append(self, kind: str, new_text: str) -> None:
@@ -981,6 +1004,8 @@ class ConversationPane(Widget):
             self._flush_streaming()
             self._streaming_kind = kind
             self._streaming_text = new_text
+            if kind == "thinking":
+                self._thinking_started_at = time.monotonic()
             r = self._render_for_stream(kind, self._streaming_text)
             self._streaming_block = self._mount_block(
                 r, self._streaming_text)
@@ -1233,11 +1258,15 @@ class ConversationPane(Widget):
         # that acts on your message now) vs subdued while working (the message
         # queues behind the turn). See the `.working` CSS rule.
         self.set_class(state is AgentState.working, "working")
-        # A turn is starting (landed input, chained inbox batch, or
-        # programmatic send) — keep the working indicator pinned. No-op if
-        # one is already mounted.
-        if not finished and state is AgentState.working:
+        # Reconcile the working indicator to the live state: visible iff the
+        # agent is working. Keying off `finished` alone orphaned the spinner
+        # on interrupt (which emits `ready, finished=False`) — so it "a veces
+        # se queda". Keying off the state also self-heals a stale/frozen
+        # indicator on a self-woken or chained turn.
+        if state is AgentState.working:
             self._start_indicator()
+        else:
+            self._stop_indicator()
         if finished and state is AgentState.error \
                 and not self._transcript_has("⚠ harness"):
             self._flush_streaming()
@@ -1249,7 +1278,6 @@ class ConversationPane(Widget):
         self.post_message(PaneStateChanged(self, finished))
         if finished:
             self._freeze_all_tools()
-            self._stop_indicator()
             inp = self.query_one(GrowingInput)
             inp.disabled = False
             # Only re-focus the input if this pane is the visible one.

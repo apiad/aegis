@@ -5,6 +5,25 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Working-indicator lifecycle + compact 'thought' blocks
+
+- **Fixed: the working spinner could linger after Escape-interrupt.**
+  `session.interrupt()` emits `(ready, finished=False)`, but the pane only
+  removed the spinner on `finished=True` — so it was orphaned whenever no
+  trailing `Result` arrived. The indicator is now reconciled to the live
+  state (visible iff the agent is working), so interrupt clears it
+  deterministically.
+- **Fixed: the spinner didn't return on a self-woken / chained turn.** When a
+  harness emitted events after `Result` (a background Monitor firing, an inbox
+  wake), a lingering/frozen indicator made `_start_indicator()` no-op.
+  `WorkingIndicator.start()` is now idempotent (cancels prior timers) and
+  `_start_indicator()` always (re)starts a live one.
+- **Reasoning blocks render as a compact summary.** A streamed thinking block
+  now shows `💭 thought · 0:42 · ~1.2k tok` (elapsed + approximate token count,
+  ~4 chars/token — the harness doesn't report thinking tokens) instead of a
+  wall of reasoning text. The full reasoning stays in the block's copy payload.
+  Replay matches (minus the duration, which history doesn't record).
+
 ### Process monitors — `aegis_monitor` (poll, visualize, auto-wake)
 
 - **Wait on a long process without polling.** A new MCP tool `aegis_monitor`

@@ -99,8 +99,9 @@ def test_replay_blocks_coalesces_chunk_runs():
     # 3 thinking chunks coalesce → 1 block. Plus 1 text, plus 1 result.
     assert len(blocks) == 3
     rendered = "\n".join(_block_text(b) for b in blocks)
-    # The merged thinking block carries the full text, not just one token.
-    assert "Let me think." in rendered
+    # The 3 chunks became ONE compact 'thought' block (not 3 token lines);
+    # the merged full text is covered by test_event_coalesce + the copy payload.
+    assert rendered.count("thought") == 1
     assert "Done." in rendered
 
 

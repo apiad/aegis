@@ -229,15 +229,18 @@ def test_tool_duration_minutes_unchanged():
     assert "2m05s" in out
 
 
-def test_thinking_content_shown():
+def test_thinking_renders_compact_thought_summary():
     out = as_text(render_event(AssistantThinking("secret chain"), C))
-    assert "secret chain" in out
-    assert "✻" in out
+    assert "thought" in out
+    assert "tok" in out
+    # Reasoning is collapsed to a summary, not dumped (the full text stays in
+    # the copy payload, not the rendered line).
+    assert "secret chain" not in out
 
 
-def test_thinking_empty_falls_back_to_label():
+def test_thinking_empty_still_renders_thought_line():
     out = as_text(render_event(AssistantThinking(""), C))
-    assert "Thinking" in out
+    assert "thought" in out
 
 
 def test_tool_result_first_line_only():
