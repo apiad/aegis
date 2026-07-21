@@ -624,6 +624,52 @@ web client, and (eventually) a remote TUI all speak the same WebSocket
 protocol over one backend, so sessions are shared across them. A systemd
 unit template lives at `scripts/aegis-serve.service`.
 
+## Troubleshooting: flicker / tearing in the TUI
+
+If the cursor, the working spinner, and scrolling all **flicker or stutter as
+if two frame rates are fighting** — and it starts or stops when you **plug in a
+monitor, close the laptop lid, or wake from sleep** — this is **not an aegis
+bug**. aegis sets no custom render options, and Textual already negotiates the
+terminal's synchronized-output (DEC mode 2026) protocol so frames are emitted
+atomically. The flicker is one layer
+lower: your **terminal emulator's GPU renderer pacing against a display whose
+refresh rate just changed**. It affects every TUI (btop, htop, …), not just
+aegis, and the fix is a terminal/GPU setting.
+
+Mitigations by terminal:
+
+- **GTK4/VTE terminals — Ptyxis, GNOME Console, Black Box, GNOME Terminal
+  (GTK4).** GTK removed its old GL renderer in 4.18; on older iGPUs (e.g. Intel
+  HD 5xx / Skylake) the newer GPU renderers desync against the Wayland frame
+  clock after a display change. Force the software renderer:
+
+  ```bash
+  mkdir -p ~/.config/environment.d
+  echo 'GSK_RENDERER=cairo' > ~/.config/environment.d/50-gsk-renderer.conf
+  # log out and back in — this must apply to the terminal's own GTK process,
+  # not the shell inside it. Reversible: delete the file + re-login.
+  ```
+
+  Costs negligible CPU for a terminal. `GSK_RENDERER=gl` is a middle ground
+  that keeps GPU accel. Refs:
+  [GNOME Discourse](https://discourse.gnome.org/t/question-about-gtk4-glitches-and-gsk-renderer-gl/28295),
+  [GTK docs](https://docs.gtk.org/gtk4/running.html).
+- **kitty.** Set `sync_to_monitor no` in `kitty.conf` — it stops tying redraws
+  to the monitor refresh (the source of mixed-refresh tearing / CPU spikes).
+  Ref: [kitty #3154](https://github.com/kovidgoyal/kitty/issues/3154).
+- **WezTerm.** Try `front_end = "Software"`, or pin `max_fps` to your **lowest**
+  monitor's refresh rate — WezTerm has known jitter/adaptive-sync issues on
+  mismatched-refresh multi-monitor setups. Refs:
+  [max_fps](https://wezterm.org/config/lua/config/max_fps.html),
+  [wezterm #2450](https://github.com/wezterm/wezterm/issues/2450),
+  [#7611](https://github.com/wezterm/wezterm/issues/7611).
+- **Alacritty.** No built-in vsync toggle; use the Mesa env knob
+  `vblank_mode=0 alacritty` (or `0`/`3` to taste) to change GL sync behaviour.
+  Ref: [alacritty #1739](https://github.com/alacritty/alacritty/issues/1739).
+- **Any terminal.** Keeping the aegis window on a **single** monitor, or setting
+  your displays to a **matching** refresh rate, avoids the mismatch that
+  triggers it.
+
 ## Docs
 
 Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/aegis/)**
