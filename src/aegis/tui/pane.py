@@ -599,10 +599,9 @@ class ConversationPane(Widget):
                 yield MonitorStrip(self._monitor_manager, self._palette)
             # In remote mode, agent may be None; fall back to empty strings.
             _model = getattr(self._agent, "model", "") if self._agent else ""
-            _perm = (getattr(self._agent.permission, "value", "")
-                     if self._agent else "")
-            yield StatusBar(self.handle, self.agent_slug,
-                            _model, _perm, self._palette)
+            _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
+            _eff = getattr(_eff_raw, "value", _eff_raw)  # Effort enum → str
+            yield StatusBar(_model, _eff, self._palette)
             yield CommandPalette(self._palette)
             yield PendingStrip(self._palette)
             yield GrowingInput(placeholder="type a message…")

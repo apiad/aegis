@@ -24,7 +24,7 @@ def _make_status_bar():
     content string, not on mounted widget children)."""
     from aegis.tui.themes import INK, aegis_colors
     colors = aegis_colors(INK)
-    bar = StatusBar("h", "main", "claude", "full", colors)
+    bar = StatusBar("claude", "high", colors)
     return bar
 
 

@@ -53,13 +53,13 @@ def test_sample_system_returns_sane_ranges(tmp_path):
 
 
 def test_statusbar_set_system_shows_in_render_plain():
-    bar = StatusBar("h", "main", "claude", "full", _colors())
+    bar = StatusBar("claude", "high", _colors())
     bar.set_system("CPU 23% · RAM 38% · DSK 71%")
     assert "CPU 23% · RAM 38% · DSK 71%" in bar.render_plain()
 
 
 def test_statusbar_set_system_clears_when_empty():
-    bar = StatusBar("h", "main", "claude", "full", _colors())
+    bar = StatusBar("claude", "high", _colors())
     bar.set_system("CPU 23% · RAM 38% · DSK 71%")
     bar.set_system("")
     assert "CPU" not in bar.render_plain()

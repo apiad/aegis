@@ -322,7 +322,7 @@ async def test_metrics_tick_refreshes_active_pane():
         app._tick()
         after = str(sb.content)
         assert "↑" in after and "/" in after   # SessionMetrics.render ran
-        assert "·default·" in after            # identity still present
+        assert "opus" in after                 # identity (model) still present
 
 
 # --- Task 5: AgentPicker modal tests ---

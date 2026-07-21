@@ -219,15 +219,14 @@ class TabBar(HorizontalScroll):
 class StatusBar(Static):
     """`<agent> · <model> · <permission>`, state label, then metrics."""
 
-    def __init__(self, handle: str, agent_slug: str,
-                 model: str, permission: str, colors) -> None:
+    def __init__(self, model: str, effort: str, colors) -> None:
         super().__init__(markup=True)
+        # Identity is just model · effort — the session name/handle already
+        # lives in the tab bar, so repeating it here is noise.
         # Palette is captured once here. Runtime re-theming is a non-goal
         # (single theme); a future switch would need a set_palette that
         # rebuilds _identity (cf. pane/TabBar which do have set_palette).
-        self._identity = (
-            f"{handle}  [{colors.accent}]·{agent_slug}·[/]  "
-            f"{model} · {permission}")
+        self._identity = f"{model}  [{colors.accent}]{effort}[/]"
         self._state = AgentState.ready
         self._metrics = ""
         self._system: str = ""
