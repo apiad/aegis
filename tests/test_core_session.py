@@ -211,3 +211,51 @@ async def test_unsolicited_events_after_idle_trigger_turn():
         "idle watcher should detect post-idle harness events")
     assert s.state is AgentState.ready
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_unsolicited_turn_flag_tracks_drain():
+    """`unsolicited_turn` is True *while* an unsolicited drain runs (so the
+    MonitorManager won't interrupt it) and False once the session settles
+    and during a real prompted turn."""
+    s = AgentSession(
+        WakeableFakeSession([
+            AssistantText(text="first"),
+            Result(duration_ms=1, is_error=False, usage=None),
+        ]),
+        agent=None, agent_slug="default", handle="h1")
+    # Snapshot the flag at the moment the wake event is observed — i.e.
+    # mid-drain — plus a marker to confirm a real turn is never flagged.
+    flag_during_drain: list[bool] = []
+    flag_during_real: list[bool] = []
+
+    def _obs(se, e):
+        txt = getattr(e, "text", None)
+        if txt == "wake":
+            flag_during_drain.append(s.unsolicited_turn)
+        elif txt == "first":
+            flag_during_real.append(s.unsolicited_turn)
+    s.on_event = _obs
+
+    await s.send("hello")          # real turn
+    await s._task
+    await asyncio.sleep(0.05)      # idle watcher arms
+    assert s.unsolicited_turn is False
+    s._session.feed(
+        AssistantText(text="wake"),
+        Result(duration_ms=1, is_error=False, usage=None),
+    )
+    for _ in range(50):
+        if flag_during_drain:
+            break
+        await asyncio.sleep(0.05)
+    assert flag_during_real == [False], "a prompted turn is never unsolicited"
+    assert flag_during_drain == [True], "the drain must flag itself unsolicited"
+    # Settles back to a clean idle state.
+    for _ in range(50):
+        if s.state is AgentState.ready and s.unsolicited_turn is False:
+            break
+        await asyncio.sleep(0.05)
+    assert s.state is AgentState.ready
+    assert s.unsolicited_turn is False
+    await s.close()

@@ -73,6 +73,12 @@ class AgentSession:
         # armed (also when the harness doesn't support idle events).
         self._idle_task: asyncio.Task | None = None
         self._idle_poll_seconds = 0.25
+        # True only while an unsolicited-turn drain is in flight (the harness
+        # emitting post-Result events on its own — a background-task
+        # notification or Monitor firing). Lets the MonitorManager tell a
+        # self-resolving drain apart from a real turn and avoid interrupting
+        # it (which would wedge the wake behind an extra replay cycle).
+        self._unsolicited = False
         # Primary observers — the owning frontend (TUI pane, headless
         # SessionManager wrapper) sets these for its own renderer/state
         # tracking. Multi-observer slots below let extra subscribers
@@ -160,6 +166,12 @@ class AgentSession:
         for cb in self._extra_state_observers:
             cb(self, state, finished)
 
+    @property
+    def unsolicited_turn(self) -> bool:
+        """Whether the current ``working`` turn is a self-resolving
+        unsolicited drain rather than a real agent turn."""
+        return self._unsolicited
+
     async def send(self, text: str) -> None:
         if self.state is AgentState.working:
             return
@@ -234,6 +246,7 @@ class AgentSession:
 
     async def _run_turn(self, text: str) -> None:
         """Unified path. Runs hooks, then harness, then observers."""
+        self._unsolicited = False  # a real, prompted turn
         harness_name = getattr(self.agent, "harness", "unknown")
         handle = SessionHandle(
             handle=self.handle,
@@ -386,6 +399,7 @@ class AgentSession:
             self.metrics.start_turn(self._now())
             self._task = asyncio.create_task(self._drain_unsolicited_turn())
             return
+        self._unsolicited = False  # settling idle — no turn in flight
         self._arm_idle_watcher()
 
     async def _drain_unsolicited_turn(self) -> None:
@@ -393,6 +407,7 @@ class AgentSession:
         without us sending a prompt (e.g. a Claude Monitor firing).
         Skips pre/post-turn hooks and ``session.send()`` — the harness
         is mid-stream, not waiting on input."""
+        self._unsolicited = True
         saw_result = False
         try:
             async for ev in self._session.events():
@@ -486,6 +501,7 @@ class AgentSession:
         if interrupt is not None:
             await interrupt()
         self.metrics.cancel_turn(self._now())
+        self._unsolicited = False
         self._emit_state(AgentState.ready, finished=False)
 
     async def close(self, reason: str = "explicit") -> None:

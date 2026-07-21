@@ -12,6 +12,11 @@ class SessionInfo:
     active: bool
     unseen: bool
     spawned_by: str | None = None
+    # True when the current ``working`` turn is an unsolicited drain (the
+    # harness emitting post-Result events on its own, e.g. a Claude
+    # background-task notification) rather than a real agent turn. Consumers
+    # like MonitorManager use this to avoid interrupting a self-resolving turn.
+    unsolicited: bool = False
 
 
 class GroupsBridge(Protocol):

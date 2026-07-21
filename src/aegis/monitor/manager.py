@@ -195,12 +195,22 @@ class MonitorManager:
         await self._inbox.deliver(mon.from_handle, msg)
 
     def _target_working(self, handle: str) -> bool:
+        """True only when the agent is running a *real* turn we should cut.
+
+        A ``working`` state that is an unsolicited-turn drain (the harness
+        processing its OWN background-task notification, e.g. a Claude
+        ``run_in_background`` bash finishing) must NOT be interrupted:
+        cutting it mid-resume wedges the wake behind an extra replay cycle.
+        Deliver-only lets the notice land as a queued follow-up turn.
+        """
         if self._sm is None:
             return False
         try:
             for s in self._sm.list_sessions():
                 if getattr(s, "handle", None) == handle:
-                    return getattr(s, "state", None) == "working"
+                    if getattr(s, "state", None) != "working":
+                        return False
+                    return not getattr(s, "unsolicited", False)
         except Exception:  # noqa: BLE001
             return False
         return False

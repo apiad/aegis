@@ -203,7 +203,8 @@ class SessionManager:
             SessionInfo(handle=s.handle, agent_slug=s.agent_slug,
                         state=s.state.value, active=(s.handle == top),
                         unseen=False,
-                        spawned_by=getattr(s, "spawned_by", None))
+                        spawned_by=getattr(s, "spawned_by", None),
+                        unsolicited=getattr(s, "unsolicited_turn", False))
             for s in self._sessions
         ]
 

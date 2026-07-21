@@ -44,8 +44,9 @@ class StubSessionManager:
 
 
 class _Info:
-    def __init__(self, handle, state):
+    def __init__(self, handle, state, unsolicited=False):
         self.handle, self.state = handle, state
+        self.unsolicited = unsolicited
 
 
 def _mm(mapping, sm=None, clock=None):
@@ -142,6 +143,22 @@ async def test_interrupts_busy_agent_before_delivery():
                            autorun=False)
     await mm.tick(mid)
     assert sm.interrupted == ["p"]
+
+
+@pytest.mark.asyncio
+async def test_unsolicited_turn_not_interrupted():
+    # "working" here is a Claude-native unsolicited-turn drain (the harness
+    # processing its OWN background-task notification), not a real agent turn.
+    # Interrupting it cuts CC mid-resume and wedges the wake behind an extra
+    # replay cycle — so the monitor must only deliver (queue), never interrupt.
+    sm = StubSessionManager([_Info("p", "working", unsolicited=True)])
+    mm = _mm({"chk-done": (0, "")}, sm=sm)
+    mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
+                           autorun=False)
+    await mm.tick(mid)
+    assert sm.interrupted == []
+    # Still delivered — it lands as a queued follow-up turn at turn-end.
+    assert len(await _inbox_for(mm, "p")) == 1
 
 
 @pytest.mark.asyncio
