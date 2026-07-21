@@ -102,9 +102,31 @@ class MonitorManager:
             interval_s=interval_s, timeout_s=timeout_s,
             started_at=self._clock())
         self._notify()
+        # The monitor is now the authoritative waker for this handle: hold
+        # back the harness's own spontaneous-event promotion so it can't
+        # fire a competing wake for the same process.
+        self._hold_session(from_handle)
         if autorun:
             self._tasks[mid] = asyncio.create_task(self._run(mid))
         return mid
+
+    def _session_for(self, handle: str):
+        get = getattr(self._sm, "get", None)
+        return get(handle) if callable(get) else None
+
+    def _hold_session(self, handle: str) -> None:
+        sess = self._session_for(handle)
+        hold = getattr(sess, "hold_unsolicited", None)
+        if callable(hold):
+            with contextlib.suppress(Exception):
+                hold()
+
+    def _release_session(self, handle: str) -> None:
+        sess = self._session_for(handle)
+        release = getattr(sess, "release_unsolicited", None)
+        if callable(release):
+            with contextlib.suppress(Exception):
+                release()
 
     async def _run(self, mid: str) -> None:
         try:
@@ -175,8 +197,13 @@ class MonitorManager:
         if state == DONE:
             mon.pct, mon.eta_s = 100.0, 0.0
         self._notify()
+        # Terminal: stop holding back the harness's spontaneous-event
+        # promotion. Deliver first (so the wake is queued) then release —
+        # on the last release the session re-arms its idle watcher, which
+        # would otherwise claim the queued events as their own turn.
         if notify_agent:
             await self._deliver(mon)
+        self._release_session(mon.from_handle)
 
     async def _deliver(self, mon: Monitor) -> None:
         elapsed = int((mon.ended_at or self._clock()) - mon.started_at)

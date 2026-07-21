@@ -214,6 +214,46 @@ async def test_unsolicited_events_after_idle_trigger_turn():
 
 
 @pytest.mark.asyncio
+async def test_monitor_hold_suppresses_unsolicited_promotion():
+    """While a monitor holds the session, native spontaneous events (a
+    Claude background-task notification) are NOT promoted into their own
+    unsolicited turn — they stay queued so the monitor's delivered message
+    is the authoritative wake. Releasing the hold lets them promote."""
+    s = AgentSession(
+        WakeableFakeSession([
+            AssistantText(text="first"),
+            Result(duration_ms=1, is_error=False, usage=None),
+        ]),
+        agent=None, agent_slug="default", handle="h1")
+    seen: list[str] = []
+    s.on_event = lambda se, e: seen.append(getattr(e, "text", type(e).__name__))
+    await s.send("hello")
+    await s._task
+    await asyncio.sleep(0.05)             # idle watcher arms
+    assert s.state is AgentState.ready
+
+    s.hold_unsolicited()                  # a monitor arms for this handle
+    s._session.feed(                      # native task-completion fires
+        AssistantText(text="bg-done"),
+        Result(duration_ms=1, is_error=False, usage=None),
+    )
+    # Give the watcher several poll cycles: it must NOT promote a turn.
+    for _ in range(6):
+        await asyncio.sleep(0.05)
+    assert s.state is AgentState.ready, "held session must not spin a turn"
+    assert "bg-done" not in seen, "native events stay queued while held"
+
+    s.release_unsolicited()               # monitor finalized → release
+    for _ in range(50):
+        if "bg-done" in seen:
+            break
+        await asyncio.sleep(0.05)
+    assert "bg-done" in seen, "released hold must let queued events drain"
+    assert s.state is AgentState.ready
+    await s.close()
+
+
+@pytest.mark.asyncio
 async def test_unsolicited_turn_flag_tracks_drain():
     """`unsolicited_turn` is True *while* an unsolicited drain runs (so the
     MonitorManager won't interrupt it) and False once the session settles

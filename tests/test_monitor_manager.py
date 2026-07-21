@@ -31,13 +31,30 @@ class FakeBash:
         return self._map.get(cmd, (1, ""))
 
 
+class _FakeSess:
+    """Tracks hold/release calls the monitor makes for authoritative-wake."""
+    def __init__(self, handle) -> None:
+        self.handle = handle
+        self.holds = 0
+
+    def hold_unsolicited(self) -> None:
+        self.holds += 1
+
+    def release_unsolicited(self) -> None:
+        self.holds -= 1
+
+
 class StubSessionManager:
-    def __init__(self, sessions=()) -> None:
+    def __init__(self, sessions=(), objs=None) -> None:
         self._sessions = list(sessions)
+        self._objs = {s.handle: s for s in (objs or [])}
         self.interrupted: list[str] = []
 
     def list_sessions(self):
         return self._sessions
+
+    def get(self, handle):
+        return self._objs.get(handle)
 
     async def interrupt(self, handle: str) -> None:
         self.interrupted.append(handle)
@@ -143,6 +160,33 @@ async def test_interrupts_busy_agent_before_delivery():
                            autorun=False)
     await mm.tick(mid)
     assert sm.interrupted == ["p"]
+
+
+@pytest.mark.asyncio
+async def test_holds_session_while_watching_releases_on_terminal():
+    # The monitor is the authoritative waker: it holds the session's native
+    # spontaneous-event promotion while watching and releases on terminal.
+    sess = _FakeSess("p")
+    sm = StubSessionManager(objs=[sess])
+    mm = _mm({"chk-done": (0, "")}, sm=sm)
+    mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
+                           autorun=False)
+    assert sess.holds == 1                # held on arm
+    await mm.tick(mid)                     # done → terminal
+    assert mm.status(mid)["state"] == DONE
+    assert sess.holds == 0                # released on terminal
+
+
+@pytest.mark.asyncio
+async def test_cancel_releases_session_hold():
+    sess = _FakeSess("p")
+    sm = StubSessionManager(objs=[sess])
+    mm = _mm({}, sm=sm)
+    mid = mm.start_monitor(from_handle="p", description="t", done="chk",
+                           autorun=False)
+    assert sess.holds == 1
+    await mm.cancel(mid)
+    assert sess.holds == 0
 
 
 @pytest.mark.asyncio

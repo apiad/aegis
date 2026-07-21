@@ -79,6 +79,13 @@ class AgentSession:
         # self-resolving drain apart from a real turn and avoid interrupting
         # it (which would wedge the wake behind an extra replay cycle).
         self._unsolicited = False
+        # >0 while one or more aegis monitors are watching this handle. The
+        # aegis monitor is the authoritative waker, so while held we do NOT
+        # promote the harness's own spontaneous events (e.g. a Claude
+        # background-task notification for the same process) into a competing
+        # unsolicited turn — they stay queued and fold into the turn the
+        # monitor's delivered message drives. Prevents the double-wake race.
+        self._unsolicited_hold = 0
         # Primary observers — the owning frontend (TUI pane, headless
         # SessionManager wrapper) sets these for its own renderer/state
         # tracking. Multi-observer slots below let extra subscribers
@@ -171,6 +178,22 @@ class AgentSession:
         """Whether the current ``working`` turn is a self-resolving
         unsolicited drain rather than a real agent turn."""
         return self._unsolicited
+
+    def hold_unsolicited(self) -> None:
+        """Called when an aegis monitor starts watching this handle. While
+        held, native spontaneous events are not promoted into their own
+        turn — the monitor's delivered message is the authoritative wake."""
+        self._unsolicited_hold += 1
+
+    def release_unsolicited(self) -> None:
+        """Called when a watching monitor reaches a terminal state. On the
+        last release, re-arm the idle watcher so any events that queued up
+        while held (and were never claimed by a monitor-driven turn) still
+        drain rather than stranding until the next user send."""
+        if self._unsolicited_hold > 0:
+            self._unsolicited_hold -= 1
+        if self._unsolicited_hold == 0 and self.state is not AgentState.working:
+            self._arm_idle_watcher()
 
     async def send(self, text: str) -> None:
         if self.state is AgentState.working:
@@ -394,7 +417,7 @@ class AgentSession:
         # later while truly idle.
         has_pending = getattr(
             self._session, "has_pending_event", lambda: False)
-        if has_pending():
+        if has_pending() and self._unsolicited_hold == 0:
             self._emit_state(AgentState.working, finished=False)
             self.metrics.start_turn(self._now())
             self._task = asyncio.create_task(self._drain_unsolicited_turn())
@@ -459,7 +482,7 @@ class AgentSession:
                     return  # something else took over
                 has_pending = getattr(
                     self._session, "has_pending_event", lambda: False)
-                if has_pending():
+                if has_pending() and self._unsolicited_hold == 0:
                     self._emit_state(AgentState.working, finished=False)
                     self.metrics.start_turn(self._now())
                     self._task = asyncio.create_task(
