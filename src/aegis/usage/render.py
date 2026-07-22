@@ -19,6 +19,10 @@ def _money(v) -> str:
     return _fmt_cost(v if isinstance(v, Decimal) else Decimal(str(v)))
 
 
+def _num(v) -> str:
+    return f"{int(v):,}"
+
+
 def _bar(v: float, mx: float, width: int = 34) -> str:
     return "█" * (int(v / mx * width) if mx else 0)
 
@@ -32,8 +36,11 @@ def dashboard_lines(r, zone: ZoneInfo | None = None) -> list[str]:
     n = len(r.sessions)
     turns = r.total_turns()
     billed, gen, rep = r.total_billed(), r.total_gen(), r.total_replay()
+    toks = r.total_tokens()
+    tok_total = sum(toks.values())
     out = ["═" * 60,
-           f"  AEGIS USAGE   {n} sessions · {turns:,} turns",
+           f"  AEGIS USAGE   {n} sessions · {turns:,} turns · "
+           f"{_num(tok_total)} tokens",
            f"  window: {(r.first_ts or '?')[:10]} → {(r.last_ts or '?')[:10]}",
            "═" * 60,
            "", "COST",
@@ -45,6 +52,15 @@ def dashboard_lines(r, zone: ZoneInfo | None = None) -> list[str]:
     est = [s.handle for s in r.sessions if s.est]
     if est:
         out.append(f"  ~est (no cost_usd): {len(est)} session(s)")
+    out += ["", "TOKENS",
+            f"  input                    {_num(toks.get('input', 0)):>14}",
+            f"  output                   {_num(toks.get('output', 0)):>14}",
+            f"  cache write              "
+            f"{_num(toks.get('cache_creation', 0)):>14}",
+            f"  cache read               "
+            f"{_num(toks.get('cache_read', 0)):>14}",
+            f"  {'─' * 39}",
+            f"  total                    {_num(tok_total):>14}"]
     out += ["", "AVERAGES",
             f"  per session   {_money(billed / n)}",
             f"  per turn      {(_money(billed / turns) if turns else '$0')}"

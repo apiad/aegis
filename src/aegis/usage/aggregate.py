@@ -208,6 +208,14 @@ class UsageReport:
     def total_errors(self) -> int:
         return sum(s.errors for s in self.sessions)
 
+    def total_tokens(self) -> dict:
+        """Token counts summed across sessions, keyed by ``_TOKEN_KEYS``
+        (input / output / cache_creation / cache_read)."""
+        c = Counter()
+        for s in self.sessions:
+            c.update(s.tokens)
+        return dict(c)
+
     # ---- breakdowns ----
     def by_model(self) -> list[tuple[str, dict]]:
         agg: dict[str, dict] = {}

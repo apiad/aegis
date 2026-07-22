@@ -107,6 +107,22 @@ def test_report_rollups(tmp_path):
     assert sum(v for _, v in r.by_dow()) == len(r.turns)
 
 
+def test_total_tokens(tmp_path):
+    state = _write_sessions(tmp_path)
+    r = build_report(state, default_model="claude-opus-4-7",
+                     default_provider="claude-code")
+    # Only Result-event usage counts (ToolUse usage is not summed).
+    # alpha: in 10, cc 100, cr 700, out 130
+    # beta:  in  2, cc  10, cr  50, out  15
+    # gamma: in  2, cc   5, cr  10, out  20
+    tok = r.total_tokens()
+    assert tok["input"] == 14
+    assert tok["output"] == 165
+    assert tok["cache_creation"] == 115
+    assert tok["cache_read"] == 760
+    assert sum(tok.values()) == 1054
+
+
 def test_since_filter(tmp_path):
     state = _write_sessions(tmp_path)
     r = build_report(state, default_model="claude-opus-4-7",

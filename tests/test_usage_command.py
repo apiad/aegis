@@ -44,6 +44,10 @@ async def test_usage_dashboard(tmp_path, monkeypatch):
     assert res.ok, res.body
     assert "AEGIS USAGE" in res.body
     assert "billed" in res.title
+    # token totals appear alongside cost (alpha: 5+100+200+50 = 355 tokens)
+    assert "TOKENS" in res.body
+    assert "355 tokens" in res.body
+    assert "total" in res.body
 
 
 async def test_usage_views(tmp_path, monkeypatch):
