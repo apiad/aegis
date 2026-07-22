@@ -190,6 +190,15 @@ BRIEFING = (
     "safe (the monitor leads).\n"
     "  - aegis_monitors() / aegis_monitor_cancel(monitor_id) : list live "
     "monitors / stop one (no agent callback on cancel).\n"
+    "  - aegis_remind(from_handle, note, after?) : leave a note for your "
+    "future self, delivered back to your OWN inbox. Omit `after` for a "
+    "turn-end reminder — it comes back as your LAST turn, strictly behind "
+    "buffered inbox messages and any spontaneous-event drain (if your turn "
+    "ends but the inbox still has items, those go first; the reminder is "
+    "the last thing). Set `after` (seconds or \"20m\"/\"2h\") for a delayed "
+    "reminder that lands in your inbox at that time. "
+    "aegis_reminders(from_handle?) / aegis_reminder_cancel(reminder_id) "
+    "list / cancel pending future-time reminders.\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -1046,6 +1055,52 @@ def build_server(bridge: AppBridge) -> FastMCP:
     async def aegis_monitor_cancel(monitor_id: str) -> dict:
         """Stop a monitor. No agent callback is delivered on cancel."""
         return await bridge.monitor_manager.cancel(monitor_id)
+
+    @server.tool
+    async def aegis_remind(from_handle: str, note: str,
+                           after: str | float | None = None) -> dict:
+        """Leave a note for your future self, delivered back to your OWN inbox.
+
+        Two timings:
+
+        - **turn-end** (omit ``after``): the note comes back as your very
+          last turn once everything else settles — strictly *behind* buffered
+          inbox messages (monitor / queue / handoff callbacks) and behind any
+          spontaneous harness-event drain. If your turn ends but there are
+          still things in your inbox, those are consumed first; the reminder
+          is the last thing. Use it to guarantee you circle back to something
+          after your current work and all pending deliveries are done.
+        - **future-time** (set ``after``): a delay after which the note lands
+          in your inbox as an ordinary message (waking you if idle, buffering
+          if busy). ``after`` is seconds (``90``) or a duration string
+          (``"30s"``, ``"20m"``, ``"2h"``, ``"1h30m"``).
+
+        ``from_handle`` is your own aegis handle (from your system prompt).
+        Returns ``{reminder_id, when}`` where ``when`` is ``"turn_end"`` or
+        the ISO fire time. After scheduling a future-time reminder, END YOUR
+        TURN — you will be woken when it fires.
+        """
+        svc = getattr(bridge, "reminder_service", None)
+        if svc is None:
+            return {"error": "reminders not available on this bridge"}
+        return svc.remind(from_handle=from_handle, note=note, after=after)
+
+    @server.tool
+    async def aegis_reminders(from_handle: str | None = None) -> list[dict]:
+        """List pending future-time reminders (turn-end reminders are
+        transient and not listed). Optionally scope to one ``from_handle``."""
+        svc = getattr(bridge, "reminder_service", None)
+        if svc is None:
+            return []
+        return svc.list_reminders(from_handle=from_handle)
+
+    @server.tool
+    async def aegis_reminder_cancel(reminder_id: str) -> dict:
+        """Cancel a pending future-time reminder before it fires."""
+        svc = getattr(bridge, "reminder_service", None)
+        if svc is None:
+            return {"error": "reminders not available on this bridge"}
+        return svc.cancel(reminder_id)
 
     @server.tool
     async def aegis_run_workflow(

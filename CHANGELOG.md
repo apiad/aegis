@@ -5,6 +5,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Self-reminders — `aegis_remind`
+
+- **New: an agent can leave a note for its future self, delivered back to its
+  own inbox.** Two timings, one tool. `aegis_remind(from_handle, note)` (no
+  `after`) is a **turn-end** reminder: it comes back as the session's very
+  last turn once everything else settles — the new lowest-priority tier in
+  `AgentSession._chain_if_pending`, strictly *behind* buffered inbox messages
+  (monitor / queue / handoff callbacks) and behind any spontaneous
+  harness-event drain. If the turn ends but the inbox still holds items, those
+  are consumed first; the reminder is the last thing.
+- `aegis_remind(..., after="20m")` (seconds or a duration string like `30s` /
+  `2h` / `1h30m`) is a **future-time** reminder: a lightweight `ReminderService`
+  timer drops the note into the inbox at that time, where it behaves as an
+  ordinary message (waking the agent if idle). `aegis_reminders` /
+  `aegis_reminder_cancel` list and cancel pending future-time reminders.
+  Reminders are in-memory (not persisted across a `serve` restart).
+
 ## [v0.21.0] - 2026-07-22
 
 ### Reasoning-token accounting — real counts + `% think`

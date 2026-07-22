@@ -29,6 +29,13 @@ def sender_monitor(name: str) -> str:
     return f"monitor:{name}"
 
 
+def sender_reminder() -> str:
+    """Sender tag for a self-left reminder delivered back to the agent's own
+    inbox — either at turn-end (the lowest-priority turn boundary tier) or at
+    a scheduled future time."""
+    return "reminder"
+
+
 def sender_user() -> str:
     """Sender tag for a message Alex typed into the text box. Renders
     headerless (a plain user turn), unlike agent/queue/telegram inbox

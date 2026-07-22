@@ -245,6 +245,9 @@ class AegisApp(App):
                                          _DisabledPlaneStub("queue_manager"))
             self.monitor_manager = getattr(manager, "monitor_manager",
                                            _DisabledPlaneStub("monitor_manager"))
+            self.reminder_service = getattr(
+                manager, "reminder_service",
+                _DisabledPlaneStub("reminder_service"))
             self.queue_digest = _DisabledPlaneStub("queue_digest")
             self.canvas_manager = getattr(manager, "canvas_manager",
                                           _DisabledPlaneStub("canvas_manager"))
@@ -275,6 +278,10 @@ class AegisApp(App):
         # agent on the outcome (interrupting a busy turn). AegisApp is the
         # session-manager seam (list_sessions / interrupt).
         self.monitor_manager = MonitorManager(self.inbox_router, self)
+        # Reminder plane — self-left notes delivered back to the agent's own
+        # inbox (turn-end, or after a delay). AegisApp is the session seam.
+        from aegis.queue import ReminderService
+        self.reminder_service = ReminderService(self.inbox_router, self)
         # Canvas plane — shared markdown blackboards. Notifier dispatches
         # write events to subscribers via the inbox router.
         from aegis.canvas.manager import CanvasManager

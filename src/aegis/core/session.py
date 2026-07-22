@@ -67,6 +67,11 @@ class AgentSession:
         self._task: asyncio.Task | None = None
         self._inbox = inbox                       # InboxRouter | None
         self._inbox_buffer: list[InboxMessage] = []
+        # Self-left turn-end reminders. Drained by _chain_if_pending as the
+        # LOWEST-priority tier — strictly after buffered inbox messages and
+        # after any unsolicited harness-event drain. This is the "last thing"
+        # the session does before it would otherwise settle idle.
+        self._reminders: list[InboxMessage] = []
         self._opening_prompt = opening_prompt
         # Idle watcher: armed at turn-end when the harness supports
         # spontaneous between-turn events (e.g. Claude's background
@@ -259,6 +264,21 @@ class AgentSession:
         self._task = asyncio.create_task(self._run_turn(text))
         return Delivery(disposition="landed", depth=0)
 
+    def add_reminder(self, msg: InboxMessage) -> None:
+        """Buffer a self-left note to be delivered as this session's own
+        LAST turn. It fires at the next turn boundary, strictly behind any
+        buffered inbox messages and any unsolicited harness-event drain
+        (see ``_chain_if_pending``).
+
+        A reminder is normally left mid-turn (the agent calls ``aegis_remind``
+        during a turn), so the turn-boundary chain picks it up when that turn
+        ends. If the session happens to be idle when this lands, nothing else
+        would poke it — so promote the chain now.
+        """
+        self._reminders.append(msg)
+        if self.state is not AgentState.working:
+            self._chain_if_pending()
+
     def cancel_pending(self, msg: InboxMessage) -> bool:
         """Remove a still-buffered message by object identity. Returns True
         if it was removed before dispatch, False if already dispatched or
@@ -425,6 +445,22 @@ class AgentSession:
             self._emit_state(AgentState.working, finished=False)
             self.metrics.start_turn(self._now())
             self._task = asyncio.create_task(self._drain_unsolicited_turn())
+            return
+        # Lowest-priority tier: self-left turn-end reminders. Nothing is
+        # buffered and no harness event is pending — the session would go
+        # idle now. Instead, drain any reminders as one final turn. This is
+        # "behind monitors and queues": their callbacks land in _inbox_buffer
+        # (tier 1) and are consumed first; the reminder is the last thing.
+        # Not gated on _unsolicited_hold — a background monitor may still be
+        # watching; the reminder fires anyway and the monitor wakes us later.
+        if self._reminders:
+            batch = self._reminders
+            self._reminders = []
+            self._emit_dispatch(batch)
+            text = _render_batch(batch)
+            self._emit_state(AgentState.working, finished=False)
+            self.metrics.start_turn(self._now())
+            self._task = asyncio.create_task(self._run_turn(text))
             return
         self._unsolicited = False  # settling idle — no turn in flight
         self._arm_idle_watcher()

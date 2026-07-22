@@ -10,6 +10,7 @@ from aegis.queue.events import (
 )
 from aegis.queue.inbox import InboxRouter
 from aegis.queue.manager import QueueManager
+from aegis.queue.reminder import ReminderService
 from aegis.queue.schema import (
     Delivery,
     InboxMessage,
@@ -20,6 +21,7 @@ from aegis.queue.schema import (
     render_inbox_header,
     sender_agent,
     sender_queue,
+    sender_reminder,
     sender_user,
 )
 
@@ -37,6 +39,7 @@ __all__ = [
     "QueueObserver",
     "QueueStarted",
     "QueueView",
+    "ReminderService",
     "Snapshot",
     "Task",
     "TaskView",
@@ -46,5 +49,6 @@ __all__ = [
     "render_inbox_header",
     "sender_agent",
     "sender_queue",
+    "sender_reminder",
     "sender_user",
 ]

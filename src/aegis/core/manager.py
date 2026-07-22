@@ -40,6 +40,7 @@ class SessionManager:
         self.inbox_router = inbox
         self.queue_manager = None
         self.monitor_manager = None
+        self.reminder_service = None
         self.canvas_manager = None
         self.terminal_manager = None
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
@@ -65,6 +66,9 @@ class SessionManager:
 
     def attach_monitor_manager(self, mm) -> None:
         self.monitor_manager = mm
+
+    def attach_reminder_service(self, rs) -> None:
+        self.reminder_service = rs
 
     def attach_locks_state(self, state_dir) -> None:
         """Turn on JSONL persistence for the claims registry (serve/web).

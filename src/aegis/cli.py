@@ -344,6 +344,8 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
     mgr.attach_monitor_manager(MonitorManager(inbox, mgr))
+    from aegis.queue import ReminderService
+    mgr.attach_reminder_service(ReminderService(inbox, mgr))
     # Canvas plane — shared markdown blackboards reachable via MCP.
     from pathlib import Path
 
@@ -640,6 +642,8 @@ def workflow_run_cmd(
         mgr.attach_queue_manager(qm)
         from aegis.monitor import MonitorManager
         mgr.attach_monitor_manager(MonitorManager(inbox, mgr))
+        from aegis.queue import ReminderService
+        mgr.attach_reminder_service(ReminderService(inbox, mgr))
         from aegis.canvas.manager import CanvasManager
         from aegis.canvas.notify import make_canvas_notifier
         cm = CanvasManager(state_dir=root / ".aegis" / "state",
