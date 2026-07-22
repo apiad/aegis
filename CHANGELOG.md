@@ -5,6 +5,45 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [v0.21.0] - 2026-07-22
+
+### Reasoning-token accounting — real counts + `% think`
+
+- **Fixed: every Claude 'thought' block showed `~1 tok`.** The compact thought
+  summary estimated tokens from `len(text)//4`, but Claude redacts the
+  reasoning text (it streams empty), so the estimate always floored to 1.
+  Claude *does* stream the real running estimate via `system/thinking_tokens`
+  events — which the parser dropped as `Unknown`. Those are now parsed into a
+  typed `ThinkingTokens(estimated, delta)` event; the per-block total is
+  stamped onto `AssistantThinking.token_estimate` and used by every renderer
+  (TUI live pane, static/replay, web, server-side HTML), falling back to the
+  length heuristic only for harnesses that stream the reasoning text instead.
+- **Status line shows the reasoning share of output.** Cumulative thinking
+  tokens accumulate into `SessionMetrics` and render as a breakdown of the
+  output segment: `↓73.9K (80% think)`. Shown only for harnesses that report
+  it. The cost-view `thinking_tokens` stays 0 — reasoning is billed inside
+  output, so counting it again would double-bill.
+- **`ThinkingTokens` are transient.** Hundreds stream per turn, so they're
+  skipped by the session-log observer and the web fan-out (persisting them
+  would bloat the log and drift the event-seq index); the cumulative estimate
+  rides on the persisted `AssistantThinking` block and the state-frame metrics.
+
+### Monitors — the aegis monitor is the authoritative waker
+
+- **Fixed: a monitor watching a native background task could stall the wake
+  ~1 min ('interrupted').** When a monitor's `done` watched a Claude
+  `run_in_background` task's output file, it raced that task's own completion
+  notification: the monitor saw the session `working` (actually the harness
+  draining its OWN notification as an unsolicited turn) and interrupted it
+  mid-resume, wedging the wake behind an extra replay cycle. The monitor no
+  longer interrupts an unsolicited-turn drain.
+- **The monitor now leads.** While a monitor watches a handle, the session
+  holds back promotion of the harness's own spontaneous events into a
+  competing unsolicited turn — they queue and fold into the turn the monitor's
+  delivered message drives. Result: a single authoritative wake, so pairing a
+  monitor with a native background task is safe. `aegis_meta` guidance updated
+  to say the monitor is the preferred waker.
+
 ## [v0.20.0] - 2026-07-21
 
 ### Working-indicator lifecycle + compact 'thought' blocks
