@@ -70,14 +70,21 @@ class MonitorManager:
             with contextlib.suppress(Exception):
                 cb()
 
-    def snapshot(self) -> list[MonitorView]:
-        """Live monitors only (terminal ones drop off the strip)."""
+    def snapshot(self, *, for_handle: str | None = None) -> list[MonitorView]:
+        """Live monitors only (terminal ones drop off the strip).
+
+        ``for_handle`` scopes the view to monitors created by that session,
+        so a per-tab strip shows only its own monitors. ``None`` returns
+        every live monitor.
+        """
         now = self._clock()
         return [
             MonitorView(
                 id=m.id, description=m.description, state=m.state,
                 pct=m.pct, eta_s=m.eta_s, elapsed_s=now - m.started_at)
-            for m in self._monitors.values() if m.state == WATCHING
+            for m in self._monitors.values()
+            if m.state == WATCHING
+            and (for_handle is None or m.from_handle == for_handle)
         ]
 
     def status(self, monitor_id: str) -> dict | None:

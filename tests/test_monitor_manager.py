@@ -251,3 +251,19 @@ async def test_reap_cancels_live_monitors_for_handle():
     mm.reap("p")
     assert mm.status(mid)["state"] == "cancelled"
     assert mm.snapshot() == []
+
+
+@pytest.mark.asyncio
+async def test_snapshot_for_handle_scopes_to_owning_session():
+    """A monitor shows only on the strip of the tab that created it."""
+    mm = _mm({})
+    a = mm.start_monitor(from_handle="alice", description="build",
+                         done="chk", autorun=False)
+    b = mm.start_monitor(from_handle="bob", description="deploy",
+                         done="chk", autorun=False)
+    # Unscoped snapshot still returns every live monitor (queue-strip parity).
+    assert {v.id for v in mm.snapshot()} == {a, b}
+    # Scoped snapshot returns only the owning handle's monitors.
+    assert [v.id for v in mm.snapshot(for_handle="alice")] == [a]
+    assert [v.id for v in mm.snapshot(for_handle="bob")] == [b]
+    assert mm.snapshot(for_handle="carol") == []

@@ -58,10 +58,11 @@ class MonitorStrip(Static):
     MonitorStrip.-empty { display: none; }
     """
 
-    def __init__(self, manager, palette) -> None:
+    def __init__(self, manager, palette, handle: str | None = None) -> None:
         super().__init__("", id="monitor-strip")
         self._manager = manager
         self._palette = palette
+        self._handle = handle
         self._unsub = None
 
     def set_palette(self, palette) -> None:
@@ -78,7 +79,7 @@ class MonitorStrip(Static):
             self._unsub = None
 
     def _refresh(self) -> None:
-        views = self._manager.snapshot()
+        views = self._manager.snapshot(for_handle=self._handle)
         if not views:
             self.add_class("-empty")
             self.update("")

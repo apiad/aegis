@@ -601,7 +601,8 @@ class ConversationPane(Widget):
             if self._digest is not None:
                 yield QueueStrip(self._digest, self._palette)
             if self._monitor_manager is not None:
-                yield MonitorStrip(self._monitor_manager, self._palette)
+                yield MonitorStrip(self._monitor_manager, self._palette,
+                                   handle=self.handle)
             # In remote mode, agent may be None; fall back to empty strings.
             _model = getattr(self._agent, "model", "") if self._agent else ""
             _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
