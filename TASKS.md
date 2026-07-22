@@ -372,11 +372,34 @@ fallback) is S10. Each slice is an honest stop point.
 
 ## Backlog
 
-### Antigravity CLI (after June 18)
+### Subscription-backed models (Antigravity / gateway) — DEFERRED INDEFINITELY
 
-Google's closed-source replacement for Gemini CLI. Probe for ACP support after
-it ships (`agy --help | grep acp`). If ACP confirmed: three-line shim identical
-to `GeminiDriver`. If not: probe stream-JSON and write a parser.
+Gemini CLI subscription access died 2026-06-18; the `gemini --acp` driver is
+now dead weight for subscription users. Replacement `agy` (Antigravity CLI,
+v1.1.2, installed on zion) **dropped ACP** — only `--print` one-shot +
+`--continue` resume, no stream-json, no per-session MCP injection. `agy models`
+brokers a multi-provider pool under one Google quota (Gemini 3.x, **Claude
+Opus/Sonnet 4.6 Thinking**, GPT-OSS), but the free/Pro quota is now ~20 req/day
+— marginal value. Deferred indefinitely.
+
+**Preferred approach if we ever do it — Path C, zero driver code:** front a
+local OpenAI-compatible gateway (OmniRoute, `localhost:20128/v1`) that harvests
+the `agy` OAuth token, and point the existing **Lovelaice provider** at it via
+its `base_url` + `api_key_file` fields (`config/__init__.py:67-71`,
+`drivers/lovelaice.py:26-39`). Keeps full aegis-MCP injection / streaming /
+idle events. Smoke-test the lingo↔reasoning-model shim risk first (see handoff).
+
+Full capture, recipe, and risks:
+`vault/+/agent_drafts/handoffs/handoff-2026-07-22-0830-aegis-subscription-models.md`
+
+### New `agy` driver (Path A) — noted for the future
+
+A dedicated Antigravity driver that drives the `agy` binary directly
+(`--print` + `--continue`/`--conversation`), notably unlocking **Claude
+Opus/Sonnet 4.6 and Gemini via the Google subscription** without a gateway.
+Downside vs Path C: no ACP ⇒ likely no aegis-MCP tools for those workers (probe
+`agy plugin import claude` as a possible MCP route). Not now — noted for when
+subscription access is worth a real driver-build.
 
 ## Watching
 
