@@ -1,10 +1,31 @@
 # tests/test_state_session_log.py
 from aegis.events import (
-    AssistantText, Result, SystemInit, TokenUsage, ToolResult, ToolUse,
+    AssistantText, AssistantThinking, Result, SystemInit, ThinkingTokens,
+    TokenUsage, ToolResult, ToolUse,
 )
 from aegis.state.session_log import (
-    EventReplay, append_event, replay_events, session_log_path,
+    EventReplay, append_event, make_session_log_observer, replay_events,
+    session_log_path,
 )
+
+
+def test_thinking_token_estimate_survives_round_trip(tmp_path):
+    h = "keen-knuth"
+    append_event(tmp_path, h, AssistantThinking(text="", token_estimate=6050))
+    ev = replay_events(tmp_path, h).events[0]
+    assert isinstance(ev, AssistantThinking)
+    assert ev.token_estimate == 6050
+
+
+def test_observer_skips_thinking_tokens(tmp_path):
+    # High-volume transient events must not be persisted (they'd bloat the
+    # log and drift the seq index); the cumulative estimate rides on the
+    # AssistantThinking block instead.
+    obs = make_session_log_observer(tmp_path, "h")
+    obs(None, ThinkingTokens(estimated=250, delta=100))
+    obs(None, AssistantThinking(text="", token_estimate=250))
+    kinds = [type(e).__name__ for e in replay_events(tmp_path, "h").events]
+    assert kinds == ["AssistantThinking"]
 
 
 def test_path_is_handle_scoped(tmp_path):

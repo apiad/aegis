@@ -23,7 +23,9 @@ from textual.widgets import Static
 from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
-from aegis.events import AssistantText, AssistantThinking, ToolResult, ToolUse
+from aegis.events import (
+    AssistantText, AssistantThinking, ThinkingTokens, ToolResult, ToolUse,
+)
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
     render_user_line,
@@ -120,14 +122,16 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{m}m {s:02d}s"
 
 
-def _thought_summary(elapsed_s: float, char_len: int, palette) -> "Text":
+def _thought_summary(elapsed_s: float, char_len: int, palette,
+                     token_estimate: int = 0) -> "Text":
     """A completed reasoning block renders as a compact one-liner rather than
-    a wall of streamed reasoning: ``💭 thought · 0:42 · ~1.2k tok``. Token
-    count is approximated from the reasoning length (~4 chars/token) — the
-    harness does not report thinking tokens separately. The full reasoning
+    a wall of streamed reasoning: ``💭 thought · 0:42 · ~1.2k tok``. Prefer
+    the harness-reported thinking-token estimate (Claude redacts the
+    reasoning text, so char_len is 0); fall back to a ~4-chars/token
+    heuristic for harnesses that stream the text instead. The full reasoning
     is preserved as the block's copy payload."""
     from aegis.tui.metrics import _fmt_tokens
-    approx = max(1, char_len // 4)
+    approx = token_estimate if token_estimate > 0 else max(1, char_len // 4)
     return Text(
         f"💭 thought · {_fmt_elapsed(elapsed_s)} · ~{_fmt_tokens(approx)} tok",
         style=f"italic {palette.muted}")
@@ -539,6 +543,7 @@ class ConversationPane(Widget):
         self._streaming_block: CopyableBlock | None = None
         self._streaming_kind: str | None = None     # "text" | "thinking"
         self._streaming_text: str = ""
+        self._streaming_thinking_est: int = 0
         self._thinking_started_at: float | None = None
         # Windowing: every rendered block lives here; only
         # _history[_window_start:] is mounted. _streaming_history_idx
@@ -989,20 +994,24 @@ class ConversationPane(Widget):
         self._streaming_kind = None
         self._streaming_text = ""
         self._streaming_history_idx = None
+        self._streaming_thinking_est = 0
 
     def _render_for_stream(self, kind: str,
                             text: str) -> RenderableType:
         if kind == "thinking":
             started = self._thinking_started_at or time.monotonic()
             return _thought_summary(
-                time.monotonic() - started, len(text), self._palette)
+                time.monotonic() - started, len(text), self._palette,
+                self._streaming_thinking_est)
         return Markdown(text) if text.strip() else Text("")
 
-    def _stream_append(self, kind: str, new_text: str) -> None:
+    def _stream_append(self, kind: str, new_text: str,
+                       token_estimate: int = 0) -> None:
         if self._streaming_kind != kind:
             self._flush_streaming()
             self._streaming_kind = kind
             self._streaming_text = new_text
+            self._streaming_thinking_est = token_estimate
             if kind == "thinking":
                 self._thinking_started_at = time.monotonic()
             r = self._render_for_stream(kind, self._streaming_text)
@@ -1012,6 +1021,8 @@ class ConversationPane(Widget):
             self._streaming_history_idx = len(self._history) - 1
         else:
             self._streaming_text += new_text
+            self._streaming_thinking_est = max(
+                self._streaming_thinking_est, token_estimate)
             if self._streaming_block is not None:
                 r = self._render_for_stream(
                     kind, self._streaming_text)
@@ -1070,11 +1081,17 @@ class ConversationPane(Widget):
             self._open_box(ev)
             self.refresh_metrics()
             return
+        if isinstance(ev, ThinkingTokens):
+            # Invisible: only nudges the live thinking-token counter + the
+            # "% think" status segment. No flush — it interleaves with the
+            # thinking block that carries the final estimate.
+            self.refresh_metrics()
+            return
         if isinstance(ev, AssistantText):
             if ev.text:
                 self._stream_append("text", ev.text)
         elif isinstance(ev, AssistantThinking):
-            self._stream_append("thinking", ev.text or "")
+            self._stream_append("thinking", ev.text or "", ev.token_estimate)
         elif isinstance(ev, ToolResult) and self._fold_tool_result(ev):
             pass  # folded into its ToolUse block
         elif isinstance(ev, ToolUse) and ev.tool_call_id:

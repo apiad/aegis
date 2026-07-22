@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import pytest
 from aegis.events import (
-    parse, SystemInit, AssistantText, AssistantThinking,
+    parse, SystemInit, AssistantText, AssistantThinking, ThinkingTokens,
     ToolUse, ToolResult, Result, Unknown, ParserState,
     AgentPlan, PlanEntry,
 )
@@ -14,6 +14,34 @@ def test_unknown_never_raises():
     assert isinstance(parse('not json at all'), Unknown)
     assert isinstance(parse('{"type":"totally_new_event"}'), Unknown)
     assert isinstance(parse(''), Unknown)
+
+
+def test_parse_thinking_tokens_event():
+    ev = parse(json.dumps({"type": "system", "subtype": "thinking_tokens",
+                           "estimated_tokens": 250,
+                           "estimated_tokens_delta": 100}))
+    assert isinstance(ev, ThinkingTokens)
+    assert ev.estimated == 250
+    assert ev.delta == 100
+
+
+def test_thinking_tokens_stamp_onto_block():
+    """The running deltas accumulate in ParserState and stamp the next
+    thinking block's token_estimate (Claude redacts the thinking text, so
+    len(text) is 0 — the estimate is the only real count)."""
+    st = ParserState()
+    for est, d in ((50, 50), (150, 100), (250, 100)):
+        parse(json.dumps({"type": "system", "subtype": "thinking_tokens",
+                          "estimated_tokens": est,
+                          "estimated_tokens_delta": d}), state=st)
+    block = parse(json.dumps({
+        "type": "assistant",
+        "message": {"content": [{"type": "thinking", "thinking": ""}]},
+    }), state=st)
+    assert isinstance(block, AssistantThinking)
+    assert block.token_estimate == 250          # 50+100+100
+    # Reset after stamping so the next block counts independently.
+    assert st.thinking_estimate == 0
 
 
 def test_parse_system_init():

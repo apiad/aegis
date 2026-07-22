@@ -7,7 +7,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
-from aegis.events import AssistantText, Event, Result, ToolResult, ToolUse
+from aegis.events import (
+    AssistantText, Event, Result, ThinkingTokens, ToolResult, ToolUse,
+)
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
     SessionHandle, SessionStartEvent, Turn,
@@ -347,6 +349,8 @@ class AgentSession:
                     self.metrics.record_tool()
                 elif isinstance(ev, ToolResult) and ev.is_error:
                     self.metrics.record_tool_error()
+                elif isinstance(ev, ThinkingTokens):
+                    self.metrics.observe_thinking(ev.delta)
 
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
@@ -439,6 +443,8 @@ class AgentSession:
                     self.metrics.record_tool()
                 elif isinstance(ev, ToolResult) and ev.is_error:
                     self.metrics.record_tool_error()
+                elif isinstance(ev, ThinkingTokens):
+                    self.metrics.observe_thinking(ev.delta)
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True

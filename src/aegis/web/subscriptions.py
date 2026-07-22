@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from aegis.events import ThinkingTokens
 from aegis.state.event_codec import encode_event
 from aegis.web.compact import compact_encoded
 from aegis.web.history import read_history
@@ -318,6 +319,13 @@ class SubscriptionRegistry:
         core._web_wired = True
 
         def on_event(c, ev):
+            # ThinkingTokens are high-volume and not persisted to the JSONL,
+            # so consuming a seq for them would drift the web stream from the
+            # log line index that get_event resolves against (same rule as
+            # inbox messages). The cumulative estimate still reaches the
+            # client via the block's AssistantThinking + the state metrics.
+            if isinstance(ev, ThinkingTokens):
+                return
             hs.seq += 1
             _fanout(hs, event_frame(handle, hs.seq, ev))
 

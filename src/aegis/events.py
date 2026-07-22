@@ -51,6 +51,25 @@ class AssistantThinking:
     usage: TokenUsage | None = None
     message_id: str | None = None
     parent_tool_use_id: str | None = None
+    # Harness-reported reasoning-token estimate for this block. Claude
+    # streams the running estimate via `system/thinking_tokens` events and
+    # redacts the thinking text itself, so this — not len(text) — is the
+    # real token count. 0 when the harness doesn't report it (renderers
+    # fall back to a length heuristic).
+    token_estimate: int = 0
+
+
+@dataclass
+class ThinkingTokens:
+    """A streamed reasoning-token estimate (Claude `system/thinking_tokens`).
+
+    `estimated` is the running total for the *current* thinking block
+    (resets per block); `delta` is the increment since the previous event.
+    Invisible in transcripts — consumed only by metrics + the thought
+    summary. Sum `delta` across a turn/session for cumulative thinking."""
+    estimated: int = 0
+    delta: int = 0
+    parent_tool_use_id: str | None = None
 
 
 @dataclass
@@ -160,7 +179,7 @@ class Unknown:
 
 
 Event = (
-    SystemInit | AssistantText | AssistantThinking
+    SystemInit | AssistantText | AssistantThinking | ThinkingTokens
     | ToolUse | ToolResult | AgentPlan | ContextUpdate
     | Result | Unknown
 )
@@ -202,6 +221,9 @@ class ParserState:
     tool_use input."""
     tool_kinds: dict[str, str] = field(default_factory=dict)
     tool_diffs: dict[str, tuple[str, str, str]] = field(default_factory=dict)
+    # Running sum of thinking-token deltas since the last thinking block was
+    # emitted — stamped onto that block's AssistantThinking, then reset.
+    thinking_estimate: int = 0
 
 
 def _summarize_tool(name: str, tool_input: dict) -> str:
@@ -280,6 +302,12 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             available_commands=commands,
         )
 
+    if etype == "system" and obj.get("subtype") == "thinking_tokens":
+        delta = int(obj.get("estimated_tokens_delta") or 0)
+        est = int(obj.get("estimated_tokens") or 0)
+        state.thinking_estimate += delta
+        return ThinkingTokens(estimated=est, delta=delta)
+
     if etype == "result":
         usage = obj.get("usage")
         if not isinstance(usage, dict):
@@ -333,8 +361,11 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             return AssistantText(text=block.get("text", ""),
                                  usage=u, message_id=mid)
         if btype == "thinking":
+            est = state.thinking_estimate
+            state.thinking_estimate = 0
             return AssistantThinking(text=block.get("thinking", ""),
-                                     usage=u, message_id=mid)
+                                     usage=u, message_id=mid,
+                                     token_estimate=est)
         if btype == "tool_use":
             name = block.get("name", "?")
             tool_input = block.get("input", {}) or {}

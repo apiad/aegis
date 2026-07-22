@@ -64,6 +64,8 @@ def _encode_inner(ev: Event) -> dict:
                "usage": _encode_usage(ev.usage)}
         if ev.message_id is not None:
             out["message_id"] = ev.message_id
+        if ev.token_estimate:
+            out["token_estimate"] = ev.token_estimate
         return out
     if isinstance(ev, ToolUse):
         out = {"t": "ToolUse", "name": ev.name, "summary": ev.summary,
@@ -162,7 +164,8 @@ def _decode_inner(d: dict) -> Event:
     if t == "AssistantThinking":
         return AssistantThinking(text=d["text"],
                                  usage=_decode_usage(d.get("usage")),
-                                 message_id=d.get("message_id"))
+                                 message_id=d.get("message_id"),
+                                 token_estimate=d.get("token_estimate", 0))
     if t == "ToolUse":
         locs = tuple((p, ln) for p, ln in d.get("locations", []))
         return ToolUse(name=d["name"], summary=d["summary"],

@@ -67,6 +67,11 @@ class SessionMetrics:
     # separately from c_cached (cache-read hits) so the cost computation
     # can multiply each class against its own rate.
     c_cache_write: int = 0
+    # Cumulative reasoning-token estimate, summed from the harness's streamed
+    # thinking_tokens deltas. Thinking is already counted inside c_out (the
+    # output tokens), so this is a *breakdown* of output — surfaced as the
+    # "% think" status-line segment, NOT added to the cost (see thinking_tokens).
+    c_think: int = 0
     # provisional — current turn, monotonic MAX over streamed assistant
     # usages (a step's usage repeats across events; summing double-counts).
     p_in: int = 0
@@ -111,9 +116,9 @@ class SessionMetrics:
 
     @property
     def thinking_tokens(self) -> int:
-        # We don't track thinking tokens separately yet — Anthropic
-        # surfaces them under cache_creation/output in the headline
-        # usage, so leaving this at 0 avoids double-billing.
+        # Cost-computation view: 0 on purpose. Anthropic bills reasoning
+        # tokens inside output_tokens, so charging c_think again here would
+        # double-bill. The display breakdown reads c_think directly.
         return 0
 
     def start_turn(self, now: float) -> None:
@@ -131,6 +136,13 @@ class SessionMetrics:
         self.p_out = max(self.p_out, u.output)
         self.p_cached = max(self.p_cached, u.cache_read)
         self._provisional = True
+
+    def observe_thinking(self, delta: int) -> None:
+        """Accumulate a streamed reasoning-token delta (Claude
+        thinking_tokens). Cumulative across the session — the deltas are the
+        only source (result.usage has no separate thinking count)."""
+        if delta > 0:
+            self.c_think += delta
 
     def _end_time(self, now: float) -> None:
         if self.turn_start is not None:
@@ -187,6 +199,10 @@ class SessionMetrics:
         out = self.c_out + self.p_out
         cached = self.c_cached + self.p_cached
         pct = round(100 * cached / in_t) if in_t else 0
+        # Reasoning share of output — only shown for harnesses that report it.
+        think_seg = ""
+        if self.c_think > 0 and out > 0:
+            think_seg = f" ({round(100 * self.c_think / out)}% think)"
         mark = "~" if self._provisional else ""
         tool = f"⚒ {self.tool_calls}"
         if self.tool_errors:
@@ -201,7 +217,7 @@ class SessionMetrics:
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
         return (
             f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
-            f"↓{_fmt_tokens(out)} · "
+            f"↓{_fmt_tokens(out)}{think_seg} · "
             f"{tps_seg}"
             f"{ctx}"
             f"{cost}"

@@ -280,3 +280,28 @@ def test_recent_tps_skips_zero_duration_and_zero_output():
     assert m.recent_tps() is None
     _turn(m, out=80, seconds=2)       # 40 tok/s
     assert m.recent_tps() == 40.0
+
+
+# --- thinking-token breakdown (% think) -------------------------------
+
+def test_think_segment_shows_share_of_output():
+    m = SessionMetrics()
+    m.commit(_u(out=1000), 1.0)       # 1000 output tokens
+    m.observe_thinking(600)           # 600 of them were reasoning
+    m.observe_thinking(200)           # → 800 total think
+    out = m.render(0.0)
+    assert "↓1k (80% think)" in out
+
+
+def test_think_segment_absent_when_no_thinking():
+    m = SessionMetrics()
+    m.commit(_u(out=1000), 1.0)
+    assert "think" not in m.render(0.0)
+
+
+def test_thinking_tokens_property_stays_zero_for_cost():
+    # Reasoning is billed inside output — cost view must not double-count.
+    m = SessionMetrics()
+    m.observe_thinking(500)
+    assert m.c_think == 500
+    assert m.thinking_tokens == 0

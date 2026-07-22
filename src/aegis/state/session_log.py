@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from aegis.events import (
-    AssistantText, AssistantThinking, Event, Result, ToolUse,
+    AssistantText, AssistantThinking, Event, Result, ThinkingTokens, ToolUse,
 )
 from aegis.state.event_codec import decode_event, encode_event
 
@@ -48,6 +48,11 @@ def make_session_log_observer(state_dir_path, handle: str):
     """Returns an EventCb that appends every event to the per-handle JSONL.
     Persistence must never break the live render, so it swallows errors."""
     def _obs(_sess, ev) -> None:
+        # ThinkingTokens are high-volume transient counter nudges (hundreds
+        # per turn); the cumulative estimate is stamped onto the block's
+        # AssistantThinking, which we do persist — so skip these.
+        if isinstance(ev, ThinkingTokens):
+            return
         try:
             append_event(state_dir_path, handle, ev)
         except Exception:

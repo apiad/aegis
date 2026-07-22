@@ -20,6 +20,23 @@ def test_assistant_text_is_renderable():
     assert "hello world" in out
 
 
+def test_thought_uses_token_estimate_when_present():
+    # Claude redacts the thinking text (empty) but reports the estimate —
+    # the summary must show it, not fall back to ~1 tok.
+    out = as_text(render_event(
+        AssistantThinking(text="", token_estimate=6050), C))
+    assert "thought" in out
+    assert "6k tok" in out and "1 tok" not in out
+
+
+def test_thought_falls_back_to_length_when_no_estimate():
+    # Harnesses that stream the reasoning text (no estimate) keep the
+    # ~4-chars/token heuristic.
+    out = as_text(render_event(
+        AssistantThinking(text="x" * 400, token_estimate=0), C))
+    assert "100 tok" in out
+
+
 def test_tool_use_one_liner():
     out = as_text(render_event(
         ToolUse(name="Read", summary="foo.py",

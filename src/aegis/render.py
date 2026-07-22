@@ -150,10 +150,13 @@ def render_event(ev: Event, colors) -> RenderableType | None:
         return Markdown(text) if text else None
     if isinstance(ev, AssistantThinking):
         # Compact 'thought' summary (matches the live pane). Replay has no
-        # recorded duration, so only the approximate token count is shown;
-        # the full reasoning stays in the copy payload.
+        # recorded duration, so only the token count is shown; the full
+        # reasoning stays in the copy payload. Prefer the harness-reported
+        # estimate (Claude redacts thinking text → len is 0); fall back to a
+        # ~4-chars/token heuristic for harnesses that stream the text instead.
         from aegis.tui.metrics import _fmt_tokens
-        approx = max(1, len((ev.text or "").strip()) // 4)
+        approx = (ev.token_estimate if ev.token_estimate > 0
+                  else max(1, len((ev.text or "").strip()) // 4))
         return Text(f"💭 thought · ~{_fmt_tokens(approx)} tok",
                     style=f"italic {colors.muted}")
     if isinstance(ev, ToolUse):
