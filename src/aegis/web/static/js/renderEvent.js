@@ -20,6 +20,15 @@ function trunc(s, n) {
   return s.length <= n ? s : s.slice(0, n - 1) + "…";
 }
 
+// Mirror of aegis.tui.metrics._fmt_tokens: 250 → "250", 6050 → "6k",
+// 73900 → "73.9k", 1_200_000 → "1.2M".
+function fmtTokens(n) {
+  n = n || 0;
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return (n / 1e6).toFixed(1) + "M";
+}
+
 function locTail(locs) {
   if (locs && locs.length) {
     const [path, line] = locs[0];
@@ -168,11 +177,13 @@ export function renderEvent(rec) {
   }
   if (t === "AssistantThinking") {
     const body = (ev.text || "").trim();
+    const tok = ev.token_estimate > 0
+      ? ` · ~${fmtTokens(ev.token_estimate)} tok` : "";
     if (!body) {
       const ctl = rec.truncated ? " " + expandControl(rec, "expand") : "";
-      return `<div class="thinking muted">✻ Thinking…${ctl}</div>`;
+      return `<div class="thinking muted">✻ Thinking…${tok}${ctl}</div>`;
     }
-    return `<div class="thinking muted"><em>✻ ${esc(body)}</em></div>`;
+    return `<div class="thinking muted"><em>✻ ${esc(body)}${tok}</em></div>`;
   }
   if (t === "ToolUse") {
     const icon = KIND_ICON[ev.kind || ""] || "⏺";

@@ -96,6 +96,12 @@ def test_thinking_empty_label():
     assert "Thinking" in h
 
 
+def test_thinking_shows_token_estimate():
+    # Claude redacts the text but reports the estimate — parity with TUI.
+    h = render_event_html(AssistantThinking("", token_estimate=6050))
+    assert "~6k tok" in h
+
+
 def test_systeminit_and_unknown_are_none():
     assert render_event_html(SystemInit(session_id="x")) is None
     assert render_event_html(Unknown(raw="{}")) is None

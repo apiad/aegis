@@ -28,10 +28,15 @@ def render_event_html(ev: Event) -> str | None:
 
     if isinstance(ev, AssistantThinking):
         body = (ev.text or "").strip()
+        if ev.token_estimate > 0:
+            from aegis.tui.metrics import _fmt_tokens
+            tok = f" · ~{_fmt_tokens(ev.token_estimate)} tok"
+        else:
+            tok = ""
         if not body:
-            return '<div class="thinking muted">✻ Thinking…</div>'
+            return f'<div class="thinking muted">✻ Thinking…{tok}</div>'
         return (f'<div class="thinking muted"><em>✻ '
-                f'{escape(body)}</em></div>')
+                f'{escape(body)}{tok}</em></div>')
 
     if isinstance(ev, ToolUse):
         icon = KIND_ICON.get(ev.kind or "", "⏺")

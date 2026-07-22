@@ -67,6 +67,14 @@ const rec = (event_type, event, extra = {}) => ({
   assert.ok(html.includes('class="expand"'));
 }
 
+// Thinking with a reported token estimate (Claude redacts the text) →
+// shows "~Nk tok", parity with the TUI thought summary.
+{
+  const html = renderEvent(rec("AssistantThinking",
+    { t: "AssistantThinking", text: "", token_estimate: 6050 }));
+  assert.ok(html.includes("~6k tok"));
+}
+
 // SystemInit → empty (no visible block)
 assert.equal(renderEvent(rec("SystemInit", { t: "SystemInit" })), "");
 
