@@ -401,6 +401,18 @@ Downside vs Path C: no ACP ⇒ likely no aegis-MCP tools for those workers (prob
 `agy plugin import claude` as a possible MCP route). Not now — noted for when
 subscription access is worth a real driver-build.
 
+### Move the Claude driver off `claude -p` — noted for the future
+
+Today `ClaudeDriver` shells out to `claude -p --input-format stream-json
+--output-format stream-json --verbose` (subprocess kept alive per session,
+resume via `--resume <id>`, interrupt via a stream-json control_request —
+`src/aegis/drivers/claude.py:199-232`). A future rework would drive Claude a
+different way — most likely the **Claude Agent SDK** (aegis already runs
+*inside* it) or an **ACP-native** path that unifies Claude with the
+gemini/lovelaice drivers on one protocol (`AcpDriver`), instead of parsing the
+CLI's stream-json. Motivation: robustness + protocol unification, less
+dependence on the `claude -p` CLI surface. Not now — noted for the future.
+
 ## Watching
 
 - **VPS job-crawler dispatched the plan job (2026-05-20-aegis-task-queue-plan)
