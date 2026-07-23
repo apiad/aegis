@@ -5,6 +5,52 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### `/loop` — repeat an instruction until the agent says it's done
+
+- **New: `/loop <instruction>` arms a looping instruction on a session.** The
+  instruction is re-delivered every time the session would otherwise settle
+  idle, until the agent judges it satisfied and reaps it with
+  `aegis_loop_stop`. It sits at the *lowest* rung of
+  `AgentSession._chain_if_pending` — below inbox messages, below the
+  spontaneous-event drain, below reminders — so handoffs, monitor callbacks and
+  anything you type preempt the next iteration rather than starving behind it.
+- **A loop yields to an armed `aegis_monitor`.** While a monitor is watching
+  the handle the loop does not fire and its counter does not advance. Without
+  that gate, `/loop run the tests` plus a monitor is a spin loop: the agent
+  burns whole turns asking "done yet?" while the monitor waits to wake it.
+- Five ways out: `aegis_loop_stop` (the intended one), the iteration cap
+  (default 20, `--max N`) which reports as *capped* rather than completed,
+  `/loop stop`, Esc — interrupt means stop, or the loop re-fires the moment the
+  interrupted turn ends — and a harness error, so a broken session can't spin
+  on its own error. `/loop` alone shows status; the status bar carries
+  `⟳ loop 3/20`.
+- Loops are session-scoped and in-memory. They do not survive a restart, by
+  design: auto-firing a restored loop would mean a cold TUI starts spending
+  tokens at boot without anyone asking it to.
+- Agent-armed loops (an `aegis_loop` tool) are deliberately **not** in this
+  release. When they land they'll sit behind the same human-approval gate
+  dynamic workflows use.
+
+### Fixed
+
+- **Turn-end `aegis_remind` never found its session in the TUI.**
+  `ReminderService._session_for` looks up `getattr(sm, "get", None)`; in the
+  TUI the session manager is the `AegisApp`, which had no `get()` (nor does
+  Textual's `App`), so every turn-end reminder answered "no live session".
+  Only `aegis serve` — the path the feature was smoke-tested on — worked.
+- **Background-mounted panes stacked on top of the active tab.** Textual's
+  `ContentSwitcher` hides children only at its own mount or on a `current`
+  old→new transition, so a bare `cs.mount()` left the new pane visible.
+  Affected agent-spawned sessions (`aegis_spawn`, queue workers), terminals
+  restored on reload, and restored file tabs — which were also stealing
+  `cs.current` from the resumed active tab.
+
+### Added
+
+- The running build (`aegis 0.21.0+<sha>`) now shows in the TUI status bar,
+  resolved at import so it reports the code this process actually loaded
+  rather than whatever the checkout has moved on to.
+
 ### Self-reminders — `aegis_remind`
 
 - **New: an agent can leave a note for its future self, delivered back to its

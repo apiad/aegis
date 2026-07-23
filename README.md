@@ -552,6 +552,7 @@ ConfigPanel via `F2`.
 | `Enter` | Send |
 | `!cmd` | **Shell escape** — run `cmd` locally, inject its output as your message |
 | `/cmd` | **Slash command** — aegis runs it directly (`/help` lists them); never reaches the agent |
+| `/loop <instruction>` | Repeat an instruction every turn until the agent calls `aegis_loop_stop` or the cap (default 20) is hit; `/loop stop` or `Esc` cancels |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+E` | New terminal tab (`term:<name>`) |
 | `Ctrl+W` | Close tab (last → quit) |
