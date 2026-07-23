@@ -226,7 +226,9 @@ class StatusBar(Static):
         # Palette is captured once here. Runtime re-theming is a non-goal
         # (single theme); a future switch would need a set_palette that
         # rebuilds _identity (cf. pane/TabBar which do have set_palette).
-        self._identity = f"{model}  [{colors.accent}]{effort}[/]"
+        from aegis.version import BUILD
+        self._identity = (f"[dim]aegis {BUILD}[/]  "
+                          f"{model}  [{colors.accent}]{effort}[/]")
         self._state = AgentState.ready
         self._metrics = ""
         self._system: str = ""
