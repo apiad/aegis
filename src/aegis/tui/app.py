@@ -1139,6 +1139,17 @@ class AegisApp(App):
                 return p
         return None
 
+    def get(self, handle: str):
+        """AgentSession for a handle, or None.
+
+        The bridge-side lookup ReminderService / LoopService use
+        (``getattr(sm, "get", None)``). SessionManager has it for the headless
+        path; AegisApp is the TUI's own bridge and needs it too, or every
+        turn-end delivery silently reports "no live session".
+        """
+        pane = self.pane_for(handle)
+        return pane._core if pane is not None else None
+
     def _on_window_reset(self, fr: dict) -> None:
         """Stream handler for ``window_reset`` frames (remote mode only).
 
