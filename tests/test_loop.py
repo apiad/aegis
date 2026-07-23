@@ -364,3 +364,57 @@ async def test_tui_bridge_exposes_loop_service(tmp_path, monkeypatch):
         assert app.loop_service.arm(
             from_handle=handle, text="keep going")["armed"] is True
         app.loop_service.stop(from_handle=handle)
+
+
+# --------------------------------------------------------------------------
+# Task 5 — MCP surface
+# --------------------------------------------------------------------------
+from aegis.mcp.server import BRIEFING, build_server      # noqa: E402
+
+
+class StubBridge:
+    def __init__(self, svc):
+        self.loop_service = svc
+
+
+async def _call(server, tool_name: str, **kwargs):
+    """Same shape as the helper in tests/test_reminder.py."""
+    res = await server.call_tool(tool_name, kwargs)
+    if getattr(res, "structured_content", None) is not None:
+        sc = res.structured_content
+        if isinstance(sc, dict) and set(sc.keys()) == {"result"}:
+            return sc["result"]
+        return sc
+    return getattr(res, "data", res)
+
+
+@pytest.mark.asyncio
+async def test_loop_stop_tool_registered():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    server = build_server(StubBridge(LoopService(FakeSM([s]))))
+    names = {t.name for t in await server.list_tools()}
+    assert "aegis_loop_stop" in names
+
+
+@pytest.mark.asyncio
+async def test_mcp_loop_stop_reaps():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    svc.arm(from_handle="h", text="keep going")
+    server = build_server(StubBridge(svc))
+    res = await _call(server, "aegis_loop_stop", from_handle="h",
+                      reason="green")
+    assert res["stopped"] is True
+    assert s.loop_status() is None
+
+
+@pytest.mark.asyncio
+async def test_mcp_loop_stop_without_a_loop_is_harmless():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    server = build_server(StubBridge(LoopService(FakeSM([s]))))
+    res = await _call(server, "aegis_loop_stop", from_handle="h")
+    assert res["stopped"] is False
+
+
+def test_briefing_mentions_loop_stop():
+    assert "aegis_loop_stop" in BRIEFING

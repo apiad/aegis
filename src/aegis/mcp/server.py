@@ -199,6 +199,12 @@ BRIEFING = (
     "reminder that lands in your inbox at that time. "
     "aegis_reminders(from_handle?) / aegis_reminder_cancel(reminder_id) "
     "list / cancel pending future-time reminders.\n"
+    "  - aegis_loop_stop(from_handle, reason?) : reap the `/loop` the "
+    "operator armed on your session. A loop re-delivers its instruction "
+    "every time you would otherwise go idle; you are the only thing that "
+    "ends one cleanly. Call it as soon as the instruction is satisfied — "
+    "otherwise the loop runs to its iteration cap and reports as capped, "
+    "not completed.\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -1084,6 +1090,27 @@ def build_server(bridge: AppBridge) -> FastMCP:
         if svc is None:
             return {"error": "reminders not available on this bridge"}
         return svc.remind(from_handle=from_handle, note=note, after=after)
+
+    @server.tool
+    async def aegis_loop_stop(from_handle: str, reason: str = "") -> dict:
+        """Reap the `/loop` the operator armed on your session.
+
+        A loop re-delivers its instruction at every turn boundary where you
+        would otherwise settle idle. Call this the moment you judge that
+        instruction fully satisfied — you are the only thing that ends a loop
+        cleanly. If you don't, it runs until its iteration cap and reports
+        that it was capped rather than completed.
+
+        ``from_handle`` is your own aegis handle (from your system prompt).
+        ``reason`` is a short note on why you consider it done; it is shown to
+        the operator. Calling this with no loop armed is harmless and returns
+        ``{"stopped": false}``.
+        """
+        svc = getattr(bridge, "loop_service", None)
+        if svc is None:
+            return {"error": "loops not available on this bridge"}
+        return svc.stop(from_handle=from_handle,
+                        reason=reason or "stopped by the agent")
 
     @server.tool
     async def aegis_reminders(from_handle: str | None = None) -> list[dict]:
