@@ -16,7 +16,10 @@ from aegis.hooks import (
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
-from aegis.queue.schema import Delivery, InboxMessage, render_inbox_header
+from aegis.core.loop import DEFAULT_MAX_ITERATIONS, LoopState
+from aegis.queue.schema import (
+    Delivery, InboxMessage, now_iso, render_inbox_header, sender_loop,
+)
 from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
@@ -27,6 +30,7 @@ StateCb = Callable[["AgentSession", AgentState, bool], None]
 InboxCb = Callable[["AgentSession", InboxMessage], None]
 DispatchCb = Callable[["AgentSession", list[InboxMessage]], None]
 CloseCb = Callable[["AgentSession", str], None]
+LoopCb = Callable[["AgentSession", "LoopState | None", str], None]
 
 
 def _render_batch(batch: list[InboxMessage]) -> str:
@@ -72,6 +76,10 @@ class AgentSession:
         # after any unsolicited harness-event drain. This is the "last thing"
         # the session does before it would otherwise settle idle.
         self._reminders: list[InboxMessage] = []
+        # The operator's `/loop` instruction, or None. Drained by
+        # _chain_if_pending as the LOWEST tier of all — below reminders —
+        # and re-armed rather than consumed. See aegis/core/loop.py.
+        self._loop: LoopState | None = None
         self._opening_prompt = opening_prompt
         # Idle watcher: armed at turn-end when the harness supports
         # spontaneous between-turn events (e.g. Claude's background
@@ -111,6 +119,9 @@ class AgentSession:
         # being sent (e.g. clear their chips, mount user lines).
         self.on_dispatch: DispatchCb | None = None
         self.on_close: CloseCb | None = None
+        # Fired on arm / fire / stop so a frontend can render the loop chip
+        # and announce termination. (session, state_or_None, reason).
+        self.on_loop: LoopCb | None = None
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
         self._extra_inbox_observers: list[InboxCb] = []
@@ -278,6 +289,35 @@ class AgentSession:
         self._reminders.append(msg)
         if self.state is not AgentState.working:
             self._chain_if_pending()
+
+    def arm_loop(self, text: str,
+                 max_iterations: int = DEFAULT_MAX_ITERATIONS) -> None:
+        """Arm (or replace) this session's looping instruction.
+
+        Armed while idle nothing else would poke the session, so promote the
+        chain now — ``/loop <text>`` should start working, not wait for the
+        next unrelated turn.
+        """
+        self._loop = LoopState(text=text, max_iterations=max_iterations)
+        self._emit_loop("armed")
+        if self.state is not AgentState.working:
+            self._chain_if_pending()
+
+    def stop_loop(self, reason: str = "stopped") -> bool:
+        """Reap the loop. Returns False when nothing was armed, so a double
+        stop is harmless."""
+        if self._loop is None:
+            return False
+        self._loop = None
+        self._emit_loop(reason)
+        return True
+
+    def loop_status(self) -> dict | None:
+        return self._loop.status() if self._loop is not None else None
+
+    def _emit_loop(self, reason: str) -> None:
+        if self.on_loop is not None:
+            self.on_loop(self, self._loop, reason)
 
     def cancel_pending(self, msg: InboxMessage) -> bool:
         """Remove a still-buffered message by object identity. Returns True
@@ -462,6 +502,28 @@ class AgentSession:
             self.metrics.start_turn(self._now())
             self._task = asyncio.create_task(self._run_turn(text))
             return
+        # Lowest tier of all: the operator's looping instruction. Everything
+        # else — inbox, unsolicited drain, reminders — has already had its
+        # turn, so nothing is starved behind a loop.
+        if self._loop is not None:
+            if self._loop.exhausted():
+                self.stop_loop(
+                    f"capped at {self._loop.max_iterations} iterations "
+                    f"— the agent did not stop it")
+            else:
+                self._loop.iteration += 1
+                msg = InboxMessage(
+                    sender=sender_loop(self._loop.iteration,
+                                       self._loop.max_iterations),
+                    timestamp=now_iso(),
+                    body=self._loop.render(self.handle))
+                self._emit_dispatch([msg])
+                self._emit_loop("fired")
+                self._emit_state(AgentState.working, finished=False)
+                self.metrics.start_turn(self._now())
+                self._task = asyncio.create_task(
+                    self._run_turn(_render_batch([msg])))
+                return
         self._unsolicited = False  # settling idle — no turn in flight
         self._arm_idle_watcher()
 

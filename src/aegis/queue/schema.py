@@ -36,6 +36,15 @@ def sender_reminder() -> str:
     return "reminder"
 
 
+def sender_loop(iteration: int, total: int) -> str:
+    """Sender tag for one iteration of an armed `/loop`.
+
+    Carries the counter so ``render_inbox_header`` produces
+    ``> from loop · iteration 3/20 · <ts>`` with no special-casing.
+    """
+    return f"loop · iteration {iteration}/{total}"
+
+
 def sender_user() -> str:
     """Sender tag for a message Alex typed into the text box. Renders
     headerless (a plain user turn), unlike agent/queue/telegram inbox
