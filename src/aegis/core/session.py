@@ -429,6 +429,7 @@ class AgentSession:
             import sys
             import traceback
             self.last_error = e
+            self.stop_loop("stopped after a harness error")
             print(f"[aegis] {self.handle} harness error: "
                   f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
             traceback.print_exception(e, file=sys.stderr)
@@ -505,7 +506,10 @@ class AgentSession:
         # Lowest tier of all: the operator's looping instruction. Everything
         # else — inbox, unsolicited drain, reminders — has already had its
         # turn, so nothing is starved behind a loop.
-        if self._loop is not None:
+        # Yields to an armed aegis monitor: the monitor is the authoritative
+        # waker, and re-firing underneath it would spin. The counter does not
+        # advance on a suppressed fire.
+        if self._loop is not None and self._unsolicited_hold == 0:
             if self._loop.exhausted():
                 self.stop_loop(
                     f"capped at {self._loop.max_iterations} iterations "
@@ -558,6 +562,7 @@ class AgentSession:
         except Exception as e:
             log.exception("harness error in unsolicited drain")
             self.last_error = e
+            self.stop_loop("stopped after a harness error")
             if not saw_result:
                 self.metrics.commit(None, self._now())
                 self._emit_state(AgentState.error, finished=True)
@@ -610,6 +615,9 @@ class AgentSession:
         self._idle_task = None
 
     async def interrupt(self) -> None:
+        # Interrupt means stop. Without this the loop re-fires the instant the
+        # interrupted turn ends and Esc can never escape it.
+        self.stop_loop("interrupted")
         await self._cancel_idle_watcher()
         if self.state is not AgentState.working:
             return

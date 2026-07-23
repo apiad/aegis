@@ -227,3 +227,72 @@ async def test_cap_fires_the_observer_with_a_capped_reason():
     await _settle(s)
     reasons = [r for _, r in seen]
     assert any("capped" in r for r in reasons)
+
+
+# --------------------------------------------------------------------------
+# Task 3 — termination edges
+# --------------------------------------------------------------------------
+class HoldHarness(FakeHarness):
+    """Never reports pending events; used with _unsolicited_hold set by hand."""
+
+
+@pytest.mark.asyncio
+async def test_loop_yields_to_an_armed_monitor():
+    """_unsolicited_hold > 0 means an aegis monitor is the authoritative
+    waker. Firing underneath it turns `/loop run the tests` into a spin loop:
+    the agent would burn whole turns asking 'done yet?' while the monitor sits
+    there waiting to wake it."""
+    harness = HoldHarness([_turn("a"), _turn("b")])
+    s = AgentSession(harness, _agent(), "default", "h")
+    s._unsolicited_hold = 1
+    s.arm_loop("keep going", max_iterations=5)
+    await _settle(s)
+    assert harness.sent == []                       # suppressed
+    assert s.loop_status()["iteration"] == 0        # counter did not advance
+    # Releasing the hold lets it fire (and then run on to its cap, which is
+    # the point — the suppression was the hold, not the loop being spent).
+    s._unsolicited_hold = 0
+    s._chain_if_pending()
+    await _settle(s)
+    assert len(harness.sent) >= 1
+    assert "keep going" in harness.sent[0]
+    s.stop_loop()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_clears_the_loop():
+    """Without this Esc is useless — the loop re-fires the instant the
+    interrupted turn ends."""
+    harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
+    s = AgentSession(harness, _agent(), "default", "h")
+    s.arm_loop("keep going", max_iterations=10)
+    await asyncio.sleep(0)
+    await s.interrupt()
+    assert s.loop_status() is None
+
+
+class BoomHarness(FakeHarness):
+    def __init__(self):
+        super().__init__()
+        self.event_calls = 0
+
+    async def events(self):
+        self.event_calls += 1
+        raise RuntimeError("harness exploded")
+        yield  # pragma: no cover — makes this an async generator
+
+
+@pytest.mark.asyncio
+async def test_harness_error_stops_the_loop():
+    """Otherwise a broken session spins on its own error forever.
+
+    max_iterations is set far above what _settle could burn through, so a
+    cleared loop here means the error stopped it — not the cap.
+    """
+    harness = BoomHarness()
+    s = AgentSession(harness, _agent(), "default", "h")
+    s.arm_loop("keep going", max_iterations=1000)
+    await _settle(s)
+    assert s.loop_status() is None
+    assert s.last_error is not None
+    assert harness.event_calls == 1     # errored once, did not spin
