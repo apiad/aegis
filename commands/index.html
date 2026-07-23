@@ -1,0 +1,1854 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/commands/">
+      
+      
+        <link rel="prev" href="../drivers/">
+      
+      
+        <link rel="next" href="../queues/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Slash commands - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#slash-commands" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Slash commands
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Component interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#argument-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Argument grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovery-palette" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery palette
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-spec-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design → spec index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Component interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#argument-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Argument grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovery-palette" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery palette
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-spec-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design → spec index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="slash-commands">Slash commands<a class="headerlink" href="#slash-commands" title="Permanent link">&para;</a></h1>
+<p>Slash commands are commands <strong>aegis itself executes</strong> when typed into the input
+box — they never reach the underlying harness (claude / gemini / lovelaice / …).
+They sit in the same input-prefix family as the <code>!</code> shell escape: a leading
+character routes the line to aegis instead of the agent. <code>/cmd</code> runs an aegis
+command; <code>//cmd</code> is an escape that delivers a literal <code>/cmd</code> message; anything
+else is a normal message.</p>
+<p>A command is either a <strong>control command</strong> — a thin, human-facing front-end over
+the same <code>AppBridge</code> surface agents drive through MCP (spawn a peer, create a
+queue, switch themes) that renders its result in the transcript — or a <strong>prompt
+command</strong> — a user-authored template that expands and is delivered <em>to the
+agent</em> as a message. Both are the same <code>SlashCommand</code> object in one registry,
+distinguished only by what their handler returns
+(detail: <a href="../superpowers/specs/2026-07-16-aegis-slash-commands-design/">Phase 1</a>).</p>
+<p>The whole subsystem is harness-agnostic (no Textual/web imports in
+<code>src/aegis/commands/</code>), so the TUI and the web client are two thin frontends
+over one shared core.</p>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>input line
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>   │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>   ▼
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>classify_input(text) ──► &quot;//x&quot; → literal message &quot;/x&quot; to the agent
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>   │                     plain → normal message to the agent
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>   │ &quot;/x&quot;
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>   ▼
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>dispatch(text, ctx) ─── parse(cmd.spec, argstr) ──► Args (or ArgError)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   │                                                   │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>   │  REGISTRY[verb].run(ctx, args)  ◄─────────────────┘
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>   ▼
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>CommandResult(ok, title, body, effect)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>   │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>   ├── effect.kind == &quot;deliver&quot;  → seam sends effect[&quot;text&quot;] to the agent
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>   │                               (mount user line + core.deliver)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>   └── otherwise                 → seam mounts render_command_block(result)
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>                                   and applies effect (theme / clear)
+</code></pre></div>
+<p>The core (<code>src/aegis/commands/</code>) is pure and frontend-free. Two <strong>seams</strong> wire
+it into the frontends and are the only UI-aware code:</p>
+<ul>
+<li><strong>TUI</strong> — <code>ConversationPane.on_growing_input_submitted</code> (<code>tui/pane.py</code>) calls
+  <code>dispatch()</code>, then either mounts a command block or delivers the expansion.
+  <code>_apply_command_effect</code> applies theme/clear.</li>
+<li><strong>Web</strong> — <code>WSSession._deliver_or_command</code> (<code>web/wssession.py</code>) does the same
+  at the <code>deliver</code> RPC, returning either a <code>command_result</code> frame or a normal
+  <code>delivery</code> frame. Web parity is a first-class part of every slice, not a
+  trailing afterthought
+  (detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design/">2A</a>).</li>
+</ul>
+<p>The core modules:</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands/__init__.py</code></td>
+<td>The <code>REGISTRY</code>, the <code>SlashCommand</code>/<code>CommandResult</code>/<code>CommandContext</code> types, <code>register()</code> (precedence guard), <code>dispatch()</code>, <code>classify_input()</code>, and the palette <code>complete()</code> + <code>Completion</code>/<code>Completions</code>.</td>
+</tr>
+<tr>
+<td><code>commands/args.py</code></td>
+<td>Declarative typed-arg parsing: <code>Arg</code>/<code>Flag</code>/<code>ArgSpec</code>/<code>Args</code> + <code>parse()</code>. Pure — no registry, no bridge.</td>
+</tr>
+<tr>
+<td><code>commands/expand.py</code></td>
+<td>Prompt-command template expansion (<code>$args</code>, <code>@file</code>, <code>!`shell`</code>).</td>
+</tr>
+<tr>
+<td><code>commands/prompt_loader.py</code></td>
+<td>Loads <code>.aegis/commands/*.md</code> into <code>source="user"</code> commands.</td>
+</tr>
+<tr>
+<td><code>commands/decorator.py</code></td>
+<td>The <code>@command</code> plugin primitive → <code>source="plugin"</code> commands.</td>
+</tr>
+<tr>
+<td><code>commands/fuzzy.py</code></td>
+<td>Pure subsequence scorer used by the palette.</td>
+</tr>
+<tr>
+<td><code>commands/builtins/*</code></td>
+<td>The shipped builtin commands, one module per family.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="design-decisions">Design decisions<a class="headerlink" href="#design-decisions" title="Permanent link">&para;</a></h2>
+<p><strong>One registry, three sources, a single <code>dispatch()</code>.</strong> Every command — builtin,
+user prompt command, plugin command — is a <code>SlashCommand</code> in the one module-level
+<code>REGISTRY</code>, carrying a <code>source</code> tag. <code>dispatch()</code>, <code>/help</code>, and the palette are
+all source-agnostic: a new source appears everywhere for free once it registers.
+This is why the parser, the collision guard, and the completer seam were built
+before any user/plugin loader existed
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design/">2A</a>).</p>
+<p><strong>Control vs. prompt is carried by <code>CommandResult.effect</code>, not a command kind.</strong>
+Control commands return a <code>CommandResult</code> rendered as a transcript block. A
+prompt command returns the same type with <code>effect={"kind": "deliver", "text":
+…}</code>; each seam, already branching on <code>effect</code> for theme/clear, gains one case
+that routes the text to the agent instead of mounting a block. The distinction
+lives entirely in the two seams; <code>dispatch()</code> stays pure and never knows the
+difference
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<p><strong>Declarative typed args, not hand-rolled <code>.split()</code>.</strong> Each command declares an
+<code>ArgSpec</code>; <code>dispatch()</code> parses <code>argstr</code> into a validated <code>Args</code> before calling
+the handler, and an <code>ArgError</code> becomes a usage error result the handler never
+sees. The one shared parser is also what the palette introspects to offer
+argument completion
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design/">2A</a>).</p>
+<p><strong>Source precedence resolves collisions deterministically.</strong> <code>register()</code> ranks
+<code>builtin &gt; user &gt; plugin</code>: a higher-priority source replaces a lower one
+regardless of load order, and a lower source shadowing a higher one raises
+<code>CommandCollision</code>. A project-local <code>.md</code> command therefore beats an installed
+plugin command — "my config beats installed code" — and nothing beats a builtin
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<p><strong>Prompt-command expansion mirrors Claude Code.</strong> Arguments substitute first
+(so <code>!`git log $1`</code> works), then <code>@file</code> includes and <code>!`shell`</code> embeds
+run over the substituted text. <code>.aegis/commands/*.md</code> is trusted local config —
+same tier as <code>.aegis.yaml</code> — so file reads and shell execution on expansion are
+in-boundary, not a privilege surface
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<p><strong>Discovery is one pure <code>complete()</code> rendered by two drop-ups.</strong> The palette is
+an inline drop-up (not a modal), fed by a single harness-agnostic
+<code>complete(text, bridge)</code> that introspects the registry and each <code>Arg.completer</code>.
+Ranking is fuzzy-match score with builtins first; there is no history/AI ranking
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2d-command-palette-design/">2D</a>).</p>
+<p><strong>Collection nouns are plural and a bare noun lists.</strong> <code>/queues</code>, <code>/groups</code>,
+<code>/schedules</code>, <code>/terminals</code> list on their own and take a subverb (<code>new</code>,
+<code>status</code>, <code>dissolve</code>, …) to act
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design/">2B</a>).</p>
+<h2 id="component-interfaces">Component interfaces<a class="headerlink" href="#component-interfaces" title="Permanent link">&para;</a></h2>
+<p><strong><code>dispatch(text, ctx) -&gt; CommandResult</code></strong> — strips the leading <code>/</code>, splits
+<code>verb</code> + <code>argstr</code>, looks up the verb, parses <code>argstr</code> against the command's
+<code>ArgSpec</code>, and runs the handler. A bare <code>/</code> means <code>/help</code>; an unknown verb, an
+<code>ArgError</code>, or any handler exception comes back as an error <code>CommandResult</code> — a
+bad command never crashes the turn loop. Pure and unit-testable with a fake
+bridge.</p>
+<p><strong><code>classify_input(text) -&gt; (kind, payload)</code></strong> — the precedence ladder shared by
+both seams: <code>//x</code> → <code>("message", "/x")</code> (one slash stripped), <code>/x</code> →
+<code>("command", "/x")</code>, else <code>("message", text)</code>. The TUI's <code>!</code> shell escape is
+handled before this call.</p>
+<p><strong>Command handler</strong> — <code>async def h(ctx: CommandContext, args: Args) -&gt;
+CommandResult</code>. <code>ctx.bridge</code> is the <code>AppBridge</code> (the AegisApp / SessionManager);
+<code>ctx.handle</code> is the calling pane's session handle. Handlers read <code>args["name"]</code>;
+they never parse strings themselves.</p>
+<p><strong><code>CommandResult.effect</code></strong> — an optional dict the frontend interprets:
+<code>{"kind": "theme", "name": …}</code> and <code>{"kind": "clear"}</code> mutate the frontend;
+<code>{"kind": "deliver", "text": …}</code> sends text to the agent. Unknown kinds are
+ignored (forward-compatible).</p>
+<p><strong><code>complete(text, bridge) -&gt; Completions</code></strong> — returns command-name candidates
+(verb in progress) or argument-value candidates (past the verb, via the current
+<code>Arg.completer</code>), plus a ghost <code>hint</code>. Never raises: a throwing completer
+contributes nothing. Each <code>Completion</code> carries a <code>source</code> so the frontends tint
+by origin.</p>
+<p><strong>Boot loading</strong> — builtins register on package import. At each app boot the
+frontend calls <code>import_plugins(cfg)</code> (registers <code>@command</code>s along with
+<code>@workflow</code>/<code>@hook</code>/<code>@tool</code>) and <code>load_prompt_commands(root)</code> (registers
+<code>.aegis/commands/*.md</code>). Boot-load only; editing a <code>.md</code> or a plugin takes effect
+on the next start (detail:
+<a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<h3 id="argument-grammar">Argument grammar<a class="headerlink" href="#argument-grammar" title="Permanent link">&para;</a></h3>
+<p><code>parse(spec, argstr)</code> binds flags and positionals in one left-to-right pass
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design/">2A</a>):</p>
+<ul>
+<li><strong>Flags lead (and may trail).</strong> <code>--flag</code>, <code>--flag=value</code>, <code>--flag value</code>; a
+  <code>takes_value=False</code> flag is a boolean presence flag. An unknown <code>--flag</code> is an
+  error.</li>
+<li><strong>Non-greedy positionals</strong> take one <code>shlex</code>-style token each, so quoting works
+  (<code>/foo "two words"</code> → one positional).</li>
+<li><strong>A trailing <code>greedy</code> positional</strong> (only the last may be greedy) takes the raw,
+  stripped remainder verbatim — quotes and inner <code>--x</code> survive — so free-text
+  prompts pass through intact.</li>
+<li>Missing required positional, unknown flag, value-less value-flag, unterminated
+  quote, or a leftover token with no greedy sink → <code>ArgError</code> (its message is
+  the human-facing usage error).</li>
+</ul>
+<h2 id="the-three-sources">The three sources<a class="headerlink" href="#the-three-sources" title="Permanent link">&para;</a></h2>
+<p><strong>Builtins</strong> (<code>commands/builtins/</code>, <code>source="builtin"</code>) register at package
+import — one module per family, protected from being shadowed. The shipped set
+(detail: <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design/">2B</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/help</code></td>
+<td>List every command (<code>usage — summary</code>), grouped by source.</td>
+</tr>
+<tr>
+<td><code>/sessions</code></td>
+<td>List live agent sessions; mark the active one.</td>
+</tr>
+<tr>
+<td><code>/agents [add … \| remove &lt;slug&gt;]</code></td>
+<td>List / add / remove agent profiles.</td>
+</tr>
+<tr>
+<td><code>/spawn &lt;agent&gt; [prompt]</code></td>
+<td>Start a new top-level agent with an optional opening prompt.</td>
+</tr>
+<tr>
+<td><code>/queues [new &lt;name&gt; [agent] [--ephemeral]]</code></td>
+<td>List / create queues (persisted, or ephemeral in the live manager only).</td>
+</tr>
+<tr>
+<td><code>/enqueue &lt;queue&gt; &lt;payload&gt;</code></td>
+<td>Drop a task on a queue.</td>
+</tr>
+<tr>
+<td><code>/groups [status \| dissolve &lt;name&gt;]</code></td>
+<td>List / inspect / dissolve agent groups.</td>
+</tr>
+<tr>
+<td><code>/schedules [show \| enable \| disable \| remove \| logs &lt;name&gt;]</code></td>
+<td>List / inspect scheduled workflows.</td>
+</tr>
+<tr>
+<td><code>/terminals [new \| run \| close &lt;name&gt; [cmd]]</code></td>
+<td>List / spawn / run / close shared terminals.</td>
+</tr>
+<tr>
+<td><code>/rename &lt;new&gt;</code></td>
+<td>Rename the current session.</td>
+</tr>
+<tr>
+<td><code>/close [handle]</code></td>
+<td>Close the current or a named session.</td>
+</tr>
+<tr>
+<td><code>/themes [name]</code></td>
+<td>List themes / switch theme (<code>effect: theme</code>).</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>Cosmetically clear the transcript (<code>effect: clear</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>User prompt commands</strong> (<code>commands/prompt_loader.py</code>, <code>source="user"</code>) come
+from <code>.aegis/commands/&lt;name&gt;.md</code>. Frontmatter <code>description</code> → <code>summary</code>,
+<code>argument-hint</code> → <code>usage</code>; the body is the template. Each is given a single
+greedy positional (<code>arguments</code>) so the handler receives the raw rest-of-line and
+<code>expand()</code> does its own <code>$1..$9</code>/<code>$ARGUMENTS</code> splitting. The handler returns a
+<code>deliver</code> effect carrying the expanded text; a bad <code>@file</code> include returns an
+error result and reaches the agent not at all (detail:
+<a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<p><strong>Plugin commands</strong> (<code>commands/decorator.py</code>, <code>source="plugin"</code>) are the fourth
+plugin primitive beside <code>@workflow</code>/<code>@hook</code>/<code>@tool</code>, auto-registered on the same
+<code>import_plugins()</code> sweep. A <code>@command</code> handler is an ordinary control command
+returning a <code>CommandResult</code> (detail:
+<a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>;
+plugin substrate: <a href="../plugins/">plugins.md</a>).</p>
+<h2 id="discovery-palette">Discovery palette<a class="headerlink" href="#discovery-palette" title="Permanent link">&para;</a></h2>
+<p>Typing <code>/</code> raises an inline <strong>drop-up</strong> above the input that offers fuzzy-matched
+commands, then their subverbs and live argument values (agent / session / queue /
+group / schedule / terminal / theme names), with a ghost usage hint. It works
+identically in both frontends because both render the output of one
+<code>complete()</code>; the TUI mounts a <code>CommandPalette</code> widget and the web renders a
+drop-up <code>&lt;div&gt;</code> from a <code>complete</code> RPC. Argument values are enumerated through the
+<code>Arg.completer</code> seam — a static tuple (subverbs) or a callable of the bridge
+(dynamic names). Completions are tinted by <code>source</code>: builtin = accent, user =
+success/green, plugin = working/amber (detail:
+<a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2d-command-palette-design/">2D</a>,
+source-coloring in
+<a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a>).</p>
+<p>Keys while the panel is open: Up/Down move the highlight (overriding history
+recall), Tab/Enter accept and splice, Esc dismisses; Enter with the panel closed
+submits.</p>
+<h2 id="data-model">Data model<a class="headerlink" href="#data-model" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>SlashCommand(name, summary, usage, run, source, spec)</code></strong> — the registered
+  unit. <code>name</code> is unique and lowercased; <code>source ∈ {builtin, user, plugin}</code>;
+  <code>spec</code> is an <code>ArgSpec</code>.</li>
+<li><strong><code>CommandResult(ok, title, body, effect)</code></strong> — a handler's return. <code>ok=False</code>
+  renders as an error block; <code>effect</code> is the frontend side-effect channel.</li>
+<li><strong><code>CommandContext(bridge, handle)</code></strong> — the capability surface + calling handle
+  handed to every handler.</li>
+<li><strong><code>ArgSpec(positionals, flags)</code></strong> / <strong><code>Arg</code></strong> / <strong><code>Flag</code></strong> / <strong><code>Args</code></strong> — the
+  argument grammar and its parsed result.</li>
+<li><strong><code>Completion(insert, label, detail, source)</code></strong> / <strong><code>Completions(items,
+  hint)</code></strong> — palette candidates and the ghost hint.</li>
+<li><strong><code>Arg.completer</code></strong> — a static <code>tuple</code> of choices or a <code>Callable[[bridge], …]</code>;
+  each choice is a bare value or a <code>(value, detail)</code> pair.</li>
+</ul>
+<h2 id="invariants">Invariants<a class="headerlink" href="#invariants" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Every command in <code>REGISTRY</code> has a unique lowercase <code>name</code>.</li>
+<li>A builtin can never be shadowed; between non-builtins, precedence is
+  <code>user &gt; plugin</code>; equal-source name collisions keep the first and warn.</li>
+<li>Re-registering the <em>same</em> command object (a reloaded <code>.md</code> file or plugin
+  module) is idempotent, not a collision.</li>
+<li>At most one positional is <code>greedy</code>, and it is the last positional.</li>
+<li>A prompt command's <code>ArgSpec</code> is exactly one optional greedy positional; its
+  handler always returns a <code>deliver</code> effect on success.</li>
+<li>A <code>deliver</code> effect never mounts a command-result block — it is sent to the
+  agent as a normal user message in both frontends.</li>
+<li><code>dispatch()</code> and <code>complete()</code> never propagate exceptions to the turn loop.</li>
+<li>The <code>commands/</code> core imports no Textual or web module.</li>
+</ul>
+<h2 id="design-spec-index">Design → spec index<a class="headerlink" href="#design-spec-index" title="Permanent link">&para;</a></h2>
+<p>In design order (system → sources → discovery). Cites the authoritative spec per
+area; superseded specs are not cited as current.</p>
+<table>
+<thead>
+<tr>
+<th>Design area</th>
+<th>Authoritative spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Concept, registry, <code>dispatch()</code>, rendering, <code>!</code>/<code>/</code>/<code>//</code> family</td>
+<td><a href="../superpowers/specs/2026-07-16-aegis-slash-commands-design/">Phase 1</a> <em>(registry + dispatch model; its hand-rolled parser is superseded by 2A)</em></td>
+</tr>
+<tr>
+<td>Typed-arg parser, <code>source</code>-tagged registry + <code>CommandCollision</code>, <code>//</code> escaping, <code>/queues</code> persistence, web-input parity</td>
+<td><a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2a-parser-resolution-design/">2A</a></td>
+</tr>
+<tr>
+<td>Full builtin coverage, plural-noun convention, <code>effect</code> channel (theme/clear)</td>
+<td><a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design/">2B</a></td>
+</tr>
+<tr>
+<td>Prompt commands (<code>.aegis/commands/*.md</code>), <code>@command</code> decorator, source precedence, <code>deliver</code> effect, palette source-coloring</td>
+<td><a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2c-prompt-and-plugin-commands-design/">2C</a></td>
+</tr>
+<tr>
+<td>Discovery palette: <code>Arg.completer</code>, <code>complete()</code>, fuzzy scorer, TUI + web drop-ups</td>
+<td><a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2d-command-palette-design/">2D</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="out-of-scope">Out of scope<a class="headerlink" href="#out-of-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Session-mutation commands</strong> (<code>/model</code>, <code>/effort</code> via resume-restart) — the
+  2B.1 slice, not yet implemented (detail:
+  <a href="../superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design/">2B</a>).</li>
+<li><strong>Live hot-reload</strong> of <code>.aegis/commands/*.md</code> and plugin commands — loading is
+  boot-time; edits need a restart.</li>
+<li><strong>Subverb-dependent argument completion</strong> — a positional's completer is chosen
+  by position, not by an earlier positional's value.</li>
+<li><strong>History / frequency ranking</strong> in the palette — fuzzy-match score only.</li>
+<li><strong>Deliberately shadowing a builtin</strong> — builtins are immutable to non-builtins.</li>
+</ul>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

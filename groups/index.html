@@ -1,0 +1,2070 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/groups/">
+      
+      
+        <link rel="prev" href="../workflows/">
+      
+      
+        <link rel="next" href="../remote/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Groups - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#agent-groups" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Groups
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-field-broadcast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four-field broadcast
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wait_all-vs-wait_any" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wait_all vs wait_any
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groupresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GroupResult
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow-python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-lens-code-audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-lens code audit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fastest-answer-race" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fastest-answer race
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-provider-consensus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-provider consensus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-and-pick-n-candidates-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generate-and-pick (N candidates → one)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#role-persona-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Role-persona panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-committees-from-a-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral committees from a workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tui-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TUI surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yaml-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        YAML configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-field-broadcast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The four-field broadcast
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wait_all-vs-wait_any" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wait_all vs wait_any
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groupresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GroupResult
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow-python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-lens-code-audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-lens code audit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fastest-answer-race" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fastest-answer race
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-provider-consensus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-provider consensus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-and-pick-n-candidates-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generate-and-pick (N candidates → one)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#role-persona-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Role-persona panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-committees-from-a-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral committees from a workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tui-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TUI surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yaml-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        YAML configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="agent-groups">Agent Groups<a class="headerlink" href="#agent-groups" title="Permanent link">&para;</a></h1>
+<p>A <strong>group</strong> is a named collection of agents that share one inbox-fanout
+channel, one broadcast-in-flight slot, and a tagged-result protocol.
+Groups give you the <em>committee</em> shape — one prompt, many parallel
+answers, one structured result — without leaving the aegis MCP plane.</p>
+<p>Where the four older primitives are:</p>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>One verb</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inbox</td>
+<td>send context to a peer</td>
+</tr>
+<tr>
+<td>Queue</td>
+<td>spawn a worker on demand</td>
+</tr>
+<tr>
+<td>Canvas</td>
+<td>collaborate on a document</td>
+</tr>
+<tr>
+<td>Terminal</td>
+<td>share a live shell</td>
+</tr>
+<tr>
+<td>Workflow</td>
+<td>deterministic Python orchestration</td>
+</tr>
+</tbody>
+</table>
+<p>Groups add a sixth: <strong>broadcast and gather</strong>.</p>
+<p>Reach for a group when:</p>
+<ul>
+<li>a question has <strong>multiple useful perspectives</strong> — a PR audited by
+  separate security, style, and logic reviewers;</li>
+<li><strong>the fastest answer wins</strong> — race two analysts; the slow one is
+  told to stop;</li>
+<li>you want <strong>consensus or contrast across providers</strong> — the same
+  prompt sent to Claude, Gemini, and OpenCode, voted or aligned;</li>
+<li>you want <strong>N candidates and pick one</strong> — generate ten outlines,
+  reduce to the best;</li>
+<li>you need a <strong>panel of role personas</strong> to react to a proposal — PM,
+  engineer, designer reading the same RFC and replying in their
+  voice.</li>
+</ul>
+<p>Full code patterns in <a href="#patterns">Patterns</a> below.</p>
+<h2 id="the-model">The model<a class="headerlink" href="#the-model" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A <code>Group</code> is identified by a unique <code>name</code> and carries an ordered list
+  of <code>members</code> (each a <code>handle</code> + the <code>profile</code> it was spawned with).</li>
+<li>A group has at most <strong>one in-flight broadcast</strong> at a time. Each
+  broadcast carries a <code>broadcast_id</code> and the four required fields:
+  <code>objective</code>, <code>output_format</code>, <code>tool_guidance</code>, <code>boundaries</code>.</li>
+<li>Each member receives the broadcast on its inbox tagged
+  <code>group:&lt;name&gt;/broadcast:&lt;id&gt;</code> and replies into the same channel.</li>
+<li>A waiter (<code>wait_all</code> or <code>wait_any</code>) collects replies, applies a
+  reducer, and returns a <code>GroupResult</code>.</li>
+<li>Group state is persisted append-only to
+  <code>.aegis/state/groups/&lt;name&gt;.jsonl</code>. Boot replays it so a restart
+  picks up the live registry.</li>
+</ul>
+<p>Groups nest at most one level deep — a parent group may contain agents
+or sub-groups, but a sub-group cannot itself contain a group.</p>
+<h2 id="the-four-field-broadcast">The four-field broadcast<a class="headerlink" href="#the-four-field-broadcast" title="Permanent link">&para;</a></h2>
+<p>Every broadcast carries four labelled fields. They show up in each
+member's inbox as a single envelope so members can read them as one
+coherent ask:</p>
+<ul>
+<li><strong>objective</strong> — what to accomplish.</li>
+<li><strong>output_format</strong> — how the reply should be shaped (free text,
+  bullet list, JSON schema reference).</li>
+<li><strong>tool_guidance</strong> — which aegis MCP tools / built-in tools the
+  member should reach for, and which to avoid.</li>
+<li><strong>boundaries</strong> — what's out of scope.</li>
+</ul>
+<p>Empty strings are allowed but the keys must all be present. Members
+who reply outside <code>output_format</code> get reduced normally; reducers can
+choose to drop malformed entries (e.g. <code>majority_vote</code> ignores
+non-equal answers).</p>
+<h2 id="wait_all-vs-wait_any">wait_all vs wait_any<a class="headerlink" href="#wait_all-vs-wait_any" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>wait_all</code></th>
+<th><code>wait_any</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Returns when</td>
+<td>every member has replied or timeout</td>
+<td>first reply, then optionally cancels losers</td>
+</tr>
+<tr>
+<td>Default reducer</td>
+<td><code>concat</code></td>
+<td><code>concat</code></td>
+</tr>
+<tr>
+<td>Loser cancel</td>
+<td>n/a</td>
+<td><code>cancel_losers=True</code> sends <code>group:&lt;name&gt;/cancel:&lt;id&gt;</code></td>
+</tr>
+<tr>
+<td>Use when</td>
+<td>you need every voice</td>
+<td>first answer wins; e.g. fastest analyst</td>
+</tr>
+</tbody>
+</table>
+<p><code>wait_any</code> cancellation is <strong>passive</strong>: a member receives the cancel
+envelope on its inbox at the next turn boundary. Members can listen
+for it and abort their work; if they ignore it, the result they
+eventually produce is dropped.</p>
+<h2 id="groupresult">GroupResult<a class="headerlink" href="#groupresult" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">GroupResult</span><span class="p">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">broadcast_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">by_member</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MemberResult</span><span class="p">]</span>   <span class="c1"># handle → result</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">reduced</span><span class="p">:</span> <span class="n">Any</span>                          <span class="c1"># reducer output</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span>                        <span class="c1"># timing, counts, reducer name</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>                      <span class="c1"># arrival order (for tiebreaks)</span>
+</code></pre></div>
+<p>Reducers (registered in <code>aegis.groups.reducers</code>):</p>
+<ul>
+<li><strong><code>concat</code></strong> — <code>\n\n</code>-joined text of every member's reply.</li>
+<li><strong><code>join_by_handle</code></strong> — <code>{handle: reply}</code> dict.</li>
+<li><strong><code>last_wins</code></strong> — the last arrival's reply.</li>
+<li><strong><code>majority_vote</code></strong> — most common reply by <code>Counter</code>; first finisher
+  wins ties.</li>
+</ul>
+<p>Custom reducers register via <code>register_reducer(name, fn)</code>. The signature
+is <code>(by_member, order) -&gt; Any</code>.</p>
+<h2 id="mcp-surface">MCP surface<a class="headerlink" href="#mcp-surface" title="Permanent link">&para;</a></h2>
+<p>All tools live on the same aegis MCP server every spawned agent sees.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aegis_group_spawn</code></td>
+<td>one member at a time into a (possibly new) group</td>
+</tr>
+<tr>
+<td><code>aegis_group_spawn_mixed</code></td>
+<td>many members at once; <code>profiles=[…]</code> or <code>preset="…"</code></td>
+</tr>
+<tr>
+<td><code>aegis_group_broadcast</code></td>
+<td>send the four-field message</td>
+</tr>
+<tr>
+<td><code>aegis_group_wait_all</code></td>
+<td>collect all replies; reducer selectable</td>
+</tr>
+<tr>
+<td><code>aegis_group_wait_any</code></td>
+<td>first reply wins; cancels losers by default</td>
+</tr>
+<tr>
+<td><code>aegis_group_status</code></td>
+<td>snapshot: members, in-flight broadcast, recent results</td>
+</tr>
+<tr>
+<td><code>aegis_group_dissolve</code></td>
+<td>close every member session, drop the group</td>
+</tr>
+<tr>
+<td><code>aegis_group_rename</code></td>
+<td>rename a group; persists across replay</td>
+</tr>
+<tr>
+<td><code>aegis_group_move_member</code></td>
+<td>relocate a member between groups</td>
+</tr>
+</tbody>
+</table>
+<p><code>aegis_group_spawn_mixed(preset="&lt;name&gt;")</code> looks the profile list up
+from <code>.aegis.yaml</code>'s <code>groups.presets.&lt;name&gt;.profiles</code>. See
+<a href="../configuration/#groups">Configuration</a>.</p>
+<h2 id="workflow-python-api">Workflow Python API<a class="headerlink" href="#workflow-python-api" title="Permanent link">&para;</a></h2>
+<p>Inside <code>@workflow</code>-decorated functions the engine exposes a
+mirror of the MCP surface:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nd">@workflow</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">audit</span><span class="p">(</span><span class="n">engine</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">branch</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">handles</span> <span class="o">=</span> <span class="k">await</span> <span class="n">engine</span><span class="o">.</span><span class="n">spawn_group</span><span class="p">(</span><span class="s2">&quot;rev&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;sec&quot;</span><span class="p">,</span> <span class="s2">&quot;style&quot;</span><span class="p">,</span> <span class="s2">&quot;logic&quot;</span><span class="p">])</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">bid</span> <span class="o">=</span> <span class="k">await</span> <span class="n">engine</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="s2">&quot;rev&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="n">objective</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;audit </span><span class="si">{</span><span class="n">branch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;bullet list of issues, severity-tagged&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;prefer Read+Grep; avoid Bash&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;report only; no patches&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">engine</span><span class="o">.</span><span class="n">wait_all</span><span class="p">(</span><span class="s2">&quot;rev&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>                                   <span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;join_by_handle&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">reduced</span>
+</code></pre></div>
+<p>For one-shot committees that should evaporate after returning:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@workflow</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">quick_review</span><span class="p">(</span><span class="n">engine</span><span class="p">):</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">engine</span><span class="o">.</span><span class="n">ephemeral_group</span><span class="p">(</span><span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">])</span> <span class="k">as</span> <span class="n">g</span><span class="p">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="k">await</span> <span class="n">g</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">objective</span><span class="o">=...</span><span class="p">,</span> <span class="n">output_format</span><span class="o">=...</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="k">return</span> <span class="p">(</span><span class="k">await</span> <span class="n">g</span><span class="o">.</span><span class="n">wait_all</span><span class="p">())</span><span class="o">.</span><span class="n">reduced</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="c1"># Group is dissolved automatically on exit (success or error).</span>
+</code></pre></div>
+<p>The <code>ephemeral_group</code> context manager generates a random name, spawns
+the members, and dissolves the group when the block exits — workflow
+runs that should leave no trace.</p>
+<h2 id="patterns">Patterns<a class="headerlink" href="#patterns" title="Permanent link">&para;</a></h2>
+<p>Five patterns cover almost everything groups are good for. Each one
+maps to a different choice of waiter + reducer; the rest is just the
+four-field broadcast.</p>
+<h3 id="multi-lens-code-audit">Multi-lens code audit<a class="headerlink" href="#multi-lens-code-audit" title="Permanent link">&para;</a></h3>
+<p>Three reviewers with distinct lenses — security, style, logic — see
+the same PR. You want every voice, keyed by who said it, so a follow-up
+agent can address each one separately.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">aegis_group_spawn_mixed</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;audit&quot;</span><span class="p">,</span> <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;pm&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;sec_reviewer&quot;</span><span class="p">,</span> <span class="s2">&quot;style_reviewer&quot;</span><span class="p">,</span> <span class="s2">&quot;logic_reviewer&quot;</span><span class="p">])</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">aegis_group_broadcast</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;audit&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">objective</span><span class="o">=</span><span class="s2">&quot;review PR #214 on branch feat/rate-limit&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;markdown bullet list, each item severity-tagged &quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>                  <span class="s2">&quot;(high/med/low) and file:line-anchored&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;prefer Read + Grep; avoid Bash and Edit&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;report only — no patches, no commits&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="n">result</span> <span class="o">=</span> <span class="n">aegis_group_wait_all</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;audit&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>                              <span class="n">timeout</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>                              <span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;join_by_handle&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="c1"># result.reduced = {&quot;sec_reviewer&quot;: &quot;…&quot;, &quot;style_reviewer&quot;: &quot;…&quot;,</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="c1">#                   &quot;logic_reviewer&quot;: &quot;…&quot;}</span>
+</code></pre></div>
+<p><strong>Reducer choice.</strong> <code>join_by_handle</code> keeps reports addressable per
+reviewer. Use <code>concat</code> instead when downstream wants one flat document.</p>
+<h3 id="fastest-answer-race">Fastest-answer race<a class="headerlink" href="#fastest-answer-race" title="Permanent link">&para;</a></h3>
+<p>Two analysts read the same question; whichever finishes first is the
+answer; the loser is told to stop. Useful when a fast model is good
+enough most of the time but you want a careful model in reserve.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">aegis_group_spawn_mixed</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;quick-lookup&quot;</span><span class="p">,</span> <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;pm&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;haiku_fast&quot;</span><span class="p">,</span> <span class="s2">&quot;opus_careful&quot;</span><span class="p">])</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">aegis_group_broadcast</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;quick-lookup&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">objective</span><span class="o">=</span><span class="s2">&quot;what does worker.py:_run_turn return on harness error?&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;one-paragraph answer plus the relevant code excerpt&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;Read + Grep; one file only&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;no edits, no other files&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">winner</span> <span class="o">=</span> <span class="n">aegis_group_wait_any</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;quick-lookup&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>                              <span class="n">timeout</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>                              <span class="n">cancel_losers</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1"># winner.reduced = &quot;&lt;the fastest reply&gt;&quot;</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1"># winner.metadata[&quot;winner_handle&quot;] = &quot;haiku_fast&quot; (most of the time)</span>
+</code></pre></div>
+<p><code>cancel_losers=True</code> (default) sends a <code>group:&lt;name&gt;/cancel:&lt;id&gt;</code>
+envelope to every loser at the next turn boundary. The cancel is
+<strong>passive</strong> — well-behaved agents abort; agents that ignore it
+finish anyway and their reply is silently dropped.</p>
+<h3 id="cross-provider-consensus">Cross-provider consensus<a class="headerlink" href="#cross-provider-consensus" title="Permanent link">&para;</a></h3>
+<p>The same prompt to Claude, Gemini, and OpenCode. Vote on the answer;
+if they agree, ship; if not, you have evidence to look closer.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">aegis_group_spawn_mixed</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;oracle&quot;</span><span class="p">,</span> <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;pm&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;claude_opus&quot;</span><span class="p">,</span> <span class="s2">&quot;gemini_3&quot;</span><span class="p">,</span> <span class="s2">&quot;opencode_kimi&quot;</span><span class="p">])</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">aegis_group_broadcast</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;oracle&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">objective</span><span class="o">=</span><span class="s2">&quot;is the regex r&#39;^</span><span class="se">\\</span><span class="s2">d</span><span class="si">{4}</span><span class="s2">-</span><span class="se">\\</span><span class="s2">d</span><span class="si">{2}</span><span class="s2">-</span><span class="se">\\</span><span class="s2">d</span><span class="si">{2}</span><span class="s2">$&#39; anchored?&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;exactly one of: ANCHORED | UNANCHORED | AMBIGUOUS&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;answer from knowledge; no tools needed&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;single token only — no prose, no quoting&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="n">verdict</span> <span class="o">=</span> <span class="n">aegis_group_wait_all</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;oracle&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>                               <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>                               <span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;majority_vote&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1"># verdict.reduced = &quot;ANCHORED&quot; (if ≥ 2 agreed)</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="c1"># verdict.by_member shows each model&#39;s literal reply for audit</span>
+</code></pre></div>
+<p><strong>Reducer choice.</strong> <code>majority_vote</code> ignores entries that don't share a
+common value, so a malformed answer doesn't poison consensus. First
+finisher wins ties — surfaced in <code>result.order</code>.</p>
+<h3 id="generate-and-pick-n-candidates-one">Generate-and-pick (N candidates → one)<a class="headerlink" href="#generate-and-pick-n-candidates-one" title="Permanent link">&para;</a></h3>
+<p>Ask the same group for N different attempts at the same artifact
+(outline, function signature, error message), then keep the best by a
+custom criterion.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aegis.groups.reducers</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_reducer</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">longest_with_examples</span><span class="p">(</span><span class="n">by_member</span><span class="p">,</span> <span class="n">order</span><span class="p">):</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">by_member</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>                  <span class="k">if</span> <span class="s2">&quot;example:&quot;</span> <span class="ow">in</span> <span class="n">r</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">candidates</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="nb">len</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">register_reducer</span><span class="p">(</span><span class="s2">&quot;longest_with_examples&quot;</span><span class="p">,</span> <span class="n">longest_with_examples</span><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># spawn five attempts at the same prompt</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">aegis_group_spawn_mixed</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;outlines&quot;</span><span class="p">,</span> <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;editor&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;writer&quot;</span><span class="p">,</span> <span class="s2">&quot;writer&quot;</span><span class="p">,</span> <span class="s2">&quot;writer&quot;</span><span class="p">,</span> <span class="s2">&quot;writer&quot;</span><span class="p">,</span> <span class="s2">&quot;writer&quot;</span><span class="p">])</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="n">aegis_group_broadcast</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;outlines&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">objective</span><span class="o">=</span><span class="s2">&quot;outline a 3000-word essay on cache invalidation&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;markdown headings with one-sentence summaries; &quot;</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>                  <span class="s2">&quot;include at least one concrete worked example&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>    <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;prose only; no tools&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;≤500 words; no bibliography&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="n">pick</span> <span class="o">=</span> <span class="n">aegis_group_wait_all</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;outlines&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>                            <span class="n">timeout</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>                            <span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;longest_with_examples&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="c1"># pick.reduced = the longest outline that contained &quot;example:&quot;</span>
+</code></pre></div>
+<p><strong>Reducer choice.</strong> Custom reducers receive <code>(by_member, order)</code> and
+return anything. <code>order</code> lets you tiebreak by arrival time;
+<code>by_member</code> carries the full <code>MemberResult</code> (text, timing, status).</p>
+<h3 id="role-persona-panel">Role-persona panel<a class="headerlink" href="#role-persona-panel" title="Permanent link">&para;</a></h3>
+<p>A panel of role personas reacts to the same RFC. Each agent runs the
+same model but with a different <code>system_prompt</code> profile — PM looks at
+scope, engineer at feasibility, designer at UX. You want each voice
+intact, in role.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">aegis_group_spawn_mixed</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;rfc-panel&quot;</span><span class="p">,</span> <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;author&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;persona_pm&quot;</span><span class="p">,</span> <span class="s2">&quot;persona_eng&quot;</span><span class="p">,</span> <span class="s2">&quot;persona_ux&quot;</span><span class="p">])</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">aegis_group_broadcast</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;rfc-panel&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">objective</span><span class="o">=</span><span class="s2">&quot;react to RFC-014 (attached) from your role&#39;s lens&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;three sections — risks, what you&#39;d cut, &quot;</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>                  <span class="s2">&quot;what you&#39;d add — bullet lists, ≤120 words each&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;Read the RFC file; no other tools&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;speak in your role&#39;s voice; no general engineering &quot;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>               <span class="s2">&quot;advice that ignores your role&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">panel</span> <span class="o">=</span> <span class="n">aegis_group_wait_all</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;rfc-panel&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>                             <span class="n">timeout</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>                             <span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;join_by_handle&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="c1"># panel.reduced = {&quot;persona_pm&quot;: &quot;…&quot;, &quot;persona_eng&quot;: &quot;…&quot;,</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="c1">#                  &quot;persona_ux&quot;: &quot;…&quot;}</span>
+</code></pre></div>
+<p>This pattern composes well with <a href="../canvas/">Canvas</a>: publish the panel
+into a shared markdown file so the original author and a follow-up
+synthesizer can both read it without re-asking.</p>
+<h3 id="ephemeral-committees-from-a-workflow">Ephemeral committees from a workflow<a class="headerlink" href="#ephemeral-committees-from-a-workflow" title="Permanent link">&para;</a></h3>
+<p>Inside a workflow, <code>engine.ephemeral_group(profiles=[…])</code> spawns the
+members, runs the broadcast, returns the reduced result, and dissolves
+the group on exit — successful or not. No name to garbage-collect, no
+state file left behind.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nd">@workflow</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">quick_consensus</span><span class="p">(</span><span class="n">engine</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">engine</span><span class="o">.</span><span class="n">ephemeral_group</span><span class="p">(</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>        <span class="n">profiles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;claude_opus&quot;</span><span class="p">,</span> <span class="s2">&quot;gemini_3&quot;</span><span class="p">,</span> <span class="s2">&quot;opencode_kimi&quot;</span><span class="p">]</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">g</span><span class="p">:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="k">await</span> <span class="n">g</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>            <span class="n">objective</span><span class="o">=</span><span class="n">question</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>            <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;one of: YES | NO | UNCLEAR&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>            <span class="n">tool_guidance</span><span class="o">=</span><span class="s2">&quot;answer from knowledge; no tools&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>            <span class="n">boundaries</span><span class="o">=</span><span class="s2">&quot;single token only&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>        <span class="k">return</span> <span class="p">(</span><span class="k">await</span> <span class="n">g</span><span class="o">.</span><span class="n">wait_all</span><span class="p">(</span><span class="n">reducer</span><span class="o">=</span><span class="s2">&quot;majority_vote&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">reduced</span>
+</code></pre></div>
+<h2 id="tui-surface">TUI surface<a class="headerlink" href="#tui-surface" title="Permanent link">&para;</a></h2>
+<p>A group appears as a top-row tab labelled <code>▣ &lt;name&gt; [&lt;active&gt;/&lt;total&gt; &lt;emoji&gt;]</code>.</p>
+<ul>
+<li><code>▣ reviewers [2/3 ⏳]</code> — three members, two busy, one broadcast in flight.</li>
+<li><code>▣ reviewers [0/3 ✓]</code> — three members, all idle.</li>
+<li>The emoji aggregates member states: <code>✓</code> (all idle), <code>⏳</code> (any busy),
+  <code>⚠</code> (any errored), <code>⛔</code> (any lost).</li>
+</ul>
+<p>Inside a group tab, the dashboard renders three stacked panels:
+<strong>Members</strong>, <strong>Current broadcast</strong>, <strong>Recent broadcasts</strong>.</p>
+<p>The keybinds are scoped:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ctrl+G</code></td>
+<td>open the lasso modal (multi-select root agents → form a group)</td>
+</tr>
+<tr>
+<td><code>Ctrl+B</code></td>
+<td>open the four-field broadcast composer (group tab only)</td>
+</tr>
+<tr>
+<td><code>Ctrl+W</code></td>
+<td>confirm-and-dissolve the focused group</td>
+</tr>
+<tr>
+<td><code>Ctrl+R</code></td>
+<td>rename the focused group</td>
+</tr>
+<tr>
+<td><code>Ctrl+T</code></td>
+<td>new agent tab</td>
+</tr>
+<tr>
+<td><code>Ctrl+Shift+T</code></td>
+<td>new group tab</td>
+</tr>
+</tbody>
+</table>
+<h2 id="yaml-configuration">YAML configuration<a class="headerlink" href="#yaml-configuration" title="Permanent link">&para;</a></h2>
+<p>Inline in <code>.aegis.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">groups</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">defaults</span><span class="p">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">broadcast_timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="nt">default_reducer</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">join_by_handle</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">presets</span><span class="p">:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="nt">code_audit</span><span class="p">:</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">      </span><span class="nt">profiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">sec</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">style</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">logic</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Overlay per-preset in <code>.aegis/groups/&lt;name&gt;.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># .aegis/groups/code_audit.yaml</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">profiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">sec</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">style</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">logic</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Inline + overlay collisions on a preset name are fail-loud — one source
+of truth per entry, same rule as queues and schedules.</p>
+<h2 id="file-layout">File layout<a class="headerlink" href="#file-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>src/aegis/groups/
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  models.py        # Group, MemberRef, GroupResult, MemberResult
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  registry.py      # in-memory map + tracker; event emits
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>  reducers.py      # concat, join_by_handle, last_wins, majority_vote
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>  runtime.py       # broadcast / wait_all / wait_any
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>  persistence.py   # JSONL log + read/write + replay
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>  wiring.py        # spawn_many / spawn_group sugars
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>  bridge.py        # GroupsBridge implementation
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>src/aegis/tui/groups/
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>  state.py         # GroupTabState + aggregate-state emoji
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>  dashboard.py     # GroupDashboard widget + render_dashboard
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

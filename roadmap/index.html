@@ -1,0 +1,2059 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/roadmap/">
+      
+      
+        <link rel="prev" href="../api/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Roadmap - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#roadmap" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Roadmap
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#shipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shipped
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Shipped">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v0140-2026-05-28-current" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.14.0 — 2026-05-28 (current)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0130-2026-05-27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.13.0 — 2026-05-27
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0120-2026-05-27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.12.0 — 2026-05-27
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v011x-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.11.x — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0100-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.10.0 — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v090-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.9.0 — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v08x-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.8.x — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v07x-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.7.x — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v060-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.0 — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v05x-2026-05-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.5.x — 2026-05-23
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v040-2026-05-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.4.0 — 2026-05-21
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v030-2026-05-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.0 — 2026-05-21
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v020-2026-05-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.0 — 2026-05-18
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v010-2026-05-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.0 — 2026-05-18
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Next">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-sensitive-june-2026-billing-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time-sensitive (June 2026 billing changes)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#designed-not-yet-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Designed, not yet built
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#active-polish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active polish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#more-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        More drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#larger-arcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Larger arcs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#shipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shipped
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Shipped">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v0140-2026-05-28-current" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.14.0 — 2026-05-28 (current)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0130-2026-05-27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.13.0 — 2026-05-27
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0120-2026-05-27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.12.0 — 2026-05-27
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v011x-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.11.x — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v0100-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.10.0 — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v090-2026-05-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.9.0 — 2026-05-26
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v08x-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.8.x — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v07x-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.7.x — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v060-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.0 — 2026-05-25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v05x-2026-05-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.5.x — 2026-05-23
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v040-2026-05-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.4.0 — 2026-05-21
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v030-2026-05-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.0 — 2026-05-21
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v020-2026-05-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.0 — 2026-05-18
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v010-2026-05-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.0 — 2026-05-18
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Next">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-sensitive-june-2026-billing-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time-sensitive (June 2026 billing changes)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#designed-not-yet-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Designed, not yet built
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#active-polish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active polish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#more-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        More drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#larger-arcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Larger arcs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h1>
+<p>Newest first. Patch releases bundle under their minor parent.</p>
+<h2 id="shipped">Shipped<a class="headerlink" href="#shipped" title="Permanent link">&para;</a></h2>
+<h3 id="v0140-2026-05-28-current">v0.14.0 — 2026-05-28 <em>(current)</em><a class="headerlink" href="#v0140-2026-05-28-current" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Workspace recovery is complete.</strong> Every ConversationPane
+  (claude via <code>claude --resume</code>; gemini / opencode via ACP
+  <code>loadSession</code>), every TerminalTab, and every FileTab restore on
+  relaunch from a shared <code>workspace.json</code> snapshot. <code>Ctrl+Q</code> and
+  crash exits flush a final snapshot so session_ids latched
+  mid-turn reach disk.</li>
+<li><strong>YAML-backed model registry.</strong> Prices + context windows + the
+  picker's model lineup all live in <code>src/aegis/data/models.yaml</code>,
+  with a 24h background fetch from
+  <code>raw.githubusercontent.com/apiad/aegis/main/…</code> keeping
+  installed copies current without a release. <code>aegis models
+  refresh / clear / list</code> for manual overrides;
+  <code>scripts/refresh-models.py</code> regenerates the bundled YAML from
+  models.dev (the catalog OpenCode itself consults).</li>
+<li><strong>AddAgentModal: registry-backed model picker.</strong> Provider Select
+  drives a Model Select sourced from the registry; <code>&lt;custom&gt;</code>
+  reveals an Input for arbitrary model names.</li>
+<li><strong>Catalog corrections.</strong> Claude Opus 4.7 prices at $5 / $25 (not
+  the legacy $15 / $75); Sonnet 4.6 has a 1M context window;
+  Gemini IDs match <code>ai.google.dev</code>; OpenCode entries use the
+  <code>&lt;vendor&gt;/&lt;model-id&gt;</code> form opencode writes in its own config.</li>
+<li><strong>Live USD cost segment</strong> in the status line, adaptive
+  <code>X.Y¢</code> / <code>N¢</code> / <code>$X.XX</code> formatting.</li>
+<li><strong>Fix: ACP usage mapping.</strong> Gemini and OpenCode sessions
+  populate every status-line metric (↑↓ tokens, ctx %, $ cost) —
+  the driver now reads <code>PromptResponse.usage</code> directly instead
+  of the legacy <code>field_meta["quota"]["token_count"]</code> path that
+  never reached <code>Result.usage</code>.</li>
+</ul>
+<h3 id="v0130-2026-05-27">v0.13.0 — 2026-05-27<a class="headerlink" href="#v0130-2026-05-27" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>MCP config-edit surface.</strong> Spawned agents can mutate <code>.aegis.yaml</code>
+  from inside through 12 new MCP tools (4 reads + 8 writes — add/remove
+  agents, queues, plugin dirs, schedule toggles), going through the same
+  comment-preserving validated atomic-write path as the <code>aegis config</code>
+  CLI. Additive paths hot-register on the live <code>QueueManager</code> / agent
+  map / plugin loader so an agent can declare a queue and enqueue to
+  it within one <code>aegis serve</code> session.</li>
+<li><strong>Live context-size meter.</strong> Status-line metrics gained
+  <code>ctx Nk (P%)</code> segment — current turn's true input against the
+  model's context window (Opus 4.x at 1M, Sonnet/Haiku at 200k,
+  Gemini at 1M).</li>
+</ul>
+<h3 id="v0120-2026-05-27">v0.12.0 — 2026-05-27<a class="headerlink" href="#v0120-2026-05-27" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>.aegis.yaml</code> is the single config substrate.</strong> Legacy <code>.aegis.py</code>
+  removed; legacy <code>aegis init</code> retired (bootstrap is now the TUI
+  ConfigPanel, opened automatically in an empty directory).</li>
+<li><strong><code>aegis config</code> CLI.</strong> Scriptable, idempotent subcommands for every
+  authorable section: <code>show / agent / queue / telegram /
+  default-agent / plugin-dir</code>. Each writing verb routes through
+  ruamel.yaml so comments survive, validates the prospective body via
+  <code>yaml_loader.load_config</code> before persisting.</li>
+<li><strong>TUI ConfigPanel</strong> (<code>F2</code>) — live <code>.aegis.yaml</code> editor with an
+  AddAgent modal; same edit helpers back the CLI.</li>
+</ul>
+<h3 id="v011x-2026-05-26">v0.11.x — 2026-05-26<a class="headerlink" href="#v011x-2026-05-26" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>0.11.2 — File picker UX.</strong> Background <code>FileIndexer</code> (watchdog +
+  walk) starts on app load — picker opens instantly. <code>CopyableBlock</code>:
+  click = copy, ctrl+click = open file from backtick token.</li>
+<li><strong>0.11.1 — File viewer/editor.</strong> New <code>FileTab</code> TUI tab type with
+  tree-sitter syntax highlighting; <code>Ctrl+O</code> fuzzy picker; clicking a
+  backtick-wrapped token opens the picker pre-filled. MCP tool
+  <code>aegis_view_file(path)</code> lets agents surface a file to the operator
+  mid-task. VIEW mode default; EDIT mode toggled with <code>e</code>.</li>
+<li><strong>0.11.0 — Telegram renderer + correctness.</strong> HTML parse mode
+  (fenced code, bold, italic, blockquotes, links render natively).
+  Greedy chunker; replies past three parts spill to a <code>.md</code>
+  attachment via a new <code>sendDocument</code> primitive. Status message is
+  a live per-turn ticker editing on tool-use boundaries instead of
+  every 2s. Multi-observer migration: TUI and Telegram both register
+  via <code>add_event_observer</code> / <code>add_state_observer</code> /
+  <code>add_inbox_observer</code>.</li>
+</ul>
+<h3 id="v0100-2026-05-26">v0.10.0 — 2026-05-26<a class="headerlink" href="#v0100-2026-05-26" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Telegram substrate commands.</strong> Nine new chat commands
+  (<code>/queue list/show</code>, <code>/schedule list/show/run</code>, <code>/budget list/show</code>,
+  <code>/peers</code>, <code>/help</code>) wired through a command registry. Cross-host via
+  <code>@&lt;peer&gt;</code> where the substrate supports it. The pre-existing five
+  verbs (<code>/new</code>, <code>/close</code>, <code>/interrupt</code>, <code>/agents</code>, <code>/sessions</code>)
+  migrated into the same registry.</li>
+</ul>
+<h3 id="v090-2026-05-26">v0.9.0 — 2026-05-26<a class="headerlink" href="#v090-2026-05-26" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Per-queue budgets.</strong> Multi-window USD / output-token ceilings,
+  all-must-allow, enforced at enqueue time with a structured
+  rejection naming the binding constraint and an <code>unblock_at</code> ETA.
+  Cost computed from existing <code>SessionMetrics</code> via a static
+  per-(provider, model) price table. Inspection via <code>aegis budget
+  list/show</code>, <code>aegis_budget_status</code> MCP tool, and <code>GET
+  /remote/v1/budget</code>.</li>
+</ul>
+<h3 id="v08x-2026-05-25">v0.8.x — 2026-05-25<a class="headerlink" href="#v08x-2026-05-25" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>0.8.1 — Wire-callback bug fixes.</strong> <code>RemotePlaneSpec.peer_name</code>
+  added; <code>aegis_enqueue(target=…)</code> defaults <code>callback</code> to False
+  matching v0.7 semantics (True for local). Round-trip now works in
+  the documented symmetric-peers configuration.</li>
+<li><strong>0.8.0 — Wire callbacks + remote schedule control plane.</strong>
+  <code>aegis_enqueue(target="&lt;peer&gt;", callback=True)</code> delivers the
+  remote worker's final message back to the originating agent's
+  inbox over HTTP. Five new endpoints under <code>/remote/v1/schedule</code>
+  (PUT push / GET list/show / DELETE / GET logs) and five matching
+  <code>aegis_schedule_*</code> MCP tools with optional <code>target=</code>. Pushed
+  schedules land in the receiver's <code>.aegis/schedules/&lt;name&gt;.yaml</code>
+  overlay folder with a <code># pushed_from:</code> provenance comment.</li>
+</ul>
+<h3 id="v07x-2026-05-25">v0.7.x — 2026-05-25<a class="headerlink" href="#v07x-2026-05-25" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>0.7.1 — Remote-plane public surface rewrite.</strong> Dropped the
+  Telegram-as-default-return-channel framing; <code>callback_note</code> now
+  reads honestly that v1 has no wire return channel. No code-behavior
+  changes.</li>
+<li><strong>0.7.0 — Remote plane.</strong> Server-to-server enqueue over HTTP.
+  <code>aegis serve</code> exposes a second HTTP plane (distinct from the
+  loopback MCP plane); <code>aegis_enqueue(target=…)</code> routes to a
+  configured peer's <code>/remote/v1/enqueue</code>. Two new <code>.aegis.yaml</code>
+  sections — <code>remotes</code> (outbound peers + optional bearer tokens) and
+  <code>remote_plane</code> (inbound bind + token / IP allowlists). Recommended
+  deployment binds the plane to a private overlay network so the
+  network itself is the outermost trust boundary.</li>
+</ul>
+<h3 id="v060-2026-05-25">v0.6.0 — 2026-05-25<a class="headerlink" href="#v060-2026-05-25" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Scheduler substrate.</strong> Cron-style scheduled workflow execution
+  alongside <code>QueueManager</code> + <code>InboxRouter</code>. Declarative
+  <code>.aegis.yaml</code> with drop-in <code>.aegis/schedules/&lt;name&gt;.yaml</code>
+  overlays; triggers (<code>cron</code>, <code>fire_at</code>), lifecycles (<code>forever</code>,
+  <code>once</code>, <code>{fires: N}</code>, <code>{until}</code>), overlap policies (<code>skip</code>,
+  <code>queue</code>, <code>kill</code>), notify hooks. JSONL audit + snapshot per
+  schedule. On-boot replay closes dangling fire-requested records.
+  Hot reload via filesystem watcher: edit <code>.aegis.yaml</code> and the
+  running scheduler atomic-swaps without restart.</li>
+<li><strong>Built-in workflows.</strong> <code>prompt</code> (one-shot agent message) and
+  <code>enqueue</code> (scheduler → queue handoff).</li>
+<li><strong><code>aegis schedule</code> CLI.</strong> <code>list / show / run / enable / disable /
+  logs</code>.</li>
+<li><strong>Agent groups.</strong> Sixth coordination primitive. Named committees
+  with one in-flight broadcast slot, four-field broadcast contract
+  (<code>objective</code> / <code>output_format</code> / <code>tool_guidance</code> / <code>boundaries</code>),
+  <code>wait_all</code> + <code>wait_any</code> waiters with passive loser cancel, four
+  built-in reducers. Nine <code>aegis_group_*</code> MCP tools, mirror surface
+  on <code>WorkflowEngine</code> plus <code>engine.ephemeral_group()</code> context
+  manager.</li>
+</ul>
+<h3 id="v05x-2026-05-23">v0.5.x — 2026-05-23<a class="headerlink" href="#v05x-2026-05-23" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>0.5.1 — CI fix release.</strong> v0.5.0 was tagged but never published
+  to PyPI (two CI assertions failed against the new version string +
+  ANSI escapes). 0.5.1 is the first PyPI release of the 0.5 line.</li>
+<li><strong>0.5.0 — Live terminals + workflow catalog v1.</strong> Fifth
+  coordination primitive: PTY-backed shells with OSC 133 command-
+  boundary detection. Eight <code>aegis_term_*</code> MCP tools; TUI <code>term:&lt;name&gt;</code>
+  tab with per-command blocks and a <code>Ctrl+K</code> raw-key mode.
+  State at <code>.aegis/state/terminals/&lt;name&gt;/</code>; <code>aegis --resume</code>
+  re-spawns saved terminals as fresh shells over their existing
+  ledger. Workflow catalog: four seed workflows ship under
+  <code>aegis.workflows</code> — <code>brainstorm_to_spec</code>, <code>execute_plan</code>,
+  <code>review_branch</code>, <code>tdd_cycle</code>. Engine gained <code>ask_human</code>,
+  <code>spawn</code>/<code>close</code>, <code>checkpoint</code>/<code>resume_state</code>, <code>bash_predicate</code>,
+  <code>parallel</code>, <code>config</code>, <code>host</code>, <code>workflow_id</code>.</li>
+</ul>
+<h3 id="v040-2026-05-21">v0.4.0 — 2026-05-21<a class="headerlink" href="#v040-2026-05-21" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Queue dashboard.</strong> Always-on one-line strip (per-queue depth,
+  last in-flight worker); <code>Ctrl+D</code> full-screen modal with <code>QUEUES /
+  IN-FLIGHT / QUEUED / RECENT</code> bands and a live assistant-text tail.</li>
+<li><strong>Session persistence.</strong> <code>aegis</code> reopens the last workspace by
+  default (tabs, profiles, order, with each underlying agent session
+  genuinely resumed via provider-native resume APIs); <code>aegis --clean</code>
+  opts out.</li>
+<li><strong>Shared canvas.</strong> Third coordination primitive. <code>aegis_canvas_*</code>
+  MCP tools, file-backed markdown blackboard, per-section diff-aware
+  notifications.</li>
+</ul>
+<h3 id="v030-2026-05-21">v0.3.0 — 2026-05-21<a class="headerlink" href="#v030-2026-05-21" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Multi-provider parity via ACP.</strong> Gemini and OpenCode drivers
+  rewritten on the official <a href="https://github.com/zed-industries/agent-client-protocol">Agent Client Protocol</a>
+  Python SDK. Multi-turn, streaming, cancellation, and per-session
+  MCP injection identical across all three providers.</li>
+<li><strong>TUI polish.</strong> Per-block click-to-copy with hover tooltip; inline
+  <code>WorkingIndicator</code> (spinner + rotating verb + elapsed timer) mounted
+  inside the transcript; glued <code>ToolUse↔ToolResult</code> blocks.</li>
+<li><strong>First PyPI release</strong> as <code>aegis-harness</code>.</li>
+</ul>
+<h3 id="v020-2026-05-18">v0.2.0 — 2026-05-18<a class="headerlink" href="#v020-2026-05-18" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>MCP plane.</strong> Shared FastMCP HTTP server owned by aegis; spawned
+  agents injected with strict MCP config + primed; per-pane
+  self-reported handle. Inter-agent tools: <code>aegis_list_sessions</code>,
+  <code>aegis_list_agents</code>, <code>aegis_handoff</code>.</li>
+<li><strong>Headless.</strong> <code>aegis serve</code> + Telegram bridge.</li>
+<li><strong>Task queue v1.</strong> <code>aegis_enqueue</code> + <code>aegis_task_status</code> MCP tools,
+  <code>QueueManager</code> (FIFO + max-parallel cap + substrate-deterministic
+  dispatch + JSONL replay), <code>InboxRouter</code> (per-handle delivery with
+  universal sender tagging).</li>
+<li><strong>Workflow scaffold v1.</strong> <code>@workflow</code> decorator + auto-registry,
+  <code>WorkflowEngine</code> runtime (delegate / send / drain / spawn / close /
+  bash / log), <code>runner.run_workflow</code> with auto-drain + auto-close,
+  <code>aegis workflow list/run</code> CLI, <code>aegis_run_workflow</code> MCP tool.</li>
+</ul>
+<h3 id="v010-2026-05-18">v0.1.0 — 2026-05-18<a class="headerlink" href="#v010-2026-05-18" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>TUI foundation.</strong> CLI driving Claude Code via stream-json; full-
+  screen Textual app with multi-tab + cross-tab signalling; generated
+  alliterating handles; theme engine + Ink default; lazy session
+  start; sideways tab scroll; honest cache-aware token metrics.</li>
+</ul>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<h3 id="time-sensitive-june-2026-billing-changes">Time-sensitive (June 2026 billing changes)<a class="headerlink" href="#time-sensitive-june-2026-billing-changes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Before June 15 — Claude REPL driver.</strong> Anthropic splits
+  interactive vs programmatic billing on June 15. <code>claude -p</code> (today's
+  driver) hits the new metered credit pool from that date;
+  interactive REPL stays on the subscription bucket. A second Claude
+  driver (PTY + transcript JSONL) lands in parallel with the existing
+  one. Design:
+  <a href="https://github.com/apiad/aegis/blob/main/docs/superpowers/specs/2026-05-27-aegis-claude-repl-driver-design.md"><code>2026-05-27-aegis-claude-repl-driver-design.md</code></a>;
+  plan written, not yet executed.</li>
+<li><strong>Before June 18 — <code>GEMINI_API_KEY</code> support.</strong> Gemini CLI's personal
+  OAuth dies June 18 for AI Pro/Ultra accounts. Add optional
+  <code>api_key</code> field to <code>GeminiCLI</code> profile; inject <code>GEMINI_API_KEY</code> into
+  the subprocess env at spawn time. No driver changes; the subprocess
+  picks up the env var.</li>
+</ul>
+<h3 id="designed-not-yet-built">Designed, not yet built<a class="headerlink" href="#designed-not-yet-built" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Aegis filesystem tool surface.</strong> Six aegis-owned tools
+  (<code>aegis_bash</code>, <code>aegis_read</code>, <code>aegis_write</code>, <code>aegis_edit</code>,
+  <code>aegis_grep</code>, <code>aegis_listdir</code>) routing every agent's file and shell
+  access through the substrate. Harness-side suppression of built-in
+  tools where the harness allows it; per-agent permission framework
+  (<code>allow</code> / <code>deny</code> / <code>ask</code>) with TUI + Telegram routing. Design:
+  <a href="https://github.com/apiad/aegis/blob/main/docs/superpowers/specs/2026-05-27-aegis-fs-tool-surface-design.md"><code>2026-05-27-aegis-fs-tool-surface-design.md</code></a>.</li>
+<li><strong>Agent sandbox.</strong> Per-profile opt-in isolation primitives —
+  worktree isolation, declarative read-only / hidden filesystem
+  partitioning, outbound network block. Backend: <code>bubblewrap</code> for
+  filesystem + network (Linux-only); native <code>git worktree add</code> for
+  worktrees. Design:
+  <a href="https://github.com/apiad/aegis/blob/main/docs/superpowers/specs/2026-05-27-agent-sandbox-design.md"><code>2026-05-27-agent-sandbox-design.md</code></a>.</li>
+</ul>
+<h3 id="active-polish">Active polish<a class="headerlink" href="#active-polish" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Worker tab handle suffix</strong> (deferred from task-queue v1):
+  <code>&lt;handle&gt; · &lt;queue&gt;#&lt;task&gt;</code> in the TUI tab bar so workers are
+  visible at a glance.</li>
+<li><strong><code>aegis_cancel(task_id)</code> MCP tool.</strong> Today cancellation flows
+  through <code>aegis_handoff</code> to the worker's inbox; a dedicated tool
+  would be cleaner.</li>
+<li><strong><code>aegis_delegate</code> sync wrapper.</strong> One MCP call that does enqueue +
+  await internally for callers that want the simple sync shape.</li>
+<li><strong>Telegram delivery sanity test.</strong> Verify the substrate header
+  survives chunking and reaches the chat.</li>
+</ul>
+<h3 id="more-drivers">More drivers<a class="headerlink" href="#more-drivers" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Copilot ACP driver</strong> (after June 1 Copilot billing transition).
+  Copilot CLI supports ACP since Jan 2026: <code>copilot --acp</code> (stdio).
+  Driver is a small <code>AcpDriver</code> shim — same shape as <code>GeminiDriver</code>.
+  Auth via <code>gh auth login</code>.</li>
+<li><strong>OpenAI Codex JSON-RPC driver.</strong> Codex CLI exposes a bidirectional
+  JSON-RPC app server (<code>codex exec --json</code>). Different from ACP but
+  documented and stable. Auth: <code>OPENAI_API_KEY</code>.</li>
+<li><strong>Antigravity CLI</strong> (after Google's June 18 Gemini-CLI replacement).
+  Probe for ACP support first; if confirmed, three-line shim. If not,
+  stream-JSON probe and a custom parser.</li>
+</ul>
+<h3 id="larger-arcs">Larger arcs<a class="headerlink" href="#larger-arcs" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Sequential handoff re-scope.</strong> Original framing (vision Phase 4):
+  agent A summarises its current task state and retires; agent B
+  (potentially a different harness) is instantiated and continues
+  from where A left off. Adjacent substrate has since shipped
+  (workflow <code>send/drain/caller_handle</code>, visible inbox arrivals,
+  canvas, agent groups, remote plane). Figure out what's left vs
+  what's already in place before picking up.</li>
+<li><strong>Multi-host distribution.</strong> Laptop ↔ VPS session sharing via an
+  <code>aegis-shelld</code> daemon. The terminal-state on-disk layout was
+  deliberately designed forward-compatible for this; it's the natural
+  unlock for tmux-style real persistence of PTYs.</li>
+<li><strong>More catalog workflows.</strong> <code>bug_repro</code>, <code>refactor_safely</code>,
+  <code>ingest_to_wiki</code>, <code>distill_to_zettel</code>, <code>triage_issue</code>,
+  <code>on_ci_failure</code>, <code>on_pr_opened</code>. Each new seed firms up the engine
+  API.</li>
+<li><strong>Workflow visibility.</strong> Status band in the <code>Ctrl+D</code> dashboard
+  (running / paused-on-ask_human / done / errored) alongside queues.</li>
+<li><strong>Richer workflow primitives.</strong> Parallel branches with named joins;
+  durable replay (Temporal-style); spec-language workflows (markdown
+  plan files that workflows execute step by step).</li>
+<li><strong>Auto-checkpoint primitives.</strong> Promote heavy primitives
+  (<code>subagent</code>, <code>bash_predicate</code>, <code>parallel</code> joins) to auto-snapshot
+  so authors don't write explicit checkpoints around them.</li>
+</ul>
+<hr />
+<p>Aegis is personal-infrastructure-grade and evolves fast. Expect
+change before 1.0.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

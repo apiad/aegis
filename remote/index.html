@@ -1,0 +1,2180 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/remote/">
+      
+      
+        <link rel="prev" href="../groups/">
+      
+      
+        <link rel="next" href="../mcp/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Remote plane - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#remote-plane" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Remote plane
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-http-planes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two HTTP planes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-single-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The single endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#outbound-remotes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outbound — remotes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inbound-remote_plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbound — remote_plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-return-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion / return channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#callbacks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callbacks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-schedules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote schedules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote schedules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#http-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-verbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI verbs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-classification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source classification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#self-scheduling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-scheduling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-brainstorm-remote-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local brainstorm → remote implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cheap-local-expensive-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cheap local → expensive remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#several-machines-on-one-overlay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several machines on one overlay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-extensions-not-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future extensions (not built)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-http-planes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two HTTP planes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-single-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The single endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#outbound-remotes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outbound — remotes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inbound-remote_plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbound — remote_plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-return-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion / return channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#callbacks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Callbacks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-schedules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote schedules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote schedules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#http-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-verbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI verbs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-classification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source classification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#self-scheduling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-scheduling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-brainstorm-remote-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local brainstorm → remote implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cheap-local-expensive-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cheap local → expensive remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#several-machines-on-one-overlay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several machines on one overlay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-extensions-not-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future extensions (not built)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="remote-plane">Remote plane<a class="headerlink" href="#remote-plane" title="Permanent link">&para;</a></h1>
+<p>A <strong>remote plane</strong> lets one <code>aegis serve</code> enqueue work into another
+<code>aegis serve</code> over HTTP. One agent on one machine can hand a task off
+to another machine — typically because the work is long-running, needs
+different hardware, or should run under a different agent profile —
+while the calling agent keeps moving.</p>
+<p>By default the call is fire-and-forget: the receiver runs the worker
+on its own queue under its own config and the calling agent is not
+notified over the wire. As of v0.8.0 the caller can <strong>opt in to a
+wire callback</strong> that delivers the worker's final message back to the
+originating agent's inbox once the remote task terminates. See
+<a href="#callbacks">Callbacks</a> below.</p>
+<h2 id="the-two-http-planes">The two HTTP planes<a class="headerlink" href="#the-two-http-planes" title="Permanent link">&para;</a></h2>
+<p>Both ends run <code>aegis serve</code>. Each <code>aegis serve</code> already exposes one
+HTTP plane — the <strong>MCP plane</strong>, loopback-bound, consumed by the
+workers this serve spawned. The remote plane is a <strong>second, distinct</strong>
+plane, bound to a tailnet IP, consumed by <em>other</em> aegis serves.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>   ┌──────────────────────┐                ┌────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>   │ zion: aegis serve    │                │ vps: aegis serve       │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>   │                      │                │                        │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>   │  MCP plane (loop.)   │                │  MCP plane (loop.)     │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>   │                      │   HTTP POST    │                        │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>   │  Remote plane     ───┼───────────────▶│  Remote plane          │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>   │  (tailnet IP)        │  tailnet IP    │  (tailnet IP)          │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>   │                      │                │                        │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   │  QueueManager        │                │  QueueManager          │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>   └──────────────────────┘                └────────────────────────┘
+</code></pre></div>
+<p>The two planes never overlap. Local workers can't reach the remote
+plane (it's bound to a different address); remote callers can't reach
+the MCP plane (it's loopback). One JSON endpoint each direction.</p>
+<h2 id="the-single-endpoint">The single endpoint<a class="headerlink" href="#the-single-endpoint" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>POST /remote/v1/enqueue
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>Content-Type: application/json
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>Body:
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  {
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    &quot;queue&quot;:   &quot;implementation&quot;,
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    &quot;payload&quot;: &quot;&lt;full prompt for the worker&gt;&quot;,
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    &quot;from&quot;:    &quot;zion&quot;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  }
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>Response 200:
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  {
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    &quot;task_id&quot;:         &quot;01J...&quot;,
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    &quot;queued_position&quot;: 0
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>  }
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>Response 4xx/5xx:
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>  { &quot;error&quot;: &quot;&lt;reason&gt;&quot; }
+</code></pre></div>
+<p>The remote <code>QueueManager</code> accepts the task as if it were locally
+enqueued and records <code>enqueued_by="remote:&lt;from&gt;"</code> in its JSONL
+lifecycle log. The worker runs on the remote machine's filesystem,
+with the remote <code>.aegis.yaml</code>'s agent profiles.</p>
+<h2 id="mcp-surface">MCP surface<a class="headerlink" href="#mcp-surface" title="Permanent link">&para;</a></h2>
+<p><code>aegis_enqueue</code> grew one optional parameter:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">aegis_enqueue</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">queue</span><span class="p">:</span>       <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">payload</span><span class="p">:</span>     <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">from_handle</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">callback</span><span class="p">:</span>    <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span>  <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>   <span class="c1"># default depends on target (see below)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">target</span><span class="p">:</span>      <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>   <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span>
+</code></pre></div>
+<ul>
+<li><code>target=None</code> (default): the existing local-enqueue path. <code>callback</code>
+  defaults to <strong>True</strong> — worker's final result is routed into the
+  caller's inbox.</li>
+<li><code>target="&lt;name&gt;"</code>: the substrate looks <code>&lt;name&gt;</code> up in the local
+  <code>remotes</code> config and POSTs the body to that remote's
+  <code>/remote/v1/enqueue</code>. <code>callback</code> defaults to <strong>False</strong> (v0.7
+  fire-and-forget compatibility). Pass <code>callback=True</code> explicitly to
+  request a wire-level callback — see <a href="#callbacks">Callbacks</a>.</li>
+</ul>
+<p><code>aegis_enqueue</code> with <code>target</code> set and explicit <code>callback=True</code> will
+loudly reject the call when any of the following is missing:</p>
+<ul>
+<li><code>remote_plane.peer_name</code> on the caller's serve;</li>
+<li><code>remotes[&lt;target&gt;].peer_name</code> on the caller's serve;</li>
+<li><code>remote_plane</code> block on the caller's serve at all.</li>
+</ul>
+<p>There is no silent fallback to fire-and-forget; if you ask for a
+callback and the symmetric-peer config isn't complete, the substrate
+tells you so.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>Two new top-level sections in <code>.aegis.yaml</code>. Both follow the same
+inline-plus-overlay pattern as <code>agents</code>, <code>queues</code>, and <code>schedules</code>.</p>
+<h3 id="outbound-remotes">Outbound — <code>remotes</code><a class="headerlink" href="#outbound-remotes" title="Permanent link">&para;</a></h3>
+<p>The list of remotes this serve is willing to call.</p>
+<p>Inline in <code>.aegis.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">remotes</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">vps</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://100.64.0.5:8556</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="c1"># optional bearer token (otherwise tailnet trust only)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">token</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;secret&gt;&quot;</span>
+</code></pre></div>
+<p>Or split into overlay files at <code>.aegis/remotes/&lt;name&gt;.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># .aegis/remotes/vps.yaml</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://100.64.0.5:8556</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">token</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;secret&gt;&quot;</span>
+</code></pre></div>
+<p>Same fail-loud rule as queues and schedules: a name appearing in both
+inline and an overlay aborts boot.</p>
+<p><code>url</code> must include scheme and host. <code>http://</code> over a tailnet is fine —
+WireGuard already encrypts. <code>https://</code> is permitted but adds no value
+on a tailnet.</p>
+<h3 id="inbound-remote_plane">Inbound — <code>remote_plane</code><a class="headerlink" href="#inbound-remote_plane" title="Permanent link">&para;</a></h3>
+<p>The opt-in section that turns on the receive side. Default off
+(missing key or empty block).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">remote_plane</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">bind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100.64.0.5:8556</span><span class="w">          </span><span class="c1"># tailnet IP, explicit</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">peer_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">zion</span><span class="w">                </span><span class="c1"># this serve&#39;s identity on outbound callbacks</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">                                  </span><span class="c1"># — required when `remotes` is also configured</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">accept_tokens</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">              </span><span class="c1"># optional bearer-token allowlist</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">accept_from</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">                </span><span class="c1"># optional source-IP allowlist</span>
+</code></pre></div>
+<ul>
+<li><code>bind</code> is the address the inbound plane listens on. Binding to a
+  specific tailnet IP is the recommended shape; <code>0.0.0.0</code> is
+  permitted but warned at boot.</li>
+<li><code>accept_tokens</code>: when non-empty, requests must present a matching
+  <code>Authorization: Bearer &lt;token&gt;</code>. Empty list = tailnet trust only.</li>
+<li><code>accept_from</code>: when non-empty, only requests from listed source IPs
+  pass. Empty list = any source IP that reaches the port is accepted.</li>
+</ul>
+<p>Gates compose with <strong>AND</strong>: if both are configured, the request must
+satisfy both. Both empty is "anything that reaches the port is
+trusted" — appropriate for a small personal tailnet, inadequate the
+day a third device joins.</p>
+<p>There is one <code>remote_plane</code> block per serve. No overlay folder for
+this section (it's not a multi-entry table).</p>
+<h2 id="error-model">Error model<a class="headerlink" href="#error-model" title="Permanent link">&para;</a></h2>
+<p>All failure paths are loud and distinguishable. There is <strong>no silent
+fallback</strong> to local enqueue — the whole point of <code>target=vps</code> is that
+the work runs on vps; running it locally instead would defeat the
+ask.</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>What the tool returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>target</code> not in <code>remotes</code> config</td>
+<td><code>{"error": "unknown target 'vps'"}</code></td>
+</tr>
+<tr>
+<td>Remote serve unreachable (TCP refused)</td>
+<td><code>{"error": "remote 'vps' unreachable: ..."}</code></td>
+</tr>
+<tr>
+<td>Remote serve timeout</td>
+<td><code>{"error": "remote 'vps' timed out"}</code></td>
+</tr>
+<tr>
+<td>Remote 401 (token mismatch)</td>
+<td><code>{"error": "remote 'vps' rejected auth"}</code></td>
+</tr>
+<tr>
+<td>Remote 404 (queue unknown)</td>
+<td><code>{"error": "remote 'vps': unknown queue 'X'"}</code></td>
+</tr>
+<tr>
+<td>Remote 5xx</td>
+<td><code>{"error": "remote 'vps' failed: &lt;body&gt;"}</code></td>
+</tr>
+</tbody>
+</table>
+<p>Timeouts in v1 are fixed: 5s connect, 10s read. No retries — fail
+fast and let the calling agent decide what to do.</p>
+<h2 id="completion-return-channel">Completion / return channel<a class="headerlink" href="#completion-return-channel" title="Permanent link">&para;</a></h2>
+<p>The default completion model is <em>fire-and-forget</em>: the calling aegis
+gets a <code>task_id</code> back from the POST and is not notified when the
+remote task finishes. What happens on completion is then entirely up
+to the <em>receiving</em> serve's own configuration:</p>
+<ul>
+<li>If the receiver has a Telegram bridge configured, the worker's
+  final message will land in Telegram on its way out.</li>
+<li>If the receiver runs in a repo and the worker commits and pushes,
+  the work shows up in git.</li>
+<li>If the worker writes into a shared filesystem (a vault, a synced
+  folder), it shows up there.</li>
+<li>If the receiver does nothing on completion, nothing happens on
+  completion.</li>
+</ul>
+<p>For the opt-in <strong>wire callback</strong> path — final-message delivery back
+to the originating agent's inbox — see <a href="#callbacks">Callbacks</a>.</p>
+<h2 id="callbacks">Callbacks<a class="headerlink" href="#callbacks" title="Permanent link">&para;</a></h2>
+<p>When <code>aegis_enqueue(target="&lt;peer&gt;", callback=True)</code> is invoked, the
+substrate attaches <code>callback_to</code> + <code>callback_handle</code> hints to the
+wire enqueue body. On worker termination the receiving serve POSTs
+the worker's final message to <code>POST /remote/v1/callback</code> on the
+caller's plane; the caller's inbox router delivers it to the
+originating agent as a normal <code>✉ from queue:&lt;peer&gt;:&lt;name&gt;</code> envelope.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># zion: agent dispatches and keeps working</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">aegis_enqueue</span><span class="p">(</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">queue</span><span class="o">=</span><span class="s2">&quot;implementation&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">payload</span><span class="o">=</span><span class="s2">&quot;Implement the design at docs/specs/foo.md…&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;lucid-knuth&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">target</span><span class="o">=</span><span class="s2">&quot;vps&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">callback</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># → {&quot;task_id&quot;: &quot;01J…&quot;, &quot;target&quot;: &quot;vps&quot;, …}</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="c1"># …later, in lucid-knuth&#39;s transcript on zion:</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="c1">#   ✉ from queue:vps:impl · task#01J… · ok · 17:46:11Z</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1">#     Done. Implemented in branch feat/foo, pushed, CHANGELOG updated.</span>
+</code></pre></div>
+<p><strong>Symmetric config required.</strong> Both sides must define each other in
+their <code>remotes:</code> block (see <a href="#configuration">Configuration</a>). The
+caller's <code>peer_name</code> for the target is what gets sent as
+<code>callback_to</code>; the receiver looks that name up in its own
+<code>remotes:</code> to find the URL to POST the callback to.</p>
+<p><strong>Best-effort, no retry.</strong> A callback that can't reach the caller
+(network drop, caller restarted, auth rejected) is logged and
+dropped — every callback attempt is recorded in the receiver's queue
+JSONL with its outcome. Pass <code>callback=False</code> if you want the
+fire-and-forget behavior explicitly.</p>
+<h2 id="remote-schedules">Remote schedules<a class="headerlink" href="#remote-schedules" title="Permanent link">&para;</a></h2>
+<p>A small control plane lets one serve <strong>push</strong> a schedule into a peer
+and then inspect or remove it remotely. The substrate of v0.6's
+schedule hot-reload watcher picks the pushed file up the moment it
+lands; once seeded it behaves identically to an inline or overlay
+schedule.</p>
+<h3 id="http-endpoints">HTTP endpoints<a class="headerlink" href="#http-endpoints" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>PUT    /remote/v1/schedule/&lt;name&gt;          # push a schedule body
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>GET    /remote/v1/schedule                 # list (with source classification)
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>GET    /remote/v1/schedule/&lt;name&gt;          # show one
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>DELETE /remote/v1/schedule/&lt;name&gt;          # remove a pushed/overlay schedule
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>GET    /remote/v1/schedule/&lt;name&gt;/logs     # JSONL tail
+</code></pre></div>
+<p>The PUT body is the same schedule shape used in <code>.aegis.yaml</code>. The
+receiver writes it to <code>.aegis/schedules/&lt;name&gt;.yaml</code> with a
+<code># pushed_from: &lt;caller&gt;</code> provenance comment on the first line.</p>
+<h3 id="mcp-tools">MCP tools<a class="headerlink" href="#mcp-tools" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>aegis_schedule_push   (name, spec_body,        target=None)
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>aegis_schedule_list   (                        target=None)
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>aegis_schedule_show   (name,                   target=None)
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>aegis_schedule_remove (name,                   target=None)
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>aegis_schedule_logs   (name, tail=50,          target=None)
+</code></pre></div>
+<p><code>target=None</code> operates on the local scheduler; <code>target="&lt;peer&gt;"</code>
+routes through the remote-plane client. Same dict shapes either way.</p>
+<h3 id="cli-verbs">CLI verbs<a class="headerlink" href="#cli-verbs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>aegis<span class="w"> </span>schedule<span class="w"> </span>push<span class="w"> </span>&lt;name&gt;<span class="w"> </span>&lt;file.yaml&gt;<span class="w"> </span>--to<span class="w"> </span>vps<span class="w">     </span><span class="c1"># push to a peer</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>aegis<span class="w"> </span>schedule<span class="w"> </span>list<span class="w">   </span>--remote<span class="w"> </span>vps<span class="w">                  </span><span class="c1"># inspect a peer</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>aegis<span class="w"> </span>schedule<span class="w"> </span>show<span class="w">   </span>morning-briefing<span class="w"> </span>--remote<span class="w"> </span>vps
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>aegis<span class="w"> </span>schedule<span class="w"> </span>remove<span class="w"> </span>ci-watch<span class="w"> </span>--remote<span class="w"> </span>vps
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>aegis<span class="w"> </span>schedule<span class="w"> </span>logs<span class="w">   </span>nightly<span class="w"> </span>--remote<span class="w"> </span>vps<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span>
+</code></pre></div>
+<p><code>--to</code> is push-only and required for <code>schedule push</code> when targeting
+a peer; <code>--remote</code> is the inspection flag on the read/remove verbs.</p>
+<h3 id="source-classification">Source classification<a class="headerlink" href="#source-classification" title="Permanent link">&para;</a></h3>
+<p><code>list</code> and <code>show</code> responses tag each schedule with a <code>source</code> field:</p>
+<table>
+<thead>
+<tr>
+<th>source</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inline</code></td>
+<td>declared in the receiver's <code>.aegis.yaml</code> <code>schedules:</code> table</td>
+</tr>
+<tr>
+<td><code>overlay</code></td>
+<td>hand-written file under <code>.aegis/schedules/&lt;name&gt;.yaml</code></td>
+</tr>
+<tr>
+<td><code>pushed</code></td>
+<td>overlay file with a <code># pushed_from:</code> provenance comment</td>
+</tr>
+</tbody>
+</table>
+<p><code>DELETE</code> refuses to remove <code>inline</code> schedules (the receiver's own
+config owns those); <code>overlay</code> and <code>pushed</code> are removable.</p>
+<h3 id="self-scheduling">Self-scheduling<a class="headerlink" href="#self-scheduling" title="Permanent link">&para;</a></h3>
+<p>An agent can push its <em>own</em> future task into the local serve (or a
+peer) — useful when finishing the current turn requires kicking
+something off later. The standard pattern: build a <code>fire_at</code> body
+~N seconds ahead, push, exit. The substrate's hot-reload picks it
+up and fires it without further intervention.</p>
+<h2 id="security-model">Security model<a class="headerlink" href="#security-model" title="Permanent link">&para;</a></h2>
+<p>The remote plane has no opinion about your network — bind it where it
+should be reachable from, and only from. A common deployment is a
+private overlay network (Tailscale, Headscale, WireGuard,
+plain VPN); the plane binds to its interface address and only nodes
+on the overlay can reach the port. That makes the network itself the
+trust anchor and keeps the HTTP surface narrow.</p>
+<p>Two HTTP-layer gates compose on top:</p>
+<ul>
+<li><strong>Bearer tokens</strong> (<code>accept_tokens</code> on the receiver, <code>token</code> on the
+  caller). Set this when your network has callers you don't fully
+  trust, or when you want different callers to use different
+  secrets.</li>
+<li><strong>Source-IP allowlists</strong> (<code>accept_from</code>). Set this when you want
+  only specific peer IPs to be able to enqueue.</li>
+</ul>
+<p>Both gates compose with <strong>AND</strong> when set. Both empty means "anything
+that reaches the port is trusted" — appropriate when the network
+itself is the trust anchor (small tailnet, plain VPN), inadequate the
+day untrusted devices share the same network.</p>
+<p>Tokens, if used, live in <code>.aegis.yaml</code> or its overlay files. Treat
+them as secrets — keep them out of version control if the repo is
+shared, or load them from env at startup.</p>
+<h2 id="patterns">Patterns<a class="headerlink" href="#patterns" title="Permanent link">&para;</a></h2>
+<h3 id="local-brainstorm-remote-implementation">Local brainstorm → remote implementation<a class="headerlink" href="#local-brainstorm-remote-implementation" title="Permanent link">&para;</a></h3>
+<p>A long research / implementation task gets handed from an interactive
+session on one machine to an <code>aegis serve</code> on another, where it can
+run for hours under whatever profile and quota live there.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">aegis_enqueue</span><span class="p">(</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">queue</span><span class="o">=</span><span class="s2">&quot;implementation&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">payload</span><span class="o">=</span><span class="p">(</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>        <span class="s2">&quot;Implement the design at docs/specs/foo.md in this repo. &quot;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="s2">&quot;Use TDD. Commit and push as you go. Update CHANGELOG.&quot;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="p">),</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">from_handle</span><span class="o">=</span><span class="s2">&quot;lucid-knuth&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">target</span><span class="o">=</span><span class="s2">&quot;builder&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="p">)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="c1"># → {&quot;task_id&quot;: &quot;01J…&quot;, &quot;queued_position&quot;: 0, &quot;target&quot;: &quot;builder&quot;,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="c1">#    &quot;callback_note&quot;: &quot;no wire return channel in v1; completion</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1">#                      behavior is whatever the receiving serve is</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1">#                      configured to do&quot;}</span>
+</code></pre></div>
+<p>The calling agent can wrap up the conversation. How you learn the
+work is done depends on what the receiver does on completion — commits
+landing in git, a notification through whatever bridge the receiver
+runs, a file appearing in a synced folder, or simply checking back
+later.</p>
+<h3 id="cheap-local-expensive-remote">Cheap local → expensive remote<a class="headerlink" href="#cheap-local-expensive-remote" title="Permanent link">&para;</a></h3>
+<p>A small fast model on one machine handles routing and clarification
+and hands hard subproblems off to a bigger model running on another.
+The remote's <code>.aegis.yaml</code> configures <code>implementation</code> against the
+heavier model with full permissions; the calling serve doesn't even
+need to know that model exists.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># .aegis.yaml on the cheap side</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">agents</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="s2">&quot;router&quot;</span><span class="p">:</span> <span class="n">Agent</span><span class="p">(</span><span class="n">provider</span><span class="o">=</span><span class="n">ClaudeCode</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;haiku&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>                                         <span class="n">permission</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">)),</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">}</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">default_agent</span> <span class="o">=</span> <span class="s2">&quot;router&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># .aegis.yaml on the cheap side</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">remotes</span><span class="p">:</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">builder</span><span class="p">:</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://100.64.0.5:8556</span>
+</code></pre></div>
+<h3 id="several-machines-on-one-overlay">Several machines on one overlay<a class="headerlink" href="#several-machines-on-one-overlay" title="Permanent link">&para;</a></h3>
+<p>A handful of machines on the same overlay network — laptop, desktop,
+a beefy box — each running <code>aegis serve</code>. Any agent can hand off to
+any other peer it has declared as a remote.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># .aegis.yaml on the laptop</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nt">remotes</span><span class="p">:</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">desktop</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">:</span><span class="nv">//100.64.0.3</span><span class="p p-Indicator">:</span><span class="nv">8556</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">builder</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">:</span><span class="nv">//100.64.0.5</span><span class="p p-Indicator">:</span><span class="nv">8556</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="nt">remote_plane</span><span class="p">:</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">bind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100.64.0.4:8556</span>
+</code></pre></div>
+<p>When the network itself is trusted (e.g. a personal tailnet with only
+your own devices on it), no per-peer tokens are needed. Add bearer
+tokens or <code>accept_from</code> allowlists the moment that stops being true.</p>
+<h2 id="file-layout">File layout<a class="headerlink" href="#file-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>src/aegis/remote/
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  config.py             # RemoteSpec, RemotePlaneSpec dataclasses
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>  plane.py              # Starlette app + build_plane / run_plane_async
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  client.py             # httpx client: remote_enqueue, remote_callback,
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>                        # remote_schedule_push/list/show/remove/logs
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  callback_observer.py  # receiver-side worker-completion observer
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>src/aegis/scheduler/
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>  push.py               # PUT/GET/DELETE handlers + source classification
+</code></pre></div>
+<p>The <code>aegis_enqueue</code> MCP tool routes to <code>remote.client.remote_enqueue</code>
+when <code>target=</code> is set; <code>cli.serve()</code> mounts the plane via
+<code>build_plane(queue_manager, cfg.remote_plane)</code> when <code>remote_plane</code> is
+configured. The <code>aegis_schedule_*</code> tools and <code>aegis schedule</code> CLI
+verbs use the same client module when given a <code>target=</code>/<code>--to</code>/
+<code>--remote</code> peer.</p>
+<h2 id="future-extensions-not-built">Future extensions (not built)<a class="headerlink" href="#future-extensions-not-built" title="Permanent link">&para;</a></h2>
+<p>These are noted to confirm the <code>/remote/v1/</code> namespace leaves room
+for them without breaking changes:</p>
+<ul>
+<li><strong>Status query</strong> — <code>GET /remote/v1/task/&lt;id&gt;</code>.</li>
+<li><strong>Cancel</strong> — <code>POST /remote/v1/task/&lt;id&gt;/cancel</code>.</li>
+<li><strong>Cross-host <code>aegis_handoff</code></strong> — handoff to a live remote handle.
+  Semantically harder than enqueue; deferred until the use case
+  appears.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
