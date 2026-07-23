@@ -418,3 +418,94 @@ async def test_mcp_loop_stop_without_a_loop_is_harmless():
 
 def test_briefing_mentions_loop_stop():
     assert "aegis_loop_stop" in BRIEFING
+
+
+# --------------------------------------------------------------------------
+# Task 6 — the /loop slash command
+# --------------------------------------------------------------------------
+from aegis.commands import CommandContext, dispatch      # noqa: E402
+
+
+def _ctx(svc, handle="h"):
+    return CommandContext(bridge=StubBridge(svc), handle=handle)
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_arms():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    res = await dispatch("/loop fix the failing tests", _ctx(svc))
+    assert res.ok
+    assert s.loop_status()["text"] == "fix the failing tests"
+    assert s.loop_status()["max_iterations"] == 20
+    s.stop_loop()
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_max_flag():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    res = await dispatch("/loop --max 3 fix the failing tests", _ctx(svc))
+    assert res.ok
+    assert s.loop_status()["max_iterations"] == 3
+    assert s.loop_status()["text"] == "fix the failing tests"
+    s.stop_loop()
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_max_inside_text_survives():
+    """The greedy positional stops flag parsing, so --max in the instruction
+    is part of the instruction."""
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    await dispatch("/loop run bench --max 5 until it clears", _ctx(svc))
+    assert "--max 5" in s.loop_status()["text"]
+    s.stop_loop()
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_stop_is_exact_match_only():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    # More than the bare word -> an instruction, not the verb.
+    await dispatch("/loop stop the dev server and restart it", _ctx(svc))
+    assert s.loop_status()["text"] == "stop the dev server and restart it"
+    # The bare word -> the verb.
+    res = await dispatch("/loop stop", _ctx(svc))
+    assert res.ok
+    assert s.loop_status() is None
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_status_and_empty_cases():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    res = await dispatch("/loop", _ctx(svc))
+    assert res.ok and "no loop" in res.title.lower()
+    res = await dispatch("/loop stop", _ctx(svc))
+    assert res.ok is False
+    await dispatch("/loop keep going", _ctx(svc))
+    res = await dispatch("/loop", _ctx(svc))
+    assert res.ok and "keep going" in res.body
+    s.stop_loop()
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_rejects_bad_max():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    res = await dispatch("/loop --max 0 keep going", _ctx(svc))
+    assert res.ok is False
+    assert s.loop_status() is None
+
+
+@pytest.mark.asyncio
+async def test_slash_loop_arming_twice_replaces():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    await dispatch("/loop first", _ctx(svc))
+    res = await dispatch("/loop second", _ctx(svc))
+    assert res.ok
+    assert "replaced" in res.title.lower()
+    assert s.loop_status()["text"] == "second"
+    s.stop_loop()
