@@ -154,10 +154,16 @@ server and restart it` arms a loop, as typed. The one thing you cannot
 express is a loop whose entire instruction is the single word `stop`, which
 is not an instruction.
 
-Bridge surface, mirroring how `aegis_remind` reaches `AgentSession`:
-`arm_loop(handle, text, max_iterations)`, `stop_loop(handle, reason)`,
-`loop_status(handle)` on `AppBridge` — implemented on both `AegisApp` and
-the headless `SessionManager` so the TUI and `aegis serve` behave alike.
+Bridge surface, mirroring how `aegis_remind` reaches `AgentSession`: a
+`loop_service` attribute on `AppBridge` holding a `LoopService` with
+`arm(from_handle, text, max_iterations)`, `stop(from_handle, reason)` and
+`status(from_handle)` — constructed on both `AegisApp` and the headless
+`SessionManager` so the TUI and `aegis serve` behave alike, and stubbed in
+remote mode like the other local-only planes.
+
+The service is a handle→session shim over `AgentSession.arm_loop` /
+`stop_loop` / `loop_status`; it exists so the MCP plane and the command
+plane share one lookup rather than each reaching into the session map.
 
 ### Display
 
@@ -175,8 +181,9 @@ Absent when no loop is armed.
 - **`/loop stop` with no loop armed** → `ok=False`, "no loop armed".
 - **`aegis_loop_stop` from a handle with no loop** → `{"error": ...}`, not an
   exception. An agent calling it twice is harmless.
-- **`--max` non-integer or `< 1`** → rejected at parse time by the existing
-  `ArgSpec` machinery.
+- **`--max` non-integer or `< 1`** → rejected by `LoopService.arm`, not by the
+  parser. `Flag` carries no type, so `ArgSpec` hands back the raw string;
+  validating in the service means the MCP plane gets the same check for free.
 - **Session closes mid-loop** → `_loop` dies with the session; no cleanup
   path needed (in-memory, session-scoped).
 
