@@ -507,7 +507,9 @@ class AegisApp(App):
             return
         for f in sorted(ws.files, key=lambda x: x.order):
             try:
-                await self._open_file_tab(Path(f.path))
+                # foreground=False: restored file tabs must not steal the
+                # ContentSwitcher from the resumed active agent tab.
+                await self._open_file_tab(Path(f.path), foreground=False)
             except Exception:  # noqa: BLE001
                 continue
 
@@ -518,6 +520,7 @@ class AegisApp(App):
         tab = TerminalTab(self.terminal_manager, info, palette=self._palette)
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
+        tab.display = False   # see _mount_hidden note in _mount_and_kick
         await cs.mount(tab)
         self._refresh_tabbar()
 
@@ -561,6 +564,7 @@ class AegisApp(App):
         # ride add_*_observer (see core/session.py).
         self.inbox_router.bind_session(h, pane._core)
         cs = self.query_one(ContentSwitcher)
+        pane.display = False   # see _mount_hidden note in _mount_and_kick
         await cs.mount(pane)
         if foreground:
             cs.current = pane.id
@@ -804,25 +808,30 @@ class AegisApp(App):
         if path is not None:
             await self._open_file_tab(path)
 
-    async def _open_file_tab(self, path: Path) -> None:
+    async def _open_file_tab(self, path: Path, *,
+                             foreground: bool = True) -> None:
         from aegis.tui.file_tab import FileTab
         resolved = path.resolve()
         tab_id = f"filetab-{abs(hash(str(resolved)))}"
         for p in self._panes:
             if p.id == tab_id:
-                cs = self.query_one(ContentSwitcher)
-                cs.current = tab_id
-                p.unseen = False
-                p.focus_input()
-                self._refresh_tabbar()
+                if foreground:
+                    cs = self.query_one(ContentSwitcher)
+                    cs.current = tab_id
+                    p.unseen = False
+                    p.focus_input()
+                    self._refresh_tabbar()
                 return
         tab = FileTab(resolved)
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
+        tab.display = False   # see _mount_hidden note in _mount_and_kick
         await cs.mount(tab)
-        cs.current = tab.id
+        if foreground:
+            cs.current = tab.id
         self._refresh_tabbar()
-        tab.focus_input()
+        if foreground:
+            tab.focus_input()
 
     async def open_file(self, path: str) -> dict:
         """AppBridge entry point for aegis_view_file MCP tool."""
@@ -1274,6 +1283,12 @@ class _SessionManagerAdapter:
     async def _mount_and_kick(self, pane: ConversationPane,
                               opening_prompt: str | None) -> None:
         cs = self._app.query_one(ContentSwitcher)
+        # Mount hidden. ContentSwitcher hides children only at its own mount
+        # or on a `current` old→new transition — a background mount while
+        # another tab is current leaves the new pane display=True stacked on
+        # top of it (Textual's own add_content sets display=False for exactly
+        # this reason). Same defect the resume path hit in 5552e3c.
+        pane.display = False
         await cs.mount(pane)
         self._app._refresh_tabbar()
         if opening_prompt is not None:
