@@ -296,3 +296,71 @@ async def test_harness_error_stops_the_loop():
     assert s.loop_status() is None
     assert s.last_error is not None
     assert harness.event_calls == 1     # errored once, did not spin
+
+
+# --------------------------------------------------------------------------
+# Task 4 — LoopService
+# --------------------------------------------------------------------------
+from aegis.queue import LoopService          # noqa: E402
+
+
+class FakeSM:
+    def __init__(self, sessions):
+        self._by_handle = {s.handle: s for s in sessions}
+
+    def get(self, handle):
+        return self._by_handle.get(handle)
+
+
+@pytest.mark.asyncio
+async def test_service_arm_routes_to_session():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    res = svc.arm(from_handle="h", text="keep going", max_iterations=4)
+    assert res["armed"] is True
+    assert res["max_iterations"] == 4
+    assert s.loop_status()["text"] == "keep going"
+    s.stop_loop()
+
+
+def test_service_unknown_handle_errors():
+    svc = LoopService(FakeSM([]))
+    assert "error" in svc.arm(from_handle="nope", text="x")
+    assert "error" in svc.stop(from_handle="nope")
+    assert "error" in svc.status(from_handle="nope")
+
+
+@pytest.mark.asyncio
+async def test_service_stop_and_status():
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    svc = LoopService(FakeSM([s]))
+    svc.arm(from_handle="h", text="keep going", max_iterations=9)
+    assert svc.status(from_handle="h")["loop"]["max_iterations"] == 9
+    assert svc.stop(from_handle="h", reason="done")["stopped"] is True
+    assert svc.status(from_handle="h")["loop"] is None
+    assert svc.stop(from_handle="h")["stopped"] is False
+
+
+def test_service_rejects_bad_max_iterations():
+    svc = LoopService(FakeSM([]))
+    assert "error" in svc.arm(from_handle="h", text="x", max_iterations=0)
+    assert "error" in svc.arm(from_handle="h", text="x", max_iterations=-3)
+
+
+def test_service_rejects_empty_text():
+    svc = LoopService(FakeSM([]))
+    assert "error" in svc.arm(from_handle="h", text="   ")
+
+
+@pytest.mark.asyncio
+async def test_tui_bridge_exposes_loop_service(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = AegisApp({"default": _agent()}, "default", _factory, FakeMCP(),
+                   cwd=str(tmp_path))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.loop_service, LoopService)
+        handle = app._active.handle
+        assert app.loop_service.arm(
+            from_handle=handle, text="keep going")["armed"] is True
+        app.loop_service.stop(from_handle=handle)

@@ -13,7 +13,7 @@ from aegis.config import Agent, VoiceConfig
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.monitor import MonitorManager
-from aegis.queue import InboxRouter, QueueDigest, QueueManager
+from aegis.queue import InboxRouter, LoopService, QueueDigest, QueueManager
 from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
@@ -248,6 +248,8 @@ class AegisApp(App):
             self.reminder_service = getattr(
                 manager, "reminder_service",
                 _DisabledPlaneStub("reminder_service"))
+            self.loop_service = getattr(
+                manager, "loop_service", _DisabledPlaneStub("loop_service"))
             self.queue_digest = _DisabledPlaneStub("queue_digest")
             self.canvas_manager = getattr(manager, "canvas_manager",
                                           _DisabledPlaneStub("canvas_manager"))
@@ -282,6 +284,7 @@ class AegisApp(App):
         # inbox (turn-end, or after a delay). AegisApp is the session seam.
         from aegis.queue import ReminderService
         self.reminder_service = ReminderService(self.inbox_router, self)
+        self.loop_service = LoopService(self)
         # Canvas plane — shared markdown blackboards. Notifier dispatches
         # write events to subscribers via the inbox router.
         from aegis.canvas.manager import CanvasManager

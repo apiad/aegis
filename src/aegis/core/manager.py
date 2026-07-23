@@ -7,6 +7,7 @@ from pathlib import Path
 
 from aegis.core.session import AgentSession
 from aegis.mcp.bridge import SessionInfo
+from aegis.queue import LoopService
 from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
@@ -41,6 +42,7 @@ class SessionManager:
         self.queue_manager = None
         self.monitor_manager = None
         self.reminder_service = None
+        self.loop_service = LoopService(self)
         self.canvas_manager = None
         self.terminal_manager = None
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML

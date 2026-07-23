@@ -9,6 +9,7 @@ from aegis.queue.events import (
     Unsubscribe,
 )
 from aegis.queue.inbox import InboxRouter
+from aegis.queue.loop import LoopService
 from aegis.queue.manager import QueueManager
 from aegis.queue.reminder import ReminderService
 from aegis.queue.schema import (
@@ -30,6 +31,7 @@ __all__ = [
     "Delivery",
     "InboxMessage",
     "InboxRouter",
+    "LoopService",
     "Queue",
     "QueueCompleted",
     "QueueDigest",

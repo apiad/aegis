@@ -58,6 +58,7 @@ class AppBridge(Protocol):
     inbox_router: object         # InboxRouter
     monitor_manager: object      # MonitorManager
     reminder_service: object     # ReminderService
+    loop_service: object         # LoopService
     canvas_manager: object       # CanvasManager
     terminal_manager: object     # TerminalManager
     groups: object               # GroupsBridge
