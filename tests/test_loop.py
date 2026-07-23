@@ -509,3 +509,20 @@ async def test_slash_loop_arming_twice_replaces():
     assert "replaced" in res.title.lower()
     assert s.loop_status()["text"] == "second"
     s.stop_loop()
+
+
+# --------------------------------------------------------------------------
+# Task 7 — StatusBar segment
+# --------------------------------------------------------------------------
+from aegis.tui.themes import INK, aegis_colors      # noqa: E402
+from aegis.tui.widgets import StatusBar             # noqa: E402
+
+
+def test_status_bar_shows_and_hides_the_loop_segment():
+    bar = StatusBar("opus", "high", aegis_colors(INK))
+    bar._refresh()
+    assert "loop" not in bar.render_plain()
+    bar.set_loop({"text": "keep going", "iteration": 3, "max_iterations": 20})
+    assert "loop 3/20" in bar.render_plain()
+    bar.set_loop(None)
+    assert "loop" not in bar.render_plain()

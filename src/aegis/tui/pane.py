@@ -533,6 +533,9 @@ class ConversationPane(Widget):
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
         self._core.add_dispatch_observer(self._on_core_dispatch)
+        # Single primary slot (no add_loop_observer — one frontend owns the
+        # chip). Harmless on a RemotePaneCore, which has no loop of its own.
+        self._core.on_loop = self._on_loop_change
         if state_dir_path is not None:
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, handle))
@@ -1050,6 +1053,19 @@ class ConversationPane(Widget):
                 self._mount_block(
                     render_user_line(msg.body, self._palette, width),
                     msg.body)
+
+    def _on_loop_change(self, _core, state, reason: str) -> None:
+        """Drive the StatusBar loop segment, and toast on termination.
+
+        A loop that ends for any reason other than a plain operator stop —
+        capped, interrupted, killed by a harness error — should say so rather
+        than just vanishing from the status bar.
+        """
+        bars = self.query(StatusBar)
+        if bars:
+            bars.first().set_loop(state.status() if state is not None else None)
+        if state is None and reason != "stopped":
+            self.app.notify(f"loop {reason}", timeout=5.0)
 
     def _on_core_inbox(self, _core, msg) -> None:
         """Render an incoming inbox message (handoff / queue callback /
