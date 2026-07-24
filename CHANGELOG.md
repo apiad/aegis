@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-24
+
 ### Live Claude quota in the status bar
 
 - **New: the status bar shows how much of your Claude subscription is spent.**
