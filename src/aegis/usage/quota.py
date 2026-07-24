@@ -341,3 +341,31 @@ def format_quota_tiers(state: QuotaState, colors,
         full = f"[{colors.muted}]{full} ({_age(state.age_s)} old)[/]"
         short = f"[{colors.muted}]{short}[/]"
     return (full, short)
+
+
+def quota_lines(state: QuotaState, *,
+                now: datetime | None = None) -> list[str]:
+    """Full breakdown for ``/usage quota`` — every window, not just the pair
+    the status bar has room for."""
+    moment = now or datetime.now(timezone.utc)
+    if state.snapshot is None:
+        text = _FAILURE_TEXT.get(state.failure or "unreachable", "unreachable")
+        return [f"quota unavailable — {text}"]
+
+    lines: list[str] = []
+    for window in state.snapshot.windows:
+        resets = "—"
+        if window.resets_at is not None:
+            stamp = window.resets_at.astimezone().strftime("%Y-%m-%d %H:%M")
+            resets = f"{stamp} ({_countdown(window.resets_at, moment)})"
+        active = "active" if window.is_active else "idle"
+        lines.append(
+            f"{window.kind:<14} {window.percent:>5.0f}%  "
+            f"{window.severity:<8} {active:<6} resets {resets}")
+
+    footer = f"read {_age(state.age_s)} ago"
+    if state.failure:
+        footer += f" — fetch failing ({state.failure})"
+    lines.append("")
+    lines.append(footer)
+    return lines

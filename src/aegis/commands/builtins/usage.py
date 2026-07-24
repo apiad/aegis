@@ -19,7 +19,25 @@ from aegis.usage.render import (
     _money, dashboard_lines, sessions_lines, temporal_lines, tools_lines,
 )
 
-_VIEWS = ("dashboard", "tools", "sessions", "month", "dow", "hour")
+_VIEWS = ("dashboard", "tools", "sessions", "month", "dow", "hour", "quota")
+
+_SERVICE = None
+
+
+def _quota_service(ctx):
+    """The app's QuotaService when there is one, else a private instance.
+
+    ``/usage quota`` must work headlessly (web client, ``aegis serve``) where no
+    TUI app owns a service, so fall back to a module-level one.
+    """
+    global _SERVICE
+    service = getattr(getattr(ctx, "bridge", None), "quota_service", None)
+    if service is not None:
+        return service
+    if _SERVICE is None:
+        from aegis.usage.quota import QuotaService
+        _SERVICE = QuotaService()
+    return _SERVICE
 
 
 async def _usage(ctx: CommandContext, args) -> CommandResult:
@@ -27,6 +45,17 @@ async def _usage(ctx: CommandContext, args) -> CommandResult:
     if view not in _VIEWS:
         return CommandResult(False, f"unknown view: {view}",
                              "views: " + ", ".join(_VIEWS[1:]))
+    if view == "quota":
+        from aegis.usage.quota import quota_lines
+        service = _quota_service(ctx)
+        await service.refresh(force=True)
+        state = service.current()
+        title = "usage · quota"
+        if state.snapshot is not None:
+            session = state.snapshot.window("session")
+            if session is not None:
+                title = f"usage · quota · 5h {session.percent:.0f}%"
+        return CommandResult(True, title, "\n".join(quota_lines(state)))
     dmodel, dprovider = default_agent()
     report = build_report(state_dir(), default_model=dmodel,
                           default_provider=dprovider)
