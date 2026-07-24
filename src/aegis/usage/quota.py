@@ -151,3 +151,119 @@ def fetch_quota(token: str, *, timeout: float = 10.0,
         raise QuotaError("unreachable")
     return parse_quota(
         payload, now=time.monotonic() if now is None else now)
+
+
+POLL_S = 60.0          # background cadence
+STALE_DROP_S = 300.0   # how long a stale value stays on screen before it goes
+
+
+@dataclass(frozen=True)
+class QuotaState:
+    """What the bar should show right now.
+
+    ``snapshot`` and no ``failure`` is a fresh reading; ``snapshot`` with a
+    ``failure`` is the last good reading while fetches are failing; no
+    ``snapshot`` means there is nothing trustworthy to show and ``failure``
+    says why.
+    """
+    snapshot: QuotaSnapshot | None = None
+    age_s: float = 0.0
+    failure: str = ""   # "" | "no_credentials" | "unauthorized" | "unreachable"
+
+
+class QuotaService:
+    """Polls the quota endpoint on a cadence and caches the answer.
+
+    ``current()`` is synchronous so the 1-second UI tick never touches the
+    network. Fetches run in a worker thread; the endpoint is blocking stdlib
+    code and must not stall the event loop.
+    """
+
+    def __init__(self, *, clock=time.monotonic, fetch=None,
+                 token_reader=None) -> None:
+        self._clock = clock
+        self._fetch = fetch or fetch_quota
+        self._read_token = token_reader or read_token
+        self._snapshot: QuotaSnapshot | None = None
+        self._failure = ""
+        self._failing_since = 0.0
+        self._last_attempt = 0.0
+        self._task = None
+
+    @property
+    def started(self) -> bool:
+        return self._task is not None
+
+    def start(self) -> None:
+        """Begin polling. Idempotent — safe to call from every UI tick."""
+        if self._task is not None:
+            return
+        import asyncio
+        self._task = asyncio.create_task(self._loop())
+
+    async def stop(self) -> None:
+        import asyncio
+        task, self._task = self._task, None
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    async def _loop(self) -> None:
+        import asyncio
+        while True:
+            await self.refresh()
+            await asyncio.sleep(POLL_S)
+
+    async def refresh(self, *, force: bool = False,
+                      min_interval: float | None = None) -> None:
+        """Fetch unless we fetched recently.
+
+        ``min_interval`` overrides the default floor — the turn-end trigger
+        passes a shorter one so a finished turn updates the number promptly
+        without letting a burst of short turns hammer an undocumented endpoint.
+        """
+        now = self._clock()
+        floor = POLL_S if min_interval is None else min_interval
+        if not force and self._last_attempt and now - self._last_attempt < floor:
+            return
+        self._last_attempt = now
+
+        token = self._read_token()
+        if not token:
+            self._snapshot = None
+            self._failure = "no_credentials"
+            self._failing_since = 0.0
+            return
+
+        try:
+            import asyncio
+            snapshot = await asyncio.to_thread(self._fetch, token)
+        except QuotaError as exc:
+            self._note_failure(exc.kind, now)
+            return
+        except Exception:  # noqa: BLE001 — a fetch must never break the caller
+            self._note_failure("unreachable", now)
+            return
+        self._snapshot = snapshot
+        self._failure = ""
+        self._failing_since = 0.0
+
+    def _note_failure(self, kind: str, now: float) -> None:
+        self._failure = kind
+        if self._snapshot is None:
+            return
+        if not self._failing_since:
+            self._failing_since = now
+        elif now - self._failing_since >= STALE_DROP_S:
+            self._snapshot = None
+
+    def current(self) -> QuotaState:
+        age = 0.0
+        if self._snapshot is not None:
+            age = max(0.0, self._clock() - self._snapshot.fetched_at)
+        return QuotaState(
+            snapshot=self._snapshot, age_s=age, failure=self._failure)
