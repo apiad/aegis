@@ -305,3 +305,44 @@ def test_thinking_tokens_property_stays_zero_for_cost():
     m.observe_thinking(500)
     assert m.c_think == 500
     assert m.thinking_tokens == 0
+
+
+def _loaded_metrics():
+    m = SessionMetrics()
+    m.c_in, m.c_out, m.c_cached, m.c_think = 70000, 12000, 56000, 9600
+    m.tool_calls, m.tool_errors = 27, 1
+    m.context_window, m.last_true_input = 200000, 88200
+    return m
+
+
+def test_render_tiers_widest_equals_render():
+    m = _loaded_metrics()
+    assert m.render_tiers(0.0)[0] == m.render(0.0)
+
+
+def test_render_tiers_narrow_monotonically():
+    from aegis.tui.fit import plain_width
+    tiers = _loaded_metrics().render_tiers(0.0)
+    widths = [plain_width(t) for t in tiers]
+    assert widths == sorted(widths, reverse=True)
+    assert len(tiers) == 4
+
+
+def test_tier1_drops_tools():
+    tiers = _loaded_metrics().render_tiers(0.0)
+    assert "⚒" in tiers[0]
+    assert "⚒" not in tiers[1]
+
+
+def test_tier2_drops_shares_and_shortens_ctx():
+    tiers = _loaded_metrics().render_tiers(0.0)
+    assert "cached" in tiers[1]
+    assert "cached" not in tiers[2]
+    assert "think" not in tiers[2]
+    assert "ctx 44%" in tiers[2]
+
+
+def test_tier3_is_the_irreducible_core():
+    tiers = _loaded_metrics().render_tiers(0.0)
+    assert "ctx" not in tiers[3]
+    assert "↑" in tiers[3] and "↓" in tiers[3]

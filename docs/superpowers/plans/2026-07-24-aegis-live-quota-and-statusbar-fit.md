@@ -31,7 +31,7 @@
 | `src/aegis/tui/fit.py` | **new** — `plain_width`, `Segment`, `fit`: pure width-aware composition |
 | `src/aegis/tui/widgets.py` | `StatusBar` builds segments and calls `fit`; `set_quota`; `on_resize` |
 | `src/aegis/tui/sysmeter.py` | add `format_system_tiers` beside the existing `format_system` |
-| `src/aegis/tui/metrics.py` | add `Metrics.render_tiers`; `render()` delegates to tier 0 |
+| `src/aegis/tui/metrics.py` | add `SessionMetrics.render_tiers`; `render()` delegates to tier 0 |
 | `src/aegis/tui/pane.py` | `set_quota` passthrough; `refresh_metrics` pushes tiers |
 | `src/aegis/usage/quota.py` | **new** — token read, fetch, parse, `QuotaService`, rendering |
 | `src/aegis/tui/app.py` | construct `QuotaService`, visibility predicate, tick push, turn-end refresh |
@@ -233,7 +233,7 @@ git commit -m "feat(tui): width-aware status-bar composition" -- src/aegis/tui/f
 
 **Interfaces:**
 - Consumes: nothing from Task 1.
-- Produces: `Metrics.render_tiers(now: float) -> tuple[str, str, str, str]`, widest-first. `Metrics.render(now)` keeps its current signature and returns `render_tiers(now)[0]`, so every existing caller is unchanged.
+- Produces: `SessionMetrics.render_tiers(now: float) -> tuple[str, str, str, str]`, widest-first. `SessionMetrics.render(now)` keeps its current signature and returns `render_tiers(now)[0]`, so every existing caller is unchanged.
 
 Metrics is 110 of the bar's ~226 columns, so it needs four tiers rather than two.
 
@@ -243,8 +243,7 @@ Append to `tests/test_metrics.py`:
 
 ```python
 def _loaded_metrics():
-    from aegis.tui.metrics import Metrics
-    m = Metrics()
+    m = SessionMetrics()
     m.c_in, m.c_out, m.c_cached, m.c_think = 70000, 12000, 56000, 9600
     m.tool_calls, m.tool_errors = 27, 1
     m.context_window, m.last_true_input = 200000, 88200
@@ -287,9 +286,9 @@ def test_tier3_is_the_irreducible_core():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_metrics.py -q`
-Expected: FAIL — `AttributeError: 'Metrics' object has no attribute 'render_tiers'`
+Expected: FAIL — `AttributeError: 'SessionMetrics' object has no attribute 'render_tiers'`
 
-- [ ] **Step 3: Replace `Metrics.render` with a tiered builder**
+- [ ] **Step 3: Replace `SessionMetrics.render` with a tiered builder**
 
 In `src/aegis/tui/metrics.py`, replace the whole `render` method (currently lines 197-227) with:
 
@@ -362,7 +361,7 @@ git commit -m "feat(tui): metrics renders four progressively narrower tiers" -- 
 - Test: `tests/test_statusbar_segments.py`
 
 **Interfaces:**
-- Consumes: `Segment`, `fit`, `plain_width` from Task 1; `Metrics.render_tiers` from Task 2.
+- Consumes: `Segment`, `fit`, `plain_width` from Task 1; `SessionMetrics.render_tiers` from Task 2.
 - Produces: `short_model(name: str) -> str` in `aegis.tui.widgets`; every `StatusBar` setter accepts `str | Sequence[str]`; `StatusBar.set_quota(tiers)` exists but is fed in Task 7. Priorities: connection 70, state 60, loop 50, quota 40, metrics 30, identity 20, system 10.
 
 - [ ] **Step 1: Write the failing tests**

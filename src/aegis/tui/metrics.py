@@ -195,6 +195,17 @@ class SessionMetrics:
         return now - self.session_start
 
     def render(self, now: float) -> str:
+        """Widest form of the status-line metrics segment."""
+        return self.render_tiers(now)[0]
+
+    def render_tiers(self, now: float) -> tuple[str, str, str, str]:
+        """Four progressively narrower forms of the metrics segment.
+
+        T0 is everything. T1 drops the tool counter and throughput — both are
+        curiosities rather than decisions. T2 additionally drops the cached and
+        reasoning shares and reduces ``ctx`` to its percentage, which is the
+        part you act on. T3 is the irreducible core: tokens, cost, turn time.
+        """
         in_t = self.c_in + self.p_in
         out = self.c_out + self.p_out
         cached = self.c_cached + self.p_cached
@@ -207,23 +218,25 @@ class SessionMetrics:
         tool = f"⚒ {self.tool_calls}"
         if self.tool_errors:
             tool += f" ({self.tool_errors} err)"
-        ctx = ""
+        ctx = ctx_short = ""
         if self.context_window > 0:
             live = self.p_in if self._provisional else self.last_true_input
             ctx_pct = round(100 * live / self.context_window)
             ctx = f"ctx {_fmt_tokens(live)} ({ctx_pct}%) · "
+            ctx_short = f"ctx {ctx_pct}% · "
         cost = self._render_cost()
         tps = self.recent_tps()
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
+        turn = _fmt_time(self.turn_seconds(now))
+        session = _fmt_time(self.session_seconds(now))
+        head = f"{mark}↑{_fmt_tokens(in_t)}"
+        head_full = f"{head} ({pct}% cached) ↓{_fmt_tokens(out)}{think_seg} · "
+        head_bare = f"{head} ↓{_fmt_tokens(out)} · "
         return (
-            f"{mark}↑{_fmt_tokens(in_t)} ({pct}% cached) "
-            f"↓{_fmt_tokens(out)}{think_seg} · "
-            f"{tps_seg}"
-            f"{ctx}"
-            f"{cost}"
-            f"{tool} · "
-            f"{_fmt_time(self.turn_seconds(now))} / "
-            f"{_fmt_time(self.session_seconds(now))}"
+            f"{head_full}{tps_seg}{ctx}{cost}{tool} · {turn} / {session}",
+            f"{head_full}{ctx}{cost}{turn} / {session}",
+            f"{head_bare}{ctx_short}{cost}{turn} / {session}",
+            f"{head_bare}{cost}{turn}".rstrip(" ·"),
         )
 
     def _render_cost(self) -> str:
