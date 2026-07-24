@@ -90,3 +90,9 @@ def test_missing_reset_timestamp_omits_the_countdown():
         QuotaWindow("session", 91.0, "warning", None, True),), fetched_at=0.0)
     tiers = format_quota_tiers(QuotaState(snapshot=snap), COLORS, now=NOW)
     assert _plain(tiers)[0] == "⧗ 5h 91%"
+
+
+def test_rate_limited_says_so():
+    state = QuotaState(snapshot=None, failure="rate_limited")
+    assert _plain(format_quota_tiers(state, COLORS, now=NOW))[0] == (
+        "⧗ quota — rate limited")

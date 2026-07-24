@@ -159,3 +159,34 @@ async def test_start_is_idempotent_and_stop_is_safe():
     await svc.stop()
     assert svc._task is None
     await svc.stop()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_backs_off_and_ignores_force():
+    from aegis.usage.quota import BACKOFF_S
+    c = Clock()
+    svc = _service(c, [QuotaError("rate_limited"), _snap(2000.0)])
+    await svc.refresh()
+    assert svc.current().failure == "rate_limited"
+    # Neither the cadence nor an explicit force may touch it during backoff.
+    c.advance(POLL_S + 1)
+    await svc.refresh()
+    await svc.refresh(force=True)
+    assert len(svc._calls) == 1
+    # Past the backoff window it tries again.
+    c.advance(BACKOFF_S)
+    await svc.refresh()
+    assert len(svc._calls) == 2
+    assert svc.current().failure == ""
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_keeps_a_previous_snapshot_visible():
+    c = Clock()
+    svc = _service(c, [_snap(1000.0), QuotaError("rate_limited")])
+    await svc.refresh()
+    c.advance(POLL_S + 1)
+    await svc.refresh()
+    state = svc.current()
+    assert state.failure == "rate_limited"
+    assert state.snapshot is not None

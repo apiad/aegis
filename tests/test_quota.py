@@ -142,3 +142,11 @@ def test_fetch_maps_truncated_body_to_unreachable():
     with pytest.raises(QuotaError) as e:
         fetch_quota("tok", opener=opener)
     assert e.value.kind == "unreachable"
+
+
+def test_fetch_maps_429_to_rate_limited():
+    def opener(req, timeout=None):
+        raise urllib.error.HTTPError("u", 429, "slow down", {}, None)
+    with pytest.raises(QuotaError) as e:
+        fetch_quota("tok", opener=opener)
+    assert e.value.kind == "rate_limited"

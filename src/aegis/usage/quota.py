@@ -27,7 +27,10 @@ CRITICAL_AT = 95.0
 
 
 class QuotaError(Exception):
-    """A fetch failed. ``kind`` is ``unauthorized`` or ``unreachable``."""
+    """A fetch failed.
+
+    ``kind`` is ``unauthorized``, ``rate_limited`` or ``unreachable``.
+    """
 
     def __init__(self, kind: str) -> None:
         super().__init__(kind)
@@ -143,7 +146,14 @@ def fetch_quota(token: str, *, timeout: float = 10.0,
         with open_url(request, timeout=timeout) as response:
             payload = json.loads(response.read())
     except urllib.error.HTTPError as exc:
-        kind = "unauthorized" if exc.code in (401, 403) else "unreachable"
+        if exc.code in (401, 403):
+            kind = "unauthorized"
+        elif exc.code == 429:
+            # The endpoint throttles. Distinct from unreachable because the
+            # right response is to back off, not to retry on the usual cadence.
+            kind = "rate_limited"
+        else:
+            kind = "unreachable"
         raise QuotaError(kind) from exc
     except Exception as exc:  # noqa: BLE001 — every other failure is the same
         raise QuotaError("unreachable") from exc
@@ -155,6 +165,7 @@ def fetch_quota(token: str, *, timeout: float = 10.0,
 
 POLL_S = 60.0          # background cadence
 STALE_DROP_S = 300.0   # how long a stale value stays on screen before it goes
+BACKOFF_S = 300.0      # hands off the endpoint after it says 429
 
 
 @dataclass(frozen=True)
@@ -188,6 +199,7 @@ class QuotaService:
         self._failure = ""
         self._failing_since = 0.0
         self._last_attempt = 0.0
+        self._backoff_until = 0.0
         self._task = None
 
     @property
@@ -225,8 +237,13 @@ class QuotaService:
         ``min_interval`` overrides the default floor — the turn-end trigger
         passes a shorter one so a finished turn updates the number promptly
         without letting a burst of short turns hammer an undocumented endpoint.
+
+        ``force`` skips the floor but never the 429 backoff: once the endpoint
+        has asked us to stop, an explicit ``/usage quota`` must not override it.
         """
         now = self._clock()
+        if now < self._backoff_until:
+            return
         floor = POLL_S if min_interval is None else min_interval
         if not force and self._last_attempt and now - self._last_attempt < floor:
             return
@@ -251,9 +268,12 @@ class QuotaService:
         self._snapshot = snapshot
         self._failure = ""
         self._failing_since = 0.0
+        self._backoff_until = 0.0
 
     def _note_failure(self, kind: str, now: float) -> None:
         self._failure = kind
+        if kind == "rate_limited":
+            self._backoff_until = now + BACKOFF_S
         if self._snapshot is None:
             return
         if not self._failing_since:
@@ -275,6 +295,7 @@ _BAR_WINDOWS = (("session", "5h"), ("weekly_all", "wk"))
 _FAILURE_TEXT = {
     "no_credentials": "no credentials",
     "unauthorized": "auth expired",
+    "rate_limited": "rate limited",
     "unreachable": "unreachable",
 }
 
