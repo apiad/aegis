@@ -5,6 +5,40 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Live Claude quota in the status bar
+
+- **New: the status bar shows how much of your Claude subscription is spent.**
+  `⧗ 5h 64% · wk 7%` sits beside the metrics whenever a Claude agent is open —
+  the quota is an account property, so a background worker burning the window
+  while you sit in another tab is exactly the case this catches. No Claude
+  agent open means no segment and no network call at all.
+- Past 80% the window that is running out grows a reset countdown
+  (`⧗ 5h 87% ⟶2h14m`), because "when does it reset" is only a question once
+  the number is high. Amber and red follow the API's own severity rather than
+  a threshold invented here.
+- A failing fetch says so rather than going quiet: `⧗ quota — auth expired`,
+  `— no credentials`, `— rate limited`, `— unreachable`. A single failed poll
+  keeps the last numbers, dimmed, with their age; only sustained failure drops
+  them. A 429 additionally parks the poller for five minutes, and an explicit
+  `/usage quota` will not override that backoff.
+- **New: `/usage quota`** prints every window the API reports — percent,
+  severity, reset time and countdown — forcing a fresh read. Works in the web
+  client too.
+- Remote mode (`aegis --remote`) shows no quota: the agent runs on the daemon
+  host and spends that host's account, not yours.
+
+### The status bar fits the terminal
+
+- **The bar no longer clips.** It was composing ~226 columns unconditionally
+  and letting Textual cut whatever fell off the right. Segments now carry
+  progressively narrower forms and a priority, and the bar degrades from the
+  bottom until it fits — dropping what never changes (build string, model name,
+  system stats) before what does (state, loop, quota, tokens and cost).
+- Metrics narrows in four stages, shedding the tool counter and throughput
+  first, then the cached and reasoning shares, keeping tokens, cost and turn
+  time to the end. `ctx 88.2K (44%)` becomes `ctx 44%` when space is tight —
+  the percentage is the part you act on.
+
 ### Interrupts stop being destructive
 
 - **A monitor no longer cuts a busy agent's turn.** It used to interrupt any
