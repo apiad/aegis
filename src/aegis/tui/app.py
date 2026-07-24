@@ -653,11 +653,11 @@ class AegisApp(App):
         if active is not None and hasattr(active, "set_system"):
             import contextlib
 
-            from aegis.tui.sysmeter import format_system, sample_system
+            from aegis.tui.sysmeter import format_system_tiers, sample_system
             # One app-side sample per tick (not per pane); local host stats.
             with contextlib.suppress(Exception):
                 stats = sample_system(self._cwd)
-                active.set_system(format_system(stats, self._palette))
+                active.set_system(format_system_tiers(stats, self._palette))
 
     def _activate(self, idx: int) -> None:
         if not (0 <= idx < len(self._panes)):

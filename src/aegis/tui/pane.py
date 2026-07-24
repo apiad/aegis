@@ -690,13 +690,20 @@ class ConversationPane(Widget):
         # before this pane finishes mounting its StatusBar; no-op until it's up.
         bars = self.query(StatusBar)
         if bars:
-            bars.first().set_metrics(self._core.metrics.render(time.monotonic()))
+            bars.first().set_metrics(
+                self._core.metrics.render_tiers(time.monotonic()))
 
-    def set_system(self, text: str) -> None:
+    def set_system(self, text) -> None:
         """Push the system-stats segment (sampled app-side) to the StatusBar."""
         bars = self.query(StatusBar)
         if bars:
             bars.first().set_system(text)
+
+    def set_quota(self, tiers) -> None:
+        """Push the quota segment (sampled app-side) to the StatusBar."""
+        bars = self.query(StatusBar)
+        if bars:
+            bars.first().set_quota(tiers)
 
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)

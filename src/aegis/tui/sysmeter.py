@@ -48,3 +48,17 @@ def format_system(stats: SystemStats, colors) -> str:
         seg("RAM", stats.ram),
         seg("DSK", stats.disk),
     ))
+
+def format_system_tiers(stats: SystemStats, colors) -> tuple[str, str]:
+    """Widest and narrowest forms of the system segment.
+
+    The narrow form drops the labels: three numbers in a fixed order are
+    self-explanatory once you have seen the wide form once.
+    """
+
+    def val(pct: float) -> str:
+        v = f"{pct:.0f}"
+        return f"[{colors.working}]{v}[/]" if pct >= HIGH_THRESHOLD else v
+
+    short = f"{val(stats.cpu)}·{val(stats.ram)}·{val(stats.disk)}%"
+    return (format_system(stats, colors), short)

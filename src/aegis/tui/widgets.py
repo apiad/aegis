@@ -216,8 +216,26 @@ class TabBar(HorizontalScroll):
         return " ".join(str(c.content) for c in self._cells)
 
 
+def short_model(name: str) -> str:
+    """``claude-opus-4-8`` -> ``opus-4.8``; unrecognised shapes pass through."""
+    import re
+    return re.sub(r"-(\d+)-(\d+)$", r"-\1.\2", name.removeprefix("claude-"))
+
+
 class StatusBar(Static):
-    """`<agent> · <model> · <permission>`, state label, then metrics."""
+    """`<agent> · <model> · <permission>`, state label, then metrics.
+
+    Segments are composed through ``aegis.tui.fit``: each carries a tuple of
+    progressively narrower forms plus a priority, and the bar degrades from the
+    bottom of the priority order until it fits the terminal. Static segments
+    (identity, system stats) rank lowest deliberately — on a narrow terminal you
+    should lose what never changes and keep what does.
+    """
+
+    # Priority ladder — higher survives longer. Ranked by "does this change,
+    # and does it demand action", not by how interesting it is.
+    P_CONNECTION, P_STATE, P_LOOP = 70, 60, 50
+    P_QUOTA, P_METRICS, P_IDENTITY, P_SYSTEM = 40, 30, 20, 10
 
     def __init__(self, model: str, effort: str, colors) -> None:
         super().__init__(markup=True)
@@ -227,36 +245,61 @@ class StatusBar(Static):
         # (single theme); a future switch would need a set_palette that
         # rebuilds _identity (cf. pane/TabBar which do have set_palette).
         from aegis.version import BUILD
-        self._identity = (f"[dim]aegis {BUILD}[/]  "
-                          f"{model}  [{colors.accent}]{effort}[/]")
+        eff = f"[{colors.accent}]{effort}[/]"
+        self._identity: tuple[str, ...] = (
+            f"[dim]aegis {BUILD}[/]  {model}  {eff}",
+            f"{short_model(model)} {eff}",
+            short_model(model),
+        )
         self._state = AgentState.ready
-        self._metrics = ""
-        self._system: str = ""
-        self._loop: str = ""
-        self._connection_banner: str = ""
+        self._metrics: tuple[str, ...] = ()
+        self._system: tuple[str, ...] = ()
+        self._loop: tuple[str, ...] = ()
+        self._quota: tuple[str, ...] = ()
+        self._connection: tuple[str, ...] = ()
         self._plain_content: str = ""
+        # Tests set this to exercise narrow widths without a live layout.
+        self._width_override: int | None = None
+
+    @staticmethod
+    def _tiers(value) -> tuple[str, ...]:
+        """Normalise a setter argument to a tier tuple."""
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return (value,) if value else ()
+        return tuple(t for t in value if t)
 
     def on_mount(self) -> None:
+        self._refresh()
+
+    def on_resize(self) -> None:
         self._refresh()
 
     def set_state(self, state: AgentState) -> None:
         self._state = state
         self._refresh()
 
-    def set_metrics(self, text: str) -> None:
-        self._metrics = text
+    def set_metrics(self, text) -> None:
+        self._metrics = self._tiers(text)
         self._refresh()
 
-    def set_system(self, text: str) -> None:
-        """System-stats segment (CPU/RAM/disk); empty string hides it."""
-        self._system = text
+    def set_system(self, text) -> None:
+        """System-stats segment (CPU/RAM/disk); empty hides it."""
+        self._system = self._tiers(text)
+        self._refresh()
+
+    def set_quota(self, text) -> None:
+        """Claude subscription-quota segment; empty hides it."""
+        self._quota = self._tiers(text)
         self._refresh()
 
     def set_loop(self, status: dict | None) -> None:
         """Loop segment (``⟳ loop 3/20``); None hides it."""
-        self._loop = ("" if status is None else
-                      f"⟳ loop {status['iteration']}/"
-                      f"{status['max_iterations']}")
+        self._loop = () if status is None else (
+            f"⟳ loop {status['iteration']}/{status['max_iterations']}",
+            f"⟳{status['iteration']}/{status['max_iterations']}",
+        )
         self._refresh()
 
     def set_connection_state(self, up: bool, reason: str = "") -> None:
@@ -265,10 +308,8 @@ class StatusBar(Static):
         ``up=False`` renders ``⚠ disconnected — reconnecting…``; ``up=True``
         clears the indicator.  Suitable for wiring to WsClient.on_connection.
         """
-        if up:
-            self._connection_banner = ""
-        else:
-            self._connection_banner = "⚠ disconnected — reconnecting…"
+        self._connection = () if up else (
+            "⚠ disconnected — reconnecting…", "⚠ disconnected")
         self._refresh()
 
     def render_plain(self) -> str:
@@ -276,22 +317,32 @@ class StatusBar(Static):
 
         Used by tests to assert on visible text without a live Textual render.
         """
-        import re
-        raw = self._plain_content
-        # Strip Rich markup tags like [bold], [red], [/], etc.
-        return re.sub(r"\[[^\]]*\]", "", raw)
+        from aegis.tui.fit import strip_markup
+        return strip_markup(self._plain_content)
+
+    def _available_width(self) -> int:
+        if self._width_override is not None:
+            return self._width_override
+        try:
+            return int(self.size.width)
+        except Exception:  # noqa: BLE001 — not laid out yet
+            return 0
 
     def _refresh(self) -> None:
         import contextlib
-        line = f"{self._identity}    {self._state.label}"
-        if self._metrics:
-            line += f"    {self._metrics}"
-        if self._loop:
-            line += f"    {self._loop}"
-        if self._system:
-            line += f"    {self._system}"
-        if self._connection_banner:
-            line += f"    {self._connection_banner}"
+
+        from aegis.tui.fit import Segment, fit
+        # List order is visual order; priority is independent of it.
+        segments = [
+            Segment("identity", self._identity, self.P_IDENTITY),
+            Segment("state", (self._state.label,), self.P_STATE),
+            Segment("metrics", self._metrics, self.P_METRICS),
+            Segment("loop", self._loop, self.P_LOOP),
+            Segment("quota", self._quota, self.P_QUOTA),
+            Segment("system", self._system, self.P_SYSTEM),
+            Segment("connection", self._connection, self.P_CONNECTION),
+        ]
+        line = fit(segments, self._available_width())
         # Keep a plain copy for render_plain() (no Textual dependency).
         self._plain_content = line
         with contextlib.suppress(Exception):
