@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 URL = "https://api.anthropic.com/api/oauth/usage"
@@ -267,3 +267,77 @@ class QuotaService:
             age = max(0.0, self._clock() - self._snapshot.fetched_at)
         return QuotaState(
             snapshot=self._snapshot, age_s=age, failure=self._failure)
+
+
+# Window kinds worth a place on a one-line status bar, in display order.
+_BAR_WINDOWS = (("session", "5h"), ("weekly_all", "wk"))
+
+_FAILURE_TEXT = {
+    "no_credentials": "no credentials",
+    "unauthorized": "auth expired",
+    "unreachable": "unreachable",
+}
+
+
+def _countdown(target: datetime, now: datetime) -> str:
+    """``2h14m`` / ``12m`` / ``now`` — how long until the window resets."""
+    seconds = int((target - now).total_seconds())
+    if seconds <= 0:
+        return "now"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+    return f"{seconds // 86400}d{(seconds % 86400) // 3600}h"
+
+
+def _age(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    return f"{int(seconds // 3600)}h"
+
+
+def format_quota_tiers(state: QuotaState, colors,
+                       *, now: datetime | None = None) -> tuple[str, ...]:
+    """Render the quota segment, widest form first.
+
+    An empty tuple means "say nothing" — there is no reading and no failure to
+    report, which is only true before the first poll completes.
+    """
+    if state.snapshot is None:
+        if not state.failure:
+            return ()
+        text = _FAILURE_TEXT.get(state.failure, "unreachable")
+        return (f"[{colors.muted}]⧗ quota — {text}[/]",)
+
+    moment = now or datetime.now(timezone.utc)
+    stale = bool(state.failure)
+    parts: list[str] = []
+    shorts: list[str] = []
+    for kind, label in _BAR_WINDOWS:
+        window = state.snapshot.window(kind)
+        if window is None:
+            continue
+        value = f"{window.percent:.0f}%"
+        shorts.append(f"{window.percent:.0f}")
+        if not stale and window.severity == "warning":
+            value = f"[{colors.working}]{value}[/]"
+        elif not stale and window.severity == "critical":
+            value = f"[{colors.error}]{value}[/]"
+        chunk = f"{label} {value}"
+        # The reset time is only a question once the number is high.
+        if window.severity != "normal" and window.resets_at is not None:
+            chunk += f" ⟶{_countdown(window.resets_at, moment)}"
+        parts.append(chunk)
+
+    if not parts:
+        return ()
+
+    full = "⧗ " + " · ".join(parts)
+    short = "⧗ " + "/".join(shorts) + "%"
+    if stale:
+        full = f"[{colors.muted}]{full} ({_age(state.age_s)} old)[/]"
+        short = f"[{colors.muted}]{short}[/]"
+    return (full, short)
