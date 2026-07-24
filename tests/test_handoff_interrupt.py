@@ -35,7 +35,10 @@ class _Bridge:
     def list_sessions(self):
         return list(self._sessions)
 
-    async def interrupt(self, handle):
+    async def interrupt(self, handle, *, drain=True):
+        # drain=False: the handoff's own deliver() drains the buffer, so the
+        # handoff and anything already queued land as a single turn.
+        assert drain is False
         self.interrupted.append(handle)
 
 

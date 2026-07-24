@@ -265,7 +265,9 @@ class QueueManager:
 
         if worker_handle is not None and t.status != "pending":
             with contextlib.suppress(Exception):
-                await self._sm.interrupt(worker_handle)
+                # drain=False: the worker is closed on the next line — waking
+                # it with its own backlog first would be pointless.
+                await self._sm.interrupt(worker_handle, drain=False)
             with contextlib.suppress(Exception):
                 await self._sm.close(worker_handle)
             self._try_dispatch(t.queue)

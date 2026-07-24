@@ -261,7 +261,8 @@ class WSSession:
             self._reg.broadcast_session_list()
             return {"ok": True}
         if method == "interrupt_session":
-            await self._m.interrupt(params["handle"])
+            await self._m.interrupt(params["handle"],
+                                    drain=params.get("drain", True))
             return {"ok": True}
         if method == "queue_tail":
             return {"lines": self._reg.queue_tail(params["task_id"])}

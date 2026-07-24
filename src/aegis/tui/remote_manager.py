@@ -134,9 +134,10 @@ class RemotePaneCore:
     async def deliver(self, msg) -> _Delivery:
         return await self._remote.deliver(msg)
 
-    async def interrupt(self) -> None:
+    async def interrupt(self, *, drain: bool = True) -> None:
         try:
-            await self._ws.rpc("interrupt_session", {"handle": self.handle})
+            await self._ws.rpc("interrupt_session",
+                               {"handle": self.handle, "drain": drain})
         except Exception:  # noqa: BLE001
             pass
 
@@ -232,8 +233,9 @@ class RemoteSessionManager:
         self._sessions.pop(handle, None)
         self._infos.pop(handle, None)
 
-    async def interrupt(self, handle: str) -> None:
-        await self._ws.rpc("interrupt_session", {"handle": handle})
+    async def interrupt(self, handle: str, *, drain: bool = True) -> None:
+        await self._ws.rpc("interrupt_session",
+                           {"handle": handle, "drain": drain})
 
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str:

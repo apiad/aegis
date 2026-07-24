@@ -189,10 +189,10 @@ class SessionManager:
         if handle in self._mru:
             self._mru.remove(handle)
 
-    async def interrupt(self, handle: str) -> None:
+    async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         s = self.get(handle)
         if s is not None:
-            await s.interrupt()
+            await s.interrupt(drain=drain)
 
     async def close_all(self) -> None:
         for s in list(self._sessions):

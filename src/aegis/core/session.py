@@ -614,7 +614,7 @@ class AgentSession:
             pass
         self._idle_task = None
 
-    async def interrupt(self) -> None:
+    async def interrupt(self, *, drain: bool = True) -> None:
         # Interrupt means stop. Without this the loop re-fires the instant the
         # interrupted turn ends and Esc can never escape it.
         self.stop_loop("interrupted")
@@ -638,6 +638,21 @@ class AgentSession:
         self.metrics.cancel_turn(self._now())
         self._unsolicited = False
         self._emit_state(AgentState.ready, finished=False)
+        # The interrupted turn's normal exit runs _chain_if_pending; a
+        # cancelled one never gets there, so anything buffered behind it
+        # (monitor callbacks, queue results, chips) would strand until some
+        # unrelated future poke. Dispatch it as its own turn — the inbox tier
+        # only: reminders and the loop are deliberately NOT resumed by Esc.
+        # ``drain=False`` is for callers that deliver their own message right
+        # after us; their deliver() drains the whole buffer as one turn.
+        if drain and self._inbox_buffer:
+            batch = self._inbox_buffer
+            self._inbox_buffer = []
+            self._emit_dispatch(batch)
+            self._emit_state(AgentState.working, finished=False)
+            self.metrics.start_turn(self._now())
+            self._task = asyncio.create_task(
+                self._run_turn(_render_batch(batch)))
 
     async def close(self, reason: str = "explicit") -> None:
         await self._cancel_idle_watcher()

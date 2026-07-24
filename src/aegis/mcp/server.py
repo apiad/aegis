@@ -173,14 +173,16 @@ BRIEFING = (
     "synchronous shape — enqueue and block until the worker finishes, "
     "returning its result directly (no inbox callback).\n"
     "  - aegis_monitor(from_handle, description, done, progress?, fail?, "
-    "interval_s?, timeout_s?) : watch a long-running process you launched "
+    "interval_s?, timeout_s?, interrupt?) : watch a long-running process you launched "
     "(tests, build, download, dev server) WITHOUT polling. aegis does not "
     "own the process — you give it bash conditions it evaluates on an "
     "interval: `done` (exit 0 ⇒ complete), optional `fail` (exit 0 ⇒ "
     "failed), optional `progress` (echoes 0–100 for a bar+ETA). Returns "
     "{monitor_id} immediately; END YOUR TURN. You are woken via your inbox "
-    "(interrupting your current turn if busy) the moment it finishes, "
-    "fails, or times out. ALWAYS use this instead of sleep/tail poll loops. "
+    "the moment it finishes, fails, or times out — at once if you are idle, "
+    "otherwise at your next turn boundary (pass interrupt=True only when it "
+    "truly cannot wait; that cuts your live turn). "
+    "ALWAYS use this instead of sleep/tail poll loops. "
     "The aegis monitor is the authoritative waker: ALWAYS prefer it for "
     "waiting on a process, even when the harness has its own mechanism "
     "(e.g. Claude run_in_background). If a monitor is watching a handle, "
@@ -488,7 +490,9 @@ def make_handoff(bridge):
                     f"(use aegis_list_sessions)")
         was_working = target_info.state == "working"
         if interrupt and was_working:
-            await bridge.interrupt(target_handle)
+            # drain=False: our deliver() below drains the buffer, so the
+            # handoff and anything already queued land as one turn.
+            await bridge.interrupt(target_handle, drain=False)
         receipt = await bridge.inbox_router.deliver(
             target_handle,
             InboxMessage(
@@ -1026,7 +1030,8 @@ def build_server(bridge: AppBridge) -> FastMCP:
                             progress: str | None = None,
                             fail: str | None = None,
                             interval_s: float = 2.0,
-                            timeout_s: float = 3600.0) -> dict:
+                            timeout_s: float = 3600.0,
+                            interrupt: bool = False) -> dict:
         """Watch a long-running process without polling; wake on the outcome.
 
         aegis does NOT launch or own the process — you start it yourself
@@ -1040,8 +1045,11 @@ def build_server(bridge: AppBridge) -> FastMCP:
           omit for a "watch until ready" spinner).
 
         Returns ``{monitor_id}`` immediately — END YOUR TURN. When ``done`` /
-        ``fail`` trips (or ``timeout_s`` elapses) you are woken via your inbox,
-        interrupting your current turn if you are busy, so it lands at once.
+        ``fail`` trips (or ``timeout_s`` elapses) you are woken via your inbox:
+        at once if you are idle, otherwise at your next turn boundary. Pass
+        ``interrupt=True`` only when the outcome genuinely cannot wait for
+        your current turn to finish — it cuts that turn mid-flight, throwing
+        away whatever it had left to do.
         ``from_handle`` is your own aegis handle (from your system prompt).
         """
         root = getattr(bridge, "state_root", None)
@@ -1049,7 +1057,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
             from_handle=from_handle, description=description, done=done,
             fail=fail, progress=progress,
             cwd=str(root) if root else None,
-            interval_s=interval_s, timeout_s=timeout_s)
+            interval_s=interval_s, timeout_s=timeout_s, interrupt=interrupt)
         return {"monitor_id": mid}
 
     @server.tool

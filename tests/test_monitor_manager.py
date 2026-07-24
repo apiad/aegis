@@ -56,7 +56,10 @@ class StubSessionManager:
     def get(self, handle):
         return self._objs.get(handle)
 
-    async def interrupt(self, handle: str) -> None:
+    async def interrupt(self, handle: str, *, drain: bool = True) -> None:
+        # drain=False is the contract: _deliver() delivers right after us and
+        # that delivery drains the buffer as one turn.
+        assert drain is False
         self.interrupted.append(handle)
 
 
@@ -153,13 +156,39 @@ async def test_cancel_does_not_notify_agent():
 
 
 @pytest.mark.asyncio
-async def test_interrupts_busy_agent_before_delivery():
+async def test_busy_agent_not_interrupted_by_default():
+    # The default is buffer-and-chain: the agent is usually still finishing
+    # the very turn that armed the monitor, and cutting it throws away the
+    # tail of that turn for no gain — the notice lands at the turn boundary
+    # anyway (AgentSession._chain_if_pending, tier 1).
     sm = StubSessionManager([_Info("p", "working")])
     mm = _mm({"chk-done": (0, "")}, sm=sm)
     mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
                            autorun=False)
     await mm.tick(mid)
+    assert sm.interrupted == []
+    assert len(await _inbox_for(mm, "p")) == 1
+
+
+@pytest.mark.asyncio
+async def test_interrupts_busy_agent_when_opted_in():
+    sm = StubSessionManager([_Info("p", "working")])
+    mm = _mm({"chk-done": (0, "")}, sm=sm)
+    mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
+                           interrupt=True, autorun=False)
+    await mm.tick(mid)
     assert sm.interrupted == ["p"]
+    assert len(await _inbox_for(mm, "p")) == 1
+
+
+@pytest.mark.asyncio
+async def test_opted_in_interrupt_still_spares_an_unsolicited_drain():
+    sm = StubSessionManager([_Info("p", "working", unsolicited=True)])
+    mm = _mm({"chk-done": (0, "")}, sm=sm)
+    mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
+                           interrupt=True, autorun=False)
+    await mm.tick(mid)
+    assert sm.interrupted == []
 
 
 @pytest.mark.asyncio
@@ -187,22 +216,6 @@ async def test_cancel_releases_session_hold():
     assert sess.holds == 1
     await mm.cancel(mid)
     assert sess.holds == 0
-
-
-@pytest.mark.asyncio
-async def test_unsolicited_turn_not_interrupted():
-    # "working" here is a Claude-native unsolicited-turn drain (the harness
-    # processing its OWN background-task notification), not a real agent turn.
-    # Interrupting it cuts CC mid-resume and wedges the wake behind an extra
-    # replay cycle — so the monitor must only deliver (queue), never interrupt.
-    sm = StubSessionManager([_Info("p", "working", unsolicited=True)])
-    mm = _mm({"chk-done": (0, "")}, sm=sm)
-    mid = mm.start_monitor(from_handle="p", description="t", done="chk-done",
-                           autorun=False)
-    await mm.tick(mid)
-    assert sm.interrupted == []
-    # Still delivered — it lands as a queued follow-up turn at turn-end.
-    assert len(await _inbox_for(mm, "p")) == 1
 
 
 @pytest.mark.asyncio

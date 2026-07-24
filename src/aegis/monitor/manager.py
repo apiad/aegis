@@ -5,8 +5,9 @@ runs, e.g. a dev server). Each ``interval_s`` the manager evaluates the
 monitor's bash in the session cwd: ``progress`` (echoes 0–100) updates the
 bar/ETA, ``fail`` (exit 0) is a terminal failure, ``done`` (exit 0) is terminal
 success. On any terminal state — including a ``timeout_s`` backstop — the agent
-is woken via an inbox callback, interrupting its current turn if it is busy so
-the notice lands immediately.
+is woken via an inbox callback: immediately when it is idle, otherwise buffered
+and chained at its next turn boundary. Pass ``interrupt=True`` to cut a busy
+agent's turn instead of waiting for it.
 """
 from __future__ import annotations
 
@@ -101,12 +102,13 @@ class MonitorManager:
     def start_monitor(self, *, from_handle: str, description: str, done: str,
                       fail: str | None = None, progress: str | None = None,
                       cwd: str | None = None, interval_s: float = 2.0,
-                      timeout_s: float = 3600.0, autorun: bool = True) -> str:
+                      timeout_s: float = 3600.0, interrupt: bool = False,
+                      autorun: bool = True) -> str:
         mid = new_ulid()
         self._monitors[mid] = Monitor(
             id=mid, from_handle=from_handle, description=description,
             done=done, fail=fail, progress=progress, cwd=cwd,
-            interval_s=interval_s, timeout_s=timeout_s,
+            interval_s=interval_s, timeout_s=timeout_s, interrupt=interrupt,
             started_at=self._clock())
         self._notify()
         # The monitor is now the authoritative waker for this handle: hold
@@ -221,11 +223,14 @@ class MonitorManager:
             body=body,
             task_id=mon.id,
             status=("ok" if mon.state == DONE else "error"))
-        # Interrupt only a busy agent (idle ones are woken by deliver alone);
-        # either way the notice lands as the agent's next turn — immediately.
-        if self._target_working(mon.from_handle):
+        # Default: deliver only. A busy agent is very often still finishing
+        # the very turn that armed this monitor, and cutting that turn throws
+        # its tail away to buy nothing — the notice is buffered and chained at
+        # the turn boundary anyway. Opt in with interrupt=True when the news
+        # genuinely can't wait for the current turn to end.
+        if mon.interrupt and self._target_working(mon.from_handle):
             with contextlib.suppress(Exception):
-                await self._sm.interrupt(mon.from_handle)
+                await self._sm.interrupt(mon.from_handle, drain=False)
         await self._inbox.deliver(mon.from_handle, msg)
 
     def _target_working(self, handle: str) -> bool:

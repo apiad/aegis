@@ -965,7 +965,9 @@ class ConversationPane(Widget):
         # message lands now as the next turn instead of queuing behind it.
         # Idle → nothing to interrupt; falls through to a normal deliver.
         if event.kind == "interrupt" and self.state is AgentState.working:
-            await self._core.interrupt()
+            # drain=False: our deliver() below drains the buffer, so this
+            # message and anything already queued go out as ONE turn.
+            await self._core.interrupt(drain=False)
         receipt = await self._core.deliver(msg)
         if receipt.disposition == "queued":
             self.query_one(PendingStrip).add(msg)
@@ -1320,12 +1322,17 @@ class ConversationPane(Widget):
                 inp.focus()
         self.refresh_metrics()
 
-    def interrupt(self) -> None:
+    def interrupt(self, *, drain: bool = True):
+        """Cut the live turn. Returns the Textual worker doing it (None when
+        there was nothing to interrupt) so callers that need the interrupt to
+        have actually landed — e.g. AegisApp.interrupt, whose AppBridge
+        contract is that a following deliver() sees a settled session — can
+        await it."""
         if self.state is not AgentState.working:
-            return
+            return None
 
         async def _do() -> None:
-            await self._core.interrupt()
+            await self._core.interrupt(drain=drain)
             self._flush_streaming()
             self._mount_block(
                 Text("^C — interrupted", style=self._palette.muted),
@@ -1335,7 +1342,7 @@ class ConversationPane(Widget):
             inp.disabled = False
             inp.focus()
 
-        self.run_worker(_do(), group="turn", exclusive=True)
+        return self.run_worker(_do(), group="turn", exclusive=True)
 
     def show_resume_banner(self, text: str) -> None:
         """Mount a single banner line at the top of this pane's transcript."""

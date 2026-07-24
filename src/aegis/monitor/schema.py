@@ -61,6 +61,7 @@ class Monitor:
     cwd: str | None = None
     interval_s: float = 2.0
     timeout_s: float = 3600.0
+    interrupt: bool = False
     state: str = WATCHING
     pct: float | None = None
     eta_s: float | None = None

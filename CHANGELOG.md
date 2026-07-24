@@ -5,6 +5,28 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Interrupts stop being destructive
+
+- **A monitor no longer cuts a busy agent's turn.** It used to interrupt any
+  real turn so the notice "landed immediately" — but the agent is usually
+  still finishing the very turn that armed the monitor, so a fast `done`
+  condition threw away the tail of that turn (its closing message included)
+  for nothing. The callback is now buffered and chained at the turn boundary,
+  the same path a queue result or a handoff takes. `aegis_monitor(...,
+  interrupt=True)` opts back in when the news genuinely can't wait — matching
+  `aegis_handoff(..., interrupt=True)`.
+- **An interrupt now drains what was queued behind the turn it cut.** A
+  cancelled turn never reaches `_chain_if_pending`, so monitor callbacks,
+  queue results and chips buffered while it ran used to strand until some
+  unrelated future poke. `AgentSession.interrupt()` dispatches them as the
+  next turn. Only the inbox tier — Esc still means stop for reminders and
+  `/loop`. Callers that deliver their own message right after (send-with-
+  interrupt, `aegis_handoff(interrupt=True)`, monitors that opted in, queue
+  cancel) pass `drain=False` so everything goes out as one turn.
+- `AegisApp.interrupt(handle)` now awaits the pane's interrupt worker instead
+  of firing it off. It was returning before the turn was actually cut, so a
+  peer's follow-up delivery could land against a still-working session.
+
 ### `/loop` — repeat an instruction until the agent says it's done
 
 - **New: `/loop <instruction>` arms a looping instruction on a session.** The

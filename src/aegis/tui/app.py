@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace as _SN
@@ -1041,14 +1042,23 @@ class AegisApp(App):
             await self._close_pane(pane)
             self._refresh_tabbar()
 
-    async def interrupt(self, handle: str) -> None:
+    async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         """AppBridge-shaped: cut the named pane's live turn (a peer's, not
-        just the active one). Unknown handle → no-op."""
+        just the active one). Unknown handle → no-op.
+
+        Awaits the pane's interrupt worker: a `drain=False` caller delivers
+        its own message the moment we return, and it must not land while the
+        turn we were asked to cut is still running (it would just queue
+        behind it, then strand)."""
         pane = next((p for p in self._panes
                      if isinstance(p, ConversationPane)
                      and p.handle == handle), None)
-        if pane is not None:
-            pane.interrupt()
+        if pane is None:
+            return
+        worker = pane.interrupt(drain=drain)
+        if worker is not None:
+            with contextlib.suppress(Exception):
+                await worker.wait()
 
     async def _spawn_remote_pane(self, info, *, foreground: bool = False) -> "ConversationPane | None":
         """B2: create and mount a ConversationPane backed by a RemotePaneCore.

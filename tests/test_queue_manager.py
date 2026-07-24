@@ -84,7 +84,7 @@ class StubSessionManager:
         self.closed.append(handle)
         self._sessions = [s for s in self._sessions if s.handle != handle]
 
-    async def interrupt(self, handle: str) -> None:
+    async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         self.interrupted = getattr(self, "interrupted", [])
         self.interrupted.append(handle)
         s = next((s for s in self._sessions if s.handle == handle), None)
