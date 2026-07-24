@@ -1,6 +1,6 @@
 # Live Claude quota in the status bar (and a bar that fits)
 
-- **Status:** design
+- **Status:** implemented (`231caec`..`0dee5ee`)
 - **Date:** 2026-07-24
 - **Target version:** 0.22.0
 - **Author:** Alex + Claude
@@ -96,11 +96,20 @@ of short turns hammering an undocumented endpoint.
 - `Fresh(snapshot)` — fetched within the cycle
 - `Stale(snapshot, age_s)` — last good value, current fetch failing
 - `Failed(kind)` — no good value to show; `kind` in
-  `no_credentials` / `unauthorized` / `unreachable`
+  `no_credentials` / `unauthorized` / `rate_limited` / `unreachable`
 
 A snapshot degrades `Fresh → Stale` on the first failure and
 `Stale → Failed(unreachable)` after 5 minutes of continuous failure. A
 success resets to `Fresh` from any state.
+
+**The endpoint throttles (added during implementation).** A live probe drew
+`HTTP 429 Too Many Requests` after a handful of calls in quick succession, so
+429 is its own failure kind rather than being folded into `unreachable`: the
+correct response to being throttled is to stop asking, not to retry on the
+usual cadence. A 429 parks the poller for `BACKOFF_S` (5 minutes), and
+**`force` does not override the backoff** — an explicit `/usage quota` during a
+throttle returns the cached state rather than adding another request to the
+pile. Any success clears the backoff.
 
 ### Visibility
 

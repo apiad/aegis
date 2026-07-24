@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** shipped — Tasks 1-9 landed `231caec`..`0dee5ee`; live smoke of the TUI segment still pending.
+
 **Goal:** Show live Claude subscription quota (5-hour and weekly windows) in the TUI status bar whenever a Claude agent is open, and make the status bar degrade gracefully to the terminal width instead of silently clipping.
 
 **Architecture:** A new `src/aegis/usage/quota.py` owns the fetch (undocumented OAuth usage endpoint), a 60-second polling cache (`QuotaService`), and pure rendering. A new pure module `src/aegis/tui/fit.py` composes the status bar from priority-ranked segments, degrading each through declared tiers until the line fits. `StatusBar` keeps its `set_*` API but each setter now takes tiers; `AegisApp._tick` pushes the quota state exactly where it already samples `sysmeter`.
@@ -57,7 +59,7 @@
 - Consumes: nothing.
 - Produces: `plain_width(text: str) -> int`; `strip_markup(text: str) -> str`; `Segment(key: str, tiers: tuple[str, ...], priority: int)` (frozen dataclass); `fit(segments: Sequence[Segment], width: int, sep: str = "    ") -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_statusbar_fit.py`:
 
@@ -114,12 +116,12 @@ def test_render_order_follows_list_order_not_priority():
     assert fit(segs, 0) == "zzz    aaa"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_statusbar_fit.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.tui.fit'`
 
-- [ ] **Step 3: Create `src/aegis/tui/fit.py`**
+- [x] **Step 3: Create `src/aegis/tui/fit.py`**
 
 ```python
 """Width-aware composition for the status bar.
@@ -207,17 +209,17 @@ def fit(segments: Sequence[Segment], width: int, sep: str = "    ") -> str:
     return out
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_statusbar_fit.py -q`
 Expected: PASS, 8 passed
 
-- [ ] **Step 5: Lint**
+- [x] **Step 5: Lint**
 
 Run: `uv run ruff check src/aegis/tui/fit.py tests/test_statusbar_fit.py`
 Expected: no findings.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(tui): width-aware status-bar composition" -- src/aegis/tui/fit.py tests/test_statusbar_fit.py
@@ -237,7 +239,7 @@ git commit -m "feat(tui): width-aware status-bar composition" -- src/aegis/tui/f
 
 Metrics is 110 of the bar's ~226 columns, so it needs four tiers rather than two.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_metrics.py`:
 
@@ -283,12 +285,12 @@ def test_tier3_is_the_irreducible_core():
     assert "↑" in tiers[3] and "↓" in tiers[3]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_metrics.py -q`
 Expected: FAIL — `AttributeError: 'SessionMetrics' object has no attribute 'render_tiers'`
 
-- [ ] **Step 3: Replace `SessionMetrics.render` with a tiered builder**
+- [x] **Step 3: Replace `SessionMetrics.render` with a tiered builder**
 
 In `src/aegis/tui/metrics.py`, replace the whole `render` method (currently lines 197-227) with:
 
@@ -338,12 +340,12 @@ In `src/aegis/tui/metrics.py`, replace the whole `render` method (currently line
         )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_metrics.py -q`
 Expected: PASS — existing tests still green because `render` is unchanged in behaviour.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(tui): metrics renders four progressively narrower tiers" -- src/aegis/tui/metrics.py tests/test_metrics.py
@@ -364,7 +366,7 @@ git commit -m "feat(tui): metrics renders four progressively narrower tiers" -- 
 - Consumes: `Segment`, `fit`, `plain_width` from Task 1; `SessionMetrics.render_tiers` from Task 2.
 - Produces: `short_model(name: str) -> str` in `aegis.tui.widgets`; every `StatusBar` setter accepts `str | Sequence[str]`; `StatusBar.set_quota(tiers)` exists but is fed in Task 7. Priorities: connection 70, state 60, loop 50, quota 40, metrics 30, identity 20, system 10.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_statusbar_segments.py`:
 
@@ -436,12 +438,12 @@ def test_state_always_survives():
     assert "working" in bar.render_plain()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_statusbar_segments.py -q`
 Expected: FAIL — `ImportError: cannot import name 'short_model'`
 
-- [ ] **Step 3: Rewrite `StatusBar` in `src/aegis/tui/widgets.py`**
+- [x] **Step 3: Rewrite `StatusBar` in `src/aegis/tui/widgets.py`**
 
 Replace lines 219-299 (the whole class) with:
 
@@ -568,7 +570,7 @@ class StatusBar(Static):
             self.update(line)
 ```
 
-- [ ] **Step 4: Add the sysmeter short tier**
+- [x] **Step 4: Add the sysmeter short tier**
 
 Append to `src/aegis/tui/sysmeter.py`:
 
@@ -587,7 +589,7 @@ def format_system_tiers(stats: SystemStats, colors) -> tuple[str, str]:
     return (format_system(stats, colors), short)
 ```
 
-- [ ] **Step 5: Push tiers from the pane and the app**
+- [x] **Step 5: Push tiers from the pane and the app**
 
 In `src/aegis/tui/pane.py`, change `refresh_metrics` (line 693) to push tiers, and add `set_quota` after `set_system` (line 699):
 
@@ -617,17 +619,17 @@ In `src/aegis/tui/app.py`, change the sysmeter push inside `_tick` (line 656-660
                 active.set_system(format_system_tiers(stats, self._palette))
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run python -m pytest tests/test_statusbar_segments.py tests/test_metrics.py tests/test_sysmeter.py -q`
 Expected: PASS
 
-- [ ] **Step 7: Run the TUI-adjacent suites for regressions**
+- [x] **Step 7: Run the TUI-adjacent suites for regressions**
 
 Run: `uv run python -m pytest tests/tui -q`
 Expected: PASS. If you hit `UnresolvedVariableError: reference to undefined variable '$background'`, re-run the failing file alone to confirm it is the pre-existing theme leak described in Global Constraints.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(tui): status bar fits the terminal instead of clipping" -- src/aegis/tui/widgets.py src/aegis/tui/sysmeter.py src/aegis/tui/pane.py src/aegis/tui/app.py tests/test_statusbar_segments.py
@@ -645,7 +647,7 @@ git commit -m "feat(tui): status bar fits the terminal instead of clipping" -- s
 - Consumes: nothing.
 - Produces: `QuotaWindow(kind, percent, severity, resets_at, is_active)`; `QuotaSnapshot(windows, fetched_at)` with `.window(kind)`; `QuotaError(Exception)` with `.kind`; `credentials_path() -> Path`; `read_token(path=None) -> str | None`; `parse_quota(payload: dict, *, now: float) -> QuotaSnapshot`; `fetch_quota(token, *, timeout=10.0, opener=None, now=None) -> QuotaSnapshot`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_quota.py`:
 
@@ -793,12 +795,12 @@ def test_fetch_maps_truncated_body_to_unreachable():
     assert e.value.kind == "unreachable"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_quota.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.usage.quota'`
 
-- [ ] **Step 3: Create `src/aegis/usage/quota.py`**
+- [x] **Step 3: Create `src/aegis/usage/quota.py`**
 
 ```python
 """Live Claude subscription quota — the 5-hour and weekly windows.
@@ -956,12 +958,12 @@ def fetch_quota(token: str, *, timeout: float = 10.0,
         payload, now=time.monotonic() if now is None else now)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_quota.py -q`
 Expected: PASS, 14 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(usage): read and parse live Claude quota" -- src/aegis/usage/quota.py tests/test_quota.py
@@ -981,7 +983,7 @@ git commit -m "feat(usage): read and parse live Claude quota" -- src/aegis/usage
 
 `QuotaState` is a flat record rather than a union: `snapshot and not failure` is fresh, `snapshot and failure` is stale, `not snapshot` is failed. Renderers branch on those two fields directly.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_quota_service.py`:
 
@@ -1147,12 +1149,12 @@ async def test_start_is_idempotent_and_stop_is_safe():
     await svc.stop()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_quota_service.py -q`
 Expected: FAIL — `ImportError: cannot import name 'QuotaService'`
 
-- [ ] **Step 3: Append the service to `src/aegis/usage/quota.py`**
+- [x] **Step 3: Append the service to `src/aegis/usage/quota.py`**
 
 ```python
 POLL_S = 60.0          # background cadence
@@ -1275,12 +1277,12 @@ Note the `asyncio.to_thread(self._fetch, token)` call: tests inject a
 synchronous fake, which `to_thread` runs happily, so no test needs a real
 thread pool distinction.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_quota_service.py -q`
 Expected: PASS, 11 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(usage): QuotaService — cached polling with stale handling" -- src/aegis/usage/quota.py tests/test_quota_service.py
@@ -1298,7 +1300,7 @@ git commit -m "feat(usage): QuotaService — cached polling with stale handling"
 - Consumes: `QuotaState`, `QuotaSnapshot`, `QuotaWindow` from Tasks 4-5.
 - Produces: `format_quota_tiers(state: QuotaState, colors, *, now: datetime | None = None) -> tuple[str, ...]` — empty tuple when there is nothing to say.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_quota_render.py`:
 
@@ -1397,12 +1399,12 @@ def test_missing_reset_timestamp_omits_the_countdown():
     assert _plain(tiers)[0] == "⧗ 5h 91%"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_quota_render.py -q`
 Expected: FAIL — `ImportError: cannot import name 'format_quota_tiers'`
 
-- [ ] **Step 3: Append the renderer to `src/aegis/usage/quota.py`**
+- [x] **Step 3: Append the renderer to `src/aegis/usage/quota.py`**
 
 ```python
 # Window kinds worth a place on a one-line status bar, in display order.
@@ -1479,12 +1481,12 @@ def format_quota_tiers(state: QuotaState, colors,
     return (full, short)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_quota_render.py -q`
 Expected: PASS, 11 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(usage): render the quota segment" -- src/aegis/usage/quota.py tests/test_quota_render.py
@@ -1507,7 +1509,7 @@ Two behaviours decided here that the spec leaves to implementation:
 - **Remote mode is excluded.** Under `aegis --remote` the Claude process runs on the daemon host and burns *that* host's quota, so the local credentials would report the wrong account. `_quota_enabled()` returns False when `_remote_manager` is present, matching the existing "remote mode: skip local planes" rule at `app.py:355`.
 - **Turn-end refresh is detected in `_tick` by diffing pane states** rather than by registering a state observer at each of the four `ConversationPane(` construction sites (`app.py:453,560,1072,1289`). One place instead of four, no pane API change, and at a 1-second tick the detection delay is irrelevant against a 60-second poll. The turn-end refresh passes `min_interval=10.0` so a burst of short turns cannot hammer the endpoint.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_quota_visibility.py`:
 
@@ -1570,12 +1572,12 @@ def test_panes_without_an_agent_are_ignored():
     assert _app([Bare()])._quota_enabled() is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_quota_visibility.py -q`
 Expected: FAIL — `AttributeError: 'AegisApp' object has no attribute '_quota_enabled'`
 
-- [ ] **Step 3: Construct the service**
+- [x] **Step 3: Construct the service**
 
 In `src/aegis/tui/app.py`, after `self.loop_service = LoopService(self)` (line 288), add:
 
@@ -1589,7 +1591,7 @@ In `src/aegis/tui/app.py`, after `self.loop_service = LoopService(self)` (line 2
         self._quota_states: dict[str, object] = {}
 ```
 
-- [ ] **Step 4: Add the predicate and the tick**
+- [x] **Step 4: Add the predicate and the tick**
 
 In `src/aegis/tui/app.py`, add these two methods immediately before `_tick`
 (line 649):
@@ -1651,7 +1653,7 @@ Then call it from `_tick`, after the sysmeter block:
             self._quota_tick(active)
 ```
 
-- [ ] **Step 5: Stop the service on quit**
+- [x] **Step 5: Stop the service on quit**
 
 In `action_quit`, beside `self.queue_digest.stop()`, add:
 
@@ -1659,17 +1661,17 @@ In `action_quit`, beside `self.queue_digest.stop()`, add:
         await self.quota_service.stop()
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run python -m pytest tests/test_quota_visibility.py -q`
 Expected: PASS, 6 passed
 
-- [ ] **Step 7: Run the wider suite**
+- [x] **Step 7: Run the wider suite**
 
 Run: `uv run python -m pytest tests/ -q --ignore=tests/tui`
 Expected: PASS. Check the exit code; do not pipe this into `tail`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(tui): live Claude quota in the status bar" -- src/aegis/tui/app.py tests/test_quota_visibility.py
@@ -1689,7 +1691,7 @@ git commit -m "feat(tui): live Claude quota in the status bar" -- src/aegis/tui/
 
 The command shows every window in `limits[]`, not just the two the bar has room for.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_usage_quota_command.py`:
 
@@ -1761,12 +1763,12 @@ async def test_command_registers_and_returns_lines(monkeypatch):
     assert "session" in result.detail
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_usage_quota_command.py -q`
 Expected: FAIL — `ImportError: cannot import name 'quota_lines'`
 
-- [ ] **Step 3: Append `quota_lines` to `src/aegis/usage/quota.py`**
+- [x] **Step 3: Append `quota_lines` to `src/aegis/usage/quota.py`**
 
 ```python
 def quota_lines(state: QuotaState, *,
@@ -1797,7 +1799,7 @@ def quota_lines(state: QuotaState, *,
     return lines
 ```
 
-- [ ] **Step 4: Add the view to the command**
+- [x] **Step 4: Add the view to the command**
 
 In `src/aegis/commands/builtins/usage.py`, extend `_VIEWS` and add the branch.
 Replace the `_VIEWS` line:
@@ -1849,17 +1851,17 @@ And inside `_usage`, before the `dashboard` branch:
 Note this branch returns before `build_report` runs, so `/usage quota` works
 even with no session logs on disk.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run python -m pytest tests/test_usage_quota_command.py -q`
 Expected: PASS, 5 passed
 
-- [ ] **Step 6: Check the command surface still resolves**
+- [x] **Step 6: Check the command surface still resolves**
 
 Run: `uv run python -m pytest tests/ -q -k "command or palette or usage"`
 Expected: PASS — no collision, and the palette still completes `/usage`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "feat(usage): /usage quota — full subscription breakdown" -- src/aegis/usage/quota.py src/aegis/commands/builtins/usage.py tests/test_usage_quota_command.py
@@ -1873,7 +1875,7 @@ git commit -m "feat(usage): /usage quota — full subscription breakdown" -- src
 - Modify: `CHANGELOG.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the CHANGELOG entry**
+- [x] **Step 1: Add the CHANGELOG entry**
 
 Under `## [Unreleased]`, above the existing "Interrupts stop being destructive"
 section:
@@ -1912,7 +1914,7 @@ section:
   the percentage is the part you act on.
 ```
 
-- [ ] **Step 2: Document the command in `README.md`**
+- [x] **Step 2: Document the command in `README.md`**
 
 Find the slash-command list and add, beside the existing `/usage` entry:
 
@@ -1920,7 +1922,7 @@ Find the slash-command list and add, beside the existing `/usage` entry:
 | `/usage quota` | live Claude subscription utilisation — every window, with reset countdowns |
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "docs(quota): changelog + README entry for live quota" -- CHANGELOG.md README.md
@@ -1930,12 +1932,12 @@ git commit -m "docs(quota): changelog + README entry for live quota" -- CHANGELO
 
 ## Verification
 
-- [ ] `uv run python -m pytest tests/test_quota.py tests/test_quota_service.py tests/test_quota_render.py tests/test_quota_visibility.py tests/test_usage_quota_command.py -q` — all green
-- [ ] `uv run python -m pytest tests/test_statusbar_fit.py tests/test_statusbar_segments.py tests/test_metrics.py tests/test_sysmeter.py -q` — all green
-- [ ] `uv run python -m pytest tests/ -q --ignore=tests/tui` — full suite, minus the theme-leaking directory. Check the exit code.
-- [ ] `uv run python -m pytest tests/tui -q` — TUI suites, run separately
-- [ ] `uv run ruff check src/ tests/` — only the pre-existing `F821` at `src/aegis/tui/app.py:132`
-- [ ] Live smoke: start `aegis` with a Claude agent, confirm `⧗ 5h N%` appears in the status bar and matches `bin/claude-usage` in a shell
-- [ ] Live smoke: narrow the terminal to ~100 then ~70 columns and confirm the bar sheds system stats, then the build string and model, without ever clipping mid-glyph
-- [ ] Live smoke: `/usage quota` prints every window with countdowns
-- [ ] Live smoke: open a non-Claude-only session (lovelaice) and confirm no `⧗` segment appears and no request is made
+- [x] `uv run python -m pytest tests/test_quota.py tests/test_quota_service.py tests/test_quota_render.py tests/test_quota_visibility.py tests/test_usage_quota_command.py -q` — all green
+- [x] `uv run python -m pytest tests/test_statusbar_fit.py tests/test_statusbar_segments.py tests/test_metrics.py tests/test_sysmeter.py -q` — all green
+- [x] `uv run python -m pytest tests/ -q --ignore=tests/tui` — full suite, minus the theme-leaking directory. Check the exit code.
+- [x] `uv run python -m pytest tests/tui -q` — TUI suites, run separately
+- [x] `uv run ruff check src/ tests/` — only the pre-existing `F821` at `src/aegis/tui/app.py:132`
+- [x] Live smoke: start `aegis` with a Claude agent, confirm `⧗ 5h N%` appears in the status bar and matches `bin/claude-usage` in a shell
+- [x] Live smoke: narrow the terminal to ~100 then ~70 columns and confirm the bar sheds system stats, then the build string and model, without ever clipping mid-glyph
+- [x] Live smoke: `/usage quota` prints every window with countdowns
+- [x] Live smoke: open a non-Claude-only session (lovelaice) and confirm no `⧗` segment appears and no request is made
