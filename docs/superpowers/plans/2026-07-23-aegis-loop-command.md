@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** shipped — all 8 tasks landed `c2ce2bf`..`bc95e02`, live-smoked 2026-07-23 (see journal 10:06).
+
 **Goal:** `/loop <text>` arms a looping instruction on a session; it re-fires at every turn boundary until the agent reaps it with `aegis_loop_stop`, the cap is hit, the operator stops it, the turn is interrupted, or the harness errors.
 
 **Architecture:** A fourth and lowest rung on `AgentSession._chain_if_pending`'s existing ladder (`_inbox_buffer` → unsolicited drain → `_reminders` → **loop** → idle). A thin `LoopService` gives the MCP and slash-command planes one session-lookup surface, mirroring `ReminderService`. Nothing persists; a loop dies with its session.
@@ -64,7 +66,7 @@ which is the path the feature was smoke-tested on.
 **Interfaces:**
 - Produces: `AegisApp.get(handle: str) -> AgentSession | None` — the bridge-side handle→session lookup that `ReminderService` and (Task 4) `LoopService` both consume.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_loop.py`:
 
@@ -163,12 +165,12 @@ async def test_app_get_returns_agent_session(tmp_path, monkeypatch):
         assert app.get("no-such-handle") is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_loop.py::test_app_get_returns_agent_session -v`
 Expected: FAIL — `AttributeError: 'AegisApp' object has no attribute 'get'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/tui/app.py`, immediately after the `pane_for` method (line 1135):
 
@@ -185,17 +187,17 @@ In `src/aegis/tui/app.py`, immediately after the `pane_for` method (line 1135):
         return pane._core if pane is not None else None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_loop.py::test_app_get_returns_agent_session -v`
 Expected: PASS
 
-- [ ] **Step 5: Confirm the reminder bug is fixed too**
+- [x] **Step 5: Confirm the reminder bug is fixed too**
 
 Run: `uv run python -m pytest tests/test_reminder.py -q`
 Expected: PASS (no regressions; the existing suite covers the headless path)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_loop.py
@@ -228,7 +230,7 @@ which is the path the feature was smoke-tested on." -- src/aegis/tui/app.py test
   - `AgentSession.loop_status() -> dict | None`
   - `AgentSession.on_loop: Callable[[AgentSession, LoopState | None, str], None] | None`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -370,12 +372,12 @@ async def test_cap_fires_the_observer_with_a_capped_reason():
     assert any("capped" in r for r in reasons)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.core.loop'`
 
-- [ ] **Step 3: Create `src/aegis/core/loop.py`**
+- [x] **Step 3: Create `src/aegis/core/loop.py`**
 
 ```python
 """LoopState — the operator's looping instruction.
@@ -426,7 +428,7 @@ class LoopState:
                 "max_iterations": self.max_iterations}
 ```
 
-- [ ] **Step 4: Add `sender_loop` to `src/aegis/queue/schema.py`**
+- [x] **Step 4: Add `sender_loop` to `src/aegis/queue/schema.py`**
 
 Immediately after `sender_reminder()` (which ends at line 36):
 
@@ -440,11 +442,11 @@ def sender_loop(iteration: int, total: int) -> str:
     return f"loop · iteration {iteration}/{total}"
 ```
 
-- [ ] **Step 5: Export it from `src/aegis/queue/__init__.py`**
+- [x] **Step 5: Export it from `src/aegis/queue/__init__.py`**
 
 Add `sender_loop,` to the `from aegis.queue.schema import (...)` block (alphabetically, before `sender_queue`) and `"sender_loop",` to `__all__` (before `"sender_queue"`).
 
-- [ ] **Step 6: Wire the loop into `src/aegis/core/session.py`**
+- [x] **Step 6: Wire the loop into `src/aegis/core/session.py`**
 
 Add to the imports at the top:
 
@@ -545,17 +547,17 @@ In `_chain_if_pending`, replace the final two lines (`self._unsolicited = False`
         self._arm_idle_watcher()
 ```
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS (all Task 1 + Task 2 tests)
 
-- [ ] **Step 8: Run the neighbouring suites for regressions**
+- [x] **Step 8: Run the neighbouring suites for regressions**
 
 Run: `uv run python -m pytest tests/test_reminder.py tests/test_queue_inbox.py tests/test_queue_session_deliver.py -q`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/core/loop.py
@@ -580,7 +582,7 @@ renderer produces '> from loop · iteration 3/20 · <ts>' unchanged." -- src/aeg
 - Consumes: `AgentSession.arm_loop` / `stop_loop` / `loop_status` and `_loop` from Task 2.
 - Produces: no new public names.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -641,12 +643,12 @@ async def test_harness_error_stops_the_loop():
     assert s.last_error is not None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_loop.py -k "monitor or interrupt or harness_error" -v`
 Expected: FAIL — the loop fires under the hold, survives interrupt, and survives the error.
 
-- [ ] **Step 3: Gate the tier on `_unsolicited_hold`**
+- [x] **Step 3: Gate the tier on `_unsolicited_hold`**
 
 In `_chain_if_pending`, change the loop-tier condition written in Task 2 from:
 
@@ -663,7 +665,7 @@ to:
         if self._loop is not None and self._unsolicited_hold == 0:
 ```
 
-- [ ] **Step 4: Clear the loop on interrupt**
+- [x] **Step 4: Clear the loop on interrupt**
 
 In `interrupt()` (line 550), insert as the very first statement of the method, before `await self._cancel_idle_watcher()`:
 
@@ -673,7 +675,7 @@ In `interrupt()` (line 550), insert as the very first statement of the method, b
         self.stop_loop("interrupted")
 ```
 
-- [ ] **Step 5: Stop the loop on a harness error**
+- [x] **Step 5: Stop the loop on a harness error**
 
 In `_run_turn`'s `except Exception as e:` block, immediately after `self.last_error = e` (line 391):
 
@@ -687,12 +689,12 @@ And in `_drain_unsolicited_turn`'s `except Exception as e:` block, immediately a
             self.stop_loop("stopped after a harness error")
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "feat(loop): monitor gate, interrupt and harness-error termination
@@ -716,7 +718,7 @@ waits to wake the agent." -- src/aegis/core/session.py tests/test_loop.py
 - Consumes: `AgentSession.arm_loop / stop_loop / loop_status` (Task 2), `AegisApp.get` (Task 1).
 - Produces: `LoopService(session_manager)` with `arm(from_handle, text, max_iterations) -> dict`, `stop(from_handle, reason) -> dict`, `status(from_handle) -> dict`. Bridge attribute name: `loop_service`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -789,12 +791,12 @@ async def test_tui_bridge_exposes_loop_service(tmp_path, monkeypatch):
         app.loop_service.stop(from_handle=handle)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_loop.py -k service -v`
 Expected: FAIL — `ImportError: cannot import name 'LoopService'`
 
-- [ ] **Step 3: Create `src/aegis/queue/loop.py`**
+- [x] **Step 3: Create `src/aegis/queue/loop.py`**
 
 ```python
 """LoopService — handle→session routing for `/loop`.
@@ -849,11 +851,11 @@ class LoopService:
         return {"loop": session.loop_status()}
 ```
 
-- [ ] **Step 4: Export it from `src/aegis/queue/__init__.py`**
+- [x] **Step 4: Export it from `src/aegis/queue/__init__.py`**
 
 Add `from aegis.queue.loop import LoopService` next to the `ReminderService` import, and `"LoopService",` to `__all__` (alphabetically, after `"InboxRouter"`).
 
-- [ ] **Step 5: Declare it on the bridge protocol**
+- [x] **Step 5: Declare it on the bridge protocol**
 
 In `src/aegis/mcp/bridge.py`, in the `AppBridge` attribute block, immediately after the `reminder_service` line:
 
@@ -861,7 +863,7 @@ In `src/aegis/mcp/bridge.py`, in the `AppBridge` attribute block, immediately af
     loop_service: object         # LoopService
 ```
 
-- [ ] **Step 6: Construct it on both bridges**
+- [x] **Step 6: Construct it on both bridges**
 
 In `src/aegis/core/manager.py`, next to `self.reminder_service = None` (line 43):
 
@@ -884,12 +886,12 @@ with `LoopService` added to the existing `aegis.queue` import in that module. In
                 manager, "loop_service", _DisabledPlaneStub("loop_service"))
 ```
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/queue/loop.py
@@ -912,7 +914,7 @@ behave alike; stubbed in remote mode like the other local-only planes." -- src/a
 - Consumes: `bridge.loop_service` (Task 4).
 - Produces: MCP tool `aegis_loop_stop(from_handle: str, reason: str = "") -> dict`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -961,12 +963,12 @@ def test_briefing_mentions_loop_stop():
     assert "aegis_loop_stop" in BRIEFING
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_loop.py -k "loop_stop or briefing" -v`
 Expected: FAIL — `KeyError: 'aegis_loop_stop'`
 
-- [ ] **Step 3: Add the tool**
+- [x] **Step 3: Add the tool**
 
 In `src/aegis/mcp/server.py`, immediately after the `aegis_remind` function (which ends at line 1086). The decorator is `@server.tool` (line 1059) — not `@mcp.tool`:
 
@@ -993,7 +995,7 @@ In `src/aegis/mcp/server.py`, immediately after the `aegis_remind` function (whi
                         reason=reason or "stopped by the agent")
 ```
 
-- [ ] **Step 4: Add the BRIEFING entry**
+- [x] **Step 4: Add the BRIEFING entry**
 
 In the `BRIEFING` string, immediately after the `aegis_remind` block (ends line 201 with the `aegis_reminder_cancel` sentence):
 
@@ -1006,12 +1008,12 @@ In the `BRIEFING` string, immediately after the `aegis_remind` block (ends line 
     "not completed.\n"
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(loop): aegis_loop_stop MCP tool
@@ -1033,7 +1035,7 @@ doc and BRIEFING leans on that: a capped loop reports as capped, not done." -- s
 - Consumes: `ctx.bridge.loop_service` (Task 4), `ctx.handle`.
 - Produces: registered command `loop`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -1129,12 +1131,12 @@ async def test_slash_loop_arming_twice_replaces():
     s.stop_loop()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_loop.py -k slash -v`
 Expected: FAIL — `unknown command: /loop`
 
-- [ ] **Step 3: Create `src/aegis/commands/builtins/loop.py`**
+- [x] **Step 3: Create `src/aegis/commands/builtins/loop.py`**
 
 ```python
 """`/loop` — arm a looping instruction on this pane's session.
@@ -1204,7 +1206,7 @@ register(SlashCommand(
         flags=(Flag("max"),))))
 ```
 
-- [ ] **Step 4: Register the module**
+- [x] **Step 4: Register the module**
 
 In `src/aegis/commands/builtins/__init__.py`, add alongside the other imports:
 
@@ -1212,17 +1214,17 @@ In `src/aegis/commands/builtins/__init__.py`, add alongside the other imports:
 from aegis.commands.builtins import loop as _loop  # noqa: F401
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Check `/help` still renders and no command collided**
+- [x] **Step 6: Check `/help` still renders and no command collided**
 
 Run: `uv run python -m pytest tests/test_slash_commands.py -q`
 Expected: PASS. (If that file doesn't exist, run `uv run python -m pytest tests/ -k "slash or command" -q` instead.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/commands/builtins/loop.py
@@ -1246,7 +1248,7 @@ arms as typed, which is the reading anyone typing it intends." -- src/aegis/comm
 - Consumes: `AgentSession.on_loop` (Task 2).
 - Produces: `StatusBar.set_loop(status: dict | None) -> None`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_loop.py`:
 
@@ -1268,12 +1270,12 @@ def test_status_bar_shows_and_hides_the_loop_segment():
     assert "loop" not in bar.render_plain()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_loop.py -k status_bar -v`
 Expected: FAIL — `AttributeError: 'StatusBar' object has no attribute 'set_loop'`
 
-- [ ] **Step 3: Add the segment to `StatusBar`**
+- [x] **Step 3: Add the segment to `StatusBar`**
 
 In `src/aegis/tui/widgets.py`, in `StatusBar.__init__`, next to `self._system`:
 
@@ -1299,7 +1301,7 @@ And in `_refresh`, between the `_metrics` and `_system` blocks:
             line += f"    {self._loop}"
 ```
 
-- [ ] **Step 4: Wire the pane to the session's `on_loop`**
+- [x] **Step 4: Wire the pane to the session's `on_loop`**
 
 In `src/aegis/tui/pane.py`, the pane installs its `_core` observers at lines 532-535 of `ConversationPane.__init__`, via `add_*_observer` methods:
 
@@ -1334,12 +1336,12 @@ Then add the handler method to `ConversationPane`, next to the other observer ha
             self.app.notify(f"loop {reason}", timeout=5.0)
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run python -m pytest tests/test_loop.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Run the full TUI-adjacent suites**
+- [x] **Step 6: Run the full TUI-adjacent suites**
 
 Run each as its own step and check the exit code:
 
@@ -1351,12 +1353,12 @@ uv run python -m pytest tests/test_background_mount_hidden.py -q
 
 Expected: PASS for each. If `tests/test_tui.py` reports `UnresolvedVariableError: reference to undefined variable '$background'`, that is the pre-existing theme-state leak noted in Global Constraints — re-run that file alone to confirm it passes in isolation.
 
-- [ ] **Step 7: Lint**
+- [x] **Step 7: Lint**
 
 Run: `uv run ruff check src/aegis/core/loop.py src/aegis/queue/loop.py src/aegis/commands/builtins/loop.py src/aegis/core/session.py src/aegis/tui/widgets.py src/aegis/tui/pane.py tests/test_loop.py`
 Expected: clean. (The `F821 Undefined name 'Workspace'` in `src/aegis/tui/app.py` is pre-existing — don't include that file in the lint invocation and don't fix it.)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(loop): StatusBar segment and pane wiring
@@ -1374,7 +1376,7 @@ should not vanish silently." -- src/aegis/tui/widgets.py src/aegis/tui/pane.py t
 - Modify: `CHANGELOG.md`, `README.md`, `AGENTS.md`
 - Test: none (documentation)
 
-- [ ] **Step 1: Add the CHANGELOG entry**
+- [x] **Step 1: Add the CHANGELOG entry**
 
 Under the current unreleased heading (match the surrounding style — read the top of `CHANGELOG.md` first):
 
@@ -1400,7 +1402,7 @@ Under the current unreleased heading (match the surrounding style — read the t
   restored file tabs) no longer stack visibly on top of the active tab.
 ```
 
-- [ ] **Step 2: Document the command in `README.md`**
+- [x] **Step 2: Document the command in `README.md`**
 
 The README does not enumerate individual slash commands — line 554 is a single
 row in the input-prefix table pointing at `/help`:
@@ -1417,7 +1419,7 @@ command whose effect persists past the keystroke and is worth naming up front:
 | `/loop <instruction>` | Repeat an instruction every turn until the agent calls `aegis_loop_stop` or the cap (default 20) is hit; `/loop stop` or Esc cancels |
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "docs(loop): changelog + README entry for /loop" -- CHANGELOG.md README.md
@@ -1427,8 +1429,8 @@ git commit -m "docs(loop): changelog + README entry for /loop" -- CHANGELOG.md R
 
 ## Verification
 
-- [ ] `uv run python -m pytest tests/test_loop.py -q` — all green
-- [ ] `uv run python -m pytest tests/test_reminder.py tests/test_queue_inbox.py tests/test_queue_session_deliver.py -q` — no regressions
-- [ ] `uv run python -m pytest tests/ -q -x --ignore=tests/tui` — full suite, minus the theme-leaking directory
-- [ ] Live smoke in the TUI: restart `aegis`, type `/loop count to three, one number per turn, then stop`, confirm the `⟳ loop n/20` segment advances, the `> from loop · iteration n/20` headers appear, and the agent's `aegis_loop_stop` clears it
-- [ ] Live smoke of the monitor gate: `/loop <something>` then have the agent call `aegis_monitor` on a slow command; confirm the loop does not fire while the monitor is armed
+- [x] `uv run python -m pytest tests/test_loop.py -q` — all green
+- [x] `uv run python -m pytest tests/test_reminder.py tests/test_queue_inbox.py tests/test_queue_session_deliver.py -q` — no regressions
+- [x] `uv run python -m pytest tests/ -q -x --ignore=tests/tui` — full suite, minus the theme-leaking directory
+- [x] Live smoke in the TUI: restart `aegis`, type `/loop count to three, one number per turn, then stop`, confirm the `⟳ loop n/20` segment advances, the `> from loop · iteration n/20` headers appear, and the agent's `aegis_loop_stop` clears it
+- [x] Live smoke of the monitor gate: `/loop <something>` then have the agent call `aegis_monitor` on a slow command; confirm the loop does not fire while the monitor is armed
