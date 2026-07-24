@@ -382,15 +382,66 @@ brokers a multi-provider pool under one Google quota (Gemini 3.x, **Claude
 Opus/Sonnet 4.6 Thinking**, GPT-OSS), but the free/Pro quota is now ~20 req/day
 — marginal value. Deferred indefinitely.
 
-**Preferred approach if we ever do it — Path C, zero driver code:** front a
-local OpenAI-compatible gateway (OmniRoute, `localhost:20128/v1`) that harvests
-the `agy` OAuth token, and point the existing **Lovelaice provider** at it via
-its `base_url` + `api_key_file` fields (`config/__init__.py:67-71`,
+**Path C, zero driver code — WIRED + SMOKE-TESTED 2026-07-24.** Front a local
+OpenAI-compatible gateway (OmniRoute, `localhost:20128/v1`) that harvests the
+`agy` OAuth token, and point the existing **Lovelaice provider** at it via its
+`base_url` + `api_key_file` fields (`config/__init__.py:67-71`,
 `drivers/lovelaice.py:26-39`). Keeps full aegis-MCP injection / streaming /
-idle events. Smoke-test the lingo↔reasoning-model shim risk first (see handoff).
+idle events.
+
+Declaring such an agent in `.aegis.yaml` was impossible until `449ebbb`:
+`yaml_loader._PROVIDERS` never registered `lovelaice`, so `provider: lovelaice`
+died with "unknown provider" — the provider model, driver, and driver registry
+all existed, only the YAML loader's dict was missing it. That two-line fix is
+the entire aegis→gateway wiring.
+
+Proven end-to-end over OpenRouter (qwen3-32b): a lovelaice worker ran bash,
+wrote files, called `aegis_list_sessions`, and delivered a message to a live
+Claude peer via `aegis_handoff`. Findings:
+
+- **`api_key_file` is mandatory even for a keyless gateway** — without it
+  lovelaice's OpenAI client dies at ACP session start as an opaque
+  `RequestError: Internal error`.
+- **`aegis_handoff` does not validate `from_handle`** — an unregistered handle
+  was accepted and routed. Possible spoofing surface; see Watching.
+- qwen3-32b leaks `<tool_call>` fragments into the text channel (tools still
+  execute) — the shim-parsing risk the handoff warned about is real, and
+  OmniRoute's headline models are exactly that reasoning shape.
+
+Remaining: OmniRoute itself has **zero connected providers**, so every model
+returns an empty response until a provider is signed in at `localhost:20128`.
+Local profile staged inert at `.aegis/agents/omni.yaml.disabled`.
 
 Full capture, recipe, and risks:
 `vault/+/agent_drafts/handoffs/handoff-2026-07-22-0830-aegis-subscription-models.md`
+
+### Shrink the injected surface: MCP plane behind a discoverable index
+
+The plane registers **65 tools** (`src/aegis/mcp/server.py`), and every session
+also gets `PRIMING` appended to its system prompt (`server.py:370`) while
+`aegis_meta` returns a `BRIEFING` well over 12k chars (`server.py:125`). A
+worker that inlines all of that pays for it before doing any work.
+
+Measured 2026-07-24: a single lovelaice turn (write a file, run bash, call two
+aegis tools) cost **87.7k input tokens** — dominated by tool schemas, uncached
+on that path.
+
+**The cost is harness-dependent, which is the useful part.** Claude Code
+already defers MCP tool schemas — inside aegis a Claude session sees only tool
+*names* and must call `ToolSearch` to load a schema before use. lovelaice has
+no such mechanism, so it inlines all 65. Same plane, very different bill. So
+the fix lands in one of two places:
+
+- **aegis-side (helps every harness):** expose a small always-on core
+  (`aegis_meta` + a search/fetch pair) and serve the rest on demand — the
+  deferred-tool pattern Claude Code uses. Also worth trimming `PRIMING` and
+  `BRIEFING`, which are prose-heavy and re-sent per session.
+- **lovelaice-side:** teach `lovelaice.mcp` lazy schema loading, so it gets
+  the Claude-Code behaviour for free against any MCP server.
+
+Prompted by Alex after the OmniRoute smoke — matters most for cheap/quota-bound
+workers, where 88k/turn undercuts the whole premise of a cheap worker (the
+`agy` pool is ~20 req/day). No plan yet; measure before and after.
 
 ### New `agy` driver (Path A) — noted for the future
 
@@ -414,6 +465,15 @@ CLI's stream-json. Motivation: robustness + protocol unification, less
 dependence on the `claude -p` CLI surface. Not now — noted for the future.
 
 ## Watching
+
+- **`aegis_handoff` accepts an unregistered `from_handle`.** During the
+  2026-07-24 OmniRoute smoke a lovelaice worker passed
+  `from_handle="lovelaice-probe"` — not a live session — and the message was
+  accepted and routed to the target's inbox, attributed to that name. Handy
+  for out-of-band probes, but it means any agent on the plane can attribute a
+  message to any handle. Filing, not acting on it yet; decide whether the
+  sender should be validated against the live session registry (or stamped by
+  the substrate rather than passed by the caller).
 
 - **VPS job-crawler dispatched the plan job (2026-05-20-aegis-task-queue-plan)
   but never picked up its follow-up implement job** (file existed on VPS
