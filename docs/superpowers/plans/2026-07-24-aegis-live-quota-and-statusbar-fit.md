@@ -186,18 +186,19 @@ def fit(segments: Sequence[Segment], width: int, sep: str = "    ") -> str:
         return render(live)
 
     while live and plain_width(render(live)) > width:
-        # Lowest priority first; ties broken by position so the pass is stable.
+        # Exhaust the lowest-priority segment — every tier, then drop it —
+        # before touching anything above it. Degrading a higher-priority
+        # segment while a lower one still has room to give would invert the
+        # ranking. Ties broken by position so the pass is stable.
         order = sorted(range(len(live)), key=lambda k: (live[k][0].priority, k))
-        for k in order:
-            seg, tier = live[k]
-            if tier + 1 < len(seg.tiers):
-                live[k] = (seg, tier + 1)
-                break
+        k = order[0]
+        seg, tier = live[k]
+        if tier + 1 < len(seg.tiers):
+            live[k] = (seg, tier + 1)
+        elif len(live) > 1:
+            live.pop(k)
         else:
-            # Nothing can narrow further — drop the lowest-priority segment.
-            if len(live) <= 1:
-                break
-            live.pop(order[0])
+            break
 
     out = render(live)
     if plain_width(out) > width:
