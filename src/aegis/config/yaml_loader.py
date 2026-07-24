@@ -26,6 +26,7 @@ from aegis.config import (
     ClaudeCode,
     ConfigError,
     GeminiCLI,
+    Lovelaice,
     OpenCode,
     VoiceConfig,
     WebConfig,
@@ -71,6 +72,7 @@ _PROVIDERS: dict[str, type] = {
     "gemini-cli": GeminiCLI,
     "gemini": GeminiCLI,
     "opencode": OpenCode,
+    "lovelaice": Lovelaice,
 }
 
 

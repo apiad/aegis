@@ -98,3 +98,40 @@ def test_yaml_missing_file_returns_empty(tmp_path: Path) -> None:
     an empty AegisConfig. Caller decides whether to fail."""
     cfg = load_config(tmp_path)
     assert cfg.agents == {}
+
+
+def test_lovelaice_provider_with_gateway_fields(tmp_path: Path) -> None:
+    """A lovelaice agent declared in YAML threads `base_url` +
+    `api_key_file` through to the provider object — that is what points
+    a lovelaice worker at an OpenAI-compatible gateway."""
+    (tmp_path / ".aegis.yaml").write_text(textwrap.dedent("""
+        default_agent: omni
+        agents:
+          omni:
+            provider: lovelaice
+            model: aug/claude-sonnet-4.6
+            base_url: http://localhost:20128/v1
+            api_key_file: /tmp/omniroute.token
+            permission: full
+    """))
+    cfg = load_config(tmp_path)
+    agent = cfg.agents["omni"]
+    assert agent.harness == "lovelaice"
+    assert agent.model == "aug/claude-sonnet-4.6"
+    assert agent.provider.base_url == "http://localhost:20128/v1"
+    assert agent.provider.api_key_file == "/tmp/omniroute.token"
+
+
+def test_lovelaice_provider_gateway_fields_are_optional(tmp_path: Path) -> None:
+    """Omitting base_url/api_key_file leaves lovelaice on its own
+    defaults (OpenRouter via OPENROUTER_API_KEY in the environment)."""
+    (tmp_path / ".aegis.yaml").write_text(textwrap.dedent("""
+        default_agent: llc
+        agents:
+          llc:
+            provider: lovelaice
+            model: qwen/qwen3-32b
+    """))
+    cfg = load_config(tmp_path)
+    assert cfg.agents["llc"].provider.base_url is None
+    assert cfg.agents["llc"].provider.api_key_file is None
