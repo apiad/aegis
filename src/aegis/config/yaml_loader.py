@@ -25,6 +25,7 @@ from aegis.config import (
     Agent,
     ClaudeCode,
     ConfigError,
+    CopilotCLI,
     GeminiCLI,
     Lovelaice,
     OpenCode,
@@ -73,6 +74,7 @@ _PROVIDERS: dict[str, type] = {
     "gemini": GeminiCLI,
     "opencode": OpenCode,
     "lovelaice": Lovelaice,
+    "copilot": CopilotCLI,
 }
 
 
@@ -80,8 +82,8 @@ def _agent_from_dict(d: dict[str, Any]) -> Agent:
     """Construct an Agent from a flat YAML mapping.
 
     The mapping must carry `provider:` naming one of `claude-code`,
-    `gemini-cli`/`gemini`, or `opencode`, plus the provider-specific
-    fields. Unknown providers raise ConfigError.
+    `gemini-cli`/`gemini`, `opencode`, `lovelaice`, or `copilot`, plus
+    the provider-specific fields. Unknown providers raise ConfigError.
     """
     body = dict(d)
     provider_name = body.pop("provider", None)

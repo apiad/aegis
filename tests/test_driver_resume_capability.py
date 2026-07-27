@@ -1,4 +1,5 @@
 from aegis.drivers.claude import ClaudeDriver
+from aegis.drivers.copilot import CopilotDriver
 from aegis.drivers.gemini import GeminiDriver
 from aegis.drivers.opencode import OpenCodeDriver
 
@@ -18,3 +19,9 @@ def test_gemini_supports_resume():
 
 def test_opencode_supports_resume():
     assert OpenCodeDriver().supports_resume is True
+
+
+def test_copilot_supports_resume():
+    """Copilot's ACP server advertises loadSession:true, so the shared
+    AcpDriver resume path applies."""
+    assert CopilotDriver().supports_resume is True

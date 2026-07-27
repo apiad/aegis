@@ -30,10 +30,12 @@ Fix: add optional `api_key` field to `GeminiCLI` profile config; inject
 API key from Google AI Studio (free tier available) and puts it in `.aegis.py`.
 No driver changes, no ACP changes — the subprocess just picks up the env var.
 
-### After June 1 billing transition — Copilot ACP driver
+### After June 1 billing transition — Copilot ACP driver *(shipped)*
 
 GitHub Copilot CLI supports ACP since Jan 2026: `copilot --acp` (stdio).
-Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
+Driver is a four-line `AcpDriver` shim, same shape as `GeminiDriver`,
+with `--model` passthrough. Shipped as the `CopilotDriver` /
+`CopilotCLI` provider (`provider: copilot`).
 Auth goes through `gh auth login` (no separate token management).
 
 ## Active

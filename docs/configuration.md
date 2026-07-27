@@ -53,6 +53,7 @@ Each agent's `provider:` selects which CLI aegis drives.
 | `claude-code` | Claude Code  | `model`, `effort`, `permission` | The only provider with an `effort` knob. |
 | `gemini`      | Gemini CLI   | `model`, `permission` | Permission maps to `--approval-mode`. |
 | `opencode`    | OpenCode     | `model`, `permission` | Model strings use `provider/model` form. |
+| `copilot`     | Copilot CLI  | `model`, `permission` | Use `auto` or a model accepted by Copilot CLI. |
 
 See [Drivers](drivers.md) for what each provider's `model` strings
 look like and how permission maps to the underlying CLI's flag.
