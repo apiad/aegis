@@ -1135,7 +1135,7 @@ class ConversationPane(Widget):
     def _on_core_dispatch(self, _core, batch) -> None:
         """A buffered batch is leaving the queue to start a turn. User
         text-box messages render as user lines here (and shed their chip);
-        agent/queue/telegram messages were already rendered on arrival by
+        agent/queue messages were already rendered on arrival by
         _on_core_inbox."""
         strip = self.query_one(PendingStrip)
         width = self._transcript().size.width or 80
@@ -1161,9 +1161,9 @@ class ConversationPane(Widget):
             self.app.notify(f"loop {reason}", timeout=5.0)
 
     def _on_core_inbox(self, _core, msg) -> None:
-        """Render an incoming inbox message (handoff / queue callback /
-        telegram) as a distinct block in the transcript before the agent
-        reacts. Fires on every deliver(), whether the session was idle
+        """Render an incoming inbox message (handoff / queue callback) as a
+        distinct block in the transcript before the agent reacts. Fires on
+        every deliver(), whether the session was idle
         or buffering mid-turn. User text-box messages are owned by the
         chip/dispatch flow, so they're skipped here."""
         if msg.sender == "user":

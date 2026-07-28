@@ -3,8 +3,7 @@
 Each schedule entry may carry a ``notify: {on_failure, on_success}``
 dict. ``maybe_notify`` consults that dict against the terminal status
 of a fire and invokes ``notifier.send(msg)`` if applicable. The
-notifier is supplied by the substrate (typically a Telegram-frontend
-wrapper).
+notifier is supplied by the substrate (a send-message wrapper).
 """
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ class Notifier:
     """Thin wrapper around a send-message callable.
 
     ``send_fn`` accepts a single string. The default no-op makes it
-    safe to instantiate ``Scheduler`` without a Telegram frontend.
+    safe to instantiate ``Scheduler`` without a notifier.
     """
 
     def __init__(self, send_fn: Callable[[str], Any] | None = None) -> None:

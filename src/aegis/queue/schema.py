@@ -2,7 +2,7 @@
 
 The substrate's universal-tagging principle: every inbox message and every
 queue entry carries a typed `sender` prefix (queue:<name>, agent:<handle>,
-telegram, system, plus reserved prefixes) and an ISO-8601 timestamp.
+system, plus reserved prefixes) and an ISO-8601 timestamp.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def sender_loop(iteration: int, total: int) -> str:
 
 def sender_user() -> str:
     """Sender tag for a message Alex typed into the text box. Renders
-    headerless (a plain user turn), unlike agent/queue/telegram inbox
+    headerless (a plain user turn), unlike agent/queue inbox
     messages which carry a ``> from …`` substrate header."""
     return "user"
 

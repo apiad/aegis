@@ -275,7 +275,7 @@ class _AegisAcpClient(acp.Client):
     async def request_permission(self, options, session_id, tool_call,
                                  **kw):
         # Queue workers use Permission.full anyway. Auto-allow the first
-        # option. (A future enhancement could route via TUI / Telegram.)
+        # option. (A future enhancement could route via the TUI.)
         return acp.RequestPermissionResponse(
             outcome={"outcome": "selected",
                      "optionId": options[0].option_id})

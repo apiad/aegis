@@ -18,8 +18,7 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   written lazily on the first user message (so its preview is populated) and
   only for user-initiated TUI tabs — queue workers, group members, and
   workflow agents are excluded. A header with no close marker reads back as an
-  inferred crash. Telegram/headless parity is deferred (needs a user-initiated
-  signal from that surface).
+  inferred crash.
 
 ### TUI performance
 

@@ -55,7 +55,7 @@ def _adapt_metrics(metrics):
 
 def _handle_of(sender_tag: str) -> str:
     """Extract the inbox handle from a SenderTag. Only ``agent:<handle>``
-    has a delivery target in v1; others (telegram/system/queue:…) deliver
+    has a delivery target in v1; others (system/queue:…) deliver
     to a sentinel handle equal to the sender — the router tolerates
     unbound handles and just buffers."""
     if sender_tag.startswith("agent:"):

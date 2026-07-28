@@ -1,6 +1,6 @@
 ---
 date: 2026-05-28
-status: implemented (TUI; Telegram/headless parity deferred)
+status: implemented (TUI)
 type: design
 topic: session-history
 ---
@@ -12,9 +12,7 @@ topic: session-history
 > hook fired from **both** delivery paths (the plan's `_submit`-only hook
 > would have missed interactively-typed messages); and the modal uses a
 > smart-Enter primary action instead of single-letter `r`/`f` keys (which a
-> focused filter Input swallows). **Deferred:** Telegram/headless parity —
-> `SessionManager._sync_spawn` is shared by queue/group/workflow substrate, so
-> it needs an explicit user-initiated flag before it can safely write meta.
+> focused filter Input swallows).
 
 # Aegis — Session History (Ctrl+H)
 
@@ -48,8 +46,6 @@ the selected row through the existing `drv.resume()` protocol.
 
 - TUI tabs opened via `Ctrl+N` (the `AgentPicker`), `Ctrl+T` (default
   agent), or the implicit first tab at boot.
-- Telegram-routed sessions created by `/new` or by bare-text routing
-  from the bot.
 
 **Out of scope.** Substrate ephemera:
 
@@ -138,7 +134,7 @@ class SessionMeta:
     provider: str   # "claude-code" | "gemini" | "opencode"
     cwd: str
     created_at: str  # ISO-8601 UTC
-    origin: str     # "tui" | "telegram"
+    origin: str     # "tui"
 ```
 
 Written exactly once, before the first turn of every user-initiated
@@ -265,10 +261,6 @@ cap without schema change.
     (queue workers) intentionally does NOT emit one.
   - emit `SessionClosed` from `_close_pane(...)` and `action_quit()`
     for `ConversationPane`s with a meta header.
-- `aegis.telegram.frontend` — `/new` and bare-text routing call into
-  the same `_spawn(...)` indirectly via `SessionManager.spawn(...)`.
-  `SessionManager.spawn()` gains a parallel meta-header emission for
-  the headless (`aegis serve`) path. Same shape, different surface.
 
 ## Configuration
 

@@ -415,7 +415,7 @@ class WorkflowEngine:
                         options: list[str] | None = None,
                         timeout: float | None = None) -> str:
         """Pose ``question`` to the human operator via the host's input
-        bar (TUI) or Telegram (headless), await their reply, return it.
+        bar (TUI), await their reply, return it.
 
         Routes through ``bridge.workflow_runner.register_human_question``;
         the runner records the pending question and resolves the future

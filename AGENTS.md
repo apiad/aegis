@@ -61,7 +61,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   via `F2`.
 - `src/aegis/config/__init__.py` - Agent / Permission / Effort /
   Provider dataclasses + `find_project_root`, `load_config`,
-  `load_queues`, `load_telegram_config` — all YAML-backed thin
+  `load_queues` — all YAML-backed thin
   wrappers around `aegis.config.yaml_loader.load_config`. `Agent` also
   carries an optional `prompt:` (persona system-prompt file path).
 - `src/aegis/config/harnesses.py` - the `harnesses:` registry:
@@ -75,7 +75,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (`read_persona`) reads the persona file at spawn.
 - `src/aegis/config/yaml_loader.py` - the real YAML parser:
   `.aegis.yaml` + overlays → `AegisConfig` (agents, queues, schedules,
-  remotes, groups, telegram, plugin_dirs). Fail-loud on default_agent /
+  remotes, groups, plugin_dirs). Fail-loud on default_agent /
   queue-agent / max_parallel violations.
 - `src/aegis/drivers/` - HarnessDriver seam + concrete drivers.
   `claude.py` (Claude Code, full-featured — multi-turn via stream-json INPUT,
