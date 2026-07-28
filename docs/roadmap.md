@@ -228,7 +228,7 @@ Newest first. Patch releases bundle under their minor parent.
   `aegis_grep`, `aegis_listdir`) routing every agent's file and shell
   access through the substrate. Harness-side suppression of built-in
   tools where the harness allows it; per-agent permission framework
-  (`allow` / `deny` / `ask`) with TUI + Telegram routing. Design:
+  (`allow` / `deny` / `ask`) with TUI routing. Design:
   [`2026-05-27-aegis-fs-tool-surface-design.md`](https://github.com/apiad/aegis/blob/main/docs/superpowers/specs/2026-05-27-aegis-fs-tool-surface-design.md).
 - **Agent sandbox.** Per-profile opt-in isolation primitives —
   worktree isolation, declarative read-only / hidden filesystem
@@ -247,8 +247,6 @@ Newest first. Patch releases bundle under their minor parent.
   would be cleaner.
 - **`aegis_delegate` sync wrapper.** One MCP call that does enqueue +
   await internally for callers that want the simple sync shape.
-- **Telegram delivery sanity test.** Verify the substrate header
-  survives chunking and reaches the chat.
 
 ### More drivers
 

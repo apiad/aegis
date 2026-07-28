@@ -432,6 +432,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [0.17.0] - 2026-07-16
 
+### Removed
+
+- **The Telegram frontend is gone** (breaking). The bot bridge, its command
+  surface, and the `telegram_*` config keys were removed; the web client is
+  the remote surface now. Earlier entries below that describe Telegram
+  features are retained as the historical record of what shipped at the time.
+
 ### Slash commands + shell escape (TUI input)
 
 - **`!<command>` shell escape.** Typing `!cmd` in the input runs `cmd` in a
@@ -1190,8 +1197,6 @@ the buffer. Clean buffer still exits edit mode silently.
 - `TelegramFrontend.__init__` grows `bridge` and `cfg` positional
   params. Existing `aegis serve` wire-up updated; no external API
   change.
-
-Spec: `docs/superpowers/specs/2026-05-26-aegis-telegram-substrate-commands-design.md`.
 
 ## [0.9.0] - 2026-05-26
 

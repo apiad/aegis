@@ -290,7 +290,7 @@ TTFT for ACP) remain candidate work but aren't on the critical path.
 Modal listing every user-initiated agent session (open or closed, current
 process or previous); reopens via jump-to-tab, `drv.resume()`, or fresh spawn
 with recorded profile + cwd. Three slices: backend reads → resume path with
-`session_id` latch → close marker + preview + Telegram parity.
+`session_id` latch → close marker + preview.
 
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-session-history-design.md`
 - Plan: `docs/superpowers/plans/2026-05-28-aegis-session-history.md`
@@ -300,7 +300,7 @@ with recorded profile + cwd. Three slices: backend reads → resume path with
 Six aegis-owned tools (`aegis_bash`, `aegis_read`, `aegis_write`, `aegis_edit`,
 `aegis_grep`, `aegis_listdir`) routing every agent's filesystem + shell access
 through the substrate. `PermissionRouter` (`allow` / `deny` / `ask`) with TUI
-inline + Telegram inline-button approval. Hard Claude built-in suppression via
+inline approval. Hard Claude built-in suppression via
 `--tools ""`. Universal "prefer aegis tools" system-prompt addendum.
 
 - Spec: `docs/superpowers/specs/2026-05-27-aegis-fs-tool-surface-design.md`
@@ -330,8 +330,6 @@ Small follow-ups on top of the shipped substrate:
 - **`aegis_delegate` sync wrapper** *(shipped)* — `QueueManager.run`
   enqueues (callback off) + awaits a one-shot completion subscription,
   returning the worker's result directly; optional `timeout_s`.
-- ~~**Telegram delivery sanity test** (T4.3)~~ — **obsolete**: the Telegram
-  frontend was removed in v-W6 (`0e26312`); the web client replaced it.
 
 ### Sequential handoff — re-scope
 
@@ -360,7 +358,7 @@ sends full session history then live events; reconnect via `(session_id,
 last_seq)` resume against the existing JSONL persistence. Themes move to
 shared YAML (`src/aegis/data/themes/*.yaml`) so TUI and web stay visually
 identical. End-state: TUI also becomes a WS client of `aegis serve` so
-sessions are shared across TUI ↔ web ↔ Telegram.
+sessions are shared across TUI ↔ web.
 
 Ten slices, S1–S10, vertical, foundation-first. Earliest "usable single-tab
 web client" is end of S2; full TUI feature parity is end of S6; full
