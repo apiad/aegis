@@ -23,13 +23,15 @@ from ruamel.yaml import YAML
 
 from aegis.config import (
     Agent,
-    ClaudeCode,
     ConfigError,
-    GeminiCLI,
-    Lovelaice,
-    OpenCode,
+    Permission,
     VoiceConfig,
     WebConfig,
+)
+from aegis.config.harnesses import (
+    HarnessRegistration,
+    merge_harnesses,
+    resolve_agent_entry,
 )
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 
@@ -52,6 +54,7 @@ class AegisConfig:
     """Loaded YAML config (in-memory)."""
     default_agent: str | None = None
     agents: dict[str, Agent] = field(default_factory=dict)
+    harnesses: dict[str, HarnessRegistration] = field(default_factory=dict)
     queues: dict[str, QueueSpec] = field(default_factory=dict)
     schedules: dict[str, dict[str, Any]] = field(default_factory=dict)
     workflows: list[str] = field(default_factory=list)
@@ -67,35 +70,32 @@ class AegisConfig:
     dynamic_workflow_autoapprove_agents: int = 5
 
 
-_PROVIDERS: dict[str, type] = {
-    "claude-code": ClaudeCode,
-    "gemini-cli": GeminiCLI,
-    "gemini": GeminiCLI,
-    "opencode": OpenCode,
-    "lovelaice": Lovelaice,
-}
+_VALID_DRIVERS = {"claude-code", "gemini", "opencode", "lovelaice"}
 
 
-def _agent_from_dict(d: dict[str, Any]) -> Agent:
-    """Construct an Agent from a flat YAML mapping.
+def _harness_from_dict(name: str, d: dict[str, Any]) -> HarnessRegistration:
+    """Construct a HarnessRegistration from a `harnesses:` YAML entry.
 
-    The mapping must carry `provider:` naming one of `claude-code`,
-    `gemini-cli`/`gemini`, or `opencode`, plus the provider-specific
-    fields. Unknown providers raise ConfigError.
+    Requires a `driver` naming one of the four drivers. Unknown drivers
+    fail loud.
     """
-    body = dict(d)
-    provider_name = body.pop("provider", None)
-    if provider_name is None:
-        raise ConfigError(f"agent missing `provider` field: {d!r}")
-    cls = _PROVIDERS.get(provider_name)
-    if cls is None:
+    driver = d.get("driver")
+    if driver not in _VALID_DRIVERS:
         raise ConfigError(
-            f"unknown provider {provider_name!r}; "
-            f"known: {sorted(_PROVIDERS)}")
-    return Agent(provider=cls(**body))
+            f"harness {name!r}: unknown driver {driver!r}; "
+            f"known: {sorted(_VALID_DRIVERS)}")
+    pd = d.get("permission_default")
+    return HarnessRegistration(
+        name=name,
+        driver=driver,
+        base_url=d.get("base_url"),
+        api_key_file=d.get("api_key_file"),
+        default_model=d.get("default_model"),
+        permission_default=Permission(pd) if pd else None,
+    )
 
 
-_SECTIONS = ("agents", "queues", "schedules", "remotes")
+_SECTIONS = ("agents", "harnesses", "queues", "schedules", "remotes")
 
 
 def _collect_overlays(root: Path) -> dict[str, dict[str, Any]]:
@@ -149,6 +149,7 @@ def load_config(root: Path) -> AegisConfig:
 
     inline: dict[str, dict[str, Any]] = {
         "agents": dict(raw.get("agents") or {}),
+        "harnesses": dict(raw.get("harnesses") or {}),
         "queues": dict(raw.get("queues") or {}),
         "schedules": dict(raw.get("schedules") or {}),
         "remotes": dict(raw.get("remotes") or {}),
@@ -159,7 +160,11 @@ def load_config(root: Path) -> AegisConfig:
         merged[section] = _merge_or_die(
             section, inline[section], overlay[section])
 
-    agents = {k: _agent_from_dict(dict(v))
+    explicit_harnesses = {
+        k: _harness_from_dict(k, dict(v))
+        for k, v in merged["harnesses"].items()}
+    harnesses = merge_harnesses(explicit_harnesses)
+    agents = {k: resolve_agent_entry(dict(v), harnesses)
               for k, v in merged["agents"].items()}
     queues = {k: QueueSpec(**v) for k, v in merged["queues"].items()}
     remotes = {k: RemoteSpec(**v) for k, v in merged["remotes"].items()}
@@ -204,6 +209,7 @@ def load_config(root: Path) -> AegisConfig:
     return AegisConfig(
         default_agent=default_agent,
         agents=agents,
+        harnesses=harnesses,
         queues=queues,
         schedules=merged["schedules"],
         workflows=list(raw.get("workflows") or []),

@@ -31,6 +31,13 @@ _PROVIDER_BY_DRIVER: dict[str, type] = {
     "lovelaice": Lovelaice,
 }
 
+# Legacy `provider:` names accepted directly (includes the gemini-cli alias
+# that predates the registry). The `harness:` shape uses driver names only.
+_PROVIDER_BY_NAME: dict[str, type] = {
+    **_PROVIDER_BY_DRIVER,
+    "gemini-cli": GeminiCLI,
+}
+
 
 @dataclass(frozen=True)
 class HarnessRegistration:
@@ -70,11 +77,20 @@ def resolve_agent_entry(
     prompt = d.pop("prompt", None)
     reg_key = d.pop("harness", None)
     if reg_key is None:
+        # Legacy `provider:` shape — build the provider directly from ALL
+        # inline body fields (model/effort/permission/base_url/api_key_file),
+        # exactly as the pre-registry loader did. Credentials on the agent
+        # body stay supported here for back-compat.
         provider_name = d.pop("provider", None)
         if provider_name is None:
+            raise ConfigError(f"agent missing `provider` field: {body!r}")
+        cls = _PROVIDER_BY_NAME.get(provider_name)
+        if cls is None:
             raise ConfigError(
-                f"agent missing `harness` or `provider`: {body!r}")
-        reg_key = provider_name          # provider name IS a driver name
+                f"unknown provider {provider_name!r}; "
+                f"known: {sorted(_PROVIDER_BY_NAME)}")
+        return Agent(provider=cls(**d), prompt=prompt)
+    # New `harness:` ref shape — credentials come from the registration.
     reg = harnesses.get(reg_key)
     if reg is None:
         raise ConfigError(
