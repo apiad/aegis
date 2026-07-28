@@ -178,10 +178,32 @@ class Unknown:
     raw: str
 
 
+@dataclass(frozen=True)
+class SessionMeta:
+    """First record of a user-initiated session log — the gating header that
+    makes a log show up in the Ctrl+H history. Substrate ephemera (queue
+    workers, workflow spawns) skip this write."""
+    handle: str
+    profile: str
+    provider: str
+    cwd: str
+    created_at: str
+    origin: str
+    preview: str = ""
+
+
+@dataclass(frozen=True)
+class SessionClosed:
+    """Close marker appended when a session's pane/handle is torn down. A meta
+    header with no close marker is read back as an inferred crash."""
+    closed_at: str
+    reason: str
+
+
 Event = (
     SystemInit | AssistantText | AssistantThinking | ThinkingTokens
     | ToolUse | ToolResult | AgentPlan | ContextUpdate
-    | Result | Unknown
+    | Result | Unknown | SessionMeta | SessionClosed
 )
 
 # Tool name -> input key whose value is the one-line summary.
