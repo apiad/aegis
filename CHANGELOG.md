@@ -5,6 +5,45 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-28
+
+### Harnesses are a registry; models and effort are per-session
+
+- **New: a top-level `harnesses:` section in `.aegis.yaml`.** A harness is a
+  named provider entry — a driver plus its credentials/endpoint — declared
+  once and referenced by agents. `openrouter: {driver: lovelaice, base_url:
+  …, api_key_file: …}` lets you point the same driver at two different
+  endpoints (an OpenRouter and a local Ollama, say), which the old
+  one-provider-per-agent shape couldn't express. The four driver strings
+  (`claude-code`, `gemini`, `opencode`, `lovelaice`) auto-register as
+  implicit harnesses, so every existing config loads unchanged.
+- **New: pick model and effort when you open a tab.** The agent picker is now
+  two-tier — named presets on top (unchanged), registered harnesses below.
+  Choosing a harness opens a model picker (the live catalogue, with free-text
+  fallback) and, for claude-code, an effort picker. The pick is a transient
+  agent; it isn't written to `.aegis.yaml`.
+- **`aegis_spawn` and `/spawn` take `model` / `effort` / `prompt` overrides**,
+  layered over a named profile without persisting. Queues, schedules, and
+  groups are untouched — they still resolve named profiles.
+- **New: `aegis config harness {add,list,remove}`** authors the registry from
+  the shell; the TUI's Add-agent modal is harness-aware.
+
+### OpenCode is first-class — including its free models
+
+- **`agent.model` now selects the OpenCode model.** `opencode acp` takes no
+  model flag, so the driver injects `OPENCODE_CONFIG_CONTENT`; the free tier
+  (`opencode/deepseek-v4-flash-free`, `north-mini-code-free`, and the other
+  `-free` models) is reachable from aegis for the first time. Verified against
+  the real CLI, and per-session MCP injection still works alongside it.
+
+### Personas: an optional system prompt per agent
+
+- **New: an agent may carry a `prompt:` file** — a persona (a reviewer, a
+  Spanish writer, a terse ops agent). It's read at spawn and injected as a
+  system prompt that composes with, never replaces, the aegis handle primer.
+  Claude appends it after the primer; ACP drivers prepend it on the first
+  turn (verified: a real OpenCode agent obeys the persona).
+
 ## [0.22.0] - 2026-07-24
 
 ### Live Claude quota in the status bar
