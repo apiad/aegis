@@ -10,8 +10,8 @@ from dataclasses import replace
 
 from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, ContextUpdate,
-    CostUsage, Event, PlanEntry, Result, SystemInit, TokenUsage,
-    ToolResult, ToolUse, Unknown,
+    CostUsage, Event, PlanEntry, Result, SessionClosed, SessionMeta,
+    SystemInit, TokenUsage, ToolResult, ToolUse, Unknown,
 )
 
 
@@ -134,6 +134,15 @@ def _encode_inner(ev: Event) -> dict:
         return out
     if isinstance(ev, Unknown):
         return {"t": "Unknown", "raw": ev.raw}
+    if isinstance(ev, SessionMeta):
+        return {"t": "SessionMeta",
+                "handle": ev.handle, "profile": ev.profile,
+                "provider": ev.provider, "cwd": ev.cwd,
+                "created_at": ev.created_at, "origin": ev.origin,
+                "preview": ev.preview}
+    if isinstance(ev, SessionClosed):
+        return {"t": "SessionClosed",
+                "closed_at": ev.closed_at, "reason": ev.reason}
     raise ValueError(f"unknown event type: {type(ev).__name__}")
 
 
@@ -216,4 +225,13 @@ def _decode_inner(d: dict) -> Event:
             cost=cost, mode=d.get("mode"), title=d.get("title"))
     if t == "Unknown":
         return Unknown(raw=d["raw"])
+    if t == "SessionMeta":
+        return SessionMeta(
+            handle=d["handle"], profile=d["profile"],
+            provider=d["provider"], cwd=d["cwd"],
+            created_at=d["created_at"], origin=d["origin"],
+            preview=d.get("preview", ""))
+    if t == "SessionClosed":
+        return SessionClosed(closed_at=d["closed_at"],
+                             reason=d["reason"])
     raise ValueError(f"unknown event type tag: {t!r}")
