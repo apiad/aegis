@@ -1,9 +1,20 @@
 ---
 date: 2026-05-28
-status: draft
+status: implemented (TUI; Telegram/headless parity deferred)
 type: design
 topic: session-history
 ---
+
+> **Status (2026-07-28):** Implemented for the TUI — `Ctrl+H` lists sessions
+> across restarts and reopens by jump / resume / open-fresh, backed by
+> `SessionMeta` + `SessionClosed` in the per-session log. Two deviations from
+> the original plan: meta is written lazily on the first user message via a
+> hook fired from **both** delivery paths (the plan's `_submit`-only hook
+> would have missed interactively-typed messages); and the modal uses a
+> smart-Enter primary action instead of single-letter `r`/`f` keys (which a
+> focused filter Input swallows). **Deferred:** Telegram/headless parity —
+> `SessionManager._sync_spawn` is shared by queue/group/workflow substrate, so
+> it needs an explicit user-initiated flag before it can safely write meta.
 
 # Aegis — Session History (Ctrl+H)
 

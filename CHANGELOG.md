@@ -5,6 +5,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Session history (`Ctrl+H`)
+
+- **New: a persistent, cross-process record of your sessions.** `Ctrl+H` opens
+  a modal listing every user-initiated agent session — open or closed, this
+  launch or a previous one. Enter does the right thing per row: jump to a live
+  tab, **resume** a closed one with full conversation continuity (Claude / any
+  resume-capable driver), or open a fresh session with the recorded profile.
+  Filter as you type; Up/Down to navigate.
+- Backed by two new event variants (`SessionMeta` header + `SessionClosed`
+  marker) written into the existing per-session `.jsonl` log. The header is
+  written lazily on the first user message (so its preview is populated) and
+  only for user-initiated TUI tabs — queue workers, group members, and
+  workflow agents are excluded. A header with no close marker reads back as an
+  inferred crash. Telegram/headless parity is deferred (needs a user-initiated
+  signal from that surface).
+
+### TUI performance
+
+- **Streaming no longer re-parses the whole message per token.** Assistant text
+  streams as plain `Text` and is parsed to Markdown once when the turn settles
+  — ~90× less render work on a long message, and it no longer ran in background
+  panes. Streamed text now explicitly follows the bottom while you're at the
+  tail (and never yanks you down when you've scrolled up).
+- **Background panes freeze their spinner timers.** A hidden tab's
+  WorkingIndicator + per-tool spinners no longer tick at 10 Hz into the shared
+  message pump; they resume on show. Multiple busy tabs no longer compound.
+
 ## [0.23.0] - 2026-07-28
 
 ### Harnesses are a registry; models and effort are per-session
