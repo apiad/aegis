@@ -32,6 +32,9 @@ baked into `.aegis.yaml`. Three consequences:
 - **Choose model + effort per session** at interactive spawn, on top of the
   named presets — *both* named profiles (for the coordination substrate) and
   a live per-session picker.
+- **Optional persona per agent**: an agent may carry an external `.md` system
+  prompt, so a profile is `harness + model + effort + optional prompt` — a
+  configurable persona (a reviewer, a Spanish writer, a terse ops agent, …).
 
 ## Non-goals
 
@@ -99,11 +102,17 @@ agents:
   opus:      { harness: claude,     model: opus,   effort: high }
   fast-free: { harness: opencode,   model: opencode/deepseek-v4-flash-free }
   qwen:      { harness: openrouter, model: qwen/qwen3-32b }
+  reviewer:  { harness: claude,     model: opus,   effort: high,
+               prompt: .aegis/personas/reviewer.md }
 ```
 
 Resolution: `agent.harness → HarnessRegistration → driver + credentials`, then
-overlay `model / effort / permission` from the agent. When `model` is omitted,
-fall back to the harness's `default_model`.
+overlay `model / effort / permission / prompt` from the agent. When `model` is
+omitted, fall back to the harness's `default_model`.
+
+`prompt` is an optional path (project-root-relative or `~`-expanded) to a
+Markdown file read at spawn. It is the agent's **persona system prompt** — see
+§5. Absent/empty → no persona.
 
 **Back-compat — all three legacy shapes still validate:**
 
@@ -197,15 +206,17 @@ that can't map it ignore it — the current status quo.
 
 The picker resolves to a **transient `Agent`** (harness + chosen model + chosen
 effort + permission) handed to the existing spawn path. It is not written to
-`.aegis.yaml`.
+`.aegis.yaml`. The custom path carries no persona — personas live on named
+presets (a persona is a durable identity worth naming, not an ad-hoc pick).
 
 #### Non-interactive spawn
 
-- `aegis_spawn` MCP tool gains optional `model` / `effort` params (layered over
-  the named profile it already takes).
+- `aegis_spawn` MCP tool gains optional `model` / `effort` / `prompt` params
+  (layered over the named profile it already takes).
 - The spawn slash command gains optional `model` / `effort` args.
 
-Queues / schedules / groups are untouched — they resolve named profiles only.
+Queues / schedules / groups are untouched — they resolve named profiles only
+(and thus inherit a preset's persona for free).
 
 ### 4. Config authoring
 
@@ -213,28 +224,56 @@ Queues / schedules / groups are untouched — they resolve named profiles only.
   atomic tempfile rename, identical machinery to the `agent` / `queue` verbs in
   `config/edit.py` + `cli_config.py`.
 - TUI `ConfigPanel` / `AddAgentModal` become harness-aware: an agent is
-  authored as *(registered harness + model + effort + permission)* rather than a
-  raw driver string. Registering a harness is a new modal/verb.
+  authored as *(registered harness + model + effort + permission + optional
+  prompt)* rather than a raw driver string. Registering a harness is a new
+  modal/verb.
+
+### 5. Personas (system prompt injection)
+
+An agent's optional `prompt:` file is its **persona** — a durable identity
+(reviewer, Spanish writer, terse ops agent, …). The file is read at spawn and
+injected as a system prompt that **composes with, never replaces, the aegis
+handle/callback primer** — the persona is layered *after* the primer so the
+agent still knows its handle and can call back.
+
+ACP has no standard system-prompt field in `new_session`, so injection is
+per-driver. Each is behind the same real-model-probe discipline as the OpenCode
+model injection:
+
+| driver | mechanism |
+|--------|-----------|
+| `claude-code` | a second `--append-system-prompt <persona>` after the primer append |
+| `opencode` | folded into the already-injected `OPENCODE_CONFIG_CONTENT` via `instructions` (probe: inline text vs a temp file path) |
+| `lovelaice` | env (`LOVELAICE_SYSTEM_PROMPT`); aegis owns lovelaice as a dependency, so add upstream support if it's missing |
+| `gemini` + **universal fallback** | prepend the persona as a leading text block on the **first** `prompt()` turn — guaranteed to work on any ACP driver lacking a clean native seam |
+
+The portable fallback (first-turn prepend) is the correctness floor: every ACP
+driver gets *a* working persona even before a native seam is wired. Native
+seams (opencode `instructions`, lovelaice env) are cleaner layers added where
+they exist. Implementation adds one seam on the driver base — e.g.
+`system_prompt(agent) -> str | None` (reads + returns the persona text) — and
+each driver applies it through its native or fallback mechanism.
 
 ## Data flow
 
 ```
 .aegis.yaml
   harnesses: ──► HarnessRegistration{driver, base_url, api_key_file, default_model}
-  agents:    ──► Agent{harness→ref, model, effort, permission}
+  agents:    ──► Agent{harness→ref, model, effort, permission, prompt?}
                     │
    interactive spawn (picker) ─► transient Agent{harness, model*, effort*}
-   aegis_spawn(model?, effort?) ─► transient Agent
+   aegis_spawn(model?, effort?, prompt?) ─► transient Agent
                     │
                     ▼
-        resolve harness → driver + credentials
+        resolve harness → driver + credentials; read prompt file → persona text
                     │
                     ▼
         get_driver(driver).session(agent, …)
-          - OpenCodeDriver.extra_env → OPENCODE_CONFIG_CONTENT={"model":…}
-          - GeminiDriver.build_argv → -m <model>
-          - LovelaiceDriver.extra_env → LOVELAICE_MODEL/BASE_URL + key
-          - ClaudeDriver → effort mapping
+          - OpenCodeDriver.extra_env → OPENCODE_CONFIG_CONTENT={"model":…, "instructions":…}
+          - GeminiDriver.build_argv → -m <model>; persona → first-turn prepend
+          - LovelaiceDriver.extra_env → LOVELAICE_MODEL/BASE_URL + key + SYSTEM_PROMPT
+          - ClaudeDriver → effort mapping; persona → 2nd --append-system-prompt
+          (primer always injected first; persona composes after)
 ```
 
 ## Testing
@@ -249,6 +288,11 @@ Queues / schedules / groups are untouched — they resolve named profiles only.
   resolution order (harness first, Provider fallback).
 - `OpenCodeDriver.extra_env` emits the expected `OPENCODE_CONFIG_CONTENT` JSON
   for a given `agent.model`, and emits nothing when `model` is empty.
+- Persona: `prompt:` path resolves + reads; a missing file fails loud at spawn;
+  `ClaudeDriver` argv carries the persona as a second `--append-system-prompt`
+  *after* the primer; the ACP fallback prepends the persona to the first turn's
+  prompt blocks when no native seam applies; an agent with no `prompt:` injects
+  no persona.
 - Picker catalog selection is pure/testable: given a harness + a stub catalog,
   the resolved transient `Agent` carries the chosen model/effort.
 
@@ -262,8 +306,9 @@ Queues / schedules / groups are untouched — they resolve named profiles only.
 
 - TDD, commit per logical unit, straight to `main` (aegis convention).
 - Ship in order: config model + validation → back-compat resolution → OpenCode
-  `extra_env` + live probe → picker → non-interactive spawn params → config
-  authoring verbs + ConfigPanel.
+  `extra_env` + live probe → personas (claude append + ACP first-turn fallback,
+  then native seams) → picker → non-interactive spawn params → config authoring
+  verbs + ConfigPanel.
 - The **vertical slice** that proves the whole thing end-to-end first:
   register an `opencode` harness, author a `fast-free` agent on a free model,
   spawn it, confirm the free model actually answers. Everything else layers on.
