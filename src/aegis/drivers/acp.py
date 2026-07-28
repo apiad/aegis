@@ -90,6 +90,7 @@ class _RingHandler(logging.Handler):
         self._records.clear()
 
 from aegis.config import Agent
+from aegis.config.persona import read_persona
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.events import (
     AgentPlan,
@@ -312,11 +313,16 @@ class AcpSession(HarnessSession):
     def __init__(self, agent: Agent, cwd: str,
                  mcp_url: str, handle: str,
                  *, resume_session_id: str | None = None,
-                 extra_env: dict[str, str] | None = None) -> None:
+                 extra_env: dict[str, str] | None = None,
+                 persona: str | None = None) -> None:
         self._agent = agent
         self._cwd = cwd
         self._mcp_url = mcp_url
         self._handle = handle
+        # Persona system prompt. ACP has no system-prompt field, so it is
+        # prepended as a leading text block on the FIRST turn only.
+        self._persona = persona
+        self._persona_sent = False
         # Driver-supplied env merged into the subprocess at spawn (e.g.
         # LOVELAICE_MODEL / LOVELAICE_BASE_URL / OPENROUTER_API_KEY). Composes
         # with pre-spawn-hook env; extra_env wins on key conflicts.
@@ -531,10 +537,14 @@ class AcpSession(HarnessSession):
             raise RuntimeError(
                 "AcpSession.send() called before start()")
         started = _time.monotonic()
+        blocks = [{"type": "text", "text": text}]
+        if self._persona and not self._persona_sent:
+            blocks = [{"type": "text", "text": self._persona}, *blocks]
+            self._persona_sent = True
         try:
             resp = await self._conn.prompt(
                 session_id=self._session_id,
-                prompt=[{"type": "text", "text": text}],
+                prompt=blocks,
             )
         except BaseException as e:
             raise (await self._wrap_error(e)) from None
@@ -692,7 +702,8 @@ class AcpDriver(HarnessDriver):
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
-                             extra_env=self.extra_env(agent))
+                             extra_env=self.extra_env(agent),
+                             persona=read_persona(agent, cwd))
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
@@ -703,6 +714,7 @@ class AcpDriver(HarnessDriver):
                session_id: str) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
                              resume_session_id=session_id,
-                             extra_env=self.extra_env(agent))
+                             extra_env=self.extra_env(agent),
+                             persona=read_persona(agent, cwd))
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
