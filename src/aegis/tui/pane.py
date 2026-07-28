@@ -1003,6 +1003,18 @@ class ConversationPane(Widget):
     # --- streaming aggregation -------------------------------------
 
     def _flush_streaming(self) -> None:
+        # A text stream is rendered cheaply as plain Text per delta (no
+        # per-token Markdown re-parse). Finalize it to a single Markdown
+        # render on flush so the settled block carries proper formatting.
+        if (self._streaming_kind == "text"
+                and self._streaming_block is not None
+                and self._streaming_text.strip()):
+            r = Markdown(self._streaming_text)
+            self._streaming_block.update_content(r, self._streaming_text)
+            if self._streaming_history_idx is not None:
+                rec = self._history[self._streaming_history_idx]
+                rec.renderable = r
+                rec.payload = self._streaming_text
         self._streaming_block = None
         self._streaming_kind = None
         self._streaming_text = ""
@@ -1016,7 +1028,11 @@ class ConversationPane(Widget):
             return _thought_summary(
                 time.monotonic() - started, len(text), self._palette,
                 self._streaming_thinking_est)
-        return Markdown(text) if text.strip() else Text("")
+        # Stream deltas as cheap plain Text — a fresh Markdown(full_text)
+        # per token is O(n^2) parsing over the message. The block is
+        # re-rendered once as Markdown in _flush_streaming when the stream
+        # settles.
+        return Text(text)
 
     def _stream_append(self, kind: str, new_text: str,
                        token_estimate: int = 0) -> None:

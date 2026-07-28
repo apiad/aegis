@@ -240,6 +240,28 @@ async def test_streaming_updates_history_record_in_place():
 
 
 @pytest.mark.asyncio
+async def test_streaming_uses_cheap_text_then_markdown_on_flush():
+    """Streaming deltas render as cheap plain Text (no per-token Markdown
+    re-parse — the O(n^2) hot path). The block is finalized to a single
+    Markdown render once the stream flushes, so final formatting is
+    preserved."""
+    from rich.markdown import Markdown
+    from rich.text import Text
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        pane._on_core_event(None, AssistantText(text="# hi ", usage=None))
+        pane._on_core_event(None, AssistantText(text="**there**", usage=None))
+        # Mid-stream: cheap Text, NOT a freshly parsed Markdown per token.
+        assert isinstance(pane._history[0].renderable, Text)
+        assert pane._streaming_text == "# hi **there**"
+        # Flush (turn boundary / kind change) finalizes to one Markdown parse.
+        pane._flush_streaming()
+        assert isinstance(pane._history[0].renderable, Markdown)
+        assert pane._history[0].payload == "# hi **there**"
+
+
+@pytest.mark.asyncio
 async def test_history_records_every_event():
     """Every rendered event appends a BlockRecord to _history."""
     app = _app()
