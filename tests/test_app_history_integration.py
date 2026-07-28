@@ -116,6 +116,48 @@ async def test_ctrl_h_opens_history_modal(tmp_path: Path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_history_resume_calls_driver_resume(tmp_path: Path, monkeypatch):
+    """A closed row with a session_id and a resume-capable provider routes
+    Enter through drv.resume() with the recorded handle + session_id."""
+    monkeypatch.chdir(tmp_path)
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+    from aegis.events import SessionMeta, SystemInit
+    from aegis.state.session_log import append_event, append_meta
+
+    sd = tmp_path / ".aegis" / "state"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    append_meta(sd, SessionMeta(
+        handle="prior", profile="sonnet", provider="claude-code",
+        cwd=str(tmp_path), created_at=now, origin="tui", preview="prior work"))
+    append_event(sd, "prior", SystemInit(session_id="upstream-1"))
+
+    fake_driver = MagicMock()
+    fake_driver.supports_resume = True
+    fake_driver.resume = MagicMock(return_value=FakeSession())
+
+    app = AegisApp({"sonnet": _agent()}, "sonnet", _factory, FakeMCP(),
+                   drivers={"claude-code": fake_driver})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+h")
+        await pilot.pause()
+        # Only "prior" is in history (the live default tab has no meta yet).
+        for ch in "prior":
+            await pilot.press(ch)
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        fake_driver.resume.assert_called_once()
+        args = fake_driver.resume.call_args.args
+        # resume(agent, cwd, mcp_url, handle, session_id)
+        assert args[3] == "prior"
+        assert args[4] == "upstream-1"
+        # A pane for the resumed handle now exists.
+        assert any(p.handle == "prior" for p in app._panes)
+
+
+@pytest.mark.asyncio
 async def test_queue_worker_spawn_writes_no_meta(tmp_path: Path, monkeypatch):
     """Queue workers spawn through _SessionManagerAdapter, which builds a
     pane with no first-message hook — so their logs carry no SessionMeta

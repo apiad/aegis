@@ -783,8 +783,51 @@ class AegisApp(App):
                 return
 
     async def _resume_from_history(self, row) -> None:
-        # Wired in the resume slice.
-        raise NotImplementedError
+        """Reopen a closed session with full conversation continuity, routing
+        through the same plan_resume + drv.resume path the boot resume uses."""
+        from aegis.state.session_log import replay_events
+        from aegis.state.workspace import Workspace, WorkspaceTab
+        from aegis.tui.resume_plan import plan_resume
+
+        # Already open (raced with another action)? Just jump.
+        for i, p in enumerate(self._panes):
+            if isinstance(p, ConversationPane) and p.handle == row.handle:
+                self._activate(i)
+                return
+
+        tab = WorkspaceTab(
+            handle=row.handle, profile=row.profile, order=0,
+            provider=row.provider, session_id=row.session_id,
+            created_at=row.created_at)
+        ws = Workspace(active_handle=row.handle, tabs=[tab])
+        plan = plan_resume(ws, self._agents, self._drivers)
+        if not plan.resumable:
+            reason = plan.skipped[0].reason.value if plan.skipped else "unknown"
+            self.notify(f"cannot resume {row.handle}: {reason}",
+                        severity="warning")
+            return
+        tab = plan.resumable[0].tab
+        drv = self._drivers[tab.provider]
+        agent = self._agents[tab.profile]
+        try:
+            session = drv.resume(
+                agent, self._cwd, self._mcp.url, tab.handle, tab.session_id)
+        except Exception as e:  # noqa: BLE001
+            self.notify(f"resume failed: {e}", severity="error")
+            return
+        replay = replay_events(self._state_dir, tab.handle)
+        pane = ConversationPane(
+            session, agent, tab.profile, tab.handle, self._palette,
+            digest=self.queue_digest, monitor_manager=self.monitor_manager,
+            state_dir_path=self._state_dir, replay=replay)
+        self._panes.append(pane)
+        self.inbox_router.bind_session(tab.handle, pane._core)
+        cs = self.query_one(ContentSwitcher)
+        pane.display = False
+        await cs.mount(pane)
+        cs.current = pane.id
+        pane.focus_input()
+        self._refresh_tabbar()
 
     async def action_new_tab(self) -> None:
         # B2: in remote mode, spawn via the daemon instead of local _spawn().
