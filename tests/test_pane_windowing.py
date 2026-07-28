@@ -240,6 +240,54 @@ async def test_streaming_updates_history_record_in_place():
 
 
 @pytest.mark.asyncio
+async def test_streaming_follows_bottom_while_sticky():
+    """As a single message streams and its block grows past the viewport, the
+    view stays pinned to the bottom so new text is always visible — as long as
+    the user hasn't scrolled up."""
+    from textual.containers import VerticalScroll
+    app = _app()
+    async with app.run_test(size=(80, 24)) as pilot:
+        pane = app._panes[0]
+        t = pane.query_one("#transcript", VerticalScroll)
+        # Stream a tall message one line-delta at a time.
+        for i in range(60):
+            pane._on_core_event(
+                None, AssistantText(text=f"line {i}\n", usage=None))
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._stick_to_bottom is True
+        assert t.max_scroll_y > 0            # the block overflows the viewport
+        assert t.scroll_y == t.max_scroll_y  # ...and we followed it to the end
+
+
+@pytest.mark.asyncio
+async def test_streaming_does_not_yank_when_scrolled_up():
+    """If the user scrolled up to read, streaming new text must NOT drag the
+    viewport back down."""
+    from textual.containers import VerticalScroll
+    app = _app()
+    async with app.run_test(size=(80, 24)) as pilot:
+        pane = app._panes[0]
+        t = pane.query_one("#transcript", VerticalScroll)
+        for i in range(60):
+            pane._on_core_event(
+                None, AssistantText(text=f"line {i}\n", usage=None))
+        await pilot.pause()
+        await pilot.pause()
+        # User scrolls up.
+        t.scroll_y = 0
+        await pilot.pause()
+        assert pane._stick_to_bottom is False
+        # More text streams in.
+        for i in range(60, 90):
+            pane._on_core_event(
+                None, AssistantText(text=f"line {i}\n", usage=None))
+        await pilot.pause()
+        # Still parked at the top — not yanked.
+        assert t.scroll_y == 0
+
+
+@pytest.mark.asyncio
 async def test_streaming_uses_cheap_text_then_markdown_on_flush():
     """Streaming deltas render as cheap plain Text (no per-token Markdown
     re-parse — the O(n^2) hot path). The block is finalized to a single

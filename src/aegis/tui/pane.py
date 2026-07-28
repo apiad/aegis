@@ -1101,6 +1101,12 @@ class ConversationPane(Widget):
                     rec = self._history[self._streaming_history_idx]
                     rec.renderable = r
                     rec.payload = self._streaming_text
+                # Follow the growing block to the bottom so streamed text stays
+                # visible. Explicit (not reliant on Textual's scroll anchor,
+                # which drifts in a live terminal); gated on stickiness so a
+                # user scrolled up to read is never yanked down.
+                if self._stick_to_bottom:
+                    self._transcript().scroll_end(animate=False)
 
     # --- event handlers --------------------------------------------
 
