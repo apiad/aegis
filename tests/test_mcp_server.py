@@ -42,10 +42,12 @@ class FakeBridge:
         return f"ignored: {a}->{b}"
 
     async def spawn(self, profile, *, handle=None,
-                    opening_prompt=None, spawned_by=None):
+                    opening_prompt=None, spawned_by=None,
+                    model=None, effort=None, prompt=None):
         self.spawned = {"profile": profile, "handle": handle,
                         "opening_prompt": opening_prompt,
-                        "spawned_by": spawned_by}
+                        "spawned_by": spawned_by,
+                        "model": model, "effort": effort, "prompt": prompt}
         return handle or "auto-handle"
 
     async def close(self, handle):
@@ -140,7 +142,8 @@ async def test_aegis_spawn_creates_peer():
     assert out == {"handle": "child-one"}
     assert br.spawned == {"profile": "default", "handle": "child-one",
                           "opening_prompt": "do the thing",
-                          "spawned_by": "parent-x"}
+                          "spawned_by": "parent-x",
+                          "model": None, "effort": None, "prompt": None}
 
 
 @pytest.mark.asyncio

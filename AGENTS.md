@@ -10,7 +10,7 @@
                                   # opens the browser, serves the web client
     aegis serve                   # headless: MCP plane + web frontend
     aegis config ...              # scriptable .aegis.yaml authoring
-                                  # (agent / queue / default-agent
+                                  # (agent / harness / queue / default-agent
                                   #  / plugin-dir / show)
 
 The TUI and the web/PWA client are **two co-equal first-class UIs** over
@@ -62,7 +62,17 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 - `src/aegis/config/__init__.py` - Agent / Permission / Effort /
   Provider dataclasses + `find_project_root`, `load_config`,
   `load_queues`, `load_telegram_config` — all YAML-backed thin
-  wrappers around `aegis.config.yaml_loader.load_config`.
+  wrappers around `aegis.config.yaml_loader.load_config`. `Agent` also
+  carries an optional `prompt:` (persona system-prompt file path).
+- `src/aegis/config/harnesses.py` - the `harnesses:` registry:
+  `HarnessRegistration` (named provider entry = driver + credentials/
+  endpoint), `IMPLICIT_HARNESSES` (the four driver strings auto-register
+  so legacy `provider:` configs keep working), `merge_harnesses`, and
+  `resolve_agent_entry` (maps an agent's `harness:` ref → driver string +
+  credentials; legacy `provider:` shape builds the provider directly).
+  Agents pick a harness + model + effort; the same driver can be
+  registered twice with different endpoints. `config/persona.py`
+  (`read_persona`) reads the persona file at spawn.
 - `src/aegis/config/yaml_loader.py` - the real YAML parser:
   `.aegis.yaml` + overlays → `AegisConfig` (agents, queues, schedules,
   remotes, groups, telegram, plugin_dirs). Fail-loud on default_agent /
@@ -73,7 +83,16 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `AcpDriver`/`AcpSession` on the official `agent-client-protocol` SDK;
   `gemini.py`, `opencode.py`, and `lovelaice.py` are thin `BASE_CMD` shims over
   it (`gemini --acp`, `opencode acp`, `lovelaice-acp`). Registry is `DRIVERS`
-  in `drivers/__init__.py`, keyed by harness string.
+  in `drivers/__init__.py`, keyed by driver string.
+  **OpenCode model selection**: `opencode acp` has no `-m` flag, so
+  `OpenCodeDriver.extra_env` injects `OPENCODE_CONFIG_CONTENT={"model":…}`
+  (live-verified; free `opencode/…-free` models work). **Personas**: claude
+  appends a 2nd `--append-system-prompt` after the primer; ACP drivers
+  prepend the persona as a leading text block on the first turn (native
+  seams deferred). Per-session `model`/`effort`/`prompt` overrides thread
+  through `SessionManager.spawn` / `aegis_spawn` / `/spawn` via
+  `core/manager._overlay_agent` (never persisted); the TUI `AgentPicker` is
+  two-tier (presets + harness→model→effort custom path).
   **`lovelaice.py` is the native, harness-free agent** — it spawns `lovelaice-acp`
   (lovelaice's ACP v1 server, a dependency of aegis) and runs local or direct-API
   models with no external CLI. Model / `base_url` / API key are injected as env at

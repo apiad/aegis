@@ -1,6 +1,6 @@
 # Harness registry + per-session model & effort selection
 
-- **Status:** approved (design)
+- **Status:** implemented (2026-07-28)
 - **Date:** 2026-07-28
 - **Repo:** `repos/aegis`
 - **Author:** Claude (aegis session `harness-registry-models`) + Alex
