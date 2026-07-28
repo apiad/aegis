@@ -212,3 +212,26 @@ async def test_opencode_mcp_per_session_injection(tmp_path):
             f"MCP server received {received!r}; events={events!r}")
     finally:
         server_task.cancel()
+
+
+@pytest.mark.skipif(not _HAVE_OPENCODE, reason="opencode CLI not on PATH")
+async def test_opencode_free_model_selection_honored(tmp_path):
+    """A free-tier model selected via OPENCODE_CONFIG_CONTENT is actually
+    used — the DeepSeek free model self-identifies as DeepSeek, which the
+    opencode default (a Claude model) would not. Proves the extra_env model
+    injection is honored end-to-end (differential probe: FINDINGS confirm
+    claude→Anthropic, deepseek→DeepSeek under this mechanism)."""
+    agent = Agent(provider=OpenCode(
+        model="opencode/deepseek-v4-flash-free", permission="full"))
+    sess = OpenCodeDriver().session(agent, str(tmp_path),
+                                    mcp_url="", handle="ofree")
+    await sess.start()
+    await sess.send(
+        "In ONE word, what company created you? Just the company name.")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    text = _aggregate_text(events)
+    assert "deepseek" in text.lower(), text
+    result = next((e for e in events if isinstance(e, Result)), None)
+    assert result is not None and not result.is_error
