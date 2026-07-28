@@ -241,10 +241,44 @@ def get_context_window(harness: str, model: str) -> int:
     return load_registry().get_context_window(harness, model)
 
 
+def _run_opencode_models() -> str | None:
+    """Raw `opencode models` stdout, or None when the CLI is absent/errors.
+    `opencode models` is a local, fast lookup — no caching needed."""
+    import shutil
+    import subprocess
+    if shutil.which("opencode") is None:
+        return None
+    try:
+        out = subprocess.run(["opencode", "models"], capture_output=True,
+                             text=True, timeout=15)
+    except Exception:  # noqa: BLE001
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def opencode_models() -> list[str]:
+    """Live `opencode models` ids (incl. the `-free` tier). Empty when the
+    opencode CLI is not on PATH."""
+    raw = _run_opencode_models()
+    if not raw:
+        return []
+    return [ln.strip() for ln in raw.splitlines() if ln.strip()]
+
+
 def models_for(provider: str) -> list[tuple[str, str]]:
     """Return the model picker options for a provider — see
-    ``Registry.models_for``."""
-    return load_registry().models_for(provider)
+    ``Registry.models_for``. For opencode, the live `opencode models` catalog
+    (which carries the free tier) is unioned ahead of the bundled registry
+    entries, deduped by id."""
+    registry = load_registry().models_for(provider)
+    if provider != "opencode":
+        return registry
+    live = opencode_models()
+    if not live:
+        return registry
+    seen = set(live)
+    return [(m, m) for m in live] + [
+        (name, label) for name, label in registry if name not in seen]
 
 
 __all__ = [
@@ -258,5 +292,6 @@ __all__ = [
     "get_context_window",
     "get_prices",
     "load_registry",
+    "opencode_models",
     "models_for",
 ]
