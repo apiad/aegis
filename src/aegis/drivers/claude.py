@@ -12,6 +12,7 @@ from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.hooks import SessionHandle
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_pre_spawn_hooks
+from aegis.config.persona import read_persona
 from aegis.mcp import PRIMING, mcp_config_json
 
 # claude stream-json emits one JSON object per line; a single line carries
@@ -200,7 +201,7 @@ class ClaudeDriver(HarnessDriver):
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:
-        return [
+        argv = [
             "claude", "-p",
             "--input-format", "stream-json",
             "--output-format", "stream-json",
@@ -213,6 +214,12 @@ class ClaudeDriver(HarnessDriver):
             "--strict-mcp-config",
             "--append-system-prompt", PRIMING.format(handle=handle),
         ]
+        # Persona composes AFTER the primer so the agent still knows its
+        # handle and can call back.
+        persona = read_persona(agent, cwd)
+        if persona:
+            argv += ["--append-system-prompt", persona]
+        return argv
 
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> ClaudeSession:
