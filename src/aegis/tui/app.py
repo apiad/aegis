@@ -617,6 +617,7 @@ class AegisApp(App):
         # B1: skip inbox_router in remote mode — it's a _DisabledPlaneStub.
         if isinstance(pane, ConversationPane) and not hasattr(self, "_remote_manager"):
             self.inbox_router.unbind_session(pane.handle)
+            self._record_session_closed(pane.handle, reason="user")
         await pane.close()
         if pane in self._panes:
             self._panes.remove(pane)
@@ -624,6 +625,25 @@ class AegisApp(App):
             await pane.remove()
         except Exception:  # noqa: BLE001 — pane may already be detached
             pass
+
+    def _record_session_closed(self, handle: str, *, reason: str) -> None:
+        """Append a SessionClosed marker for a user-initiated session.
+        Idempotent and meta-gated: no-op for worker logs (no SessionMeta)
+        and for logs already carrying a close marker."""
+        from datetime import datetime, timezone
+        from aegis.events import SessionClosed, SessionMeta
+        from aegis.state.session_log import (
+            append_event, replay_events, session_log_path)
+        if not session_log_path(self._state_dir, handle).exists():
+            return
+        events = replay_events(self._state_dir, handle).events
+        if not any(isinstance(e, SessionMeta) for e in events):
+            return
+        if any(isinstance(e, SessionClosed) for e in events):
+            return
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        append_event(self._state_dir, handle,
+                     SessionClosed(closed_at=now_iso, reason=reason))
 
     def _refresh_tabbar(self) -> None:
         cs = self.query_one(ContentSwitcher)
@@ -1167,6 +1187,7 @@ class AegisApp(App):
         for pane in list(self._panes):
             if isinstance(pane, ConversationPane):
                 self.inbox_router.unbind_session(pane.handle)
+                self._record_session_closed(pane.handle, reason="user")
             await pane.close()
         self.queue_digest.stop()
         await self.quota_service.stop()

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from aegis.config import Agent
-from aegis.events import AssistantText, Result, SessionMeta
+from aegis.events import AssistantText, Result, SessionClosed, SessionMeta
 from aegis.state.session_log import replay_events
 
 
@@ -155,6 +155,59 @@ async def test_history_resume_calls_driver_resume(tmp_path: Path, monkeypatch):
         assert args[4] == "upstream-1"
         # A pane for the resumed handle now exists.
         assert any(p.handle == "prior" for p in app._panes)
+
+
+@pytest.mark.asyncio
+async def test_close_pane_writes_session_closed(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        target = app._panes[0].handle
+        # Give tab 0 a meta header (first user message), then a 2nd tab so
+        # closing the first doesn't exit the app.
+        app._panes[0]._submit("hello")
+        await pilot.pause()
+        await app._spawn("sonnet")
+        await pilot.pause()
+        app._activate(0)
+        await pilot.pause()
+        await pilot.press("ctrl+w")
+        await pilot.pause()
+        events = replay_events(tmp_path / ".aegis" / "state", target).events
+        closed = [e for e in events if isinstance(e, SessionClosed)]
+        assert len(closed) == 1
+        assert closed[0].reason == "user"
+
+
+@pytest.mark.asyncio
+async def test_record_session_closed_is_idempotent(tmp_path: Path,
+                                                   monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        h = app._panes[0].handle
+        app._panes[0]._submit("hello")
+        await pilot.pause()
+        app._record_session_closed(h, reason="user")
+        app._record_session_closed(h, reason="user")
+        events = replay_events(tmp_path / ".aegis" / "state", h).events
+        assert sum(isinstance(e, SessionClosed) for e in events) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_close_marker_without_meta(tmp_path: Path, monkeypatch):
+    """A tab that never got a meta header (no user message) writes no
+    SessionClosed — nothing to show in Ctrl+H, nothing to mark."""
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        h = app._panes[0].handle
+        app._record_session_closed(h, reason="user")
+        events = replay_events(tmp_path / ".aegis" / "state", h).events
+        assert not any(isinstance(e, SessionClosed) for e in events)
 
 
 @pytest.mark.asyncio
