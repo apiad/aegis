@@ -44,6 +44,13 @@ def append_event(state_dir_path: Path, handle: str, ev: Event) -> None:
         f.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
 
+def append_meta(state_dir_path: Path, meta) -> None:
+    """Write a SessionMeta as the (intended-first) record of a handle's log.
+    Thin alias over append_event that names the intent — the caller owns the
+    'must be first record' invariant (a fresh user-initiated session)."""
+    append_event(state_dir_path, meta.handle, meta)
+
+
 def make_session_log_observer(state_dir_path, handle: str):
     """Returns an EventCb that appends every event to the per-handle JSONL.
     Persistence must never break the live render, so it swallows errors."""
