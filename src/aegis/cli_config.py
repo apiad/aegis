@@ -256,6 +256,78 @@ def queue_remove_cmd(
     _console.print(f"[green]removed queue {name!r}[/green]")
 
 
+# --- harness group ---------------------------------------------------
+
+harness_app = typer.Typer(add_completion=False, no_args_is_help=True,
+                          help="Manage harnesses (named provider entries).")
+app.add_typer(harness_app, name="harness")
+
+
+@harness_app.command("list")
+def harness_list_cmd() -> None:
+    from aegis.config.yaml_loader import load_config
+    root = _resolve_root()
+    try:
+        cfg = load_config(root)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("name")
+    table.add_column("driver")
+    table.add_column("base_url")
+    table.add_column("default_model")
+    for name, h in sorted(cfg.harnesses.items()):
+        table.add_row(name, h.driver, h.base_url or "—",
+                      h.default_model or "—")
+    _console.print(table)
+
+
+@harness_app.command("add")
+def harness_add_cmd(
+    name: str = typer.Argument(..., help="Harness name."),
+    driver: str = typer.Option(..., "--driver", "-d",
+                               help="claude-code | gemini | opencode | "
+                                    "lovelaice."),
+    base_url: str = typer.Option(None, "--base-url",
+                                 help="Endpoint (lovelaice/direct-API)."),
+    api_key_file: str = typer.Option(None, "--api-key-file",
+                                     help="Path to an API-key file."),
+    default_model: str = typer.Option(None, "--default-model",
+                                      help="Model used when an agent omits "
+                                           "one."),
+    permission_default: str = typer.Option(
+        None, "--permission-default",
+        help="read | write | full | auto."),
+) -> None:
+    """Register a harness. Fails loud on unknown driver + duplicate name."""
+    from aegis.config.edit import add_harness
+    root = _resolve_root()
+    try:
+        add_harness(root, name, driver=driver, base_url=base_url,
+                    api_key_file=api_key_file, default_model=default_model,
+                    permission_default=permission_default)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    _console.print(f"[green]added harness {name!r}[/green]")
+
+
+@harness_app.command("remove")
+def harness_remove_cmd(
+    name: str = typer.Argument(..., help="Harness name."),
+) -> None:
+    """Remove a harness."""
+    from aegis.config.edit import remove_harness
+    root = _resolve_root()
+    try:
+        remove_harness(root, name)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    _console.print(f"[green]removed harness {name!r}[/green]")
+
+
 # --- plugin-dir group ------------------------------------------------
 
 plugin_dir_app = typer.Typer(

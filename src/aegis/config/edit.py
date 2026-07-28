@@ -138,7 +138,7 @@ def set_schedule_enabled(root: Path, name: str, value: bool) -> bool:
 
 # --- agents ----------------------------------------------------------
 
-_VALID_PROVIDERS = {"claude-code", "gemini", "opencode"}
+_VALID_PROVIDERS = {"claude-code", "gemini", "opencode", "lovelaice"}
 
 
 def add_agent(
@@ -255,6 +255,53 @@ def remove_queue(root: Path, name: str) -> None:
     if name not in queues:
         raise ConfigError(f"queue {name!r} not in {base}")
     del queues[name]
+    payload = _validate_and_dump(root, data)
+    _atomic_write(base, payload)
+
+
+_VALID_DRIVERS = {"claude-code", "gemini", "opencode", "lovelaice"}
+
+
+def add_harness(
+    root: Path,
+    name: str,
+    *,
+    driver: str,
+    base_url: str | None = None,
+    api_key_file: str | None = None,
+    default_model: str | None = None,
+    permission_default: str | None = None,
+) -> None:
+    """Register a harness (named provider entry) in .aegis.yaml. Fails loud
+    on unknown driver or duplicate name."""
+    if driver not in _VALID_DRIVERS:
+        raise ConfigError(
+            f"unknown driver {driver!r}; known: {sorted(_VALID_DRIVERS)}")
+    base = root / ".aegis.yaml"
+    data = _load(base)
+    harnesses = data.setdefault("harnesses", {})
+    if name in harnesses:
+        raise ConfigError(f"harness {name!r} already exists in {base}")
+    entry: dict[str, Any] = {"driver": driver}
+    for key, value in (("base_url", base_url),
+                       ("api_key_file", api_key_file),
+                       ("default_model", default_model),
+                       ("permission_default", permission_default)):
+        if value is not None:
+            entry[key] = value
+    harnesses[name] = entry
+    payload = _validate_and_dump(root, data)
+    _atomic_write(base, payload)
+
+
+def remove_harness(root: Path, name: str) -> None:
+    """Drop a harness from .aegis.yaml. Fails loud if the name is unknown."""
+    base = root / ".aegis.yaml"
+    data = _load(base)
+    harnesses = data.get("harnesses") or {}
+    if name not in harnesses:
+        raise ConfigError(f"harness {name!r} not in {base}")
+    del harnesses[name]
     payload = _validate_and_dump(root, data)
     _atomic_write(base, payload)
 
