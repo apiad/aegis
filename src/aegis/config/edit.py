@@ -145,18 +145,27 @@ def add_agent(
     root: Path,
     slug: str,
     *,
-    provider: str,
+    provider: str | None = None,
+    harness: str | None = None,
     model: str,
     effort: str | None = None,
     permission: str | None = None,
+    prompt: str | None = None,
 ) -> None:
     """Add an agent profile to .aegis.yaml.
+
+    Reference the driver either with ``provider`` (legacy shape) or a
+    registered ``harness`` name (new shape) — exactly one. ``prompt`` sets
+    an optional persona system-prompt file path.
 
     Creates the file with `default_agent: <slug>` if it does not exist.
     Validates the result by re-loading through the YAML loader; rolls
     back (file unchanged) on validation failure.
     """
-    if provider not in _VALID_PROVIDERS:
+    if (provider is None) == (harness is None):
+        raise ConfigError(
+            "add_agent requires exactly one of provider= or harness=")
+    if provider is not None and provider not in _VALID_PROVIDERS:
         raise ConfigError(
             f"unknown provider {provider!r}; "
             f"known: {sorted(_VALID_PROVIDERS)}")
@@ -168,14 +177,19 @@ def add_agent(
         raise ConfigError(
             f"agent {slug!r} already exists in {base}")
 
-    entry: dict[str, Any] = {"provider": provider, "model": model}
+    if provider is not None:
+        entry: dict[str, Any] = {"provider": provider, "model": model}
+    else:
+        entry = {"harness": harness, "model": model}
     if effort is not None:
-        if provider != "claude-code":
+        if provider is not None and provider != "claude-code":
             raise ConfigError(
                 f"effort only applies to claude-code, not {provider!r}")
         entry["effort"] = effort
     if permission is not None:
         entry["permission"] = permission
+    if prompt is not None:
+        entry["prompt"] = prompt
     agents[slug] = entry
 
     # First agent → make it the default unless one is already set.

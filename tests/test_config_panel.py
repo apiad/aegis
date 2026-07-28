@@ -126,7 +126,9 @@ async def test_add_agent_modal_writes_through_edit_helpers(
     assert result and result[0] is True
     text = (tmp_path / ".aegis.yaml").read_text()
     assert "main:" in text
-    assert "provider: claude-code" in text
+    # The modal now authors agents via the harness registry; the implicit
+    # claude-code harness resolves to the claude-code driver.
+    assert "harness: claude-code" in text
     assert "model: opus" in text
 
 

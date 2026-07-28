@@ -61,22 +61,36 @@ class AddAgentModal(ModalScreen[bool]):
     def __init__(self, root: Path) -> None:
         super().__init__()
         self._root = root
+        self._harnesses = self._load_harnesses(root)
+
+    @staticmethod
+    def _load_harnesses(root: Path) -> dict:
+        from aegis.config.harnesses import merge_harnesses
+        try:
+            return _load_yaml_config(root).harnesses
+        except Exception:  # noqa: BLE001
+            return merge_harnesses({})
+
+    def _driver_for(self, harness_name: str) -> str:
+        reg = self._harnesses.get(harness_name)
+        return reg.driver if reg is not None else harness_name
 
     def compose(self) -> ComposeResult:
+        first_harness = next(iter(sorted(self._harnesses)), "claude-code")
+        first_driver = self._driver_for(first_harness)
         with Vertical(id="agm-box"):
             yield Label("Add agent — Ctrl+S save, Esc cancel",
                         markup=False)
             yield Label("slug")
             yield Input(placeholder="e.g. main", id="agm-slug")
-            yield Label("provider")
+            yield Label("harness")
             yield Select(
-                [("claude-code", "claude-code"), ("gemini", "gemini"),
-                 ("opencode", "opencode")],
-                value="claude-code", allow_blank=False, id="agm-provider")
+                _harness_options(self._harnesses),
+                value=first_harness, allow_blank=False, id="agm-provider")
             yield Label("model")
             yield Select(
-                _model_options("claude-code"),
-                value=_default_model_value("claude-code"),
+                _model_options(first_driver),
+                value=_default_model_value(first_driver),
                 allow_blank=False, id="agm-model")
             yield Input(placeholder="custom model name "
                         "(e.g. claude-opus-4-7 or vendor/model)",
@@ -91,19 +105,22 @@ class AddAgentModal(ModalScreen[bool]):
                 [("read", "read"), ("write", "write"),
                  ("full", "full"), ("auto", "auto")],
                 value="auto", allow_blank=False, id="agm-permission")
+            yield Label("persona prompt (optional path)")
+            yield Input(placeholder=".aegis/personas/reviewer.md",
+                        id="agm-prompt")
             yield Static("", id="agm-err", markup=False)
 
     def on_mount(self) -> None:
         self.query_one("#agm-slug", Input).focus()
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        """When provider changes, repopulate the model Select; when the
-        model Select changes, toggle the custom-input row."""
+        """When the harness changes, repopulate the model Select from its
+        driver; when the model Select changes, toggle the custom-input row."""
         if event.select.id == "agm-provider":
-            provider = str(event.value)
+            driver = self._driver_for(str(event.value))
             sel = self.query_one("#agm-model", Select)
-            sel.set_options(_model_options(provider))
-            sel.value = _default_model_value(provider)
+            sel.set_options(_model_options(driver))
+            sel.value = _default_model_value(driver)
             self._set_custom_visible(sel.value == CUSTOM_MODEL_OPTION)
         elif event.select.id == "agm-model":
             self._set_custom_visible(event.value == CUSTOM_MODEL_OPTION)
@@ -121,11 +138,12 @@ class AddAgentModal(ModalScreen[bool]):
 
     def action_save(self) -> None:
         slug = self.query_one("#agm-slug", Input).value.strip()
-        provider = self.query_one("#agm-provider", Select).value
+        harness = str(self.query_one("#agm-provider", Select).value)
         model_choice = self.query_one("#agm-model", Select).value
         custom = self.query_one("#agm-model-custom", Input).value.strip()
         effort = self.query_one("#agm-effort", Select).value
         permission = self.query_one("#agm-permission", Select).value
+        prompt = self.query_one("#agm-prompt", Input).value.strip()
         err = self.query_one("#agm-err", Static)
         if not slug:
             err.update("slug is required")
@@ -135,17 +153,26 @@ class AddAgentModal(ModalScreen[bool]):
             err.update("model is required (pick from the list or "
                        "select <custom> and enter a model name)")
             return
-        # effort only applies to claude-code.
-        effort_arg = effort if provider == "claude-code" else None
+        # effort only applies to claude-code driver.
+        effort_arg = effort if self._driver_for(harness) == "claude-code" \
+            else None
         try:
             from aegis.config.edit import add_agent
             add_agent(self._root, slug,
-                      provider=str(provider), model=model,
-                      effort=effort_arg, permission=str(permission))
+                      harness=harness, model=model,
+                      effort=effort_arg, permission=str(permission),
+                      prompt=prompt or None)
         except ConfigError as e:
             err.update(str(e))
             return
         self.dismiss(True)
+
+
+def _harness_options(harnesses: dict) -> list[tuple[str, str]]:
+    """Select options for the harness picker: ``(label, name)`` where the
+    value is the harness name written to ``.aegis.yaml`` as ``harness:``."""
+    return [(f"{name} ({reg.driver})", name)
+            for name, reg in sorted(harnesses.items())]
 
 
 def _model_options(provider: str) -> list[tuple[str, str]]:
