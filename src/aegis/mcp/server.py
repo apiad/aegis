@@ -849,7 +849,10 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     @server.tool
     async def aegis_spawn(agent: str, prompt: str, from_handle: str,
-                          slug: str | None = None) -> dict:
+                          slug: str | None = None,
+                          model: str | None = None,
+                          effort: str | None = None,
+                          persona: str | None = None) -> dict:
         """Create a NEW INDEPENDENT top-level agent and hand it an opening
         prompt. Unlike a harness subagent (the ``Task`` tool), this agent is a
         real peer: it gets its own handle and session, appears as its own tab,
@@ -867,10 +870,18 @@ def build_server(bridge: AppBridge) -> FastMCP:
             prompt: delivered as the new agent's first user-message turn.
             from_handle: your own aegis handle (recorded as ``spawned_by``).
             slug: desired handle for the new agent; auto-generated if omitted.
+            model: optional per-session model override (layered over the
+                profile; not persisted).
+            effort: optional per-session reasoning-effort override
+                (claude-code only: low/medium/high/max).
+            persona: optional path to a persona system-prompt file, overriding
+                the profile's ``prompt:``.
         """
         handle = await bridge.spawn(agent, handle=slug,
                                     opening_prompt=prompt,
-                                    spawned_by=from_handle)
+                                    spawned_by=from_handle,
+                                    model=model, effort=effort,
+                                    prompt=persona)
         return {"handle": handle}
 
     @server.tool

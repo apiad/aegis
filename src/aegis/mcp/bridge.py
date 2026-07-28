@@ -77,7 +77,10 @@ class AppBridge(Protocol):
     async def spawn(self, profile: str, *,
                     handle: str | None = None,
                     opening_prompt: str | None = None,
-                    spawned_by: str | None = None) -> str: ...
+                    spawned_by: str | None = None,
+                    model: str | None = None,
+                    effort: str | None = None,
+                    prompt: str | None = None) -> str: ...
     async def close(self, handle: str) -> None: ...
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         """Cut the handle's live turn. ``drain=True`` (the default) then

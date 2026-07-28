@@ -51,8 +51,9 @@ class FakeBridge:
         return self._sessions
 
     async def spawn(self, profile, *, handle=None, opening_prompt=None,
-                    spawned_by=None):
+                    spawned_by=None, model=None, effort=None, prompt=None):
         self.spawned.append((profile, opening_prompt, spawned_by))
+        self.spawn_overrides = (model, effort, prompt)
         return "beta"
 
     def register_queue(self, queue):
@@ -358,6 +359,13 @@ async def test_spawn_without_prompt():
     res = await dispatch("/spawn opus", ctx)
     assert res.ok
     assert ctx.bridge.spawned == [("opus", None, "me")]
+
+
+async def test_spawn_forwards_model_and_effort():
+    ctx = _ctx()
+    res = await dispatch("/spawn opus --model sonnet --effort low", ctx)
+    assert res.ok
+    assert ctx.bridge.spawn_overrides == ("sonnet", "low", None)
 
 
 async def test_queue_new_ephemeral_registers():

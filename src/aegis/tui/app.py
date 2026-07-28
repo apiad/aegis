@@ -1128,12 +1128,16 @@ class AegisApp(App):
     async def spawn(self, profile: str, *,
                     handle: str | None = None,
                     opening_prompt: str | None = None,
-                    spawned_by: str | None = None) -> str:
+                    spawned_by: str | None = None,
+                    model: str | None = None,
+                    effort: str | None = None,
+                    prompt: str | None = None) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
         sm_adapter = _SessionManagerAdapter(self)
         sess = sm_adapter.spawn(profile, handle=handle,
                                 opening_prompt=opening_prompt,
-                                spawned_by=spawned_by)
+                                spawned_by=spawned_by,
+                                model=model, effort=effort, prompt=prompt)
         return sess.handle
 
     async def close(self, handle: str) -> None:
@@ -1386,8 +1390,13 @@ class _SessionManagerAdapter:
     def spawn(self, slug: str, *,
               opening_prompt: str | None = None,
               handle: str | None = None,
-              spawned_by: str | None = None):
-        agent = self._app._agents[slug]
+              spawned_by: str | None = None,
+              model: str | None = None,
+              effort: str | None = None,
+              prompt: str | None = None):
+        from aegis.core.manager import _overlay_agent
+        agent = _overlay_agent(self._app._agents[slug], model=model,
+                               effort=effort, prompt=prompt)
         h = handle or generate_name({p.handle for p in self._app._panes})
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h), agent,

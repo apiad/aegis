@@ -155,9 +155,16 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
     if agent not in agents:
         return CommandResult(False, f"unknown agent: {agent}",
                              "available: " + ", ".join(agents))
+    model = args.get("model")
+    effort = args.get("effort")
     handle = await ctx.bridge.spawn(agent, opening_prompt=prompt,
-                                    spawned_by=ctx.handle)
+                                    spawned_by=ctx.handle,
+                                    model=model, effort=effort)
     detail = f"agent {agent}" + (f" · prompt: {prompt}" if prompt else "")
+    if model:
+        detail += f" · model: {model}"
+    if effort:
+        detail += f" · effort: {effort}"
     return CommandResult(True, f"spawned {handle}", detail)
 
 
@@ -261,10 +268,12 @@ for _cmd in (
                          Arg("model", required=False)),
                      flags=(Flag("effort"), Flag("permission")))),
     SlashCommand("spawn", "start a new top-level agent",
-                 "/spawn <agent> [prompt]", _spawn,
-                 spec=ArgSpec(positionals=(
-                     Arg("agent", completer=_agent_choices),
-                     Arg("prompt", required=False, greedy=True)))),
+                 "/spawn <agent> [prompt] [--model M] [--effort E]", _spawn,
+                 spec=ArgSpec(
+                     positionals=(
+                         Arg("agent", completer=_agent_choices),
+                         Arg("prompt", required=False, greedy=True)),
+                     flags=(Flag("model"), Flag("effort")))),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(

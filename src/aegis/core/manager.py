@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import LoopService
@@ -12,6 +13,27 @@ from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
 SessionFactory = Callable[[object, str, str], object]
+
+
+def _overlay_agent(base: Agent, *, model: str | None,
+                   effort: str | None, prompt: str | None) -> Agent:
+    """Return a copy of ``base`` with per-session overrides applied. The
+    driver (``harness``) is preserved; only model/effort/prompt change. Used
+    by interactive picks and ``aegis_spawn`` overrides — never persisted."""
+    if model is None and effort is None and prompt is None:
+        return base
+    data = base.model_dump()
+    if model is not None:
+        data["model"] = model
+        if data.get("provider"):
+            data["provider"]["model"] = model
+    if effort is not None:
+        data["effort"] = effort
+        if (data.get("provider") or {}).get("name") == "claude-code":
+            data["provider"]["effort"] = effort
+    if prompt is not None:
+        data["prompt"] = prompt
+    return Agent(**data)
 
 # 2 or 3 hyphen-separated alnum segments. First char must be a letter
 # (so the handle doesn't read like a version string). Keeps handles
@@ -137,11 +159,15 @@ class SessionManager:
     def _sync_spawn(self, slug: str | None = None, *,
                     opening_prompt: str | None = None,
                     handle: str | None = None,
-                    spawned_by: str | None = None) -> AgentSession:
+                    spawned_by: str | None = None,
+                    model: str | None = None,
+                    effort: str | None = None,
+                    prompt: str | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
-        agent = self._agents[slug]
+        agent = _overlay_agent(self._agents[slug], model=model,
+                               effort=effort, prompt=prompt)
         h = handle or generate_name({s.handle for s in self._sessions})
         url = self._mcp.url if self._mcp is not None else ""
         s = AgentSession(self._make_session(agent, url, h),
@@ -163,11 +189,18 @@ class SessionManager:
     async def spawn(self, profile: str, *,
                     handle: str | None = None,
                     opening_prompt: str | None = None,
-                    spawned_by: str | None = None) -> str:
-        """AppBridge-shaped async spawn. Returns the new handle."""
+                    spawned_by: str | None = None,
+                    model: str | None = None,
+                    effort: str | None = None,
+                    prompt: str | None = None) -> str:
+        """AppBridge-shaped async spawn. Returns the new handle.
+
+        ``model`` / ``effort`` / ``prompt`` are optional per-session
+        overrides layered over the named profile (never persisted)."""
         sess = self._sync_spawn(profile, handle=handle,
                                 opening_prompt=opening_prompt,
-                                spawned_by=spawned_by)
+                                spawned_by=spawned_by,
+                                model=model, effort=effort, prompt=prompt)
         return sess.handle
 
     def _touch(self, handle: str) -> None:
