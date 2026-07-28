@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-28
+
 ### Session history (`Ctrl+H`)
 
 - **New: a persistent, cross-process record of your sessions.** `Ctrl+H` opens
