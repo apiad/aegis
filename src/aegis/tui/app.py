@@ -186,6 +186,7 @@ class AegisApp(App):
         Binding("ctrl+e", "new_terminal", "New terminal", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
+        Binding("ctrl+h", "open_history", "History", priority=True),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
         Binding("f2", "open_config_panel", "Config", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
@@ -746,6 +747,44 @@ class AegisApp(App):
         pane.unseen = False
         pane.focus_input()
         self._refresh_tabbar()
+
+    def _resume_capable_providers(self) -> set[str]:
+        return {name for name, drv in self._drivers.items()
+                if getattr(drv, "supports_resume", False)}
+
+    @work
+    async def action_open_history(self) -> None:
+        """Ctrl+H — list prior sessions (this + previous launches) and reopen
+        the chosen one: jump to a live tab, resume, or open fresh."""
+        from aegis.state.history import list_history
+        from aegis.tui.history import HistoryModal
+
+        live = {p.handle for p in self._panes
+                if isinstance(p, ConversationPane)}
+        rows = list_history(self._state_dir, live_handles=live)
+        outcome = await self.push_screen_wait(
+            HistoryModal(rows, agents=set(self._agents),
+                         resume_capable_providers=(
+                             self._resume_capable_providers())))
+        if outcome is None:
+            return
+        kind, payload = outcome
+        if kind == "jump":
+            self._jump_to_handle(payload)
+        elif kind == "open_fresh":
+            await self._spawn(payload.profile)
+        elif kind == "resume":
+            await self._resume_from_history(payload)
+
+    def _jump_to_handle(self, handle: str) -> None:
+        for i, p in enumerate(self._panes):
+            if isinstance(p, ConversationPane) and p.handle == handle:
+                self._activate(i)
+                return
+
+    async def _resume_from_history(self, row) -> None:
+        # Wired in the resume slice.
+        raise NotImplementedError
 
     async def action_new_tab(self) -> None:
         # B2: in remote mode, spawn via the daemon instead of local _spawn().

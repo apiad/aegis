@@ -104,6 +104,18 @@ async def test_meta_written_only_once_per_session(tmp_path: Path,
 
 
 @pytest.mark.asyncio
+async def test_ctrl_h_opens_history_modal(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from aegis.tui.history import HistoryModal
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+h")
+        await pilot.pause()
+        assert isinstance(app.screen, HistoryModal)
+
+
+@pytest.mark.asyncio
 async def test_queue_worker_spawn_writes_no_meta(tmp_path: Path, monkeypatch):
     """Queue workers spawn through _SessionManagerAdapter, which builds a
     pane with no first-message hook — so their logs carry no SessionMeta
