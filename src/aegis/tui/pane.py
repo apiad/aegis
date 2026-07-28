@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from rich.console import Group, RenderableType
 from rich.markdown import Markdown
@@ -531,6 +532,7 @@ class ConversationPane(Widget):
                  *, digest=None, monitor_manager=None,
                  state_dir_path: Path | None = None,
                  replay: EventReplay | None = None,
+                 on_first_user_message: Callable[[str], None] | None = None,
                  core=None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
@@ -559,6 +561,13 @@ class ConversationPane(Widget):
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, handle))
         self._replay = replay
+        # Fires once, with the text of the first user-initiated turn — the
+        # hook AegisApp uses to write the session's Ctrl+H history header
+        # lazily (so its preview is populated). Both delivery paths
+        # (_submit and the text-box deliver) route through
+        # _record_first_user_message.
+        self._on_first_user_message = on_first_user_message
+        self._first_msg_recorded = False
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
@@ -1007,6 +1016,7 @@ class ConversationPane(Widget):
         from aegis.queue import InboxMessage, now_iso, sender_user
         msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
                            body=text)
+        self._record_first_user_message(text)
         self._flush_streaming()
         # Interrupt-send (alt/ctrl+enter): cut the live turn first so the
         # message lands now as the next turn instead of queuing behind it.
@@ -1019,9 +1029,21 @@ class ConversationPane(Widget):
         if receipt.disposition == "queued":
             self.query_one(PendingStrip).add(msg)
 
+    def _record_first_user_message(self, text: str) -> None:
+        """Fire the first-user-message hook exactly once. Never let a
+        history-write failure break a turn."""
+        if (text and not self._first_msg_recorded
+                and self._on_first_user_message is not None):
+            self._first_msg_recorded = True
+            try:
+                self._on_first_user_message(text)
+            except Exception:
+                pass
+
     def _submit(self, text: str) -> None:
         """Programmatic turn (opening prompt). Direct send — bypasses the
         inbox queue; the text-box path uses deliver()."""
+        self._record_first_user_message(text)
         self._flush_streaming()
         width = self._transcript().size.width or 80
         self._mount_block(

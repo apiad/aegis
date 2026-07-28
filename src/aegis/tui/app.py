@@ -569,11 +569,29 @@ class AegisApp(App):
         h = handle or generate_name(
             {p.handle for p in self._panes
              if isinstance(p, ConversationPane)})
+
+        def _write_meta(first_msg: str, *, _h=h, _slug=slug,
+                        _agent=agent) -> None:
+            # Lazy Ctrl+H history header: written on the first user turn so
+            # its preview is populated. User-initiated TUI tabs only —
+            # queue workers spawn through a different path (no callback).
+            from datetime import datetime, timezone
+            from aegis.events import SessionMeta
+            from aegis.state.session_log import append_meta
+            now_iso = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            preview = first_msg.replace("\n", " ")[:200]
+            append_meta(self._state_dir, SessionMeta(
+                handle=_h, profile=_slug, provider=_agent.harness,
+                cwd=self._cwd, created_at=now_iso, origin="tui",
+                preview=preview))
+
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
             slug, h, self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir)
+            state_dir_path=self._state_dir,
+            on_first_user_message=_write_meta)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
