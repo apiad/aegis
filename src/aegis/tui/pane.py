@@ -160,32 +160,51 @@ class WorkingIndicator(Static):
     def is_active(self) -> bool:
         return self._started_at is not None
 
-    def start(self) -> None:
+    def start(self, *, animate: bool = True) -> None:
         # Idempotent: cancel any prior timers first so re-starting a
         # lingering indicator (chained / self-woken turn) neither leaks
         # timers nor leaves a frozen spinner.
-        for t in (self._tick_timer, self._verb_timer):
-            if t is not None:
-                with contextlib.suppress(Exception):
-                    t.stop()
+        self._cancel_timers()
         self.add_class("-active")
         self._started_at = time.monotonic()
         self._frame = 0
         self._verb_idx = random.randrange(len(_VERBS))
         self._refresh()
-        # Spinner + timer redraw at 100ms; verb rotates every 5s.
+        # Spinner + timer redraw at 100ms; verb rotates every 5s — but only
+        # when visible. A background pane freezes on its last frame (see
+        # set_animating) so it adds no per-tick pump load.
+        if animate:
+            self._start_timers()
+
+    def _start_timers(self) -> None:
         self._tick_timer = self.set_interval(0.1, self._tick)
         self._verb_timer = self.set_interval(5.0, self._rotate_verb)
 
-    def stop(self) -> None:
-        self.remove_class("-active")
-        self._started_at = None
+    def _cancel_timers(self) -> None:
         for t in (self._tick_timer, self._verb_timer):
             if t is not None:
                 with contextlib.suppress(Exception):
                     t.stop()
         self._tick_timer = None
         self._verb_timer = None
+
+    def set_animating(self, on: bool) -> None:
+        """Toggle the redraw timers without touching active/elapsed state, so
+        a hidden pane's spinner freezes and resumes on show. No-op unless the
+        indicator is active."""
+        if not self.is_active:
+            return
+        running = self._tick_timer is not None
+        if on and not running:
+            self._refresh()
+            self._start_timers()
+        elif not on and running:
+            self._cancel_timers()
+
+    def stop(self) -> None:
+        self.remove_class("-active")
+        self._started_at = None
+        self._cancel_timers()
         self.update("")
 
     def _tick(self) -> None:
@@ -623,6 +642,25 @@ class ConversationPane(Widget):
         self.watch(t, "scroll_y", self._on_scroll_y)
         self.query_one(GrowingInput).key_interceptor = self._palette_key
 
+    def on_show(self) -> None:
+        """Tab brought forward: resume the 10 Hz visual timers that were
+        frozen while hidden, and snap to the tail if the user was following."""
+        ind = self._working_indicator()
+        if ind is not None:
+            ind.set_animating(True)
+        if self._any_tool_running():
+            self._ensure_tool_timer()
+        if self._stick_to_bottom:
+            self._transcript().scroll_end(animate=False)
+
+    def on_hide(self) -> None:
+        """Tab sent to the background: freeze its cosmetic spinner timers so
+        they stop taxing the shared message pump. State/history untouched."""
+        ind = self._working_indicator()
+        if ind is not None:
+            ind.set_animating(False)
+        self._stop_tool_timer()
+
     def _mount_replay(self) -> None:
         """Paint prior events onto the transcript on resume.
 
@@ -829,7 +867,9 @@ class ConversationPane(Widget):
         if ind is None:
             ind = WorkingIndicator(self._palette)
             self._transcript().mount(ind)
-        ind.start()
+        # Only animate while this tab is visible; a background pane freezes
+        # its spinner (on_show resumes it) to spare the shared message pump.
+        ind.start(animate=self.display)
         self._transcript().scroll_end(animate=False)
 
     def _stop_indicator(self) -> None:
@@ -1187,6 +1227,10 @@ class ConversationPane(Widget):
         return any(not t.done for t in self._tools.values())
 
     def _ensure_tool_timer(self) -> None:
+        # Background panes don't animate spinners — on_show restarts the
+        # timer when the tab is brought forward.
+        if not self.display:
+            return
         if self._tool_timer is None:
             # 0.1s cadence + tenths in _fmt_dur → the timer visibly ticks
             # sub-second, like the WorkingIndicator.
