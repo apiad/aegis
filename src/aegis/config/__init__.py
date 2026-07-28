@@ -96,6 +96,7 @@ class Agent(BaseModel):
     model: str = ""
     effort: Effort = Effort.high
     permission: Permission = Permission.auto
+    prompt: str | None = None   # optional persona system-prompt file path
 
     @model_validator(mode="after")
     def _sync_provider_and_flat(self) -> "Agent":
