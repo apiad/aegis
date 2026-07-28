@@ -6,8 +6,38 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, OptionList
+from textual.widgets import Input, Label, OptionList
 from textual.widgets.option_list import Option
+
+from aegis.config import Agent
+from aegis.config.harnesses import HarnessRegistration, resolve_agent_entry
+
+
+def build_picker_rows(
+    presets: list[str],
+    harnesses: dict[str, HarnessRegistration],
+) -> list[tuple[str, str]]:
+    """Two-tier picker rows: named presets first (id == slug), then one
+    ``harness:<name>`` row per registered harness (custom model/effort path).
+    Returns ``[(id, label), ...]``."""
+    rows: list[tuple[str, str]] = [(p, p) for p in presets]
+    for name, reg in harnesses.items():
+        rows.append((f"harness:{name}", f"⚙ {name} ({reg.driver})"))
+    return rows
+
+
+def resolve_transient_agent(
+    harness_name: str,
+    model: str,
+    effort: str | None,
+    harnesses: dict[str, HarnessRegistration],
+) -> Agent:
+    """Build a not-persisted ``Agent`` from a per-session harness+model+effort
+    pick, resolved through the harness registry."""
+    body: dict = {"harness": harness_name, "model": model}
+    if effort is not None:
+        body["effort"] = effort
+    return resolve_agent_entry(body, harnesses)
 
 
 def filter_path_tokens(
@@ -89,15 +119,92 @@ class AgentPicker(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, slugs: list[str]) -> None:
+    def __init__(self, slugs: list[str],
+                 harnesses: dict | None = None) -> None:
         super().__init__()
-        self._slugs = slugs
+        self._rows = build_picker_rows(slugs, harnesses or {})
 
     def compose(self) -> ComposeResult:
-        yield OptionList(*[Option(s, id=s) for s in self._slugs])
+        yield OptionList(*[Option(label, id=id_)
+                           for id_, label in self._rows])
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(
+            self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class _ChoicePicker(ModalScreen[str | None]):
+    """Generic filterable option picker with optional free-text custom entry.
+
+    Dismisses with the selected option id, the typed custom text (when
+    ``allow_custom`` and the input doesn't match an option), or None.
+    Reused for the per-session model and effort sub-pickers.
+    """
+
+    DEFAULT_CSS = """
+    _ChoicePicker { align: center middle; }
+    _ChoicePicker #cp-box {
+        width: 60; max-height: 20;
+        border: round $panel; background: $surface; padding: 1 2;
+    }
+    _ChoicePicker Input { width: 100%; margin-bottom: 1; border: none;
+                          background: $background; }
+    _ChoicePicker OptionList { width: 100%; max-height: 14;
+                               border: none; background: $surface; }
+    """
+
+    def __init__(self, options: list[tuple[str, str]], *,
+                 title: str = "", allow_custom: bool = False,
+                 prefill: str = "") -> None:
+        super().__init__()
+        self._options = list(options)
+        self._title = title
+        self._allow_custom = allow_custom
+        self._prefill = prefill
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="cp-box"):
+            if self._title:
+                yield Label(self._title)
+            yield Input(
+                placeholder=("type to filter or enter a custom id…"
+                             if self._allow_custom else "type to filter…"),
+                id="cp-input")
+            yield OptionList(id="cp-list")
+
+    def on_mount(self) -> None:
+        self._populate("")
+        inp = self.query_one("#cp-input", Input)
+        if self._prefill:
+            inp.value = self._prefill
+        inp.focus()
+
+    def _populate(self, needle: str) -> None:
+        ol = self.query_one("#cp-list", OptionList)
+        ol.clear_options()
+        n = needle.lower()
+        for id_, label in self._options:
+            if n in label.lower() or n in id_.lower():
+                ol.add_option(Option(label, id=id_))
+        if ol.option_count:
+            ol.highlighted = 0
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._populate(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        ol = self.query_one("#cp-list", OptionList)
+        if ol.option_count and ol.highlighted is not None:
+            self.dismiss(ol.get_option_at_index(ol.highlighted).id)
+            return
+        if self._allow_custom and event.value.strip():
+            self.dismiss(event.value.strip())
 
     def on_option_list_option_selected(
             self, event: OptionList.OptionSelected) -> None:

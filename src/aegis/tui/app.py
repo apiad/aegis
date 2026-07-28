@@ -559,8 +559,13 @@ class AegisApp(App):
     async def _spawn(self, slug: str, *,
                      handle: str | None = None,
                      opening_prompt: str | None = None,
-                     foreground: bool = True) -> ConversationPane:
-        agent = self._agents[slug]
+                     foreground: bool = True,
+                     agent_override: "Agent | None" = None) -> ConversationPane:
+        # agent_override carries a transient per-session pick (custom
+        # harness/model/effort) that isn't persisted in .aegis.yaml; slug is
+        # then just the pane's display label.
+        agent = agent_override if agent_override is not None \
+            else self._agents[slug]
         h = handle or generate_name(
             {p.handle for p in self._panes
              if isinstance(p, ConversationPane)})
@@ -798,21 +803,62 @@ class AegisApp(App):
             return
         self._activate(min(idx, len(self._panes) - 1))
 
+    def _load_harnesses(self) -> dict:
+        """Best-effort harness registry for the picker. Falls back to the
+        implicit driver registrations when config can't be read."""
+        from aegis.config.harnesses import merge_harnesses
+        try:
+            from aegis.config import yaml_loader
+            return yaml_loader.load_config(self.state_root).harnesses
+        except Exception:  # noqa: BLE001
+            return merge_harnesses({})
+
     @work
     async def action_pick_agent(self) -> None:
-        from aegis.tui.picker import AgentPicker
+        from aegis.tui.picker import (
+            AgentPicker, _ChoicePicker, resolve_transient_agent)
 
-        slug = await self.push_screen_wait(
-            AgentPicker(sorted(self._agents)))
-        if slug:
-            # B2: in remote mode, spawn via daemon.
+        harnesses = self._load_harnesses()
+        choice = await self.push_screen_wait(
+            AgentPicker(sorted(self._agents), harnesses))
+        if not choice:
+            return
+
+        if choice.startswith("harness:"):
+            # Custom path: harness → model → (effort) → transient spawn.
             if hasattr(self, "_remote_manager"):
-                old_default = self._default_agent
-                self._default_agent = slug
-                await self._action_new_tab_remote()
-                self._default_agent = old_default
-            else:
-                await self._spawn(slug)
+                self.notify("custom-model spawn isn't supported in remote "
+                            "mode yet — pick a named agent.")
+                return
+            name = choice[len("harness:"):]
+            reg = harnesses.get(name)
+            if reg is None:
+                return
+            from aegis.models import models_for
+            model = await self.push_screen_wait(_ChoicePicker(
+                models_for(reg.driver), title=f"model · {name}",
+                allow_custom=True))
+            if not model:
+                return
+            effort = None
+            if reg.driver == "claude-code":
+                effort = await self.push_screen_wait(_ChoicePicker(
+                    [(e, e) for e in ("low", "medium", "high", "max")],
+                    title="effort", prefill="high"))
+                if not effort:
+                    return
+            agent = resolve_transient_agent(name, model, effort, harnesses)
+            await self._spawn(f"{name}:{model}", agent_override=agent)
+            return
+
+        # Named preset.
+        if hasattr(self, "_remote_manager"):
+            old_default = self._default_agent
+            self._default_agent = choice
+            await self._action_new_tab_remote()
+            self._default_agent = old_default
+        else:
+            await self._spawn(choice)
 
     @work
     async def action_new_terminal(self) -> None:
