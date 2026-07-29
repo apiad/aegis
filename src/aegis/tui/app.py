@@ -592,21 +592,27 @@ class AegisApp(App):
             {p.handle for p in self._panes
              if isinstance(p, ConversationPane)})
 
-        def _write_meta(first_msg: str, *, _h=h, _slug=slug,
+        def _write_meta(preview: str = "", *, _h=h, _slug=slug,
                         _agent=agent) -> None:
-            # Lazy Ctrl+H history header: written on the first user turn so
-            # its preview is populated. User-initiated TUI tabs only —
-            # queue workers spawn through a different path (no callback).
+            # Ctrl+H history header. Written twice on purpose: once here at
+            # spawn so the log is attributed even if the session is closed
+            # or crashes before the first turn, and again on the first user
+            # message to carry a preview. The reader takes the last meta and
+            # the first non-empty preview, so the pair folds to one row.
+            # User-initiated TUI tabs only — queue workers spawn through a
+            # different path (no callback), which is what keeps their logs
+            # out of the listing.
             from datetime import datetime, timezone
             from aegis.events import SessionMeta
             from aegis.state.session_log import append_meta
             now_iso = datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ")
-            preview = first_msg.replace("\n", " ")[:200]
             append_meta(self._state_dir, SessionMeta(
                 handle=_h, profile=_slug, provider=_agent.harness,
                 cwd=self._cwd, created_at=now_iso, origin="tui",
-                preview=preview))
+                preview=preview.replace("\n", " ")[:200]))
+
+        _write_meta()
 
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h), agent,
@@ -802,7 +808,14 @@ class AegisApp(App):
 
         live = {p.handle for p in self._panes
                 if isinstance(p, ConversationPane)}
-        rows = list_history(self._state_dir, live_handles=live)
+        # Logs predating SessionMeta can't say which agent ran them; assume
+        # the default one so they stay resumable. A wrong guess costs a
+        # failed drv.resume, which this modal already reports.
+        default = self._agents.get(self._default_agent)
+        rows = list_history(
+            self._state_dir, live_handles=live,
+            fallback_profile=self._default_agent if default else "",
+            fallback_provider=default.harness if default else "")
         outcome = await self.push_screen_wait(
             HistoryModal(rows, agents=set(self._agents),
                          resume_capable_providers=(

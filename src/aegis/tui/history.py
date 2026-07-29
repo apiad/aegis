@@ -69,6 +69,11 @@ def _row_label(row: SessionHistoryRow, agents: set[str],
     rel = _relative_time(row.last_activity_at)
     preview = (row.preview or "").replace("\n", " ")[:40]
     profile = row.profile if row.profile in agents else f"<{row.profile}?>"
+    if row.inferred:
+        # The log predates SessionMeta, so the profile is the caller's
+        # default rather than what actually ran — say so, since resume may
+        # well fail on it.
+        profile = f"{profile}~"
     return f"{glyph} {row.handle:<18} {profile:<16} {rel:<9} {preview}"
 
 

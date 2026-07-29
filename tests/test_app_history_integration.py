@@ -51,40 +51,40 @@ from aegis.tui.app import AegisApp  # noqa: E402  (after Fakes for readability)
 
 
 @pytest.mark.asyncio
-async def test_first_message_writes_session_meta(tmp_path: Path, monkeypatch):
-    """Meta is written on the first user turn (not at spawn), with the
-    message as preview."""
+async def test_meta_written_at_spawn_and_again_with_the_preview(
+        tmp_path: Path, monkeypatch):
+    """Two headers per session on purpose. The spawn one attributes the log
+    from the very first record (the lazy one landed behind whatever the
+    harness streamed at startup, which is what hid every session from
+    Ctrl+R); the first-turn one carries the preview."""
     monkeypatch.chdir(tmp_path)
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
-        sessions_dir = tmp_path / ".aegis" / "state" / "sessions"
-        # Pre-first-message: no meta header yet.
-        if sessions_dir.is_dir():
-            for f in sessions_dir.glob("*.jsonl"):
-                replay = replay_events(tmp_path / ".aegis" / "state", f.stem)
-                assert not any(isinstance(e, SessionMeta)
-                               for e in replay.events)
-        # Send a message through the active pane.
-        active = app._active
-        active._submit("hello world")
-        await pilot.pause()
-        # Now meta is present, preview populated.
+        sd = tmp_path / ".aegis" / "state"
+        sessions_dir = sd / "sessions"
+        # At spawn: exactly one header, and it is the first record.
         log_files = list(sessions_dir.glob("*.jsonl"))
         assert len(log_files) == 1
-        replay = replay_events(tmp_path / ".aegis" / "state",
-                               log_files[0].stem)
-        metas = [e for e in replay.events if isinstance(e, SessionMeta)]
-        assert len(metas) == 1
-        assert metas[0].preview == "hello world"
-        assert metas[0].provider == "claude-code"
-        assert metas[0].origin == "tui"
+        events = replay_events(sd, log_files[0].stem).events
+        assert isinstance(events[0], SessionMeta)
+        assert events[0].preview == ""
+
+        app._active._submit("hello world")
+        await pilot.pause()
+
+        metas = [e for e in replay_events(sd, log_files[0].stem).events
+                 if isinstance(e, SessionMeta)]
+        assert len(metas) == 2
+        assert metas[1].preview == "hello world"
+        assert metas[1].provider == "claude-code"
+        assert metas[1].origin == "tui"
 
 
 @pytest.mark.asyncio
-async def test_meta_written_only_once_per_session(tmp_path: Path,
-                                                  monkeypatch):
-    """A second user turn does not append a duplicate meta header."""
+async def test_preview_header_written_only_once_per_session(tmp_path: Path,
+                                                            monkeypatch):
+    """A second user turn does not append another preview header."""
     monkeypatch.chdir(tmp_path)
     app = _app()
     async with app.run_test() as pilot:
@@ -94,13 +94,12 @@ async def test_meta_written_only_once_per_session(tmp_path: Path,
         active._record_first_user_message("first")
         active._record_first_user_message("second")
         await pilot.pause()
-        sessions_dir = tmp_path / ".aegis" / "state" / "sessions"
-        log_files = list(sessions_dir.glob("*.jsonl"))
-        replay = replay_events(tmp_path / ".aegis" / "state",
-                               log_files[0].stem)
-        metas = [e for e in replay.events if isinstance(e, SessionMeta)]
-        assert len(metas) == 1
-        assert metas[0].preview == "first"
+        sd = tmp_path / ".aegis" / "state"
+        log_files = list((sd / "sessions").glob("*.jsonl"))
+        metas = [e for e in replay_events(sd, log_files[0].stem).events
+                 if isinstance(e, SessionMeta)]
+        previews = [m.preview for m in metas if m.preview]
+        assert previews == ["first"]
 
 
 @pytest.mark.asyncio
@@ -211,16 +210,37 @@ async def test_record_session_closed_is_idempotent(tmp_path: Path,
 
 
 @pytest.mark.asyncio
-async def test_no_close_marker_without_meta(tmp_path: Path, monkeypatch):
-    """A tab that never got a meta header (no user message) writes no
-    SessionClosed — nothing to show in Ctrl+H, nothing to mark."""
+async def test_unused_tab_is_marked_closed_but_not_listed(tmp_path: Path,
+                                                          monkeypatch):
+    """A tab spawned and closed without a word now has a header, so it does
+    get a close marker — but it is not a conversation, and list_history
+    drops it. Otherwise every boot's default tab would fill the listing."""
     monkeypatch.chdir(tmp_path)
+    from aegis.state.history import list_history
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
         h = app._panes[0].handle
         app._record_session_closed(h, reason="user")
-        events = replay_events(tmp_path / ".aegis" / "state", h).events
+        sd = tmp_path / ".aegis" / "state"
+        events = replay_events(sd, h).events
+        assert sum(isinstance(e, SessionClosed) for e in events) == 1
+        assert list_history(sd, live_handles=set()) == []
+
+
+@pytest.mark.asyncio
+async def test_no_close_marker_for_a_worker_log(tmp_path: Path, monkeypatch):
+    """Queue workers get no header, so nothing marks or lists them."""
+    monkeypatch.chdir(tmp_path)
+    from aegis.events import AssistantText as _AT
+    from aegis.state.session_log import append_event
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sd = tmp_path / ".aegis" / "state"
+        append_event(sd, "worker-x", _AT(text="did the task", usage=None))
+        app._record_session_closed("worker-x", reason="user")
+        events = replay_events(sd, "worker-x").events
         assert not any(isinstance(e, SessionClosed) for e in events)
 
 

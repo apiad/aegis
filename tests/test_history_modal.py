@@ -44,6 +44,19 @@ def _optlist(app) -> OptionList:
     return app.screen.query_one("#hist-list", OptionList)
 
 
+def test_inferred_row_marks_its_guessed_profile():
+    """An attributed row and a rebuilt one must not look identical — resume
+    can genuinely fail on the rebuilt one's guessed profile."""
+    from dataclasses import replace
+    from aegis.tui.history import _row_label
+    agents = {"claude-sonnet"}
+    known = _row_label(_row("h1"), agents, {"claude-code"})
+    guessed = _row_label(replace(_row("h1"), inferred=True), agents,
+                         {"claude-code"})
+    assert "claude-sonnet~" in guessed
+    assert "~" not in known
+
+
 @pytest.mark.asyncio
 async def test_renders_all_rows():
     app = _Harness([_row("h1"), _row("h2", is_open=True)],
