@@ -570,10 +570,25 @@ class AegisApp(App):
         self.query_one(TabBar).set_palette(self._palette)
         self._refresh_tabbar()
 
+    def _switcher(self):
+        """The ContentSwitcher, or None once the DOM is gone.
+
+        Messages keep being dispatched while the app tears down (a pane's
+        last turn finishing, say), and the widget tree is pruned before the
+        message pump stops. A bare ``query_one`` on that path raises
+        NoMatches and panics the app, so every handler that reaches for the
+        switcher asks through here.
+        """
+        from textual.css.query import NoMatches
+        try:
+            return self.query_one(ContentSwitcher)
+        except NoMatches:
+            return None
+
     @property
     def _active(self):
-        cs = self.query_one(ContentSwitcher)
-        if cs.current is None:
+        cs = self._switcher()
+        if cs is None or cs.current is None:
             return None
         for p in self._panes:
             if p.id == cs.current:
@@ -682,7 +697,9 @@ class AegisApp(App):
                      SessionClosed(closed_at=now_iso, reason=reason))
 
     def _refresh_tabbar(self) -> None:
-        cs = self.query_one(ContentSwitcher)
+        cs = self._switcher()
+        if cs is None:
+            return
         # In remote mode queue_manager is a _DisabledPlaneStub — don't call it.
         qm = None if hasattr(self, "_remote_manager") else self.queue_manager
         items = [
@@ -702,7 +719,11 @@ class AegisApp(App):
         # Remote mode has no local workspace to persist.
         if hasattr(self, "_remote_manager"):
             return
-        cs = self.query_one(ContentSwitcher)
+        cs = self._switcher()
+        if cs is None:
+            # Teardown: the roster is being dismantled, so whatever we could
+            # read now is a half-torn one — keep the last good snapshot.
+            return
         active_handle = None
         if cs.current is not None:
             for p in self._panes:
@@ -1242,6 +1263,14 @@ class AegisApp(App):
         await self._mcp.stop()
         self._file_indexer.stop()
         self.exit()
+
+    def on_unmount(self) -> None:
+        # Textual dispatches Unmount on every shutdown path, not just the
+        # one action_quit takes. The file indexer's watchdog observer holds
+        # an inotify instance and the kernel hands out 128 per user, so
+        # releasing it in action_quit alone leaks one per app that exits any
+        # other way. stop() is idempotent.
+        self._file_indexer.stop()
 
     # --- AppBridge --------------------------------------------------------
     def list_sessions(self) -> list[SessionInfo]:

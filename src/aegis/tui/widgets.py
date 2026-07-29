@@ -64,6 +64,18 @@ class GrowingInput(TextArea):
     def on_mount(self) -> None:
         self._resize_to_content()
 
+    def render_lines(self, crop):
+        # Pruning a widget clears its component styles, but the compositor
+        # can still render it one refresh tick later from a stale
+        # arrangement — and TextArea.render_lines applies its theme through
+        # those styles, so it KeyErrors on 'text-area--gutter' and panics
+        # the app (closing a tab did exactly that). A pruned input has
+        # nothing left to draw.
+        if not self.is_attached:
+            from textual.strip import Strip
+            return [Strip.blank(crop.width)] * crop.height
+        return super().render_lines(crop)
+
     def _resize_to_content(self) -> None:
         # Count visual rows, not just hard-newline lines — a long
         # single-line string that soft-wraps should still grow the
