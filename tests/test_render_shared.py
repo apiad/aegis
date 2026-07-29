@@ -122,6 +122,26 @@ def test_result_parts_duration_cost_and_stop_reason():
     assert "refusal" in parts
 
 
+def test_format_age_reads_at_a_glance():
+    from aegis.render_shared import format_age
+    assert format_age(0) == "just now"
+    assert format_age(9) == "just now"
+    assert format_age(12) == "12s ago"
+    assert format_age(90) == "1m ago"
+    assert format_age(59 * 60) == "59m ago"
+    assert format_age(3600) == "1h ago"
+    assert format_age(3600 + 5 * 60) == "1h 5m ago"
+    assert format_age(26 * 3600) == "1d 2h ago"
+
+
+def test_result_parts_appends_age_when_given_one():
+    """The terminator carries how long ago the turn ended, so a tab you
+    come back to says whether you are reading something stale."""
+    ev = Result(duration_ms=2500, is_error=False)
+    assert result_parts(ev) == ["done in 2.5s"]
+    assert result_parts(ev, age_s=240) == ["done in 2.5s", "4m ago"]
+
+
 def test_result_parts_omits_end_turn():
     parts = result_parts(Result(duration_ms=1000, is_error=False,
                                 stop_reason="end_turn"))

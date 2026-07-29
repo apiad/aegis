@@ -179,9 +179,28 @@ def diff_window(old_text: str, new_text: str,
     return shown_removed, shown_added, elided
 
 
-def result_parts(ev) -> list[str]:
+def format_age(seconds: float) -> str:
+    """How long ago something happened, at a glance: 'just now', '12s ago',
+    '4m ago', '1h 5m ago', '1d 2h ago'."""
+    s = int(max(0, seconds))
+    if s < 10:
+        return "just now"
+    if s < 60:
+        return f"{s}s ago"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}m ago"
+    h, m = divmod(m, 60)
+    if h < 24:
+        return f"{h}h {m}m ago" if m else f"{h}h ago"
+    d, h = divmod(h, 24)
+    return f"{d}d {h}h ago" if h else f"{d}d ago"
+
+
+def result_parts(ev, *, age_s: float | None = None) -> list[str]:
     """The segments of a turn-terminator line: duration, optional cost,
-    optional non-boring stop_reason. Joined with ' · ' by each renderer."""
+    optional non-boring stop_reason, and — when the caller can say how long
+    ago the turn ended — that age. Joined with ' · ' by each renderer."""
     secs = (ev.duration_ms or 0) / 1000
     parts = [f"done in {secs:.1f}s"]
     if ev.cost_usd is not None and ev.cost_usd > 0:
@@ -190,4 +209,6 @@ def result_parts(ev) -> list[str]:
         parts.append(_fmt_cost(Decimal(str(ev.cost_usd))))
     if ev.stop_reason and ev.stop_reason != "end_turn":
         parts.append(ev.stop_reason)
+    if age_s is not None:
+        parts.append(format_age(age_s))
     return parts

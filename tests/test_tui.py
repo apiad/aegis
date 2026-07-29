@@ -320,6 +320,49 @@ async def test_pane_state_message_survives_a_torn_down_dom():
 
 
 @pytest.mark.asyncio
+async def test_turn_terminator_shows_how_long_ago_it_ended(monkeypatch):
+    """Coming back to a tab, the done line says whether you're reading
+    something fresh or something that has been sitting for an hour."""
+    from aegis.tui import pane as pane_mod
+
+    now = [1000.0]
+    monkeypatch.setattr(pane_mod.time, "time", lambda: now[0])
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(Input).value = "hi"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        done = pane._last_result
+        assert done is not None
+        assert "just now" in _block_text(done.block)
+
+        now[0] += 4 * 60                      # four minutes later
+        pane.refresh_result_age()
+        assert "4m ago" in _block_text(done.block)
+
+        # A second turn takes over the age; the old line drops it rather
+        # than freezing at "4m ago" forever.
+        pane.query_one(Input).value = "again"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._last_result is not done
+        assert "ago" not in _block_text(done.block)
+        assert "just now" in _block_text(pane._last_result.block)
+
+
+def _block_text(block) -> str:
+    from rich.console import Console
+    console = Console(width=200, no_color=True)
+    with console.capture() as cap:
+        console.print(block._renderable)
+    return cap.get()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_observer_survives_a_pruned_pane():
     """The dispatch observer is called off Textual's own dispatch, so a
     batch landing after the pane is pruned only shows up as a logged

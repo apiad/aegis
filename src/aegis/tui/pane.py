@@ -25,12 +25,14 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AssistantText, AssistantThinking, ThinkingTokens, ToolResult, ToolUse,
+    AssistantText, AssistantThinking, Result, ThinkingTokens, ToolResult,
+    ToolUse,
 )
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
     render_user_line,
 )
+from aegis.render_shared import format_age
 from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
@@ -73,6 +75,16 @@ class _ToolTrack:
     elapsed: float | None = None    # frozen duration once done
     result_r: RenderableType | None = None
     expanded: bool = False
+
+
+@dataclass(slots=True)
+class _ResultBlock:
+    """The newest turn terminator, tracked so its "x ago" stays honest."""
+    block: object                   # the CopyableBlock
+    ev: object                      # the Result event
+    idx: int                        # history index of its record
+    ended_at: float                 # time.time() when it landed
+    shown: str = ""                 # last age string rendered
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -623,6 +635,10 @@ class ConversationPane(Widget):
         self._stick_to_bottom: bool = True
         self._loading_older: bool = False
         self._load_timer = None
+        # Newest turn terminator, so its "x ago" can be kept current while
+        # you look at the tab. Only the newest carries an age: a frozen
+        # "2s ago" on an hour-old turn is worse than no age at all.
+        self._last_result: _ResultBlock | None = None
 
     @property
     def state(self) -> AgentState:
@@ -674,6 +690,9 @@ class ConversationPane(Widget):
             ind.set_animating(True)
         if self._any_tool_running():
             self._ensure_tool_timer()
+        # Coming back to a tab is exactly when "how long ago did this end"
+        # matters, and a hidden pane's age went stale while it sat there.
+        self.refresh_result_age()
         if self._stick_to_bottom:
             self._transcript().scroll_end(animate=False)
 
@@ -1246,8 +1265,48 @@ class ConversationPane(Widget):
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
             if renderable is not None:
-                self._mount_block(renderable, _payload_for_event(ev))
+                block = self._mount_block(renderable, _payload_for_event(ev))
+                if isinstance(ev, Result):
+                    self._adopt_result_block(block, ev)
         self.refresh_metrics()
+
+    def _adopt_result_block(self, block, ev) -> None:
+        """Make this the terminator that carries a live age, and strip the
+        age off the one it replaces."""
+        prev = self._last_result
+        if prev is not None:
+            self._paint_result(prev, age_s=None)
+        self._last_result = _ResultBlock(
+            block=block, ev=ev, idx=len(self._history) - 1,
+            ended_at=time.time())
+        self.refresh_result_age()
+
+    def _paint_result(self, r: _ResultBlock, *, age_s: float | None) -> None:
+        renderable = render_event(r.ev, self._palette, age_s=age_s)
+        if renderable is None:
+            return
+        payload = _payload_for_event(r.ev)
+        if 0 <= r.idx < len(self._history):
+            self._history[r.idx].renderable = renderable
+        with contextlib.suppress(Exception):
+            r.block.update_content(renderable, payload)
+
+    def refresh_result_age(self) -> None:
+        """Re-stamp the newest terminator with how long ago the turn ended.
+
+        Driven by the app's one-second tick for the pane you're looking at,
+        and on show — coming back to a tab is exactly when the answer
+        matters. Repaints only when the rendered string actually changes.
+        """
+        r = self._last_result
+        if r is None:
+            return
+        age = time.time() - r.ended_at
+        shown = format_age(age)
+        if shown == r.shown:
+            return
+        r.shown = shown
+        self._paint_result(r, age_s=age)
 
     def _fold_tool_result(self, ev: ToolResult) -> bool:
         """Render a ToolResult *inside* its matching ToolUse block. Returns

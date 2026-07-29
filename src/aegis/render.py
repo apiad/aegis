@@ -143,8 +143,13 @@ def coalesce_chunks(events: list[Event]) -> list[Event]:
     return out
 
 
-def render_event(ev: Event, colors) -> RenderableType | None:
-    """Map one typed event to a Rich renderable (themed), or None."""
+def render_event(ev: Event, colors,
+                 *, age_s: float | None = None) -> RenderableType | None:
+    """Map one typed event to a Rich renderable (themed), or None.
+
+    ``age_s`` is how long ago the event landed; only the turn terminator
+    uses it, and only the live pane passes it (see
+    ``ConversationPane.refresh_result_age``)."""
     if isinstance(ev, AssistantText):
         text = ev.text.strip()
         return Markdown(text) if text else None
@@ -177,7 +182,7 @@ def render_event(ev: Event, colors) -> RenderableType | None:
     if isinstance(ev, AgentPlan):
         return _render_agent_plan(ev, colors)
     if isinstance(ev, Result):
-        return Text(f"── {' · '.join(result_parts(ev))} ──",
+        return Text(f"── {' · '.join(result_parts(ev, age_s=age_s))} ──",
                     style=colors.muted)
     if isinstance(ev, (SystemInit, Unknown)):
         return None
