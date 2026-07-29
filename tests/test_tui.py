@@ -1,3 +1,4 @@
+import os
 import pytest
 from aegis.config import Agent
 from aegis.events import AssistantText, Result
@@ -222,6 +223,74 @@ async def test_clicking_the_empty_tabbar_placeholder_is_a_noop():
         await pilot.click(bar._cells[0])
         await pilot.pause()
         assert app._active is app._panes[0]
+
+
+def _inotify_instances() -> int:
+    """inotify instances this process holds open (Linux)."""
+    import os
+    n = 0
+    for fd in os.listdir("/proc/self/fd"):
+        try:
+            if os.readlink(f"/proc/self/fd/{fd}") == "anon_inode:inotify":
+                n += 1
+        except OSError:          # fd closed while we looked at it
+            pass
+    return n
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc/self/fd"),
+                    reason="needs /proc fd introspection")
+@pytest.mark.asyncio
+async def test_app_releases_its_file_watcher_on_shutdown():
+    """The file indexer holds an inotify instance, and the kernel allows
+    128 per user. Releasing it only in action_quit leaks one per app that
+    exits any other way — which is every app in this suite, so the watchdog
+    tests start failing at random once the run has burned through them."""
+    import asyncio
+
+    before = _inotify_instances()
+    app = _app()
+    async with app.run_test():
+        for _ in range(250):
+            if app._file_indexer.ready:
+                break
+            await asyncio.sleep(0.02)
+        assert app._file_indexer.ready, "indexer never started its observer"
+    assert _inotify_instances() == before
+
+
+@pytest.mark.asyncio
+async def test_pane_state_message_survives_a_torn_down_dom():
+    """A pane's turn can finish while the app is shutting down: the message
+    is dispatched after the DOM is pruned, so every tab-bar path must treat
+    a missing ContentSwitcher as 'nothing to refresh' rather than panic."""
+    from textual.widgets import ContentSwitcher
+    from aegis.tui.pane import PaneStateChanged
+
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        await app.query_one(ContentSwitcher).remove()
+        assert app._active is None
+        app.on_pane_state_changed(PaneStateChanged(pane, True))
+        app._refresh_tabbar()
+
+
+@pytest.mark.asyncio
+async def test_pruned_input_renders_blank_instead_of_crashing():
+    """Textual can render a widget from a stale arrangement one tick after
+    it was pruned — but pruning clears its component styles, and TextArea's
+    render path KeyErrors on them, panicking the app (seen when ctrl+w
+    closes the last tab). A pruned input has nothing to draw."""
+    from textual.geometry import Region
+
+    app = _app()
+    async with app.run_test():
+        inp = app._panes[0].query_one(Input)
+        await inp.remove()
+        strips = inp.render_lines(Region(0, 0, 10, 3))
+        assert len(strips) == 3
+        assert all(s.cell_length == 10 for s in strips)
 
 
 @pytest.mark.asyncio
