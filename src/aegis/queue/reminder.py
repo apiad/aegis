@@ -154,6 +154,18 @@ class ReminderService:
             pending.task.cancel()
         return {"ok": True, "reminder_id": reminder_id}
 
+    def rename(self, handle: str, new_handle: str) -> None:
+        """Follow a session that renamed itself.
+
+        A pending reminder is addressed to the handle that left it, so one
+        set before a rename would fire at a name nothing answers to.
+        """
+        if handle == new_handle:
+            return
+        for p in self._pending.values():
+            if p.from_handle == handle:
+                p.from_handle = new_handle
+
     def reap(self, handle: str) -> None:
         """Cancel a dead session's pending future-time reminders."""
         for rid, p in list(self._pending.items()):

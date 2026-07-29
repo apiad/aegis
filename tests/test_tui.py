@@ -320,6 +320,22 @@ async def test_pane_state_message_survives_a_torn_down_dom():
 
 
 @pytest.mark.asyncio
+async def test_dispatch_observer_survives_a_pruned_pane():
+    """The dispatch observer is called off Textual's own dispatch, so a
+    batch landing after the pane is pruned only shows up as a logged
+    ERROR — it must simply have nothing to render into."""
+    from aegis.queue.schema import InboxMessage, sender_user
+    from aegis.tui.pending import PendingStrip
+
+    app = _app()
+    async with app.run_test():
+        pane = app._panes[0]
+        await pane.query_one(PendingStrip).remove()
+        msg = InboxMessage(sender=sender_user(), timestamp="t", body="hi")
+        pane._on_core_dispatch(pane._core, [msg])
+
+
+@pytest.mark.asyncio
 async def test_pruned_input_renders_blank_instead_of_crashing():
     """Textual can render a widget from a stale arrangement one tick after
     it was pruned — but pruning clears its component styles, and TextArea's

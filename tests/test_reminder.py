@@ -225,6 +225,20 @@ async def test_service_cancel_prevents_delivery():
     assert svc.list_reminders() == []
 
 
+async def test_service_rename_moves_pending_reminders():
+    """A session that renames itself keeps the reminders it left for its
+    future self — otherwise they fire at a handle nothing answers to."""
+    inbox = FakeInbox()
+    svc = ReminderService(inbox, FakeSM(None))
+    out = svc.remind(from_handle="old-one", note="ping", after=0.01)
+    svc.rename("old-one", "new-one")
+    listed = svc.list_reminders(from_handle="new-one")
+    assert [r["reminder_id"] for r in listed] == [out["reminder_id"]]
+    assert svc.list_reminders(from_handle="old-one") == []
+    await asyncio.sleep(0.05)
+    assert [h for h, _ in inbox.delivered] == ["new-one"]
+
+
 async def test_service_cancel_unknown():
     svc = ReminderService(FakeInbox(), FakeSM(None))
     assert svc.cancel("nope")["ok"] is False

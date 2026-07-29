@@ -1152,7 +1152,15 @@ class ConversationPane(Widget):
         text-box messages render as user lines here (and shed their chip);
         agent/queue messages were already rendered on arrival by
         _on_core_inbox."""
-        strip = self.query_one(PendingStrip)
+        from textual.css.query import NoMatches
+        try:
+            strip = self.query_one(PendingStrip)
+        except NoMatches:
+            # The pane was pruned while this batch was in flight (app
+            # tearing down). The observer is called off Textual's own
+            # dispatch, so the failure lands as a logged ERROR rather than
+            # anywhere useful — and there is nothing left to render into.
+            return
         width = self._transcript().size.width or 80
         for msg in batch:
             if msg.sender == "user":

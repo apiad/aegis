@@ -1513,6 +1513,7 @@ class AegisApp(App):
         self.inbox_router.rename(old, new)
         self.locks.rename(old, new)
         self.monitor_manager.rename(old, new)
+        self.reminder_service.rename(old, new)
         # The transcript keeps its id, so nothing moves on disk — but the
         # log has to learn the new name, or Ctrl+R would keep listing the
         # session under the handle it was born with.

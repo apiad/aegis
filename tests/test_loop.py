@@ -366,6 +366,25 @@ async def test_tui_bridge_exposes_loop_service(tmp_path, monkeypatch):
         app.loop_service.stop(from_handle=handle)
 
 
+@pytest.mark.asyncio
+async def test_armed_loop_survives_a_rename(tmp_path, monkeypatch):
+    """Loop state lives on the session, so a rename must not lose it — the
+    agent that renames itself mid-loop still has to be able to stop it."""
+    monkeypatch.chdir(tmp_path)
+    app = AegisApp({"default": _agent()}, "default", _factory, FakeMCP(),
+                   cwd=str(tmp_path))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        old = app._active.handle
+        assert app.loop_service.arm(
+            from_handle=old, text="keep going")["armed"] is True
+        assert (await app.rename_handle(old, "renamed-mid-loop")).get("ok")
+        status = app.loop_service.status(from_handle="renamed-mid-loop")
+        assert status["loop"]["text"] == "keep going"
+        assert "error" in app.loop_service.status(from_handle=old)
+        app.loop_service.stop(from_handle="renamed-mid-loop")
+
+
 # --------------------------------------------------------------------------
 # Task 5 — MCP surface
 # --------------------------------------------------------------------------
