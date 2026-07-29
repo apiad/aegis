@@ -78,7 +78,8 @@ class _ToolTrack:
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
     """Render replay events as a list of Rich renderables, in order,
     using the live render path. Appends a ⚠ interrupted marker if
-    replay.interrupted. Returns an empty list for an empty replay.
+    replay.interrupted, and a ⚠ damaged-records marker if part of the
+    log was unreadable. Returns an empty list for an empty replay.
     """
     if colors is None:
         from aegis.tui.themes import INK, aegis_colors
@@ -89,6 +90,13 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
         if r is None:
             continue
         blocks.append(r)
+    if replay.damaged:
+        # Say it out loud: a silently shortened transcript reads as a
+        # conversation that was always this short.
+        note = (f"⚠ {replay.damaged} damaged record(s) skipped"
+                + (f" · {replay.recovered} recovered" if replay.recovered
+                   else ""))
+        blocks.append(Text(note, style="yellow"))
     if replay.interrupted:
         blocks.append(Text("⚠ interrupted", style="yellow"))
     return blocks

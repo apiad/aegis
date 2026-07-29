@@ -44,6 +44,22 @@ class _DisabledPlaneStub:
             f"{self._name}.{item}: not available in --remote v1")
 
 
+def _safe_replay(state_dir_path, handle):
+    """Read a tab's transcript, downgrading any failure to an empty replay.
+
+    ``replay_events`` already tolerates damaged records, so this is the
+    outer guard for what it can't absorb (an unreadable file, a decoder
+    bug). It exists because replay used to run outside the per-tab guard:
+    anything it raised escaped ``on_mount`` and took every other tab down
+    with it. A tab may lose its scrollback; it may not lose its siblings.
+    """
+    from aegis.state.session_log import EventReplay, replay_events
+    try:
+        return replay_events(state_dir_path, handle)
+    except Exception:  # noqa: BLE001
+        return EventReplay(events=[], interrupted=False)
+
+
 def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
                      open_tab, open_failed_tab=None):
     """Drive the resume flow. Pure orchestrator.
@@ -65,7 +81,6 @@ def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
       "↻ resumed N"                       — only resumed, no skips
     """
     from aegis.state.workspace import load
-    from aegis.state.session_log import replay_events
     from aegis.tui.resume_plan import plan_resume
 
     if ws is None:
@@ -93,7 +108,7 @@ def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
             else:
                 failures.append((tab.handle, str(e)))
             continue
-        replay = replay_events(state_dir_path, tab.handle)
+        replay = _safe_replay(state_dir_path, tab.handle)
         open_tab(handle=tab.handle, replay=replay, session=session)
 
     return _banner(resumed=len(plan.resumable) - len(failures),
@@ -444,7 +459,6 @@ class AegisApp(App):
         if not ws.tabs:
             return False
 
-        from aegis.state.session_log import replay_events
         from aegis.tui.resume_plan import plan_resume
 
         plan = plan_resume(ws, self._agents, self._drivers)
@@ -464,7 +478,7 @@ class AegisApp(App):
             except Exception as e:  # noqa: BLE001
                 failures.append((tab.handle, str(e)))
                 continue
-            replay = replay_events(self._state_dir, tab.handle)
+            replay = _safe_replay(self._state_dir, tab.handle)
             pane = ConversationPane(
                 session, agent, tab.profile, tab.handle, self._palette,
                 digest=self.queue_digest, monitor_manager=self.monitor_manager,
@@ -812,7 +826,6 @@ class AegisApp(App):
     async def _resume_from_history(self, row) -> None:
         """Reopen a closed session with full conversation continuity, routing
         through the same plan_resume + drv.resume path the boot resume uses."""
-        from aegis.state.session_log import replay_events
         from aegis.state.workspace import Workspace, WorkspaceTab
         from aegis.tui.resume_plan import plan_resume
 
@@ -842,7 +855,7 @@ class AegisApp(App):
         except Exception as e:  # noqa: BLE001
             self.notify(f"resume failed: {e}", severity="error")
             return
-        replay = replay_events(self._state_dir, tab.handle)
+        replay = _safe_replay(self._state_dir, tab.handle)
         pane = ConversationPane(
             session, agent, tab.profile, tab.handle, self._palette,
             digest=self.queue_digest, monitor_manager=self.monitor_manager,

@@ -62,6 +62,26 @@ def test_replay_blocks_empty_for_empty_replay():
     assert replay_blocks(EventReplay(events=[], interrupted=False)) == []
 
 
+def test_replay_blocks_reports_damaged_records():
+    """A shortened transcript must say it was shortened — silently dropping
+    turns reads as 'the conversation was always this short'."""
+    rep = EventReplay(
+        events=[AssistantText(text="kept", usage=None)],
+        interrupted=False, damaged=3, recovered=1,
+    )
+    rendered = "\n".join(_block_text(b) for b in replay_blocks(rep))
+    assert "kept" in rendered
+    assert "3" in rendered and "damaged" in rendered.lower()
+    assert "1 recovered" in rendered
+
+
+def test_replay_blocks_quiet_when_undamaged():
+    rep = EventReplay(events=[AssistantText(text="kept", usage=None)],
+                      interrupted=False)
+    rendered = "\n".join(_block_text(b) for b in replay_blocks(rep))
+    assert "damaged" not in rendered.lower()
+
+
 def test_replay_blocks_skips_none_renderables():
     """SystemInit renders to None — it must not appear as a block."""
     rep = EventReplay(
