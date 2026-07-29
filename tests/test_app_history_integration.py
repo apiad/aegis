@@ -104,15 +104,29 @@ async def test_meta_written_only_once_per_session(tmp_path: Path,
 
 
 @pytest.mark.asyncio
-async def test_ctrl_h_opens_history_modal(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("key", ["ctrl+r", "ctrl+h"])
+async def test_history_key_opens_history_modal(tmp_path: Path, monkeypatch,
+                                               key: str):
     monkeypatch.chdir(tmp_path)
     from aegis.tui.history import HistoryModal
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("ctrl+h")
+        await pilot.press(key)
         await pilot.pause()
         assert isinstance(app.screen, HistoryModal)
+
+
+def test_history_binding_is_not_an_ambiguous_control_key():
+    """Ctrl+H/I/M/J arrive as \\x08/\\t/\\r/\\n on terminals without the kitty
+    keyboard protocol, so the parser reports backspace/tab/enter and a binding
+    on them never fires. The advertised (show=True) history key must not be
+    one of those."""
+    shown = [b for b in AegisApp.BINDINGS
+             if b.action == "open_history" and b.show]
+    assert shown, "history needs a visible binding"
+    assert not {b.key for b in shown} & {"ctrl+h", "ctrl+i", "ctrl+m",
+                                         "ctrl+j"}
 
 
 @pytest.mark.asyncio
@@ -140,7 +154,7 @@ async def test_history_resume_calls_driver_resume(tmp_path: Path, monkeypatch):
                    drivers={"claude-code": fake_driver})
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("ctrl+h")
+        await pilot.press("ctrl+r")
         await pilot.pause()
         # Only "prior" is in history (the live default tab has no meta yet).
         for ch in "prior":

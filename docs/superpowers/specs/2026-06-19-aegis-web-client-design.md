@@ -588,7 +588,7 @@ Document-level handler in `app.js`. Same chords as TUI:
 | Ctrl+Tab / Ctrl+Shift+Tab | Cycle tabs |
 | Ctrl+D | Queue dashboard |
 | Ctrl+G | Group dashboard |
-| Ctrl+H | Session history (S7) |
+| Ctrl+R | Session history (S7) — TUI chord; in-browser it collides with reload, so pick a free chord when S7 lands |
 | Ctrl+P | File picker (S6) |
 | Ctrl+T | Theme picker (S8) |
 | F2 | Config panel (S6) |
@@ -634,7 +634,7 @@ concurrently.
 | **S4** | **Queue dashboard + status line** | StatusBar (handle, agent, state, metrics) per tab, driven by `stream/state` messages. Always-on QueueStrip above tab (single-row adaptive format). Ctrl+D opens QueueDashboard modal: `QUEUES / IN-FLIGHT / QUEUED / RECENT` bands, DetailPanel with payload/lifecycle/assistant-text tail. ↑↓ navigation, `>` jumps to worker's tab, Esc closes. Server side reuses the existing `QueueDigest` aggregator. | ~0.5d |
 | **S5** | **Group dashboard** | Ctrl+G opens GroupDashboard modal: Members / Current broadcast / Recent broadcasts panels. Reuses the existing `render_dashboard` pure function — port the data shape to HTML. Live updates via `group_state` global stream. | ~0.5d |
 | **S6** | **Config panel + file viewer + file picker** | F2 opens ConfigPanel modal: list agents, queues, schedules; add/edit/remove rows via `aegis.config.edit` helpers. AddAgentModal port. Ctrl+P opens FilePicker. FileTab opens viewer with Pygments server-side syntax highlighting. Ctrl+X → `xdg-open` (only when bound to localhost). | ~1d |
-| **S7** | **Session history (Ctrl+H)** | Depends on TUI session-history shipping first (currently designed, not implemented per TASKS.md). Modal lists every user-initiated session (open/closed, current process or previous). Reopens via jump-to-tab, `drv.resume()`, or fresh spawn with recorded profile+cwd. Reuses the backend reads that TUI's slice 1 will introduce. | ~0.5–1d |
+| **S7** | **Session history (Ctrl+R)** | Depends on TUI session-history shipping first (currently designed, not implemented per TASKS.md). Modal lists every user-initiated session (open/closed, current process or previous). Reopens via jump-to-tab, `drv.resume()`, or fresh spawn with recorded profile+cwd. Reuses the backend reads that TUI's slice 1 will introduce. | ~0.5–1d |
 | **S8** | **Theme switcher + additional themes** | Theme picker modal (Ctrl+T). Runtime swap via `<link rel="stylesheet">` href change — no reload. Two or three additional bundled themes (light, high-contrast). User-overlay themes from `.aegis/themes/` listed alongside bundled. | ~0.5d |
 | **S9** | **TUI as WS client (behind `--remote` flag)** | New module `src/aegis/tui/ws_client.py` — Python WS client mirroring the JS one. `aegis --remote` runs the TUI with `manager` swapped for `RemoteSessionManager` (implements the same `AppBridge` Protocol; methods are RPC calls; observer wiring becomes WS subscriptions). Auto-launches co-resident `aegis serve` on localhost if not already running. Classic in-process TUI remains the default; `--remote` is opt-in for testing. | ~1.5d |
 | **S10** | **TUI WS becomes default, classic moved to `--classic`** | Flip default. `--classic` retained for one release. Cleanup pass on dual code paths in TUI bootstrap. CHANGELOG entry calling out the architectural shift. After one release, `--classic` removed and the in-process path deleted. | ~0.5d |

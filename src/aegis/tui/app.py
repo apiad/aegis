@@ -186,7 +186,14 @@ class AegisApp(App):
         Binding("ctrl+e", "new_terminal", "New terminal", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
         Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
-        Binding("ctrl+h", "open_history", "History", priority=True),
+        # Ctrl+R, not Ctrl+H: most terminals send Ctrl+H as \x08, which the
+        # xterm parser reports as `backspace` — a "ctrl+h" binding is dead
+        # there. Kept as an alias for terminals that speak the kitty keyboard
+        # protocol and do disambiguate it. Same trap for ctrl+i/m/j
+        # (tab/enter/enter).
+        Binding("ctrl+r", "open_history", "History", priority=True),
+        Binding("ctrl+h", "open_history", "History", priority=True,
+                show=False),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
         Binding("f2", "open_config_panel", "Config", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),

@@ -5,14 +5,18 @@ type: design
 topic: session-history
 ---
 
-> **Status (2026-07-28):** Implemented for the TUI — `Ctrl+H` lists sessions
-> across restarts and reopens by jump / resume / open-fresh, backed by
-> `SessionMeta` + `SessionClosed` in the per-session log. Two deviations from
+> **Status (2026-07-29):** Implemented for the TUI — the history modal lists
+> sessions across restarts and reopens by jump / resume / open-fresh, backed by
+> `SessionMeta` + `SessionClosed` in the per-session log. Three deviations from
 > the original plan: meta is written lazily on the first user message via a
 > hook fired from **both** delivery paths (the plan's `_submit`-only hook
-> would have missed interactively-typed messages); and the modal uses a
+> would have missed interactively-typed messages); the modal uses a
 > smart-Enter primary action instead of single-letter `r`/`f` keys (which a
-> focused filter Input swallows).
+> focused filter Input swallows); and **the key is `Ctrl+R`, not the
+> `Ctrl+H` this spec specifies** — terminals send Ctrl+H as `\x08`, which
+> Textual's parser reports as `backspace`, so the original binding never
+> fired. `Ctrl+H` remains a hidden alias for kitty-protocol terminals.
+> Read every `Ctrl+H` below as `Ctrl+R`.
 
 # Aegis — Session History (Ctrl+H)
 

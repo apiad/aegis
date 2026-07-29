@@ -285,7 +285,7 @@ TTFT for ACP) remain candidate work but aren't on the critical path.
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`
 - Slice-1 plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: shipped)*
 
-### Session history (`Ctrl+H`)
+### Session history (`Ctrl+R`)
 
 Modal listing every user-initiated agent session (open or closed, current
 process or previous); reopens via jump-to-tab, `drv.resume()`, or fresh spawn

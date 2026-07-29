@@ -5,6 +5,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Session history is now `Ctrl+R`** (was `Ctrl+H`, which never fired). Most
+  terminals send Ctrl+H as `\x08`, which the xterm parser reports as
+  `backspace` — the binding was dead everywhere except terminals speaking the
+  kitty keyboard protocol. `Ctrl+H` stays bound as a hidden alias for those.
+
 ## [0.24.0] - 2026-07-28
 
 ### Session history (`Ctrl+H`)

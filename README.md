@@ -560,6 +560,8 @@ ConfigPanel via `F2`.
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `Ctrl+D` | Open / close the queue dashboard |
+| `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
+| `Ctrl+O` | Fuzzy file picker |
 | `F2` | Open the **ConfigPanel** — edit agents/queues/etc. live |
 | `Escape` | Interrupt the active turn (or dismiss a modal) |
 | `Click on a block` | Copy that message / tool result to clipboard |

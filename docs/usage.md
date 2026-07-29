@@ -14,6 +14,8 @@
 | `Ctrl+1`..`Ctrl+9` | Jump directly to tab N |
 | `Ctrl+Tab` / `Ctrl+→` / `Ctrl+←` | Next / previous tab |
 | `Ctrl+D` | Open / close the queue dashboard |
+| `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
+| `Ctrl+O` | Fuzzy file picker |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
