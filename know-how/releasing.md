@@ -55,8 +55,9 @@ uv sync --locked
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then `uv sync --locked` to verify.
 5. Run the fast suite locally: `uv run python -m pytest -q -m "not live"`.
-   (On zion, 1-2 TUI/watchdog tests flake on the inotify limit — re-run
-   those alone before treating as real.)
+   It is expected to be green: the old "1-2 TUI/watchdog tests flake on
+   the inotify limit" caveat was a leak plus two teardown races, fixed in
+   0.25.0. A red run is a regression — do not re-roll it.
 6. Commit `chore(release): vX.Y.Z`, push `main`.
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
 8. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.

@@ -291,12 +291,28 @@ The `live` marker is registered in `pyproject.toml`; do not use
 `-k "not live"` — it matches `live` as a substring and silently eats
 unrelated names (e.g. anything containing `deliver`).
 
-On zion the full suite intermittently flakes 1–2 TUI/watchdog tests
-(inotify watch limit) — non-deterministic, and they pass in isolation.
-Prefer `uv run python -m pytest`; when a TUI test fails in a full run,
-re-run it alone (`uv run python -m pytest <path>::<test> -v`) before
-treating it as a real failure. Gate on a blast-radius subset, not the
-full suite, during iteration.
+**A failing test is a real failure.** The suite used to flake 1–2
+TUI/watchdog tests per full run on zion, and the standing advice was to
+re-run them alone before believing them. That is no longer true, and
+following it now would mask regressions. The flakes had three causes,
+all fixed in 0.25.0:
+
+- the file indexer released its watchdog observer only in `action_quit`,
+  so every test app leaked one of the user's 128 inotify instances until
+  `Observer.start()` began raising `EMFILE` partway through a run;
+- two teardown races panicked the app — the compositor rendering a
+  pruned `TextArea`, and message handlers reaching for a
+  `ContentSwitcher` that teardown had already removed;
+- every test shared the repo's own `.aegis/state`, so one test's saved
+  workspace was resumed by the next test's app (and by the next run — a
+  leftover terminal entry alone could hang an unrelated test). Tests now
+  get a per-test project dir from the autouse `isolated_project_dir`
+  fixture in `tests/conftest.py`; anything resolving state from
+  `Path.cwd()` inherits the isolation.
+
+Prefer `uv run python -m pytest`. Gate on a blast-radius subset during
+iteration, but treat a red full run as a regression to investigate, not
+noise to re-roll.
 
 Regenerate parser fixtures with `scripts/capture_fixtures.sh` (captures real
 `claude` stream-json output, then sanitizes identifiers/paths before commit).
