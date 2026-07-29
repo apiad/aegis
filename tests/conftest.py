@@ -123,6 +123,21 @@ class AegisClient(Client):
             yield result
 
 
+@pytest.fixture(autouse=True)
+def isolated_project_dir(tmp_path, monkeypatch):
+    """Run every test in its own project directory.
+
+    Anything that resolves state from ``Path.cwd()`` — chiefly
+    ``AegisApp``, whose state dir is ``cwd/.aegis/state`` — otherwise shares
+    the repo's own state dir across the whole suite. One test's saved
+    workspace is then resumed by the next test's app, and by the next *run*
+    too, since nothing cleans it up: a leftover terminal entry alone is
+    enough to hang a test that just asserts its pane count. Tests that need
+    a specific project dir chdir again on top of this one.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def mock_in_queue():
     """Create a mock input queue that returns values in sequence."""
