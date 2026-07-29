@@ -187,6 +187,24 @@ class MonitorManager:
             task.cancel()
         return {"ok": True, "state": CANCELLED}
 
+    def rename(self, handle: str, new_handle: str) -> None:
+        """Follow a session that renamed itself.
+
+        A monitor is keyed by the handle that armed it — that key scopes the
+        per-tab strip and addresses the wake at the end. Left on the old
+        name, the tab stops showing the monitor and its callback is
+        delivered to a handle nobody answers to.
+        """
+        if handle == new_handle:
+            return
+        moved = False
+        for m in self._monitors.values():
+            if m.from_handle == handle:
+                m.from_handle = new_handle
+                moved = True
+        if moved:
+            self._notify()
+
     def reap(self, handle: str) -> None:
         """Cancel a dead session's live monitors (called on session close)."""
         for mid, mon in list(self._monitors.items()):

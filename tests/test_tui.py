@@ -225,6 +225,49 @@ async def test_clicking_the_empty_tabbar_placeholder_is_a_noop():
         assert app._active is app._panes[0]
 
 
+@pytest.mark.asyncio
+async def test_monitor_strip_follows_a_renamed_session():
+    """An agent that renames itself arms monitors under its NEW handle, and
+    monitors armed before the rename move with it. Either way the strip has
+    to be looking for the handle the session answers to now."""
+    from aegis.tui.monitor_strip import MonitorStrip
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        old = pane.handle
+        app.monitor_manager.start_monitor(
+            from_handle=old, description="earlier watch",
+            done="false", autorun=False)
+        assert (await app.rename_handle(old, "brand-new-name")).get("ok")
+        app.monitor_manager.start_monitor(
+            from_handle="brand-new-name", description="later watch",
+            done="false", autorun=False)
+        await pilot.pause()
+        strip = pane.query_one(MonitorStrip)
+        assert not strip.has_class("-empty")
+        shown = str(strip.content)
+        assert "earlier watch" in shown
+        assert "later watch" in shown
+
+
+@pytest.mark.asyncio
+async def test_monitor_strip_grows_a_row_per_monitor():
+    """Monitors stack: three live ones make the strip three rows tall,
+    rather than being crammed onto one line."""
+    from aegis.tui.monitor_strip import MonitorStrip
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        for i in range(3):
+            app.monitor_manager.start_monitor(
+                from_handle=pane.handle, description=f"watch {i}",
+                done="false", autorun=False)
+        await pilot.pause()
+        assert pane.query_one(MonitorStrip).size.height == 3
+
+
 def _inotify_instances() -> int:
     """inotify instances this process holds open (Linux)."""
     import os

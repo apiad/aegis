@@ -59,3 +59,11 @@ async def test_aegis_monitor_cancel():
 def test_briefing_and_priming_mention_monitor():
     assert "aegis_monitor" in BRIEFING
     assert "aegis_monitor" in PRIMING
+
+
+def test_briefing_and_priming_push_a_progress_condition():
+    """`progress` is what turns the strip from a spinner into a bar + ETA,
+    so both texts have to ask for one rather than list it as optional."""
+    assert "progress" in PRIMING
+    for text in (BRIEFING, PRIMING):
+        assert "ALWAYS pass `progress`" in text

@@ -33,15 +33,19 @@ def test_no_progress_monitor_shows_watching():
     assert "%" not in out
 
 
-def test_multiple_monitors_joined():
+def test_multiple_monitors_stack_one_per_line():
     vs = [
         MonitorView(id="a", description="build", state="watching",
                     pct=10.0, eta_s=None, elapsed_s=1.0),
         MonitorView(id="b", description="dl", state="watching",
                     pct=None, eta_s=None, elapsed_s=2.0),
     ]
-    out = render_monitors(vs, _p()).plain
-    assert "build" in out and "dl" in out
+    lines = render_monitors(vs, _p()).plain.splitlines()
+    assert len(lines) == 2
+    assert "build" in lines[0] and "dl" in lines[1]
+    # Continuation lines align under the first one's description.
+    assert lines[0].startswith("monitors: ")
+    assert lines[1].startswith(" " * len("monitors: "))
 
 
 def test_bar_fill_ratio():

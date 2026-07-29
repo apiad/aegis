@@ -177,7 +177,14 @@ BRIEFING = (
     "(tests, build, download, dev server) WITHOUT polling. aegis does not "
     "own the process — you give it bash conditions it evaluates on an "
     "interval: `done` (exit 0 ⇒ complete), optional `fail` (exit 0 ⇒ "
-    "failed), optional `progress` (echoes 0–100 for a bar+ETA). Returns "
+    "failed), and `progress` (echoes 0–100 for a bar+ETA). "
+    "ALWAYS pass `progress` unless the work genuinely has no measurable "
+    "fraction — it is what turns the operator's strip from an anonymous "
+    "spinner into a bar with an ETA. Almost everything can be counted: "
+    "tests done over tests collected, files converted over files found, "
+    "bytes fetched over content-length, the percentage the tool already "
+    "prints in its own log. Reach for `grep -c` / `wc -l` over the log you "
+    "are already writing. Returns "
     "{monitor_id} immediately; END YOUR TURN. You are woken via your inbox "
     "the moment it finishes, fails, or times out — at once if you are idle, "
     "otherwise at your next turn boundary (pass interrupt=True only when it "
@@ -386,7 +393,11 @@ PRIMING = (
     "(tests, build, download, dev server), NEVER poll with a sleep/tail "
     "loop — call aegis_monitor(from_handle='{handle}', …) with a `done` "
     "bash condition and end your turn; you'll be re-invoked automatically "
-    "when it finishes or fails."
+    "when it finishes or fails. ALWAYS pass `progress` too — a bash "
+    "condition echoing 0–100 (tests run over tests collected, bytes over "
+    "total, the percentage the tool already logs) — so the operator "
+    "watching sees a bar and an ETA instead of a bare spinner. Omit it "
+    "only when the work truly has no measurable fraction."
 )
 
 
@@ -1052,8 +1063,13 @@ def build_server(bridge: AppBridge) -> FastMCP:
         - ``done`` — exit 0 ⇒ complete (nonzero just means "not yet", so
           ``grep -q "Listening on" dev.log`` or ``test -f build/out`` work).
         - ``fail`` — exit 0 ⇒ failed (optional; checked before ``done``).
-        - ``progress`` — echoes a number 0–100 for a live bar + ETA (optional;
-          omit for a "watch until ready" spinner).
+        - ``progress`` — echoes a number 0–100 for a live bar + ETA. ALWAYS
+          pass one unless the work has no measurable fraction: it is the
+          difference between the operator seeing an ETA and seeing an
+          anonymous spinner. Count whatever the work already emits —
+          ``grep -c PASSED log`` over the collected total, bytes on disk
+          over content-length, or the percentage the tool prints itself,
+          e.g. ``sed -n 's/.*\\[ *\\([0-9]*\\)%\\].*/\\1/p' build.log | tail -1``.
 
         Returns ``{monitor_id}`` immediately — END YOUR TURN. When ``done`` /
         ``fail`` trips (or ``timeout_s`` elapses) you are woken via your inbox:

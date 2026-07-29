@@ -267,6 +267,21 @@ async def test_reap_cancels_live_monitors_for_handle():
 
 
 @pytest.mark.asyncio
+async def test_rename_moves_monitors_to_the_new_handle():
+    """A session that renames itself keeps its monitors: they follow the
+    handle, so the strip still shows them and the wake still lands."""
+    mm = _mm({"chk": (0, "")})
+    mid = mm.start_monitor(from_handle="old-one", description="build",
+                           done="chk", autorun=False)
+    mm.rename("old-one", "new-one")
+    assert [v.id for v in mm.snapshot(for_handle="new-one")] == [mid]
+    assert mm.snapshot(for_handle="old-one") == []
+    await mm.tick(mid)
+    assert await _inbox_for(mm, "old-one") == []
+    assert len(await _inbox_for(mm, "new-one")) == 1
+
+
+@pytest.mark.asyncio
 async def test_snapshot_for_handle_scopes_to_owning_session():
     """A monitor shows only on the strip of the tab that created it."""
     mm = _mm({})
