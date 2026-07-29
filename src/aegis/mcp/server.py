@@ -362,6 +362,14 @@ BRIEFING = (
     "cut its current turn when it needs a blocking correction now. Use "
     "aegis_enqueue when you want a FRESH worker spawned for one task and "
     "the result returned to you.\n\n"
+    "  - aegis_close(handle, from_handle) : close an agent YOU spawned, "
+    "once it has finished — reaping your own workers keeps the tab bar "
+    "honest. Refused unless spawned_by matches your handle AND the "
+    "target is demonstrably done: not mid-turn, no live monitors, no "
+    "pending reminders, nothing undelivered in its inbox, no queue task "
+    "running, no armed loop, no file claims held. A refusal lists every "
+    "unmet condition at once, so you know what to wait for. The "
+    "transcript survives a close either way.\n\n"
     "SHARED CANVAS PATTERN. When multiple agents need to shape one "
     "artifact (a report, a plan, a shared notes file), open a canvas "
     "with aegis_canvas_open(name, file, from_handle=<your handle>). "
@@ -899,6 +907,86 @@ def build_server(bridge: AppBridge) -> FastMCP:
                                     model=model, effort=effort,
                                     prompt=persona)
         return {"handle": handle}
+
+    @server.tool
+    async def aegis_close(handle: str, from_handle: str) -> dict:
+        """Close an agent YOU spawned, once it has finished.
+
+        Reaping your own workers keeps the tab bar honest — but closing a
+        session ends a live conversation and drops whatever it still had in
+        flight, so this refuses unless both hold:
+
+        - **you spawned it** (``spawned_by`` matches your handle; the
+          operator's own tabs and a peer's workers are not yours to close),
+        - **it is demonstrably finished**: not mid-turn, no live monitors,
+          no pending reminders, nothing undelivered in its inbox, no queue
+          task running, no armed loop, no file claims held.
+
+        On refusal you get every unmet condition at once, so you know what
+        to wait for rather than re-calling to discover the next one. Its
+        transcript survives either way — a closed session is still in
+        Ctrl+R history.
+
+        Args:
+            handle: the agent to close.
+            from_handle: your own aegis handle.
+        """
+        from aegis.core.close_guard import CloseFacts, refuse_reasons
+
+        info = next((s for s in bridge.list_sessions()
+                     if s.handle == handle), None)
+
+        def _count(fn, *a, **kw) -> int:
+            try:
+                return len(fn(*a, **kw) or [])
+            except Exception:  # noqa: BLE001 — a missing plane is not a block
+                return 0
+
+        mm = getattr(bridge, "monitor_manager", None)
+        rs = getattr(bridge, "reminder_service", None)
+        ib = getattr(bridge, "inbox_router", None)
+        qm = getattr(bridge, "queue_manager", None)
+        ls = getattr(bridge, "loop_service", None)
+        locks = getattr(bridge, "locks", None)
+
+        loop_armed = False
+        if ls is not None:
+            try:
+                loop_armed = bool(ls.status(from_handle=handle).get("loop"))
+            except Exception:  # noqa: BLE001
+                loop_armed = False
+        worker_label = None
+        if qm is not None:
+            try:
+                worker_label = qm.worker_label(handle)
+            except Exception:  # noqa: BLE001
+                worker_label = None
+        claims = 0
+        if locks is not None:
+            try:
+                claims = len([c for c in (locks.active() or [])
+                              if getattr(c, "handle", None) == handle])
+            except Exception:  # noqa: BLE001
+                claims = 0
+
+        facts = CloseFacts(
+            exists=info is not None,
+            spawned_by=getattr(info, "spawned_by", None),
+            state=getattr(info, "state", "ready"),
+            monitors=(_count(mm.snapshot, for_handle=handle)
+                      if mm is not None else 0),
+            reminders=(_count(rs.list_reminders, from_handle=handle)
+                       if rs is not None else 0),
+            inbox_depth=(_count(ib.pending, handle) if ib is not None else 0),
+            worker_label=worker_label,
+            loop_armed=loop_armed,
+            claims=claims,
+        )
+        reasons = refuse_reasons(facts, requester=from_handle, target=handle)
+        if reasons:
+            return {"closed": False, "reasons": reasons}
+        await bridge.close(handle)
+        return {"closed": True, "handle": handle}
 
     @server.tool
     async def aegis_claim(paths: list[str], from_handle: str,

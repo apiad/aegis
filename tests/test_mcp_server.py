@@ -51,6 +51,7 @@ class FakeBridge:
         return handle or "auto-handle"
 
     async def close(self, handle):
+        self.closed = handle
         return None
 
 
@@ -94,7 +95,7 @@ def test_build_server_registers_all_aegis_tools():
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
-        "aegis_spawn",
+        "aegis_spawn", "aegis_close",
         "aegis_claim", "aegis_release", "aegis_claims",
         "aegis_enqueue", "aegis_task_status",
         "aegis_cancel", "aegis_delegate",
@@ -144,6 +145,75 @@ async def test_aegis_spawn_creates_peer():
                           "opening_prompt": "do the thing",
                           "spawned_by": "parent-x",
                           "model": None, "effort": None, "prompt": None}
+
+
+@pytest.mark.asyncio
+async def test_aegis_close_reaps_an_idle_agent_it_spawned():
+    br = FakeBridge()
+    br._sessions.append(
+        SessionInfo(handle="child-one", agent_slug="default", state="ready",
+                    active=False, unseen=False, spawned_by="parent-x"))
+    srv = build_server(br)
+    out = await _call(srv, "aegis_close", handle="child-one",
+                      from_handle="parent-x")
+    assert out == {"closed": True, "handle": "child-one"}
+    assert br.closed == "child-one"
+
+
+@pytest.mark.asyncio
+async def test_aegis_close_refuses_someone_elses_agent():
+    br = FakeBridge()
+    br._sessions.append(
+        SessionInfo(handle="child-one", agent_slug="default", state="ready",
+                    active=False, unseen=False, spawned_by="another-parent"))
+    srv = build_server(br)
+    out = await _call(srv, "aegis_close", handle="child-one",
+                      from_handle="parent-x")
+    assert out["closed"] is False
+    assert any("did not spawn" in r for r in out["reasons"])
+    assert not hasattr(br, "closed")
+
+
+@pytest.mark.asyncio
+async def test_aegis_close_refuses_while_the_target_works():
+    br = FakeBridge()
+    br._sessions.append(
+        SessionInfo(handle="child-one", agent_slug="default",
+                    state="working", active=False, unseen=False,
+                    spawned_by="parent-x"))
+    srv = build_server(br)
+    out = await _call(srv, "aegis_close", handle="child-one",
+                      from_handle="parent-x")
+    assert out["closed"] is False
+    assert any("mid-turn" in r for r in out["reasons"])
+
+
+@pytest.mark.asyncio
+async def test_aegis_close_refuses_with_work_still_in_flight():
+    """A monitor it armed and a message it hasn't read are both things
+    that would vanish with the session."""
+    from aegis.monitor.manager import MonitorManager
+    from aegis.queue.schema import InboxMessage, sender_agent
+
+    br = FakeBridge()
+    br._sessions.append(
+        SessionInfo(handle="child-one", agent_slug="default", state="ready",
+                    active=False, unseen=False, spawned_by="parent-x"))
+    br.monitor_manager = MonitorManager(br.inbox_router)
+    br.monitor_manager.start_monitor(
+        from_handle="child-one", description="build", done="chk",
+        autorun=False)
+    await br.inbox_router.deliver(
+        "child-one", InboxMessage(sender=sender_agent("parent-x"),
+                                  timestamp="t", body="one more thing"))
+
+    srv = build_server(br)
+    out = await _call(srv, "aegis_close", handle="child-one",
+                      from_handle="parent-x")
+    assert out["closed"] is False
+    joined = " | ".join(out["reasons"])
+    assert "1 live monitor" in joined
+    assert "1 undelivered" in joined
 
 
 @pytest.mark.asyncio
