@@ -130,6 +130,23 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over
   many AgentSessions — `manager.py`). The TUI's ConversationPane and the
   web frontend both delegate to these.
+- `src/aegis/state/` - conversation persistence. `session_log.py` owns the
+  transcripts at `.aegis/state/sessions/<log_id>.jsonl`. **The log id is
+  `<YYYYMMDDTHHMMSSuuuuuuZ>-<birth handle>`, minted once at spawn
+  (`new_log_id`) and never changed** — do not key a log on a handle:
+  handles come from a finite pool, `generate_name` only avoids *live*
+  ones, and reusing one merges unrelated conversations into one file (100
+  of 223 logs on a real state dir, 160 conversations buried). A rename
+  therefore moves nothing; it appends a `SessionMeta` carrying the new
+  name. A bare handle stays a valid (legacy) id, so pre-id files keep
+  resolving. Writes are one `os.write` on an `O_APPEND` fd + `fsync` on
+  turn barriers; reads (`scan_log`) skip damaged lines and salvage whole
+  records embedded in them via the `{"v":1,"aegis_ts":"` resync marker,
+  never raising — a damaged transcript must never take a session, let
+  alone the app, down. `history.py` folds logs into Ctrl+R rows (headers
+  found anywhere, rows rebuilt for header-less legacy logs and flagged
+  `inferred`); `workspace.py` is the atomic tab roster; `repair.py` backs
+  `aegis doctor [--repair] [--split]`.
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker

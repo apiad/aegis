@@ -26,6 +26,7 @@ def test_pane_to_tab_reads_session_id_from_core(tmp_path):
 
     class _FakePane:
         handle = "h"
+        log_id = "20260521T000000Z-h"
         agent_slug = "default"
         _agent = _FakeAgent()
         _core = _FakeCore()
@@ -33,6 +34,9 @@ def test_pane_to_tab_reads_session_id_from_core(tmp_path):
 
     tab = _pane_to_tab(_FakePane(), order=0)
     assert tab.session_id == "sid-xyz"
+    # session_id is the harness's conversation id; log_id is ours. Resume
+    # needs both, and they are not interchangeable.
+    assert tab.log_id == "20260521T000000Z-h"
     assert tab.provider == "claude-code"
     assert tab.handle == "h"
     assert tab.profile == "default"

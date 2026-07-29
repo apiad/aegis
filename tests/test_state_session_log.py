@@ -249,11 +249,19 @@ def test_replay_survives_invalid_utf8(tmp_path):
 
 def test_log_id_is_time_prefixed_and_keeps_the_handle(tmp_path):
     from datetime import datetime, timezone
-    born = datetime(2026, 7, 29, 18, 21, 34, tzinfo=timezone.utc)
+    born = datetime(2026, 7, 29, 18, 21, 34, 500, tzinfo=timezone.utc)
     log_id = new_log_id("bold-backus", now=born)
-    assert log_id == "20260729T182134Z-bold-backus"
+    assert log_id == "20260729T182134000500Z-bold-backus"
     assert session_log_path(tmp_path, log_id).name == \
-        "20260729T182134Z-bold-backus.jsonl"
+        "20260729T182134000500Z-bold-backus.jsonl"
+
+
+def test_two_sessions_born_in_the_same_second_still_differ():
+    """An identity that promises not to be reused has to hold for a
+    crash-respawn loop too, where the same handle comes back within the
+    second."""
+    ids = {new_log_id("candid-cerf") for _ in range(50)}
+    assert len(ids) == 50
 
 
 def test_two_sessions_sharing_a_handle_get_separate_logs(tmp_path):
@@ -272,6 +280,10 @@ def test_two_sessions_sharing_a_handle_get_separate_logs(tmp_path):
 
 
 def test_parse_log_id_splits_birth_time_and_handle():
+    assert parse_log_id("20260729T182134000500Z-bold-backus") == \
+        ("2026-07-29T18:21:34.000500Z", "bold-backus")
+    # `doctor --split` mints from a record's timestamp, which it only knows
+    # to the second — that shape has to parse too.
     assert parse_log_id("20260729T182134Z-bold-backus") == \
         ("2026-07-29T18:21:34Z", "bold-backus")
 

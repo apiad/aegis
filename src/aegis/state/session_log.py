@@ -69,7 +69,13 @@ class LogScan:
     recovered: int = 0
 
 
-_LOG_ID_RE = re.compile(r"^(\d{8})T(\d{6})Z-(.+)$")
+# ``<YYYYMMDD>T<HHMMSS>[uuuuuu]Z-<handle>``. The microseconds are what
+# make the id an identity rather than a very likely one: two sessions can
+# share a handle *and* a second (a crash-respawn loop), and second
+# precision would have silently merged them — the exact bug this replaces.
+# The fractional part is optional so ids minted by ``doctor --split`` off a
+# legacy log, which only knows the record's second, still parse.
+_LOG_ID_RE = re.compile(r"^(\d{8})T(\d{6})(\d{6})?Z-(.+)$")
 
 
 def new_log_id(handle: str, *, now: datetime | None = None) -> str:
@@ -81,7 +87,7 @@ def new_log_id(handle: str, *, now: datetime | None = None) -> str:
     sessions each. The id is minted once at spawn and never changes, which
     is also why a rename moves nothing.
     """
-    ts = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    ts = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%S%fZ")
     return f"{ts}-{handle}"
 
 
@@ -94,8 +100,10 @@ def parse_log_id(log_id: str) -> tuple[str | None, str]:
     m = _LOG_ID_RE.match(log_id)
     if m is None:
         return None, log_id
-    d, t, handle = m.groups()
-    return (f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}Z", handle)
+    d, t, micro, handle = m.groups()
+    frac = f".{micro}" if micro else ""
+    return (f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}{frac}Z",
+            handle)
 
 
 def session_log_path(state_dir_path: Path, log_id: str) -> Path:

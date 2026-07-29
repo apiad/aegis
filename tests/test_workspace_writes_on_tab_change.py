@@ -44,14 +44,15 @@ def test_snapshot_after_reorder(tmp_path):
     assert load(sd).tabs == reordered
 
 
-def test_session_log_observer_writes_events_for_handle(tmp_path):
-    """Each pane subscribes an observer that appends incoming events."""
+def test_session_log_observer_writes_events_for_log_id(tmp_path):
+    """Each pane subscribes an observer that appends incoming events, keyed
+    on the session's log id — the handle is recycled and renameable."""
     from aegis.events import AssistantText, Result, SystemInit
     from aegis.state.session_log import replay_events
     from aegis.tui.pane import make_session_log_observer  # to be added
 
     sd = state_dir(tmp_path)
-    obs = make_session_log_observer(sd, handle="lucid-knuth")
+    obs = make_session_log_observer(sd, "lucid-knuth")
 
     class _FakeSession:
         handle = "lucid-knuth"

@@ -140,10 +140,11 @@ async def test_history_resume_calls_driver_resume(tmp_path: Path, monkeypatch):
 
     sd = tmp_path / ".aegis" / "state"
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    append_meta(sd, SessionMeta(
+    log_id = "20260729T120000000000Z-prior"
+    append_meta(sd, log_id, SessionMeta(
         handle="prior", profile="sonnet", provider="claude-code",
         cwd=str(tmp_path), created_at=now, origin="tui", preview="prior work"))
-    append_event(sd, "prior", SystemInit(session_id="upstream-1"))
+    append_event(sd, log_id, SystemInit(session_id="upstream-1"))
 
     fake_driver = MagicMock()
     fake_driver.supports_resume = True
@@ -176,7 +177,7 @@ async def test_close_pane_writes_session_closed(tmp_path: Path, monkeypatch):
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
-        target = app._panes[0].handle
+        target = app._panes[0].log_id
         # Give tab 0 a meta header (first user message), then a 2nd tab so
         # closing the first doesn't exit the app.
         app._panes[0]._submit("hello")
@@ -200,7 +201,7 @@ async def test_record_session_closed_is_idempotent(tmp_path: Path,
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
-        h = app._panes[0].handle
+        h = app._panes[0].log_id
         app._panes[0]._submit("hello")
         await pilot.pause()
         app._record_session_closed(h, reason="user")
@@ -220,7 +221,7 @@ async def test_unused_tab_is_marked_closed_but_not_listed(tmp_path: Path,
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
-        h = app._panes[0].handle
+        h = app._panes[0].log_id
         app._record_session_closed(h, reason="user")
         sd = tmp_path / ".aegis" / "state"
         events = replay_events(sd, h).events

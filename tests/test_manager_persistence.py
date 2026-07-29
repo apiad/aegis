@@ -35,7 +35,8 @@ async def test_serve_spawn_persists_events(tmp_path):
     handle = await mgr.spawn("default")
     await mgr.get(handle).send("go")
     await mgr.get(handle)._task
-    r = replay_events(tmp_path, handle)
+    # Keyed on the session's log id, not its handle — handles are recycled.
+    r = replay_events(tmp_path, mgr.get(handle).log_id)
     assert [type(e).__name__ for e in r.events] == ["AssistantText", "Result"]
 
 

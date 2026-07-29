@@ -156,45 +156,66 @@ async def test_inbox_rename_noop_when_old_equals_new():
 
 
 @pytest.mark.asyncio
-async def test_rename_handle_moves_the_session_log(tmp_path):
-    """workspace.json records the *new* handle, so if the log keeps the old
-    filename the transcript is orphaned and resume opens an empty pane."""
-    from aegis.events import AssistantText
-    from aegis.state.session_log import (
-        append_event, replay_events, session_log_path,
-    )
-    m = _mgr()
-    m.attach_persistence(tmp_path)
-    s = m._sync_spawn("default")
-    old = s.handle
-    append_event(tmp_path, old, AssistantText(text="kept", usage=None))
-
-    res = await m.rename_handle(old, "lucid-river")
-    assert res["ok"] is True
-    assert not session_log_path(tmp_path, old).exists()
-    assert [e.text for e in replay_events(tmp_path, "lucid-river").events] \
-        == ["kept"]
-
-
-@pytest.mark.asyncio
-async def test_rename_handle_rejected_when_target_log_exists(tmp_path):
-    """A dead session's stored transcript owns that handle just as much as a
-    live one does — renaming onto it would destroy or splice a conversation."""
+async def test_rename_leaves_the_transcript_where_it_is(tmp_path):
+    """The log id is minted at spawn and never changes, so a rename touches
+    nothing on disk. That is what makes the rename atomic: there is no
+    window where workspace.json and the filesystem disagree about where a
+    conversation lives."""
     from aegis.events import AssistantText
     from aegis.state.session_log import append_event, replay_events
     m = _mgr()
     m.attach_persistence(tmp_path)
     s = m._sync_spawn("default")
-    old = s.handle
-    append_event(tmp_path, old, AssistantText(text="mine", usage=None))
-    append_event(tmp_path, "lucid-river", AssistantText(text="theirs",
+    log_id = s.log_id
+    append_event(tmp_path, log_id, AssistantText(text="kept", usage=None))
+
+    res = await m.rename_handle(s.handle, "lucid-river")
+    assert res["ok"] is True
+    assert s.log_id == log_id
+    assert [e.text for e in replay_events(tmp_path, log_id).events] == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_renaming_onto_a_dead_session_s_name_is_allowed(tmp_path):
+    """With identity decoupled from the name, reusing a dead session's handle
+    is harmless — the two transcripts were never going to collide."""
+    from aegis.events import AssistantText
+    from aegis.state.session_log import append_event, new_log_id, replay_events
+    m = _mgr()
+    m.attach_persistence(tmp_path)
+    s = m._sync_spawn("default")
+    dead = new_log_id("lucid-river")
+    append_event(tmp_path, dead, AssistantText(text="theirs", usage=None))
+    append_event(tmp_path, s.log_id, AssistantText(text="mine", usage=None))
+
+    res = await m.rename_handle(s.handle, "lucid-river")
+    assert res["ok"] is True
+    assert [e.text for e in replay_events(tmp_path, dead).events] == ["theirs"]
+    assert [e.text for e in replay_events(tmp_path, s.log_id).events] \
+        == ["mine"]
+
+
+@pytest.mark.asyncio
+async def test_two_sessions_with_one_handle_never_share_a_log(tmp_path):
+    """`generate_name` only avoids handles held by live panes, so a dead
+    session's name is reissued immediately. Their transcripts must not
+    merge — 100 of 223 logs on a real state dir had."""
+    from aegis.events import AssistantText
+    from aegis.state.session_log import append_event, replay_events
+    m = _mgr()
+    m.attach_persistence(tmp_path)
+    first = m._sync_spawn("default", handle="candid-cerf")
+    append_event(tmp_path, first.log_id, AssistantText(text="may", usage=None))
+    m._sessions.remove(first)
+    second = m._sync_spawn("default", handle="candid-cerf")
+    append_event(tmp_path, second.log_id, AssistantText(text="july",
                                                         usage=None))
 
-    res = await m.rename_handle(old, "lucid-river")
-    assert "error" in res
-    assert s.handle == old  # rename aborted whole, not half-applied
-    assert [e.text for e in replay_events(tmp_path, "lucid-river").events] \
-        == ["theirs"]
+    assert first.log_id != second.log_id
+    assert [e.text for e in replay_events(tmp_path, first.log_id).events] \
+        == ["may"]
+    assert [e.text for e in replay_events(tmp_path, second.log_id).events] \
+        == ["july"]
 
 
 @pytest.mark.asyncio
