@@ -455,6 +455,50 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
 
 
 @app.command()
+def doctor(repair: bool = typer.Option(
+        False, "--repair",
+        help="Rewrite damaged logs from their readable records.")) -> None:
+    """Report (and optionally repair) damage in stored conversations."""
+    from aegis.state.repair import repair_log, survey
+
+    root = find_project_root() or Path.cwd()
+    sd = state_dir(root)
+    reports = survey(sd)
+    if not reports:
+        _console.print(f"no session logs under {sd / 'sessions'}")
+        return
+
+    bad = [r for r in reports if not r.healthy]
+    for r in bad:
+        tag = " [yellow](live — skipped)[/yellow]" if r.live else ""
+        _console.print(
+            f"  [yellow]{r.handle}[/yellow]  {r.records} records · "
+            f"{r.damaged} damaged · {r.recovered} salvaged{tag}")
+    _console.print(
+        f"{len(reports)} logs · {len(reports) - len(bad)} clean · "
+        f"{len(bad)} damaged")
+    if not bad:
+        return
+    if not repair:
+        _console.print("[dim]all of these still replay; "
+                       "re-run with --repair to rewrite them clean.[/dim]")
+        return
+
+    for r in bad:
+        if r.live:
+            # A running session holds an fd on the inode we'd replace, so
+            # every event it appends after the swap would go nowhere.
+            _console.print(
+                f"[yellow]skipped {r.handle}: session is open "
+                f"(close it, then re-run)[/yellow]")
+            continue
+        done = repair_log(r.path)
+        _console.print(
+            f"[green]repaired {done.handle}[/green] → {done.records} records "
+            f"kept, original at {done.backup.name}")
+
+
+@app.command()
 def web(cwd: str = typer.Option(".", "--cwd"),
         no_browser: bool = typer.Option(False, "--no-browser")) -> None:
     """Launch the web client: ensure a token, open the browser, then serve."""
