@@ -25,8 +25,11 @@ class WorkspaceTab:
     profile: str
     order: int
     provider: str
-    session_id: str | None
+    session_id: str | None   # the harness's own conversation id
     created_at: str
+    # Identity of this tab's transcript on disk. Absent in workspaces
+    # written before log ids existed, where the handle was the filename.
+    log_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,7 @@ def load(state_dir_path: Path) -> Workspace | None:
                 provider=t["provider"],
                 session_id=t.get("session_id"),
                 created_at=t["created_at"],
+                log_id=t.get("log_id"),
             )
             for t in raw["tabs"]
         ]

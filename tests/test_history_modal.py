@@ -13,6 +13,7 @@ def _row(handle: str, *, is_open: bool = False,
          provider: str = "claude-code",
          last: str = "2026-05-28T14:00:00Z") -> SessionHistoryRow:
     return SessionHistoryRow(
+        log_id=f"20260528T140000Z-{handle}",
         handle=handle, profile=profile, provider=provider,
         cwd="/tmp", created_at=last, closed_at=None,
         last_activity_at=last, preview="hello",

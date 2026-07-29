@@ -8,8 +8,8 @@ from aegis.events import (
     TokenUsage, ToolResult, ToolUse,
 )
 from aegis.state.session_log import (
-    EventReplay, LogRenameConflict, append_event, make_session_log_observer,
-    rename_log, replay_events, session_log_path,
+    EventReplay, append_event, make_session_log_observer, new_log_id,
+    parse_log_id, replay_events, session_log_path,
 )
 
 
@@ -239,55 +239,68 @@ def test_replay_survives_invalid_utf8(tmp_path):
     assert r.damaged == 1
 
 
-# ---------- the log follows its handle -------------------------------
+# ---------- log identity ---------------------------------------------
+#
+# Handles come from a finite generated pool and are recycled the moment a
+# session dies, so they cannot be the log's identity: on a real state dir
+# 100 of 223 logs had already accumulated several unrelated conversations,
+# one of them five spanning 46 days. The id is minted once, at spawn.
 
 
-def test_rename_log_moves_the_transcript(tmp_path):
-    append_event(tmp_path, "old-name", AssistantText(text="kept", usage=None))
-    rename_log(tmp_path, "old-name", "new-name")
-    assert not session_log_path(tmp_path, "old-name").exists()
-    assert [e.text for e in replay_events(tmp_path, "new-name").events] \
-        == ["kept"]
+def test_log_id_is_time_prefixed_and_keeps_the_handle(tmp_path):
+    from datetime import datetime, timezone
+    born = datetime(2026, 7, 29, 18, 21, 34, tzinfo=timezone.utc)
+    log_id = new_log_id("bold-backus", now=born)
+    assert log_id == "20260729T182134Z-bold-backus"
+    assert session_log_path(tmp_path, log_id).name == \
+        "20260729T182134Z-bold-backus.jsonl"
 
 
-def test_rename_log_is_a_noop_for_a_session_with_no_log_yet(tmp_path):
-    rename_log(tmp_path, "old-name", "new-name")  # must not raise
-    assert not session_log_path(tmp_path, "new-name").exists()
+def test_two_sessions_sharing_a_handle_get_separate_logs(tmp_path):
+    """The exact collision that merged 100 logs: the pool hands `candid-cerf`
+    back out as soon as the first session dies."""
+    from datetime import datetime, timezone
+    first = new_log_id("candid-cerf",
+                       now=datetime(2026, 5, 29, 10, 0, tzinfo=timezone.utc))
+    second = new_log_id("candid-cerf",
+                        now=datetime(2026, 7, 15, 10, 0, tzinfo=timezone.utc))
+    assert first != second
+    append_event(tmp_path, first, AssistantText(text="may", usage=None))
+    append_event(tmp_path, second, AssistantText(text="july", usage=None))
+    assert [e.text for e in replay_events(tmp_path, first).events] == ["may"]
+    assert [e.text for e in replay_events(tmp_path, second).events] == ["july"]
 
 
-def test_rename_log_refuses_to_clobber_a_stored_transcript(tmp_path):
-    """The handle is the log's identity, so a name whose log already exists
-    would either destroy that conversation or fabricate a shared prefix for
-    two unrelated ones. Refuse; the caller picks another name."""
-    append_event(tmp_path, "old-name", AssistantText(text="mine", usage=None))
-    append_event(tmp_path, "taken", AssistantText(text="someone else's",
-                                                  usage=None))
-    with pytest.raises(LogRenameConflict):
-        rename_log(tmp_path, "old-name", "taken")
-    assert [e.text for e in replay_events(tmp_path, "taken").events] \
-        == ["someone else's"]
-    assert [e.text for e in replay_events(tmp_path, "old-name").events] \
-        == ["mine"]
+def test_parse_log_id_splits_birth_time_and_handle():
+    assert parse_log_id("20260729T182134Z-bold-backus") == \
+        ("2026-07-29T18:21:34Z", "bold-backus")
 
 
-def test_observer_writes_to_the_live_handle_after_a_rename(tmp_path):
-    """The observer used to capture the handle in its closure, so a renamed
-    session kept appending to its old file while workspace.json recorded the
-    new one — resume then found nothing and opened an empty pane."""
+def test_parse_log_id_treats_a_bare_handle_as_legacy(tmp_path):
+    """Every log written before this change is named `<handle>.jsonl`. A bare
+    handle stays a valid id so those files keep resolving untouched."""
+    assert parse_log_id("candid-cerf") == (None, "candid-cerf")
+    append_event(tmp_path, "candid-cerf", AssistantText(text="old", usage=None))
+    assert [e.text for e in replay_events(tmp_path, "candid-cerf").events] \
+        == ["old"]
+
+
+def test_observer_is_pinned_to_the_log_id_not_the_handle(tmp_path):
+    """The id never changes, so a rename must not move or redirect anything —
+    that whole class of half-applied rename is gone."""
     class _Sess:
-        handle = "old-name"
+        handle = "born-bland"
 
     sess = _Sess()
-    obs = make_session_log_observer(tmp_path, "old-name")
+    log_id = new_log_id("born-bland")
+    obs = make_session_log_observer(tmp_path, log_id)
     obs(sess, AssistantText(text="before", usage=None))
-
-    rename_log(tmp_path, "old-name", "new-name")
-    sess.handle = "new-name"
+    sess.handle = "renamed-later"
     obs(sess, AssistantText(text="after", usage=None))
 
-    assert [e.text for e in replay_events(tmp_path, "new-name").events] \
+    assert [e.text for e in replay_events(tmp_path, log_id).events] \
         == ["before", "after"]
-    assert not session_log_path(tmp_path, "old-name").exists()
+    assert not session_log_path(tmp_path, "renamed-later").exists()
 
 
 def test_clean_log_reports_no_damage(tmp_path):

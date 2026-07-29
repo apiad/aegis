@@ -180,7 +180,8 @@ class SessionManager:
         self._sessions.append(s)
         if self._persist_dir is not None:
             from aegis.state.session_log import make_session_log_observer
-            s.add_event_observer(make_session_log_observer(self._persist_dir, h))
+            s.add_event_observer(
+                make_session_log_observer(self._persist_dir, s.log_id))
         self._touch(h)
         if opening_prompt is not None:
             asyncio.create_task(s.send(opening_prompt))
@@ -279,18 +280,6 @@ class SessionManager:
         if self.get(new) is not None:
             return {"error":
                     f"handle {new!r} already in use by another session"}
-        # Move the transcript first: workspace.json records the new handle
-        # and resume looks the log up by it, so a rename that leaves the
-        # file behind orphans the conversation. A conflict aborts the
-        # rename whole rather than half-applying it.
-        if self._persist_dir is not None:
-            from aegis.state.session_log import LogRenameConflict, rename_log
-            try:
-                rename_log(self._persist_dir, old, new)
-            except LogRenameConflict:
-                return {"error":
-                        f"handle {new!r} already has a stored transcript "
-                        f"(pick another name)"}
         session.handle = new
         if old in self._mru:
             idx = self._mru.index(old)

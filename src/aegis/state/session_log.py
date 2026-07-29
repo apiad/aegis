@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,37 +69,37 @@ class LogScan:
     recovered: int = 0
 
 
-class LogRenameConflict(Exception):
-    """The target handle already has a stored transcript."""
+_LOG_ID_RE = re.compile(r"^(\d{8})T(\d{6})Z-(.+)$")
 
 
-def session_log_path(state_dir_path: Path, handle: str) -> Path:
-    return state_dir_path / "sessions" / f"{handle}.jsonl"
+def new_log_id(handle: str, *, now: datetime | None = None) -> str:
+    """Mint a log id for a session: birth time + the handle it was born with.
 
-
-def rename_log(state_dir_path: Path, old: str, new: str) -> None:
-    """Move a session's transcript to follow a renamed handle.
-
-    The handle is the log's identity — ``workspace.json`` records it and
-    resume looks the file up by it — so a rename that doesn't move the
-    file orphans the conversation and resume opens an empty pane.
-
-    Raises ``LogRenameConflict`` if ``new`` already has a log. That log
-    belongs to some other session (a dead one still owns its handle), and
-    either clobbering it or appending onto it would lose or fabricate a
-    conversation. A session with no log yet renames as a no-op.
+    Handles are drawn from a finite generated pool and recycled as soon as a
+    session dies, so they identify a *name*, not a conversation — on a real
+    state dir 100 of 223 logs had silently accumulated several unrelated
+    sessions each. The id is minted once at spawn and never changes, which
+    is also why a rename moves nothing.
     """
-    if old == new:
-        return
-    src = session_log_path(state_dir_path, old)
-    dst = session_log_path(state_dir_path, new)
-    if dst.exists():
-        raise LogRenameConflict(
-            f"{new!r} already has a stored transcript at {dst}")
-    if not src.exists():
-        return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(src, dst)
+    ts = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    return f"{ts}-{handle}"
+
+
+def parse_log_id(log_id: str) -> tuple[str | None, str]:
+    """``(birth time as ISO, birth handle)``.
+
+    A bare handle is a legacy id — every log written before ids existed is
+    named ``<handle>.jsonl`` — and comes back with no birth time.
+    """
+    m = _LOG_ID_RE.match(log_id)
+    if m is None:
+        return None, log_id
+    d, t, handle = m.groups()
+    return (f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}Z", handle)
+
+
+def session_log_path(state_dir_path: Path, log_id: str) -> Path:
+    return state_dir_path / "sessions" / f"{log_id}.jsonl"
 
 
 def _now_iso() -> str:
@@ -120,8 +121,8 @@ def _write_record(fd: int, blob: bytes) -> None:
         view = view[os.write(fd, view):]
 
 
-def append_event(state_dir_path: Path, handle: str, ev: Event) -> None:
-    p = session_log_path(state_dir_path, handle)
+def append_event(state_dir_path: Path, log_id: str, ev: Event) -> None:
+    p = session_log_path(state_dir_path, log_id)
     p.parent.mkdir(parents=True, exist_ok=True)
     blob = encode_record(ev)
     fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -133,29 +134,25 @@ def append_event(state_dir_path: Path, handle: str, ev: Event) -> None:
         os.close(fd)
 
 
-def append_meta(state_dir_path: Path, meta) -> None:
-    """Write a SessionMeta as the (intended-first) record of a handle's log.
-    Thin alias over append_event that names the intent — the caller owns the
-    'must be first record' invariant (a fresh user-initiated session)."""
-    append_event(state_dir_path, meta.handle, meta)
+def append_meta(state_dir_path: Path, log_id: str, meta) -> None:
+    """Write a SessionMeta into ``log_id``'s log. Thin alias over
+    append_event that names the intent. A session writes one at spawn, one
+    on its first user turn (for the preview), and one on every rename (to
+    record the new handle) — the reader folds them into a single row."""
+    append_event(state_dir_path, log_id, meta)
 
 
-def make_session_log_observer(state_dir_path, handle: str):
+def make_session_log_observer(state_dir_path, log_id: str):
     """Returns an EventCb that appends every event to the per-handle JSONL.
     Persistence must never break the live render, so it swallows errors."""
-    def _obs(sess, ev) -> None:
+    def _obs(_sess, ev) -> None:
         # ThinkingTokens are high-volume transient counter nudges (hundreds
         # per turn); the cumulative estimate is stamped onto the block's
         # AssistantThinking, which we do persist — so skip these.
         if isinstance(ev, ThinkingTokens):
             return
-        # Resolve the handle per event rather than closing over it: a
-        # renamed session keeps this same observer, and a captured handle
-        # would keep writing to the old file while workspace.json records
-        # the new one.
-        live = getattr(sess, "handle", None) or handle
         try:
-            append_event(state_dir_path, live, ev)
+            append_event(state_dir_path, log_id, ev)
         except Exception:
             pass
     return _obs
@@ -215,8 +212,8 @@ def scan_log(path: Path) -> LogScan:
 _TURN_EVENTS = (AssistantText, AssistantThinking, ToolUse)
 
 
-def replay_events(state_dir_path: Path, handle: str) -> EventReplay:
-    scan = scan_log(session_log_path(state_dir_path, handle))
+def replay_events(state_dir_path: Path, log_id: str) -> EventReplay:
+    scan = scan_log(session_log_path(state_dir_path, log_id))
     events: list[Event] = []
     damaged = scan.damaged
     for rec in scan.records:

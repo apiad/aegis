@@ -109,3 +109,80 @@ def test_survey_flags_logs_belonging_to_live_tabs(tmp_path):
     rows = {r.handle: r for r in survey(tmp_path)}
     assert rows["live"].live is True
     assert rows["dead"].live is False
+
+
+# ---------- splitting logs that share a recycled handle ---------------
+
+
+def _sess(tmp_path, handle, sid, text):
+    from aegis.events import SystemInit
+    append_event(tmp_path, handle, SystemInit(session_id=sid))
+    append_event(tmp_path, handle, AssistantText(text=text, usage=None))
+    append_event(tmp_path, handle, Result(duration_ms=1, is_error=False))
+
+
+def test_split_separates_sessions_that_shared_a_handle(tmp_path):
+    """Handles are recycled, so a legacy `<handle>.jsonl` can hold several
+    unrelated conversations back to back — 100 of 223 on a real state dir,
+    one of them five spanning 46 days. Each upstream session_id starts a new
+    log under the new naming."""
+    from aegis.state.repair import split_log
+    _sess(tmp_path, "candid-cerf", "sid-may", "the may one")
+    _sess(tmp_path, "candid-cerf", "sid-july", "the july one")
+
+    parts = split_log(session_log_path(tmp_path, "candid-cerf"))
+    assert len(parts) == 2
+    texts = [
+        [e.text for e in replay_events(tmp_path, p.stem).events
+         if isinstance(e, AssistantText)]
+        for p in parts
+    ]
+    assert texts == [["the may one"], ["the july one"]]
+    # Each part keeps the handle and gains a birth time; parts born in the
+    # same second get a disambiguating suffix rather than clobbering.
+    assert all("candid-cerf" in p.stem for p in parts)
+    assert parts[0].stem < parts[1].stem   # birth-time ordered
+
+
+def test_split_keeps_the_original(tmp_path):
+    from aegis.state.repair import split_log
+    _sess(tmp_path, "h", "a", "one")
+    _sess(tmp_path, "h", "b", "two")
+    original = session_log_path(tmp_path, "h").read_bytes()
+    split_log(session_log_path(tmp_path, "h"))
+    backups = list((tmp_path / "sessions").glob("h.jsonl.split*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == original
+    assert not session_log_path(tmp_path, "h").exists()
+
+
+def test_split_is_a_noop_for_a_single_session_log(tmp_path):
+    from aegis.state.repair import split_log
+    _sess(tmp_path, "h", "only", "one")
+    before = session_log_path(tmp_path, "h").read_bytes()
+    assert split_log(session_log_path(tmp_path, "h")) == []
+    assert session_log_path(tmp_path, "h").read_bytes() == before
+
+
+def test_split_keeps_records_that_precede_the_first_system_init(tmp_path):
+    """Claude's SessionStart hooks stream before SystemInit, so the first
+    session's opening records sit ahead of any boundary. They belong to it,
+    not to nobody."""
+    from aegis.events import Unknown
+    from aegis.state.repair import split_log
+    append_event(tmp_path, "h", Unknown(raw='{"subtype":"hook_started"}'))
+    _sess(tmp_path, "h", "a", "one")
+    _sess(tmp_path, "h", "b", "two")
+    parts = split_log(session_log_path(tmp_path, "h"))
+    first = replay_events(tmp_path, parts[0].stem).events
+    assert isinstance(first[0], Unknown)
+
+
+def test_split_survives_a_damaged_log(tmp_path):
+    from aegis.state.repair import split_log
+    _sess(tmp_path, "h", "a", "one")
+    with session_log_path(tmp_path, "h").open("a", encoding="utf-8") as f:
+        f.write("\x00" * 60 + "\n")
+    _sess(tmp_path, "h", "b", "two")
+    parts = split_log(session_log_path(tmp_path, "h"))
+    assert len(parts) == 2

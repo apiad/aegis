@@ -541,7 +541,7 @@ class ConversationPane(Widget):
                  state_dir_path: Path | None = None,
                  replay: EventReplay | None = None,
                  on_first_user_message: Callable[[str], None] | None = None,
-                 core=None) -> None:
+                 core=None, log_id: str | None = None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -557,7 +557,8 @@ class ConversationPane(Widget):
         if core is not None:
             self._core = core
         else:
-            self._core = AgentSession(session, agent, agent_slug, handle)
+            self._core = AgentSession(session, agent, agent_slug, handle,
+                                      log_id=log_id)
         self._core.add_event_observer(self._on_core_event)
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
@@ -565,9 +566,15 @@ class ConversationPane(Widget):
         # Single primary slot (no add_loop_observer — one frontend owns the
         # chip). Harmless on a RemotePaneCore, which has no loop of its own.
         self._core.on_loop = self._on_loop_change
+        # RemotePaneCore has no log of its own; fall back to the handle so
+        # the attribute always answers.
+        self.log_id: str = getattr(self._core, "log_id", None) or handle
         if state_dir_path is not None:
+            # Keyed on the session's immutable log id, never the handle:
+            # handles are recycled out of a finite pool, so two unrelated
+            # sessions sharing one would append into the same file.
             self._core.add_event_observer(
-                make_session_log_observer(state_dir_path, handle))
+                make_session_log_observer(state_dir_path, self.log_id))
         self._replay = replay
         # Fires once, with the text of the first user-initiated turn — the
         # hook AegisApp uses to write the session's Ctrl+H history header

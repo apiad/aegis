@@ -455,11 +455,19 @@ def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
 
 
 @app.command()
-def doctor(repair: bool = typer.Option(
-        False, "--repair",
-        help="Rewrite damaged logs from their readable records.")) -> None:
-    """Report (and optionally repair) damage in stored conversations."""
-    from aegis.state.repair import repair_log, survey
+def doctor(
+        repair: bool = typer.Option(
+            False, "--repair",
+            help="Rewrite damaged logs from their readable records."),
+        split: bool = typer.Option(
+            False, "--split",
+            help="Split legacy logs that hold several sessions."),
+) -> None:
+    """Report (and optionally fix) damage in stored conversations."""
+    from aegis.state.repair import (
+        _boundaries, repair_log, split_log, survey,
+    )
+    from aegis.state.session_log import parse_log_id, scan_log
 
     root = find_project_root() or Path.cwd()
     sd = state_dir(root)
@@ -469,33 +477,64 @@ def doctor(repair: bool = typer.Option(
         return
 
     bad = [r for r in reports if not r.healthy]
+    # Handles come from a finite pool and are recycled once a session dies,
+    # so a log named after one can hold several unrelated conversations.
+    merged = []
+    for r in reports:
+        if parse_log_id(r.path.stem)[0] is not None:
+            continue   # already carries its own identity
+        n = len(_boundaries(scan_log(r.path).records))
+        if n > 1:
+            merged.append((r, n))
+
     for r in bad:
         tag = " [yellow](live — skipped)[/yellow]" if r.live else ""
         _console.print(
             f"  [yellow]{r.handle}[/yellow]  {r.records} records · "
             f"{r.damaged} damaged · {r.recovered} salvaged{tag}")
+    for r, n in merged:
+        tag = " [yellow](live — skipped)[/yellow]" if r.live else ""
+        _console.print(
+            f"  [cyan]{r.handle}[/cyan]  {n} conversations sharing "
+            f"one recycled handle{tag}")
     _console.print(
         f"{len(reports)} logs · {len(reports) - len(bad)} clean · "
-        f"{len(bad)} damaged")
-    if not bad:
-        return
-    if not repair:
-        _console.print("[dim]all of these still replay; "
-                       "re-run with --repair to rewrite them clean.[/dim]")
-        return
+        f"{len(bad)} damaged · {len(merged)} merged")
 
-    for r in bad:
-        if r.live:
-            # A running session holds an fd on the inode we'd replace, so
-            # every event it appends after the swap would go nowhere.
+    if bad and not repair:
+        _console.print("[dim]damaged logs still replay; "
+                       "re-run with --repair to rewrite them clean.[/dim]")
+    if merged and not split:
+        buried = sum(n - 1 for _, n in merged)
+        _console.print(f"[dim]{buried} conversation(s) are buried inside "
+                       f"another log; re-run with --split to separate "
+                       f"them.[/dim]")
+
+    if repair:
+        for r in bad:
+            if r.live:
+                # A running session holds an fd on the inode we'd replace,
+                # so every event it appends after the swap goes nowhere.
+                _console.print(
+                    f"[yellow]skipped {r.handle}: session is open "
+                    f"(close it, then re-run)[/yellow]")
+                continue
+            done = repair_log(r.path)
             _console.print(
-                f"[yellow]skipped {r.handle}: session is open "
-                f"(close it, then re-run)[/yellow]")
-            continue
-        done = repair_log(r.path)
-        _console.print(
-            f"[green]repaired {done.handle}[/green] → {done.records} records "
-            f"kept, original at {done.backup.name}")
+                f"[green]repaired {done.handle}[/green] → {done.records} "
+                f"records kept, original at {done.backup.name}")
+
+    if split:
+        for r, _n in merged:
+            if r.live:
+                _console.print(
+                    f"[yellow]skipped {r.handle}: session is open "
+                    f"(close it, then re-run)[/yellow]")
+                continue
+            parts = split_log(r.path)
+            _console.print(
+                f"[green]split {r.handle}[/green] → "
+                f"{len(parts)} logs: {', '.join(p.stem for p in parts)}")
 
 
 @app.command()

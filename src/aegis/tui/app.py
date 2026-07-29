@@ -44,7 +44,7 @@ class _DisabledPlaneStub:
             f"{self._name}.{item}: not available in --remote v1")
 
 
-def _safe_replay(state_dir_path, handle):
+def _safe_replay(state_dir_path, log_id):
     """Read a tab's transcript, downgrading any failure to an empty replay.
 
     ``replay_events`` already tolerates damaged records, so this is the
@@ -55,7 +55,7 @@ def _safe_replay(state_dir_path, handle):
     """
     from aegis.state.session_log import EventReplay, replay_events
     try:
-        return replay_events(state_dir_path, handle)
+        return replay_events(state_dir_path, log_id)
     except Exception:  # noqa: BLE001
         return EventReplay(events=[], interrupted=False)
 
@@ -108,7 +108,7 @@ def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
             else:
                 failures.append((tab.handle, str(e)))
             continue
-        replay = _safe_replay(state_dir_path, tab.handle)
+        replay = _safe_replay(state_dir_path, tab.log_id or tab.handle)
         open_tab(handle=tab.handle, replay=replay, session=session)
 
     return _banner(resumed=len(plan.resumable) - len(failures),
@@ -182,6 +182,7 @@ def _pane_to_tab(pane: ConversationPane, order: int) -> WorkspaceTab:
         provider=_provider_slug(pane),
         session_id=getattr(pane._core, "session_id", None),
         created_at=pane._created_at,
+        log_id=pane.log_id,
     )
 
 
@@ -478,11 +479,12 @@ class AegisApp(App):
             except Exception as e:  # noqa: BLE001
                 failures.append((tab.handle, str(e)))
                 continue
-            replay = _safe_replay(self._state_dir, tab.handle)
+            replay = _safe_replay(self._state_dir, tab.log_id or tab.handle)
             pane = ConversationPane(
                 session, agent, tab.profile, tab.handle, self._palette,
                 digest=self.queue_digest, monitor_manager=self.monitor_manager,
                 state_dir_path=self._state_dir,
+                log_id=tab.log_id or tab.handle,
                 replay=replay)
             self._panes.append(pane)
             self.inbox_router.bind_session(tab.handle, pane._core)
@@ -592,8 +594,15 @@ class AegisApp(App):
             {p.handle for p in self._panes
              if isinstance(p, ConversationPane)})
 
+        # Mint the transcript's identity before anything can write to it.
+        # It is fixed for the session's life: handles come out of a finite
+        # pool and get recycled, so keying the log on one merges unrelated
+        # conversations into a single file.
+        from aegis.state.session_log import new_log_id
+        log_id = new_log_id(h)
+
         def _write_meta(preview: str = "", *, _h=h, _slug=slug,
-                        _agent=agent) -> None:
+                        _agent=agent, _log_id=log_id) -> None:
             # Ctrl+H history header. Written twice on purpose: once here at
             # spawn so the log is attributed even if the session is closed
             # or crashes before the first turn, and again on the first user
@@ -607,7 +616,7 @@ class AegisApp(App):
             from aegis.state.session_log import append_meta
             now_iso = datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ")
-            append_meta(self._state_dir, SessionMeta(
+            append_meta(self._state_dir, _log_id, SessionMeta(
                 handle=_h, profile=_slug, provider=_agent.harness,
                 cwd=self._cwd, created_at=now_iso, origin="tui",
                 preview=preview.replace("\n", " ")[:200]))
@@ -618,7 +627,7 @@ class AegisApp(App):
             self._make_session(agent, self._mcp.url, h), agent,
             slug, h, self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir,
+            state_dir_path=self._state_dir, log_id=log_id,
             on_first_user_message=_write_meta)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
@@ -644,7 +653,7 @@ class AegisApp(App):
         # B1: skip inbox_router in remote mode — it's a _DisabledPlaneStub.
         if isinstance(pane, ConversationPane) and not hasattr(self, "_remote_manager"):
             self.inbox_router.unbind_session(pane.handle)
-            self._record_session_closed(pane.handle, reason="user")
+            self._record_session_closed(pane.log_id, reason="user")
         await pane.close()
         if pane in self._panes:
             self._panes.remove(pane)
@@ -653,7 +662,7 @@ class AegisApp(App):
         except Exception:  # noqa: BLE001 — pane may already be detached
             pass
 
-    def _record_session_closed(self, handle: str, *, reason: str) -> None:
+    def _record_session_closed(self, log_id: str, *, reason: str) -> None:
         """Append a SessionClosed marker for a user-initiated session.
         Idempotent and meta-gated: no-op for worker logs (no SessionMeta)
         and for logs already carrying a close marker."""
@@ -661,15 +670,15 @@ class AegisApp(App):
         from aegis.events import SessionClosed, SessionMeta
         from aegis.state.session_log import (
             append_event, replay_events, session_log_path)
-        if not session_log_path(self._state_dir, handle).exists():
+        if not session_log_path(self._state_dir, log_id).exists():
             return
-        events = replay_events(self._state_dir, handle).events
+        events = replay_events(self._state_dir, log_id).events
         if not any(isinstance(e, SessionMeta) for e in events):
             return
         if any(isinstance(e, SessionClosed) for e in events):
             return
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        append_event(self._state_dir, handle,
+        append_event(self._state_dir, log_id,
                      SessionClosed(closed_at=now_iso, reason=reason))
 
     def _refresh_tabbar(self) -> None:
@@ -851,7 +860,7 @@ class AegisApp(App):
         tab = WorkspaceTab(
             handle=row.handle, profile=row.profile, order=0,
             provider=row.provider, session_id=row.session_id,
-            created_at=row.created_at)
+            created_at=row.created_at, log_id=row.log_id)
         ws = Workspace(active_handle=row.handle, tabs=[tab])
         plan = plan_resume(ws, self._agents, self._drivers)
         if not plan.resumable:
@@ -868,11 +877,12 @@ class AegisApp(App):
         except Exception as e:  # noqa: BLE001
             self.notify(f"resume failed: {e}", severity="error")
             return
-        replay = _safe_replay(self._state_dir, tab.handle)
+        replay = _safe_replay(self._state_dir, tab.log_id or tab.handle)
         pane = ConversationPane(
             session, agent, tab.profile, tab.handle, self._palette,
             digest=self.queue_digest, monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir, replay=replay)
+            state_dir_path=self._state_dir, replay=replay,
+            log_id=tab.log_id or tab.handle)
         self._panes.append(pane)
         self.inbox_router.bind_session(tab.handle, pane._core)
         cs = self.query_one(ContentSwitcher)
@@ -1220,7 +1230,7 @@ class AegisApp(App):
         for pane in list(self._panes):
             if isinstance(pane, ConversationPane):
                 self.inbox_router.unbind_session(pane.handle)
-                self._record_session_closed(pane.handle, reason="user")
+                self._record_session_closed(pane.log_id, reason="user")
             await pane.close()
         self.queue_digest.stop()
         await self.quota_service.stop()
@@ -1465,23 +1475,28 @@ class AegisApp(App):
         if collision is not None:
             return {"error":
                     f"handle {new!r} already in use by another session"}
-        # Move the transcript first: workspace.json records the new handle
-        # and resume looks the log up by it, so a rename that leaves the
-        # file behind orphans the conversation. A conflict aborts the
-        # rename whole rather than half-applying it.
-        from aegis.state.session_log import LogRenameConflict, rename_log
-        try:
-            rename_log(self._state_dir, old, new)
-        except LogRenameConflict:
-            return {"error":
-                    f"handle {new!r} already has a stored transcript "
-                    f"(pick another name)"}
         pane.handle = new
         pane._core.handle = new
         self.inbox_router.rename(old, new)
         self.locks.rename(old, new)
+        # The transcript keeps its id, so nothing moves on disk — but the
+        # log has to learn the new name, or Ctrl+R would keep listing the
+        # session under the handle it was born with.
+        self._record_rename(pane, new)
         self._refresh_tabbar()
         return {"ok": True, "old": old, "new": new}
+
+    def _record_rename(self, pane, new_handle: str) -> None:
+        """Append a SessionMeta carrying the session's new handle."""
+        from datetime import datetime, timezone
+        from aegis.events import SessionMeta
+        from aegis.state.session_log import append_meta
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with contextlib.suppress(Exception):
+            append_meta(self._state_dir, pane.log_id, SessionMeta(
+                handle=new_handle, profile=pane.agent_slug,
+                provider=_provider_slug(pane), cwd=self._cwd,
+                created_at=now_iso, origin="tui", preview=""))
 
 
 class _GroupSessionAdapter:

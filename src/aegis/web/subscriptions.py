@@ -285,7 +285,8 @@ class SubscriptionRegistry:
         hs = self._handles.get(handle)
         first = hs is None
         if hs is None:
-            hs = _HandleState(seq=len(read_history(self._state_dir, handle)))
+            hs = _HandleState(
+                seq=len(read_history(self._state_dir, self._log_id(handle))))
             self._handles[handle] = hs
         hs.sinks.add(sink)
         if first:
@@ -297,15 +298,21 @@ class SubscriptionRegistry:
         if hs is not None:
             hs.sinks.discard(sink)
 
+    def _log_id(self, handle: str) -> str:
+        """A live session's transcript id. Falls back to the handle, which is
+        what pre-log-id logs are named."""
+        core = self._m.get(handle)
+        return getattr(core, "log_id", None) or handle
+
     def history(self, handle: str) -> list[tuple[int, "object"]]:
         """Persisted ``(seq, event)`` pairs for ``handle`` (subscribe/resume)."""
-        return read_history(self._state_dir, handle)
+        return read_history(self._state_dir, self._log_id(handle))
 
     def get_event(self, handle: str, seq: int) -> dict:
         """Full (un-truncated) encoded event at ``seq`` for on-tap expansion.
         Reads the persisted JSONL — relies on W0 central persistence so live
         serve-mode events are on disk."""
-        for s, ev in read_history(self._state_dir, handle):
+        for s, ev in read_history(self._state_dir, self._log_id(handle)):
             if s == seq:
                 return {"event": encode_event(ev)}
         return {"event": None}

@@ -26,11 +26,13 @@ from aegis.events import (
     ToolUse,
 )
 from aegis.state.event_codec import decode_event
+from aegis.state.session_log import parse_log_id
 
 
 @dataclass(frozen=True)
 class SessionHistoryRow:
-    handle: str
+    log_id: str              # identity on disk; never changes
+    handle: str              # current display name; a rename moves this
     profile: str
     provider: str
     cwd: str
@@ -47,6 +49,7 @@ class SessionHistoryRow:
 @dataclass(frozen=True)
 class _Fold:
     meta: SessionMeta | None
+    last_handle: str | None
     first_ts: str
     last_ts: str
     closed_at: str | None
@@ -59,6 +62,7 @@ def _fold_file(path: Path) -> _Fold | None:
     """Reduce one log to the fields a history row needs, or None when the
     file holds no readable record at all."""
     meta: SessionMeta | None = None
+    last_handle: str | None = None
     first_ts = last_ts = ""
     closed_at: str | None = None
     session_id: str | None = None
@@ -95,6 +99,9 @@ def _fold_file(path: Path) -> _Fold | None:
                     # carries it.
                     if meta is None:
                         meta = ev
+                    # A rename appends a header carrying the new name, so
+                    # the last one always holds the current handle.
+                    last_handle = ev.handle
                     if ev.preview and not preview:
                         preview = ev.preview
                         has_content = True   # the user said something
@@ -113,9 +120,9 @@ def _fold_file(path: Path) -> _Fold | None:
         return None
     if not saw_record:
         return None
-    return _Fold(meta=meta, first_ts=first_ts, last_ts=last_ts,
-                 closed_at=closed_at, session_id=session_id, preview=preview,
-                 has_content=has_content)
+    return _Fold(meta=meta, last_handle=last_handle, first_ts=first_ts,
+                 last_ts=last_ts, closed_at=closed_at, session_id=session_id,
+                 preview=preview, has_content=has_content)
 
 
 def list_history(state_dir_path: Path, *, live_handles: set[str],
@@ -133,13 +140,15 @@ def list_history(state_dir_path: Path, *, live_handles: set[str],
             # the listing fills up with blanks.
             continue
         meta = fold.meta
-        # The filename is the handle, not ``meta.handle``: a renamed session
-        # moves its log but its header still names the handle it was born
-        # with, and resume looks the log up by the name on disk.
-        handle = p.stem
-        created_at = (meta.created_at if meta else fold.first_ts)
+        log_id = p.stem
+        born_at, born_handle = parse_log_id(log_id)
+        # Display the session's *current* name (the last header wins, and a
+        # rename appends one), falling back to the name it was born with.
+        handle = fold.last_handle or born_handle
+        created_at = (born_at or (meta.created_at if meta else fold.first_ts))
         is_open = handle in live_handles
         rows.append(SessionHistoryRow(
+            log_id=log_id,
             handle=handle,
             profile=meta.profile if meta else fallback_profile,
             provider=meta.provider if meta else fallback_provider,

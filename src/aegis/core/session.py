@@ -50,11 +50,17 @@ class AgentSession:
                  now: Callable[[], float] = time.monotonic,
                  inbox=None,
                  opening_prompt: str | None = None,
-                 project_root: Path | None = None) -> None:
+                 project_root: Path | None = None,
+                 log_id: str | None = None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
+        # Identity of this session's transcript on disk. Minted once and
+        # never changed — unlike `handle`, which is recycled out of a finite
+        # pool and can be renamed mid-session. Resume passes the stored id.
+        from aegis.state.session_log import new_log_id
+        self.log_id = log_id or new_log_id(handle)
         self.project_root = project_root or Path.cwd()
         # hooks log into .aegis/state relative to the project root
         self.state_dir = self.project_root / ".aegis" / "state"

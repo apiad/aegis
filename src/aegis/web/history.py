@@ -21,14 +21,14 @@ from aegis.state.event_codec import decode_event
 from aegis.state.session_log import scan_log, session_log_path
 
 
-def read_history(state_dir: Path, handle: str) -> list[tuple[int, Event]]:
-    """Return ``(seq, event)`` pairs for ``handle``'s session log.
+def read_history(state_dir: Path, log_id: str) -> list[tuple[int, Event]]:
+    """Return ``(seq, event)`` pairs for ``log_id``'s session log.
 
     ``seq`` is the 1-based index among readable records. A missing file
     yields ``[]``.
     """
     out: list[tuple[int, Event]] = []
-    for rec in scan_log(session_log_path(Path(state_dir), handle)).records:
+    for rec in scan_log(session_log_path(Path(state_dir), log_id)).records:
         try:
             ev = decode_event(rec["event"])
         except Exception:  # noqa: BLE001 — one unreadable record, not a log
