@@ -1,46 +1,37 @@
-"""Torn-tolerant JSONL history reader for web subscribe + resume.
+"""Damage-tolerant JSONL history reader for web subscribe + resume.
 
-Per the S1 persistence audit (see the web-client design spec): the session
-log is a flat ``<state_dir>/sessions/<handle>.jsonl``, lines are
-``{"v":1,"aegis_ts":<iso>,"event":<encoded>}`` with no stored ``seq``, and
-``append_event`` does not fsync. So we synthesize ``seq`` as the 1-based line
-index and tolerate a torn trailing line (a crash mid-append), while treating
-malformed interior lines as genuine corruption.
+The session log stores no ``seq`` of its own, so one is synthesized here
+as the 1-based *record* index. It has to number records rather than
+lines because ``SubscriptionRegistry`` seeds ``hs.seq = len(history)``
+and then increments per live event: numbering lines would leave
+``seq > len(history)`` after any skipped line, and the ``seq > current``
+dedup would then silently drop every subsequent live event.
+
+Damaged records are skipped wherever they sit. Interior damage is the
+normal shape once a session resumes into a log it already crashed in
+(see ``aegis.state.session_log``), so treating it as fatal only moved
+the outage from one transcript to the whole web session.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from aegis.events import Event
 from aegis.state.event_codec import decode_event
-from aegis.state.session_log import session_log_path
+from aegis.state.session_log import scan_log, session_log_path
 
 
 def read_history(state_dir: Path, handle: str) -> list[tuple[int, Event]]:
     """Return ``(seq, event)`` pairs for ``handle``'s session log.
 
-    ``seq`` is the 1-based line index. A missing file yields ``[]``. An
-    unparseable *trailing* line is dropped (torn write); an unparseable
-    *interior* line raises ``ValueError``.
+    ``seq`` is the 1-based index among readable records. A missing file
+    yields ``[]``.
     """
-    p = session_log_path(Path(state_dir), handle)
-    if not p.exists():
-        return []
-    lines = p.read_text(encoding="utf-8").splitlines()
     out: list[tuple[int, Event]] = []
-    last = len(lines) - 1
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
+    for rec in scan_log(session_log_path(Path(state_dir), handle)).records:
         try:
-            rec = json.loads(stripped)
             ev = decode_event(rec["event"])
-        except Exception as exc:
-            if i == last:
-                break  # torn trailing write — tolerate
-            raise ValueError(
-                f"corrupt interior line {i + 1} in {p}") from exc
-        out.append((i + 1, ev))
+        except Exception:  # noqa: BLE001 — one unreadable record, not a log
+            continue
+        out.append((len(out) + 1, ev))
     return out
