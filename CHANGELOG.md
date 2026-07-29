@@ -5,6 +5,36 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-07-29
+
+### Added
+
+- **The done line says how long ago the turn ended** —
+  `── done in 12.3s · 4¢ · 4m ago ──` — so a tab you come back to tells you
+  whether you are reading something fresh or something that has been sitting
+  for an hour. Refreshed on the one-second tick for the pane you're looking
+  at, and again on show. Only the newest terminator carries an age; the
+  previous one drops it rather than freezing at a number that stops being
+  true. (The web client shows the same line but has no per-event timestamps
+  to compute an age from, so it is unchanged for now.)
+- **`aegis_monitor` takes a `cwd`.** Conditions still default to the project
+  root, but an agent working inside `repos/<name>` can now say so — a
+  relative path resolves against the root. A condition that silently resolves
+  the wrong directory never trips, so the monitor used to sit there until it
+  timed out instead of failing; a `cwd` that doesn't exist is now rejected up
+  front.
+
+### Fixed
+
+- **Pending reminders survive a rename.** A future-time reminder is addressed
+  to the handle that left it, so one armed before a session renamed itself
+  fired at a name nothing answered to — the same defect fixed for monitors in
+  0.25.0. Loops were already safe (their state lives on the session) and are
+  now covered by a test.
+- The pane's dispatch observer no longer raises when its batch lands after
+  the pane is pruned. Being an observer, the failure surfaced only as a
+  logged ERROR on teardown.
+
 ## [0.25.0] - 2026-07-29
 
 ### Added
