@@ -68,8 +68,37 @@ class LogScan:
     recovered: int = 0
 
 
+class LogRenameConflict(Exception):
+    """The target handle already has a stored transcript."""
+
+
 def session_log_path(state_dir_path: Path, handle: str) -> Path:
     return state_dir_path / "sessions" / f"{handle}.jsonl"
+
+
+def rename_log(state_dir_path: Path, old: str, new: str) -> None:
+    """Move a session's transcript to follow a renamed handle.
+
+    The handle is the log's identity — ``workspace.json`` records it and
+    resume looks the file up by it — so a rename that doesn't move the
+    file orphans the conversation and resume opens an empty pane.
+
+    Raises ``LogRenameConflict`` if ``new`` already has a log. That log
+    belongs to some other session (a dead one still owns its handle), and
+    either clobbering it or appending onto it would lose or fabricate a
+    conversation. A session with no log yet renames as a no-op.
+    """
+    if old == new:
+        return
+    src = session_log_path(state_dir_path, old)
+    dst = session_log_path(state_dir_path, new)
+    if dst.exists():
+        raise LogRenameConflict(
+            f"{new!r} already has a stored transcript at {dst}")
+    if not src.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(src, dst)
 
 
 def _now_iso() -> str:
@@ -114,14 +143,19 @@ def append_meta(state_dir_path: Path, meta) -> None:
 def make_session_log_observer(state_dir_path, handle: str):
     """Returns an EventCb that appends every event to the per-handle JSONL.
     Persistence must never break the live render, so it swallows errors."""
-    def _obs(_sess, ev) -> None:
+    def _obs(sess, ev) -> None:
         # ThinkingTokens are high-volume transient counter nudges (hundreds
         # per turn); the cumulative estimate is stamped onto the block's
         # AssistantThinking, which we do persist — so skip these.
         if isinstance(ev, ThinkingTokens):
             return
+        # Resolve the handle per event rather than closing over it: a
+        # renamed session keeps this same observer, and a captured handle
+        # would keep writing to the old file while workspace.json records
+        # the new one.
+        live = getattr(sess, "handle", None) or handle
         try:
-            append_event(state_dir_path, handle, ev)
+            append_event(state_dir_path, live, ev)
         except Exception:
             pass
     return _obs

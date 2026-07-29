@@ -1,13 +1,15 @@
 # tests/test_state_session_log.py
 import json
 
+import pytest
+
 from aegis.events import (
     AssistantText, AssistantThinking, Result, SystemInit, ThinkingTokens,
     TokenUsage, ToolResult, ToolUse,
 )
 from aegis.state.session_log import (
-    EventReplay, append_event, make_session_log_observer, replay_events,
-    session_log_path,
+    EventReplay, LogRenameConflict, append_event, make_session_log_observer,
+    rename_log, replay_events, session_log_path,
 )
 
 
@@ -235,6 +237,57 @@ def test_replay_survives_invalid_utf8(tmp_path):
     r = replay_events(tmp_path, h)
     assert [e.text for e in r.events] == ["ok"]
     assert r.damaged == 1
+
+
+# ---------- the log follows its handle -------------------------------
+
+
+def test_rename_log_moves_the_transcript(tmp_path):
+    append_event(tmp_path, "old-name", AssistantText(text="kept", usage=None))
+    rename_log(tmp_path, "old-name", "new-name")
+    assert not session_log_path(tmp_path, "old-name").exists()
+    assert [e.text for e in replay_events(tmp_path, "new-name").events] \
+        == ["kept"]
+
+
+def test_rename_log_is_a_noop_for_a_session_with_no_log_yet(tmp_path):
+    rename_log(tmp_path, "old-name", "new-name")  # must not raise
+    assert not session_log_path(tmp_path, "new-name").exists()
+
+
+def test_rename_log_refuses_to_clobber_a_stored_transcript(tmp_path):
+    """The handle is the log's identity, so a name whose log already exists
+    would either destroy that conversation or fabricate a shared prefix for
+    two unrelated ones. Refuse; the caller picks another name."""
+    append_event(tmp_path, "old-name", AssistantText(text="mine", usage=None))
+    append_event(tmp_path, "taken", AssistantText(text="someone else's",
+                                                  usage=None))
+    with pytest.raises(LogRenameConflict):
+        rename_log(tmp_path, "old-name", "taken")
+    assert [e.text for e in replay_events(tmp_path, "taken").events] \
+        == ["someone else's"]
+    assert [e.text for e in replay_events(tmp_path, "old-name").events] \
+        == ["mine"]
+
+
+def test_observer_writes_to_the_live_handle_after_a_rename(tmp_path):
+    """The observer used to capture the handle in its closure, so a renamed
+    session kept appending to its old file while workspace.json recorded the
+    new one — resume then found nothing and opened an empty pane."""
+    class _Sess:
+        handle = "old-name"
+
+    sess = _Sess()
+    obs = make_session_log_observer(tmp_path, "old-name")
+    obs(sess, AssistantText(text="before", usage=None))
+
+    rename_log(tmp_path, "old-name", "new-name")
+    sess.handle = "new-name"
+    obs(sess, AssistantText(text="after", usage=None))
+
+    assert [e.text for e in replay_events(tmp_path, "new-name").events] \
+        == ["before", "after"]
+    assert not session_log_path(tmp_path, "old-name").exists()
 
 
 def test_clean_log_reports_no_damage(tmp_path):

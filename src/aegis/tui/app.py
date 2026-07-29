@@ -1452,6 +1452,17 @@ class AegisApp(App):
         if collision is not None:
             return {"error":
                     f"handle {new!r} already in use by another session"}
+        # Move the transcript first: workspace.json records the new handle
+        # and resume looks the log up by it, so a rename that leaves the
+        # file behind orphans the conversation. A conflict aborts the
+        # rename whole rather than half-applying it.
+        from aegis.state.session_log import LogRenameConflict, rename_log
+        try:
+            rename_log(self._state_dir, old, new)
+        except LogRenameConflict:
+            return {"error":
+                    f"handle {new!r} already has a stored transcript "
+                    f"(pick another name)"}
         pane.handle = new
         pane._core.handle = new
         self.inbox_router.rename(old, new)

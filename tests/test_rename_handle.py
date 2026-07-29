@@ -152,6 +152,60 @@ async def test_inbox_rename_noop_when_old_equals_new():
     assert inbox.pending("h") == [msg]
 
 
+# --- the transcript follows the handle ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_handle_moves_the_session_log(tmp_path):
+    """workspace.json records the *new* handle, so if the log keeps the old
+    filename the transcript is orphaned and resume opens an empty pane."""
+    from aegis.events import AssistantText
+    from aegis.state.session_log import (
+        append_event, replay_events, session_log_path,
+    )
+    m = _mgr()
+    m.attach_persistence(tmp_path)
+    s = m._sync_spawn("default")
+    old = s.handle
+    append_event(tmp_path, old, AssistantText(text="kept", usage=None))
+
+    res = await m.rename_handle(old, "lucid-river")
+    assert res["ok"] is True
+    assert not session_log_path(tmp_path, old).exists()
+    assert [e.text for e in replay_events(tmp_path, "lucid-river").events] \
+        == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_rename_handle_rejected_when_target_log_exists(tmp_path):
+    """A dead session's stored transcript owns that handle just as much as a
+    live one does — renaming onto it would destroy or splice a conversation."""
+    from aegis.events import AssistantText
+    from aegis.state.session_log import append_event, replay_events
+    m = _mgr()
+    m.attach_persistence(tmp_path)
+    s = m._sync_spawn("default")
+    old = s.handle
+    append_event(tmp_path, old, AssistantText(text="mine", usage=None))
+    append_event(tmp_path, "lucid-river", AssistantText(text="theirs",
+                                                        usage=None))
+
+    res = await m.rename_handle(old, "lucid-river")
+    assert "error" in res
+    assert s.handle == old  # rename aborted whole, not half-applied
+    assert [e.text for e in replay_events(tmp_path, "lucid-river").events] \
+        == ["theirs"]
+
+
+@pytest.mark.asyncio
+async def test_rename_handle_works_without_a_persist_dir(tmp_path):
+    """Headless/test managers have no state dir; renaming must still work."""
+    m = _mgr()
+    s = m._sync_spawn("default")
+    res = await m.rename_handle(s.handle, "lucid-river")
+    assert res["ok"] is True
+
+
 # --- MCP tool surface -----------------------------------------------------
 
 
