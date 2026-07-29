@@ -303,7 +303,8 @@ class CopyableBlock(Widget):
             self.tooltip = "click to expand args"
         else:
             self.tooltip = (
-                "click to copy | ctrl+click to open file"
+                "click to copy | ctrl+click to open here | "
+                "alt+click to open natively"
                 if self._backtick_tokens else "click to copy")
 
     def compose(self) -> ComposeResult:
@@ -315,7 +316,9 @@ class CopyableBlock(Widget):
         self._text_payload = text_payload
         self._backtick_tokens = _extract_backtick_tokens(text_payload)
         self.tooltip = (
-            "click to copy | ctrl+click to open file" if self._backtick_tokens else "click to copy"
+            "click to copy | ctrl+click to open here | "
+            "alt+click to open natively"
+            if self._backtick_tokens else "click to copy"
         )
         with contextlib.suppress(Exception):
             self.query_one(".content", Static).update(renderable)
@@ -330,6 +333,12 @@ class CopyableBlock(Widget):
             return
         if event.ctrl and self._backtick_tokens:
             self._open_file_from_tokens()
+            return
+        # Textual reports Alt as `meta` (SGR's bit 8). Shift is not usable
+        # for a gesture: VTE terminals reserve it to bypass mouse reporting
+        # entirely, so the app never sees a shift+click.
+        if event.meta and self._backtick_tokens:
+            self._open_natively_from_tokens()
             return
         if not self._text_payload:
             return
@@ -385,6 +394,63 @@ class CopyableBlock(Widget):
         path = await self.app.push_screen_wait(FilePickerModal(prefill=token))
         if path is not None and opener is not None:
             await opener(path)
+
+    @work
+    async def _open_natively_from_tokens(self) -> None:
+        """Alt+click: hand the token to the desktop's own handler.
+
+        Same token resolution as ctrl+click, different destination — plus
+        URLs, which aegis has nothing to do with but a browser does.
+        """
+        from aegis.tui.native_open import (
+            is_url, open_native, refuse_reason)
+        from aegis.tui.picker import _TokenChooser, filter_path_tokens
+
+        def _notify(msg: str) -> None:
+            with contextlib.suppress(Exception):
+                self.app.notify(msg, timeout=2.0)
+
+        if hasattr(self.app, "_remote_manager"):
+            # The TUI is local but the paths are the daemon host's; opening
+            # them here would hit whatever happens to sit at that path
+            # locally, or nothing.
+            _notify("native open is local-only (remote session)")
+            return
+
+        cwd = Path.cwd()
+        indexer = getattr(self.app, "_file_indexer", None)
+        paths = (indexer.paths
+                 if (indexer is not None and indexer.ready) else [])
+        urls = [t for t in self._backtick_tokens if is_url(t)]
+        tokens = urls + filter_path_tokens(self._backtick_tokens, cwd, paths)
+        if not tokens:
+            _notify("nothing openable here")
+            return
+
+        if len(tokens) == 1:
+            token = tokens[0]
+        else:
+            token = await self.app.push_screen_wait(_TokenChooser(tokens))
+            if token is None:
+                return
+
+        if is_url(token):
+            err = open_native(token)
+            _notify(err or f"opening {token}")
+            return
+
+        target = Path(token)
+        if not target.is_absolute():
+            target = cwd / target
+        if not target.exists():
+            _notify(f"{token} is not on disk")
+            return
+        refusal = refuse_reason(target)
+        if refusal is not None:
+            _notify(refusal)
+            return
+        err = open_native(str(target))
+        _notify(err or f"opening {target.name}")
 
 
 class SubagentBox(Widget):
