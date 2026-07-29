@@ -5,6 +5,50 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-29
+
+### Added
+
+- **Click a tab to switch to it.** The tab bar's cells are clickable and route
+  through the same activation path as `Ctrl+1..9` / `Ctrl+Tab`, so a click also
+  clears the unseen mark and focuses the input. Hovering underlines the tab.
+
+### Fixed
+
+- **Monitors stay visible when a session renames itself.** The strip captured
+  its handle at compose time, so any monitor a renamed agent armed afterwards
+  was filtered out and never appeared. Monitors armed *before* a rename were
+  worse: their completion wake went to a handle nothing answered to. They now
+  move with the session, alongside the existing inbox and locks renames.
+- **Two teardown crashes.** Pruning a widget clears its component styles while
+  the compositor can still render it a tick later, which panicked the app
+  through `TextArea`'s render path (closing the last tab did exactly that).
+  And messages dispatched during teardown hit a bare
+  `query_one(ContentSwitcher)` in `_active` / `_refresh_tabbar` /
+  `_write_snapshot`, panicking on `NoMatches` — they now treat a missing DOM
+  as nothing to do, which also stops a half-dismantled roster from reaching
+  `workspace.json`.
+- **The file indexer no longer leaks an inotify instance per app.** Its
+  watchdog observer was released only in `action_quit`, so any other exit path
+  kept it — 128 per user is the kernel's budget.
+
+### Changed
+
+- **Monitors stack, one per row**, instead of sharing a single line where a
+  long description pushed the next monitor's bar off the edge.
+- **Agents are asked for a `progress` condition on every monitor.** The tool
+  docstring, briefing, and per-session priming now treat it as the default
+  rather than an option, with recipes for deriving one — it is the difference
+  between an ETA and an anonymous spinner.
+
+### Internal
+
+- Every test runs in its own project directory. The suite shared the repo's
+  real `.aegis/state`, so one test's saved workspace was resumed by the next
+  test's app — and by the next run, since nothing cleaned it up. A leftover
+  terminal entry alone could hang an unrelated test. Also cuts `test_tui.py`
+  from 307s to 39s.
+
 ## [0.24.1] - 2026-07-29
 
 ### Fixed
