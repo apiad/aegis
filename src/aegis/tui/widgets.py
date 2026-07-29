@@ -159,8 +159,16 @@ class GrowingInput(TextArea):
 class _TabCell(Static):
     """One tab in the bar; width sizes to its content so the row overflows."""
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # 0-based pane index this cell stands for; -1 until it renders a tab
+        # (the "no tabs" placeholder keeps it out of range, so a click on it
+        # falls through the app's bounds check as a no-op).
+        self._index = -1
+
     def render_tab(self, idx, handle, slug, state, unseen, active,
                    suffix, colors) -> None:
+        self._index = idx - 1
         mark = "[bold]*[/bold]" if unseen else ""
         sfx = f" [{colors.muted}]{suffix}[/]" if suffix else ""
         label = (f"{state.dot(colors)} {idx} {handle} "
@@ -168,14 +176,26 @@ class _TabCell(Static):
         self.update(f"[reverse] {label} [/reverse]" if active
                     else f" {label} ")
 
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+        self.post_message(TabBar.Selected(self._index))
+
 
 class TabBar(HorizontalScroll):
     """Sideways-scrolling tab bar; the active tab is kept in view."""
+
+    class Selected(Message):
+        """A tab was clicked. ``index`` is the 0-based pane index."""
+
+        def __init__(self, index: int) -> None:
+            super().__init__()
+            self.index = index
 
     DEFAULT_CSS = """
     TabBar { height: 1; overflow-x: auto; overflow-y: hidden;
              scrollbar-size: 0 0; padding: 0 1; }
     TabBar > _TabCell { width: auto; height: 1; margin: 0 1; }
+    TabBar > _TabCell:hover { text-style: underline; }
     """
 
     def __init__(self) -> None:

@@ -199,6 +199,32 @@ async def test_ctrl_t_adds_unique_tab():
 
 
 @pytest.mark.asyncio
+async def test_clicking_a_tab_activates_it():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert app._active is app._panes[1]
+        bar = app.query_one(TabBar)
+        await pilot.click(bar._cells[0])
+        await pilot.pause()
+        assert app._active is app._panes[0]
+        assert app._panes[0].unseen is False
+
+
+@pytest.mark.asyncio
+async def test_clicking_the_empty_tabbar_placeholder_is_a_noop():
+    app = _app()
+    async with app.run_test() as pilot:
+        bar = app.query_one(TabBar)
+        bar.set_tabs([])                 # "no tabs" placeholder
+        await pilot.pause()
+        await pilot.click(bar._cells[0])
+        await pilot.pause()
+        assert app._active is app._panes[0]
+
+
+@pytest.mark.asyncio
 async def test_background_finish_sets_unseen_and_one_bell():
     slow = FakeSession(lambda t: [AssistantText("bg done"),
                                   Result(duration_ms=1, is_error=False)])

@@ -795,6 +795,10 @@ class AegisApp(App):
         with contextlib.suppress(Exception):
             self._quota_tick(active)
 
+    def on_tab_bar_selected(self, event: TabBar.Selected) -> None:
+        event.stop()
+        self._activate(event.index)
+
     def _activate(self, idx: int) -> None:
         if not (0 <= idx < len(self._panes)):
             return
