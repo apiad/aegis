@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-07-29
+
 ### Fixed
 
 - **Session history is now `Ctrl+R`** (was `Ctrl+H`, which never fired). Most
