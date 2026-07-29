@@ -261,3 +261,45 @@ async def test_queue_worker_spawn_writes_no_meta(tmp_path: Path, monkeypatch):
         await pilot.pause()
         replay = replay_events(tmp_path / ".aegis" / "state", worker.handle)
         assert not any(isinstance(e, SessionMeta) for e in replay.events)
+
+
+@pytest.mark.asyncio
+async def test_rename_keeps_the_log_and_relabels_it(tmp_path: Path,
+                                                    monkeypatch):
+    """The bug that made renamed sessions unresumable: the pane, inbox and
+    tabbar took the new name while the transcript kept the old one, so
+    workspace.json pointed at a file that did not exist and resume opened an
+    empty pane. Now the log id is fixed and the new name is recorded *inside*
+    the log."""
+    monkeypatch.chdir(tmp_path)
+    from aegis.state.history import list_history
+    from aegis.tui.app import _pane_to_tab
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._panes[0]
+        log_id, born = pane.log_id, pane.handle
+        pane._submit("work on aegis")
+        await pilot.pause()
+
+        res = await app.rename_handle(born, "lucid-river")
+        await pilot.pause()
+        assert res["ok"] is True
+
+        sd = tmp_path / ".aegis" / "state"
+        # Identity unmoved: same id, same file, nothing orphaned.
+        assert pane.log_id == log_id
+        assert pane.handle == "lucid-river"
+        headers = [e for e in replay_events(sd, log_id).events
+                   if isinstance(e, SessionMeta)]
+        assert headers[0].handle == born          # born under the old name
+        assert headers[-1].handle == "lucid-river"  # renamed in place
+
+        # Ctrl+R lists it under the new name, keyed on the unchanged id.
+        rows = list_history(sd, live_handles=set())
+        assert [r.handle for r in rows] == ["lucid-river"]
+        assert rows[0].log_id == log_id
+
+        # And the tab roster agrees with the transcript on disk.
+        tab = _pane_to_tab(pane, order=0)
+        assert (tab.handle, tab.log_id) == ("lucid-river", log_id)
