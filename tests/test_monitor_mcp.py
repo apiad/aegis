@@ -46,6 +46,51 @@ async def test_aegis_monitor_starts_and_lists():
     assert any(row["id"] == mid for row in listed)
 
 
+async def test_monitor_defaults_to_the_project_root(tmp_path):
+    mm = _mm()
+    bridge = _Bridge(mm)
+    bridge.state_root = str(tmp_path)
+    server = build_server(bridge)
+    out = await _call(server, "aegis_monitor", from_handle="p",
+                      description="x", done="chk", interval_s=999)
+    assert mm._monitors[out["monitor_id"]].cwd == str(tmp_path)
+
+
+async def test_monitor_cwd_is_settable_and_relative_to_the_root(tmp_path):
+    """Conditions run in the given directory. Agents work inside
+    repos/<name>, so a monitor pinned to the project root evaluates its
+    bash somewhere the agent never meant — silently, until it times out."""
+    mm = _mm()
+    bridge = _Bridge(mm)
+    bridge.state_root = str(tmp_path)
+    (tmp_path / "repos" / "aegis").mkdir(parents=True)
+    server = build_server(bridge)
+
+    rel = await _call(server, "aegis_monitor", from_handle="p",
+                      description="x", done="chk", cwd="repos/aegis",
+                      interval_s=999)
+    assert mm._monitors[rel["monitor_id"]].cwd == str(tmp_path / "repos" / "aegis")
+
+    absolute = await _call(server, "aegis_monitor", from_handle="p",
+                           description="x", done="chk",
+                           cwd=str(tmp_path / "repos"), interval_s=999)
+    assert mm._monitors[absolute["monitor_id"]].cwd == str(tmp_path / "repos")
+
+
+async def test_monitor_rejects_a_cwd_that_does_not_exist(tmp_path):
+    """Every poll would fail in a missing directory, so the monitor would
+    just sit there and time out — say so now instead."""
+    mm = _mm()
+    bridge = _Bridge(mm)
+    bridge.state_root = str(tmp_path)
+    server = build_server(bridge)
+    out = await _call(server, "aegis_monitor", from_handle="p",
+                      description="x", done="chk", cwd="nope/not/here")
+    assert "error" in out
+    assert "monitor_id" not in out
+    assert mm._monitors == {}
+
+
 async def test_aegis_monitor_cancel():
     mm = _mm()
     server = build_server(_Bridge(mm))

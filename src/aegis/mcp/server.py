@@ -173,11 +173,16 @@ BRIEFING = (
     "synchronous shape — enqueue and block until the worker finishes, "
     "returning its result directly (no inbox callback).\n"
     "  - aegis_monitor(from_handle, description, done, progress?, fail?, "
-    "interval_s?, timeout_s?, interrupt?) : watch a long-running process you launched "
+    "interval_s?, timeout_s?, interrupt?, cwd?) : watch a long-running process you launched "
     "(tests, build, download, dev server) WITHOUT polling. aegis does not "
     "own the process — you give it bash conditions it evaluates on an "
     "interval: `done` (exit 0 ⇒ complete), optional `fail` (exit 0 ⇒ "
     "failed), and `progress` (echoes 0–100 for a bar+ETA). "
+    "Conditions run in `cwd` — the project root by default, so PASS `cwd` "
+    "(relative to the root, or absolute) whenever you are working "
+    "elsewhere, e.g. inside a repo under it. A condition that silently "
+    "resolves the wrong directory never trips, and the monitor sits there "
+    "until it times out. "
     "ALWAYS pass `progress` unless the work genuinely has no measurable "
     "fraction — it is what turns the operator's strip from an anonymous "
     "spinner into a bar with an ETA. Almost everything can be counted: "
@@ -1053,12 +1058,19 @@ def build_server(bridge: AppBridge) -> FastMCP:
                             fail: str | None = None,
                             interval_s: float = 2.0,
                             timeout_s: float = 3600.0,
-                            interrupt: bool = False) -> dict:
+                            interrupt: bool = False,
+                            cwd: str | None = None) -> dict:
         """Watch a long-running process without polling; wake on the outcome.
 
         aegis does NOT launch or own the process — you start it yourself
         (background it, or it already runs like a dev server). You hand aegis
-        bash conditions it evaluates every ``interval_s`` in the session cwd:
+        bash conditions it evaluates every ``interval_s`` in ``cwd`` — the
+        project root by default, so PASS ``cwd`` WHENEVER YOU ARE WORKING
+        SOMEWHERE ELSE (a repo under the root, say). A relative path is
+        resolved against the root. Conditions that quietly resolve the wrong
+        directory — ``gh run view`` picking up the wrong remote, a log path
+        that isn't there — never trip, so the monitor just sits until it
+        times out:
 
         - ``done`` — exit 0 ⇒ complete (nonzero just means "not yet", so
           ``grep -q "Listening on" dev.log`` or ``test -f build/out`` work).
@@ -1080,10 +1092,18 @@ def build_server(bridge: AppBridge) -> FastMCP:
         ``from_handle`` is your own aegis handle (from your system prompt).
         """
         root = getattr(bridge, "state_root", None)
+        where = str(root) if root else None
+        if cwd:
+            from pathlib import Path
+            p = Path(cwd)
+            if not p.is_absolute() and root:
+                p = Path(root) / p
+            if not p.is_dir():
+                return {"error": f"cwd {str(p)!r} is not a directory"}
+            where = str(p)
         mid = bridge.monitor_manager.start_monitor(
             from_handle=from_handle, description=description, done=done,
-            fail=fail, progress=progress,
-            cwd=str(root) if root else None,
+            fail=fail, progress=progress, cwd=where,
             interval_s=interval_s, timeout_s=timeout_s, interrupt=interrupt)
         return {"monitor_id": mid}
 
