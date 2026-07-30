@@ -150,6 +150,58 @@ async def test_streaming_does_not_rescan_the_message_for_backticks(
 
 
 @pytest.mark.asyncio
+async def test_a_hidden_pane_does_not_repaint_while_streaming():
+    """A background tab's streamed text is drawn to a widget nobody can
+    see. With ten tabs working at once that render cost is paid ten times
+    over on one thread — the multi-tab stall. It repaints on show."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await pilot.pause()
+        pane.display = False
+        await pilot.pause()
+
+        pane._stream_append("text", "first chunk. ")
+        block = pane._streaming_block
+        assert block is not None
+        painted = []
+        real = block.update_content
+        block.update_content = (
+            lambda *a, **kw: (painted.append(1), real(*a, **kw))[1])
+
+        for _ in range(30):
+            pane._stream_append("text", "more text. ")
+        assert painted == [], "repainted a widget nobody can see"
+
+        # The record is still current — the transcript is not lying.
+        rec = pane._history[pane._streaming_history_idx]
+        assert rec.payload.count("more text.") == 30
+
+        pane.display = True
+        pane.on_show()
+        await pilot.pause()
+        assert painted, "never caught up when the tab was shown"
+        assert "more text." in str(block.text_payload())
+
+
+@pytest.mark.asyncio
+async def test_a_visible_pane_still_repaints_every_delta():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await pilot.pause()
+        pane._stream_append("text", "first. ")
+        block = pane._streaming_block
+        painted = []
+        real = block.update_content
+        block.update_content = (
+            lambda *a, **kw: (painted.append(1), real(*a, **kw))[1])
+        for _ in range(5):
+            pane._stream_append("text", "more. ")
+        assert len(painted) == 5
+
+
+@pytest.mark.asyncio
 async def test_status_bar_reference_survives_and_still_updates():
     """Caching must not break the thing it caches."""
     app = _app()

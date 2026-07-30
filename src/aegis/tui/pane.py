@@ -735,6 +735,9 @@ class ConversationPane(Widget):
         self._indicator: "WorkingIndicator | None" = None
         # Replay is painted on first show, not on mount (see on_mount).
         self._replayed: bool = False
+        # Set when a delta landed while this tab was hidden (see
+        # _stream_append); on_show reconciles the widget with the record.
+        self._repaint_pending: bool = False
         # Newest turn terminator, so its "x ago" can be kept current while
         # you look at the tab. Only the newest carries an age: a frozen
         # "2s ago" on an hour-old turn is worse than no age at all.
@@ -792,6 +795,7 @@ class ConversationPane(Widget):
         look, resume the 10 Hz visual timers that were frozen while hidden,
         and snap to the tail if the user was following."""
         self._mount_replay()          # no-op once it has run
+        self._catch_up_streaming_block()
         ind = self._working_indicator()
         if ind is not None:
             ind.set_animating(True)
@@ -802,6 +806,20 @@ class ConversationPane(Widget):
         self.refresh_result_age()
         if self._stick_to_bottom:
             self._transcript().scroll_end(animate=False)
+
+    def _catch_up_streaming_block(self) -> None:
+        """Reconcile the streaming widget with its record after the tab was
+        hidden through part of a turn."""
+        if not self._repaint_pending:
+            return
+        self._repaint_pending = False
+        block = self._streaming_block
+        idx = self._streaming_history_idx
+        if block is None or idx is None or not (0 <= idx < len(self._history)):
+            return
+        rec = self._history[idx]
+        with contextlib.suppress(Exception):
+            block.update_content(rec.renderable, rec.payload)
 
     def on_hide(self) -> None:
         """Tab sent to the background: freeze its cosmetic spinner timers so
@@ -1289,8 +1307,16 @@ class ConversationPane(Widget):
             if self._streaming_block is not None:
                 r = self._render_for_stream(
                     kind, self._streaming_text)
-                self._streaming_block.update_content(
-                    r, self._streaming_text)
+                # The record is the source of truth and always current; the
+                # widget only has to agree with it when someone can see it.
+                # A background tab painting every delta is the same render
+                # cost as the foreground one, paid once per open tab on the
+                # single UI thread — on_show catches it up.
+                if self.display:
+                    self._streaming_block.update_content(
+                        r, self._streaming_text)
+                else:
+                    self._repaint_pending = True
                 if self._streaming_history_idx is not None:
                     rec = self._history[self._streaming_history_idx]
                     rec.renderable = r
