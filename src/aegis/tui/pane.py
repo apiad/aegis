@@ -42,7 +42,7 @@ from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
     N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
-    DEBOUNCE_S,
+    DEBOUNCE_S, STREAM_REPAINT_S,
 )
 
 
@@ -741,9 +741,13 @@ class ConversationPane(Widget):
         self._indicator: "WorkingIndicator | None" = None
         # Replay is painted on first show, not on mount (see on_mount).
         self._replayed: bool = False
-        # Set when a delta landed while this tab was hidden (see
-        # _stream_append); on_show reconciles the widget with the record.
+        # Set when a delta landed while this tab was hidden, or while the
+        # streaming repaint was inside its frame window (see
+        # _stream_append). on_show / the deferred flush reconcile the
+        # widget with the record.
         self._repaint_pending: bool = False
+        self._last_repaint_at: float = 0.0
+        self._repaint_timer = None
         # Newest turn terminator, so its "x ago" can be kept current while
         # you look at the tab. Only the newest carries an age: a frozen
         # "2s ago" on an hour-old turn is worse than no age at all.
@@ -813,19 +817,52 @@ class ConversationPane(Widget):
         if self._stick_to_bottom:
             self._transcript().scroll_end(animate=False)
 
+    def _due_for_repaint(self) -> bool:
+        return (time.monotonic() - self._last_repaint_at) >= STREAM_REPAINT_S
+
+    def _paint_streaming(self, renderable, payload: str | None = None) -> None:
+        """Push the current stream render into the widget and follow it
+        down. Both halves cost a reflow, so they move together — a delta
+        we did not paint is a delta we do not need to scroll to."""
+        self._last_repaint_at = time.monotonic()
+        self._repaint_pending = False
+        if self._streaming_block is not None:
+            self._streaming_block.update_content(
+                renderable,
+                self._streaming_text if payload is None else payload)
+        # Explicit (not reliant on Textual's scroll anchor, which drifts in
+        # a live terminal); gated on stickiness so a user scrolled up to
+        # read is never yanked down.
+        if self._stick_to_bottom:
+            self._transcript().scroll_end(animate=False)
+
+    def _arm_repaint_flush(self) -> None:
+        """Guarantee a skipped delta still lands, even if it was the last
+        one before the stream went quiet."""
+        if self._repaint_timer is not None or not self.display:
+            return
+        with contextlib.suppress(Exception):
+            self._repaint_timer = self.set_timer(
+                STREAM_REPAINT_S, self._flush_repaint)
+
+    def _flush_repaint(self) -> None:
+        self._repaint_timer = None
+        self._catch_up_streaming_block()
+
     def _catch_up_streaming_block(self) -> None:
-        """Reconcile the streaming widget with its record after the tab was
-        hidden through part of a turn."""
+        """Reconcile the streaming widget with its record — after the tab
+        was hidden through part of a turn, or after the repaint throttle
+        skipped the newest delta."""
         if not self._repaint_pending:
             return
-        self._repaint_pending = False
-        block = self._streaming_block
         idx = self._streaming_history_idx
-        if block is None or idx is None or not (0 <= idx < len(self._history)):
+        if (self._streaming_block is None or idx is None
+                or not (0 <= idx < len(self._history))):
+            self._repaint_pending = False
             return
         rec = self._history[idx]
         with contextlib.suppress(Exception):
-            block.update_content(rec.renderable, rec.payload)
+            self._paint_streaming(rec.renderable, rec.payload)
 
     def on_hide(self) -> None:
         """Tab sent to the background: freeze its cosmetic spinner timers so
@@ -962,16 +999,19 @@ class ConversationPane(Widget):
             anchor = self._mounted_blocks[0] if self._mounted_blocks else None
             anchor_y_before = (
                 (anchor.region.y - t.region.y) if anchor is not None else 0)
-            new_blocks: list[CopyableBlock] = []
-            for rec in self._history[new_start : self._window_start]:
-                block = CopyableBlock(
-                    rec.materialize(self._palette), rec.payload,
-                    tight=rec.tight, tool_call_id=rec.tool_call_id)
+            new_blocks: list[CopyableBlock] = [
+                CopyableBlock(rec.materialize(self._palette), rec.payload,
+                              tight=rec.tight, tool_call_id=rec.tool_call_id)
+                for rec in self._history[new_start : self._window_start]
+            ]
+            # One batched mount: Textual lays the parent out once per mount
+            # call, so mounting LOAD_BATCH blocks one at a time paid
+            # LOAD_BATCH full-screen reflows per scroll-up.
+            if new_blocks:
                 if anchor is not None:
-                    t.mount(block, before=anchor)
+                    t.mount(*new_blocks, before=anchor)
                 else:
-                    t.mount(block)
-                new_blocks.append(block)
+                    t.mount(*new_blocks)
             # Prepend new blocks to the explicit mounted list (DOM order).
             self._mounted_blocks[:0] = new_blocks
             self._window_start = new_start
@@ -1055,10 +1095,16 @@ class ConversationPane(Widget):
         """Unmount the first n mounted CopyableBlocks and advance
         _window_start. Safe to call only while _stick_to_bottom is True:
         the user is at the tail, so removing widgets above the viewport
-        doesn't disturb them."""
-        for b in self._mounted_blocks[:n]:
+        doesn't disturb them.
+
+        One batched prune, not n of them: Textual refreshes the parent with
+        layout=True once per prune, so removing EVICT_BATCH blocks
+        individually was a burst of EVICT_BATCH full-screen reflows every
+        time the window filled."""
+        doomed = self._mounted_blocks[:n]
+        if doomed:
             with contextlib.suppress(Exception):
-                b.remove()
+                self._transcript().remove_children(doomed)
         del self._mounted_blocks[:n]
         self._window_start += n
 
@@ -1261,6 +1307,10 @@ class ConversationPane(Widget):
     # --- streaming aggregation -------------------------------------
 
     def _flush_streaming(self) -> None:
+        # Whatever the repaint throttle skipped, the settled block must
+        # still show. The text branch below re-renders anyway; the
+        # thinking branch does not, so this is its only catch-up.
+        self._catch_up_streaming_block()
         # A text stream is rendered cheaply as plain Text per delta (no
         # per-token Markdown re-parse). Finalize it to a single Markdown
         # render on flush so the settled block carries proper formatting.
@@ -1304,6 +1354,9 @@ class ConversationPane(Widget):
             r = self._render_for_stream(kind, self._streaming_text)
             self._streaming_block = self._mount_block(
                 r, self._streaming_text)
+            # Mounting is itself a reflow, so it starts the repaint window.
+            self._last_repaint_at = time.monotonic()
+            self._repaint_pending = False
             # The block just appended is the last entry in _history.
             self._streaming_history_idx = len(self._history) - 1
         else:
@@ -1314,25 +1367,23 @@ class ConversationPane(Widget):
                 r = self._render_for_stream(
                     kind, self._streaming_text)
                 # The record is the source of truth and always current; the
-                # widget only has to agree with it when someone can see it.
-                # A background tab painting every delta is the same render
-                # cost as the foreground one, paid once per open tab on the
-                # single UI thread — on_show catches it up.
-                if self.display:
-                    self._streaming_block.update_content(
-                        r, self._streaming_text)
+                # widget only has to agree with it when someone can see it,
+                # and no more often than STREAM_REPAINT_S. A repaint is a
+                # refresh(layout=True), i.e. a full compositor rebuild whose
+                # cost is linear in mounted widgets; deltas that arrive
+                # back-to-back coalesce on their own, but a real stream
+                # arrives with gaps and was buying one reflow apiece. A
+                # background tab skips the paint entirely — same contract,
+                # on_show catches it up.
+                if self.display and self._due_for_repaint():
+                    self._paint_streaming(r)
                 else:
                     self._repaint_pending = True
+                    self._arm_repaint_flush()
                 if self._streaming_history_idx is not None:
                     rec = self._history[self._streaming_history_idx]
                     rec.renderable = r
                     rec.payload = self._streaming_text
-                # Follow the growing block to the bottom so streamed text stays
-                # visible. Explicit (not reliant on Textual's scroll anchor,
-                # which drifts in a live terminal); gated on stickiness so a
-                # user scrolled up to read is never yanked down.
-                if self._stick_to_bottom:
-                    self._transcript().scroll_end(animate=False)
 
     # --- event handlers --------------------------------------------
 

@@ -389,4 +389,9 @@ class StatusBar(Static):
         # Keep a plain copy for render_plain() (no Textual dependency).
         self._plain_content = line
         with contextlib.suppress(Exception):
-            self.update(line)
+            # layout=False: the bar is `height: 1` and `fit()` has already
+            # trimmed the line to the available width, so its size cannot
+            # change. The default (layout=True) made every metrics update
+            # rebuild the whole compositor map — one full-screen reflow per
+            # streamed delta, which swamped every other repaint economy.
+            self.update(line, layout=False)
