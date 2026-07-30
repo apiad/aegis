@@ -24,9 +24,11 @@ whole log because part of it is damaged:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,7 +109,84 @@ def parse_log_id(log_id: str) -> tuple[str | None, str]:
 
 
 def session_log_path(state_dir_path: Path, log_id: str) -> Path:
-    return state_dir_path / "sessions" / f"{log_id}.jsonl"
+    """Where ``log_id`` lives. Prefers the plain log; falls back to an
+    archived ``.jsonl.gz`` so a compressed transcript still resumes and
+    still lists (see ``archive_old_logs``)."""
+    plain = state_dir_path / "sessions" / f"{log_id}.jsonl"
+    if plain.exists():
+        return plain
+    gz = plain.with_suffix(".jsonl.gz")
+    return gz if gz.exists() else plain
+
+
+@dataclass(slots=True)
+class ArchiveResult:
+    archived: int = 0
+    bytes_saved: int = 0
+    skipped: int = 0
+
+
+def _is_closed(path: Path) -> bool:
+    """Whether the log carries a SessionClosed marker — read from the raw
+    records, no decoding."""
+    for rec in scan_log(path).records:
+        if (rec.get("event") or {}).get("t") == "SessionClosed":
+            return True
+    return False
+
+
+def archive_old_logs(state_dir_path: Path, *, older_than_days: float = 90.0,
+                     live_handles: "set[str] | None" = None,
+                     dry_run: bool = False) -> ArchiveResult:
+    """Gzip closed transcripts older than ``older_than_days``, in place.
+
+    Nothing else prunes the state dir, and it grows ~9 MB/day — every cost
+    that scales with the corpus scales with that. A transcript is the only
+    copy of a conversation, so this compresses rather than deletes, and
+    only touches logs that carry a close marker: an open one may still be
+    live, or may have crashed and still be resumable.
+
+    Never implicit — call it from ``aegis doctor --archive``.
+    """
+    import gzip
+    import shutil
+
+    sessions = state_dir_path / "sessions"
+    result = ArchiveResult()
+    if not sessions.is_dir():
+        return result
+    cutoff = time.time() - older_than_days * 86400.0
+    live = live_handles or set()
+    for p in sorted(sessions.glob("*.jsonl")):
+        try:
+            if p.stat().st_mtime > cutoff:
+                continue
+        except OSError:
+            continue
+        _, handle = parse_log_id(p.stem)
+        if handle in live or p.stem in live:
+            result.skipped += 1
+            continue
+        if not _is_closed(p):
+            result.skipped += 1
+            continue
+        if dry_run:
+            result.archived += 1
+            continue
+        gz = p.with_suffix(".jsonl.gz")
+        try:
+            with p.open("rb") as src, gzip.open(gz, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        except Exception:      # noqa: BLE001 — never trade a good log for none
+            with contextlib.suppress(OSError):
+                gz.unlink()
+            result.skipped += 1
+            continue
+        before, after = p.stat().st_size, gz.stat().st_size
+        p.unlink()
+        result.archived += 1
+        result.bytes_saved += max(0, before - after)
+    return result
 
 
 def _now_iso() -> str:
@@ -243,7 +322,14 @@ def scan_log(path: Path) -> LogScan:
     damaged = recovered = 0
     # errors="replace": a tear inside a multi-byte sequence must not make
     # the rest of the transcript unreadable.
-    with path.open("r", encoding="utf-8", errors="replace") as f:
+    if path.suffix == ".gz":
+        import gzip
+        opener = lambda: gzip.open(  # noqa: E731
+            path, "rt", encoding="utf-8", errors="replace")
+    else:
+        opener = lambda: path.open(  # noqa: E731
+            "r", encoding="utf-8", errors="replace")
+    with opener() as f:
         for line in f:
             line = line.strip()
             if not line:

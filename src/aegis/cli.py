@@ -462,6 +462,13 @@ def doctor(
         split: bool = typer.Option(
             False, "--split",
             help="Split legacy logs that hold several sessions."),
+        archive: bool = typer.Option(
+            False, "--archive",
+            help="Gzip closed transcripts older than --archive-days "
+                 "(in place; they stay readable and resumable)."),
+        archive_days: float = typer.Option(
+            90.0, "--archive-days",
+            help="Age threshold for --archive."),
 ) -> None:
     """Report (and optionally fix) damage in stored conversations."""
     from aegis.state.repair import (
@@ -471,6 +478,23 @@ def doctor(
 
     root = find_project_root() or Path.cwd()
     sd = state_dir(root)
+
+    if archive:
+        from aegis.state.session_log import archive_old_logs
+        plan = archive_old_logs(sd, older_than_days=archive_days,
+                                dry_run=True)
+        if not plan.archived:
+            _console.print(
+                f"nothing to archive (no closed logs older than "
+                f"{archive_days:g} days)")
+        else:
+            res = archive_old_logs(sd, older_than_days=archive_days)
+            _console.print(
+                f"archived [green]{res.archived}[/green] log(s), "
+                f"saved [green]{res.bytes_saved / 1e6:.1f} MB[/green] "
+                f"(kept as .jsonl.gz — still readable)")
+        return
+
     reports = survey(sd)
     if not reports:
         _console.print(f"no session logs under {sd / 'sessions'}")
