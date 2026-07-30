@@ -394,6 +394,22 @@ class TerminalTab(Widget):
         elapsed = time.monotonic() - self._running_started_monotonic
         block.footer.set_running(elapsed)
 
+    def _restart_timer(self) -> None:
+        self._stop_timer()
+        self._timer = self.set_interval(
+            self._TIMER_INTERVAL_S, self._tick_running_footer)
+
+    def on_hide(self) -> None:
+        """Tab sent to the background: freeze the footer ticker. It only
+        repaints an elapsed-time string nobody can see, and it kept running
+        — ConversationPane has done this since 0.24.0."""
+        self._stop_timer()
+
+    def on_show(self) -> None:
+        """Tab brought forward: resume the ticker if a command is live."""
+        if self._running_block is not None:
+            self._restart_timer()
+
     def _stop_timer(self) -> None:
         if self._timer is not None:
             with contextlib.suppress(Exception):
@@ -461,9 +477,7 @@ class TerminalTab(Widget):
         self.state = AgentState.working
         self.post_message(TerminalTabStateChanged(self, finished=False))
         # Start the live elapsed-time ticker.
-        self._stop_timer()
-        self._timer = self.set_interval(
-            self._TIMER_INTERVAL_S, self._tick_running_footer)
+        self._restart_timer()
 
     async def _run_cmd(self, cmd: str) -> None:
         try:

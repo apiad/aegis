@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace as _SN
@@ -145,6 +146,28 @@ def _banner(resumed: int, skipped, failures) -> str:
     return f"↻ resumed {resumed} · " + " · ".join(parts)
 
 
+def needs_close_marker(state_dir_path: Path, log_id: str) -> bool:
+    """Whether this log wants a SessionClosed marker appended.
+
+    True only for a user-initiated session (it carries a SessionMeta header)
+    that isn't already closed. Reads the raw records rather than decoding
+    them: the answer is two type tags, and decoding a 25 MB transcript into
+    dataclasses to discard them cost ~940 ms of frozen UI on every tab close.
+    """
+    from aegis.state.session_log import scan_log, session_log_path
+    path = session_log_path(state_dir_path, log_id)
+    if not path.exists():
+        return False
+    has_meta = False
+    for rec in scan_log(path).records:
+        kind = (rec.get("event") or {}).get("t")
+        if kind == "SessionClosed":
+            return False
+        if kind == "SessionMeta":
+            has_meta = True
+    return has_meta
+
+
 def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | None":
     """Return the Workspace to resume, or None for a fresh start.
 
@@ -248,6 +271,8 @@ class AegisApp(App):
         # Pane that already had the empty quota segment pushed to it, so the
         # 1 Hz tick doesn't re-push a value that cannot change.
         self._quota_cleared = None
+        # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
+        self._last_bell: float = float("-inf")
         self._panes: list[ConversationPane] = []
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
@@ -685,15 +710,9 @@ class AegisApp(App):
         Idempotent and meta-gated: no-op for worker logs (no SessionMeta)
         and for logs already carrying a close marker."""
         from datetime import datetime, timezone
-        from aegis.events import SessionClosed, SessionMeta
-        from aegis.state.session_log import (
-            append_event, replay_events, session_log_path)
-        if not session_log_path(self._state_dir, log_id).exists():
-            return
-        events = replay_events(self._state_dir, log_id).events
-        if not any(isinstance(e, SessionMeta) for e in events):
-            return
-        if any(isinstance(e, SessionClosed) for e in events):
+        from aegis.events import SessionClosed
+        from aegis.state.session_log import append_event
+        if not needs_close_marker(self._state_dir, log_id):
             return
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         append_event(self._state_dir, log_id,
@@ -1171,11 +1190,18 @@ class AegisApp(App):
         tab.focus_input()
         self._refresh_tabbar()
 
+    #: seconds between bells — a fleet of workers finishing together is one
+    #: notification, not one per worker
+    BELL_INTERVAL_S = 2.0
+
     def on_pane_state_changed(self, message: PaneStateChanged) -> None:
         if message.finished:
             if message.pane is not self._active:
                 message.pane.unseen = True
-            self.bell()
+            now = time.monotonic()
+            if now - self._last_bell >= self.BELL_INTERVAL_S:
+                self._last_bell = now
+                self.bell()
         self._refresh_tabbar()
 
     def on_terminal_tab_state_changed(self, message) -> None:

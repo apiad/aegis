@@ -152,17 +152,64 @@ def append_meta(state_dir_path: Path, log_id: str, meta) -> None:
 
 def make_session_log_observer(state_dir_path, log_id: str):
     """Returns an EventCb that appends every event to the per-handle JSONL.
-    Persistence must never break the live render, so it swallows errors."""
+
+    The fd is opened once and held for the session. Re-opening per event
+    cost mkdir + open + write + close — 270 µs against 50 µs — and this runs
+    synchronously on the event loop, once per streamed chunk. The durability
+    contract is unchanged: still one ``os.write`` on an ``O_APPEND`` fd
+    (so records can't interleave with another writer), still ``fsync`` only
+    on turn barriers.
+
+    Persistence must never break the live render, so it swallows errors —
+    and drops the fd on failure, so a log rewritten underneath it (``aegis
+    doctor --repair``) is picked up again on the next event instead of
+    wedging the session.
+    """
+    fd: int | None = None
+
+    def _drop() -> None:
+        nonlocal fd
+        if fd is not None:
+            try:
+                os.close(fd)
+            except Exception:
+                pass
+            fd = None
+
+    def _stale(path: Path) -> bool:
+        """True when our fd no longer refers to the file at ``path``.
+
+        Writing through a held fd keeps working after the file is unlinked
+        or replaced — the bytes just go to an orphaned inode and are lost
+        silently. ``aegis doctor --repair`` rewrites logs, so check on
+        barriers (about twice a turn): cheap, and it bounds any loss to the
+        turn in progress rather than the rest of the session.
+        """
+        try:
+            return os.fstat(fd).st_ino != os.stat(path).st_ino
+        except OSError:
+            return True
+
     def _obs(_sess, ev) -> None:
+        nonlocal fd
         # ThinkingTokens are high-volume transient counter nudges (hundreds
         # per turn); the cumulative estimate is stamped onto the block's
         # AssistantThinking, which we do persist — so skip these.
         if isinstance(ev, ThinkingTokens):
             return
+        barrier = isinstance(ev, _BARRIER)
         try:
-            append_event(state_dir_path, log_id, ev)
+            p = session_log_path(Path(state_dir_path), log_id)
+            if fd is not None and barrier and _stale(p):
+                _drop()
+            if fd is None:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+            _write_record(fd, encode_record(ev))
+            if barrier:
+                os.fsync(fd)
         except Exception:
-            pass
+            _drop()
     return _obs
 
 
