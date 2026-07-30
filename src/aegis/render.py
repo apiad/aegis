@@ -143,6 +143,22 @@ def coalesce_chunks(events: list[Event]) -> list[Event]:
     return out
 
 
+def renders_to_nothing(ev: Event) -> bool:
+    """Whether ``render_event(ev)`` would return None — answered without
+    rendering anything.
+
+    Replay uses this to decide which events deserve a transcript block
+    without paying for the renderable: constructing a `Markdown` parses
+    eagerly, and doing that for every historical event cost seconds on a
+    long log. Mirrors render_event's None cases exactly — keep the two in
+    step.
+    """
+    if isinstance(ev, AssistantText):
+        return not ev.text.strip()
+    return not isinstance(
+        ev, (AssistantThinking, ToolUse, ToolResult, AgentPlan, Result))
+
+
 def render_event(ev: Event, colors,
                  *, age_s: float | None = None) -> RenderableType | None:
     """Map one typed event to a Rich renderable (themed), or None.

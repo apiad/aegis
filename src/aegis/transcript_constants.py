@@ -2,8 +2,6 @@
 the TUI pane and (later) the web client's `hello` constants block."""
 
 N_MAX = 300            # max mounted transcript blocks before eviction
-N_HARD_MAX = 600       # ceiling while scrolled up, where the N_MAX eviction
-                       # can't run (see ConversationPane._mount_block)
 REPLAY_TAIL = 10       # blocks mounted on resume (rest load on scroll-up)
 EVICT_BATCH = 50       # blocks dropped per eviction when over N_MAX
 LOAD_BATCH = 40        # older blocks re-mounted per scroll-up load: mounting

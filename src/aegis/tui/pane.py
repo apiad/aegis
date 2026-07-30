@@ -30,7 +30,7 @@ from aegis.events import (
 )
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
-    render_user_line,
+    render_user_line, renders_to_nothing,
 )
 from aegis.render_shared import format_age
 from aegis.state.session_log import EventReplay, make_session_log_observer
@@ -41,8 +41,8 @@ from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
-    N_MAX, N_HARD_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS,
-    LOAD_MORE_EPS, DEBOUNCE_S,
+    N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
+    DEBOUNCE_S,
 )
 
 
@@ -59,11 +59,30 @@ _BLOCK_TOOLTIP = ("click to copy | ctrl+click to open here | "
 class BlockRecord:
     """One transcript entry. Mutable so streaming aggregation can update
     in place. Mirrors the arguments passed to CopyableBlock so older
-    blocks can be reconstructed on scroll-up."""
-    renderable: RenderableType
+    blocks can be reconstructed on scroll-up.
+
+    ``renderable`` may be None when ``events`` is set: replay stores the
+    source events and renders them only if the block is actually mounted.
+    Rendering everything up front cost 4.35s on a 25MB log to paint ten
+    blocks — `Markdown` parses in its constructor, and the other 99% of the
+    renderables were thrown away.
+    """
+    renderable: RenderableType | None
     payload: str
     tight: bool
     tool_call_id: str | None = None
+    events: list | None = None
+
+    def materialize(self, palette) -> RenderableType:
+        """The renderable, rendering the deferred events on first use."""
+        if self.renderable is None:
+            from aegis.render import render_event
+            rends = [r for r in (render_event(ev, palette)
+                                 for ev in (self.events or []))
+                     if r is not None]
+            self.renderable = (rends[0] if len(rends) == 1
+                               else Group(*rends) if rends else Text(""))
+        return self.renderable
 
 
 @dataclass(slots=True)
@@ -714,6 +733,8 @@ class ConversationPane(Widget):
         # path — a deep query there walks the whole transcript.
         self._status_bar: "StatusBar | None" = None
         self._indicator: "WorkingIndicator | None" = None
+        # Replay is painted on first show, not on mount (see on_mount).
+        self._replayed: bool = False
         # Newest turn terminator, so its "x ago" can be kept current while
         # you look at the tab. Only the newest carries an age: a frozen
         # "2s ago" on an hour-old turn is worse than no age at all.
@@ -755,15 +776,22 @@ class ConversationPane(Widget):
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
-        self._mount_replay()
+        # Boot mounts every resumed tab hidden and only shows one, so a pane
+        # you may never look at shouldn't pay to paint itself. Deferred to
+        # on_show, which makes boot cost O(1) in tab count instead of the
+        # sum of every tab's replay.
+        if self.display:
+            self._mount_replay()
         self.refresh_metrics()
         t = self._transcript()
         self.watch(t, "scroll_y", self._on_scroll_y)
         self.query_one(GrowingInput).key_interceptor = self._palette_key
 
     def on_show(self) -> None:
-        """Tab brought forward: resume the 10 Hz visual timers that were
-        frozen while hidden, and snap to the tail if the user was following."""
+        """Tab brought forward: paint a deferred replay if this is the first
+        look, resume the 10 Hz visual timers that were frozen while hidden,
+        and snap to the tail if the user was following."""
+        self._mount_replay()          # no-op once it has run
         ind = self._working_indicator()
         if ind is not None:
             ind.set_animating(True)
@@ -792,19 +820,19 @@ class ConversationPane(Widget):
         instead of mounting (and immediately evicting) hundreds of widgets.
         Older blocks are reconstructed on demand by ``_load_older`` when
         Alex scrolls up."""
-        if self._replay is None:
+        if self._replay is None or self._replayed:
             return
+        self._replayed = True
         records: list[BlockRecord] = []
         use_idx: dict[str, int] = {}   # tool_call_id → record index
         box_idx: dict[str, int] = {}   # Task tool_call_id → box record index
         open_box: dict[str, int] = {}  # still-open Task tool_call_id → index
 
         def _fold_into(idx: int, ev) -> None:
-            r = render_event(ev, self._palette)
-            if r is None:
+            if renders_to_nothing(ev):
                 return
             rec = records[idx]
-            rec.renderable = Group(rec.renderable, r)
+            rec.events.append(ev)          # rendered if the block is mounted
             rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
 
         for ev in coalesce_chunks(self._replay.events):
@@ -822,10 +850,10 @@ class ConversationPane(Widget):
             if isinstance(ev, ToolResult) and ev.tool_call_id in use_idx:
                 _fold_into(use_idx[ev.tool_call_id], ev)
                 continue
-            r = render_event(ev, self._palette)
-            if r is None:
+            if renders_to_nothing(ev):
                 continue
-            records.append(BlockRecord(r, _payload_for_event(ev), False))
+            records.append(BlockRecord(
+                None, _payload_for_event(ev), False, events=[ev]))
             if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
                     and ev.tool_call_id):
                 box_idx[ev.tool_call_id] = len(records) - 1
@@ -840,7 +868,8 @@ class ConversationPane(Widget):
         self._window_start = max(0, len(records) - REPLAY_TAIL)
         t = self._transcript()
         for rec in records[self._window_start:]:
-            block = CopyableBlock(rec.renderable, rec.payload, tight=rec.tight)
+            block = CopyableBlock(rec.materialize(self._palette), rec.payload,
+                                  tight=rec.tight)
             t.mount(block)
             self._mounted_blocks.append(block)
         t.scroll_end(animate=False)
@@ -912,8 +941,8 @@ class ConversationPane(Widget):
             new_blocks: list[CopyableBlock] = []
             for rec in self._history[new_start : self._window_start]:
                 block = CopyableBlock(
-                    rec.renderable, rec.payload, tight=rec.tight,
-                    tool_call_id=rec.tool_call_id)
+                    rec.materialize(self._palette), rec.payload,
+                    tight=rec.tight, tool_call_id=rec.tool_call_id)
                 if anchor is not None:
                     t.mount(block, before=anchor)
                 else:
@@ -996,63 +1025,7 @@ class ConversationPane(Widget):
             t.scroll_end(animate=False)
             if len(self._history) - self._window_start > N_MAX:
                 self._evict_top(EVICT_BATCH)
-        elif len(self._mounted_blocks) > N_HARD_MAX:
-            # Scrolled up mid-turn, so the N_MAX eviction above can't run and
-            # the window grew without bound. Drop only blocks that are
-            # entirely above the viewport — what the reader is looking at is
-            # never evicted, and the anchor restore keeps it from shifting.
-            self._evict_above_viewport(EVICT_BATCH)
         return block
-
-    def enforce_window_bound(self) -> None:
-        """Bring the mounted window back under its ceiling.
-
-        Called from the app's one-second tick, where layout is fresh — the
-        eviction below reads widget regions to decide what is safely off
-        screen, and during a burst of mounts those regions go stale, so the
-        opportunistic call in _mount_block can fall behind.
-        """
-        if self._stick_to_bottom:
-            return
-        from textual.css.query import NoMatches
-        try:
-            self._transcript()
-        except NoMatches:
-            return          # pane pruned mid-teardown — nothing to bound
-        while len(self._mounted_blocks) > N_HARD_MAX:
-            before = len(self._mounted_blocks)
-            self._evict_above_viewport(EVICT_BATCH)
-            if len(self._mounted_blocks) == before:
-                return          # nothing safely evictable (reader at the top)
-
-    def _evict_above_viewport(self, n: int) -> None:
-        """Evict up to n leading blocks that sit wholly above the viewport,
-        holding the reader's view still. Mirrors _load_older's anchor trick."""
-        t = self._transcript()
-        evictable = 0
-        for b in self._mounted_blocks[:n]:
-            try:
-                if (b.region.y - t.region.y) + b.region.height > 0:
-                    break          # reaches the viewport — stop here
-            except Exception:      # noqa: BLE001 — not laid out yet
-                break
-            evictable += 1
-        if not evictable:
-            return
-        survivors = self._mounted_blocks[evictable:]
-        anchor = survivors[0] if survivors else None
-        y_before = (anchor.region.y - t.region.y) if anchor is not None else 0
-        self._evict_top(evictable)
-
-        def _restore() -> None:
-            if anchor is None:
-                return
-            delta = (anchor.region.y - t.region.y) - y_before
-            if delta:
-                with contextlib.suppress(Exception):
-                    t.scroll_to(y=t.scroll_y + delta, animate=False)
-
-        self.call_after_refresh(_restore)
 
     def _evict_top(self, n: int) -> None:
         """Unmount the first n mounted CopyableBlocks and advance

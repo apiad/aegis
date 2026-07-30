@@ -197,61 +197,51 @@ async def test_no_eviction_while_user_scrolled_up():
 
 
 @pytest.mark.asyncio
-async def test_window_is_bounded_even_while_scrolled_up():
-    """Eviction was gated on being stuck to the bottom, so reading history
-    during a live turn grew the mounted window without limit. Blocks wholly
-    above the viewport can go — what is on screen cannot."""
-    from textual.containers import VerticalScroll
-    from aegis.tui.pane import EVICT_BATCH, N_HARD_MAX
+async def test_replay_renders_only_the_blocks_it_mounts():
+    """Replay used to render every event in the log to mount REPLAY_TAIL of
+    them — and rendering assistant text builds a Markdown, which parses in
+    its constructor. On a 25MB log that was 4.35s of frozen UI, 98% of it
+    thrown away. The rest render on scroll-up, when they're wanted."""
+    from aegis.state.session_log import EventReplay
+    from aegis.tui import pane as pane_mod
+    from aegis.tui.pane import REPLAY_TAIL
+
+    rendered: list = []
+    real = pane_mod.render_event
+
+    def counting(ev, palette, **kw):
+        rendered.append(ev)
+        return real(ev, palette, **kw)
+
+    # Alternated so nothing coalesces — consecutive assistant text folds
+    # into a single block by design, which would defeat the point here.
+    events = []
+    for i in range(250):
+        events.append(ToolUse(name="Read", summary=f"f{i}.py", kind="read"))
+        events.append(AssistantText(f"message number {i}"))
     app = _app()
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test() as pilot:
         pane = app._panes[0]
-        for i in range(400):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"a{i}.py", kind="read"))
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        pane._window_start = 0
+        pane._replay = EventReplay(events=events, interrupted=False)
         await pilot.pause()
 
-        t = pane.query_one("#transcript", VerticalScroll)
-        t.scroll_y = max(1, t.max_scroll_y // 2)      # mid-transcript
-        await pilot.pause()
-        assert pane._stick_to_bottom is False
+        pane_mod.render_event = counting
+        try:
+            pane._mount_replay()
+            await pilot.pause()
+        finally:
+            pane_mod.render_event = real
 
-        for chunk in range(6):                        # 600 more, in batches
-            for i in range(100):
-                pane._on_core_event(None, ToolUse(
-                    name="Read", summary=f"b{chunk}-{i}.py", kind="read"))
-            await pilot.pause()
-            app._tick()                               # the 1s enforcement
-            await pilot.pause()
-        assert len(pane._mounted_blocks) <= N_HARD_MAX + EVICT_BATCH
-
-
-@pytest.mark.asyncio
-async def test_scrolled_to_the_very_top_evicts_nothing():
-    """At the top nothing sits above the viewport, so the reader keeps every
-    block they are looking at no matter how much arrives below."""
-    from textual.containers import VerticalScroll
-    app = _app()
-    async with app.run_test(size=(80, 24)) as pilot:
-        pane = app._panes[0]
-        for i in range(400):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"a{i}.py", kind="read"))
-        await pilot.pause()
-        t = pane.query_one("#transcript", VerticalScroll)
-        t.scroll_y = 0
-        await pilot.pause()
-        start_before = pane._window_start
-        for chunk in range(6):
-            for i in range(100):
-                pane._on_core_event(None, ToolUse(
-                    name="Read", summary=f"b{chunk}-{i}.py", kind="read"))
-            await pilot.pause()
-            app._tick()
-            await pilot.pause()
-        # Never evicted. It may have *decreased* — sitting at the top also
-        # triggers load-older, which pulls more history in.
-        assert pane._window_start <= start_before
+        assert len(pane._history) == 500          # full history retained
+        assert len(rendered) <= REPLAY_TAIL       # only the mounted tail
+        # And the un-mounted ones still render correctly on demand.
+        assert pane._history[1].payload == "message number 0"
+        assert pane._history[1].materialize(pane._palette) is not None
 
 
 @pytest.mark.asyncio
