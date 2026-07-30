@@ -37,13 +37,17 @@ Per-event cost is now **flat across transcript depth**, which was the
 whole shape of the complaint: a tab used to get worse the longer it was
 open, and stop getting worse only because eviction capped the window.
 
-**Still open — finding 5.** The mounted window is unbounded while you are
-scrolled up. Two attempts at evicting above the viewport were either in a
-tug-of-war with `_load_older` (it evicted exactly what the load had just
-mounted) or evicted nothing, both depending on layout timing. The honest
-fix needs a second window edge and a remount-on-return path through the
-streaming code. Its cost was mostly the O(mounted) DOM walk, which finding
-1 removed.
+**Finding 5 — fixed 2026-07-30 (round 3).** The mounted window was
+unbounded while scrolled up; reproduced at 700 mounted blocks. The two
+earlier attempts failed because they evicted the top, which is exactly
+what `_load_older` re-mounts. The fix is the second window edge predicted
+here: `_window_end` alongside `_window_start`, `_evict_bottom`, and a
+`_bound_window` that drops from whichever edge is furthest from the
+viewport regardless of stickiness — `_load_older` only fires near the
+top, where the far edge is the bottom, so the two cannot contend.
+`jump_to_end` remounts the tail and re-links the streaming block, and
+`_on_scroll_y` calls it when you scroll back down. See
+`tests/test_pane_window_bound.py`.
 
 **Hidden-pane repaints — fixed after 0.28.0.** A background tab painted
 every streamed delta into an off-screen widget. The record stays current
