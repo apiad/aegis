@@ -1,8 +1,30 @@
 # Transcript on the Line API
 
-*Status: draft, under review. Successor to
-`2026-07-29-tui-performance-audit.md` round 2, which took ~3x out of every
-interaction and named this as the remaining structural work.*
+*Status: SUPERSEDED, not implemented. Do not build this.*
+
+*The case for it rested on round-2 measurements that were a benchmark
+artefact: `await pilot.pause()` inside the timed region, whose own cost
+is O(mounted widgets) (`textual/pilot.py:490`). A real layout pass costs
+~6.3 ms at the shipped window, not ~80 ms, and a mounted block costs
+~0.033 ms, not 0.21 ms. This rewrite would remove ~5 ms from a 6.3 ms
+frame in exchange for ~1750 lines and ~42 ported tests.*
+
+*The real cost was 140 layout passes per turn-second from two 10 Hz
+timers, fixed with two keyword arguments. See round 3 of
+`2026-07-29-tui-performance-audit.md`.*
+
+*Kept because its findings are worth having if this is ever revisited:
+the `virtual_size` layout trap, the strip-render costs, and the audit of
+what a childless transcript would have to reproduce. An adversarial
+review also found the design silently dropped ten affordances (the
+working indicator's position inside the transcript, the resume banners,
+`_transcript_has`'s query — which would have failed silently — `/clear`,
+result-age repaint, inter-record margins, palette changes flushing the
+strip cache, and width-baked renderables), mis-stated the hit test
+(mouse offsets are region-relative; subtract `gutter.top_left`), assumed
+a tooltip mechanism that does not work with one widget
+(`screen.py:1660`), and would have had to hand-render the selection
+highlight that Textual currently paints for free.*
 
 ## The problem
 

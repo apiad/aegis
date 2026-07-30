@@ -8,6 +8,14 @@ noticeable lag in a long thread. The residual was a different cost —
 layout, not ingest — and this audit's own benchmark could not see it.
 See "Round 2: the reflow tax" at the end.*
 
+> **Round 2's wall-clock numbers are wrong. Round 3 retracts them.**
+> Every millisecond figure in the round-2 section below is roughly 10x
+> too large, because the benchmark timed `await pilot.pause()`, whose own
+> cost is O(mounted widgets). The *layout-pass counts* stand and the
+> fixes were right; the magnitudes were not, and one of them (`N_MAX`
+> 300 -> 150) has been reverted. Read round 3 before trusting anything
+> here.
+
 ## Measured outcome
 
 Same benchmark (`.playground/perf-audit/scale/bench.py`), same machine,
@@ -371,6 +379,102 @@ neither taken yet:
 
 **Finding 5 is still open and is now the worst case**: while scrolled up,
 the mounted window grows unbounded, and the reflow tax is linear in it.
+
+## Round 3: the ruler was broken (2026-07-30)
+
+*Prompted by an adversarial review of the Line API design. It found the
+methodology error; this section records it, the retraction, and what
+replaced it. Benchmarks: `.playground/perf-audit/stream/bench_artifact.py`,
+`bench_turn_honest.py`.*
+
+### The error
+
+Every transcript benchmark in rounds 1 and 2 put `await pilot.pause()`
+inside the timed region while varying the number of mounted blocks.
+`Pilot._wait_for_screen` (`textual/pilot.py:490`) does:
+
+```python
+children = [self.app, *screen.walk_children(with_self=True)]
+for child in children:
+    if child.call_later(decrement_counter):
+        count += 1
+```
+
+— a callback posted to **every mounted widget**, then awaited. Its cost
+is O(mounted widgets) by construction, with no layout involved. Round 1
+measured too little by omitting `pilot.pause()`; round 2 "fixed" that by
+adding the one call whose own cost scales with the variable under test.
+
+Measured directly (`bench_artifact.py`):
+
+| blocks | idle `pilot.pause()`, no work queued | real frame (`_refresh_layout` + `_compositor_refresh`) |
+|---|---|---|
+| 0 | 25.7 ms | 1.36 ms |
+| 50 | 40.5 ms | 3.38 ms |
+| 150 | 70.2 ms | 6.27 ms |
+
+An idle pause costs **0.111 ms per mounted block for doing nothing**. A
+real layout pass costs **0.033 ms per block**. Round 2 reported 0.21 ms
+and an ~80 ms reflow at the shipped window; the true figure is **6.3 ms**.
+
+### What that retracts
+
+- The round-2 "measured outcome" tables (2-3x on reflow / typing /
+  scroll / eviction). The *direction* was right, the magnitudes are ~10x
+  inflated.
+- `N_MAX` 300 -> 150. Reverted. It bought ~5 ms per frame at the cost of
+  half the instant scrollback.
+- "Selection is already broken today." Half wrong: `visualize()` turns a
+  rich `Text` into `Content` (`textual/visual.py:107`), which
+  `Widget.get_selection` accepts, so user and tool lines always selected.
+  Only Markdown and `Group` blocks did not. Fixed with a three-line
+  `get_selection` on `CopyableBlock` — no rewrite needed.
+- The Line API rewrite, which this audit had named as the endgame. On
+  real numbers it removes ~5 ms from a 6.3 ms frame, against a ~1750-line
+  pane rewrite and ~42 tests. **Shelved.** The design doc
+  (`2026-07-30-transcript-line-api-design.md`) is kept for its findings,
+  marked superseded.
+
+### What survives, and what was actually wrong
+
+Layout-pass *counts* are deterministic instrumentation and were never
+affected. They are the right metric for this class of bug.
+
+Round 2 counted them over 40 streamed deltas with the pane **never in
+`working` state**, so `_start_indicator()` never ran and no tool tracks
+existed. Both 10 Hz timers were structurally invisible to it. Counting
+one second of a real turn instead — indicator running, 3 tools in flight,
+streaming, 150 blocks (`bench_turn_honest.py`):
+
+| | layout passes per turn-second |
+|---|---|
+| v0.28.1 | **140** (Static 85, StatusBar 23, WorkingIndicator 21, CopyableBlock 6, VerticalScroll 5) |
+| after round 2 + round 3 | **18** (CopyableBlock 13, VerticalScroll 5) |
+
+At 6.3 ms per pass that is **~880 ms of layout per second of turn, down
+to ~113 ms** — i.e. the baseline spent ~88% of a core relaying out the
+screen while an agent worked. That is the reported lag, and it matches
+the 69% idle CPU observed on a live TUI.
+
+The round-3 fix was two keyword arguments: `layout=False` on
+`WorkingIndicator._refresh` (`height: 1`, cannot change size) and on the
+`_tick_tools` path of `_render_tool_block` (rewrites elapsed digits on a
+line it already occupies). Attaching a result and expanding args do
+change height and keep `layout=True`; both directions are pinned by
+`tests/test_pane_timer_layout.py`.
+
+### Rules for the next round
+
+1. **Never time `pilot.pause()`.** Use `screen._refresh_layout()` +
+   `screen._compositor_refresh()` for frame cost, or an event-loop-lag
+   watchdog for felt latency. `pilot.pause()` is for settling, not timing.
+2. **Prefer counting layout passes to timing them.** Counts survived two
+   rounds of broken wall-clock and pointed at the real bug both times.
+3. **Measure the state the user is in.** A transcript benchmark with the
+   pane idle cannot see the timers that only run during a turn — which is
+   the entire duration a user is watching.
+4. **A "still slow" report after a big measured win is evidence the
+   measurement is wrong**, not that more of the same is needed.
 
 ## A note for whoever implements this
 
