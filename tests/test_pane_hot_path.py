@@ -185,7 +185,15 @@ async def test_a_hidden_pane_does_not_repaint_while_streaming():
 
 
 @pytest.mark.asyncio
-async def test_a_visible_pane_still_repaints_every_delta():
+async def test_a_visible_pane_converges_on_the_record():
+    """A visible pane repaints at a bounded rate (STREAM_REPAINT_S), not
+    once per delta — each repaint is a full compositor rebuild. What must
+    hold is that it never silently drops content: the record is current on
+    every delta, and the widget catches up.
+
+    The one-paint-per-delta behaviour this used to assert is still pinned,
+    for the no-throttle case, in test_pane_stream_repaint.py.
+    """
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
@@ -198,7 +206,16 @@ async def test_a_visible_pane_still_repaints_every_delta():
             lambda *a, **kw: (painted.append(1), real(*a, **kw))[1])
         for _ in range(5):
             pane._stream_append("text", "more. ")
-        assert len(painted) == 5
+
+        # The record never lags, whatever the throttle skipped.
+        rec = pane._history[pane._streaming_history_idx]
+        assert rec.payload == "first. " + "more. " * 5
+
+        # And the widget converges on it.
+        pane._catch_up_streaming_block()
+        await pilot.pause()
+        assert painted, "a visible pane painted nothing at all"
+        assert block.text_payload() == rec.payload
 
 
 @pytest.mark.asyncio

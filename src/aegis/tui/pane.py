@@ -600,6 +600,14 @@ class PaneStateChanged(Message):
 
 
 class ConversationPane(Widget):
+    # Class-level defaults for the streaming-repaint state: unit tests
+    # build a pane with __new__ (no __init__, no Textual boot) and still
+    # reach _flush_streaming through clear_transcript. Same exposure the
+    # tick path had in 0.28.0.
+    _repaint_pending = False
+    _last_repaint_at = 0.0
+    _repaint_timer = None
+
     DEFAULT_CSS = """
     ConversationPane { layout: vertical; height: 1fr;
                        background: $background; }
