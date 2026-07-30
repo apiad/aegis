@@ -629,6 +629,8 @@ class ConversationPane(Widget):
     # reach _flush_streaming through clear_transcript. Same exposure the
     # tick path had in 0.28.0.
     _repaint_pending = False
+    _window_end = 0
+    _restoring_tail = False
     _last_repaint_at = 0.0
     _repaint_timer = None
 
@@ -740,6 +742,14 @@ class ConversationPane(Widget):
         # aggregation (None when no stream is in flight).
         self._history: list[BlockRecord] = []
         self._window_start: int = 0
+        # Exclusive end of the mounted slice. The window used to be a
+        # suffix — always ending at the newest record — which is why
+        # reading back through a thread while an agent worked mounted
+        # every new block forever (audit finding 5). With both edges,
+        # eviction can take from whichever end is furthest from the
+        # viewport, so it never fights _load_older for the rows you are
+        # actually looking at.
+        self._window_end: int = 0
         self._streaming_history_idx: int | None = None
         # tool_call_id → history index of that tool call's ToolUse block, so
         # its ToolResult folds into the *same* block instead of appending a
@@ -959,6 +969,7 @@ class ConversationPane(Widget):
 
         self._history = records
         self._window_start = max(0, len(records) - REPLAY_TAIL)
+        self._window_end = len(records)
         t = self._transcript()
         for rec in records[self._window_start:]:
             block = CopyableBlock(rec.materialize(self._palette), rec.payload,
@@ -1013,6 +1024,22 @@ class ConversationPane(Widget):
         t = self._transcript()
         self._stick_to_bottom = (
             (t.max_scroll_y - t.scroll_y) <= STICKY_EPS)
+        if (self._stick_to_bottom and not self._restoring_tail
+                and self._window_end < len(self._history)):
+            # Scrolled back down to a window whose tail was dropped while
+            # we were reading above. Without this the bottom of the
+            # transcript silently shows stale content. Debounced, and
+            # guarded because jump_to_end scrolls (and so re-enters here).
+            self._restoring_tail = True
+
+            def _restore_tail() -> None:
+                try:
+                    self.jump_to_end()
+                finally:
+                    self._restoring_tail = False
+
+            self.set_timer(DEBOUNCE_S, _restore_tail)
+            return
         near_top = t.scroll_y <= LOAD_MORE_EPS
         if near_top and self._window_start > 0 and not self._loading_older:
             if self._load_timer is not None:
@@ -1047,6 +1074,7 @@ class ConversationPane(Widget):
             # Prepend new blocks to the explicit mounted list (DOM order).
             self._mounted_blocks[:0] = new_blocks
             self._window_start = new_start
+            self._bound_window()
 
             def _restore() -> None:
                 if anchor is not None:
@@ -1091,6 +1119,7 @@ class ConversationPane(Widget):
             self._mounted_blocks.clear()
             self._history.clear()
             self._window_start = 0
+            self._window_end = 0
             ctx_tokens = self._core.metrics.last_true_input
             marker = (f"──── transcript cleared · {_fmt_tokens(ctx_tokens)} "
                       f"context tokens still in play ────")
@@ -1107,6 +1136,11 @@ class ConversationPane(Widget):
         block = CopyableBlock(renderable, text_payload, tight=tight,
                               tool_call_id=tool_call_id)
         t = self._transcript()
+        if self._window_end < len(self._history) - 1:
+            # The tail is already truncated (we are scrolled up and the
+            # window stopped following the newest content). Record it and
+            # leave it unmounted; jump_to_end/_on_scroll_y bring it back.
+            return block
         ind = self._working_indicator()
         if ind is not None and ind.parent is t:
             # Keep the indicator pinned to the END of the transcript by
@@ -1117,10 +1151,10 @@ class ConversationPane(Widget):
         else:
             t.mount(block)
         self._mounted_blocks.append(block)
+        self._window_end = len(self._history)
         if self._stick_to_bottom:
             t.scroll_end(animate=False)
-            if len(self._history) - self._window_start > N_MAX:
-                self._evict_top(EVICT_BATCH)
+        self._bound_window()
         return block
 
     def _evict_top(self, n: int) -> None:
@@ -1139,6 +1173,75 @@ class ConversationPane(Widget):
                 self._transcript().remove_children(doomed)
         del self._mounted_blocks[:n]
         self._window_start += n
+
+    def _evict_bottom(self, n: int) -> None:
+        """Unmount the last n mounted blocks and pull _window_end back.
+
+        The counterpart to _evict_top, for when the viewport is near the
+        top: the newest blocks are the ones off-screen, so they are the
+        ones to drop. Evicting the top there would take the rows being
+        read and be immediately undone by _load_older."""
+        if n <= 0:
+            return
+        doomed = self._mounted_blocks[-n:]
+        if not doomed:
+            return
+        if self._streaming_block in doomed:
+            # The live block is going away; the record stays authoritative
+            # and jump_to_end re-links it when the tail comes back.
+            self._streaming_block = None
+            self._repaint_pending = True
+        with contextlib.suppress(Exception):
+            self._transcript().remove_children(doomed)
+        del self._mounted_blocks[-n:]
+        self._window_end -= len(doomed)
+
+    def _bound_window(self) -> None:
+        """Keep the mounted slice within N_MAX, dropping from whichever
+        edge is furthest from the viewport.
+
+        Bounded regardless of stickiness — that gate is exactly what let
+        the window grow without limit while scrolled up (finding 5)."""
+        if self._window_end - self._window_start <= N_MAX:
+            return
+        t = self._transcript()
+        # Nearer the top than the bottom => the far edge is the newest.
+        near_top = t.scroll_y <= (t.max_scroll_y / 2)
+        if near_top and not self._stick_to_bottom:
+            self._evict_bottom(EVICT_BATCH)
+        else:
+            self._evict_top(EVICT_BATCH)
+
+    def jump_to_end(self) -> None:
+        """Return to the newest content, remounting the tail if the window
+        stopped following it."""
+        if self._window_end < len(self._history):
+            t = self._transcript()
+            start = max(0, len(self._history) - REPLAY_TAIL)
+            for b in list(self._mounted_blocks):
+                with contextlib.suppress(Exception):
+                    b.remove()
+            self._mounted_blocks.clear()
+            new_blocks = [
+                CopyableBlock(rec.materialize(self._palette), rec.payload,
+                              tight=rec.tight, tool_call_id=rec.tool_call_id)
+                for rec in self._history[start:]
+            ]
+            ind = self._working_indicator()
+            if new_blocks:
+                if ind is not None and ind.parent is t:
+                    t.mount(*new_blocks, before=ind)
+                else:
+                    t.mount(*new_blocks)
+            self._mounted_blocks[:] = new_blocks
+            self._window_start = start
+            self._window_end = len(self._history)
+            # Re-link the live block so streaming keeps painting.
+            idx = self._streaming_history_idx
+            if idx is not None and start <= idx < self._window_end:
+                self._streaming_block = self._mounted_blocks[idx - start]
+        self._stick_to_bottom = True
+        self._transcript().scroll_end(animate=False)
 
     def _start_indicator(self) -> None:
         """Ensure a live, animating WorkingIndicator at the bottom of the
@@ -1384,8 +1487,14 @@ class ConversationPane(Widget):
             if kind == "thinking":
                 self._thinking_started_at = time.monotonic()
             r = self._render_for_stream(kind, self._streaming_text)
-            self._streaming_block = self._mount_block(
-                r, self._streaming_text)
+            blk = self._mount_block(r, self._streaming_text)
+            # _mount_block records without mounting when the tail is
+            # truncated (scrolled up). Don't hold a reference to a widget
+            # that isn't in the tree — the record stays authoritative and
+            # jump_to_end re-links it.
+            self._streaming_block = (
+                blk if (self._mounted_blocks
+                        and self._mounted_blocks[-1] is blk) else None)
             # Mounting is itself a reflow, so it starts the repaint window.
             self._last_repaint_at = time.monotonic()
             self._repaint_pending = False
@@ -1809,6 +1918,7 @@ class ConversationPane(Widget):
         import contextlib
         self._history.clear()
         self._window_start = 0
+        self._window_end = 0
         if hasattr(self, "_streaming_block"):
             self._flush_streaming()
         for b in list(getattr(self, "_mounted_blocks", [])):
