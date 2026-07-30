@@ -5,6 +5,32 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-07-29
+
+### Added
+
+- **Alt+click a transcript block to open it natively.** Third gesture on a
+  block: click copies, `ctrl+click` opens it in aegis's file tab, `alt+click`
+  hands it to the desktop's own handler — your editor, image viewer, or
+  browser — the way double-clicking would. Same token resolution as
+  `ctrl+click`, including the chooser when a block names several files, plus
+  URLs, which aegis has nothing to do with and a browser does. A `.desktop`
+  file is refused (the handler would *run* it, and the path came out of agent
+  output), and remote sessions say local-only rather than opening whatever
+  sits at that path on your machine.
+
+  Alt rather than shift: VTE terminals reserve shift to bypass mouse
+  reporting, so a shift+click never reaches the application at all. Textual
+  reports Alt as `meta` (SGR bit 8).
+
+- **`aegis_close(handle, from_handle)`** — an agent can reap the workers it
+  spawned, which keeps the tab bar honest. Refused unless it spawned the
+  target *and* the target is demonstrably finished: not mid-turn, no live
+  monitors, no pending reminders, nothing undelivered in its inbox, no queue
+  task running, no armed loop, no file claims held. A refusal reports every
+  unmet condition at once, so the caller knows what to wait for instead of
+  re-calling to discover the next one. Group membership is not yet checked.
+
 ## [0.26.0] - 2026-07-29
 
 ### Added
