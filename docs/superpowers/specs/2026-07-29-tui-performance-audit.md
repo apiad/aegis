@@ -32,10 +32,16 @@ fix needs a second window edge and a remount-on-return path through the
 streaming code. Its cost was mostly the O(mounted) DOM walk, which finding
 1 removed.
 
-**Also not taken — the deeper half of finding 3 in the ingest audit**:
-hidden panes still run the full render pipeline for their own event
-stream. That is the remaining lever for concurrent fleets (the 563 ms
-stall above).
+**Hidden-pane repaints — fixed after 0.28.0.** A background tab painted
+every streamed delta into an off-screen widget. The record stays current
+on every delta; only the widget waits, and `on_show` reconciles it. Median
+of three A/B runs, 10 tabs ingesting 1,200 events: wall 7.60s → 6.42s,
+158 → 187 events/s, loop lag p50 124.5 → 78.5 ms, p95 857 → 665 ms.
+
+What remains in that scenario is mounting the widgets themselves, not
+repainting them — which is the same structural question as finding 5
+(a second window edge, so a pane can hold history it has not mounted).
+Both would be answered by the same change.
 
 Five independent audits, one per dimension: periodic work, transcript
 structures, the event-ingest hot path, tab-count fan-out, and boot/state
