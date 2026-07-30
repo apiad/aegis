@@ -342,6 +342,18 @@ mounted blocks. Ranges are disjoint, so this is not load noise.
 | 100 gapped deltas (10 ms apart) | 5614 ms | 2723 ms | 2.06x |
 | eviction hitch | 417 ms | 215 ms | 1.94x |
 
+Cumulative, after `N_MAX` also dropped 300 -> 150 (same A/B harness, 4
+interleaved reps, ranges again disjoint). The baseline holds 300 mounted
+blocks; the patched tree evicts to ~150, which is the point:
+
+| scenario | v0.28.1 | shipped | change |
+|---|---|---|---|
+| one full reflow | 257 ms | 80 ms | 3.21x |
+| keystroke in the input box | 259 ms | 105 ms | 2.47x |
+| one scroll line | 270 ms | 95 ms | 2.85x |
+| 100 gapped deltas | 5920 ms | 1912 ms | 3.10x |
+| eviction hitch | 486 ms | 151 ms | 3.21x |
+
 ### What is still open
 
 The remaining cost is still **O(mounted widgets)** — roughly 0.23 ms per
