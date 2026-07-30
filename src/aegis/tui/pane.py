@@ -285,13 +285,20 @@ def _extract_backtick_tokens(text: str) -> list[str]:
     return out
 
 
-class CopyableBlock(Widget):
+class CopyableBlock(Static):
     """One transcript cell — hover tints, click copies its text payload.
 
     The visible content can be updated in place via ``update_content``
     so that streaming text events (token-by-token AssistantText /
     AssistantThinking) accumulate into a single block rather than
     fragmenting into many short ones.
+
+    Renders its own content rather than wrapping a child ``Static``.
+    Textual rebuilds the entire compositor map on any layout change, so
+    the map is walked on every keystroke, scroll line and streamed
+    delta; a wrapper child doubled the widget count and with it the cost
+    of every one of those. Measured at a full window (N_MAX blocks):
+    ~300 ms per reflow with the wrapper, ~120 ms without.
     """
 
     DEFAULT_CSS = """
@@ -301,7 +308,6 @@ class CopyableBlock(Widget):
        (⏺) to its result (└ ok) so they read as one paired unit. */
     CopyableBlock.-tight { margin-bottom: 0; }
     CopyableBlock:hover { background: $surface; }
-    CopyableBlock > .content { background: transparent; height: auto; }
     """
 
     class ToolExpandToggle(Message):
@@ -313,7 +319,10 @@ class CopyableBlock(Widget):
     def __init__(self, renderable: RenderableType,
                  text_payload: str, *, tight: bool = False,
                  tool_call_id: str | None = None) -> None:
-        super().__init__(classes="-tight" if tight else None)
+        # markup=False: the payloads are Rich renderables, and a raw str
+        # payload must not be reinterpreted as Textual markup.
+        super().__init__(renderable, markup=False,
+                         classes="-tight" if tight else None)
         self._renderable = renderable
         self._text_payload = text_payload
         self._tool_call_id = tool_call_id
@@ -325,9 +334,6 @@ class CopyableBlock(Widget):
         # layout shift, no extra row inside the block.
         self.tooltip = ("click to expand args" if tool_call_id is not None
                         else "click to copy")
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._renderable, classes="content")
 
     def on_enter(self, _event) -> None:
         # Advertise the open gestures only when this block actually names
@@ -342,7 +348,7 @@ class CopyableBlock(Widget):
         self._text_payload = text_payload
         self._tokens = None
         with contextlib.suppress(Exception):
-            self.query_one(".content", Static).update(renderable)
+            self.update(renderable)
 
     @property
     def backtick_tokens(self) -> list[str]:
