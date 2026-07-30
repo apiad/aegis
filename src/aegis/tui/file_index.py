@@ -10,8 +10,10 @@ after initial walk. Incremental updates append/remove under ``_lock``.
 """
 from __future__ import annotations
 
+import bisect
 import os
 import threading
+import time
 from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
@@ -99,26 +101,40 @@ class FileIndexer:
 
     # --- background walk --------------------------------------------
 
+    #: files walked between publishes — the picker becomes usable on the
+    #: first batch instead of waiting out the whole tree
+    PUBLISH_EVERY = 2000
+
+    def _publish(self, paths: list[str]) -> None:
+        """Make a snapshot of the walk visible to readers, sorted."""
+        with self._lock:
+            self._paths = sorted(paths)
+
     def _walk(self) -> None:
         cwd = self._cwd
         assert cwd is not None
         paths: list[str] = []
+        prefix = len(str(cwd)) + 1
         try:
             for root, dirs, files in os.walk(cwd):
                 dirs[:] = [d for d in dirs if not _ignore_dir(d)]
-                root_path = Path(root)
                 for fname in files:
-                    fp = root_path / fname
-                    if not _ignore_file(fp):
-                        try:
-                            paths.append(str(fp.relative_to(cwd)))
-                        except ValueError:
-                            paths.append(str(fp))
+                    if _ignore_file(Path(fname)):
+                        continue
+                    # str ops rather than Path/relative_to: this runs per
+                    # file over tens of thousands of them, in a thread that
+                    # holds the GIL while the UI is trying to paint.
+                    full = os.path.join(root, fname)
+                    paths.append(full[prefix:] if full.startswith(str(cwd))
+                                 else full)
+                    if len(paths) % self.PUBLISH_EVERY == 0:
+                        self._publish(paths)
+                        # Let the event loop breathe: this walk competes for
+                        # the GIL with everything the TUI paints at boot.
+                        time.sleep(0)
         except PermissionError:
             pass
-        paths.sort()
-        with self._lock:
-            self._paths = paths
+        self._publish(paths)
         self._start_observer()
         self._ready.set()  # signal after observer is watching
 
@@ -149,9 +165,12 @@ class FileIndexer:
         if any(_ignore_dir(p) for p in parts[:-1]):
             return
         with self._lock:
-            if rel not in self._paths:
-                self._paths.append(rel)
-                self._paths.sort()
+            # insort, not append+sort: re-sorting the whole list per created
+            # file cost 9.6ms at 60k paths, and a build or a git checkout
+            # fires thousands of these.
+            i = bisect.bisect_left(self._paths, rel)
+            if i == len(self._paths) or self._paths[i] != rel:
+                self._paths.insert(i, rel)
 
     def _remove(self, abs_path: str) -> None:
         cwd = self._cwd

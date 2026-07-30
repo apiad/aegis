@@ -78,6 +78,35 @@ async def test_a_later_turn_rings_again():
 
 
 @pytest.mark.asyncio
+async def test_roster_writes_are_coalesced():
+    """The tab bar refreshes on every pane state change, and each write is
+    a full atomic rewrite of workspace.json. A burst is one write."""
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        writes = []
+        app._write_snapshot = lambda: writes.append(1)
+        for _ in range(20):
+            app._refresh_tabbar()
+        await pilot.pause()
+        assert writes == []                  # nothing synchronous
+        app._flush_snapshot()                # what the timer fires
+        assert writes == [1]
+
+
+@pytest.mark.asyncio
+async def test_quit_still_writes_the_roster_synchronously():
+    """A debounced write must not lose the roster on the way out."""
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        writes = []
+        app._write_snapshot = lambda: writes.append(1)
+        await app.action_quit()
+        assert writes == [1]
+
+
+@pytest.mark.asyncio
 async def test_hidden_terminal_tab_freezes_its_footer_timer():
     """Mirrors what ConversationPane.on_hide already does."""
     from aegis.tui.terminal_tab import TerminalTab

@@ -273,6 +273,8 @@ class AegisApp(App):
         self._quota_cleared = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
+        # Pending debounced roster write (see _schedule_snapshot).
+        self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
@@ -731,6 +733,29 @@ class AegisApp(App):
             for i, p in enumerate(self._panes)
         ]
         self.query_one(TabBar).set_tabs(items)
+        self._schedule_snapshot()
+
+    #: seconds to coalesce roster writes over — the tab bar refreshes on
+    #: every state change, and each write is a full atomic file rewrite
+    SNAPSHOT_DEBOUNCE_S = 1.0
+
+    def _schedule_snapshot(self) -> None:
+        """Persist the roster soon, not on every tab-bar refresh.
+
+        The roster only has to be on disk before the next crash, not before
+        the next frame, and a busy multi-tab session refreshed the bar
+        several times a second. action_quit still writes synchronously.
+        """
+        if self._snapshot_timer is not None:
+            return                       # one already pending
+        try:
+            self._snapshot_timer = self.set_timer(
+                self.SNAPSHOT_DEBOUNCE_S, self._flush_snapshot)
+        except Exception:                # noqa: BLE001 — app not running yet
+            self._write_snapshot()
+
+    def _flush_snapshot(self) -> None:
+        self._snapshot_timer = None
         self._write_snapshot()
 
     def _write_snapshot(self) -> None:
