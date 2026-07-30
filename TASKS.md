@@ -79,7 +79,13 @@ under a new handle. This retires the workaround baked into the MCP briefing —
 self-contained prompt with everything it needs"* — which is the largest cost
 of delegating anything today.
 
-Rides `claude-sdk` (`resume` + `fork_session=True`). `fork()` is a sibling of
+**Not gated on `claude-sdk`** — `claude --fork-session` is a real flag on the
+CLI aegis already drives (probed 2026-07-30), so `ClaudeDriver.fork()` is the
+same three-line argv insertion as `.resume()`. `claude-sdk` inherits it via
+`fork_session=True`. `opencode run --fork` exists too, but aegis drives
+`opencode acp` and ACP v1 has no fork verb.
+
+`fork()` is a sibling of
 `resume()` on `HarnessDriver` with a `supports_fork` flag; MCP verb
 `aegis_fork` is shaped like `aegis_spawn` (fire-and-forget, provenance via a
 new `forked_from`). Per-fork `model`/`effort` overrides come free from the
@@ -98,6 +104,45 @@ existing `_overlay_agent`. Forking a *closed* session works too — it needs a
   per-member angle, so fan-out needs a design decision); worktree isolation
   (worktree the *repo*, never the project root — `repos/` is gitignored and
   `vault/` must not be branched under autosync).
+
+### Session titles + one-shot generation seam *(specced 2026-07-30, no plan yet)*
+
+Ten tabs read `lucid-knuth` / `deep-dijkstra`. 0.28 made many tabs fast; it
+didn't make them legible. CLAUDE.md's *"rename yourself once the purpose has
+settled"* is the workaround — and it overloads a rename, which is **identity**
+(`from_handle`, inbox routing, half the log id), with a job labels should do.
+
+So: a `title` beside the handle, never instead of it. Handle semantics are
+untouched. `title_source ∈ {auto, agent, human}` with strict `human > agent >
+auto` precedence — which is also the whole concurrency story, since a late
+auto-generation simply can't overwrite a human title. Stored by appending a
+`SessionMeta` (already the mutation record — a rename appends one), so
+`Ctrl+R` rows get readable for free.
+
+Surfaces: `/title <text>` (human), `aegis_title` (agent), and an optional
+`title=` on the existing `aegis_rename` so an agent can self-name in one call.
+
+Second half is a **one-shot structured-generation seam on `HarnessDriver`**
+(`supports_oneshot` + `generate(schema, *instructions)`) — no session, no MCP,
+no tools. All four drivers can do it (verified on zion): claude
+`-p --output-format json --json-schema`, gemini `-p -o json`, opencode
+`run --format json`, lovelaice `lingo.Engine.create` (already in the venv via
+`lovelaice>=2.11`). `text_generation: <profile>` in `.aegis.yaml` keeps a title
+from costing Opus tokens. The seam generalises to generated commit subjects and
+branch names later, which is why it's `generate(schema, …)` not
+`generate_title()`.
+
+- Spec: `docs/superpowers/specs/2026-07-30-aegis-session-titles-design.md`
+- Plan: *not yet drafted — slice 1 (storage + manual set) ships value with
+  zero LLM calls; generation is slices 2–4*
+- Traps: gemini/opencode have no `--json-schema`, so a shared tolerant parser
+  is needed; `lingo.Engine.create` returns `parsed=None` on reasoning models
+  that emit JSON into the reasoning channel (observed on LM Studio) — fall back
+  to `LLM.chat` + the same parse.
+- Open: whether the tab bar has room at all — the cell already renders dot,
+  index, handle, slug, and a muted suffix (which `QueueManager.worker_label`
+  owns on worker tabs). Might belong in `Ctrl+R` + status bar instead. A
+  screenshot answers this, not a spec.
 
 ### ✅ Dynamic workflows — Track 2 JSON DSL *(all 6 slices shipped — v0.19.0)*
 

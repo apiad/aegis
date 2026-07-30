@@ -41,18 +41,29 @@ This spec is **only** the conversation. Explicitly out of scope:
 continuing it. This rides the driver specced in
 `2026-07-30-aegis-claude-agent-sdk-driver-design.md`.
 
-Driver support is uneven and the spec should not pretend otherwise:
+Driver support is uneven and the spec should not pretend otherwise
+(probed on zion, 2026-07-30):
 
 | driver | fork | note |
 |---|---|---|
-| `claude-sdk` | yes | `resume` + `fork_session=True` |
-| `claude-code` | **unknown** | does the CLI expose `--fork-session`? Probe; do not assume |
-| `gemini`, `opencode` | no | ACP v1 has `loadSession`, no fork |
+| `claude-code` | ✅ | **`claude --fork-session`** — *"When resuming, create a new session ID"* |
+| `claude-sdk` | ✅ | `resume` + `fork_session=True` |
+| `opencode` | ⚠️ not over ACP | `opencode run --fork` exists, but aegis drives `opencode acp`, and ACP v1 `loadSession` has no fork parameter |
+| `gemini` | ❌ | ACP v1, same reason |
 | `lovelaice` | not yet | `load_session` exists; fork would need lovelaice-side work |
 
-The `claude-code` row is an open question, not a gap — settle it with
-`claude --help | grep -i fork` before writing the driver, because if the
-flag exists VS1 is worth having on both drivers.
+**This changes the shape of the work.** `--fork-session` is a real flag on
+the CLI aegis already drives, so fork is **not gated on the SDK driver** —
+`ClaudeDriver.fork()` is the same three-line argv insertion as
+`ClaudeDriver.resume()` (`argv[:2] + ["--fork-session", "--resume", sid] +
+argv[2:]`). VS1 can ship against today's `claude-code` and pick up
+`claude-sdk` for free when that lands.
+
+The opencode row is worth recording precisely because it is not a flat
+"no": the capability exists in the tool, aegis just doesn't drive the
+surface that exposes it. If fork proves valuable, "run opencode through
+`run --fork` instead of `acp` for forked sessions" is a real option rather
+than an upstream request.
 
 ## Shape
 
@@ -233,8 +244,9 @@ lovelaice has a reason to.
 
 ## Open questions
 
-- **Does `claude -p` expose a fork flag?** One `--help` grep. Decides
-  whether VS1 covers one driver or two.
+- ~~**Does `claude -p` expose a fork flag?**~~ **Answered 2026-07-30: yes,
+  `--fork-session`.** VS1 covers `claude-code` today; `claude-sdk` inherits
+  it. See the driver table above.
 - **Does the SDK's `fork_session` branch at the last turn only, or can it
   branch at an arbitrary point?** If arbitrary, "fork at turn N" becomes
   possible and the `Ctrl+R` surface gets considerably more interesting.
