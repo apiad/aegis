@@ -17,6 +17,7 @@ row costs the conversation.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,15 +126,103 @@ def _fold_file(path: Path) -> _Fold | None:
                  preview=preview, has_content=has_content)
 
 
+INDEX_NAME = "history_index.json"
+INDEX_VERSION = 1
+
+
+def _index_path(state_dir_path: Path) -> Path:
+    return state_dir_path / INDEX_NAME
+
+
+def _load_index(state_dir_path: Path) -> dict:
+    """The cached folds, or an empty map. A damaged index costs a full
+    re-scan, never a wrong listing."""
+    try:
+        raw = json.loads(_index_path(state_dir_path).read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict) or raw.get("version") != INDEX_VERSION:
+        return {}
+    entries = raw.get("entries")
+    return entries if isinstance(entries, dict) else {}
+
+
+def _save_index(state_dir_path: Path, entries: dict) -> None:
+    tmp = _index_path(state_dir_path).with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps({"version": INDEX_VERSION, "entries": entries}),
+        encoding="utf-8")
+    tmp.replace(_index_path(state_dir_path))
+
+
+def _fold_to_entry(fold: _Fold) -> dict:
+    meta = fold.meta
+    return {
+        "meta": None if meta is None else {
+            "handle": meta.handle, "profile": meta.profile,
+            "provider": meta.provider, "cwd": meta.cwd,
+            "created_at": meta.created_at, "origin": meta.origin,
+            "preview": meta.preview,
+        },
+        "last_handle": fold.last_handle,
+        "first_ts": fold.first_ts, "last_ts": fold.last_ts,
+        "closed_at": fold.closed_at, "session_id": fold.session_id,
+        "preview": fold.preview, "has_content": fold.has_content,
+    }
+
+
+def _entry_to_fold(entry: dict) -> "_Fold | None":
+    try:
+        m = entry.get("meta")
+        meta = None if m is None else SessionMeta(
+            handle=m["handle"], profile=m["profile"], provider=m["provider"],
+            cwd=m["cwd"], created_at=m["created_at"], origin=m["origin"],
+            preview=m.get("preview", ""))
+        return _Fold(
+            meta=meta, last_handle=entry["last_handle"],
+            first_ts=entry["first_ts"], last_ts=entry["last_ts"],
+            closed_at=entry["closed_at"], session_id=entry["session_id"],
+            preview=entry["preview"], has_content=entry["has_content"])
+    except (KeyError, TypeError):
+        return None
+
+
 def list_history(state_dir_path: Path, *, live_handles: set[str],
                  limit: int = 500, fallback_profile: str = "",
                  fallback_provider: str = "") -> list[SessionHistoryRow]:
     sessions_dir = state_dir_path / "sessions"
     if not sessions_dir.is_dir():
         return []
+    # Logs are append-only, so (size, mtime) is enough to know a cached fold
+    # is still good. Without this, every Ctrl+R re-read and re-decoded the
+    # entire corpus — 25s warm, 60s cold, on 615MB.
+    cached = _load_index(state_dir_path)
+    fresh: dict = {}
+    dirty = False
     rows: list[SessionHistoryRow] = []
     for p in sessions_dir.glob("*.jsonl"):
-        fold = _fold_file(p)
+        try:
+            st = p.stat()
+            stamp = [st.st_size, int(st.st_mtime_ns)]
+        except OSError:
+            continue
+        entry = cached.get(p.name)
+        fold = None
+        if entry is not None and entry.get("stamp") == stamp:
+            fold = _entry_to_fold(entry)
+        if fold is None:
+            fold = _fold_file(p)
+            dirty = True
+        fresh[p.name] = ({"stamp": stamp, **_fold_to_entry(fold)}
+                         if fold is not None else {"stamp": stamp,
+                                                   "meta": None,
+                                                   "last_handle": None,
+                                                   "first_ts": "",
+                                                   "last_ts": "",
+                                                   "closed_at": None,
+                                                   "session_id": None,
+                                                   "preview": "",
+                                                   "has_content": False})
         if fold is None or not fold.has_content:
             # A tab that was spawned and closed without a word is not a
             # conversation. Every boot opens a default tab, so without this
@@ -162,5 +251,9 @@ def list_history(state_dir_path: Path, *, live_handles: set[str],
             crash_inferred=(fold.closed_at is None and not is_open),
             inferred=meta is None,
         ))
+    if dirty or len(fresh) != len(cached):
+        # Best-effort: a read-only state dir must not break the listing.
+        with contextlib.suppress(Exception):
+            _save_index(state_dir_path, fresh)
     rows.sort(key=lambda r: r.last_activity_at, reverse=True)
     return rows[:limit]
