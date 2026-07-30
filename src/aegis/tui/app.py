@@ -217,6 +217,13 @@ class AegisApp(App):
     ContentSwitcher { height: 1fr; background: $background; }
     """
 
+    # Class-level defaults: unit tests construct the app with __new__ to
+    # avoid a Textual boot, so anything the tick path reads must exist
+    # without __init__ having run.
+    _quota_cleared = None
+    _last_bell: float = float("-inf")
+    _snapshot_timer = None
+
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("escape", "interrupt", "Interrupt", priority=True),
