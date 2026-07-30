@@ -1,15 +1,18 @@
-"""Reflow cost is linear in the number of MOUNTED WIDGETS.
+"""A layout pass is O(mounted widgets), so don't ask for ones you don't need.
 
-Textual rebuilds the whole compositor map on any layout change — every
-keystroke in the input box, every scroll line, every streamed delta.
-Measured on zion at a full transcript window (N_MAX = 300 blocks), one
-reflow costs ~300 ms with two widgets per block and ~120 ms with one,
-so the wrapper widget inside each transcript cell was doubling the cost
-of every interaction in a long thread.
+Textual rebuilds the whole compositor map on any layout change, and that
+map is walked on every keystroke, scroll line and streamed delta. A real
+layout pass costs ~1.4 ms empty and ~6.3 ms at a 150-block window
+(~0.033 ms per mounted block), so the goal is to stop triggering it
+needlessly rather than to shave the map down.
 
-These assertions are structural on purpose: a wall-clock assertion would
-flake on a loaded box (see docs/superpowers/specs/2026-07-29-tui-
-performance-audit.md, "A note for whoever implements this").
+These assertions are structural on purpose, and that is not a stylistic
+preference — the wall-clock numbers this file used to quote (~300 ms and
+~120 ms per reflow) were an artefact of `await pilot.pause()` sitting
+inside the timed region, and Pilot._wait_for_screen posts a callback to
+every mounted widget and awaits them all (textual/pilot.py:490). The
+harness cost scaled with the exact variable under test. See
+docs/superpowers/specs/2026-07-29-tui-performance-audit.md, round 3.
 """
 import pytest
 from rich.text import Text
@@ -174,3 +177,27 @@ async def test_updating_a_block_keeps_it_a_single_widget():
 
         assert list(block.children) == []
         assert block.text_payload() == "tok4"
+
+
+@pytest.mark.asyncio
+async def test_markdown_and_group_blocks_are_selectable():
+    """Textual's default get_selection returns None for anything that is
+    not a Text/Content, so assistant prose (Markdown) and folded tool
+    pairs (Group) were unselectable while user lines were fine."""
+    from rich.console import Group
+    from rich.markdown import Markdown
+    from textual.selection import Selection
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        md = pane._mount_block(Markdown("# hi\n\nsome **prose** here"),
+                               "hi\n\nsome prose here")
+        grp = pane._mount_block(Group(Text("call"), Text("result")),
+                                "call\nresult")
+        await pilot.pause()
+
+        for block in (md, grp):
+            got = block.get_selection(Selection(None, None))
+            assert got is not None, f"{block!r} is not selectable"
+            assert got[0] == block.text_payload()
