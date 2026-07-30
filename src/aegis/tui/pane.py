@@ -264,10 +264,14 @@ class WorkingIndicator(Static):
         spinner = _SPINNER_FRAMES[self._frame]
         verb = _VERBS[self._verb_idx]
         elapsed = _fmt_elapsed(time.monotonic() - self._started_at)
+        # layout=False: this fires at 10 Hz for the whole duration of every
+        # turn, and the indicator is `height: 1` in its own CSS — its size
+        # cannot change. The default (layout=True) made the spinner rebuild
+        # the entire compositor map ten times a second.
         self.update(Text(
             f"{spinner}  {verb}…  {elapsed}",
             style=f"italic {self._palette.muted}",
-        ))
+        ), layout=False)
 
 
 def _extract_backtick_tokens(text: str) -> list[str]:
@@ -294,11 +298,14 @@ class CopyableBlock(Static):
     fragmenting into many short ones.
 
     Renders its own content rather than wrapping a child ``Static``.
-    Textual rebuilds the entire compositor map on any layout change, so
+    Textual rebuilds the entire compositor map on any layout change, and
     the map is walked on every keystroke, scroll line and streamed
-    delta; a wrapper child doubled the widget count and with it the cost
-    of every one of those. Measured at a full window (N_MAX blocks):
-    ~300 ms per reflow with the wrapper, ~120 ms without.
+    delta; a wrapper child doubled the widget count and with it the
+    per-block term. That term is ~0.033 ms per mounted block of a real
+    layout pass, so this is worth a few ms at a full window — not the
+    ~180 ms first claimed, which was benchmark harness cost (see
+    docs/superpowers/specs/2026-07-29-tui-performance-audit.md, round 3).
+    Still right, just smaller than advertised.
     """
 
     DEFAULT_CSS = """
@@ -343,12 +350,19 @@ class CopyableBlock(Static):
             self.tooltip = _BLOCK_TOOLTIP
 
     def update_content(self, renderable: RenderableType,
-                       text_payload: str) -> None:
+                       text_payload: str, *, layout: bool = True) -> None:
+        """Replace the block's content.
+
+        ``layout=False`` when the new content provably occupies the same
+        rows as the old — a running tool block rewriting its elapsed
+        digits, say. A layout refresh rebuilds the whole compositor map,
+        so a 10 Hz repaint that cannot change height must not ask for one.
+        """
         self._renderable = renderable
         self._text_payload = text_payload
         self._tokens = None
         with contextlib.suppress(Exception):
-            self.update(renderable)
+            self.update(renderable, layout=layout)
 
     @property
     def backtick_tokens(self) -> list[str]:
@@ -358,6 +372,16 @@ class CopyableBlock(Static):
 
     def text_payload(self) -> str:
         return self._text_payload
+
+    def get_selection(self, selection):
+        """Textual's default extracts text only when the widget renders a
+        Text/Content (`Widget.get_selection`). `visualize()` converts a
+        rich Text into Content, so user lines and tool lines already
+        select — but assistant prose is a Markdown and a folded tool pair
+        is a Group, both of which become a RichVisual and return None. The
+        block already carries its own plain-text payload, so hand that
+        over and the whole transcript becomes selectable."""
+        return selection.extract(self._text_payload), "\n"
 
     def on_click(self, event: Click) -> None:
         # Tool-call blocks toggle their collapsed args instead of copying.
@@ -1588,12 +1612,17 @@ class ConversationPane(Widget):
         self._spin_frame += 1
         for track in self._tools.values():
             if not track.done:
-                self._render_tool_block(track)
+                self._render_tool_block(track, layout=False)
 
     def _render_tool_block(self, track: "_ToolTrack",
-                           *, scroll: bool = False) -> None:
+                           *, scroll: bool = False,
+                           layout: bool = True) -> None:
         """(Re)render a tool-call block from its track — running spinner+timer,
-        frozen duration, folded result, and expanded args as applicable."""
+        frozen duration, folded result, and expanded args as applicable.
+
+        ``layout=False`` on the 10 Hz tick: only the elapsed digits change,
+        on a line the block already occupies. Attaching a result or
+        expanding args genuinely grows the block and keeps the default."""
         running = not track.done
         elapsed = (time.monotonic() - track.start) if running else track.elapsed
         line = render_tool_use(track.ev, self._palette, elapsed=elapsed,
@@ -1605,7 +1634,8 @@ class ConversationPane(Widget):
         rec.renderable = rend
         pos = track.idx - self._window_start
         if 0 <= pos < len(self._mounted_blocks):
-            self._mounted_blocks[pos].update_content(rend, rec.payload)
+            self._mounted_blocks[pos].update_content(
+                rend, rec.payload, layout=layout)
             if scroll and self._stick_to_bottom:
                 self._transcript().scroll_end(animate=False)
 
@@ -1617,7 +1647,8 @@ class ConversationPane(Widget):
                 track.done = True
                 if track.elapsed is None:
                     track.elapsed = time.monotonic() - track.start
-                self._render_tool_block(track)
+                # Spinner glyph -> frozen duration, same single line.
+                self._render_tool_block(track, layout=False)
         self._stop_tool_timer()
 
     def on_copyable_block_tool_expand_toggle(
