@@ -6,29 +6,29 @@ priority list — keep it terse and current.
 
 Current release: **v0.28.1** (2026-07-29).
 
-## Time-sensitive (June 2026 billing changes)
+## Resolved — the June 2026 billing scare
 
-### ⚠️ Before June 15 — Claude driver: `claude -p` → REPL mode
+Both ⚠️ deadlines below have passed and neither action is needed. Kept as a
+record so nobody re-arms them off the old spec files.
 
-Anthropic splits interactive vs programmatic billing on June 15. `claude -p`
-(current driver) hits the new metered credit pool (full API rates). Interactive
-REPL stays on the subscription bucket unchanged.
+### ~~Before June 15 — Claude driver: `claude -p` → REPL mode~~ — MOOT
 
-Change: strip `-p` from spawn argv; write prompts to `proc.stdin` instead of
-passing as a CLI argument. Output stream-JSON protocol is identical. The VS Code
-Claude extension already works this way.
+**Anthropic cancelled the billing split before it took effect.** `claude -p`
+and Agent SDK usage both still draw from the Pro/Max subscription pool; there
+is no separate credit to migrate away from. Never executed — there is no
+`drivers/claude_repl.py` on disk, and there should not be.
 
-- Spec: `docs/superpowers/specs/2026-05-27-aegis-claude-repl-driver-design.md`
-- Plan: `docs/superpowers/plans/2026-05-27-aegis-claude-repl-driver-v1.md` *(armed, not yet executed — no `drivers/claude_repl.py` on disk)*
-- Roadmap context: `vault/Atlas/Architecture/2026-05-25-aegis-harness-roadmap.md`
+- Superseded by `docs/superpowers/specs/2026-07-30-aegis-claude-agent-sdk-driver-design.md`,
+  which reworks the Claude driver for capability rather than billing.
+- Dead spec/plan: `docs/superpowers/{specs,plans}/2026-05-27-aegis-claude-repl-driver-*`
 
-### ⚠️ Before June 18 — `GEMINI_API_KEY` support in Gemini agent profile
+### ~~Before June 18 — `GEMINI_API_KEY` in the Gemini agent profile~~ — OVERTAKEN
 
-Gemini CLI's personal OAuth dies June 18 for Google AI Pro/Ultra accounts.
-Fix: add optional `api_key` field to `GeminiCLI` profile config; inject
-`GEMINI_API_KEY=<value>` into the subprocess env at spawn time. User gets an
-API key from Google AI Studio (free tier available) and puts it in `.aegis.py`.
-No driver changes, no ACP changes — the subprocess just picks up the env var.
+Never implemented (no `api_key` on `GeminiCLI` in `config/__init__.py`), and
+overtaken by events: Gemini CLI subscription access died 2026-06-18 and the
+`gemini --acp` driver is dead weight for subscription users. See *Backlog →
+Subscription-backed models*, which supersedes this. Do the API-key field only
+if someone actually wants to pay Google AI Studio rates.
 
 ### After June 1 billing transition — Copilot ACP driver
 
@@ -37,6 +37,39 @@ Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
 Auth goes through `gh auth login` (no separate token management).
 
 ## Active
+
+### Claude driver on the Agent SDK *(specced 2026-07-30, no plan yet)*
+
+A **second** Claude driver (`claude-sdk`) beside `claude-code`, built on
+`claude-agent-sdk` (PyPI 0.2.128) instead of a hand-built argv plus the
+stream-json parser in `events.py`. The SDK spawns the *same* local `claude`
+binary over the *same* protocol — this is not a billing or transport change.
+
+The case is that three specced-and-unbuilt items are options on
+`ClaudeAgentOptions`: `can_use_tool` is the `PermissionRouter` from the
+fs-tool-surface spec (with `updated_input`, it also rewrites calls, which that
+spec doesn't); `ClaudeSDKClient.set_model()` retires the `/model` half of 2B.1
+with no resume-restart; `session_id` + `fork_session` collapse claude's id space
+into the aegis log id (`9da13d0`) and hand us conversation fork for free. Plus
+`hooks`, `max_budget_usd`, `agents`, `skills`, `setting_sources`.
+
+Prior art: `pingdotgg/t3code` does exactly this in TypeScript
+(`apps/server/src/provider/Layers/ClaudeAdapter.ts`).
+
+- Spec: `docs/superpowers/specs/2026-07-30-aegis-claude-agent-sdk-driver-design.md`
+- Plan: *not yet drafted — start with slice 1 (walking skeleton) and let its
+  `parent_tool_use_id` probe decide the shape of slice 2*
+- Known costs, all called out in the spec: the canonical-event mapping is the
+  real work (`parent_tool_use_id` and `ParserState.tool_diffs` are the two easy
+  things to drop); `HarnessDriver.build_argv` is abstract and argv-shaped, so
+  demote it to a non-abstract `return []`; **`pre_spawn` hooks stop applying** —
+  the main reason this ships alongside rather than replacing; `system_prompt`
+  has one `append` slot where `build_argv` passes two (primer, then persona, in
+  that order — pin it with a test).
+- Registration trap: four places, and the fourth is
+  **`_VALID_DRIVERS` at `config/yaml_loader.py:73`** — missing it is the exact
+  lovelaice bug fixed in `449ebbb`. Gate on a YAML-declared agent that spawns,
+  not a unit test of the driver class.
 
 ### ✅ Dynamic workflows — Track 2 JSON DSL *(all 6 slices shipped — v0.19.0)*
 
@@ -116,6 +149,10 @@ spec → plan → implement cycle; web parity threaded through each:
   resume-restart (mutate the live `Agent`, tear down + `resume()` with the new
   argv so the conversation survives). Deferred from 2B: driver-capability-
   dependent session surgery that warrants its own spec + TDD pass.
+  **Splits once `claude-sdk` lands** (see *Claude driver on the Agent SDK*):
+  `ClaudeSDKClient.set_model()` does `/model` live on that driver with nothing
+  to tear down. `/effort` does not split — there is no `set_effort()`, so it
+  still needs the resume-restart, on every driver.
 - [x] **2C — prompt commands + plugin `@command`** *(shipped)* — user-authored
   `.aegis/commands/<name>.md` (frontmatter `description`/`argument-hint` +
   `$1..$9`/`$ARGUMENTS` template, `@file` includes, embedded `` !`shell` ``,
