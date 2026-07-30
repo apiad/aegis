@@ -1,7 +1,41 @@
 # TUI performance audit — many tabs, long histories
 
-*Status: findings complete, nothing implemented. 2026-07-29, against v0.27.0
-(Python 3.13.1, Textual 8.2.6, rich 14.3.3).*
+*Status: implemented in v0.28.0, except finding 5 (see below). Audited
+2026-07-29 against v0.27.0 (Python 3.13.1, Textual 8.2.6, rich 14.3.3).*
+
+## Measured outcome
+
+Same benchmark (`.playground/perf-audit/scale/bench.py`), same machine,
+pre-fix tree vs v0.28.0. Ratios are the result; the box was loaded, so the
+absolute milliseconds are pessimistic.
+
+| scenario | before | after | change |
+|---|---|---|---|
+| per-event cost, fresh tab | 0.73 ms | 0.46 ms | 1.6x |
+| per-event cost, 100 blocks deep | 3.42 ms | 0.42 ms | 8.2x |
+| per-event cost, 300 blocks (the cap) | 10.4 ms | 0.46 ms | 22.9x |
+| 10 tabs ingesting 1,200 events | 14.5 s | 4.3 s | 3.4x |
+| worst-case UI stall, 10 tabs | 1,913 ms | 563 ms | 3.4x |
+| reopening a 5,000-event conversation | 4.58 s | 0.073 s | 62.7x |
+| Ctrl+R, 60-log corpus (repeat open) | 0.134 s | 0.004 s | 33.5x |
+| Ctrl+R, the real 619 MB corpus | 14.3 s | 0.04 s | 380x |
+
+Per-event cost is now **flat across transcript depth**, which was the
+whole shape of the complaint: a tab used to get worse the longer it was
+open, and stop getting worse only because eviction capped the window.
+
+**Still open — finding 5.** The mounted window is unbounded while you are
+scrolled up. Two attempts at evicting above the viewport were either in a
+tug-of-war with `_load_older` (it evicted exactly what the load had just
+mounted) or evicted nothing, both depending on layout timing. The honest
+fix needs a second window edge and a remount-on-return path through the
+streaming code. Its cost was mostly the O(mounted) DOM walk, which finding
+1 removed.
+
+**Also not taken — the deeper half of finding 3 in the ingest audit**:
+hidden panes still run the full render pipeline for their own event
+stream. That is the remaining lever for concurrent fleets (the 563 ms
+stall above).
 
 Five independent audits, one per dimension: periodic work, transcript
 structures, the event-ingest hot path, tab-count fan-out, and boot/state

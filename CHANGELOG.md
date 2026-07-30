@@ -5,6 +5,68 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-07-29
+
+### Performance
+
+Five measured audits of "sluggish with many tabs and long histories". Same
+benchmark, same machine, before and after — ratios are the result, the box
+was loaded so the absolute figures are pessimistic:
+
+| scenario | before | after |
+|---|---|---|
+| per-event cost, fresh tab | 0.73 ms | 0.46 ms |
+| per-event cost, 100 blocks deep | 3.42 ms | 0.42 ms |
+| per-event cost, 300 blocks (the cap) | 10.4 ms | 0.46 ms |
+| 10 tabs ingesting 1,200 events | 14.5 s | 4.3 s |
+| worst-case UI stall, 10 tabs | 1,913 ms | 563 ms |
+| reopening a 5,000-event conversation | 4.58 s | 0.073 s |
+| `Ctrl+R` on a 619 MB corpus | 14.3 s | 0.04 s |
+
+- **Per-event cost no longer grows with transcript depth.** `refresh_metrics`
+  ran after every ingested event and found its status bar with
+  `self.query(StatusBar)` — a deep, uncached, CSS-matching walk over every
+  descendant of the pane, which is to say over the transcript. Four of the
+  five audits found this independently. The status bar and working indicator
+  are held directly now.
+- **Resuming a conversation renders only what it shows.** Replay called
+  `render_event` on every event in the log to mount ten blocks, and rendering
+  assistant text constructs a `rich.Markdown`, which parses in its
+  constructor. Records carry their source events and render on
+  materialization; scroll-up was already the natural place for that.
+- **Boot no longer scales with tab count.** Resumed tabs are mounted hidden,
+  and now defer their replay until first shown.
+- **`Ctrl+R` is off the event loop and cached.** The scan ran on the loop and
+  re-read the whole corpus every time; it now runs on a thread and keeps a
+  `(size, mtime)`-keyed sidecar index. A corrupt, stale, or unwritable index
+  costs a re-scan, never a wrong listing.
+- **The tab bar repaints only cells that changed** (40 panes flipping state
+  together was 1.4 s of frozen UI), **the file index publishes while it
+  walks** (the picker was empty for 17–43 s on a 60k-file tree) **and inserts
+  with `bisect`** rather than re-sorting per filesystem event, **the session
+  log holds its fd** (270 µs → 50 µs per event, re-validated on turn barriers
+  so a `doctor --repair` rewrite can't be written into an orphaned inode),
+  **closing a tab stops decoding the whole transcript** to answer two
+  booleans, **roster writes are debounced**, **background bells are
+  rate-limited**, and **terminal tabs freeze their ticker when hidden**.
+- `LOAD_BATCH` is 40, not 100: mounting costs ~3.7 ms/block, so a scroll-up
+  load was a 370 ms hitch.
+
+Known limit, deliberately left: the mounted window is still unbounded while
+you are scrolled up. Two attempts depended on layout timing — one fought
+`_load_older` for the blocks it had just mounted, the other evicted nothing.
+The real fix needs a second window edge and a remount-on-return path. Its
+cost was mostly the DOM walk above, which is gone.
+
+### Added
+
+- **`aegis doctor --archive`** gzips closed transcripts older than
+  `--archive-days` (90 by default) in place. Nothing pruned the state dir
+  before, and it grows ~9 MB/day. Compress rather than delete: a transcript
+  is the only copy of a conversation. Archived logs stay readable and
+  resumable, only closed ones are touched, live handles are skipped, and a
+  failed compression leaves the original alone.
+
 ## [0.27.0] - 2026-07-29
 
 ### Added
