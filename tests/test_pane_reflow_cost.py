@@ -106,6 +106,12 @@ async def test_eviction_prunes_in_one_batch():
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
+        # Evicting down to a handful leaves the transcript shorter than the
+        # viewport, i.e. parked at the top — so the debounced _load_older
+        # correctly re-mounts a batch. That is the product working; it just
+        # races this assertion on a loaded box. Isolate the prune.
+        pane._load_older = lambda: None
+
         for i in range(EVICT_BATCH + 5):
             pane._mount_block(Text(f"line {i}"), f"line {i}")
         await pilot.pause()
@@ -122,6 +128,7 @@ async def test_eviction_prunes_in_one_batch():
         assert prunes == [EVICT_BATCH], (
             f"expected one prune of {EVICT_BATCH} blocks, got {prunes}")
         assert len(pane._mounted_blocks) == 5
+        assert pane._window_start == EVICT_BATCH
 
 
 @pytest.mark.asyncio
