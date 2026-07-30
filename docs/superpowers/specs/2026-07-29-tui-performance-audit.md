@@ -3,6 +3,11 @@
 *Status: implemented in v0.28.0, except finding 5 (see below). Audited
 2026-07-29 against v0.27.0 (Python 3.13.1, Textual 8.2.6, rich 14.3.3).*
 
+*Round 2, 2026-07-30, against v0.28.1: the operator still reported
+noticeable lag in a long thread. The residual was a different cost —
+layout, not ingest — and this audit's own benchmark could not see it.
+See "Round 2: the reflow tax" at the end.*
+
 ## Measured outcome
 
 Same benchmark (`.playground/perf-audit/scale/bench.py`), same machine,
@@ -268,6 +273,92 @@ records.
    (finding 6), **retention** (finding 8).
 
 Findings 1 and 2 together address most of the reported sluggishness.
+
+## Round 2: the reflow tax (2026-07-30)
+
+*Implemented on top of v0.28.1. Benchmarks under
+`.playground/perf-audit/stream/`.*
+
+### The blind spot in this audit's own benchmark
+
+`scale/bench.py` drives N events with no `await pilot.pause()` between
+them. Textual's compositor therefore never runs during the measurement,
+so every number above is the **synchronous body of `_on_core_event`
+only**. It reported ~0.46 ms per event while ~300 ms of layout work sat
+behind each one, unmeasured. The flat-across-depth result in the table
+at the top is real but partial: what it proves is that *ingest* stopped
+scaling with depth, not that the *frame* did.
+
+Any future transcript benchmark must let the render pipeline run.
+
+### The cost
+
+`Static.update()` defaults to `layout=True`, and a layout refresh makes
+Textual rebuild the whole compositor map. Measured at a full window
+(N_MAX = 300 blocks) on zion: **one reflow ≈ 236 ms**. It was triggered
+from four places, so a long thread relaid out the entire screen for a
+keystroke. Counted over 40 streamed deltas:
+
+| trigger | reflows |
+|---|---|
+| `StatusBar` metrics update (one per delta) | 43 |
+| eviction — `EVICT_BATCH` separate prunes | 50 |
+| streaming block repaint | 23 |
+| **total** | **116** |
+
+This is exactly what Textualize warns about: the spatial map keeps
+visibility lookups near-constant with widget count, so many widgets are
+fine *"so long as layout isn't triggered repeatedly"*
+(`textual.textualize.io/blog/2024/12/12/algorithms-for-high-performance-terminal-apps/`).
+
+### The fixes
+
+1. **`CopyableBlock` renders its own content** instead of composing a
+   child `Static`. Halves the widget count and with it the per-block
+   reflow term (0.86 → 0.33 ms/block).
+2. **`StatusBar.update(..., layout=False)`.** It is `height: 1` and
+   `fit()` already trims to the available width, so its size cannot
+   change. This one was swamping every other economy.
+3. **`_evict_top` prunes once**, `_load_older` **mounts once** —
+   Textual refreshes the parent with `layout=True` per prune/mount call.
+4. **Streaming repaints throttled to `STREAM_REPAINT_S` (20/s)**, on the
+   record-is-truth contract already used for hidden panes. Back-to-back
+   deltas already coalesced; a real stream arrives with gaps and bought a
+   reflow apiece. Textual's Markdown docs independently put the useful
+   ceiling at "around 20 appends per second".
+
+Layout refreshes over those same 40 deltas: **116 → 29**.
+
+### Measured outcome
+
+Alternating A/B against v0.28.1, median of 4 interleaved reps, 300
+mounted blocks. Ranges are disjoint, so this is not load noise.
+
+| scenario | v0.28.1 | after | change |
+|---|---|---|---|
+| one full reflow | 236 ms | 110 ms | 2.15x |
+| keystroke in the input box | 245 ms | 136 ms | 1.80x |
+| one scroll line | 286 ms | 131 ms | 2.19x |
+| 100 gapped deltas (10 ms apart) | 5614 ms | 2723 ms | 2.06x |
+| eviction hitch | 417 ms | 215 ms | 1.94x |
+
+### What is still open
+
+The remaining cost is still **O(mounted widgets)** — roughly 0.23 ms per
+block, so ~70 ms of every 110 ms reflow at a full window. Two routes,
+neither taken yet:
+
+- **Lower `N_MAX`.** Linear, trivial, costs instant scrollback depth
+  (`_load_older` re-mounts on demand, and is now a single batched mount).
+- **The Line API.** Textual's documented answer for long scrollable
+  content is a `ScrollView` that renders visible lines on demand and has
+  *no children*. That makes reflow O(viewport) permanently rather than
+  shrinking a constant, and it is the same structural answer finding 5
+  and the hidden-pane note both arrived at from measurement. It is a
+  rewrite of the transcript pane, not a patch.
+
+**Finding 5 is still open and is now the worst case**: while scrolled up,
+the mounted window grows unbounded, and the reflow tax is linear in it.
 
 ## A note for whoever implements this
 
