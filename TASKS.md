@@ -71,6 +71,34 @@ Prior art: `pingdotgg/t3code` does exactly this in TypeScript
   lovelaice bug fixed in `449ebbb`. Gate on a YAML-declared agent that spawns,
   not a unit test of the driver class.
 
+### Conversation fork *(specced 2026-07-30, no plan yet)*
+
+A forked agent inherits the parent's **entire conversation** and continues
+under a new handle. This retires the workaround baked into the MCP briefing —
+*"the worker is a fresh agent with no context — write the payload as a
+self-contained prompt with everything it needs"* — which is the largest cost
+of delegating anything today.
+
+Rides `claude-sdk` (`resume` + `fork_session=True`). `fork()` is a sibling of
+`resume()` on `HarnessDriver` with a `supports_fork` flag; MCP verb
+`aegis_fork` is shaped like `aegis_spawn` (fire-and-forget, provenance via a
+new `forked_from`). Per-fork `model`/`effort` overrides come free from the
+existing `_overlay_agent`. Forking a *closed* session works too — it needs a
+`session_id`, not a live process — so `Ctrl+R` gains fork-beside-reopen.
+
+- Spec: `docs/superpowers/specs/2026-07-30-aegis-conversation-fork-design.md`
+- Plan: *not yet drafted — VS1 is the driver seam + `aegis_fork` + three
+  refusals*
+- **The cost is the open question.** A fork's first turn pays the whole
+  parent conversation as input tokens; N forks pay it N times. Caching should
+  soften it to cache-read rates — unmeasured. VS1 logs the number, and group
+  fan-out is deferred until it exists.
+- Deferred to their own specs: group fan-out (`GroupRuntime.wait_all` needs an
+  open broadcast, and `broadcast()` sends one objective to all members — no
+  per-member angle, so fan-out needs a design decision); worktree isolation
+  (worktree the *repo*, never the project root — `repos/` is gitignored and
+  `vault/` must not be branched under autosync).
+
 ### ✅ Dynamic workflows — Track 2 JSON DSL *(all 6 slices shipped — v0.19.0)*
 
 Shipped end-to-end: `src/aegis/dsl/` (`models`/`interpreter`/`refs`/`validate`/
