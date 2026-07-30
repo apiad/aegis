@@ -817,6 +817,8 @@ class AegisApp(App):
             active.refresh_metrics()
         if active is not None and hasattr(active, "refresh_result_age"):
             active.refresh_result_age()
+        if active is not None and hasattr(active, "enforce_window_bound"):
+            active.enforce_window_bound()
         if active is not None and hasattr(active, "set_system"):
             from aegis.tui.sysmeter import format_system_tiers, sample_system
             # One app-side sample per tick (not per pane); local host stats.

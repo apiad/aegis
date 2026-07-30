@@ -41,8 +41,8 @@ from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
-    N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
-    DEBOUNCE_S,
+    N_MAX, N_HARD_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS,
+    LOAD_MORE_EPS, DEBOUNCE_S,
 )
 
 
@@ -50,6 +50,9 @@ from aegis.transcript_constants import (  # noqa: F401  (re-exported)
 # across versions ("Task" historically, "Agent" as of 2.1.x); match both so
 # subagent events group into a box regardless of the running CLI's naming.
 _SUBAGENT_TOOLS = frozenset({"Task", "Agent"})
+
+_BLOCK_TOOLTIP = ("click to copy | ctrl+click to open here | "
+                  "alt+click to open natively")
 
 
 @dataclass(slots=True)
@@ -295,33 +298,38 @@ class CopyableBlock(Widget):
         self._renderable = renderable
         self._text_payload = text_payload
         self._tool_call_id = tool_call_id
-        self._backtick_tokens: list[str] = _extract_backtick_tokens(
-            text_payload)
+        # Resolved on demand: scanning the payload on every update made a
+        # streaming message quadratic in its own length, and nothing reads
+        # the tokens until you click or hover.
+        self._tokens: list[str] | None = None
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        if tool_call_id is not None:
-            self.tooltip = "click to expand args"
-        else:
-            self.tooltip = (
-                "click to copy | ctrl+click to open here | "
-                "alt+click to open natively"
-                if self._backtick_tokens else "click to copy")
+        self.tooltip = ("click to expand args" if tool_call_id is not None
+                        else "click to copy")
 
     def compose(self) -> ComposeResult:
         yield Static(self._renderable, classes="content")
+
+    def on_enter(self, _event) -> None:
+        # Advertise the open gestures only when this block actually names
+        # something openable. Resolved here rather than on every content
+        # update: hovering is rare, streaming is not.
+        if self._tool_call_id is None and self.backtick_tokens:
+            self.tooltip = _BLOCK_TOOLTIP
 
     def update_content(self, renderable: RenderableType,
                        text_payload: str) -> None:
         self._renderable = renderable
         self._text_payload = text_payload
-        self._backtick_tokens = _extract_backtick_tokens(text_payload)
-        self.tooltip = (
-            "click to copy | ctrl+click to open here | "
-            "alt+click to open natively"
-            if self._backtick_tokens else "click to copy"
-        )
+        self._tokens = None
         with contextlib.suppress(Exception):
             self.query_one(".content", Static).update(renderable)
+
+    @property
+    def backtick_tokens(self) -> list[str]:
+        if self._tokens is None:
+            self._tokens = _extract_backtick_tokens(self._text_payload)
+        return self._tokens
 
     def text_payload(self) -> str:
         return self._text_payload
@@ -331,13 +339,13 @@ class CopyableBlock(Widget):
         if self._tool_call_id is not None:
             self.post_message(self.ToolExpandToggle(self._tool_call_id))
             return
-        if event.ctrl and self._backtick_tokens:
+        if event.ctrl and self.backtick_tokens:
             self._open_file_from_tokens()
             return
         # Textual reports Alt as `meta` (SGR's bit 8). Shift is not usable
         # for a gesture: VTE terminals reserve it to bypass mouse reporting
         # entirely, so the app never sees a shift+click.
-        if event.meta and self._backtick_tokens:
+        if event.meta and self.backtick_tokens:
             self._open_natively_from_tokens()
             return
         if not self._text_payload:
@@ -362,7 +370,7 @@ class CopyableBlock(Widget):
         indexer = getattr(self.app, "_file_indexer", None)
         paths = (indexer.paths
                  if (indexer is not None and indexer.ready) else [])
-        tokens = filter_path_tokens(self._backtick_tokens, cwd, paths)
+        tokens = filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
             with contextlib.suppress(Exception):
                 self.app.notify("no path-like tokens here", timeout=1.5)
@@ -421,8 +429,8 @@ class CopyableBlock(Widget):
         indexer = getattr(self.app, "_file_indexer", None)
         paths = (indexer.paths
                  if (indexer is not None and indexer.ready) else [])
-        urls = [t for t in self._backtick_tokens if is_url(t)]
-        tokens = urls + filter_path_tokens(self._backtick_tokens, cwd, paths)
+        urls = [t for t in self.backtick_tokens if is_url(t)]
+        tokens = urls + filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
             _notify("nothing openable here")
             return
@@ -988,7 +996,63 @@ class ConversationPane(Widget):
             t.scroll_end(animate=False)
             if len(self._history) - self._window_start > N_MAX:
                 self._evict_top(EVICT_BATCH)
+        elif len(self._mounted_blocks) > N_HARD_MAX:
+            # Scrolled up mid-turn, so the N_MAX eviction above can't run and
+            # the window grew without bound. Drop only blocks that are
+            # entirely above the viewport — what the reader is looking at is
+            # never evicted, and the anchor restore keeps it from shifting.
+            self._evict_above_viewport(EVICT_BATCH)
         return block
+
+    def enforce_window_bound(self) -> None:
+        """Bring the mounted window back under its ceiling.
+
+        Called from the app's one-second tick, where layout is fresh — the
+        eviction below reads widget regions to decide what is safely off
+        screen, and during a burst of mounts those regions go stale, so the
+        opportunistic call in _mount_block can fall behind.
+        """
+        if self._stick_to_bottom:
+            return
+        from textual.css.query import NoMatches
+        try:
+            self._transcript()
+        except NoMatches:
+            return          # pane pruned mid-teardown — nothing to bound
+        while len(self._mounted_blocks) > N_HARD_MAX:
+            before = len(self._mounted_blocks)
+            self._evict_above_viewport(EVICT_BATCH)
+            if len(self._mounted_blocks) == before:
+                return          # nothing safely evictable (reader at the top)
+
+    def _evict_above_viewport(self, n: int) -> None:
+        """Evict up to n leading blocks that sit wholly above the viewport,
+        holding the reader's view still. Mirrors _load_older's anchor trick."""
+        t = self._transcript()
+        evictable = 0
+        for b in self._mounted_blocks[:n]:
+            try:
+                if (b.region.y - t.region.y) + b.region.height > 0:
+                    break          # reaches the viewport — stop here
+            except Exception:      # noqa: BLE001 — not laid out yet
+                break
+            evictable += 1
+        if not evictable:
+            return
+        survivors = self._mounted_blocks[evictable:]
+        anchor = survivors[0] if survivors else None
+        y_before = (anchor.region.y - t.region.y) if anchor is not None else 0
+        self._evict_top(evictable)
+
+        def _restore() -> None:
+            if anchor is None:
+                return
+            delta = (anchor.region.y - t.region.y) - y_before
+            if delta:
+                with contextlib.suppress(Exception):
+                    t.scroll_to(y=t.scroll_y + delta, animate=False)
+
+        self.call_after_refresh(_restore)
 
     def _evict_top(self, n: int) -> None:
         """Unmount the first n mounted CopyableBlocks and advance

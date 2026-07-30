@@ -121,6 +121,35 @@ async def test_ingesting_an_event_does_not_query_the_subtree():
 
 
 @pytest.mark.asyncio
+async def test_streaming_does_not_rescan_the_message_for_backticks(
+        monkeypatch):
+    """`update_content` re-ran a regex over the WHOLE accumulated message on
+    every delta — Θ(n²) per message, 6.5s for a 205KB one. The tokens are
+    only read on click, so they can wait for the stream to settle."""
+    from aegis.tui import pane as pane_mod
+
+    scans: list[int] = []
+    real = pane_mod._extract_backtick_tokens
+    monkeypatch.setattr(
+        pane_mod, "_extract_backtick_tokens",
+        lambda text: (scans.append(len(text)), real(text))[1])
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await pilot.pause()
+        scans.clear()
+        for _ in range(40):
+            pane._stream_append("text", "some `token` and more prose. ")
+        assert scans == [], "rescanned mid-stream"
+
+        pane._flush_streaming()
+        await pilot.pause()
+        block = pane._mounted_blocks[-1]
+        assert "token" in block.backtick_tokens      # still resolved lazily
+
+
+@pytest.mark.asyncio
 async def test_status_bar_reference_survives_and_still_updates():
     """Caching must not break the thing it caches."""
     app = _app()
