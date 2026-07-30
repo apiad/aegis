@@ -3,11 +3,11 @@ from aegis.tui import pane
 
 
 def test_canonical_values():
-    # 150, not 300: a mounted block costs ~0.21ms on every reflow and
-    # ~6.8ms to re-mount once, so a smaller window trades occasional
-    # scroll-up latency for continuous keystroke latency. Still ~7.5
-    # viewports of instant scrollback. The web client reads this too.
-    assert tc.N_MAX == 150
+    # 300: briefly 150, reverted. A mounted block costs ~0.033ms of a real
+    # layout pass, so halving the window bought ~5ms per frame at the cost
+    # of half the instant scrollback. See the constant's own comment for
+    # the benchmark artefact that made 150 look worthwhile.
+    assert tc.N_MAX == 300
     assert tc.EVICT_BATCH == 50
     # ~20 repaints/second while streaming. Each is a full compositor
     # rebuild; Textual's own Markdown docs put the ceiling in the same place.

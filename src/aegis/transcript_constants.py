@@ -1,15 +1,17 @@
 """Single source of truth for transcript-windowing tuning knobs, shared by
 the TUI pane and (later) the web client's `hello` constants block."""
 
-N_MAX = 150            # max mounted transcript blocks before eviction.
-                       # Every mounted block costs ~0.21ms on EVERY reflow
-                       # (keystroke, scroll line, streamed delta) and ~6.8ms
-                       # to re-mount once via _load_older — so keeping one
-                       # only pays if you revisit it inside ~32 reflows, and
-                       # you type thousands of characters between scroll-ups.
-                       # 150 still holds ~7.5 viewports of instant
-                       # scrollback. Measured 300 -> 150: reflow 111 -> 78ms,
-                       # keystroke 127 -> 100ms.
+N_MAX = 300            # max mounted transcript blocks before eviction.
+                       # Briefly 150, on a measurement that turned out to be
+                       # an artefact: the benchmark had `await pilot.pause()`
+                       # inside the timed region, and Pilot._wait_for_screen
+                       # posts a callback to EVERY mounted widget and awaits
+                       # them (textual/pilot.py:490), so the harness cost
+                       # scaled with the variable under test. A mounted block
+                       # really costs ~0.033ms of a real layout pass, not
+                       # 0.21ms, so halving the window bought ~5ms per frame
+                       # and cost half the instant scrollback. Not a trade
+                       # worth making.
 REPLAY_TAIL = 10       # blocks mounted on resume (rest load on scroll-up)
 EVICT_BATCH = 50       # blocks dropped per eviction when over N_MAX
 LOAD_BATCH = 40        # older blocks re-mounted per scroll-up load: mounting
