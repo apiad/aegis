@@ -5,6 +5,26 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-07-29
+
+### Performance
+
+- **A background tab no longer repaints its transcript.** It painted every
+  streamed delta into a widget that isn't on screen — the same render cost as
+  the foreground tab, paid once per open tab on the single UI thread. The
+  record stays current on every delta (it is the source of truth, and the
+  transcript never lies about what arrived); only the widget waits, and
+  `on_show` reconciles it.
+
+  Median of three A/B runs, 10 tabs ingesting 1,200 events: wall 7.60s →
+  6.42s, 158 → 187 events/s, loop lag p50 124.5 → 78.5 ms, p95 857 → 665 ms.
+
+  Modest next to 0.28.0's wins, because what remains in that scenario is
+  mounting the widgets rather than repainting them. Closing that — and the
+  still-open "window is unbounded while scrolled up" from 0.28.0 — needs the
+  same change: a second window edge, so a pane can hold history it has not
+  mounted.
+
 ## [0.28.0] - 2026-07-29
 
 ### Performance
