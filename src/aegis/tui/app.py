@@ -245,6 +245,9 @@ class AegisApp(App):
         # write would clobber the saved roster with an empty one. Flipped
         # to True after the resume decision lands.
         self._boot_done: bool = False
+        # Pane that already had the empty quota segment pushed to it, so the
+        # 1 Hz tick doesn't re-push a value that cannot change.
+        self._quota_cleared = None
         self._panes: list[ConversationPane] = []
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
@@ -775,9 +778,14 @@ class AegisApp(App):
         from aegis.usage.quota import format_quota_tiers
 
         if not self._quota_enabled():
-            if active is not None and hasattr(active, "set_quota"):
+            # Push the empty segment once, not every second — re-delivering a
+            # value that cannot change is a repaint per tick for nothing.
+            if (active is not None and hasattr(active, "set_quota")
+                    and self._quota_cleared is not active):
                 active.set_quota(())
+                self._quota_cleared = active
             return
+        self._quota_cleared = None
         self.quota_service.start()
 
         # Turn-end detection: any Claude pane going working -> ready means the
@@ -839,7 +847,9 @@ class AegisApp(App):
     async def action_open_history(self) -> None:
         """Ctrl+H — list prior sessions (this + previous launches) and reopen
         the chosen one: jump to a live tab, resume, or open fresh."""
-        from aegis.state.history import list_history
+        import asyncio
+
+        import aegis.state.history as history_mod
         from aegis.tui.history import HistoryModal
 
         live = {p.handle for p in self._panes
@@ -848,7 +858,11 @@ class AegisApp(App):
         # the default one so they stay resumable. A wrong guess costs a
         # failed drv.resume, which this modal already reports.
         default = self._agents.get(self._default_agent)
-        rows = list_history(
+        # Off the event loop: the scan reads and decodes every log in the
+        # state dir — 25s warm / 60s cold on a 615MB corpus — and doing that
+        # here froze the whole UI. The modal below stays on the loop.
+        rows = await asyncio.to_thread(
+            history_mod.list_history,
             self._state_dir, live_handles=live,
             fallback_profile=self._default_agent if default else "",
             fallback_provider=default.harness if default else "")

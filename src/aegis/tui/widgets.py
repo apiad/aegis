@@ -215,10 +215,16 @@ class TabBar(HorizontalScroll):
         self._cells: list[_TabCell] = []
         self._palette = aegis_colors(INK)
         self._items: list = []
+        # What each cell was last painted with. Any pane's state change
+        # refreshes the whole bar, and repainting every cell made that
+        # O(tabs) — 40 panes flipping together cost over a second of frozen
+        # UI, all of it re-rendering labels that hadn't changed.
+        self._painted: list = []
 
     def set_palette(self, palette) -> None:
         self._palette = palette
         if self._cells:
+            self._painted = []      # colors aren't in the item tuple
             self._refresh_cells()
 
     def set_tabs(self, items: list) -> None:
@@ -235,10 +241,15 @@ class TabBar(HorizontalScroll):
 
     def _refresh_cells(self) -> None:
         active_cell = None
-        for cell, item in zip(self._cells, self._items):
-            cell.render_tab(*item, self._palette)
+        painted = list(self._painted)
+        painted += [None] * (len(self._items) - len(painted))
+        for i, (cell, item) in enumerate(zip(self._cells, self._items)):
+            if painted[i] != item:
+                cell.render_tab(*item, self._palette)
+                painted[i] = item
             if item[5]:
                 active_cell = cell
+        self._painted = painted[:len(self._items)]
         if active_cell is not None:
             self.call_after_refresh(
                 lambda c=active_cell: c.scroll_visible(animate=False))

@@ -214,6 +214,47 @@ async def test_clicking_a_tab_activates_it():
 
 
 @pytest.mark.asyncio
+async def test_tabbar_only_repaints_the_cells_that_changed():
+    """Any pane's state change refreshes the whole bar. Re-rendering every
+    cell made that O(tabs) — 40 panes flipping together cost 1.4s of frozen
+    UI. Only cells whose content actually changed may repaint."""
+    app = _app(_factory(*[FakeSession() for _ in range(4)]))
+    async with app.run_test() as pilot:
+        for _ in range(3):
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+        bar = app.query_one(TabBar)
+        painted = []
+        for cell in bar._cells:
+            cell.render_tab = (
+                lambda *a, _c=cell, **kw: painted.append(_c))
+
+        app._refresh_tabbar()            # nothing changed since last paint
+        assert painted == []
+
+        app._panes[0].unseen = True      # exactly one cell's content moves
+        app._refresh_tabbar()
+        assert len(painted) == 1
+
+
+@pytest.mark.asyncio
+async def test_tabbar_repaints_everything_on_a_palette_change():
+    """The memo keys on the item tuple, which doesn't carry the palette."""
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        bar = app.query_one(TabBar)
+        app._refresh_tabbar()
+        painted = []
+        for cell in bar._cells:
+            cell.render_tab = (
+                lambda *a, _c=cell, **kw: painted.append(_c))
+        bar.set_palette(app._palette)
+        assert len(painted) == len(bar._cells)
+
+
+@pytest.mark.asyncio
 async def test_clicking_the_empty_tabbar_placeholder_is_a_noop():
     app = _app()
     async with app.run_test() as pilot:

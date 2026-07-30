@@ -701,6 +701,11 @@ class ConversationPane(Widget):
         self._stick_to_bottom: bool = True
         self._loading_older: bool = False
         self._load_timer = None
+        # Widgets that are composed once and never replaced. Resolved lazily
+        # through _bar() / _working_indicator(), which are on the per-event
+        # path — a deep query there walks the whole transcript.
+        self._status_bar: "StatusBar | None" = None
+        self._indicator: "WorkingIndicator | None" = None
         # Newest turn terminator, so its "x ago" can be kept current while
         # you look at the tab. Only the newest carries an age: a frozen
         # "2s ago" on an hour-old turn is worse than no age at all.
@@ -832,25 +837,44 @@ class ConversationPane(Widget):
             self._mounted_blocks.append(block)
         t.scroll_end(animate=False)
 
+    def _bar(self) -> "StatusBar | None":
+        """The pane's StatusBar, cached — or None before it mounts.
+
+        `self.query(StatusBar)` is a deep, uncached CSS walk over every
+        descendant, and a pane's descendants are its transcript blocks. This
+        sits on the per-event path, so looking up a widget that never moves
+        made handling one streamed token cost 3.3 ms on a fresh tab and 36 ms
+        at the eviction cap. The bar is composed once and never replaced;
+        `is_attached` covers teardown, when the answer becomes None again.
+        """
+        bar = self._status_bar
+        if bar is not None and bar.is_attached:
+            return bar
+        from textual.css.query import NoMatches
+        try:
+            self._status_bar = self.query_one(StatusBar)
+        except NoMatches:
+            # Core observers can fire before compose finishes mounting it.
+            self._status_bar = None
+        return self._status_bar
+
     def refresh_metrics(self) -> None:
-        # Core observer callbacks (`_on_core_event`/`_on_core_state`) can fire
-        # before this pane finishes mounting its StatusBar; no-op until it's up.
-        bars = self.query(StatusBar)
-        if bars:
-            bars.first().set_metrics(
+        bar = self._bar()
+        if bar is not None:
+            bar.set_metrics(
                 self._core.metrics.render_tiers(time.monotonic()))
 
     def set_system(self, text) -> None:
         """Push the system-stats segment (sampled app-side) to the StatusBar."""
-        bars = self.query(StatusBar)
-        if bars:
-            bars.first().set_system(text)
+        bar = self._bar()
+        if bar is not None:
+            bar.set_system(text)
 
     def set_quota(self, tiers) -> None:
         """Push the quota segment (sampled app-side) to the StatusBar."""
-        bars = self.query(StatusBar)
-        if bars:
-            bars.first().set_quota(tiers)
+        bar = self._bar()
+        if bar is not None:
+            bar.set_quota(tiers)
 
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
@@ -906,8 +930,17 @@ class ConversationPane(Widget):
             raise
 
     def _working_indicator(self) -> WorkingIndicator | None:
-        matches = self.query(WorkingIndicator)
-        return matches.first() if len(matches) else None
+        # Cached for the same reason as _bar(): this is called on every
+        # mounted block, and the deep query walked the whole transcript.
+        ind = self._indicator
+        if ind is not None and ind.is_attached:
+            return ind
+        from textual.css.query import NoMatches
+        try:
+            self._indicator = self.query_one(WorkingIndicator)
+        except NoMatches:
+            self._indicator = None
+        return self._indicator
 
     def _apply_command_effect(self, effect: dict) -> None:
         """Apply a slash-command frontend effect (theme switch, transcript
@@ -976,6 +1009,7 @@ class ConversationPane(Widget):
         if ind is None:
             ind = WorkingIndicator(self._palette)
             self._transcript().mount(ind)
+            self._indicator = ind
         # Only animate while this tab is visible; a background pane freezes
         # its spinner (on_show resumes it) to spare the shared message pump.
         ind.start(animate=self.display)
@@ -990,6 +1024,7 @@ class ConversationPane(Widget):
             ind.stop()
         with contextlib.suppress(Exception):
             ind.remove()
+        self._indicator = None
 
     def _transcript_blocks(self) -> list[CopyableBlock]:
         return list(self.query(CopyableBlock))
@@ -1262,9 +1297,9 @@ class ConversationPane(Widget):
         capped, interrupted, killed by a harness error — should say so rather
         than just vanishing from the status bar.
         """
-        bars = self.query(StatusBar)
-        if bars:
-            bars.first().set_loop(state.status() if state is not None else None)
+        bar = self._bar()
+        if bar is not None:
+            bar.set_loop(state.status() if state is not None else None)
         if state is None and reason != "stopped":
             self.app.notify(f"loop {reason}", timeout=5.0)
 
@@ -1529,9 +1564,9 @@ class ConversationPane(Widget):
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
-        bars = self.query(StatusBar)
-        if bars:
-            bars.first().set_state(state)
+        bar = self._bar()
+        if bar is not None:
+            bar.set_state(state)
         # Input outline echoes the state dot: vivid when idle (a live agent
         # that acts on your message now) vs subdued while working (the message
         # queues behind the turn). See the `.working` CSS rule.
