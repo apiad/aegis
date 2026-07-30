@@ -286,6 +286,10 @@ filter to include the live round-trip tests against the real CLI subprocesses
   `tests/test_queue_live.py`, `tests/test_workflow_live.py` need `claude`.
 - `tests/test_drivers_multiprovider_live.py` exercises `gemini` and
   `opencode` driver round-trips (each subtest skips independently).
+- `tests/test_lovelaice_mcp_live.py` and `tests/test_lovelaice_resume_live.py`
+  drive a real `lovelaice-acp` subprocess against a real model, so they need
+  `lovelaice-acp` on PATH *and* the OpenRouter token — and they fail, rather
+  than skip, when the model endpoint is having a bad day.
 
 The `live` marker is registered in `pyproject.toml`; do not use
 `-k "not live"` — it matches `live` as a substring and silently eats

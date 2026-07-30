@@ -15,6 +15,7 @@ from aegis.drivers.lovelaice import LovelaiceDriver
 TOKEN = "/home/apiad/Workspace/.claude/openrouter.token"
 
 pytestmark = [
+    pytest.mark.live,
     pytest.mark.skipif(shutil.which("lovelaice-acp") is None,
                        reason="lovelaice-acp not on PATH"),
     pytest.mark.skipif(not Path(TOKEN).is_file(), reason="no OpenRouter token"),
