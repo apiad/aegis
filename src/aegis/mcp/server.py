@@ -1162,6 +1162,12 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
         - ``done`` — exit 0 ⇒ complete (nonzero just means "not yet", so
           ``grep -q "Listening on" dev.log`` or ``test -f build/out`` work).
+          ``pgrep -f`` / ``pkill -f`` are REFUSED here: the condition runs in
+          a shell whose own command line holds the pattern, so it matches
+          itself and ``! pgrep -f ...`` is false forever. Launch with a
+          completion marker instead — ``nohup bash -c 'cmd > run.log 2>&1;
+          echo "DONE rc=$?" >> run.log' &`` with ``done: grep -q DONE
+          run.log`` — or watch a PID: ``! kill -0 <pid> 2>/dev/null``.
         - ``fail`` — exit 0 ⇒ failed (optional; checked before ``done``).
         - ``progress`` — echoes a number 0–100 for a live bar + ETA. ALWAYS
           pass one unless the work has no measurable fraction: it is the
@@ -1189,10 +1195,14 @@ def build_server(bridge: AppBridge) -> FastMCP:
             if not p.is_dir():
                 return {"error": f"cwd {str(p)!r} is not a directory"}
             where = str(p)
-        mid = bridge.monitor_manager.start_monitor(
-            from_handle=from_handle, description=description, done=done,
-            fail=fail, progress=progress, cwd=where,
-            interval_s=interval_s, timeout_s=timeout_s, interrupt=interrupt)
+        try:
+            mid = bridge.monitor_manager.start_monitor(
+                from_handle=from_handle, description=description, done=done,
+                fail=fail, progress=progress, cwd=where,
+                interval_s=interval_s, timeout_s=timeout_s,
+                interrupt=interrupt)
+        except ValueError as exc:
+            return {"error": str(exc)}
         return {"monitor_id": mid}
 
     @server.tool

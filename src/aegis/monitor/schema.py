@@ -26,6 +26,45 @@ _TERMINAL_LABEL = {
 
 _NUM = re.compile(r"[-+]?\d*\.?\d+")
 
+# `pgrep`/`pkill` matching the FULL command line (-f / -af / --full).
+# Anchored at a command position — start of string, after a shell separator,
+# optionally negated — so the name quoted inside someone else's argument
+# (`grep -q 'pgrep -f' log`) is not mistaken for the real thing. The flag is
+# searched only up to the next separator, so it stays inside one command.
+_SELF_MATCH = re.compile(
+    r"(?:^|[;&|(]|\b(?:then|do|while|until|if|elif)\b)\s*(?:!\s*)?"
+    r"(?:pgrep|pkill)\b[^;&|]*?(?:\s--full\b|\s-[a-z]*f\b)",
+    re.IGNORECASE)
+
+_SELF_MATCH_HELP = (
+    "`pgrep -f` / `pkill -f` cannot be used in a monitor condition: the "
+    "condition runs in a shell whose own command line contains the pattern, "
+    "so the pattern matches itself. `pgrep -f 'pytest -q'` is true even when "
+    "nothing is running, which makes the `! pgrep -f ...` spelling of "
+    "\"it finished\" false forever — the monitor never trips and just times "
+    "out, looking like a hang that never happened.\n"
+    "Use a completion marker instead: launch as "
+    "`nohup bash -c 'mycmd > run.log 2>&1; echo \"DONE rc=$?\" >> run.log' &` "
+    "and pass `done: grep -q DONE run.log` (plus "
+    "`fail: grep -q 'DONE rc=[^0]' run.log`). Or watch the PID you already "
+    "have: `done: ! kill -0 <pid> 2>/dev/null`. `pgrep -x <name>` is fine — "
+    "it matches the process name, not the command line."
+)
+
+
+def condition_error(cond: str | None) -> str | None:
+    """Why ``cond`` is unusable as a monitor condition, or None if it's fine.
+
+    Deterministic rather than advisory: the self-match failure is silent and
+    reads as "the process is still running", so it costs a whole timeout to
+    discover and is easy to misdiagnose.
+    """
+    if not cond:
+        return None
+    if _SELF_MATCH.search(cond):
+        return _SELF_MATCH_HELP
+    return None
+
 
 def terminal_label(state: str) -> str:
     return _TERMINAL_LABEL.get(state, state)

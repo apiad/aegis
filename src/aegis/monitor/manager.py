@@ -24,6 +24,7 @@ from aegis.monitor.schema import (
     WATCHING,
     Monitor,
     MonitorView,
+    condition_error,
     eta_seconds,
     parse_pct,
     terminal_label,
@@ -104,6 +105,12 @@ class MonitorManager:
                       cwd: str | None = None, interval_s: float = 2.0,
                       timeout_s: float = 3600.0, interrupt: bool = False,
                       autorun: bool = True) -> str:
+        # Refuse a condition that can never trip. Checked here, not only at
+        # the MCP surface, so no caller can route around it.
+        for cond in (done, fail, progress):
+            err = condition_error(cond)
+            if err is not None:
+                raise ValueError(err)
         mid = new_ulid()
         self._monitors[mid] = Monitor(
             id=mid, from_handle=from_handle, description=description,
