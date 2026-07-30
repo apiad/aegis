@@ -7,6 +7,24 @@
 **Provenance:** authored by a VPS telegram-batch job on 2026-06-30; promoted here from
 `vault/+/agent_drafts/telegram-replies/reply-batch_2026-06-30T11-12-45Z.md`.
 
+> **Since this was written (2026-07-30).** Two rows in §2 are now false and
+> two roadmap items in §6 have moved:
+>
+> - **Web UI: ❌ → ✅.** Web client S1–S8 shipped, browser-verified. §5's
+>   "skip the web layer" recommendation was overtaken by events.
+> - **Session forking: ❌ → nearly free.** The Claude Agent SDK exposes
+>   `fork_session`; see `2026-07-30-aegis-claude-agent-sdk-driver-design.md`.
+>   Roadmap item 7 drops from "M (1 week)" to a slice of that driver.
+> - **Policy system (roadmap #1) has a shortcut on one driver.** The SDK's
+>   `can_use_tool` callback *is* ALLOW/DENY/ASK at the tool-call level, with
+>   `updated_input` on top. It does not generalise to the ACP drivers, so the
+>   plugin-level design in §4a is still the right shape for the other four —
+>   but Claude no longer has to wait for it.
+> - **Related prior art:** `pingdotgg/t3code` is a third meta-harness worth
+>   reading alongside omnigent, especially its permission-mode UX (four named
+>   modes, per-thread, with an explicit "providers without an equivalent fall
+>   back to asking" rule) and its PATH/HOME hydration for GUI-launched servers.
+
 ---
 
 ## 1. Quick orientation — what omnigent is
