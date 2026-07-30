@@ -478,6 +478,97 @@ fallback) is S10. Each slice is an honest stop point.
 - Spec: `docs/superpowers/specs/2026-06-19-aegis-web-client-design.md`
 - Plan: *not yet drafted — start with S1 (theme YAML + shared render refactor)*
 
+## Ideas — things the `generate()` seam unlocks
+
+Unspecced, roughly ordered by how distinctively aegis-shaped they are. All
+ride the one-shot structured-generation seam from
+`2026-07-30-aegis-session-titles-design.md` — cheap, no session, no MCP, no
+tools, `text_generation:` profile. **Nothing here belongs on the hot path of
+a turn**: a one-shot call is 1–3s, so every trigger below is idle-, boundary-,
+or operator-driven.
+
+### Group reducer — `synthesize` and `dissent`
+
+`groups/reducers.py` already has `register_reducer(name, fn)` and a
+`_REGISTRY` — an open extension point. Today `wait_all` gives you `concat`
+(a wall of N agents' text you re-read yourself) or `majority_vote` (only
+fires when answers are string-identical, i.e. never for prose).
+
+Two reducers, one call each. `synthesize` reconciles the members into one
+answer. **`dissent` is the more interesting one** — report where they
+*disagreed* and why, which is exactly what a majority vote destroys and what
+you can't get by skimming four replies.
+
+Distinctive because `aegis_group_spawn_mixed(preset=…)` can convene claude +
+gemini + opencode + a local lovelaice model. Omnigent and t3code have no
+groups at all; nobody else can panel four vendors and reconcile them.
+
+### DSL structured output — collect on a logged debt
+
+`dsl/interpreter.py` does `json.loads(_extract_json(reply))` at **three**
+sites (133, 165, 229), and the DSL plan shipped with *"structured output is
+prompt-engineered + parsed"* written down as a known caveat. `_run_judge`
+(line 214) is a `generate(YesNo, …)` call wearing a costume.
+
+Not a feature — makes bounded `loop`/`if` control flow trustworthy rather
+than hopeful. Smallest item here.
+
+### Session recap — "where are we right now"
+
+After a session sits idle ~5 min, generate a short *current state* recap:
+what's been established, what's in flight, what's next. For coming back to
+one of ten tabs without re-reading the transcript.
+
+Hook exists: `AgentSession._arm_idle_watcher` (`core/session.py:582`,
+armed at 220/538, cancelled at 225/273) already detects idle — currently
+gated on `supports_idle_events`, which a recap trigger should *not* be.
+
+Distinct from a summary: recap is a live snapshot, regenerated as state
+moves; a summary is retrospective and written once.
+
+### Session summary — the retrospective
+
+Written at close (or on demand), appended to the log. Turns `Ctrl+R` from a
+list of handles into a searchable archive. Composes with session titles —
+same record, same surface, same modal.
+
+Regeneration should truncate the transcript from the **front**, not the back
+(t3code's `preserveMessageEnd`): the end is what the summary is about.
+
+### `/btw` — a side question that doesn't steal the turn
+
+Ask a one-off question about what's happening *while the agent keeps
+working*. Takes the last few turns as context, answers via `generate()`, and
+**never touches the session** — no interrupt, no inbox delivery, no turn
+consumed. "Why did it pick that file?", "is this the third retry?"
+
+The point is the non-interruption. Today the only ways to ask are `Enter`
+(queues a chip, waits for the turn to end) or `Alt+Enter` (cuts the live
+turn). `/btw` is the missing read-only third option. Renders in the pane as
+an operator-side aside, not as a conversation turn.
+
+Open: how many turns of context, and does the answer persist in the
+transcript or vanish on scroll?
+
+### Loop auto-evaluate — an independent judge, not the same agent
+
+`aegis_loop_stop(from_handle, reason)` (`mcp/server.py:1248`) has the agent
+reap **its own** loop, and `core/loop.py` only otherwise stops at
+`max_iterations` (`exhausted`, line 35). So the entity deciding "is the goal
+met?" is the entity that wants to stop working — and the failure mode is
+documented in this workspace's CLAUDE.md: a 20-iteration loop stopped at
+iteration 1 with the user-visible half unbuilt, because a narrow reading of
+the instruction was defensible *to the agent that wrote it*.
+
+Idea: on each would-be-idle boundary, a **separate** one-shot call gets the
+loop instruction plus a digest of what's happened, and answers "goal met?".
+The agent can still call `aegis_loop_stop`, but a disagreeing judge re-arms
+the loop with the gap named.
+
+The failure mode to design against is the inverse — a judge that never
+lets go. Needs a cap, and the judge's verdict surfaced in the loop strip so
+it's arguable rather than silent.
+
 ## Backlog
 
 ### Subscription-backed models (Antigravity / gateway) — DEFERRED INDEFINITELY
