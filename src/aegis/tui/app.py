@@ -1738,6 +1738,7 @@ class _SessionManagerAdapter:
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h), agent,
             slug, h, self._app._palette, digest=self._app.queue_digest,
+            monitor_manager=self._app.monitor_manager,
             state_dir_path=self._app._state_dir)
         pane._core.spawned_by = spawned_by
         self._app._panes.append(pane)
@@ -1787,6 +1788,7 @@ class _SessionManagerAdapter:
                                     fork_from=sid),
             agent, slug, h, self._app._palette,
             digest=self._app.queue_digest,
+            monitor_manager=self._app.monitor_manager,
             state_dir_path=self._app._state_dir)
         pane._core.forked_from = {"handle": target, "log_id": core.log_id,
                                   "session_id": sid}
