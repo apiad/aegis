@@ -125,11 +125,25 @@ def palette():
     return aegis_colors(INK)
 
 
+def rendered(renderable) -> str:
+    """Plain text as it reaches the terminal.
+
+    A Group has no `.plain`, and rendering through a real Console asserts
+    on what the user sees rather than on a string the renderer happened to
+    assemble internally.
+    """
+    from rich.console import Console
+    console = Console(width=100, no_color=True)
+    with console.capture() as cap:
+        console.print(renderable)
+    return cap.get()
+
+
 def test_render_shows_the_answer_and_the_price():
     from aegis.render import render_side_note
     note = SideNote(answer="core/manager.py", header="last 6 of 47 turns",
                     model="haiku", duration_ms=5200, cost_usd=0.0044, ok=True)
-    text = render_side_note(note, palette()).plain
+    text = rendered(render_side_note(note, palette()))
     assert "core/manager.py" in text
     assert "haiku" in text and "5.2s" in text and "$0.0044" in text
     assert "last 6 of 47 turns" in text
@@ -139,19 +153,48 @@ def test_render_points_at_fork_when_the_window_was_not_enough():
     from aegis.render import render_side_note
     note = SideNote(answer="not in the window", needs_more=True, ok=True,
                     header="last 6 of 47 turns", model="haiku")
-    assert "/fork" in render_side_note(note, palette()).plain
+    assert "/fork" in rendered(render_side_note(note, palette()))
 
 
 def test_render_stays_quiet_about_fork_when_the_window_sufficed():
     from aegis.render import render_side_note
     note = SideNote(answer="core/manager.py", ok=True, model="haiku")
-    assert "/fork" not in render_side_note(note, palette()).plain
+    assert "/fork" not in rendered(render_side_note(note, palette()))
 
 
 def test_render_shows_the_reason_a_note_failed():
     from aegis.render import render_side_note
-    text = render_side_note(SideNote(ok=False, error="boom"), palette()).plain
+    text = rendered(render_side_note(SideNote(ok=False, error="boom"),
+                                     palette()))
     assert "boom" in text
+
+
+def test_a_markdown_answer_renders_as_markdown_not_asterisks():
+    """The point of the change: a model asked a technical question answers
+    in markdown, and you should not be reading the syntax."""
+    from aegis.render import render_side_note
+    note = SideNote(answer="use **replay_events**, not `load_config`",
+                    ok=True, model="haiku")
+    text = rendered(render_side_note(note, palette()))
+    assert "replay_events" in text
+    assert "**" not in text
+
+
+def test_an_error_is_not_run_through_markdown():
+    """An error is aegis speaking a fixed sentence, and it carries the
+    alternative the operator must act on. Markdown imposes its own styling
+    and would strip the colors.error tint, so the failure branch stays a
+    plain tinted Text — the property that makes Markdown right for the
+    answer makes it wrong here."""
+    from rich.text import Text
+    from aegis.render import render_side_note
+    g = render_side_note(
+        SideNote(ok=False,
+                 error="beta is mid-turn. Wait for it to finish, or "
+                       "/enqueue the task instead."),
+        palette())
+    assert all(isinstance(r, Text) for r in g.renderables)
+    assert "/enqueue" in rendered(g)
 
 
 async def test_the_effect_is_json_serializable():

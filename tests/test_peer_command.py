@@ -92,10 +92,21 @@ def test_the_completer_marks_busy_peers():
 
 
 def test_render_peer_answer_leads_with_the_target():
+    """In a pane full of transient blocks the first token is how you tell
+    "beta answered this" from "this is my own agent talking".
+
+    Asserted against the header renderable directly rather than a rendered
+    frame: the answer is now a Markdown body, so a prefix check on the
+    whole block would be pinning layout instead of the property.
+    """
+    from rich.console import Console
     from aegis.render import render_peer_answer
     from aegis.tui.themes import INK, aegis_colors
     colors = aegis_colors(INK)
-    text = render_peer_answer(
-        PeerAnswer(answer="green", target="beta", ok=True), colors).plain
-    assert text.startswith("@beta ")
-    assert "green" in text
+    g = render_peer_answer(
+        PeerAnswer(answer="green", target="beta", ok=True), colors)
+    assert g.renderables[0].plain.startswith("@beta ")
+    console = Console(width=100, no_color=True)
+    with console.capture() as cap:
+        console.print(g)
+    assert "green" in cap.get()

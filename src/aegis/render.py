@@ -244,8 +244,15 @@ def render_command_block(result, colors, width: int | None = None) -> Text:
     return line
 
 
-def render_side_note(note, colors) -> Text:
+def render_side_note(note, colors) -> Group:
     """Visible block for a `/btw` side note.
+
+    The answer is rendered as Markdown; the error is not. A model asked a
+    technical question answers in markdown, and you should not be reading
+    the asterisks. An error is not model prose — it is aegis speaking a
+    fixed sentence, and it carries the alternative the operator has to act
+    on. Markdown imposes its own styling, which is exactly why it is right
+    for the answer and wrong for the failure line's `colors.error` tint.
 
     Its own treatment, because it is neither a user line nor agent output
     — it is a third voice, and one that is not part of the conversation.
@@ -258,21 +265,31 @@ def render_side_note(note, colors) -> Text:
     assembles. Side notes do not compound.
     """
     tint = colors.error if not note.ok else colors.accent
-    line = Text()
-    line.append("btw ", style=f"bold italic {tint}")
-    line.append(note.answer if note.ok else (note.error or "no answer"),
-                style=colors.ink if note.ok else tint)
+    parts: list[RenderableType] = [Text("btw", style=f"bold italic {tint}")]
+    if note.ok:
+        parts.append(Markdown(note.answer))
+    else:
+        parts.append(Text(note.error or "no answer", style=tint))
     if note.ok and note.needs_more:
-        line.append(
-            f"\n  answered from {note.header} — /fork if you want it to "
-            f"actually go look.", style=f"italic {colors.working}")
+        parts.append(Text(
+            f"  answered from {note.header} — /fork if you want it to "
+            f"actually go look.", style=f"italic {colors.working}"))
     if note.footer:
-        line.append(f"\n  {note.footer}", style=colors.muted)
-    return line
+        parts.append(Text(f"  {note.footer}", style=colors.muted))
+    return Group(*parts)
 
 
-def render_peer_answer(answer, colors) -> Text:
+def render_peer_answer(answer, colors) -> Group:
     """Visible block for an `@peer` answer.
+
+    The header leads with the target and is the first renderable of the
+    returned Group: in a pane full of transient blocks the first token is
+    how you tell "beta answered this" from "this is my own agent talking".
+
+    Markdown on the ok path only, for the reason given in
+    ``render_side_note`` — a refusal like "beta is mid-turn. Wait for it to
+    finish, or /enqueue the task instead." is aegis speaking, and it keeps
+    its `colors.error` tint.
 
     Transient in *this* pane, exactly as a side note is — it lands in
     ``_history`` and is never appended to this session's log, so the
@@ -282,13 +299,15 @@ def render_peer_answer(answer, colors) -> Text:
     window later assembled from it.
     """
     tint = colors.error if not answer.ok else colors.accent
-    line = Text()
-    line.append(f"@{answer.target or '?'} ", style=f"bold italic {tint}")
-    line.append(answer.answer if answer.ok else (answer.error or "no answer"),
-                style=colors.ink if answer.ok else tint)
+    parts: list[RenderableType] = [
+        Text(f"@{answer.target or '?'} ", style=f"bold italic {tint}")]
+    if answer.ok:
+        parts.append(Markdown(answer.answer))
+    else:
+        parts.append(Text(answer.error or "no answer", style=tint))
     if answer.footer:
-        line.append(f"\n  {answer.footer}", style=colors.muted)
-    return line
+        parts.append(Text(f"  {answer.footer}", style=colors.muted))
+    return Group(*parts)
 
 
 def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
