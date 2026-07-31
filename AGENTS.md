@@ -204,6 +204,19 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   Queues are declared in `.aegis.yaml` under `queues:` as
   `<name>: {agent: <profile>, max_parallel: N}`; unknown agent
   references fail loud at `aegis serve` boot.
+- `src/aegis/peer/` - `@peer`: asking an **idle** peer from where you are
+  standing. `PeerAnswer` (+`footer`), `refusal` (the guard — reads the
+  *target*, never the source, so `@peer` is legal while your own pane is
+  mid-turn), `teaser` (a 2k-token window of the source transcript, a log
+  read and **no model call** — that is what lets the design push a pointer
+  and let the peer pull the rest), `compose` (provenance of *place, not
+  author*: tagged `agent:<handle>` a peer reads it as delegation and skews
+  autonomous), `send_and_await`, `read_window` (backs `aegis_read_peer`),
+  `cc_into`, and `ask` — the half both `AppBridge` implementations share,
+  the same split `btw.side_note_for` uses. `@handle …` is sugar for
+  `/peer handle …`, rewritten in `classify_input`, so no new input route
+  exists. Spec:
+  `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`.
 - `src/aegis/workflow/` - the workflow scaffold (v1). `@workflow`
   decorator + auto-registry (`decorator.py`); `WorkflowEngine` runtime
   with `delegate` (one-shot via queue), `send`/`drain` (live-agent

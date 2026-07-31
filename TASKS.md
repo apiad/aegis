@@ -71,6 +71,43 @@ Prior art: `pingdotgg/t3code` does exactly this in TypeScript
   lovelaice bug fixed in `449ebbb`. Gate on a YAML-declared agent that spawns,
   not a unit test of the driver class.
 
+### `@peer` — ask an idle agent *(VS1–VS4 landed 2026-07-31)*
+
+`@lucid-knuth is this right?` in any pane. Fills the hole between
+`aegis_handoff` (free, no context) and `/fork` (~$1, whole conversation):
+a bounded slice of where you stand, to an agent that already exists.
+
+**Idle-only is the domain.** The guard reads the target and never the
+source, so `@peer` is legal while your *own* pane is mid-turn — spending a
+long turn's dead time on someone who is free is the whole use case.
+
+- Spec: `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`
+- Plan: `docs/superpowers/plans/2026-07-31-aegis-at-mention-peer-ask.md`
+- **Outstanding: three TUI wiring changes** in `tui/app.py` + `tui/pane.py`
+  (the `("/", "@")` gate; `state_dir`/`source_log_id` kwargs on
+  `AegisApp.peer_ask`; an `AegisApp.read_peer`). Handed to `btw-rendering`,
+  which holds those files. Until they land, `@` works on the web client and
+  is delivered as **literal text** in the TUI — the one failure mode worse
+  than not shipping it.
+- **Also outstanding: `deferred=True` on `/peer`.** `@peer` is `await`ed
+  inline in the pane's input handler, so it blocks the Textual message pump
+  for the whole peer turn — up to `PEER_ASK_TIMEOUT_S = 300`. That defeats
+  the feature's best property (asking while your own tab is busy). Waiting
+  on btw-rendering's `deferred` primitive; `cancel_note` template is
+  `"stopped waiting — {handle}'s turn is still running, so go read its tab"`,
+  because "cancelled" is a lie — the peer's turn is real and completes.
+- Deferred to v2, not built: multicast `@a @b` (more attractive under
+  idle-only — "poll every free peer, one block, N answers" — but it changes
+  the block layout and the timeout story); clickable `@handle` in *agent
+  output* (jump-to-tab, no overlap with this); reading **closed** sessions
+  (needs the `SessionMeta` scan to resolve current-handle → log id); the web
+  treatment of the answer block.
+- Open questions, deliberately unanswered: the teaser budget (2k is a
+  starting number — if peers pull constantly it is too small, if they answer
+  blind it is too big) and whether peers actually pull at all. If the pull
+  rate is low the fix is not prompt wording but a `needs_more`-shaped
+  structured field, the way `/btw` turned the same guess into a signal.
+
 ### Conversation fork *(VS1 landed 2026-07-31 — `a91e501`, `f6e6a97`)*
 
 **`/fork [prompt]` works; `aegis_fork(target_handle, …)` forks an idle peer.**

@@ -5,6 +5,61 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **`@peer` — ask an idle agent, from where you're standing.** Type
+  `@lucid-knuth is this schema right?` in any pane. An idle peer answers, and
+  the answer lands as a real turn in *its* transcript and a transient block in
+  *yours* — your own agent neither sees it nor pays for it.
+
+  It fills the hole between `aegis_handoff` (free, carries no context, you
+  retype everything) and `/fork` (~$1, carries the whole conversation, spawns a
+  new agent): a bounded slice of where you are standing, delivered to an agent
+  that already exists.
+
+  **Idle-only is the domain, not a limitation.** The case for the feature is
+  extracting value from a warm context that is currently producing nothing; a
+  busy peer inverts it, since it is already producing value and cutting in
+  costs you the thing you were asking for. So the guard reads the *target* and
+  never the source — which makes `@peer` legal while your *own* tab is
+  mid-turn, and that is the point: you spend a long turn's dead time asking
+  someone who is free.
+
+  - `@handle …` is sugar for `/peer handle …`, routed as a `classify_input`
+    rewrite so the dispatcher, the effect channel, the palette and the web seam
+    all carry it unchanged. `@@` is the literal-`@` escape, mirroring `//`;
+    only a leading `@` addresses, so `a@b.com` mid-line stays prose.
+  - The peer is sent a **teaser** — 2k tokens of your transcript tail against
+    `/btw`'s 32k — assembled with `btw.window.assemble`. It costs a log read
+    and no model call, which is what lets the design push a pointer rather than
+    a summary. Its honest header ("6 of 143 events") goes to the peer
+    deliberately: the failure mode here is not laziness but that a model cannot
+    detect a gap, and a stated boundary turns an undetectable absence into a
+    legible one.
+  - `aegis_read_peer(handle, turns=12)` is the pull half, at 24k. It unlocks
+    nothing — the logs are plain JSONL in the project root and every agent has
+    Read and Bash — but it fixes *addressing*: a log id carries the session's
+    **birth** handle and is never renamed, so current-handle → file is not
+    derivable by an agent that only knows who it is talking to.
+  - `--cc` delivers the peer's answer into your own conversation as a real
+    turn. Decided by the operator at send time, never by the peer at reply
+    time: the peer cannot judge relevance to a conversation it holds a 3-turn
+    window of, and being agreeable it would guess yes.
+  - Busy peers are marked in the completion palette rather than hidden, so the
+    idle-only constraint is visible at type-time instead of arriving as a
+    refusal at send-time.
+
+  Spec: `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`
+
+### Fixed
+
+- **`WorkflowEngine.send()` silently returned `""`.** `workflow/runner.py` has
+  reached for `session_send_and_await` on the bridge via `getattr(…, None)`
+  since the workflow scaffold landed, and no production class ever defined it —
+  so every `engine.send()` fell through to fire-and-forget and returned an
+  empty string instead of the agent's reply. `SessionManager` now implements
+  it. Found while building `@peer`, which is its first real caller.
+
 ## [0.28.1] - 2026-07-29
 
 ### Performance

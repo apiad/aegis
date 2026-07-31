@@ -1,6 +1,18 @@
 # `@peer` — asking an idle agent, from where you're standing
 
-*Status: specced 2026-07-31. Not implemented.*
+*Status: implemented 2026-07-31 (VS1–VS4). Three TUI wiring changes
+outstanding in `tui/app.py` + `tui/pane.py`, handed to `btw-rendering`
+which holds those files; until they land, `@` works on the web client and
+is delivered as literal text in the TUI.*
+
+*One departure from this spec, found while mapping the seams: **`@handle …`
+is sugar for a slash command**, rewritten in `classify_input` into
+`/peer handle …`. The spec projected "a `peer_ask` route in the two input
+seams"; there is no new route at all — the existing dispatcher, the
+`CommandResult.effect` channel, the palette and the web seam carry it
+unchanged, `wssession.py` needs nothing, and `tui/pane.py`'s gate widens by
+four characters. `--cc` rather than `@@peer`, because `@@` has to be the
+literal-`@` escape mirroring `//`.*
 
 ## The problem
 

@@ -32,7 +32,7 @@ work unchanged. The only genuinely new machinery is
 
 ---
 
-### Task 1 (VS1): `session_send_and_await` + `/peer` end to end
+### Task 1 (VS1): `session_send_and_await` + `/peer` end to end — ✅ *shipped*
 
 The walking skeleton. No teaser, no `aegis_read_peer`, no `--cc`, no `@`
 sugar — `/peer <handle> <question>` typed literally, answered, rendered.
@@ -63,7 +63,7 @@ sugar — `/peer <handle> <question>` typed literally, answered, rendered.
   `InboxMessage` / `now_iso` / `sender_agent` (`queue/schema.py`),
   `render.coalesce_chunks` (`render.py:109`).
 
-- [ ] **Step 1: Write failing tests for `PeerAnswer` + refusal matrix**
+- [x] **Step 1: Write failing tests for `PeerAnswer` + refusal matrix**
 
 ```python
 # tests/test_peer_ask.py
@@ -85,9 +85,9 @@ async def test_refuses_busy_target_and_names_enqueue(mgr_busy):
     assert not a.ok and "mid-turn" in a.error and "/enqueue" in a.error
 ```
 
-- [ ] **Step 2: Run to verify failure** — `uv run python -m pytest tests/test_peer_ask.py -q`
-- [ ] **Step 3: Implement `PeerAnswer` + `peer_ask` guards**
-- [ ] **Step 4: Write failing test for `await_next_reply`**
+- [x] **Step 2: Run to verify failure** — `uv run python -m pytest tests/test_peer_ask.py -q`
+- [x] **Step 3: Implement `PeerAnswer` + `peer_ask` guards**
+- [x] **Step 4: Write failing test for `await_next_reply`**
 
 ```python
 async def test_await_next_reply_returns_final_text(fake_session):
@@ -101,8 +101,8 @@ async def test_observer_detaches_after_one_reply(fake_session):
     # a second turn must not resolve the same future twice
 ```
 
-- [ ] **Step 5–7: Implement, verify green, commit**
-- [ ] **Step 8: Failing test — the source log is not appended to**
+- [x] **Step 5–7: Implement, verify green, commit**
+- [x] **Step 8: Failing test — the source log is not appended to**
 
 ```python
 async def test_source_transcript_untouched(tmp_project):
@@ -111,7 +111,7 @@ async def test_source_transcript_untouched(tmp_project):
     assert source_log_path.read_bytes() == before
 ```
 
-- [ ] **Step 9: `/peer` command + `render_peer_answer` + pane branch**
+- [x] **Step 9: `/peer` command + `render_peer_answer` + pane branch**
 
 Registration mirrors `/btw` (`commands/builtins/core.py:344`):
 
@@ -123,11 +123,11 @@ SlashCommand("peer", "ask an idle peer, from where you're standing",
                  Arg("prompt", required=False, greedy=True))))
 ```
 
-- [ ] **Step 10: Full suite green, commit**
+- [x] **Step 10: Full suite green, commit**
 
 ---
 
-### Task 2 (VS2): `@handle` sugar + palette
+### Task 2 (VS2): `@handle` sugar + palette — ✅ *shipped* (TUI gate outstanding, see Task 5)
 
 **Files:**
 - Modify: `src/aegis/commands/__init__.py` (`classify_input`, `complete`)
@@ -138,7 +138,7 @@ SlashCommand("peer", "ask an idle peer, from where you're standing",
 - Consumes: `Completion` (`commands/__init__.py:118`), `SessionInfo.state`
   (`mcp/bridge.py:8`), `bridge.list_sessions()`.
 
-- [ ] **Step 1: Failing tests for `classify_input`**
+- [x] **Step 1: Failing tests for `classify_input`**
 
 ```python
 def test_at_handle_rewrites_to_peer_command():
@@ -154,8 +154,14 @@ def test_at_with_no_question_still_routes():
     assert classify_input("@foo") == ("command", "/peer foo")
 ```
 
-- [ ] **Step 2–4: Implement, verify, widen the pane gate**
-- [ ] **Step 5: Failing tests for `@` completion**
+- [x] **Step 2–3: Implement `classify_input`, verify**
+- [ ] **Step 4: widen the pane gate** — `tui/pane.py:1361`
+      `startswith("/")` → `startswith(("/", "@"))`. **NOT DONE**: that file
+      is under `btw-rendering`'s exclusive claim while it restructures
+      `on_growing_input_submitted`; the change is handed over, not made.
+      Until it lands, `@foo hi` is delivered to the current agent as
+      literal text in the TUI (the web seam has no gate and already works).
+- [x] **Step 5: Failing tests for `@` completion**
 
 ```python
 def test_at_completes_live_handles_with_busy_detail(bridge):
@@ -164,11 +170,11 @@ def test_at_completes_live_handles_with_busy_detail(bridge):
     assert "busy" in items[1].detail        # a working peer is marked
 ```
 
-- [ ] **Step 6–8: Implement, verify green, commit**
+- [x] **Step 6–8: Implement, verify green, commit**
 
 ---
 
-### Task 3 (VS3): the teaser + `sender_operator_at` + the real prompt
+### Task 3 (VS3): the teaser + `sender_operator_at` + the real prompt — ✅ *shipped*
 
 **Files:**
 - Modify: `src/aegis/peer/__init__.py` (`compose`, teaser assembly)
@@ -182,7 +188,7 @@ def test_at_completes_live_handles_with_busy_detail(bridge):
   `SessionManager.get(handle).log_id`.
 - Produces: `sender_operator_at(handle) -> "operator@<handle>"`.
 
-- [ ] **Step 1: Failing test — the teaser costs no model call**
+- [x] **Step 1: Failing test — the teaser costs no model call**
 
 ```python
 async def test_teaser_makes_no_generate_call(mgr, spy_driver):
@@ -190,7 +196,7 @@ async def test_teaser_makes_no_generate_call(mgr, spy_driver):
     assert spy_driver.generate_calls == 0   # the whole cost argument
 ```
 
-- [ ] **Step 2: Failing test — the composed body carries place, not author**
+- [x] **Step 2: Failing test — the composed body carries place, not author**
 
 ```python
 def test_prompt_frames_the_operator_not_the_source_agent():
@@ -203,7 +209,7 @@ def test_header_is_carried_verbatim():
     assert w.header in compose(...)      # the legible-boundary property
 ```
 
-- [ ] **Step 3: Failing test — an unreadable log degrades, never fails**
+- [x] **Step 3: Failing test — an unreadable log degrades, never fails**
 
 ```python
 async def test_missing_transcript_sends_without_teaser(mgr_no_log):
@@ -211,11 +217,11 @@ async def test_missing_transcript_sends_without_teaser(mgr_no_log):
     assert a.ok and "no transcript" in a.header
 ```
 
-- [ ] **Step 4–6: Implement, verify green, commit**
+- [x] **Step 4–6: Implement, verify green, commit**
 
 ---
 
-### Task 4 (VS4): `aegis_read_peer` + `--cc`
+### Task 4 (VS4): `aegis_read_peer` + `--cc` — ✅ *shipped*
 
 **Files:**
 - Modify: `src/aegis/peer/__init__.py` (`read_peer`)
@@ -228,10 +234,10 @@ async def test_missing_transcript_sends_without_teaser(mgr_no_log):
 **Interfaces:**
 - Produces: `read_peer(handle, turns=12) -> {text, header, ok, error}`.
 
-- [ ] **Step 1: Failing test — `read_peer` windows a live peer's log**
-- [ ] **Step 2: Failing test — refuses a closed/unknown handle by name**
-- [ ] **Step 3: Implement + register the MCP tool, verify**
-- [ ] **Step 4: Failing tests for `--cc`**
+- [x] **Step 1: Failing test — `read_peer` windows a live peer's log**
+- [x] **Step 2: Failing test — refuses a closed/unknown handle by name**
+- [x] **Step 3: Implement + register the MCP tool, verify**
+- [x] **Step 4: Failing tests for `--cc`**
 
 ```python
 async def test_cc_delivers_answer_into_the_source(mgr):
@@ -243,12 +249,12 @@ async def test_bare_ask_does_not_deliver_to_source(mgr):
     assert delivered_to("alpha") == []
 ```
 
-- [ ] **Step 5: Bridge conformance across all three implementations**
-- [ ] **Step 6: Full suite green, commit**
+- [x] **Step 5: Bridge conformance across all three implementations**
+- [x] **Step 6: Full suite green, commit**
 
 ---
 
-### Task 5: docs + one live test
+### Task 5: docs + one live test — 🔶 *docs done; live test + TUI wiring outstanding*
 
 - [ ] Live test behind the `live` marker: real `claude` peer, real turn,
       answer captured, source log byte-identical afterwards.
