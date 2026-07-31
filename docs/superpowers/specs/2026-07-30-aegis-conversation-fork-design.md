@@ -150,6 +150,14 @@ Fork is refused, with the reason named, when:
   establishes the house pattern here: refuse, and list every unmet
   condition at once rather than one per attempt.
 
+  **Measured 2026-07-31 — this refusal is empirically earned, not just
+  argued.** `claude` appends each message as it is produced, so a live
+  session's tail is `assistant → tool_use` with no matching
+  `tool_result`. A fork inherits the dangling call and burns four turns
+  trying to reconcile it: **42.7s and $1.38 for `error_during_execution`
+  and no answer.** The counter-proposal — that a mid-turn fork branches
+  harmlessly from the last *completed* turn — was tested and is false.
+
 ### Forking a dead session
 
 Fork needs a `session_id`, not a live process — the same thing `resume`
@@ -174,7 +182,30 @@ context transfer becomes free in effort and expensive in tokens.
 
 Prompt caching softens it — the shared prefix should hit cache-read rates
 rather than full input — but "should" is doing work in that sentence and
-it needs measuring, not assuming. Two things follow:
+it needs measuring, not assuming.
+
+**Measured 2026-07-31: "should" was doing too much work.** A fork does
+**not** ride the parent's warm cache — it builds its own. A fork of a
+cleanly-ended mid-size conversation paid `cache_creation: 86,881` tokens,
+written at a *premium* over base input, on top of `cache_read: 215,775`:
+
+| probe | shape | latency | cost |
+|---|---|---|---|
+| fork of a clean session, primer + tool denial | 14.0s | **$0.99** |
+| cold one-shot, no fork, same primer | 15.0s | $0.43 |
+
+So: **~$1 per fork on a mid-size conversation, scaling with context.**
+Note the second row — the ~15s floor is *not* the fork. It is `claude`
+subprocess startup plus the workspace's `CLAUDE.md`, skills list, and tool
+schemas. Forking costs money, not time.
+
+This does not change the verdict for `/fork`: $1 to hand a peer an entire
+conversation is cheap, and you pay it deliberately and rarely. It did
+change the verdict for `/btw`, which needed to be fired without thinking —
+see `2026-07-31-aegis-btw-side-note-design.md`, where the same three
+probes moved it off forking entirely.
+
+Two things follow:
 
 - **VS1 records the number.** The fork's first `Result` carries
   `cost_usd` and `model_usage` (slice 5 of the driver-visibility arc);
@@ -251,5 +282,9 @@ lovelaice has a reason to.
   branch at an arbitrary point?** If arbitrary, "fork at turn N" becomes
   possible and the `Ctrl+R` surface gets considerably more interesting.
   Probe in VS1; do not design for it before the answer.
-- **Cached or not?** Measure the fork's first-turn input cost against the
-  parent's context size. Everything downstream depends on this number.
+- ~~**Cached or not?**~~ **Answered 2026-07-31: not cached — a fork builds
+  its own cache.** `cache_creation: 86,881` on top of
+  `cache_read: 215,775`; **~$1 per fork**, scaling with context. See
+  *The cost, stated plainly* above. This is the number group fan-out was
+  waiting on: "fork 8 ways" against a mid-size parent is ~$8 before any
+  work happens, so fan-out needs a cost gate, not just a runtime.
