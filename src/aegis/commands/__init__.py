@@ -10,7 +10,7 @@ See ``docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md``.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Awaitable, Callable
 
 from aegis.commands.args import Args, ArgError, ArgSpec, parse
@@ -108,8 +108,17 @@ def classify_input(text: str) -> "tuple[str, str]":
     is handled before this call and is not represented here."""
     if text.startswith("//"):
         return "message", text[1:]
+    if text.startswith("@@"):
+        return "message", text[1:]
     if text.startswith("/"):
         return "command", text
+    if text.startswith("@") and len(text) > 1 and not text[1].isspace():
+        # `@handle …` is sugar for `/peer handle …`. Routing it as a
+        # rewrite rather than a second input path is the whole trick: the
+        # dispatcher, the effect channel, the palette and the web seam
+        # carry it unchanged. Only a leading `@` addresses — `a@b.com`
+        # mid-line is prose, and so is a bare `@`.
+        return "command", "/peer " + text[1:]
     return "message", text
 
 
@@ -148,6 +157,19 @@ def complete(text: str, bridge: object) -> Completions:
     Empty items when ``text`` is not a slash command."""
     from aegis.commands.fuzzy import fuzzy_rank
 
+    if text.startswith("@@"):
+        return Completions()          # the literal-@ escape addresses nobody
+    if text.startswith("@"):
+        # Delegate to the `/peer` path so the handle completer, the fuzzy
+        # ranking and the usage hint are all the same code. Only the
+        # insert changes: `_accept_completion` (tui/pane.py:1337) replaces
+        # the entire input when it holds no space, so an `@`-token's
+        # insert has to carry its own `@` or the sigil is eaten.
+        inner = complete("/peer " + text[1:], bridge)
+        return Completions(
+            items=tuple(replace(c, insert="@" + c.insert)
+                        for c in inner.items),
+            hint=inner.hint)
     if not text.startswith("/"):
         return Completions()
     body = text[1:]
