@@ -119,11 +119,24 @@ So `cancel_note` is a template resolved against the command's parsed args:
 | command | `cancel_note` | rendered |
 |---|---|---|
 | `/btw` | `"cancelled"` (the default) | `btw · cancelled · 4.2s` |
-| `@peer` | `"stopped waiting — {target} is still working, go read its tab"` | `@nifty-naur · stopped waiting — nifty-naur is still working, go read its tab · 4.2s` |
+| `@peer` | `"stopped waiting — {handle}'s turn is still running, so go read its tab"` | `@beta · stopped waiting — beta's turn is still running, so go read its tab · 4.2s` |
 
-`@peer`'s timeout path already says this, so the wording transfers rather
-than being invented here. The elapsed time is appended by the pane in both
-cases, since that is the one fact the frontend actually owns.
+The `@peer` template is `aegis-at-mentions`' own wording, taken verbatim
+so the cancel path and the timeout path in `peer/__init__.py`'s `ask()`
+say the same thing. Two details in it are not incidental:
+
+- The placeholder is **`{handle}`**, the arg name in `@peer`'s registered
+  `ArgSpec`. My first draft wrote `{target}`, which would have resolved to
+  nothing and shipped a sentence with a hole in it. A `cancel_note`
+  template is only as good as its agreement with the command's own
+  `ArgSpec`, which is an argument for keeping the two in one file.
+- *"its turn is still running"*, not *"is still working"* — it names the
+  unit that actually survives the cancel. The peer's **turn** is the thing
+  that finishes and lands in its transcript whether or not anyone is
+  listening, and saying so is the whole reason this field exists.
+
+The elapsed time is appended by the pane in both cases, since that is the
+one fact the frontend actually owns.
 
 A single hardcoded cancel message would have shipped a false statement to
 the user on the second command that used the primitive. It is worth one
@@ -220,11 +233,42 @@ markdown for exactly the reason a side note does. Doing both at once is
 also simply less merge pain than two agents editing `render.py` in
 sequence to reach the same end state.
 
+### Markdown on the `ok` path only
+
+Both renderers branch on `ok`, and **only the success branch gets a
+`Markdown`**. The failure branch stays a tinted `Text`.
+
+This is not an optimisation. An error is not model prose — it is aegis
+speaking, in a fixed sentence, and it is the one line in the block that
+carries an action the operator has to take:
+
+> `beta is mid-turn. Wait for it to finish, or /enqueue the task instead.`
+
+Wrapping that in `Markdown` would strip its `colors.error` tint, because
+Rich's `Markdown` imposes its own styling — the same property that makes
+it right for the answer makes it wrong here. The failure line has to stay
+visibly a failure, and the alternative it names has to stay readable.
+
+Nothing else about the error paths changes.
+
 ### Test fallout
 
 Four tests at `tests/test_btw_command.py:129-153` assert on
-`render_side_note(...).plain`. A `Group` has no `.plain`, so they move to
-rendering through a `Console` and asserting on the captured output.
+`render_side_note(...).plain`, and one at `tests/test_peer_command.py:99`
+(`test_render_peer_answer_leads_with_the_target`) asserts on
+`render_peer_answer(...).plain`. A `Group` has no `.plain`, so all five
+are converted **in the same commit as the renderer change** — a red suite
+handed to another agent is worse than no change at all.
+
+The peer test's intent is preserved rather than transliterated. Its real
+assertion is `startswith("@beta ")`: the block must **lead with the
+target**, because in a pane full of transient blocks the first token is
+how you tell "beta answered this" from "this is my own agent talking."
+Since the target now lives in the header renderable of the `Group`, the
+converted test asserts against **that header directly** — more precise
+than the original and less brittle than string-matching a rendered frame.
+The weaker half (`"green" in text`, i.e. the answer survived rendering)
+converts to whatever reads cleanly.
 
 This is a strict improvement and worth saying out loud: `.plain` asserts
 on a string the renderer happened to build, and would survive the
