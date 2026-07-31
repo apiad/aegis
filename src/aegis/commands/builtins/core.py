@@ -229,6 +229,42 @@ async def _btw(ctx: CommandContext, args) -> CommandResult:
                          effect={"kind": "side_note", "note": asdict(note)})
 
 
+def _peer_targets(bridge) -> list:
+    """Palette completer for a peer handle.
+
+    Busy peers are marked rather than hidden: a busy target is refused, so
+    the constraint is worth seeing at type-time instead of hitting it as a
+    rejection at send-time.
+    """
+    return [(s.handle,
+             f"{s.agent_slug} · busy" if s.state != "ready" else s.agent_slug)
+            for s in bridge.list_sessions()]
+
+
+async def _peer(ctx: CommandContext, args) -> CommandResult:
+    """Ask an idle peer a question, from where you're standing.
+
+    Legal while *this* pane is mid-turn — the guard reads the target, and
+    spending a long turn's dead time on an idle peer is the point.
+    """
+    target = args.get("handle")
+    prompt = args.get("prompt")
+    if not target:
+        return CommandResult(False, "usage: /peer <handle> <question>",
+                             "which peer?")
+    if not prompt:
+        return CommandResult(False, "usage: /peer <handle> <question>",
+                             "a peer ask with no question is a typo")
+    answer = await ctx.bridge.peer_ask(ctx.handle, target, prompt)
+    if not answer.ok:
+        return CommandResult(False, f"@{target} could not answer",
+                             answer.error or "no answer")
+    from dataclasses import asdict
+    return CommandResult(True, answer.answer, answer.footer,
+                         effect={"kind": "peer_answer",
+                                 "answer": asdict(answer)})
+
+
 async def _queue(ctx: CommandContext, args) -> CommandResult:
     sub = args.get("subverb")
     if sub is None:                       # bare /queues → list
@@ -346,6 +382,13 @@ for _cmd in (
                  spec=ArgSpec(
                      positionals=(
                          Arg("prompt", required=False, greedy=True),))),
+    SlashCommand("peer", "ask an idle peer, from where you're standing",
+                 "/peer <handle> <question>", _peer,
+                 spec=ArgSpec(
+                     positionals=(
+                         Arg("handle", required=False,
+                             completer=_peer_targets),
+                         Arg("prompt", required=False, greedy=True)))),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(

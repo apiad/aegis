@@ -106,6 +106,20 @@ class AppBridge(Protocol):
         """
         ...
 
+    async def peer_ask(self, from_handle: str, target: str, prompt: str,
+                       *, cc: bool = False):
+        """Ask an **idle** peer a question, from where the operator stands.
+
+        The guard reads the target and never the source: asking an idle
+        peer while your own tab is mid-turn is the point of the gesture,
+        not an edge case. A busy target is refused rather than
+        interrupted — it is already producing the value the ask was after.
+
+        Best-effort by contract: returns a ``PeerAnswer`` whose ``ok`` is
+        False on any failure rather than raising.
+        """
+        ...
+
     async def close(self, handle: str) -> None: ...
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         """Cut the handle's live turn. ``drain=True`` (the default) then

@@ -271,6 +271,26 @@ def render_side_note(note, colors) -> Text:
     return line
 
 
+def render_peer_answer(answer, colors) -> Text:
+    """Visible block for an `@peer` answer.
+
+    Transient in *this* pane, exactly as a side note is — it lands in
+    ``_history`` and is never appended to this session's log, so the
+    agent you are sitting with neither sees it nor pays for it. The same
+    answer is a real turn in the peer's own transcript, which is where it
+    belongs: a log holding a question with no answer would corrupt every
+    window later assembled from it.
+    """
+    tint = colors.error if not answer.ok else colors.accent
+    line = Text()
+    line.append(f"@{answer.target or '?'} ", style=f"bold italic {tint}")
+    line.append(answer.answer if answer.ok else (answer.error or "no answer"),
+                style=colors.ink if answer.ok else tint)
+    if answer.footer:
+        line.append(f"\n  {answer.footer}", style=colors.muted)
+    return line
+
+
 def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
     """Visible block for an incoming inbox message.
 

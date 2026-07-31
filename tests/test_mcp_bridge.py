@@ -33,6 +33,8 @@ def test_appbridge_is_runtime_checkable_protocol():
                        model=None, effort=None, forked_by=None):
             return "h"
         async def side_note(self, handle, prompt): return None
+        async def peer_ask(self, from_handle, target, prompt, *, cc=False):
+            return None
         async def close(self, handle): return None
         async def interrupt(self, handle): return None
         async def rename_handle(self, old, new): return {"ok": True}
@@ -69,6 +71,8 @@ def test_appbridge_requires_full_surface():
                        model=None, effort=None, forked_by=None):
             return "h"
         async def side_note(self, handle, prompt): return None
+        async def peer_ask(self, from_handle, target, prompt, *, cc=False):
+            return None
         async def close(self, handle): return None
         async def interrupt(self, handle): return None
         async def rename_handle(self, old, new): return {"ok": True}

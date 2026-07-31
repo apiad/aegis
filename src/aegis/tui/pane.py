@@ -1391,6 +1391,22 @@ class ConversationPane(Widget):
                         render_side_note(note, self._palette),
                         f"btw: {note.answer}\n{note.footer}".strip())
                     return
+                elif eff.get("kind") == "peer_answer":
+                    # An @peer answer is transient *here* and real *there*:
+                    # it lands in this pane's _history and is never
+                    # appended to this session's log, so the agent you are
+                    # sitting with neither sees it nor pays for it. The
+                    # same answer is a genuine turn in the peer's own
+                    # transcript.
+                    from aegis.peer import PeerAnswer
+                    from aegis.render import render_peer_answer
+                    answer = PeerAnswer(**eff["answer"])
+                    self._flush_streaming()
+                    self._mount_block(
+                        render_peer_answer(answer, self._palette),
+                        f"@{answer.target}: {answer.answer}\n"
+                        f"{answer.footer}".strip())
+                    return
                 else:
                     self._flush_streaming()
                     self._mount_block(

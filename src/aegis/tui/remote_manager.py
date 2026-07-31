@@ -243,6 +243,14 @@ class RemoteSessionManager:
         # needs an RPC, not a local read of a log this host does not have.
         raise RemoteUnsupportedError(f"side_note: {_MSG}")
 
+    async def peer_ask(self, from_handle: str, target: str, prompt: str,
+                       *, cc: bool = False):
+        # The peer's session lives on the server, not here — its turn has
+        # to be armed and awaited where the session actually runs, so a
+        # remote @peer needs an RPC, not a local deliver to a session this
+        # host does not hold.
+        raise RemoteUnsupportedError(f"peer_ask: {_MSG}")
+
     async def close(self, handle: str) -> None:
         await self._ws.rpc("close_session", {"handle": handle})
         self._sessions.pop(handle, None)

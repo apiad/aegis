@@ -1459,6 +1459,22 @@ class AegisApp(App):
             agent=pane._agent, agents=self._agents,
             cwd=str(pane._core.project_root))
 
+    async def peer_ask(self, from_handle: str, target: str, prompt: str,
+                       *, cc: bool = False):
+        """AppBridge-shaped: ask an idle peer, from where you're standing."""
+        from aegis.peer import ask
+        source = next((p for p in self._panes
+                       if isinstance(p, ConversationPane)
+                       and p.handle == from_handle), None)
+        target_pane = next((p for p in self._panes
+                            if isinstance(p, ConversationPane)
+                            and p.handle == target), None)
+        return await ask(
+            from_handle=from_handle, target=target,
+            source_slug=getattr(source, "agent_slug", "") if source else "",
+            target_session=target_pane._core if target_pane else None,
+            prompt=prompt)
+
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
         pane = next((p for p in self._panes
