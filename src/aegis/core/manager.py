@@ -269,6 +269,110 @@ class SessionManager:
             prompt, state_dir=state_dir, log_id=s.log_id, agent=s.agent,
             agents=self._agents, cwd=str(s.project_root))
 
+    async def session_send_and_await(self, *, handle: str, prompt: str,
+                                     workflow_id: str = "",
+                                     workflow_name: str = "",
+                                     sender: str | None = None,
+                                     timeout: float | None = None,
+                                     require_landed: bool = False,
+                                     sink: list | None = None) -> str:
+        """Deliver ``prompt`` to a live session and await its next reply.
+
+        The keyword shape is dictated by ``workflow/runner.py``, which has
+        reached for this method on the bridge via ``getattr(…, None)``
+        since the workflow scaffold landed — and found nothing, so
+        ``WorkflowEngine.send()`` has been silently falling through to
+        fire-and-forget and returning ``""``. This is that method.
+
+        Arm before delivering: ``deliver`` starts the turn synchronously
+        when the target is idle.
+        """
+        import asyncio
+
+        from aegis.peer import PeerBusy
+        from aegis.queue.schema import InboxMessage, now_iso, sender_user
+
+        s = self.get(handle)
+        if s is None:
+            raise ValueError(f"unknown session: {handle}")
+        if sender is None:
+            sender = (f"workflow:{workflow_name}" if workflow_name
+                      else sender_user())
+        fut = s.capture_next_reply(sink=sink)
+        msg = InboxMessage(sender=sender, timestamp=now_iso(), body=prompt)
+        receipt = await s.deliver(msg)
+        if require_landed and receipt.disposition != "landed":
+            # The idle check and the delivery are two moments; the target
+            # can go busy in between. A queued message resolves at the
+            # peer's next turn boundary, so waiting on it does not fail —
+            # it hangs for the whole timeout. Withdraw and refuse instead.
+            fut.cancel()
+            s.cancel_pending(msg)
+            raise PeerBusy(handle)
+        if timeout is None:
+            return await fut
+        return await asyncio.wait_for(fut, timeout)
+
+    async def peer_ask(self, from_handle: str, target: str, prompt: str,
+                       *, cc: bool = False):
+        """AppBridge-shaped: ask an idle peer, from where you're standing.
+
+        Best-effort by contract, exactly as ``side_note`` is — every
+        failure comes back as a ``PeerAnswer`` with ``ok=False`` and a
+        reason. A side question must never be able to disturb the
+        conversation it sits beside.
+        """
+        import asyncio
+        import time
+
+        from aegis.peer import (PEER_ASK_TIMEOUT_S, PeerAnswer, PeerBusy,
+                                compose, refusal)
+        from aegis.tui.state import AgentState
+
+        s = self.get(target)
+        ready = s is not None and s.state is not AgentState.working
+        why = refusal(from_handle=from_handle, target=target,
+                      session=s, ready=ready)
+        if why:
+            return PeerAnswer(target=target, error=why)
+
+        source = self.get(from_handle)
+        body = compose(source=from_handle,
+                       slug=getattr(source, "agent_slug", "") or "unknown",
+                       prompt=prompt)
+        sink: list = []
+        t0 = time.monotonic()
+        try:
+            text = await self.session_send_and_await(
+                handle=target, prompt=body,
+                sender=self._peer_sender(from_handle),
+                timeout=PEER_ASK_TIMEOUT_S, require_landed=True, sink=sink)
+        except PeerBusy:
+            return PeerAnswer(
+                target=target,
+                error=f"{target} went mid-turn before the ask landed. Wait "
+                      f"for it to finish, or /enqueue the task instead.")
+        except asyncio.TimeoutError:
+            return PeerAnswer(
+                target=target,
+                error=f"{target} did not answer within "
+                      f"{PEER_ASK_TIMEOUT_S:.0f}s — its turn is still "
+                      f"running, so go read its tab")
+        except Exception as e:                                # noqa: BLE001
+            return PeerAnswer(target=target,
+                              error=f"{type(e).__name__}: {e}")
+        res = sink[0] if sink else None
+        return PeerAnswer(
+            answer=text, target=target, ok=True,
+            model=getattr(getattr(s, "agent", None), "model", "") or "",
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            cost_usd=float(getattr(res, "cost_usd", 0.0) or 0.0))
+
+    @staticmethod
+    def _peer_sender(from_handle: str) -> str:
+        from aegis.queue.schema import sender_operator_at
+        return sender_operator_at(from_handle)
+
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
             self._mru.remove(handle)

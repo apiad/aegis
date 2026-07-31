@@ -166,6 +166,57 @@ class AgentSession:
         """Subscribe an additional close callback. Fires after on_close."""
         self._extra_close_observers.append(cb)
 
+    def capture_next_reply(self, *, sink: list | None = None):
+        """Arm a one-shot capture of this session's next complete reply.
+
+        Returns a future resolving to the assistant text of the next turn,
+        accumulated across streamed chunks and terminated by ``Result``.
+        Subagent narration (anything carrying a ``parent_tool_use_id``) is
+        left out: a peer that runs a ``Task`` must not fold its subagent's
+        commentary into the answer the operator reads.
+
+        **Arming is synchronous** and that matters — delivering to an idle
+        session starts its turn inside ``deliver``, so a caller that armed
+        from a task instead would race the very turn it wants to capture.
+
+        ``sink``, when given, receives the terminating ``Result`` — the
+        caller's way to learn what the turn cost without a second observer.
+        """
+        import asyncio
+
+        from aegis.events import AssistantText, Result
+
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        chunks: list[str] = []
+
+        def _obs(_sess, ev) -> None:
+            if fut.done():
+                return
+            if isinstance(ev, AssistantText):
+                if getattr(ev, "parent_tool_use_id", None) is None:
+                    chunks.append(ev.text)
+            elif isinstance(ev, Result):
+                if sink is not None:
+                    sink.append(ev)
+                fut.set_result("".join(chunks))
+                # Detach here rather than in a finally: the waiter may be
+                # cancelled or timed out, and a leaked observer on a
+                # long-lived session accumulates for the rest of its life.
+                self.remove_event_observer(_obs)
+
+        self.add_event_observer(_obs)
+        fut.add_done_callback(
+            lambda _f: self.remove_event_observer(_obs))
+        return fut
+
+    def remove_event_observer(self, cb: EventCb) -> None:
+        """Unsubscribe an event callback. Idempotent — a one-shot observer
+        that already detached itself must not raise on a second removal."""
+        try:
+            self._extra_event_observers.remove(cb)
+        except ValueError:
+            pass
+
     def _emit_close(self, reason: str) -> None:
         if self.on_close is not None:
             try:

@@ -24,6 +24,17 @@ def sender_agent(handle: str) -> str:
     return f"agent:{handle}"
 
 
+def sender_operator_at(handle: str) -> str:
+    """Sender tag for an ``@peer`` ask: the **operator** asked, while
+    standing inside another conversation.
+
+    Provenance of place, not author. Tagged ``agent:<handle>`` instead, the
+    peer reads it as peer-to-peer delegation and skews autonomous — it goes
+    and *does* things rather than answering.
+    """
+    return f"operator@{handle}"
+
+
 def sender_monitor(name: str) -> str:
     """Sender tag for an ``aegis_monitor`` completion/failure callback."""
     return f"monitor:{name}"
