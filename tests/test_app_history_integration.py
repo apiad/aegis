@@ -303,3 +303,56 @@ async def test_rename_keeps_the_log_and_relabels_it(tmp_path: Path,
         # And the tab roster agrees with the transcript on disk.
         tab = _pane_to_tab(pane, order=0)
         assert (tab.handle, tab.log_id) == ("lucid-river", log_id)
+
+
+@pytest.mark.asyncio
+async def test_history_resume_reads_the_transcript_off_the_event_loop(
+        tmp_path: Path, monkeypatch):
+    """Reopening a session from Ctrl+R reads and decodes its whole transcript.
+    On a 24MB / 18k-line log that is ~500ms, and on the event loop it froze
+    the whole UI — the same reason list_history was moved to a thread."""
+    import threading
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+    import aegis.tui.app as app_mod
+    from aegis.events import SessionMeta, SystemInit
+    from aegis.state.session_log import append_event, append_meta
+
+    monkeypatch.chdir(tmp_path)
+    sd = tmp_path / ".aegis" / "state"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    log_id = "20260729T120000000000Z-prior"
+    append_meta(sd, log_id, SessionMeta(
+        handle="prior", profile="sonnet", provider="claude-code",
+        cwd=str(tmp_path), created_at=now, origin="tui", preview="prior work"))
+    append_event(sd, log_id, SystemInit(session_id="upstream-1"))
+
+    loop_thread = threading.current_thread()
+    ran_on = []
+    real = app_mod._safe_replay
+
+    def spy(*a, **kw):
+        ran_on.append(threading.current_thread())
+        return real(*a, **kw)
+
+    monkeypatch.setattr(app_mod, "_safe_replay", spy)
+
+    fake_driver = MagicMock()
+    fake_driver.supports_resume = True
+    fake_driver.resume = MagicMock(return_value=FakeSession())
+
+    app = AegisApp({"sonnet": _agent()}, "sonnet", _factory, FakeMCP(),
+                   drivers={"claude-code": fake_driver})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+r")
+        await pilot.pause()
+        for ch in "prior":
+            await pilot.press(ch)
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+    assert ran_on, "replay never ran"
+    assert loop_thread not in ran_on, (
+        "transcript read blocked the event loop")

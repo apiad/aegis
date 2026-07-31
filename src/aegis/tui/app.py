@@ -497,6 +497,8 @@ class AegisApp(App):
         if not ws.tabs:
             return False
 
+        import asyncio
+
         from aegis.tui.resume_plan import plan_resume
 
         plan = plan_resume(ws, self._agents, self._drivers)
@@ -516,7 +518,10 @@ class AegisApp(App):
             except Exception as e:  # noqa: BLE001
                 failures.append((tab.handle, str(e)))
                 continue
-            replay = _safe_replay(self._state_dir, tab.log_id or tab.handle)
+            # Off the loop, as in _resume_from_history: at boot this runs
+            # once per restored tab, so the freezes add up.
+            replay = await asyncio.to_thread(
+                _safe_replay, self._state_dir, tab.log_id or tab.handle)
             pane = ConversationPane(
                 session, agent, tab.profile, tab.handle, self._palette,
                 digest=self.queue_digest, monitor_manager=self.monitor_manager,
@@ -940,6 +945,8 @@ class AegisApp(App):
     async def _resume_from_history(self, row) -> None:
         """Reopen a closed session with full conversation continuity, routing
         through the same plan_resume + drv.resume path the boot resume uses."""
+        import asyncio
+
         from aegis.state.workspace import Workspace, WorkspaceTab
         from aegis.tui.resume_plan import plan_resume
 
@@ -969,7 +976,11 @@ class AegisApp(App):
         except Exception as e:  # noqa: BLE001
             self.notify(f"resume failed: {e}", severity="error")
             return
-        replay = _safe_replay(self._state_dir, tab.log_id or tab.handle)
+        # Off the event loop: this reads and decodes the whole transcript,
+        # ~500ms on a 24MB log, and here it froze the UI mid-reopen. Same
+        # reason the history scan above runs in a thread.
+        replay = await asyncio.to_thread(
+            _safe_replay, self._state_dir, tab.log_id or tab.handle)
         pane = ConversationPane(
             session, agent, tab.profile, tab.handle, self._palette,
             digest=self.queue_digest, monitor_manager=self.monitor_manager,
@@ -1411,6 +1422,25 @@ class AegisApp(App):
                                 model=model, effort=effort, prompt=prompt)
         return sess.handle
 
+    def _fork_capability(self, harness: str) -> bool:
+        """Whether the driver behind ``harness`` can branch a session.
+        Reads the live driver registry the app was built with."""
+        drv = self._drivers.get(harness)
+        return bool(getattr(drv, "supports_fork", False))
+
+    async def fork(self, target: str, *,
+                   prompt: str | None = None,
+                   slug: str | None = None,
+                   model: str | None = None,
+                   effort: str | None = None,
+                   forked_by: str | None = None) -> str:
+        """AppBridge-shaped: branch a pane's conversation into a new tab."""
+        sm_adapter = _SessionManagerAdapter(self)
+        sess = sm_adapter.fork(target, prompt=prompt, handle=slug,
+                               model=model, effort=effort)
+        sess.spawned_by = forked_by
+        return sess.handle
+
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
         pane = next((p for p in self._panes
@@ -1703,6 +1733,50 @@ class _SessionManagerAdapter:
         self._app.run_worker(
             self._mount_and_kick(pane, opening_prompt),
             group=f"queue-spawn-{h}", exclusive=False)
+        return pane._core
+
+    def fork(self, target: str, *,
+             prompt: str | None = None,
+             handle: str | None = None,
+             model: str | None = None,
+             effort: str | None = None):
+        """Branch ``target``'s pane into a new one sharing its conversation.
+
+        Same construction as ``spawn`` — the difference is ``fork_from``,
+        which sends the factory down the driver's fork() path instead of
+        session(). The parent pane is not touched.
+        """
+        from aegis.core.fork_guard import facts_for, refuse_reasons
+        from aegis.core.manager import _overlay_agent
+
+        parent = next((p for p in self._app._panes
+                       if getattr(p, "handle", None) == target), None)
+        core = getattr(parent, "_core", None)
+        facts = facts_for(core, capability=self._app._fork_capability)
+        reasons = refuse_reasons(facts, target=target)
+        if reasons:
+            raise ValueError("; ".join(reasons))
+
+        slug = parent._core.agent_slug
+        agent = _overlay_agent(self._app._agents[slug], model=model,
+                               effort=effort, prompt=None)
+        h = handle or generate_name({p.handle for p in self._app._panes})
+        # Snapshot the parent's session id now, not when the fork is first
+        # typed into: a no-prompt fork must branch from where it forked.
+        sid = core.session_id
+        pane = ConversationPane(
+            self._app._make_session(agent, self._app._mcp.url, h,
+                                    fork_from=sid),
+            agent, slug, h, self._app._palette,
+            digest=self._app.queue_digest,
+            state_dir_path=self._app._state_dir)
+        pane._core.forked_from = {"handle": target, "log_id": core.log_id,
+                                  "session_id": sid}
+        self._app._panes.append(pane)
+        self._app.inbox_router.bind_session(h, pane._core)
+        self._app.run_worker(
+            self._mount_and_kick(pane, prompt),
+            group=f"fork-{h}", exclusive=False)
         return pane._core
 
     async def _mount_and_kick(self, pane: ConversationPane,
