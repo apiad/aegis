@@ -1,7 +1,7 @@
 ---
 title: Conversation fork — a worker that already knows
 date: 2026-07-30
-status: design
+status: VS1 implemented 2026-07-31 (a91e501, f6e6a97) · VS2-3 open
 ---
 
 # Conversation fork — a worker that already knows
@@ -248,11 +248,32 @@ lovelaice has a reason to.
 
 ## Slices
 
-1. **`fork` on the driver seam + `aegis_fork`.** `supports_fork`, the
-   `fork()` default-raises, the `claude-sdk` implementation, the MCP verb,
-   the three refusals, `forked_from` provenance, the TUI banner. Done when
-   a fork of a live tab answers a question using a file the parent read
-   and the fork never did.
+1. ~~**`fork` on the driver seam + `aegis_fork`.**~~ **Landed 2026-07-31**
+   (`a91e501` engine, `f6e6a97` surface). `supports_fork`, the
+   `fork()` default-raises, `ClaudeDriver.fork()`, `core/fork_guard.py`,
+   `SessionManager.fork()`, `AegisApp.fork()`, the `/fork` command, the
+   `aegis_fork` verb, `forked_from` provenance.
+
+   **Two departures from this spec, both earned:**
+
+   - **`aegis_fork` takes a `target_handle`.** The surface above
+     (`aegis_fork(from_handle, prompt)`) has the caller fork *itself* —
+     but an agent calling an MCP tool is mid-turn by construction, its
+     own tail being the `tool_use` awaiting that call's result. So the
+     mid-turn refusal would have made self-fork *always* fail. Self-fork
+     lives in the `/fork` slash command instead, which aegis serves at a
+     turn boundary with the pane idle. MCP forks an idle *peer*, and
+     refuses `target == from` with a message pointing at `/fork`.
+   - **`forked_from` is in-memory**, alongside `spawned_by`, rather than
+     persisted. Making it survive a restart means touching `SessionMeta`
+     and the codec — deferred to VS2 rather than raced against a
+     concurrent session editing those same files.
+
+   **Not yet verified end to end.** The argv aegis builds is exactly the
+   shape probed against real `claude` (probe D: 14.0s, context inherited,
+   correct answer), and the wiring is unit-tested — but no fork has been
+   driven through a live pane, because the running `aegis serve` predates
+   this code. First restart proves it or doesn't.
 2. **Fork from history.** `Ctrl+R` offers fork beside reopen. Done when a
    closed conversation branches.
 3. *(separate spec)* group fan-out, once the cost number exists.

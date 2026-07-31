@@ -71,7 +71,20 @@ Prior art: `pingdotgg/t3code` does exactly this in TypeScript
   lovelaice bug fixed in `449ebbb`. Gate on a YAML-declared agent that spawns,
   not a unit test of the driver class.
 
-### Conversation fork *(specced 2026-07-30, no plan yet)*
+### Conversation fork *(VS1 landed 2026-07-31 — `a91e501`, `f6e6a97`)*
+
+**`/fork [prompt]` works; `aegis_fork(target_handle, …)` forks an idle peer.**
+Self-fork is the slash command's job, not MCP's — an agent calling a tool is
+mid-turn by construction, and a mid-turn fork is torn (probe A: 42.7s, $1.38,
+no answer). Remaining: VS2 (persist `forked_from`, fork-from-history) and
+group fan-out, now gated on a cost number that exists.
+
+**The cost question is answered: ~$1 per fork.** A fork does not inherit the
+parent's warm cache, it builds its own — `cache_creation: 86,881` on top of
+`cache_read: 215,775` on a mid-size conversation, scaling with context. So
+"fork 8 ways" is ~$8 before any work happens: fan-out needs a cost gate, not
+just a runtime. The ~15s floor is `claude` startup, not the fork.
+
 
 A forked agent inherits the parent's **entire conversation** and continues
 under a new handle. This retires the workaround baked into the MCP briefing —
@@ -93,12 +106,9 @@ existing `_overlay_agent`. Forking a *closed* session works too — it needs a
 `session_id`, not a live process — so `Ctrl+R` gains fork-beside-reopen.
 
 - Spec: `docs/superpowers/specs/2026-07-30-aegis-conversation-fork-design.md`
-- Plan: *not yet drafted — VS1 is the driver seam + `aegis_fork` + three
-  refusals*
-- **The cost is the open question.** A fork's first turn pays the whole
-  parent conversation as input tokens; N forks pay it N times. Caching should
-  soften it to cache-read rates — unmeasured. VS1 logs the number, and group
-  fan-out is deferred until it exists.
+- **Not yet driven through a live pane** — the running `aegis serve` predates
+  the code. The argv is verified to be the shape probed against real `claude`,
+  and the wiring is unit-tested; the first restart is the real proof.
 - Deferred to their own specs: group fan-out (`GroupRuntime.wait_all` needs an
   open broadcast, and `broadcast()` sends one objective to all members — no
   per-member angle, so fan-out needs a design decision); worktree isolation
