@@ -1127,6 +1127,88 @@ class ConversationPane(Widget):
                 Text(marker, style=self._palette.muted, justify="center"),
                 marker)
 
+    def _put_block(self, renderable: RenderableType, payload: str,
+                   *, at_idx: int | None = None) -> None:
+        """Mount a new block, or rewrite the block at ``at_idx`` in place.
+
+        The deferred path needs the second: its placeholder was mounted
+        when the command started, and the result must land *there* rather
+        than at the tail — so a side note stays where you asked it while
+        the agent's output streams past underneath. Mirrors what
+        ``_render_tool_block`` does when a tool call's result arrives.
+        """
+        if at_idx is None:
+            self._mount_block(renderable, payload)
+            return
+        rec = self._history[at_idx]
+        rec.renderable = renderable
+        rec.payload = payload
+        pos = at_idx - self._window_start
+        if 0 <= pos < len(self._mounted_blocks):
+            self._mounted_blocks[pos].update_content(renderable, payload)
+            if self._stick_to_bottom:
+                self._transcript().scroll_end(animate=False)
+
+    def _apply_command_result(self, result, width: int,
+                              *, at_idx: int | None = None) -> str | None:
+        """Render one command result into the transcript.
+
+        Extracted from ``on_growing_input_submitted`` because deferring
+        splits the call into two sites — inline and worker-completion —
+        and a duplicated chain would drift. The first casualty would be
+        ``peer_answer``, which has to keep working on both paths while
+        ``@peer`` flips ``deferred`` beneath it.
+
+        Returns the text to deliver to the agent for a ``deliver`` effect,
+        else None. ``deliver`` is the one branch that cannot be deferred,
+        since it produces a message to send rather than a block to mount;
+        prompt commands are not deferred, so this costs nothing.
+        """
+        eff = result.effect or {}
+        kind = eff.get("kind")
+        if kind == "deliver":
+            # Prompt command: its expansion is delivered to the agent as a
+            # normal user message (rendered as a user line by
+            # _on_core_dispatch), not a command-result block.
+            return eff["text"]
+        if kind == "side_note":
+            # A /btw answer gets its own treatment — it is neither a user
+            # line nor agent output. It lands in _history (so scrolling
+            # keeps it) and is never appended to the session log, so it
+            # does not survive a reload and never enters the window a
+            # later /btw assembles.
+            from aegis.btw import SideNote
+            from aegis.render import render_side_note
+            note = SideNote(**eff["note"])
+            self._flush_streaming()
+            self._put_block(render_side_note(note, self._palette),
+                            f"btw: {note.answer}\n{note.footer}".strip(),
+                            at_idx=at_idx)
+            return None
+        if kind == "peer_answer":
+            # An @peer answer is transient *here* and real *there*: it
+            # lands in this pane's _history and is never appended to this
+            # session's log, so the agent you are sitting with neither
+            # sees it nor pays for it. The same answer is a genuine turn
+            # in the peer's own transcript.
+            from aegis.peer import PeerAnswer
+            from aegis.render import render_peer_answer
+            answer = PeerAnswer(**eff["answer"])
+            self._flush_streaming()
+            self._put_block(
+                render_peer_answer(answer, self._palette),
+                f"@{answer.target}: {answer.answer}\n"
+                f"{answer.footer}".strip(), at_idx=at_idx)
+            return None
+        from aegis.render import render_command_block
+        self._flush_streaming()
+        self._put_block(render_command_block(result, self._palette, width),
+                        f"{result.title}\n{result.body}".strip(),
+                        at_idx=at_idx)
+        if result.effect:
+            self._apply_command_effect(result.effect)
+        return None
+
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
                      *, tight: bool = False,
@@ -1373,57 +1455,16 @@ class ConversationPane(Widget):
             # regression here is TUI-only and silent.
             from aegis.commands import (
                 CommandContext, classify_input, dispatch)
-            from aegis.render import render_command_block
             kind, payload = classify_input(text)
             if kind == "command":
                 width = self._transcript().size.width or 80
                 result = await dispatch(
                     payload, CommandContext(bridge=self.app,
                                             handle=self.handle))
-                eff = result.effect or {}
-                if eff.get("kind") == "deliver":
-                    # Prompt command: its expansion is delivered to the agent as
-                    # a normal user message (rendered as a user line by
-                    # _on_core_dispatch), not a command-result block.
-                    text = eff["text"]
-                elif eff.get("kind") == "side_note":
-                    # A /btw answer gets its own treatment — it is neither
-                    # a user line nor agent output. It lands in _history
-                    # (so scrolling keeps it) and is never appended to the
-                    # session log, so it does not survive a reload and
-                    # never enters the window a later /btw assembles.
-                    from aegis.btw import SideNote
-                    from aegis.render import render_side_note
-                    note = SideNote(**eff["note"])
-                    self._flush_streaming()
-                    self._mount_block(
-                        render_side_note(note, self._palette),
-                        f"btw: {note.answer}\n{note.footer}".strip())
+                delivered = self._apply_command_result(result, width)
+                if delivered is None:
                     return
-                elif eff.get("kind") == "peer_answer":
-                    # An @peer answer is transient *here* and real *there*:
-                    # it lands in this pane's _history and is never
-                    # appended to this session's log, so the agent you are
-                    # sitting with neither sees it nor pays for it. The
-                    # same answer is a genuine turn in the peer's own
-                    # transcript.
-                    from aegis.peer import PeerAnswer
-                    from aegis.render import render_peer_answer
-                    answer = PeerAnswer(**eff["answer"])
-                    self._flush_streaming()
-                    self._mount_block(
-                        render_peer_answer(answer, self._palette),
-                        f"@{answer.target}: {answer.answer}\n"
-                        f"{answer.footer}".strip())
-                    return
-                else:
-                    self._flush_streaming()
-                    self._mount_block(
-                        render_command_block(result, self._palette, width),
-                        f"{result.title}\n{result.body}".strip())
-                    if result.effect:
-                        self._apply_command_effect(result.effect)
-                    return
+                text = delivered
             else:
                 text = payload   # "//foo" → deliver "/foo" as a normal message
         # Every text-box message flows through the one inbox queue. When

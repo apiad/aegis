@@ -104,3 +104,101 @@ def test_a_template_naming_an_unknown_key_falls_back_intact():
             "stopped waiting — {nosuchkey} is busy")
     finally:
         REGISTRY.pop("typo", None)
+
+
+# ---------- the effect chain, callable from two places -------------------
+
+class _FakePane:
+    """The three `ConversationPane` methods `_apply_command_result` touches,
+    recorded rather than mounted. Keeps the chain testable without a running
+    Textual app."""
+
+    def __init__(self):
+        from aegis.tui.themes import INK, aegis_colors
+        self.blocks: list[tuple[object, str, object]] = []
+        self.effects: list[dict] = []
+        self._palette = aegis_colors(INK)
+        self.flushed = 0
+
+    def _flush_streaming(self):
+        self.flushed += 1
+
+    def _put_block(self, renderable, payload, *, at_idx=None):
+        self.blocks.append((renderable, payload, at_idx))
+
+    def _apply_command_effect(self, effect):
+        self.effects.append(effect)
+
+
+def _apply(pane, result, width=80, at_idx=None):
+    from aegis.tui.pane import ConversationPane
+    return ConversationPane._apply_command_result(
+        pane, result, width, at_idx=at_idx)
+
+
+def _side_note_result(answer="core/manager.py"):
+    from dataclasses import asdict
+    from aegis.btw import SideNote
+    from aegis.commands import CommandResult
+    note = SideNote(answer=answer, ok=True, model="haiku")
+    return CommandResult(True, note.answer, "",
+                         effect={"kind": "side_note", "note": asdict(note)})
+
+
+def test_a_side_note_effect_mounts_a_side_note_block():
+    pane = _FakePane()
+    out = _apply(pane, _side_note_result())
+    assert out is None
+    assert len(pane.blocks) == 1
+    assert "core/manager.py" in pane.blocks[0][1]
+
+
+def test_a_peer_answer_effect_mounts_a_peer_block():
+    """Has to work on both the inline and deferred paths — @peer landed
+    deferred=False and flipped to True, and an effect branch that only
+    exists on one path breaks it in one of the two states."""
+    from dataclasses import asdict
+    from aegis.commands import CommandResult
+    from aegis.peer import PeerAnswer
+    ans = PeerAnswer(answer="green", target="beta", ok=True)
+    pane = _FakePane()
+    out = _apply(pane, CommandResult(True, ans.answer, "",
+                                     effect={"kind": "peer_answer",
+                                             "answer": asdict(ans)}))
+    assert out is None
+    assert "green" in pane.blocks[0][1]
+
+
+def test_a_deliver_effect_returns_the_text_and_mounts_nothing():
+    from aegis.commands import CommandResult
+    pane = _FakePane()
+    out = _apply(pane, CommandResult(True, "", "",
+                                     effect={"kind": "deliver",
+                                             "text": "hello"}))
+    assert out == "hello"
+    assert pane.blocks == []
+
+
+def test_an_ordinary_result_mounts_a_block_and_applies_its_effect():
+    from aegis.commands import CommandResult
+    pane = _FakePane()
+    out = _apply(pane, CommandResult(True, "switched", "",
+                                     effect={"kind": "theme",
+                                             "name": "ink"}))
+    assert out is None
+    assert len(pane.blocks) == 1
+    assert pane.effects == [{"kind": "theme", "name": "ink"}]
+
+
+def test_at_idx_is_forwarded_so_a_result_can_replace_a_placeholder():
+    """The deferred path's whole requirement: the answer lands in the
+    block the command mounted, not at the tail."""
+    pane = _FakePane()
+    _apply(pane, _side_note_result(), at_idx=7)
+    assert pane.blocks[0][2] == 7
+
+
+def test_mounting_at_the_tail_is_still_the_default():
+    pane = _FakePane()
+    _apply(pane, _side_note_result())
+    assert pane.blocks[0][2] is None
