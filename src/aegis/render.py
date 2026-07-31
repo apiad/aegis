@@ -60,6 +60,44 @@ def _aside(parts, colors) -> Panel:
                  padding=(0, 1), expand=True)
 
 
+def render_deferred(label: str, subject: str, elapsed: float, colors, *,
+                    frame: int = 0, cancelled: bool = False,
+                    cancel_note: str = "") -> Panel:
+    """The block a deferred command occupies while it runs, and after it is
+    cancelled.
+
+    Running, it echoes the subject: by the time a 12-17s call returns you
+    have forgotten which side question you asked, and a spinner with no
+    subject is just anxiety.
+
+    Cancelled, it is a muted tombstone carrying the command's own
+    ``cancel_note`` — a tombstone rather than a removal, because ESC
+    silently deleting something you can see reads as a glitch, and this
+    block is the only record that you spent anything at all.
+
+    No cost is shown on the cancelled line. A cancelled call returns no
+    usage, so we do not know what it cost, and inventing a number for a
+    line whose entire purpose is honesty about price would be worse than
+    the omission. Elapsed is what we actually know.
+
+    Wrapped in the same ``_aside`` surface the answer will land in, so the
+    block does not jump when it resolves — only its contents change.
+    """
+    line = Text()
+    if cancelled:
+        line.append(f"{label} ", style=f"bold italic {colors.muted}")
+        line.append(f"· {cancel_note} · {_fmt_dur(elapsed)}",
+                    style=colors.muted)
+        return _aside([line], colors)
+    line.append(f"{_TOOL_SPINNER[frame % len(_TOOL_SPINNER)]}  ",
+                style=colors.working)
+    line.append(f"{label} ", style=f"bold italic {colors.accent}")
+    if subject:
+        line.append(f"· {subject} ", style=colors.muted)
+    line.append(f"· {_fmt_dur(elapsed)}", style=colors.muted)
+    return _aside([line], colors)
+
+
 def _fmt_dur(secs: float) -> str:
     if secs < 60:
         return f"{secs:.1f}s"

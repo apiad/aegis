@@ -100,6 +100,27 @@ class _ToolTrack:
 
 
 @dataclass(slots=True)
+class _DeferredTrack:
+    """Live state for the one running deferred command: enough to re-render
+    its placeholder with a ticking timer, replace it with the result, or
+    tombstone it on cancel.
+
+    One per pane, not one per command. The primitive is general — `/btw`
+    and `@peer` both use it — and a single slot keeps ESC unambiguous:
+    two spinners racing in one pane would leave the cancel key with no
+    defensible answer about which one it kills.
+    """
+    idx: int                        # history index of its block
+    start: float                    # time.monotonic() at dispatch
+    label: str                      # "btw", "@beta"
+    subject: str                    # the question, echoed while it runs
+    cancel_note: str                # already resolved against parsed args
+    worker: object = None
+    done: bool = False
+    elapsed: float | None = None
+
+
+@dataclass(slots=True)
 class _ResultBlock:
     """The newest turn terminator, tracked so its "x ago" stays honest."""
     block: object                   # the CopyableBlock
@@ -762,6 +783,10 @@ class ConversationPane(Widget):
         self._tools: dict[str, _ToolTrack] = {}
         self._tool_timer = None
         self._spin_frame = 0
+        # The one running deferred command (/btw, @peer), or None. Shares
+        # the tool ticker: a deferred placeholder and a tool call spin off
+        # the same 10 Hz timer.
+        self._deferred: _DeferredTrack | None = None
         # Task tool_call_id → its SubagentBox. Events tagged with a known
         # parent_tool_use_id route into the matching box instead of the
         # transcript; the Task's own tool_result closes it.
@@ -1458,6 +1483,23 @@ class ConversationPane(Widget):
             kind, payload = classify_input(text)
             if kind == "command":
                 width = self._transcript().size.width or 80
+                # A deferred command must not be awaited here: this is a
+                # Textual message handler, and holding it holds the pane's
+                # whole message pump — no working indicator, no tool
+                # spinners, no input, for the 12-17s /btw takes or the up
+                # to 300s @peer can.
+                #
+                # `payload`, never `text`: resolve_deferred parses a verb,
+                # and `@beta hi` has none until classify_input has
+                # rewritten it to `/peer beta hi`. Resolving the raw line
+                # returns None for every @ spelling and drops it silently
+                # back onto the inline path — the exact freeze this
+                # deletes, reappearing on one spelling only.
+                from aegis.commands import resolve_deferred
+                hit = resolve_deferred(payload)
+                if hit is not None:
+                    self._start_deferred(payload, *hit, width)
+                    return
                 result = await dispatch(
                     payload, CommandContext(bridge=self.app,
                                             handle=self.handle))
@@ -1775,11 +1817,93 @@ class ConversationPane(Widget):
         rec = self._history[track.idx]
         rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
         self._render_tool_block(track, scroll=True)
-        if not self._any_tool_running():
+        if not self._any_spinner_running():
             self._stop_tool_timer()
         return True
 
     # --- per-tool spinner + timer + expandable args ----------------
+
+    # --- deferred commands (/btw, @peer) ---------------------------
+
+    def _start_deferred(self, payload: str, cmd, args, width: int) -> None:
+        """Mount a placeholder and run ``payload`` off the input handler.
+
+        The placeholder is what fills the gap the await used to occupy: a
+        spinner, the question echoed back, and a timer, all ticking on the
+        existing per-tool 10 Hz ticker.
+        """
+        if self._deferred is not None and not self._deferred.done:
+            # One at a time, per pane. Two spinners racing would leave ESC
+            # with no defensible answer about which it cancels. Everything
+            # else stays available — refusing a second deferred command is
+            # a guard; refusing the rest would just be a lock replacing a
+            # freeze.
+            from aegis.commands import CommandResult
+            from aegis.render import render_command_block
+            running = self._deferred
+            self._flush_streaming()
+            self._mount_block(
+                render_command_block(
+                    CommandResult(
+                        False, f"{running.label} is already running",
+                        f"wait for it, or start this one after it lands"),
+                    self._palette, width),
+                f"{running.label} is already running")
+            return
+        label = "btw" if cmd.name == "btw" else f"/{cmd.name}"
+        subject = " ".join(str(v) for v in args.positional.values() if v)
+        self._flush_streaming()
+        self._mount_block(Text(""), "")
+        track = _DeferredTrack(
+            idx=len(self._history) - 1, start=time.monotonic(),
+            label=label, subject=subject,
+            cancel_note=cmd.resolved_cancel_note(args))
+        self._deferred = track
+        self._render_deferred_block(track)
+        self._ensure_tool_timer()
+        track.worker = self.run_worker(
+            self._run_deferred(payload, track, width), exclusive=False)
+
+    async def _run_deferred(self, payload: str, track: "_DeferredTrack",
+                            width: int) -> None:
+        """Dispatch on a worker, then rewrite the placeholder in place."""
+        from aegis.commands import CommandContext, dispatch
+        result = await dispatch(
+            payload, CommandContext(bridge=self.app, handle=self.handle))
+        if track.done or self._deferred is not track:
+            # Cancelled while in flight — the tombstone already owns this
+            # block, and a late answer must not overwrite it. A side
+            # question must never disturb the conversation it sits beside,
+            # and that includes on the way out.
+            return
+        track.done = True
+        track.elapsed = time.monotonic() - track.start
+        self._deferred = None
+        # at_idx: the answer lands in the block the command mounted, not
+        # at the tail — so a note stays where you asked it while the
+        # agent's output streams past underneath.
+        self._apply_command_result(result, width, at_idx=track.idx)
+        if not self._any_spinner_running():
+            self._stop_tool_timer()
+
+    def _render_deferred_block(self, track: "_DeferredTrack", *,
+                               cancelled: bool = False) -> None:
+        from aegis.render import render_deferred
+        elapsed = (track.elapsed if track.elapsed is not None
+                   else time.monotonic() - track.start)
+        self._put_block(
+            render_deferred(track.label, track.subject, elapsed,
+                            self._palette, frame=self._spin_frame,
+                            cancelled=cancelled,
+                            cancel_note=track.cancel_note),
+            (f"{track.label} · {track.cancel_note}" if cancelled
+             else f"{track.label} · {track.subject}"),
+            at_idx=track.idx)
+
+    def _any_spinner_running(self) -> bool:
+        """Whether the 10 Hz ticker still has anything to animate."""
+        return self._any_tool_running() or (
+            self._deferred is not None and not self._deferred.done)
 
     def _any_tool_running(self) -> bool:
         return any(not t.done for t in self._tools.values())
@@ -1801,13 +1925,15 @@ class ConversationPane(Widget):
             self._tool_timer = None
 
     def _tick_tools(self) -> None:
-        if not self._any_tool_running():
+        if not self._any_spinner_running():
             self._stop_tool_timer()
             return
         self._spin_frame += 1
         for track in self._tools.values():
             if not track.done:
                 self._render_tool_block(track, layout=False)
+        if self._deferred is not None and not self._deferred.done:
+            self._render_deferred_block(self._deferred)
 
     def _render_tool_block(self, track: "_ToolTrack",
                            *, scroll: bool = False,
@@ -1844,7 +1970,12 @@ class ConversationPane(Widget):
                     track.elapsed = time.monotonic() - track.start
                 # Spinner glyph -> frozen duration, same single line.
                 self._render_tool_block(track, layout=False)
-        self._stop_tool_timer()
+        # A running side note is NOT frozen by the turn ending. /btw reads
+        # the log rather than the session — that independence is the whole
+        # reason it is legal mid-turn — so a turn finishing underneath one
+        # must leave its spinner ticking.
+        if not self._any_spinner_running():
+            self._stop_tool_timer()
 
     def on_copyable_block_tool_expand_toggle(
             self, event: "CopyableBlock.ToolExpandToggle") -> None:

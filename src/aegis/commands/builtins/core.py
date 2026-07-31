@@ -382,7 +382,17 @@ for _cmd in (
                  "/btw <question>", _btw,
                  spec=ArgSpec(
                      positionals=(
-                         Arg("prompt", required=False, greedy=True),))),
+                         Arg("prompt", required=False, greedy=True),)),
+                 # Never awaited in a frontend's input handler: the call
+                 # takes 12-17s, and in Textual that would hold the pane's
+                 # message pump for all of it. "A side note that doesn't
+                 # cost a conversation" was true about money and false
+                 # about attention until this flag existed.
+                 #
+                 # The default cancel_note is right here: cancelling a
+                 # /btw really is clean, because it never touched a
+                 # harness session, so nothing happened anywhere.
+                 deferred=True),
     SlashCommand("peer", "ask an idle peer, from where you're standing",
                  "/peer <handle> [--cc] <question>", _peer,
                  spec=ArgSpec(
