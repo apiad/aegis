@@ -3,7 +3,7 @@ import pytest
 from aegis.events import (
     AgentPlan, PlanEntry, ContextUpdate, CostUsage,
     SystemInit, AssistantText, AssistantThinking,
-    ToolUse, ToolResult, Result, Unknown, TokenUsage,
+    ToolUse, ToolResult, Result, Unknown, TokenUsage, UserMessage,
 )
 from aegis.state.event_codec import encode_event, decode_event
 
@@ -234,3 +234,35 @@ def test_legacy_tool_result_record_decodes_with_defaults():
     assert isinstance(ev, ToolResult)
     assert ev.tool_call_id is None
     assert ev.kind is None
+
+
+def test_user_message_roundtrip():
+    """The user's turn has to survive the log, not just the parser — replay
+    decodes from disk, so an event the codec drops is an event Ctrl+R can't
+    show."""
+    e = UserMessage(text="work on aegis")
+    assert _roundtrip(e) == e
+
+
+def test_legacy_unknown_blob_decodes_as_the_user_message_it_holds():
+    """Every transcript written before UserMessage existed stored the user's
+    turn as an Unknown blob — the data was never lost, only untyped. Decoding
+    it back into the typed event lights up all existing history with no
+    migration."""
+    import json
+    raw = json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "trabajemos en la enciclopedia"},
+        "session_id": "s", "parent_tool_use_id": None,
+        "isReplay": True,
+    }, separators=(",", ":"))
+    ev = decode_event({"t": "Unknown", "raw": raw})
+    assert isinstance(ev, UserMessage)
+    assert ev.text == "trabajemos en la enciclopedia"
+
+
+def test_legacy_unknown_blob_that_is_not_a_user_turn_stays_unknown():
+    """Unknown is the bulk of a real log (306k of 580k records, mostly
+    thinking_tokens). Only the user-turn shape is upgraded."""
+    raw = '{"type":"system","subtype":"thinking_tokens","estimated":10}'
+    assert isinstance(decode_event({"t": "Unknown", "raw": raw}), Unknown)

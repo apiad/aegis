@@ -173,6 +173,20 @@ class AgentPlan:
     parent_tool_use_id: str | None = None
 
 
+@dataclass(frozen=True)
+class UserMessage:
+    """The user's own turn, echoed back by claude's --replay-user-messages.
+
+    The live pane mounts the user's line at send time, so a running session
+    looks right whether or not this event exists. Every path that rebuilds
+    from the log instead — Ctrl+R reopen, a restarted aegis, the web
+    client's history, ``aegis doctor`` — has only the transcript to work
+    from, and without this the conversation reads as the agent talking to
+    itself.
+    """
+    text: str
+
+
 @dataclass
 class Unknown:
     raw: str
@@ -203,7 +217,7 @@ class SessionClosed:
 Event = (
     SystemInit | AssistantText | AssistantThinking | ThinkingTokens
     | ToolUse | ToolResult | AgentPlan | ContextUpdate
-    | Result | Unknown | SessionMeta | SessionClosed
+    | Result | UserMessage | Unknown | SessionMeta | SessionClosed
 )
 
 # Tool name -> input key whose value is the one-line summary.
@@ -264,6 +278,19 @@ def _first_block(content: list) -> dict | None:
             if isinstance(block, dict) and block.get("type") == kind:
                 return block
     return content[0] if content and isinstance(content[0], dict) else None
+
+
+def _user_text(content: object) -> str:
+    """Flatten a user message's content to its text. Real transcripts carry a
+    plain string; tolerate the block form so an attachment alongside text
+    doesn't lose the text."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        return "\n".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text").strip()
+    return ""
 
 
 def _token_usage(d: object) -> TokenUsage | None:
@@ -460,6 +487,16 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                         kind=kind,
                         diff=diff,
                     )
+        # The user's own turn, echoed back because we run claude with
+        # --replay-user-messages. `isReplay` marks that and nothing else:
+        # skill bodies (isSynthetic) and Task prompts (parent_tool_use_id +
+        # subagent_type) also arrive as role:user, and neither is the user
+        # speaking. Measured over 269 real transcripts: 6,880 isReplay
+        # records, every one a genuine user turn, no false positives.
+        if obj.get("isReplay") is True:
+            text = _user_text(content)
+            if text:
+                return UserMessage(text=text)
         return Unknown(raw=line)
 
     return Unknown(raw=line)

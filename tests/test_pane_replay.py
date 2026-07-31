@@ -3,6 +3,7 @@ plus an interrupted marker iff replay.interrupted.
 
 Tests use the pure ``replay_blocks`` helper — no Textual app required.
 """
+import pytest
 from rich.markdown import Markdown
 from rich.text import Text
 
@@ -11,6 +12,7 @@ from aegis.events import (
 )
 from aegis.state.session_log import EventReplay
 from aegis.tui.pane import replay_blocks
+from tests.test_pane_windowing import _app
 
 
 def _block_text(block) -> str:
@@ -142,3 +144,69 @@ def test_replay_blocks_chunk_run_broken_by_tooluse():
     blocks = replay_blocks(rep)
     # 2 text chunks merge, ToolUse, 1 text, Result → 4 blocks
     assert len(blocks) == 4
+
+
+# --- the real replay path -------------------------------------------
+# The tests above use `replay_blocks`, which has no production caller. What
+# Ctrl+R actually runs is _mount_replay, so the user-turn behaviour is
+# asserted against that.
+
+@pytest.mark.asyncio
+async def test_mount_replay_shows_the_users_own_turns():
+    """Reopening a conversation must read as a dialogue. The user's lines are
+    mounted live at send time and those widgets persist, so this only breaks
+    when the transcript is rebuilt from the log — which is exactly what
+    Ctrl+R does."""
+    from aegis.events import UserMessage
+    from aegis.tui.pane import CopyableBlock
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        pane._window_start = 0
+        pane._replay = EventReplay(
+            events=[UserMessage(text="work on aegis"),
+                    AssistantText(text="on it"),
+                    Result(duration_ms=1, is_error=False)],
+            interrupted=False)
+        await pilot.pause()
+        pane._mount_replay()
+        await pilot.pause()
+
+        payloads = "\n".join(r.payload for r in pane._history)
+        assert "work on aegis" in payloads
+        assert "on it" in payloads
+
+
+@pytest.mark.asyncio
+async def test_live_pane_does_not_echo_the_user_line_twice():
+    """claude replays the user's message back to us, so once UserMessage
+    renders, the live pane would mount it a second time on top of the line it
+    already mounted at send time. Replay needs the event; the live pane
+    already has the line."""
+    from aegis.events import UserMessage
+    from aegis.tui.pane import CopyableBlock
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        for b in list(pane.query(CopyableBlock)):
+            b.remove()
+        pane._history.clear()
+        pane._mounted_blocks.clear()
+        await pilot.pause()
+
+        pane._submit("work on aegis")          # mounts the user's line
+        await pilot.pause()
+        after_send = sum("work on aegis" in r.payload for r in pane._history)
+
+        pane._on_core_event(None, UserMessage(text="work on aegis"))  # echo
+        await pilot.pause()
+        after_echo = sum("work on aegis" in r.payload for r in pane._history)
+
+        assert after_send == 1
+        assert after_echo == 1, "harness echo re-mounted the user's line"

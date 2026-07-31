@@ -26,7 +26,7 @@ from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
     AssistantText, AssistantThinking, Result, ThinkingTokens, ToolResult,
-    ToolUse,
+    ToolUse, UserMessage,
 )
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
@@ -1623,6 +1623,12 @@ class ConversationPane(Widget):
             self._tool_use_idx[ev.tool_call_id] = track.idx
             self._tools[ev.tool_call_id] = track
             self._ensure_tool_timer()
+        elif isinstance(ev, UserMessage):
+            # Already on screen: the pane mounts the user's line at send
+            # time. This is claude's --replay-user-messages echo, which the
+            # log keeps so replay can rebuild the dialogue — but rendering
+            # it here would print the message a second time.
+            pass
         else:
             self._flush_streaming()
             renderable = render_event(ev, self._palette)

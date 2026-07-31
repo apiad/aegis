@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
-    ToolResult, Result, SystemInit, Unknown, Event,
+    ToolResult, Result, SystemInit, Unknown, UserMessage, Event,
 )
 from aegis.render_shared import (
     KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window,
@@ -153,7 +153,7 @@ def renders_to_nothing(ev: Event) -> bool:
     long log. Mirrors render_event's None cases exactly — keep the two in
     step.
     """
-    if isinstance(ev, AssistantText):
+    if isinstance(ev, (AssistantText, UserMessage)):
         return not ev.text.strip()
     return not isinstance(
         ev, (AssistantThinking, ToolUse, ToolResult, AgentPlan, Result))
@@ -200,6 +200,13 @@ def render_event(ev: Event, colors,
     if isinstance(ev, Result):
         return Text(f"── {' · '.join(result_parts(ev, age_s=age_s))} ──",
                     style=colors.muted)
+    if isinstance(ev, UserMessage):
+        # Same line the live pane mounts at send time, so a reopened
+        # conversation is indistinguishable from the one you were just in.
+        # Width is unknown here, so the tint band ends at the text rather
+        # than running full-width; the live pane passes its own width.
+        text = ev.text.strip()
+        return render_user_line(text, colors) if text else None
     if isinstance(ev, (SystemInit, Unknown)):
         return None
     return None

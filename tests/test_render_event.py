@@ -334,3 +334,55 @@ def test_render_user_line_has_accent_prefix_and_bg():
 def test_render_user_line_no_width_not_padded():
     line = render_user_line("hi", C)
     assert line.plain == "› hi"                   # no width → no pad
+
+
+def test_user_message_renders_as_the_live_user_line():
+    """Replay must reproduce the line the live pane already mounts at send
+    time — same glyph, same tint — or a reopened conversation looks like a
+    different UI than the one you were just using."""
+    from aegis.events import UserMessage
+    out = as_text(render_event(UserMessage(text="work on aegis"), C))
+    assert "work on aegis" in out
+    assert out.strip().startswith("›")
+    assert out == as_text(render_user_line("work on aegis", C))
+
+
+def test_renders_to_nothing_matches_render_event_for_every_event_type():
+    """`renders_to_nothing` exists so replay can skip an event without paying
+    to build its renderable, and its docstring promises it mirrors
+    render_event's None cases exactly. Nothing enforced that: UserMessage's
+    predecessor fell through both, and the pair drifting apart is what made
+    replay silently drop every user turn. Any new event type must appear in
+    SAMPLES, so adding one forces a decision about both functions.
+    """
+    import typing
+    from aegis.events import Event, UserMessage, ContextUpdate, ThinkingTokens
+    from aegis.events import SessionMeta, SessionClosed
+    from aegis.render import renders_to_nothing
+
+    samples = [
+        SystemInit(session_id="s"),
+        AssistantText(text="hi"),
+        AssistantText(text="   "),          # blank → renders to nothing
+        AssistantThinking(text="pondering"),
+        ThinkingTokens(estimated=10, delta=10),
+        ToolUse(name="Read", summary="f.py"),
+        ToolResult(text="ok", is_error=False),
+        AgentPlan(entries=(PlanEntry(content="do it", status="pending"),)),
+        ContextUpdate(),
+        Result(duration_ms=1, is_error=False),
+        UserMessage(text="work on aegis"),
+        Unknown(raw="{}"),
+        SessionMeta(handle="h", profile="p", provider="v", cwd="/tmp",
+                    created_at="2026-07-31T00:00:00Z", origin="user"),
+        SessionClosed(closed_at="2026-07-31T00:00:00Z", reason="done"),
+    ]
+    covered = {type(s) for s in samples}
+    declared = set(typing.get_args(Event))
+    assert covered == declared, (
+        f"add a sample for {declared - covered or covered - declared}")
+
+    for ev in samples:
+        assert renders_to_nothing(ev) == (render_event(ev, C) is None), (
+            f"{type(ev).__name__}: renders_to_nothing and render_event "
+            f"disagree")

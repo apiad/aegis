@@ -4,7 +4,7 @@ import pytest
 from aegis.events import (
     parse, SystemInit, AssistantText, AssistantThinking, ThinkingTokens,
     ToolUse, ToolResult, Result, Unknown, ParserState,
-    AgentPlan, PlanEntry,
+    AgentPlan, PlanEntry, UserMessage,
 )
 
 FIX = Path(__file__).parent / "fixtures"
@@ -526,6 +526,62 @@ def test_parse_tool_result():
     assert isinstance(ev, ToolResult)
     assert ev.is_error is False
     assert "ok output" in ev.text
+
+
+def test_parse_replayed_user_message():
+    """claude runs with --replay-user-messages, so the user's own turn comes
+    back down the stream marked isReplay. It fell through to Unknown, which
+    every log-rebuilding path drops — so a reopened conversation read as the
+    agent talking to itself. Shape copied from a real transcript."""
+    ev = parse(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content": "work on aegis"},
+        "session_id": "s-1", "parent_tool_use_id": None,
+        "uuid": "u-1", "timestamp": "2026-07-30T13:07:32.603Z",
+        "isReplay": True,
+    }))
+    assert isinstance(ev, UserMessage)
+    assert ev.text == "work on aegis"
+
+
+def test_parse_synthetic_user_block_is_not_a_user_message():
+    """Skill bodies are injected into the stream as role:user with
+    isSynthetic — 1,056 of them in a real corpus. They are not the user
+    speaking and must not render as their turn."""
+    ev = parse(json.dumps({
+        "type": "user",
+        "message": {"role": "user",
+                    "content": [{"type": "text",
+                                 "text": "Base directory for this skill: …"}]},
+        "isSynthetic": True, "parent_tool_use_id": None,
+    }))
+    assert not isinstance(ev, UserMessage)
+
+
+def test_parse_subagent_prompt_is_not_a_user_message():
+    """A Task prompt is delivered to the subagent as role:user, tagged with
+    the dispatching tool call. It belongs in the subagent box, not in the
+    user's transcript."""
+    ev = parse(json.dumps({
+        "type": "user",
+        "message": {"role": "user",
+                    "content": [{"type": "text", "text": "Draft the chapter"}]},
+        "parent_tool_use_id": "toolu_1", "subagent_type": "general-purpose",
+    }))
+    assert not isinstance(ev, UserMessage)
+
+
+def test_parse_tool_result_still_wins_over_user_message():
+    """tool_result blocks arrive as role:user too. If the user branch caught
+    them first, every tool result in the log would render a second time as a
+    fake user turn."""
+    ev = parse(json.dumps({
+        "type": "user",
+        "message": {"content": [{"type": "tool_result",
+                                 "content": "ok output"}]},
+        "isReplay": True,
+    }))
+    assert isinstance(ev, ToolResult)
 
 
 def test_parse_result():

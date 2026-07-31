@@ -11,7 +11,7 @@ from dataclasses import replace
 from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, ContextUpdate,
     CostUsage, Event, PlanEntry, Result, SessionClosed, SessionMeta,
-    SystemInit, TokenUsage, ToolResult, ToolUse, Unknown,
+    SystemInit, TokenUsage, ToolResult, ToolUse, Unknown, UserMessage, parse,
 )
 
 
@@ -132,6 +132,8 @@ def _encode_inner(ev: Event) -> dict:
         if ev.title is not None:
             out["title"] = ev.title
         return out
+    if isinstance(ev, UserMessage):
+        return {"t": "UserMessage", "text": ev.text}
     if isinstance(ev, Unknown):
         return {"t": "Unknown", "raw": ev.raw}
     if isinstance(ev, SessionMeta):
@@ -223,8 +225,21 @@ def _decode_inner(d: dict) -> Event:
         ) if isinstance(cost_d, dict) else None)
         return ContextUpdate(
             cost=cost, mode=d.get("mode"), title=d.get("title"))
+    if t == "UserMessage":
+        return UserMessage(text=d["text"])
     if t == "Unknown":
-        return Unknown(raw=d["raw"])
+        raw = d["raw"]
+        # Transcripts written before UserMessage existed stored the user's
+        # own turn as an Unknown blob. The record is intact, so re-parsing
+        # that one shape makes every existing log replay as a dialogue with
+        # no migration. Guarded by a substring test first: Unknown is the
+        # bulk of a real log (mostly thinking_tokens), and re-parsing all of
+        # it would cost more than replay can afford.
+        if '"isReplay":true' in raw or '"isReplay": true' in raw:
+            ev = parse(raw)
+            if isinstance(ev, UserMessage):
+                return ev
+        return Unknown(raw=raw)
     if t == "SessionMeta":
         return SessionMeta(
             handle=d["handle"], profile=d["profile"],
