@@ -948,6 +948,46 @@ In `on_growing_input_submitted`, inside `if kind == "command":`, before the `res
                     return
 ```
 
+**`payload`, never `text`.** `resolve_deferred` parses a verb, and an
+`@`-line has no verb until `classify_input` has rewritten `@beta hi` into
+`/peer beta hi` — `REGISTRY.get("@beta")` is None. Resolving the raw input
+therefore returns None for every `@` spelling, and the failure is silent
+in the direction that looks like success: `@peer` does not crash, it falls
+back to the inline await and freezes the pane for up to 300s. That is the
+exact bug this primitive exists to delete, reappearing on one spelling
+while `/peer beta hi` works perfectly — green suite, found by Alex.
+
+Hence the placement inside `if kind == "command":`, and hence Step 9b.
+
+- [ ] **Step 9b: Pin both spellings at the seam**
+
+Add to `tests/test_deferred_commands.py`. A test on `/peer` alone would
+pass with the bug present.
+
+```python
+@pytest.mark.parametrize("typed", ["/slowly beta hi", "@slowly beta hi"])
+def test_both_spellings_reach_the_deferred_path(slow_command, typed,
+                                                monkeypatch):
+    """`@x` is sugar `classify_input` rewrites into `/peer x`, so the
+    frontend must classify first and resolve on the *payload*. Resolving
+    the raw line returns None for every `@` spelling and silently drops
+    it back onto the inline-await path — the freeze, on one spelling."""
+    from aegis.commands import classify_input, resolve_deferred
+    monkeypatch.setattr("aegis.commands.AT_VERB", "slowly", raising=False)
+    kind, payload = classify_input(typed)
+    assert kind == "command"
+    assert resolve_deferred(payload) is not None
+```
+
+Adapt the `@`-rewrite target to whatever `classify_input` actually maps
+`@` to — read it rather than assuming; at time of writing it rewrites to
+`/peer`, so the parametrised case may need to exercise `@beta hi` against
+the real `/peer` registration instead of the `slow_command` fixture.
+
+Mutation: change Step 9's `resolve_deferred(payload)` to
+`resolve_deferred(text)` and confirm the `@` case fails while the `/`
+case still passes. If both still pass, the test is not at the seam.
+
 - [ ] **Step 10: Add the pane methods**
 
 Add near `_render_tool_block` (line 1762):
