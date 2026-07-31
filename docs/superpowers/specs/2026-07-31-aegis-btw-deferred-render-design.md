@@ -60,6 +60,7 @@ is what naturally fills the gap.
 class SlashCommand:
     ...
     deferred: bool = False
+    cancel_note: str = "cancelled"
 ```
 
 `deferred=True` means: *do not await me in the input handler.* A frontend
@@ -71,7 +72,7 @@ every existing command keeps the default.
 
 The alternative was `if verb == "btw"` in the pane. It is rejected for a
 concrete reason rather than a stylistic one: **`@peer` is the same shape.**
-The `@peer` spec (b632d9a, in flight as of this writing) asks an idle peer
+The `@peer` spec (b632d9a, landing as this is written) asks an idle peer
 agent a question from where you stand — a slow out-of-band call fired from
 the same input handler. On the inline-await path it inherits this exact
 freeze on day one. Declaring the property on the command means `@peer`
@@ -81,6 +82,52 @@ that both have to be maintained.
 
 A verb check would have been three lines. It would also have guaranteed
 we wrote this spec twice.
+
+### `@peer` is worse, and it disproves the verb check twice over
+
+`aegis-at-mentions` reviewed this and supplied the number: `@peer` awaits
+an entire peer *turn* inside the input handler, bounded by
+`PEER_ASK_TIMEOUT_S = 300.0` (`src/aegis/peer/__init__.py`). Worst case
+the pane freezes for five minutes; the typical case is however long a real
+agent turn takes.
+
+The interesting part is not the magnitude. It is that the inline await
+**destroys the feature's best property**. `@peer`'s idle-only guard reads
+the *target*, never the source — deliberately, so that `@peer` is legal
+while your own tab is mid-turn and you can spend a long turn's dead time
+asking an idle peer. That is the killer case in its spec, and an inline
+await cancels it exactly: the pane you are standing in freezes anyway, so
+there is no dead time left to spend.
+
+Two commands, landed hours apart, hit the same defect for the same reason.
+That is the argument for a declared property rather than a verb check,
+made better by evidence than it was by taste.
+
+### Cancel is per-command, because the truth is per-command
+
+`cancel_note` exists because "cancelled" is a lie for `@peer`.
+
+Cancelling a `/btw` is clean: it never touches a harness session, so an
+abandoned call means nothing happened anywhere, and *cancelled* is the
+whole truth. Cancelling an `@peer` is not clean. By the time you press
+ESC the peer has already taken the turn — it is running in its own
+session and will finish and land in its own transcript whether or not you
+are still listening. Nothing is cancelled. You stopped waiting.
+
+So `cancel_note` is a template resolved against the command's parsed args:
+
+| command | `cancel_note` | rendered |
+|---|---|---|
+| `/btw` | `"cancelled"` (the default) | `btw · cancelled · 4.2s` |
+| `@peer` | `"stopped waiting — {target} is still working, go read its tab"` | `@nifty-naur · stopped waiting — nifty-naur is still working, go read its tab · 4.2s` |
+
+`@peer`'s timeout path already says this, so the wording transfers rather
+than being invented here. The elapsed time is appended by the pane in both
+cases, since that is the one fact the frontend actually owns.
+
+A single hardcoded cancel message would have shipped a false statement to
+the user on the second command that used the primitive. It is worth one
+extra field on a frozen dataclass to not do that.
 
 ## The btw track
 
@@ -116,6 +163,27 @@ The question is echoed because by second twelve you have forgotten which
 side question you asked, and because a spinner with no subject is just
 anxiety.
 
+### One place effects are applied
+
+`on_growing_input_submitted` currently applies command effects with an
+inline `if/elif` chain: `deliver`, then `side_note`, then the generic
+`render_command_block` fallback (`pane.py:1374-1401`). `@peer` added a
+fourth branch, `peer_answer`, in the same chain.
+
+Deferring splits that chain in two — the inline path still runs it, and
+the worker-completion path now needs it as well. Duplicating it would
+guarantee the two copies drift, and the first casualty would be
+`peer_answer`, which must keep working on **both** paths: `@peer` lands
+with `deferred=False` and flips to `True` afterwards, so an effect branch
+that only exists on one path breaks it in one of the two states.
+
+So the chain moves out of the handler into one method — call it
+`_apply_command_result(result)` — invoked by the inline path and by the
+deferred completion alike. Flipping any command's `deferred` then changes
+*when* its effect is applied and nothing about *how*. `deliver` is the one
+branch that cannot be deferred, since it returns text to send rather than
+a block to mount; prompt commands are not deferred, so this costs nothing.
+
 ### Where the answer lands
 
 The block is rewritten **in place, at the index where it was mounted**.
@@ -144,6 +212,13 @@ already flags as a real cost on long logs. It is not a concern here: it is
 constructed once, at completion, for a block that exists a handful of
 times per session. The running placeholder is plain `Text` and never
 parses anything, so the 10 Hz tick stays cheap.
+
+`render_peer_answer` — `@peer`'s sibling renderer, landing directly below
+`render_side_note` in the same `Text`-append shape — gets the identical
+treatment in the same pass. A peer's answer is agent prose and arrives as
+markdown for exactly the reason a side note does. Doing both at once is
+also simply less merge pain than two agents editing `render.py` in
+sequence to reach the same end state.
 
 ### Test fallout
 
@@ -203,10 +278,10 @@ way.
 ### What cancel does
 
 `worker.cancel()`, then the block is rewritten one last time as a muted
-tombstone:
+tombstone built from the command's own `cancel_note` (see above):
 
 ```
-btw · cancelled after 4.2s
+btw · cancelled · 4.2s
 ```
 
 A tombstone rather than removing the block. ESC silently deleting
@@ -237,6 +312,28 @@ precisely so the web client can honour it later without a second design.
 
 Not in scope: changing the window budget, the `text_generation:` warning,
 or anything about what `/btw` asks or costs. This is the surface only.
+
+**Also not in scope: flipping `@peer` to `deferred=True`.** This spec
+lands the primitive and puts `/btw` on it; `aegis-at-mentions` adopts it
+for `@peer` in its own VS2. The two `render.py` renderers and the
+`_apply_command_result` extraction are done here because they are one
+edit to one file and splitting them across two agents costs a merge, not
+because `@peer` is this spec's responsibility.
+
+## Ownership
+
+Agreed with `aegis-at-mentions`, which holds the exclusive claim on these
+files while its `@peer` VS1 suite runs:
+
+| mine | theirs |
+|---|---|
+| `render.py` (both renderers) | `peer/`, `core/`, `mcp/`, `queue/schema.py` |
+| the btw track + `_apply_command_result` in `pane.py` | the rest of `pane.py` |
+| the `action_interrupt` ESC rung in `app.py` | `AppBridge.peer_ask` in `app.py` |
+| `deferred` + `cancel_note` on `SlashCommand` | `classify_input` / `complete` in the same file |
+
+Work starts when it narrows its claim, not before — a tree that changes
+mid-run makes its suite result meaningless.
 
 ## Testing
 
