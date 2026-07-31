@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from rich import box
 from rich.console import Group, RenderableType
 from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.text import Text
 
 from dataclasses import replace
@@ -17,6 +19,45 @@ from aegis.render_shared import (
 
 # Per-tool-call spinner (mirrors the turn-level WorkingIndicator glyphs).
 _TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+# A left bar and nothing else — Rich's Box is 8 rows of
+# (left, horizontal, cross, right). A full box around every side note
+# would fence the transcript; a single thin rule down the left edge reads
+# as a margin note, which is what these are. `box.MINIMAL` was the first
+# try and draws its verticals as spaces, so the "subtle border" was
+# invisible and only the background did any work.
+_ASIDE_BOX = box.Box(
+    "    \n"
+    "▏   \n"
+    "    \n"
+    "▏   \n"
+    "    \n"
+    "    \n"
+    "▏   \n"
+    "    \n"
+)
+
+
+def _aside(parts, colors) -> Panel:
+    """A block that sits *in* the transcript but is not the conversation.
+
+    A `/btw` side note and an `@peer` answer both render their body as
+    Markdown — which is exactly how agent prose renders — so without a
+    surface of their own they read as the agent talking. That is the one
+    thing they must never look like: a side note is a third voice, and an
+    `@peer` answer belongs to a different session entirely.
+
+    The separation is the theme's raised `panel` background plus a quiet
+    `rule` border, rather than a louder colour. An aside should be easy to
+    tell apart when you look at it and easy to ignore when you are not —
+    a saturated tint would win attention from the conversation it is
+    supposed to sit beside.
+    """
+    return Panel(Group(*parts), box=_ASIDE_BOX,
+                 border_style=colors.rule,
+                 style=f"on {colors.panel}",
+                 padding=(0, 1), expand=True)
 
 
 def _fmt_dur(secs: float) -> str:
@@ -244,7 +285,7 @@ def render_command_block(result, colors, width: int | None = None) -> Text:
     return line
 
 
-def render_side_note(note, colors) -> Group:
+def render_side_note(note, colors) -> Panel:
     """Visible block for a `/btw` side note.
 
     The answer is rendered as Markdown; the error is not. A model asked a
@@ -275,11 +316,11 @@ def render_side_note(note, colors) -> Group:
             f"  answered from {note.header} — /fork if you want it to "
             f"actually go look.", style=f"italic {colors.working}"))
     if note.footer:
-        parts.append(Text(f"  {note.footer}", style=colors.muted))
-    return Group(*parts)
+        parts.append(Text(note.footer, style=colors.muted))
+    return _aside(parts, colors)
 
 
-def render_peer_answer(answer, colors) -> Group:
+def render_peer_answer(answer, colors) -> Panel:
     """Visible block for an `@peer` answer.
 
     The header leads with the target and is the first renderable of the
@@ -306,8 +347,8 @@ def render_peer_answer(answer, colors) -> Group:
     else:
         parts.append(Text(answer.error or "no answer", style=tint))
     if answer.footer:
-        parts.append(Text(f"  {answer.footer}", style=colors.muted))
-    return Group(*parts)
+        parts.append(Text(answer.footer, style=colors.muted))
+    return _aside(parts, colors)
 
 
 def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:

@@ -96,17 +96,18 @@ def test_render_peer_answer_leads_with_the_target():
     "beta answered this" from "this is my own agent talking".
 
     Asserted against the header renderable directly rather than a rendered
-    frame: the answer is now a Markdown body, so a prefix check on the
-    whole block would be pinning layout instead of the property.
+    frame: the answer is a Markdown body inside an aside Panel, so a prefix
+    check on the whole block would be pinning the panel's border and
+    padding instead of the property.
     """
     from rich.console import Console
     from aegis.render import render_peer_answer
     from aegis.tui.themes import INK, aegis_colors
     colors = aegis_colors(INK)
-    g = render_peer_answer(
+    block = render_peer_answer(
         PeerAnswer(answer="green", target="beta", ok=True), colors)
-    assert g.renderables[0].plain.startswith("@beta ")
+    assert block.renderable.renderables[0].plain.startswith("@beta ")
     console = Console(width=100, no_color=True)
     with console.capture() as cap:
-        console.print(g)
+        console.print(block)
     assert "green" in cap.get()

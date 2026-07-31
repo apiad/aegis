@@ -188,13 +188,13 @@ def test_an_error_is_not_run_through_markdown():
     answer makes it wrong here."""
     from rich.text import Text
     from aegis.render import render_side_note
-    g = render_side_note(
+    block = render_side_note(
         SideNote(ok=False,
                  error="beta is mid-turn. Wait for it to finish, or "
                        "/enqueue the task instead."),
         palette())
-    assert all(isinstance(r, Text) for r in g.renderables)
-    assert "/enqueue" in rendered(g)
+    assert all(isinstance(r, Text) for r in block.renderable.renderables)
+    assert "/enqueue" in rendered(block)
 
 
 async def test_the_effect_is_json_serializable():
@@ -210,3 +210,74 @@ async def test_the_effect_round_trips_back_into_a_side_note():
     """The TUI rebuilds the dataclass from the dict to render it."""
     result, _ = await run("btw where?")
     assert SideNote(**result.effect["note"]).answer == "core/manager.py"
+
+
+# ---------- the aside surface --------------------------------------------
+
+def test_a_side_note_is_visually_set_apart_from_agent_prose():
+    """Both a side note and agent output render their body as Markdown, so
+    without a surface of its own a /btw answer reads as the agent talking.
+
+    The block is a Panel carrying the theme's raised background and a
+    subtle rule — the two knobs Alex asked for — rather than a bare Group.
+    """
+    from rich.panel import Panel
+    from aegis.render import render_side_note
+    block = render_side_note(
+        SideNote(answer="core/manager.py", ok=True, model="haiku"), palette())
+    assert isinstance(block, Panel)
+    assert palette().panel in str(block.style)
+    assert block.border_style == palette().rule
+
+
+def test_the_aside_still_leads_with_its_own_word():
+    """The surface sets it apart; the first token says which aside it is."""
+    from aegis.render import render_side_note
+    block = render_side_note(SideNote(answer="x", ok=True), palette())
+    assert block.renderable.renderables[0].plain.startswith("btw")
+
+
+def test_a_failed_side_note_keeps_the_aside_surface():
+    """A failure is still an aside, not agent output — it must not fall
+    back to looking like the conversation."""
+    from rich.panel import Panel
+    from aegis.render import render_side_note
+    block = render_side_note(SideNote(ok=False, error="boom"), palette())
+    assert isinstance(block, Panel)
+    assert "boom" in rendered(block)
+
+
+def test_the_theme_never_hands_back_a_foreground_coloured_border():
+    """AegisColors.var() falls back to the foreground, which as a border or
+    a background would be the loudest thing on screen rather than the
+    quietest. panel/rule degrade toward the surface instead."""
+    from aegis.tui.themes import INK, aegis_colors
+    for theme_name in ("aegis-ink", "aegis-parchment", "aegis-slate"):
+        from aegis.themes import load_theme
+        colors = aegis_colors(load_theme(theme_name).to_textual_theme())
+        assert colors.panel and colors.panel != colors.ink
+        assert colors.rule and colors.rule != colors.ink
+
+
+def test_the_aside_draws_a_visible_left_bar():
+    """The background alone is a few hex points off the transcript's, which
+    is not enough on a low-contrast terminal or a light theme. `box.MINIMAL`
+    was the first attempt and draws its verticals as spaces, so the "subtle
+    border" was invisible and only the background did any work.
+    """
+    from aegis.render import render_side_note
+    out = rendered(render_side_note(
+        SideNote(answer="hello", ok=True, model="haiku"), palette()))
+    body = [ln for ln in out.splitlines() if ln.strip()]
+    assert body, "the aside rendered nothing"
+    assert all(ln.startswith("▏") for ln in body), out
+
+
+def test_agent_prose_gets_no_aside_bar():
+    """The other half of the property: the bar means 'not the conversation',
+    so the conversation must not have one."""
+    from aegis.events import AssistantText
+    from aegis.render import render_event
+    out = rendered(render_event(AssistantText(text="plain agent prose"),
+                                palette()))
+    assert "▏" not in out

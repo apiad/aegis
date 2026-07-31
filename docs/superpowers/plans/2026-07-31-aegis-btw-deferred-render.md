@@ -25,7 +25,8 @@
 | File | Responsibility | Change |
 |---|---|---|
 | `src/aegis/commands/__init__.py` | `SlashCommand` declares `deferred` + `cancel_note`; `resolve_deferred()` lets a frontend decide *how* to run a command before running it | Modify |
-| `src/aegis/render.py` | `render_side_note` / `render_peer_answer` return `Group` with `Markdown` on the ok path; new `render_deferred` for the placeholder + tombstone | Modify |
+| `src/aegis/themes/__init__.py` | `AegisColors` gains `panel` + `rule` — the aside surface | Modify |
+| `src/aegis/render.py` | `render_side_note` / `render_peer_answer` return an `_aside` Panel with `Markdown` on the ok path; new `render_deferred` for the placeholder + tombstone | Modify |
 | `src/aegis/tui/pane.py` | `_DeferredTrack`, `_apply_command_result`, `_put_block`, deferred dispatch, spinner ticking, cancel | Modify |
 | `src/aegis/tui/app.py` | one rung in `action_interrupt` | Modify (~6 lines) |
 | `src/aegis/commands/builtins/core.py` | `/btw` registration gains `deferred=True` | Modify (1 line) |
@@ -464,6 +465,49 @@ brittle than matching a rendered frame." \
 ```
 
 ---
+
+### Task 2b: The aside surface — DONE
+
+Added after Task 2 landed, on Alex's request: *"some kind of gray
+background or subtle border for these things so it doesn't look exactly
+as the same agent, both btw and peer."*
+
+The request is correct and Task 2 is what created the need for it. Once
+`render_side_note` renders `Markdown(answer)`, it uses the identical code
+path as `render_event(AssistantText)` — a `/btw` answer and the agent's
+own prose became pixel-identical. Making the answer beautiful made it
+camouflage, and an `@peer` answer reading as your own agent is worse than
+ugly: it is a real turn from a *different session* wearing this one's
+voice.
+
+**Files:**
+- Modify: `src/aegis/themes/__init__.py` — `AegisColors.panel`, `.rule`
+- Modify: `src/aegis/render.py` — `_ASIDE_BOX`, `_aside`, both renderers
+- Test: `tests/test_btw_command.py`, `tests/test_peer_command.py`
+
+**What landed:**
+
+- `AegisColors` gains `panel` (raised background) and `rule` (border).
+  Neither via `var()`, whose fallback is the foreground — as a border or
+  background that is the *loudest* thing on screen rather than the
+  quietest. They degrade toward `surface` / `muted` instead. All three
+  shipped themes already carried `panel:` and `aegis-rule:`.
+- `_ASIDE_BOX` is a custom `box.Box` with a left edge and nothing else.
+  **`box.MINIMAL` was the first attempt and is a trap worth recording:**
+  it draws its verticals as spaces, so the border rendered as nothing and
+  only the background did any work. Caught by looking at the output, not
+  by a test — which is why `test_the_aside_draws_a_visible_left_bar` now
+  exists.
+- Both renderers return `_aside(parts, colors)` → a `Panel` with the
+  panel background, the `rule`-coloured bar, and `padding=(0, 1)`.
+- Return type is now `Panel`, so structural assertions moved from
+  `block.renderables[0]` to `block.renderable.renderables[0]`.
+
+**Tests:** the surface is a `Panel` with the theme's background and rule;
+the header still leads the group; a *failed* note keeps the surface (a
+failure is still an aside); every rendered line starts with `▏`; and
+agent prose has no bar — the other half of the property, since the bar
+means "not the conversation".
 
 ### Task 3: Extract `_apply_command_result`
 

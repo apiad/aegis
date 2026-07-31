@@ -23,6 +23,12 @@ class AegisColors:
     user_bg: str
     ink: str = ""        # default foreground / "ink" of the page
     work: str = ""       # alias for working — used by queue dashboard
+    # The "aside" surface: a block that is in the transcript but is not
+    # the conversation — a /btw side note, an @peer answer. Both render
+    # their body as Markdown, which is exactly how agent prose renders,
+    # so without a surface of their own they read as the agent talking.
+    panel: str = ""      # subtle raised background
+    rule: str = ""       # subtle border on that background
 
 
 def aegis_colors(theme: TextualTheme) -> AegisColors:
@@ -44,6 +50,11 @@ def aegis_colors(theme: TextualTheme) -> AegisColors:
         user_bg=var("aegis-userbg"),
         ink=theme.foreground or fg,
         work=theme.warning or fg,
+        # Not via var(): its fallback is the foreground, which as a border
+        # or a background would be the loudest thing on the screen rather
+        # than the quietest. Degrade toward the surface instead.
+        panel=theme.panel or theme.surface or theme.background or "",
+        rule=variables.get("aegis-rule") or var("aegis-muted"),
     )
 
 

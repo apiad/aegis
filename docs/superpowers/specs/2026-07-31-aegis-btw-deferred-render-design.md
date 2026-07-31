@@ -233,6 +233,48 @@ markdown for exactly the reason a side note does. Doing both at once is
 also simply less merge pain than two agents editing `render.py` in
 sequence to reach the same end state.
 
+### The aside surface — and why Markdown created the need for it
+
+Markdown fixed one problem and made another one worse.
+
+`render_event` maps an `AssistantText` to `Markdown(text)`. Once
+`render_side_note` does the same, a `/btw` answer and the agent's own
+prose are rendered by the identical code path — same fonts, same list
+bullets, same code spans, same everything. Before this change the answer
+was an inline `colors.ink` string trailing the word `btw`, which was ugly
+but at least unmistakably *not* the conversation. Making it beautiful made
+it camouflage.
+
+That is the one thing these blocks must never be. A side note is a third
+voice that never entered the conversation, and an `@peer` answer belongs
+to a **different session entirely** — it is a real turn in someone else's
+transcript, showing through. Reading either as your own agent talking is a
+correctness problem, not an aesthetic one: it would put words in the
+agent's mouth that it never said and does not know about.
+
+So both renderers return a `Panel` — `_aside` — carrying two things:
+
+- the theme's raised `panel` background, full width;
+- a thin left bar (`▏`) in the theme's `rule` colour.
+
+Both, not either. The background alone is a few hex points off the
+transcript's (`#1a1a17` against `#0e0e0d` in ink) — enough on a good
+monitor, invisible on a washed-out projector or a light theme. The bar
+alone would separate the block but not group it. Together the aside reads
+as a margin note, which is exactly what it is.
+
+`box.MINIMAL` was the first attempt and is worth recording as a dead end:
+it draws its verticals as **spaces**, so the "subtle border" rendered as
+nothing and only the background did any work. `_ASIDE_BOX` is a custom
+`box.Box` with a left edge and nothing else — a full box would fence the
+transcript, and a fenced transcript is louder than the conversation it
+frames.
+
+Two new fields on `AegisColors` back this: `panel` and `rule`. Neither
+goes through `var()`, whose fallback is the **foreground** — as a border
+or a background that would be the loudest thing on the screen rather than
+the quietest. They degrade toward the surface instead.
+
 ### Markdown on the `ok` path only
 
 Both renderers branch on `ok`, and **only the success branch gets a
