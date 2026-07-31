@@ -270,3 +270,138 @@ async def test_a_turn_ending_does_not_freeze_a_running_note():
         assert pane._any_spinner_running()
         assert pane._tool_timer is not None, "the note's spinner froze"
         bridge.gate.set()
+
+
+# ---------- ESC cancels --------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_esc_cancels_a_running_note_and_leaves_a_tombstone():
+    """A tombstone rather than a removal: ESC silently deleting something
+    you can see reads as a glitch, and the block is the only record that
+    you spent anything at all."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        bridge = SlowBridge(app)
+        pane.app.side_note = bridge.side_note
+        await _submit(pane, "/btw which path?")
+        await pilot.pause()
+        idx = pane._deferred.idx
+        assert pane.cancel_deferred_if_running() is True
+        assert pane._deferred is None
+        assert "cancelled" in pane._history[idx].payload
+        bridge.gate.set()
+
+
+@pytest.mark.asyncio
+async def test_esc_reports_not_consumed_when_no_note_is_running():
+    """So the app falls through to clear-input, then interrupt."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test():
+        pane = app._panes[0]
+        assert pane.cancel_deferred_if_running() is False
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_note_that_lands_late_is_dropped():
+    """A side question must never disturb the conversation it sits beside,
+    and that includes on the way out."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        bridge = SlowBridge(app)
+        pane.app.side_note = bridge.side_note
+        await _submit(pane, "/btw which path?")
+        await pilot.pause()
+        idx = pane._deferred.idx
+        pane.cancel_deferred_if_running()
+        bridge.gate.set()
+        for _ in range(50):
+            await pilot.pause()
+        assert "cancelled" in pane._history[idx].payload
+        assert "from the window" not in pane._history[idx].payload
+
+
+@pytest.mark.asyncio
+async def test_a_new_note_is_allowed_after_a_cancel():
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        bridge = SlowBridge(app)
+        pane.app.side_note = bridge.side_note
+        await _submit(pane, "/btw first")
+        await pilot.pause()
+        pane.cancel_deferred_if_running()
+        await _submit(pane, "/btw second")
+        await pilot.pause()
+        assert pane._deferred is not None
+        assert pane._deferred.subject == "second"
+        bridge.gate.set()
+
+
+@pytest.mark.asyncio
+async def test_the_ticker_stops_when_the_cancelled_note_was_the_last_spinner():
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        bridge = SlowBridge(app)
+        pane.app.side_note = bridge.side_note
+        await _submit(pane, "/btw which path?")
+        await pilot.pause()
+        assert pane._tool_timer is not None
+        pane.cancel_deferred_if_running()
+        assert pane._tool_timer is None
+        bridge.gate.set()
+
+
+# ---------- the ESC ladder -----------------------------------------------
+
+@pytest.mark.asyncio
+async def test_esc_cancels_the_note_before_it_clears_a_half_typed_line():
+    """The rung order. The spinning block is the live thing on screen and
+    it is billing by the second; clearing the input is reachable by other
+    means and interrupting the turn is the destructive option."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        bridge = SlowBridge(app)
+        pane.app.side_note = bridge.side_note
+        await _submit(pane, "/btw which path?")
+        await pilot.pause()
+        pane.query_one(GrowingInput).value = "half typed"
+        app.action_interrupt()
+        assert pane._deferred is None, "the note survived"
+        assert pane.query_one(GrowingInput).value == "half typed", \
+            "the input was cleared instead of the note being cancelled"
+        bridge.gate.set()
+
+
+@pytest.mark.asyncio
+async def test_esc_clears_the_input_when_no_note_is_running():
+    """The rung below still works — cancelling is inserted, not swapped."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test():
+        pane = app._panes[0]
+        pane.query_one(GrowingInput).value = "half typed"
+        app.action_interrupt()
+        assert pane.query_one(GrowingInput).value == ""
+
+
+@pytest.mark.asyncio
+async def test_esc_interrupts_the_turn_when_nothing_else_claims_it():
+    """The bottom rung: no modal, no note, no half-typed line."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test():
+        pane = app._panes[0]
+        calls = []
+        pane.interrupt = lambda *a, **k: calls.append(1)
+        app.action_interrupt()
+        assert calls == [1]

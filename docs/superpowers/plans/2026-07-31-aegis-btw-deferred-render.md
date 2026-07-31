@@ -1,6 +1,6 @@
 # `/btw` Deferred Rendering Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Take `/btw` off the Textual input handler so it no longer freezes the pane for 12-17s, give it a live spinner block, render its answer as Markdown, allow one at a time, and let ESC cancel it.
 
@@ -42,7 +42,7 @@ Reason: the primitive is general — `@peer` adopts it next — and a per-pane s
 
 ---
 
-### Task 1: `deferred` + `cancel_note` on `SlashCommand`
+### Task 1: `deferred` + `cancel_note` on `SlashCommand` — DONE `811e8b7`
 
 Lands the primitive alone so `aegis-at-mentions` can build `@peer` VS2 on it without waiting for the rest.
 
@@ -57,7 +57,7 @@ Lands the primitive alone so `aegis-at-mentions` can build `@peer` VS2 on it wit
   - `SlashCommand.cancel_note: str = "cancelled"`
   - `resolve_deferred(text: str) -> tuple[SlashCommand, dict] | None`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_deferred_commands.py`:
 
@@ -133,12 +133,12 @@ def test_cancel_note_resolves_against_the_parsed_args(slow_command):
 
 Fix the awkward import in `test_resolve_deferred_returns_the_command_and_its_parsed_args` to a plain `from aegis.commands import resolve_deferred` once the symbol exists; it is written defensively only so the file imports before the function is added.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -v`
 Expected: FAIL — `TypeError: SlashCommand.__init__() got an unexpected keyword argument 'deferred'`
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 In `src/aegis/commands/__init__.py`, the dataclass at line 43:
 
@@ -169,7 +169,7 @@ class SlashCommand:
     cancel_note: str = "cancelled"
 ```
 
-- [ ] **Step 4: Add `resolve_deferred`**
+- [x] **Step 4: Add `resolve_deferred`**
 
 In the same file, immediately after `dispatch` (which ends at line 101):
 
@@ -197,17 +197,17 @@ def resolve_deferred(text: str) -> "tuple[SlashCommand, dict] | None":
     return cmd, args
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -v`
 Expected: PASS (6 tests)
 
-- [ ] **Step 6: Verify nothing else regressed**
+- [x] **Step 6: Verify nothing else regressed**
 
 Run: `uv run python -m pytest tests/test_commands.py tests/test_btw_command.py tests/test_peer_command.py -q`
 Expected: PASS — the fields are additive with defaults.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/test_deferred_commands.py src/aegis/commands/__init__.py
@@ -231,14 +231,14 @@ No behaviour change: both fields default, no command sets them yet." \
   -- tests/test_deferred_commands.py src/aegis/commands/__init__.py
 ```
 
-- [ ] **Step 8: Tell the peer it's landed**
+- [x] **Step 8: Tell the peer it's landed**
 
 `aegis-at-mentions` is waiting on this to build `@peer` VS2. Send the commit SHA via `aegis_handoff`, with the `cancel_note` template it supplied:
 `cancel_note="stopped waiting — {handle}'s turn is still running, so go read its tab"`
 
 ---
 
-### Task 2: Markdown in both renderers, ok-path only
+### Task 2: Markdown in both renderers, ok-path only — DONE `3ce8786`
 
 Independent of everything else — pure `render.py`. Delivers half of what was asked.
 
@@ -250,7 +250,7 @@ Independent of everything else — pure `render.py`. Delivers half of what was a
 - Consumes: nothing.
 - Produces: `render_side_note(note, colors) -> Group`, `render_peer_answer(answer, colors) -> Group`. Both always return a `Group`; `group.renderables[0]` is the header `Text`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add this helper to `tests/test_btw_command.py`, directly under `palette()` at line 126:
 
@@ -347,12 +347,12 @@ def test_render_peer_answer_leads_with_the_target():
     assert "green" in cap.get()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_btw_command.py tests/test_peer_command.py -q`
 Expected: FAIL — `AttributeError: 'Text' object has no attribute 'renderables'` on the peer test, and the markdown test fails on `"**" not in text`.
 
-- [ ] **Step 3: Rewrite `render_side_note`**
+- [x] **Step 3: Rewrite `render_side_note`**
 
 Replace `src/aegis/render.py:247-271` entirely:
 
@@ -391,7 +391,7 @@ def render_side_note(note, colors) -> Group:
     return Group(*parts)
 ```
 
-- [ ] **Step 4: Rewrite `render_peer_answer`**
+- [x] **Step 4: Rewrite `render_peer_answer`**
 
 Replace `src/aegis/render.py:274-291` entirely (keep the existing docstring body, add the markdown paragraph):
 
@@ -428,19 +428,19 @@ def render_peer_answer(answer, colors) -> Group:
     return Group(*parts)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_btw_command.py tests/test_peer_command.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Mutation-check the markdown assertion**
+- [x] **Step 6: Mutation-check the markdown assertion**
 
 Temporarily revert `parts.append(Markdown(note.answer))` to `parts.append(Text(note.answer))` and run `test_a_markdown_answer_renders_as_markdown_not_asterisks`.
 Expected: FAIL on `"**" not in text`. Restore the `Markdown` line.
 
 A test that cannot fail licenses shipping. Confirm this one can.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/render.py tests/test_btw_command.py tests/test_peer_command.py
@@ -466,7 +466,7 @@ brittle than matching a rendered frame." \
 
 ---
 
-### Task 2b: The aside surface — DONE
+### Task 2b: The aside surface — DONE `f6224c1`
 
 Added after Task 2 landed, on Alex's request: *"some kind of gray
 background or subtle border for these things so it doesn't look exactly
@@ -509,7 +509,7 @@ failure is still an aside); every rendered line starts with `▏`; and
 agent prose has no bar — the other half of the property, since the bar
 means "not the conversation".
 
-### Task 3: Extract `_apply_command_result`
+### Task 3: Extract `_apply_command_result` — DONE `d212f14`
 
 Pure refactor, no behaviour change. Must land before Task 4, which needs the chain callable from two places.
 
@@ -522,7 +522,7 @@ Pure refactor, no behaviour change. Must land before Task 4, which needs the cha
   - `ConversationPane._put_block(renderable, payload, *, at_idx: int | None = None) -> None`
   - `ConversationPane._apply_command_result(result, width: int, *, at_idx: int | None = None) -> str | None` — returns the text to deliver for a `deliver` effect, else `None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_deferred_commands.py`:
 
@@ -605,12 +605,12 @@ def test_at_idx_is_forwarded_so_a_result_can_replace_a_placeholder():
     assert pane.blocks[0][2] == 7
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k effect -v`
 Expected: FAIL — `AttributeError: type object 'ConversationPane' has no attribute '_apply_command_result'`
 
-- [ ] **Step 3: Add `_put_block`**
+- [x] **Step 3: Add `_put_block`**
 
 In `src/aegis/tui/pane.py`, immediately before `_mount_block` (line 1130):
 
@@ -638,7 +638,7 @@ In `src/aegis/tui/pane.py`, immediately before `_mount_block` (line 1130):
                 self._transcript().scroll_end(animate=False)
 ```
 
-- [ ] **Step 4: Add `_apply_command_result`**
+- [x] **Step 4: Add `_apply_command_result`**
 
 Immediately after `_apply_command_effect` (which ends at line 1128):
 
@@ -706,7 +706,7 @@ Immediately after `_apply_command_effect` (which ends at line 1128):
         return None
 ```
 
-- [ ] **Step 5: Replace the inline chain**
+- [x] **Step 5: Replace the inline chain**
 
 In `on_growing_input_submitted`, replace lines 1361-1419 (from `elif text.startswith("/"):` through the end of the `else: text = payload` branch) with:
 
@@ -733,17 +733,17 @@ In `on_growing_input_submitted`, replace lines 1361-1419 (from `elif text.starts
 
 Remove the now-unused `from aegis.render import render_command_block` import from the handler if it is left orphaned.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -v`
 Expected: PASS
 
-- [ ] **Step 7: Verify no behaviour change**
+- [x] **Step 7: Verify no behaviour change**
 
 Run: `uv run python -m pytest tests/test_btw_command.py tests/test_peer_command.py tests/test_commands.py tests/test_pane.py -q`
 Expected: PASS. This is a pure refactor — any failure here is a real regression, not a test that needs updating.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/tui/pane.py tests/test_deferred_commands.py
@@ -763,7 +763,7 @@ Pure refactor: no behaviour change, existing suites green." \
 
 ---
 
-### Task 4: `_DeferredTrack` — the spinner, and the end of the freeze
+### Task 4: `_DeferredTrack` — the spinner, and the end of the freeze — DONE `07b21e8`
 
 The vertical slice. After this task `/btw` no longer freezes the pane and shows a live spinner.
 
@@ -781,7 +781,7 @@ The vertical slice. After this task `/btw` no longer freezes the pane and shows 
   - `ConversationPane._start_deferred(payload, cmd, args, width) -> None`
   - `ConversationPane._any_spinner_running() -> bool`
 
-- [ ] **Step 1: Write the failing test for the renderer**
+- [x] **Step 1: Write the failing test for the renderer**
 
 Append to `tests/test_deferred_commands.py`:
 
@@ -834,12 +834,12 @@ def test_a_cancelled_placeholder_shows_no_cost():
     assert "$" not in text
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k placeholder -v`
 Expected: FAIL — `ImportError: cannot import name 'render_deferred'`
 
-- [ ] **Step 3: Add `render_deferred`**
+- [x] **Step 3: Add `render_deferred`**
 
 In `src/aegis/render.py`, after `render_tool_use` ends (~line 60):
 
@@ -879,12 +879,12 @@ def render_deferred(label: str, subject: str, elapsed: float, colors, *,
     return line
 ```
 
-- [ ] **Step 4: Run to verify the renderer tests pass**
+- [x] **Step 4: Run to verify the renderer tests pass**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k placeholder -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Write the failing pane test**
+- [x] **Step 5: Write the failing pane test**
 
 Append to `tests/test_deferred_commands.py`:
 
@@ -938,12 +938,12 @@ async def test_the_placeholder_is_replaced_in_place_by_the_answer(
 
 Write the `deferred_pane` fixture against the real `ConversationPane` if it can be constructed headless in this suite; otherwise build a minimal harness exposing `_deferred`, `_history`, `submit()` (calls the real `on_growing_input_submitted` logic) and `settle()` (awaits the worker). Check `tests/test_pane.py` for the project's existing pane-construction pattern and follow it rather than inventing a second one.
 
-- [ ] **Step 6: Run to verify it fails**
+- [x] **Step 6: Run to verify it fails**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k deferred_command -v`
 Expected: FAIL — `AttributeError: '_Pane' object has no attribute '_deferred'`
 
-- [ ] **Step 7: Add the track dataclass**
+- [x] **Step 7: Add the track dataclass**
 
 In `src/aegis/tui/pane.py`, after `_ToolTrack` (line 99):
 
@@ -969,7 +969,7 @@ class _DeferredTrack:
     elapsed: float | None = None
 ```
 
-- [ ] **Step 8: Initialise it**
+- [x] **Step 8: Initialise it**
 
 In `ConversationPane.__init__`, next to `self._spin_frame = 0` (line 764):
 
@@ -980,7 +980,7 @@ In `ConversationPane.__init__`, next to `self._spin_frame = 0` (line 764):
         self._deferred: _DeferredTrack | None = None
 ```
 
-- [ ] **Step 9: Add the dispatch branch**
+- [x] **Step 9: Add the dispatch branch**
 
 In `on_growing_input_submitted`, inside `if kind == "command":`, before the `result = await dispatch(...)` line added in Task 3:
 
@@ -1003,7 +1003,7 @@ while `/peer beta hi` works perfectly — green suite, found by Alex.
 
 Hence the placement inside `if kind == "command":`, and hence Step 9b.
 
-- [ ] **Step 9b: Pin both spellings at the seam**
+- [x] **Step 9b: Pin both spellings at the seam**
 
 Add to `tests/test_deferred_commands.py`. A test on `/peer` alone would
 pass with the bug present.
@@ -1032,7 +1032,7 @@ Mutation: change Step 9's `resolve_deferred(payload)` to
 `resolve_deferred(text)` and confirm the `@` case fails while the `/`
 case still passes. If both still pass, the test is not at the seam.
 
-- [ ] **Step 10: Add the pane methods**
+- [x] **Step 10: Add the pane methods**
 
 Add near `_render_tool_block` (line 1762):
 
@@ -1109,7 +1109,7 @@ Add near `_render_tool_block` (line 1762):
             self._deferred is not None and not self._deferred.done)
 ```
 
-- [ ] **Step 11: Tick the deferred track**
+- [x] **Step 11: Tick the deferred track**
 
 Replace `_tick_tools` (line 1753):
 
@@ -1126,7 +1126,7 @@ Replace `_tick_tools` (line 1753):
             self._render_deferred_block(self._deferred, layout=False)
 ```
 
-- [ ] **Step 12: Stop the turn from freezing the note**
+- [x] **Step 12: Stop the turn from freezing the note**
 
 `_freeze_all_tools` (line 1787) runs at turn end and calls `_stop_tool_timer()` unconditionally. `/btw` is legal mid-turn and independent of it, so a turn ending must not freeze a running side note. Change its last line from `self._stop_tool_timer()` to:
 
@@ -1137,7 +1137,7 @@ Replace `_tick_tools` (line 1753):
 
 Apply the same guard at the `_stop_tool_timer()` call inside `_attach_tool_result` (line ~1729).
 
-- [ ] **Step 13: Flip `/btw`**
+- [x] **Step 13: Flip `/btw`**
 
 In `src/aegis/commands/builtins/core.py`, the registration at line 380:
 
@@ -1152,18 +1152,18 @@ In `src/aegis/commands/builtins/core.py`, the registration at line 380:
 
 **Do not touch the `/peer` entry immediately below it.** If `aegis-at-mentions` still holds exclusive on this file, hand it this one-line diff instead of editing.
 
-- [ ] **Step 14: Run the tests**
+- [x] **Step 14: Run the tests**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py tests/test_btw_command.py -v`
 Expected: PASS
 
-- [ ] **Step 15: Verify against the real TUI**
+- [x] **Step 15: Verify against the real TUI**
 
 Unit tests cannot show that the freeze is gone. Run `aegis`, start a turn, and fire `/btw <a real question>` while the agent is working. Confirm all three: the btw spinner ticks, **the agent's own tool spinners keep ticking**, and the input still accepts keys. Then confirm the answer replaces the placeholder in place rather than at the tail.
 
 The freeze is the defect this task exists to fix — a green unit suite is not evidence it is fixed.
 
-- [ ] **Step 16: Commit**
+- [x] **Step 16: Commit**
 
 ```bash
 git add src/aegis/render.py src/aegis/tui/pane.py \
@@ -1194,7 +1194,7 @@ of the turn, which is the whole reason it is legal mid-turn." \
 
 ---
 
-### Task 5: One at a time
+### Task 5: One at a time — DONE `07b21e8`
 
 The guard shipped in Task 4's `_start_deferred`; this task pins it with tests and proves it can fail.
 
@@ -1205,7 +1205,7 @@ The guard shipped in Task 4's `_start_deferred`; this task pins it with tests an
 - Consumes: `_start_deferred` (Task 4).
 - Produces: nothing new.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 async def test_a_second_btw_is_refused_while_one_is_running(deferred_pane):
@@ -1243,19 +1243,19 @@ async def test_a_second_btw_after_the_first_finished_is_allowed(
     bridge.gate.set()
 ```
 
-- [ ] **Step 2: Run to verify they pass**
+- [x] **Step 2: Run to verify they pass**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k "second or ordinary" -v`
 Expected: PASS
 
-- [ ] **Step 3: Mutation-check the guard**
+- [x] **Step 3: Mutation-check the guard**
 
 Temporarily delete the `if self._deferred is not None and not self._deferred.done:` block from `_start_deferred` and re-run.
 Expected: `test_a_second_btw_is_refused_while_one_is_running` FAILS. Restore the guard.
 
 A guard test that cannot fail is worth less than none, because it licenses shipping.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_deferred_commands.py
@@ -1269,7 +1269,7 @@ note runs — replacing a freeze with a lock would be no improvement." \
 
 ---
 
-### Task 6: ESC cancels
+### Task 6: ESC cancels — DONE
 
 **Files:**
 - Modify: `src/aegis/tui/pane.py` (add `cancel_deferred_if_running` near `clear_input_if_present`, line 1284)
@@ -1281,7 +1281,7 @@ note runs — replacing a freeze with a lock would be no improvement." \
 - Consumes: `_DeferredTrack`, `_render_deferred_block`, `_any_spinner_running` (Task 4).
 - Produces: `ConversationPane.cancel_deferred_if_running() -> bool`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_esc_cancels_a_running_note_and_leaves_a_tombstone(
@@ -1315,12 +1315,12 @@ async def test_a_cancelled_note_that_lands_late_is_dropped(deferred_pane):
     assert "from the window" not in pane._history[idx].payload
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -k esc -v`
 Expected: FAIL — `AttributeError: no attribute 'cancel_deferred_if_running'`
 
-- [ ] **Step 3: Add the pane method**
+- [x] **Step 3: Add the pane method**
 
 In `src/aegis/tui/pane.py`, immediately after `clear_input_if_present` (line 1291):
 
@@ -1345,7 +1345,7 @@ In `src/aegis/tui/pane.py`, immediately after `clear_input_if_present` (line 129
         return True
 ```
 
-- [ ] **Step 4: Add the ESC rung**
+- [x] **Step 4: Add the ESC rung**
 
 In `src/aegis/tui/app.py`, inside `action_interrupt`, after the `ModalScreen` block and **before** the `clear_input_if_present` block:
 
@@ -1363,12 +1363,12 @@ In `src/aegis/tui/app.py`, inside `action_interrupt`, after the `ModalScreen` bl
 
 The existing `active = self._active` line below it becomes redundant — remove the duplicate, keep one assignment above this block.
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `uv run python -m pytest tests/test_deferred_commands.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Verify the ladder in the real TUI**
+- [x] **Step 6: Verify the ladder in the real TUI**
 
 Four presses, in order, confirming each rung:
 1. `/btw <question>` → ESC → tombstone appears, turn is **not** interrupted.
@@ -1376,16 +1376,16 @@ Four presses, in order, confirming each rung:
 3. Nothing typed, agent working → ESC → turn interrupts.
 4. Open the dashboard (`F1`/whatever binds it) → ESC → modal dismisses, nothing else happens.
 
-- [ ] **Step 7: Update the spec's naming deviation**
+- [x] **Step 7: Update the spec's naming deviation**
 
 In `docs/superpowers/specs/2026-07-31-aegis-btw-deferred-render-design.md`, change the `## The btw track` section's `_BtwTrack` to `_DeferredTrack` and note the single-slot-per-pane decision with its reason (ESC ambiguity). A spec that names a symbol the code does not have misleads the next reader.
 
-- [ ] **Step 8: Full suite**
+- [x] **Step 8: Full suite**
 
 Run: `uv run python -m pytest -q`
 Expected: 2450+ passed. Read any failures: 1-2 inotify/watchdog TUI flakes are known on zion; anything in `test_deferred_commands.py`, `test_btw_command.py`, `test_peer_command.py`, `test_pane.py` or `test_commands.py` is real.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/tui/pane.py src/aegis/tui/app.py \
@@ -1413,7 +1413,7 @@ Spec updated: _BtwTrack is _DeferredTrack, one slot per pane." \
      docs/superpowers/specs/2026-07-31-aegis-btw-deferred-render-design.md
 ```
 
-- [ ] **Step 10: Release the claim**
+- [x] **Step 10: Release the claim**
 
 `aegis_release` the exclusive claim on `render.py`, `pane.py`, `app.py` and the two test files, and tell `aegis-at-mentions` the primitive is complete and `@peer` can adopt `deferred=True` + its `cancel_note` template.
 

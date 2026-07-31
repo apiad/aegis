@@ -1264,6 +1264,15 @@ class AegisApp(App):
             self.screen.dismiss()
             return
         active = self._active
+        # Esc cancels a running /btw or @peer before it clears a half-typed
+        # line. The spinning block is the live thing on screen demanding
+        # attention and it is billing by the second; clearing the input is
+        # reachable by other means, and interrupting the turn is the
+        # destructive option and stays last, hardest to hit by accident.
+        if active is not None and hasattr(active,
+                                          "cancel_deferred_if_running"):
+            if active.cancel_deferred_if_running():
+                return
         # Esc clears a half-typed message before it interrupts the turn.
         if active is not None and hasattr(active, "clear_input_if_present"):
             if active.clear_input_if_present():

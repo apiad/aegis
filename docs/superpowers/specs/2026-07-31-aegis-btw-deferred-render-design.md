@@ -1,7 +1,7 @@
 ---
 title: /btw, deferred — a side note you can watch, read, and call off
 date: 2026-07-31
-status: design
+status: shipped
 ---
 
 # `/btw`, deferred — a side note you can watch, read, and call off
@@ -142,22 +142,37 @@ A single hardcoded cancel message would have shipped a false statement to
 the user on the second command that used the primitive. It is worth one
 extra field on a frozen dataclass to not do that.
 
-## The btw track
+## The deferred track
 
-`_BtwTrack` mirrors `_ToolTrack` (`pane.py:89`), because the problem is
-the same one tool calls already solved: a block that is mounted before its
-content exists, ticks while it waits, and freezes when it lands.
+`_DeferredTrack` mirrors `_ToolTrack` (`pane.py:89`), because the problem
+is the same one tool calls already solved: a block that is mounted before
+its content exists, ticks while it waits, and freezes when it lands.
 
 ```python
 @dataclass(slots=True)
-class _BtwTrack:
+class _DeferredTrack:
     idx: int              # history index of its block
     start: float          # time.monotonic() at dispatch
-    prompt: str           # the question, for the running line
-    worker: object        # the Textual worker, for cancel
+    label: str            # "btw", "/peer"
+    subject: str          # the question, echoed while it runs
+    cancel_note: str      # already resolved against parsed args
+    worker: object = None # the Textual worker, for cancel
     done: bool = False
     elapsed: float | None = None
 ```
+
+**Named for the primitive, not for `/btw`, and held one-per-pane rather
+than one-per-command.** Both were drafted the other way and changed
+during implementation, for one reason each:
+
+- The track is not `/btw`'s. `@peer` is `deferred=True` already and uses
+  the identical machinery; a type named after the first caller would have
+  been wrong within a day.
+- One slot keeps ESC honest. Two spinners racing in a single pane would
+  leave the cancel key with no defensible answer about which it kills,
+  and "whichever started last" is not an answer anyone would guess. The
+  one-at-a-time rule and the ESC rung are the same decision seen from two
+  sides.
 
 It reuses the existing 10 Hz ticker (`_ensure_tool_timer` /
 `_tick_tools`, `pane.py:1721-1744`) and `_SPINNER_FRAMES`, and re-renders

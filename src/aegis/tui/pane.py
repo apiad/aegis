@@ -1388,6 +1388,38 @@ class ConversationPane(Widget):
     def input_widget(self) -> "GrowingInput":
         return self.query_one(GrowingInput)
 
+    def cancel_deferred_if_running(self) -> bool:
+        """Esc handler: cancel a running deferred command and report we
+        consumed the key. Nothing running → return False so the app falls
+        through to clearing the input, then interrupting the turn.
+
+        The block becomes a tombstone rather than disappearing: ESC
+        silently deleting something you can see reads as a glitch, and
+        this block is the only record that you spent anything at all.
+
+        The tombstone carries the *command's* own cancel note, because
+        the truth differs per command. "cancelled" is honest for `/btw`,
+        which never touched a harness session. For `@peer` it is a lie —
+        the peer already took the turn and finishes into its own
+        transcript whether or not anyone is listening.
+        """
+        track = self._deferred
+        if track is None or track.done:
+            return False
+        track.done = True
+        track.elapsed = time.monotonic() - track.start
+        # Cleared before cancelling the worker so the in-flight
+        # _run_deferred sees `self._deferred is not track` and drops its
+        # result, whichever way the cancellation lands.
+        self._deferred = None
+        if track.worker is not None:
+            with contextlib.suppress(Exception):
+                track.worker.cancel()
+        self._render_deferred_block(track, cancelled=True)
+        if not self._any_spinner_running():
+            self._stop_tool_timer()
+        return True
+
     def clear_input_if_present(self) -> bool:
         """Esc handler: clear a non-empty input and report we consumed the
         key. Empty input → no-op, return False so the app interrupts."""
@@ -1846,7 +1878,7 @@ class ConversationPane(Widget):
                 render_command_block(
                     CommandResult(
                         False, f"{running.label} is already running",
-                        f"wait for it, or start this one after it lands"),
+                        "ESC to cancel it"),
                     self._palette, width),
                 f"{running.label} is already running")
             return
