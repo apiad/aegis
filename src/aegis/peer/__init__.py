@@ -29,6 +29,17 @@ from dataclasses import dataclass
 # told to go read it there rather than being left with a hung pane.
 PEER_ASK_TIMEOUT_S = 300.0
 
+# The teaser's job is to *place* the peer, not to let it answer from the
+# window alone — that is what ``aegis_read_peer`` is for. `/btw` runs at
+# 32k and measured the window as most of its bill; this is a small
+# fraction of that, and it costs a log read rather than a model call.
+# A number to measure once peers are actually pulling, not to guess at
+# forever: if the pull rate is high, this is too small; if peers answer
+# blind, it is too big.
+TEASER_BUDGET_TOKENS = 2_000
+TEASER_MAX_TURNS = 3
+TEASER_ITEM_CHARS = 200
+
 
 class PeerBusy(Exception):
     """The target was idle at the check and busy at the delivery.
@@ -91,18 +102,71 @@ def refusal(*, from_handle: str, target: str, session, ready: bool) -> str | Non
     return None
 
 
-def compose(*, source: str, slug: str, prompt: str) -> str:
+async def teaser(state_dir, log_id):
+    """A free slice of where the operator is standing, or None.
+
+    Free is the point: a log read and an ``assemble()`` call, never a
+    model call. The design bets on *pull* — send a cheap pointer and let
+    the peer read more if it needs to — and that bet only pays while the
+    pointer costs nothing. Summarising here would tax every ask, including
+    the many whose question was self-contained anyway.
+
+    Returns None rather than raising on any failure: a missing transcript
+    must cost the operator the teaser, never the ask.
+    """
+    import asyncio
+
+    if not state_dir or not log_id:
+        return None
+    try:
+        from aegis.btw.window import assemble
+        from aegis.state import session_log
+        replay = await asyncio.to_thread(
+            session_log.replay_events, state_dir, log_id)
+        return assemble(replay, max_turns=TEASER_MAX_TURNS,
+                        budget_tokens=TEASER_BUDGET_TOKENS,
+                        item_chars=TEASER_ITEM_CHARS)
+    except Exception:                                         # noqa: BLE001
+        return None
+
+
+def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
     """The body the peer receives.
 
-    Provenance of **place, not author**. Tagged as though the source agent
+    Two things this wording has to get right.
+
+    **Provenance of place, not author.** Tagged as though the source agent
     were asking, the peer reads it as peer-to-peer delegation and skews
     autonomous — it goes and *does* things. The truthful framing is that
     the operator asked, while standing somewhere else.
+
+    **Default to pull.** "If you need to, call ``aegis_read_peer``" biases
+    toward not calling, and the failure mode is not laziness — it is that
+    the model cannot detect the gap. "Look at this and tell me if it's
+    right" is complete-seeming English; nothing in it signals a missing
+    referent, and noticing an absence is what context windows are worst
+    at. So the burden sits on answering *without* reading, and the
+    window's honest header ("6 of 143 events") is included precisely to
+    turn an undetectable absence into a legible one.
     """
+    if window is not None and window.text:
+        slice_ = (f"Below is the recent tail of that conversation — "
+                  f"{window.header}.\n\n"
+                  f"--- tail of {source} ---\n{window.text}\n--- end ---\n\n")
+        pull = (f'Read the fuller conversation with '
+                f'aegis_read_peer("{source}") before answering, unless the '
+                f'question is plainly self-contained.\n\n')
+    else:
+        slice_ = (f"Its transcript could not be read, so you are seeing "
+                  f"none of it.\n\n")
+        pull = (f'Read it with aegis_read_peer("{source}") before '
+                f'answering, unless the question is plainly '
+                f'self-contained.\n\n')
     return (
         f"The operator typed this from inside another conversation — tab "
         f"`{source}` ({slug}) — and it probably refers to what is "
-        f"happening there.\n\n"
+        f"happening there. {slice_}"
+        f"{pull}"
         f"Answer it. Do not start long work: if this needs real work "
         f"rather than an answer, say so and stop, and the operator will "
         f"delegate it properly.\n\n"
@@ -140,7 +204,8 @@ async def send_and_await(session, *, prompt: str, sender: str,
 
 
 async def ask(*, from_handle: str, target: str, source_slug: str,
-              target_session, prompt: str) -> PeerAnswer:
+              target_session, prompt: str,
+              state_dir=None, source_log_id: str | None = None) -> PeerAnswer:
     """The half both ``AppBridge`` implementations share.
 
     Best-effort by contract, exactly as ``side_note`` is: every failure
@@ -161,8 +226,9 @@ async def ask(*, from_handle: str, target: str, source_slug: str,
     if why:
         return PeerAnswer(target=target, error=why)
 
+    window = await teaser(state_dir, source_log_id)
     body = compose(source=from_handle, slug=source_slug or "unknown",
-                   prompt=prompt)
+                   prompt=prompt, window=window)
     sink: list = []
     t0 = time.monotonic()
     try:
@@ -186,6 +252,7 @@ async def ask(*, from_handle: str, target: str, source_slug: str,
     res = sink[0] if sink else None
     return PeerAnswer(
         answer=text, target=target, ok=True,
+        header=getattr(window, "header", "") or "no transcript",
         model=getattr(getattr(target_session, "agent", None), "model", "") or "",
         duration_ms=int((time.monotonic() - t0) * 1000),
         cost_usd=float(getattr(res, "cost_usd", 0.0) or 0.0))

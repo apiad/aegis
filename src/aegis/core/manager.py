@@ -305,7 +305,9 @@ class SessionManager:
         return await ask(
             from_handle=from_handle, target=target,
             source_slug=getattr(source, "agent_slug", ""),
-            target_session=self.get(target), prompt=prompt)
+            target_session=self.get(target), prompt=prompt,
+            state_dir=self._persist_dir or self.state_root,
+            source_log_id=getattr(source, "log_id", None))
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
