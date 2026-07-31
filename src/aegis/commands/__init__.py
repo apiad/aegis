@@ -48,6 +48,50 @@ class SlashCommand:
     run: Handler
     source: str = "builtin"          # builtin | user | plugin
     spec: ArgSpec = field(default_factory=ArgSpec)
+    # A deferred command must not be awaited in a frontend's input
+    # handler. `/btw` takes 12-17s and `@peer` up to
+    # PEER_ASK_TIMEOUT_S = 300; awaiting either inside a Textual message
+    # handler holds that pane's message pump for the duration, freezing
+    # every spinner in it and the input itself. A frontend that
+    # understands the flag mounts a placeholder, dispatches off the
+    # handler, and rewrites the block when the result lands. One that
+    # does not (today: the web client) ignores it and keeps the old
+    # synchronous behaviour.
+    #
+    # Declared on the command rather than checked by verb because two
+    # commands landed hours apart hit the same defect for the same
+    # reason.
+    deferred: bool = False
+    # What a frontend says when the operator cancels a running deferred
+    # command — a template, resolved against the parsed args.
+    #
+    # Per-command because the truth is per-command. Cancelling `/btw` is
+    # clean: it never touched a harness session, so nothing happened
+    # anywhere. Cancelling `@peer` is not — the peer already took the
+    # turn and will finish into its own transcript whether or not anyone
+    # is still listening. Nothing is cancelled; you stopped waiting.
+    cancel_note: str = "cancelled"
+
+    def resolved_cancel_note(self, args=None) -> str:
+        """``cancel_note`` interpolated against parsed args.
+
+        Lives here because a template is only as good as its agreement
+        with this command's own ``ArgSpec`` — the two belong in one
+        place, and a frontend should not have to know that ``Args``
+        keeps positionals and flags in separate dicts.
+
+        Tolerant by contract: a template naming a key the spec does not
+        have falls back to the raw string. This is the last thing a
+        frontend renders for a command the operator has already walked
+        away from, so it must not be able to raise.
+        """
+        if args is None:
+            return self.cancel_note
+        try:
+            return self.cancel_note.format(
+                **{**args.positional, **args.flags})
+        except (KeyError, IndexError, AttributeError):
+            return self.cancel_note
 
 
 REGISTRY: dict[str, SlashCommand] = {}
@@ -99,6 +143,31 @@ async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
         return await cmd.run(ctx, args)
     except Exception as e:  # noqa: BLE001 — a bad command must not kill the turn
         return CommandResult(False, f"/{verb} failed", f"{type(e).__name__}: {e}")
+
+
+def resolve_deferred(text: str) -> "tuple[SlashCommand, dict] | None":
+    """``(command, parsed args)`` when ``text`` names a deferred command.
+
+    A pure lookup, so a frontend can decide *how* to run a command before
+    running it: a deferred one gets a placeholder block and a worker, an
+    ordinary one is awaited inline as before. Verb parsing mirrors
+    ``dispatch`` exactly — keep the two in step.
+
+    Bad args return None rather than a deferred command. A typo should
+    get ``dispatch``'s usage error immediately and inline; mounting a
+    spinner for it would be worse than useless.
+    """
+    body = text[1:] if text.startswith("/") else text
+    parts = body.split(None, 1)
+    verb = parts[0].lower() if parts and parts[0] else "help"
+    cmd = REGISTRY.get(verb)
+    if cmd is None or not cmd.deferred:
+        return None
+    try:
+        args = parse(cmd.spec, parts[1] if len(parts) > 1 else "")
+    except ArgError:
+        return None
+    return cmd, args
 
 
 def classify_input(text: str) -> "tuple[str, str]":
