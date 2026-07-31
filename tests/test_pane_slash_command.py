@@ -95,6 +95,26 @@ async def test_double_slash_delivers_literal_message():
 
 
 @pytest.mark.asyncio
+async def test_at_mention_is_executed_not_delivered_to_the_agent():
+    """`@handle` is sugar for `/peer handle` — `classify_input` rewrites it,
+    but only if the input gate lets `@` through.
+
+    Without the gate the line falls through and is delivered to the agent
+    you are sitting with as literal text, which looks like it worked and is
+    therefore worse than not having the feature. The web seam has no gate
+    (`wssession.py` classifies every line), so a regression here is TUI-only
+    and silent. This test is what makes it loud.
+    """
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await _submit(pane, "@nosuchpeer are you there?")
+        await pilot.pause()
+        assert sess.sent == []
+
+
+@pytest.mark.asyncio
 async def test_prompt_command_delivers_expansion_to_agent(tmp_path):
     from aegis.commands import REGISTRY
     from aegis.commands.prompt_loader import load_prompt_commands

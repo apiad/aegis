@@ -1358,10 +1358,19 @@ class ConversationPane(Widget):
                 return
             from aegis.tui.shell_escape import run_shell_escape
             text = await run_shell_escape(command, self._core.project_root)
-        elif text.startswith("/"):
+        elif text.startswith(("/", "@")):
             # Slash family: `/cmd` is a command aegis executes directly and
             # renders in the transcript (never delivered to the agent); `//x`
             # is an escape that delivers a literal `/x` message.
+            #
+            # `@` is in the gate because classify_input rewrites `@beta hi`
+            # into `/peer beta hi`. This tuple has to travel with the
+            # classify_input call wherever it moves: without it an `@` line
+            # falls through and is delivered to the agent you are sitting
+            # with as literal text — worse than not having the feature,
+            # because it looks like it worked. The web seam has no gate
+            # (wssession.py calls classify_input on every line), so a
+            # regression here is TUI-only and silent.
             from aegis.commands import (
                 CommandContext, classify_input, dispatch)
             from aegis.render import render_command_block

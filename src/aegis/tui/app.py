@@ -1473,7 +1473,44 @@ class AegisApp(App):
             from_handle=from_handle, target=target,
             source_slug=getattr(source, "agent_slug", "") if source else "",
             target_session=target_pane._core if target_pane else None,
-            prompt=prompt)
+            prompt=prompt,
+            # Everything below defaults on ask(), so omitting any of it
+            # compiles and silently ships a degraded path in the primary
+            # UI while the web seam (SessionManager.peer_ask) is correct.
+            # That has now happened three times in this one call, so the
+            # rule is: forward every parameter SessionManager forwards.
+            # test_peer_ask_bridges_forward_the_same_kwargs pins it.
+            #
+            # The teaser: a bounded slice of *this* pane's transcript so
+            # the peer can see where the operator is standing. Without it
+            # the composed body tells the peer its transcript "could not
+            # be read".
+            state_dir=self._state_dir,
+            source_log_id=source.log_id if source else None,
+            # --cc: deliver the peer's answer into this conversation as a
+            # real turn. Needs BOTH — cc alone is inert, because cc_into
+            # returns early on a None source_session.
+            source_session=source._core if source else None,
+            cc=cc)
+
+    async def read_peer(self, handle: str, turns: int = 12) -> dict:
+        """AppBridge-shaped: window a live peer's transcript.
+
+        Deliberately NOT on the AppBridge Protocol — the MCP tool resolves
+        it with getattr and degrades with a clear message, matching the
+        open_file precedent. Absent it, the TUI answers "this aegis
+        frontend cannot read peer transcripts" to any agent that tries to
+        pull, which would gut the half of @peer's design that pull rests
+        on.
+        """
+        from aegis.peer import read_window
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return {"ok": False, "text": "", "header": "",
+                    "error": f"unknown session: {handle}"}
+        return await read_window(self._state_dir, pane.log_id, turns)
 
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
