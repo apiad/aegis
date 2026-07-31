@@ -81,6 +81,18 @@ class AppBridge(Protocol):
                     model: str | None = None,
                     effort: str | None = None,
                     prompt: str | None = None) -> str: ...
+    async def fork(self, target: str, *,
+                   prompt: str | None = None,
+                   slug: str | None = None,
+                   model: str | None = None,
+                   effort: str | None = None,
+                   forked_by: str | None = None) -> str:
+        """Branch ``target``'s conversation into a new session.
+
+        Raises ValueError listing every refusal reason at once — no
+        session id yet, driver cannot fork, or the target is mid-turn.
+        """
+        ...
     async def close(self, handle: str) -> None: ...
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         """Cut the handle's live turn. ``drain=True`` (the default) then

@@ -30,6 +30,27 @@ class ForkFacts:
     driver: str                    # harness slug, for the refusal message
 
 
+def facts_for(sess, *, capability) -> ForkFacts:
+    """Gather ForkFacts from a session-like object, or its absence.
+
+    Two call sites build sessions by different paths — SessionManager for
+    serve/MCP, AegisApp for TUI panes — and must refuse forks for
+    identical reasons. Sharing the gatherer is what stops them drifting.
+
+    ``capability`` maps a harness slug to whether its driver can fork.
+    """
+    if sess is None:
+        return ForkFacts(exists=False, session_id=None, supports_fork=False,
+                         state="", driver="unknown")
+    harness = getattr(sess.agent, "harness", "") or ""
+    return ForkFacts(
+        exists=True,
+        session_id=sess.session_id,
+        supports_fork=capability(harness),
+        state=sess.state.value,
+        driver=harness or "unknown")
+
+
 def refuse_reasons(facts: ForkFacts, *, target: str) -> list[str]:
     """Why ``target`` may not be forked. Empty list means it may."""
     if not facts.exists:

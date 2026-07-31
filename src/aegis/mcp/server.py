@@ -909,6 +909,60 @@ def build_server(bridge: AppBridge) -> FastMCP:
         return {"handle": handle}
 
     @server.tool
+    async def aegis_fork(target_handle: str, from_handle: str,
+                         prompt: str | None = None,
+                         slug: str | None = None,
+                         model: str | None = None,
+                         effort: str | None = None) -> dict:
+        """Branch a peer's conversation into a NEW independent agent that
+        already knows everything that peer knows.
+
+        Unlike ``aegis_spawn``, which starts cold and needs a
+        self-contained prompt, a fork inherits the target's entire
+        conversation — every file it read, every approach it ruled out.
+        ``prompt`` is the divergence ("you've read the parser already; now
+        try the Line API instead"), and is optional: without one the fork
+        inherits the conversation and waits.
+
+        The parent is untouched — same session id, same log, same tab.
+
+        Costs real money: a fork does not inherit the parent's warm cache,
+        it builds its own. Measured ~$1 on a mid-size conversation,
+        scaling with context. Fork deliberately; do not fan out N ways
+        without meaning to pay N times.
+
+        **You cannot fork yourself with this tool.** Calling it puts you
+        mid-turn by construction — your own transcript ends in the
+        tool_use awaiting this result, and branching from a dangling tool
+        call produces an agent that burns turns trying to reconcile it.
+        Use the ``/fork`` slash command, which runs at a turn boundary.
+
+        Refused, with every reason at once, when the target has no session
+        id yet, its driver cannot fork, or it is mid-turn.
+
+        Args:
+            target_handle: the peer whose conversation to branch.
+            from_handle: your own aegis handle (recorded as provenance).
+            prompt: the fork's first turn. Omit to let it wait.
+            slug: desired handle for the fork; auto-generated if omitted.
+            model: per-session model override, layered over the profile.
+            effort: per-session reasoning-effort override.
+        """
+        if target_handle == from_handle:
+            return {"error": (
+                "an agent cannot fork itself over MCP: calling this tool "
+                "puts you mid-turn, and a fork would branch from the "
+                "dangling tool call you are inside. Use the /fork slash "
+                "command, which runs at a turn boundary.")}
+        try:
+            handle = await bridge.fork(target_handle, prompt=prompt,
+                                       slug=slug, model=model, effort=effort,
+                                       forked_by=from_handle)
+        except ValueError as e:                # the guard's refusal reasons
+            return {"error": f"fork refused: {e}"}
+        return {"handle": handle}
+
+    @server.tool
     async def aegis_close(handle: str, from_handle: str) -> dict:
         """Close an agent YOU spawned, once it has finished.
 

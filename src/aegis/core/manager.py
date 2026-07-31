@@ -236,16 +236,9 @@ class SessionManager:
 
         Raises ValueError listing every refusal reason at once.
         """
-        from aegis.core.fork_guard import ForkFacts, refuse_reasons
+        from aegis.core.fork_guard import facts_for, refuse_reasons
         s = self.get(target)
-        harness = getattr(s.agent, "harness", "") if s is not None else ""
-        facts = ForkFacts(
-            exists=s is not None,
-            session_id=s.session_id if s is not None else None,
-            supports_fork=self._fork_capability(harness) if s is not None
-            else False,
-            state=s.state.value if s is not None else "",
-            driver=harness or "unknown")
+        facts = facts_for(s, capability=self._fork_capability)
         reasons = refuse_reasons(facts, target=target)
         if reasons:
             raise ValueError("; ".join(reasons))

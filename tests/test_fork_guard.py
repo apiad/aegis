@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aegis.core.fork_guard import ForkFacts, refuse_reasons
+from aegis.core.fork_guard import ForkFacts, facts_for, refuse_reasons
 
 
 def _facts(**over):
@@ -59,3 +59,51 @@ def test_missing_session_takes_precedence_over_everything():
         _facts(exists=False, session_id=None, supports_fork=False,
                state="working"),
         target="ghost") == ["no session 'ghost'"]
+
+
+# --- facts_for: one gatherer, two call sites ------------------------------
+# SessionManager (serve/MCP) and AegisApp (TUI) build panes by different
+# paths but must refuse forks for identical reasons. Sharing the gatherer
+# is what keeps the two from drifting apart.
+
+class _FakeAgent:
+    def __init__(self, harness="claude-code"):
+        self.harness = harness
+
+
+class _FakeState:
+    def __init__(self, value):
+        self.value = value
+
+
+class _FakeSession:
+    def __init__(self, *, session_id="sid-1", harness="claude-code",
+                 state="ready"):
+        self.session_id = session_id
+        self.agent = _FakeAgent(harness)
+        self.state = _FakeState(state)
+
+
+def test_facts_for_missing_session_reports_absence():
+    f = facts_for(None, capability=lambda h: True)
+    assert f.exists is False
+
+
+def test_facts_for_reads_session_id_state_and_harness():
+    f = facts_for(_FakeSession(state="working"), capability=lambda h: True)
+    assert f.exists is True
+    assert f.session_id == "sid-1"
+    assert f.state == "working"
+    assert f.driver == "claude-code"
+
+
+def test_facts_for_asks_the_capability_callback_about_the_harness():
+    seen = []
+
+    def cap(harness):
+        seen.append(harness)
+        return False
+
+    f = facts_for(_FakeSession(harness="gemini"), capability=cap)
+    assert seen == ["gemini"]
+    assert f.supports_fork is False

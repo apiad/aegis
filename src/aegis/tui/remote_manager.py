@@ -228,6 +228,16 @@ class RemoteSessionManager:
         r = await self._ws.rpc("spawn_session", params)
         return r["handle"]
 
+    async def fork(self, target: str, *,
+                   prompt: str | None = None,
+                   slug: str | None = None,
+                   model: str | None = None,
+                   effort: str | None = None,
+                   forked_by: str | None = None) -> str:
+        """Not in the WS protocol yet — a fork needs the server to reach
+        its own driver, which v1 does not expose."""
+        raise RemoteUnsupportedError(f"fork: {_MSG}")
+
     async def close(self, handle: str) -> None:
         await self._ws.rpc("close_session", {"handle": handle})
         self._sessions.pop(handle, None)

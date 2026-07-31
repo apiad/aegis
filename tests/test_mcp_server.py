@@ -50,6 +50,17 @@ class FakeBridge:
                         "model": model, "effort": effort, "prompt": prompt}
         return handle or "auto-handle"
 
+    fork_refusal: str | None = None
+
+    async def fork(self, target, *, prompt=None, slug=None,
+                   model=None, effort=None, forked_by=None):
+        if self.fork_refusal:
+            raise ValueError(self.fork_refusal)
+        self.forked = {"target": target, "prompt": prompt, "slug": slug,
+                       "model": model, "effort": effort,
+                       "forked_by": forked_by}
+        return slug or "forked-1"
+
     async def close(self, handle):
         self.closed = handle
         return None
@@ -95,7 +106,7 @@ def test_build_server_registers_all_aegis_tools():
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
-        "aegis_spawn", "aegis_close",
+        "aegis_spawn", "aegis_fork", "aegis_close",
         "aegis_claim", "aegis_release", "aegis_claims",
         "aegis_enqueue", "aegis_task_status",
         "aegis_cancel", "aegis_delegate",
@@ -435,3 +446,42 @@ def test_briefing_explains_inbox_header_and_delegation():
     assert "aegis_handoff (not enqueue)" in b or (
         "aegis_handoff" in b and "aegis_enqueue" in b
         and "specific" in b.lower())
+
+
+@pytest.mark.asyncio
+async def test_aegis_fork_branches_a_peer():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_fork", target_handle="peer-a",
+                      prompt="try the other approach",
+                      from_handle="parent-x")
+    assert out == {"handle": "forked-1"}
+    assert br.forked["target"] == "peer-a"
+    assert br.forked["prompt"] == "try the other approach"
+    assert br.forked["forked_by"] == "parent-x"
+
+
+@pytest.mark.asyncio
+async def test_aegis_fork_surfaces_the_guards_reasons():
+    """A refusal must come back as data the agent can act on — an
+    exception escaping the tool tells it nothing about how long to wait."""
+    br = FakeBridge()
+    br.fork_refusal = "'peer-a' is mid-turn (a fork would branch from a " \
+                      "dangling tool call — wait for the turn to finish)"
+    srv = build_server(br)
+    out = await _call(srv, "aegis_fork", target_handle="peer-a",
+                      from_handle="parent-x")
+    assert "mid-turn" in out["error"]
+
+
+@pytest.mark.asyncio
+async def test_aegis_fork_refuses_self_fork_mid_turn():
+    """An agent calling this IS mid-turn by construction — its own tail is
+    the tool_use awaiting this result. Naming that explicitly beats
+    letting the generic guard message confuse the caller."""
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_fork", target_handle="parent-x",
+                      from_handle="parent-x")
+    assert "error" in out
+    assert "/fork" in out["error"]

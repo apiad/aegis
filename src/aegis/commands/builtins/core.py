@@ -168,6 +168,27 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, f"spawned {handle}", detail)
 
 
+async def _fork(ctx: CommandContext, args) -> CommandResult:
+    """Branch this pane's conversation into a new tab.
+
+    Legal here where it would not be over MCP: a slash command is served
+    by aegis rather than sent to the agent as a turn, so the pane is idle
+    and there is no half-written turn to branch from.
+    """
+    prompt = args.get("prompt")
+    try:
+        handle = await ctx.bridge.fork(
+            ctx.handle, prompt=prompt, slug=args.get("slug"),
+            model=args.get("model"), effort=args.get("effort"),
+            forked_by=ctx.handle)
+    except ValueError as e:                  # the guard's refusal reasons
+        return CommandResult(False, f"cannot fork: {e}")
+    detail = f"branched from {ctx.handle}"
+    if prompt:
+        detail += f" · prompt: {prompt}"
+    return CommandResult(True, f"forked {handle}", detail)
+
+
 async def _queue(ctx: CommandContext, args) -> CommandResult:
     sub = args.get("subverb")
     if sub is None:                       # bare /queues → list
@@ -274,6 +295,12 @@ for _cmd in (
                          Arg("agent", completer=_agent_choices),
                          Arg("prompt", required=False, greedy=True)),
                      flags=(Flag("model"), Flag("effort")))),
+    SlashCommand("fork", "branch this conversation into a new tab",
+                 "/fork [prompt] [--slug S] [--model M] [--effort E]", _fork,
+                 spec=ArgSpec(
+                     positionals=(
+                         Arg("prompt", required=False, greedy=True),),
+                     flags=(Flag("slug"), Flag("model"), Flag("effort")))),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(
