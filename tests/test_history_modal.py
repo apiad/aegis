@@ -11,9 +11,10 @@ def _row(handle: str, *, is_open: bool = False,
          session_id: str | None = None,
          profile: str = "claude-sonnet",
          provider: str = "claude-code",
+         log_id: str | None = None,
          last: str = "2026-05-28T14:00:00Z") -> SessionHistoryRow:
     return SessionHistoryRow(
-        log_id=f"20260528T140000Z-{handle}",
+        log_id=log_id or f"20260528T140000Z-{handle}",
         handle=handle, profile=profile, provider=provider,
         cwd="/tmp", created_at=last, closed_at=None,
         last_activity_at=last, preview="hello",
@@ -67,7 +68,7 @@ async def test_renders_all_rows():
         ol = _optlist(app)
         assert ol.option_count == 2
         ids = {ol.get_option_at_index(i).id for i in range(ol.option_count)}
-        assert ids == {"h1", "h2"}
+        assert ids == {"20260528T140000Z-h1", "20260528T140000Z-h2"}
 
 
 @pytest.mark.asyncio
@@ -90,7 +91,7 @@ async def test_filter_narrows_rows():
         await pilot.pause()
         ol = _optlist(app)
         assert ol.option_count == 1
-        assert ol.get_option_at_index(0).id == "apple"
+        assert ol.get_option_at_index(0).id == "20260528T140000Z-apple"
 
 
 @pytest.mark.asyncio
@@ -140,6 +141,45 @@ async def test_missing_profile_row_is_non_actionable():
         await pilot.pause()
         assert app.result == "UNSET"
         assert isinstance(app.screen, HistoryModal)
+
+
+@pytest.mark.asyncio
+async def test_reused_handle_lists_every_session():
+    """Handles come from a finite pool and get reused across sessions, so two
+    logs can carry the same one. Keying the option list by handle made the
+    second one a duplicate id: Textual raised DuplicateID out of on_mount,
+    truncating the listing at the first collision and killing the app."""
+    rows = [_row("recycled", log_id="20260528T140000Z-recycled"),
+            _row("other", log_id="20260527T090000Z-other"),
+            _row("recycled", log_id="20260526T080000Z-recycled")]
+    app = _Harness(rows, agents={"claude-sonnet"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ol = _optlist(app)
+        assert ol.option_count == 3
+        ids = {ol.get_option_at_index(i).id for i in range(ol.option_count)}
+        assert ids == {"20260528T140000Z-recycled",
+                       "20260527T090000Z-other",
+                       "20260526T080000Z-recycled"}
+
+
+@pytest.mark.asyncio
+async def test_reused_handle_opens_the_row_you_picked():
+    """Two sessions share a handle; the second must resolve to its own row.
+    Looking the selection up by handle returned the first match, silently
+    reopening a different conversation than the one highlighted."""
+    rows = [_row("recycled", log_id="new-one", session_id="sid-new"),
+            _row("recycled", log_id="old-one", session_id="sid-old")]
+    app = _Harness(rows, agents={"claude-sonnet"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("down")      # highlight the second (older) row
+        await pilot.press("enter")
+        await pilot.pause()
+        kind, payload = app.result
+        assert kind == "resume"
+        assert payload.log_id == "old-one"
+        assert payload.session_id == "sid-old"
 
 
 @pytest.mark.asyncio

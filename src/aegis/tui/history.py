@@ -138,22 +138,25 @@ class HistoryModal(ModalScreen):
     def _refresh(self, needle: str) -> None:
         ol = self.query_one("#hist-list", OptionList)
         ol.clear_options()
-        for r in self._rows:
-            if not self._matches(r, needle):
-                continue
-            label = _row_label(r, self._agents, self._resume_capable)
-            ol.add_option(Option(label, id=r.handle))
+        # Keyed by log_id, never handle: handles come from a finite pool and
+        # get reused, so two logs can share one. As a duplicate option id that
+        # raised DuplicateID out of on_mount — truncating the listing at the
+        # first collision and taking the app down with it.
+        ol.add_options([
+            Option(_row_label(r, self._agents, self._resume_capable),
+                   id=r.log_id)
+            for r in self._rows if self._matches(r, needle)])
         if ol.option_count > 0:
             ol.highlighted = 0
 
-    def _row_for(self, handle: str | None) -> SessionHistoryRow | None:
+    def _row_for(self, log_id: str | None) -> SessionHistoryRow | None:
         for r in self._rows:
-            if r.handle == handle:
+            if r.log_id == log_id:
                 return r
         return None
 
-    def _select(self, handle: str | None) -> None:
-        row = self._row_for(handle)
+    def _select(self, log_id: str | None) -> None:
+        row = self._row_for(log_id)
         if row is None or row.profile not in self._agents:
             return  # missing profile → non-actionable
         if row.is_open:
@@ -163,7 +166,7 @@ class HistoryModal(ModalScreen):
         else:
             self.dismiss(("open_fresh", row))
 
-    def _highlighted_handle(self) -> str | None:
+    def _highlighted_log_id(self) -> str | None:
         ol = self.query_one("#hist-list", OptionList)
         if ol.highlighted is None or ol.option_count == 0:
             return None
@@ -175,7 +178,7 @@ class HistoryModal(ModalScreen):
         self._refresh(event.value)
 
     def on_input_submitted(self, _event: Input.Submitted) -> None:
-        self._select(self._highlighted_handle())
+        self._select(self._highlighted_log_id())
 
     def on_option_list_option_selected(
             self, event: OptionList.OptionSelected) -> None:
