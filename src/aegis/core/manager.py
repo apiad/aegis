@@ -162,19 +162,26 @@ class SessionManager:
                     spawned_by: str | None = None,
                     model: str | None = None,
                     effort: str | None = None,
-                    prompt: str | None = None) -> AgentSession:
+                    prompt: str | None = None,
+                    fork_from: str | None = None,
+                    forked_from: dict | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
         agent = _overlay_agent(self._agents[slug], model=model,
-                               effort=effort, prompt=prompt)
+                              effort=effort, prompt=prompt)
         h = handle or generate_name({s.handle for s in self._sessions})
         url = self._mcp.url if self._mcp is not None else ""
-        s = AgentSession(self._make_session(agent, url, h),
-                         agent, slug, h,
+        # Only pass fork_from when forking: the factory signature predates
+        # it and plain (profile, url, handle) callables must keep working.
+        raw = (self._make_session(agent, url, h, fork_from=fork_from)
+               if fork_from is not None
+               else self._make_session(agent, url, h))
+        s = AgentSession(raw, agent, slug, h,
                          inbox=self._inbox,
                          opening_prompt=opening_prompt)
         s.spawned_by = spawned_by
+        s.forked_from = forked_from
         if self._inbox is not None:
             self._inbox.bind_session(h, s)
         self._sessions.append(s)
@@ -203,6 +210,57 @@ class SessionManager:
                                 spawned_by=spawned_by,
                                 model=model, effort=effort, prompt=prompt)
         return sess.handle
+
+    def _fork_capability(self, harness: str) -> bool:
+        """Whether the driver behind ``harness`` can branch a session."""
+        from aegis.drivers import get_driver
+        try:
+            return bool(get_driver(harness).supports_fork)
+        except Exception:  # noqa: BLE001 — unknown harness is a refusal
+            return False
+
+    async def fork(self, target: str, *,
+                   prompt: str | None = None,
+                   slug: str | None = None,
+                   model: str | None = None,
+                   effort: str | None = None,
+                   forked_by: str | None = None) -> str:
+        """Branch ``target``'s conversation into a new session.
+
+        The parent is left entirely alone — same session id, same log,
+        same tab. The child gets a new handle, a new log id, and an empty
+        inbox; what it inherits is the harness-side conversation.
+
+        ``prompt`` is the divergence and is optional: without one the fork
+        inherits the conversation and waits for input.
+
+        Raises ValueError listing every refusal reason at once.
+        """
+        from aegis.core.fork_guard import ForkFacts, refuse_reasons
+        s = self.get(target)
+        harness = getattr(s.agent, "harness", "") if s is not None else ""
+        facts = ForkFacts(
+            exists=s is not None,
+            session_id=s.session_id if s is not None else None,
+            supports_fork=self._fork_capability(harness) if s is not None
+            else False,
+            state=s.state.value if s is not None else "",
+            driver=harness or "unknown")
+        reasons = refuse_reasons(facts, target=target)
+        if reasons:
+            raise ValueError("; ".join(reasons))
+        # Snapshot the parent's session id NOW. A no-prompt fork typed
+        # into ten minutes later must branch from where it was forked,
+        # not from wherever the parent has drifted to since.
+        sid = s.session_id
+        child = self._sync_spawn(
+            s.agent_slug, handle=slug, opening_prompt=prompt,
+            model=model, effort=effort,
+            fork_from=sid,
+            forked_from={"handle": target, "log_id": s.log_id,
+                         "session_id": sid})
+        child.spawned_by = forked_by
+        return child.handle
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:

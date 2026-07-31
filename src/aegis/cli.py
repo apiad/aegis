@@ -41,6 +41,22 @@ from aegis.cli_plugin import app as _plugin_app  # noqa: E402
 app.add_typer(_plugin_app, name="plugin")
 
 
+def _session_factory(cwd: str):
+    """The SessionFactory every entry point hands SessionManager.
+
+    ``fork_from`` is what SessionManager.fork passes to branch an
+    existing conversation; without it this is an ordinary cold spawn.
+    Kept in one place because all three entry points (tui, serve,
+    workflow) need the fork branch and three copies would drift.
+    """
+    def make_session(profile, mcp_url, handle, fork_from=None):
+        drv = get_driver(profile.harness)
+        if fork_from is not None:
+            return drv.fork(profile, cwd, mcp_url, handle, fork_from)
+        return drv.session(profile, cwd, mcp_url, handle)
+    return make_session
+
+
 def _version_callback(value: bool) -> None:
     if value:
         try:
@@ -173,9 +189,7 @@ def run(
     except Exception:  # noqa: BLE001
         pass
 
-    def make_session(profile, mcp_url, handle):
-        return get_driver(profile.harness).session(
-            profile, effective_cwd, mcp_url, handle)
+    make_session = _session_factory(effective_cwd)
 
     # Driver registry for workspace resume — one instance per provider so
     # bootstrap_resume can call drv.resume(...) without re-instantiating
@@ -620,9 +634,7 @@ def _run_serve(cwd: str) -> None:
     root = find_project_root() or Path.cwd()
     effective = str(root) if cwd == "." else cwd
 
-    def make_session(profile, mcp_url, handle):
-        return get_driver(profile.harness).session(
-            profile, effective, mcp_url, handle)
+    make_session = _session_factory(effective)
 
     try:
         queues = load_queues(root)
@@ -735,9 +747,7 @@ def workflow_run_cmd(
             f"Available: {list_workflows()}[/red]")
         raise typer.Exit(1)
 
-    def make_session(profile, mcp_url, handle):
-        return get_driver(profile.harness).session(
-            profile, str(root), mcp_url, handle)
+    make_session = _session_factory(str(root))
 
     async def main_async():
         from aegis.queue import InboxRouter, QueueManager

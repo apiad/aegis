@@ -62,6 +62,7 @@ class HarnessDriver(abc.ABC):
     """Translates a harness-agnostic Agent into a concrete session."""
 
     supports_resume: bool = False
+    supports_fork: bool = False
 
     @abc.abstractmethod
     def build_argv(self, agent: Agent, cwd: str,
@@ -79,3 +80,17 @@ class HarnessDriver(abc.ABC):
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support session resume")
+
+    def fork(self, agent: Agent, cwd: str, mcp_url: str,
+             handle: str, session_id: str) -> HarnessSession:
+        """Build a session branching from an existing conversation.
+
+        Sibling of ``resume``: same signature, same default-raises
+        pattern. The difference is what happens to the parent — a resume
+        continues that conversation, a fork leaves it untouched and
+        starts a new one that shares its prefix.
+
+        Default raises — only fork-capable drivers override.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support session fork")
