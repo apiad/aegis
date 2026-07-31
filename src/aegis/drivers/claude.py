@@ -28,6 +28,18 @@ _PERMISSION_MODE = {
     Permission.auto: "auto",
 }
 
+# Replaces claude's agentic system prompt for one-shot generation. It has
+# to say "you have no tools" out loud: given the default prompt the model
+# reaches for Read/Grep, finds nothing, and reports failure instead of
+# answering from the window it was handed.
+_ONESHOT_SYSTEM = (
+    "You answer a side question about a conversation, using only the "
+    "conversation window you are given. You have no tools and cannot look "
+    "anything up. Answer directly and briefly. If the window does not "
+    "contain what you would need, say so and set needs_more to true "
+    "rather than guessing."
+)
+
 _EFFORT = {
     Effort.low: "low",
     Effort.medium: "medium",
@@ -199,6 +211,7 @@ class ClaudeSession(HarnessSession):
 class ClaudeDriver(HarnessDriver):
     supports_resume = True
     supports_fork = True
+    supports_oneshot = True
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str) -> list[str]:
@@ -221,6 +234,65 @@ class ClaudeDriver(HarnessDriver):
         if persona:
             argv += ["--append-system-prompt", persona]
         return argv
+
+    def _oneshot_argv(self, agent: Agent, schema, instructions: list[str],
+                      *, system: str = "") -> list[str]:
+        """A `claude` invocation that generates rather than agents.
+
+        Every flag here is load-shedding, and the two that matter were
+        measured on zion 2026-07-31 (claude 2.1.220, haiku, same window
+        and question):
+
+            default `claude -p`            21.9s  $0.0633  53,593 in  refusal
+            --system-prompt + --tools ""    8.5s  $0.0044   2,361 in  correct
+
+        The default run does not merely cost more — it goes *agentic*,
+        tries to read files that a side note has no business reading, and
+        then answers "I cannot verify". ``--tools ""`` is what removes the
+        tool schemas (the bulk of those 53k input tokens) and with them the
+        urge to use them; ``--system-prompt`` replaces claude's agentic
+        default rather than appending to it, which
+        ``--append-system-prompt`` cannot do.
+        """
+        return [
+            "claude", "-p", "\n\n".join(instructions),
+            "--model", agent.model,
+            "--output-format", "json",
+            "--json-schema", json.dumps(schema.model_json_schema()),
+            "--system-prompt", system or _ONESHOT_SYSTEM,
+            "--tools", "",
+            "--mcp-config", json.dumps({"mcpServers": {}}),
+            "--strict-mcp-config",
+        ]
+
+    async def generate_detailed(self, agent: Agent, cwd: str, schema,
+                                *instructions: str):
+        from aegis.drivers.oneshot import Generation, parse_structured
+        argv = self._oneshot_argv(agent, schema, list(instructions))
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv, cwd=cwd,
+                # DEVNULL, not inherited: claude waits 3s for stdin it will
+                # never get, and that wait is a third of the whole call.
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                limit=_STREAM_LIMIT)
+            out, _ = await proc.communicate()
+        except Exception:                                     # noqa: BLE001
+            return Generation()
+        try:
+            envelope = json.loads(out)
+        except (ValueError, TypeError):
+            return Generation()
+        if not isinstance(envelope, dict):
+            return Generation()
+        return Generation(
+            value=parse_structured(str(envelope.get("result") or ""), schema),
+            model=agent.model,
+            duration_ms=int(envelope.get("duration_ms") or 0),
+            cost_usd=float(envelope.get("total_cost_usd") or 0.0),
+        )
 
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str) -> ClaudeSession:

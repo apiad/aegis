@@ -66,6 +66,11 @@ class AegisConfig:
     web: WebConfig | None = None
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     root: Path | None = None
+    # Agent profile used for one-shot generation (`/btw` side notes,
+    # generated session titles) rather than for conversation. None means
+    # "fall back to the session's own profile", which is the expensive
+    # default — the surfaces that use it say so once per session.
+    text_generation: str | None = None
     inline_schedule_names: set[str] = field(default_factory=set)
     dynamic_workflow_autoapprove_agents: int = 5
 
@@ -191,6 +196,12 @@ def load_config(root: Path) -> AegisConfig:
         raise ConfigError(
             f"{base}: `default_agent` is set but no `agents:` declared.")
 
+    text_generation = raw.get("text_generation")
+    if text_generation is not None and text_generation not in agents:
+        raise ConfigError(
+            f"{base}: `text_generation`={text_generation!r} is not in "
+            f"`agents` (known: {sorted(agents)}).")
+
     # Validate queue.agent references + max_parallel sanity.
     for qname, qspec in queues.items():
         if qspec.agent not in agents:
@@ -208,6 +219,7 @@ def load_config(root: Path) -> AegisConfig:
 
     return AegisConfig(
         default_agent=default_agent,
+        text_generation=text_generation,
         agents=agents,
         harnesses=harnesses,
         queues=queues,

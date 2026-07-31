@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import abc
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from aegis.config import Agent
 from aegis.events import Event
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from aegis.drivers.oneshot import Generation
 
 
 class HarnessSession(abc.ABC):
@@ -63,6 +69,11 @@ class HarnessDriver(abc.ABC):
 
     supports_resume: bool = False
     supports_fork: bool = False
+    # Whether this driver can do a one-shot structured generation — no
+    # session, no MCP, no tools. A second, much smaller capability than a
+    # conversation: used for `/btw` side notes and generated session
+    # titles.
+    supports_oneshot: bool = False
 
     @abc.abstractmethod
     def build_argv(self, agent: Agent, cwd: str,
@@ -94,3 +105,26 @@ class HarnessDriver(abc.ABC):
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support session fork")
+
+    async def generate_detailed(self, agent: Agent, cwd: str,
+                                schema: type["BaseModel"],
+                                *instructions: str) -> "Generation":
+        """One-shot structured generation, with what the call cost.
+
+        No session, no MCP, no tools — this is not a conversation and must
+        not be modelled as one. Best-effort by contract: any failure comes
+        back as a ``Generation`` whose ``value`` is None, never as an
+        exception, because the caller is a side note and a side note must
+        never be able to disturb the conversation it sits beside.
+        """
+        from aegis.drivers.oneshot import Generation
+        return Generation()
+
+    async def generate(self, agent: Agent, cwd: str,
+                       schema: type["BaseModel"],
+                       *instructions: str) -> "BaseModel | None":
+        """``generate_detailed`` without the telemetry — the shape the
+        session-titles spec asks for, where cost and latency are not
+        rendered anywhere."""
+        return (await self.generate_detailed(
+            agent, cwd, schema, *instructions)).value
