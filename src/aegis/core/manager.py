@@ -255,6 +255,20 @@ class SessionManager:
         child.spawned_by = forked_by
         return child.handle
 
+    async def side_note(self, handle: str, prompt: str):
+        """AppBridge-shaped: a side note off this session's transcript."""
+        from aegis.btw import SideNote, side_note_for
+        s = self.get(handle)
+        if s is None:
+            return SideNote(error=f"unknown session: {handle}")
+        state_dir = self._persist_dir or self.state_root
+        if state_dir is None:
+            return SideNote(
+                error="this session has no persisted transcript to read")
+        return await side_note_for(
+            prompt, state_dir=state_dir, log_id=s.log_id, agent=s.agent,
+            agents=self._agents, cwd=str(s.project_root))
+
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
             self._mru.remove(handle)

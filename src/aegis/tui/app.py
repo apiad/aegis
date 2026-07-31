@@ -1441,6 +1441,24 @@ class AegisApp(App):
         sess.spawned_by = forked_by
         return sess.handle
 
+    async def side_note(self, handle: str, prompt: str):
+        """AppBridge-shaped: a side note off this pane's transcript.
+
+        Deliberately does not check whether the pane is working — `/btw`
+        reads the log rather than the session, so mid-turn is exactly when
+        it earns its keep.
+        """
+        from aegis.btw import SideNote, side_note_for
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return SideNote(error=f"unknown session: {handle}")
+        return await side_note_for(
+            prompt, state_dir=self._state_dir, log_id=pane.log_id,
+            agent=pane._agent, agents=self._agents,
+            cwd=str(pane._core.project_root))
+
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
         pane = next((p for p in self._panes

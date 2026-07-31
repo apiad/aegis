@@ -93,6 +93,19 @@ class AppBridge(Protocol):
         session id yet, driver cannot fork, or the target is mid-turn.
         """
         ...
+    async def side_note(self, handle: str, prompt: str):
+        """Answer a side question from ``handle``'s own transcript tail.
+
+        Never touches the harness session — it reads aegis's own log and
+        makes one independent one-shot call — so unlike ``fork`` it is
+        legal while the pane is mid-turn.
+
+        Best-effort by contract: returns a ``SideNote`` whose ``ok`` is
+        False on any failure rather than raising, because a side question
+        must not be able to disturb the conversation it sits beside.
+        """
+        ...
+
     async def close(self, handle: str) -> None: ...
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         """Cut the handle's live turn. ``drain=True`` (the default) then

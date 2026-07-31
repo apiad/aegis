@@ -1377,6 +1377,20 @@ class ConversationPane(Widget):
                     # a normal user message (rendered as a user line by
                     # _on_core_dispatch), not a command-result block.
                     text = eff["text"]
+                elif eff.get("kind") == "side_note":
+                    # A /btw answer gets its own treatment — it is neither
+                    # a user line nor agent output. It lands in _history
+                    # (so scrolling keeps it) and is never appended to the
+                    # session log, so it does not survive a reload and
+                    # never enters the window a later /btw assembles.
+                    from aegis.btw import SideNote
+                    from aegis.render import render_side_note
+                    note = SideNote(**eff["note"])
+                    self._flush_streaming()
+                    self._mount_block(
+                        render_side_note(note, self._palette),
+                        f"btw: {note.answer}\n{note.footer}".strip())
+                    return
                 else:
                     self._flush_streaming()
                     self._mount_block(

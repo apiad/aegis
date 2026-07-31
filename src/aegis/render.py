@@ -244,6 +244,33 @@ def render_command_block(result, colors, width: int | None = None) -> Text:
     return line
 
 
+def render_side_note(note, colors) -> Text:
+    """Visible block for a `/btw` side note.
+
+    Its own treatment, because it is neither a user line nor agent output
+    — it is a third voice, and one that is not part of the conversation.
+    The footer carries model, latency and cost: a side note is a paid call
+    and the price should be visible.
+
+    Transient by design. This block goes into the pane's ``_history`` (so
+    scrolling keeps it) and is never appended to the session log, so it
+    does not survive a reload and never enters the window a later `/btw`
+    assembles. Side notes do not compound.
+    """
+    tint = colors.error if not note.ok else colors.accent
+    line = Text()
+    line.append("btw ", style=f"bold italic {tint}")
+    line.append(note.answer if note.ok else (note.error or "no answer"),
+                style=colors.ink if note.ok else tint)
+    if note.ok and note.needs_more:
+        line.append(
+            f"\n  answered from {note.header} — /fork if you want it to "
+            f"actually go look.", style=f"italic {colors.working}")
+    if note.footer:
+        line.append(f"\n  {note.footer}", style=colors.muted)
+    return line
+
+
 def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
     """Visible block for an incoming inbox message.
 

@@ -189,6 +189,46 @@ async def _fork(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, f"forked {handle}", detail)
 
 
+# Handles already told that `text_generation:` is unset. The warning is
+# worth saying once and tiresome after that.
+_WARNED_UNSET: set[str] = set()
+
+
+async def _btw(ctx: CommandContext, args) -> CommandResult:
+    """Answer a side question inline, from this pane's own transcript tail.
+
+    Legal mid-turn where `/fork` is not: `/btw` never touches the harness
+    session. It reads aegis's own log and makes one independent call, so
+    there is no half-written turn for it to branch from.
+    """
+    prompt = args.get("prompt")
+    if not prompt:
+        return CommandResult(False, "usage: /btw <question>",
+                             "a bare /btw is a typo, not a request")
+    note = await ctx.bridge.side_note(ctx.handle, prompt)
+    if not note.ok:
+        return CommandResult(False, "side note failed",
+                             note.error or "no answer")
+    body = [note.footer] if note.footer else []
+    if note.needs_more:
+        body.append(f"answered from {note.header} — `/fork` if you want it "
+                    f"to actually go look.")
+    if getattr(note, "billed_to_session_profile", False) \
+            and ctx.handle not in _WARNED_UNSET:
+        _WARNED_UNSET.add(ctx.handle)
+        body.append("`text_generation:` is unset in .aegis.yaml — this side "
+                    "note billed at your session's own model. Point it at a "
+                    "cheap profile.")
+    # The effect carries the note so a frontend can give it its own
+    # treatment — as a plain dict, because the web seam ships `effect`
+    # straight out as JSON and a dataclass there would break `/btw` on the
+    # web client only. title/body stay populated so any frontend that
+    # ignores the effect still shows the answer rather than nothing.
+    from dataclasses import asdict
+    return CommandResult(True, note.answer, "\n".join(body),
+                         effect={"kind": "side_note", "note": asdict(note)})
+
+
 async def _queue(ctx: CommandContext, args) -> CommandResult:
     sub = args.get("subverb")
     if sub is None:                       # bare /queues → list
@@ -301,6 +341,11 @@ for _cmd in (
                      positionals=(
                          Arg("prompt", required=False, greedy=True),),
                      flags=(Flag("slug"), Flag("model"), Flag("effort")))),
+    SlashCommand("btw", "answer a side question from the recent window",
+                 "/btw <question>", _btw,
+                 spec=ArgSpec(
+                     positionals=(
+                         Arg("prompt", required=False, greedy=True),))),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(

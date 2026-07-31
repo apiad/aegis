@@ -238,6 +238,11 @@ class RemoteSessionManager:
         its own driver, which v1 does not expose."""
         raise RemoteUnsupportedError(f"fork: {_MSG}")
 
+    async def side_note(self, handle: str, prompt: str):
+        # The transcript lives on the server, not here — a remote /btw
+        # needs an RPC, not a local read of a log this host does not have.
+        raise RemoteUnsupportedError(f"side_note: {_MSG}")
+
     async def close(self, handle: str) -> None:
         await self._ws.rpc("close_session", {"handle": handle})
         self._sessions.pop(handle, None)
