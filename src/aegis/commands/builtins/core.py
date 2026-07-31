@@ -255,7 +255,8 @@ async def _peer(ctx: CommandContext, args) -> CommandResult:
     if not prompt:
         return CommandResult(False, "usage: /peer <handle> <question>",
                              "a peer ask with no question is a typo")
-    answer = await ctx.bridge.peer_ask(ctx.handle, target, prompt)
+    answer = await ctx.bridge.peer_ask(ctx.handle, target, prompt,
+                                       cc=bool(args.get("cc")))
     if not answer.ok:
         return CommandResult(False, f"@{target} could not answer",
                              answer.error or "no answer")
@@ -383,12 +384,21 @@ for _cmd in (
                      positionals=(
                          Arg("prompt", required=False, greedy=True),))),
     SlashCommand("peer", "ask an idle peer, from where you're standing",
-                 "/peer <handle> <question>", _peer,
+                 "/peer <handle> [--cc] <question>", _peer,
                  spec=ArgSpec(
                      positionals=(
                          Arg("handle", required=False,
                              completer=_peer_targets),
-                         Arg("prompt", required=False, greedy=True)))),
+                         Arg("prompt", required=False, greedy=True)),
+                     flags=(Flag("cc", takes_value=False),)),
+                 deferred=True,
+                 # "cancelled" would be a lie. By the time the operator
+                 # hits ESC the peer has already taken the turn; it runs
+                 # to completion and lands in its own transcript whether
+                 # or not anyone is still listening. Nothing was
+                 # cancelled — you stopped waiting.
+                 cancel_note="stopped waiting — {handle}'s turn is still "
+                             "running, so go read its tab"),
     SlashCommand("queues", "list or create queues",
                  "/queues [new <name> [agent] [--ephemeral]]", _queue,
                  spec=ArgSpec(

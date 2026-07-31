@@ -107,6 +107,7 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_meta", "aegis_list_sessions",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
         "aegis_spawn", "aegis_fork", "aegis_close",
+        "aegis_read_peer",
         "aegis_claim", "aegis_release", "aegis_claims",
         "aegis_enqueue", "aegis_task_status",
         "aegis_cancel", "aegis_delegate",

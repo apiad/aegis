@@ -40,6 +40,11 @@ TEASER_BUDGET_TOKENS = 2_000
 TEASER_MAX_TURNS = 3
 TEASER_ITEM_CHARS = 200
 
+# What ``aegis_read_peer`` returns when the teaser was not enough. Wider
+# than the teaser by design — that gap is the entire push-vs-pull split.
+READ_BUDGET_TOKENS = 24_000
+READ_ITEM_CHARS = 500
+
 
 class PeerBusy(Exception):
     """The target was idle at the check and busy at the delivery.
@@ -130,6 +135,70 @@ async def teaser(state_dir, log_id):
         return None
 
 
+async def read_window(state_dir, log_id, turns: int = 12) -> dict:
+    """Window a peer's transcript for ``aegis_read_peer``.
+
+    Unlocks nothing: the logs are plain JSONL inside the project root and
+    every agent already has Read and Bash. What this adds is *addressing*
+    — the log id carries the session's **birth** handle and is never
+    renamed, so current-handle → file is not derivable by an agent that
+    only knows who it is talking to.
+    """
+    import asyncio
+
+    if not state_dir or not log_id:
+        return {"ok": False, "text": "", "header": "",
+                "error": "that session has no persisted transcript to read"}
+    try:
+        from aegis.btw.window import assemble
+        from aegis.state import session_log
+        replay = await asyncio.to_thread(
+            session_log.replay_events, state_dir, log_id)
+        w = assemble(replay, max_turns=turns,
+                     budget_tokens=READ_BUDGET_TOKENS,
+                     item_chars=READ_ITEM_CHARS)
+    except Exception as e:                                    # noqa: BLE001
+        return {"ok": False, "text": "", "header": "",
+                "error": f"could not read the transcript: {e}"}
+    return {"ok": True, "text": w.text, "header": w.header, "error": ""}
+
+
+async def cc_into(source_session, answer: PeerAnswer) -> None:
+    """Deliver a peer's answer into the source conversation as a real turn.
+
+    Opt-in, and decided by the operator at *send* time rather than by the
+    peer at reply time — the peer cannot judge relevance to a conversation
+    it has, at best, a 3-turn window of, and being agreeable it would
+    guess yes, which is the expensive default arriving through the back
+    door.
+
+    A courtesy on top of an answer the operator already has, so it must
+    never turn a successful ask into a failed one: failures here are
+    swallowed, and a refusal is never cc'd at all.
+
+    **`except Exception` below is deliberate and must not be widened.**
+    ``CancelledError`` derives from ``BaseException`` (since 3.8), so the
+    handler does not catch it — and that is the only reason pressing ESC
+    on a deferred `@peer` also cancels the cc. Widen it to
+    ``except BaseException`` or a bare ``except:`` and cancellation is
+    silently swallowed: the peer's turn finishes regardless, and its
+    answer lands in a conversation the operator walked away from minutes
+    earlier. It reads like an over-narrow handler somebody should tidy;
+    it is the cancellation contract. Pinned by
+    ``test_cc_does_not_swallow_cancellation``.
+    """
+    if not answer.ok or source_session is None:
+        return
+    try:
+        from aegis.queue.schema import InboxMessage, now_iso, sender_agent
+        await source_session.deliver(InboxMessage(
+            sender=sender_agent(answer.target), timestamp=now_iso(),
+            body=f"The operator asked @{answer.target} from this "
+                 f"conversation, and it answered:\n\n{answer.answer}"))
+    except Exception:                                         # noqa: BLE001
+        pass
+
+
 def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
     """The body the peer receives.
 
@@ -205,7 +274,8 @@ async def send_and_await(session, *, prompt: str, sender: str,
 
 async def ask(*, from_handle: str, target: str, source_slug: str,
               target_session, prompt: str,
-              state_dir=None, source_log_id: str | None = None) -> PeerAnswer:
+              state_dir=None, source_log_id: str | None = None,
+              source_session=None, cc: bool = False) -> PeerAnswer:
     """The half both ``AppBridge`` implementations share.
 
     Best-effort by contract, exactly as ``side_note`` is: every failure
@@ -250,9 +320,12 @@ async def ask(*, from_handle: str, target: str, source_slug: str,
         return PeerAnswer(target=target, error=f"{type(e).__name__}: {e}")
 
     res = sink[0] if sink else None
-    return PeerAnswer(
+    answer = PeerAnswer(
         answer=text, target=target, ok=True,
         header=getattr(window, "header", "") or "no transcript",
         model=getattr(getattr(target_session, "agent", None), "model", "") or "",
         duration_ms=int((time.monotonic() - t0) * 1000),
         cost_usd=float(getattr(res, "cost_usd", 0.0) or 0.0))
+    if cc:
+        await cc_into(source_session, answer)
+    return answer

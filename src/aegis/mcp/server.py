@@ -846,6 +846,34 @@ def build_server(bridge: AppBridge) -> FastMCP:
             return {"status": "no_tui"}
         return await open_file(path)
 
+    @server.tool
+    async def aegis_read_peer(handle: str, turns: int = 12) -> dict:
+        """Read a bounded window of another live session's conversation.
+
+        Use this when a message reaches you tagged `operator@<handle>` —
+        the operator typed it while standing in *that* conversation, so it
+        probably refers to something there that you cannot see. The teaser
+        you were sent is deliberately small (a few turns); this is how you
+        get the rest.
+
+        Prefer calling it over answering from a fragment. "Look at this
+        and tell me if it's right" reads as complete English even when the
+        referent is missing, so the cost of a needless read is one tool
+        call, while the cost of a confident answer to a question you did
+        not understand is the operator's trust.
+
+        handle: the peer's current handle (this resolves the rename — the
+                on-disk log carries the session's *birth* handle).
+        turns:  how many turns back to window. Returns {ok, text, header,
+                error}; `header` states honestly what it left out.
+        """
+        read = getattr(bridge, "read_peer", None)
+        if read is None:
+            return {"ok": False, "text": "", "header": "",
+                    "error": "this aegis frontend cannot read peer "
+                             "transcripts"}
+        return await read(handle, turns)
+
     server.tool(make_handoff(bridge))
 
     @server.tool

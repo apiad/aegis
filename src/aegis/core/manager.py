@@ -307,7 +307,18 @@ class SessionManager:
             source_slug=getattr(source, "agent_slug", ""),
             target_session=self.get(target), prompt=prompt,
             state_dir=self._persist_dir or self.state_root,
-            source_log_id=getattr(source, "log_id", None))
+            source_log_id=getattr(source, "log_id", None),
+            source_session=source, cc=cc)
+
+    async def read_peer(self, handle: str, turns: int = 12) -> dict:
+        """AppBridge-shaped: window a live peer's transcript."""
+        from aegis.peer import read_window
+        s = self.get(handle)
+        if s is None:
+            return {"ok": False, "text": "", "header": "",
+                    "error": f"unknown session: {handle}"}
+        return await read_window(self._persist_dir or self.state_root,
+                                 getattr(s, "log_id", None), turns)
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
