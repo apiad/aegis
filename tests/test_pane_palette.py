@@ -74,3 +74,72 @@ def test_palette_update_preserves_source():
         Completion("/b ", "/b", "s", source="plugin"),
     )))
     assert [c.source for c in pal._items] == ["user", "plugin"]
+
+
+# ---------- the `@` spelling ---------------------------------------------
+#
+# `@handle` is sugar classify_input rewrites into `/peer handle`, so it is a
+# command in every way that matters. The pane had FOUR `startswith("/")`
+# gates and widening only the submit one left `@` a command you could send
+# but not discover: no palette, no outline. Alex found it by typing `@` and
+# seeing nothing come up.
+
+@pytest.mark.asyncio
+async def test_palette_shows_peer_handles_on_at():
+    app = _app(GatedSession())
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        _type(pane, "@")
+        await pilot.pause()
+        pal = pane.query_one(CommandPalette)
+        assert pal.display is True, "typing @ raised no palette"
+        assert pal._items, "the palette came up empty"
+        assert all(c.insert.startswith("@") for c in pal._items)
+
+
+@pytest.mark.asyncio
+async def test_palette_filters_handles_as_you_type():
+    app = _app(GatedSession())
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        handle = pane.handle
+        _type(pane, "@" + handle[:3])
+        await pilot.pause()
+        pal = pane.query_one(CommandPalette)
+        assert pal.display is True
+        assert any(handle in c.insert for c in pal._items)
+
+
+@pytest.mark.asyncio
+async def test_an_at_line_reads_as_a_command_not_a_message():
+    """The outline colour is the type-time signal that this line will be
+    executed rather than sent. `@` earns it for the same reason `/` does."""
+    app = _app(GatedSession())
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        _type(pane, "@somebody hi")
+        await pilot.pause()
+        assert pane.has_class("slash-command")
+
+
+@pytest.mark.asyncio
+async def test_a_literal_at_escape_is_a_message_not_a_command():
+    """`@@` is the escape — it addresses nobody, so no palette and no
+    command outline."""
+    app = _app(GatedSession())
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        _type(pane, "@@someone")
+        await pilot.pause()
+        assert pane.query_one(CommandPalette).display is False
+        assert not pane.has_class("slash-command")
+
+
+@pytest.mark.asyncio
+async def test_an_email_mid_line_is_not_addressing_anyone():
+    app = _app(GatedSession())
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        _type(pane, "mail me at a@b.com")
+        await pilot.pause()
+        assert pane.query_one(CommandPalette).display is False

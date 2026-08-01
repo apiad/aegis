@@ -405,3 +405,36 @@ async def test_esc_interrupts_the_turn_when_nothing_else_claims_it():
         pane.interrupt = lambda *a, **k: calls.append(1)
         app.action_interrupt()
         assert calls == [1]
+
+
+# ---------- both spellings reach the deferred path -----------------------
+
+@pytest.mark.parametrize("typed,expected_verb", [
+    ("/peer beta is the build green?", "peer"),
+    ("@beta is the build green?", "peer"),
+    ("/btw which path?", "btw"),
+])
+@pytest.mark.asyncio
+async def test_every_spelling_reaches_the_deferred_path(typed, expected_verb):
+    """`@beta …` has no verb until classify_input rewrites it to
+    `/peer beta …`, so the pane must classify FIRST and resolve on the
+    payload. Resolving the raw line returns None for every `@` spelling and
+    drops it silently back onto the inline-await path — the 300s freeze,
+    reappearing on one spelling while `/peer` works perfectly.
+
+    A test on the slash spelling alone passes with that bug present.
+    """
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        seen = []
+        real = pane._start_deferred
+        pane._start_deferred = lambda payload, cmd, args, width: seen.append(
+            (payload, cmd.name))
+        await _submit(pane, typed)
+        await pilot.pause()
+        pane._start_deferred = real
+        assert seen, f"{typed!r} never reached the deferred path"
+        assert seen[0][1] == expected_verb
+        assert sess.sent == [], f"{typed!r} was delivered to the agent"

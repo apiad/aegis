@@ -1439,9 +1439,19 @@ class ConversationPane(Widget):
         # input is emptied (on submit) or no longer starts with the prefix.
         value = self.query_one(GrowingInput).value
         self.set_class(value.startswith("!"), "shell-escape")
-        self.set_class(value.startswith("/"), "slash-command")
+        # `@handle …` is sugar classify_input rewrites into `/peer handle …`,
+        # so it is a command in every way that matters and earns the same
+        # type-time signals: the command outline, and a palette listing live
+        # handles. `@@` is the literal-@ escape and addresses nobody, so it
+        # gets neither — and `complete()` already returns nothing for it.
+        #
+        # There are four `startswith("/")` gates in this widget. Widening
+        # only the submit one (see on_growing_input_submitted) left `@` a
+        # command you could send but could not discover.
+        addressing = value.startswith("@") and not value.startswith("@@")
+        self.set_class(value.startswith("/") or addressing, "slash-command")
         pal = self.query_one(CommandPalette)
-        if value.startswith("/"):
+        if value.startswith("/") or addressing:
             from aegis.commands import complete
             pal.update(complete(value, self.app))
         else:
