@@ -7,6 +7,19 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **Reorderable tabs (TUI).** `Ctrl+Shift+←/→` carries the active tab one slot
+  along the bar, and a tab can be dragged there with the mouse. Order is
+  clamped at the ends rather than wrapped — a tab teleporting from first to
+  last reads as a bug — and it survives a restart, because the roster
+  snapshot writes each tab's `order` from its list position.
+
+  Tab order *is* `app._panes` order (the ContentSwitcher keys on pane id, not
+  on child order), so the whole feature is a list splice plus a repaint. The
+  drag deliberately takes no mouse capture: cells are positional, so the cell
+  the pointer is over already *is* the drop target, and Textual's own routing
+  does the hit-testing. Each crossing emits one `TabBar.Reordered` hop, which
+  is what makes the tab appear to follow the pointer.
+
 - **`@peer` — ask an idle agent, from where you're standing.** Type
   `@lucid-knuth is this schema right?` in any pane. An idle peer answers, and
   the answer lands as a real turn in *its* transcript and a transient block in

@@ -100,7 +100,8 @@ See [MCP plane](mcp.md).
 ### TUI
 
 `tui/` is the Textual app. One `ConversationPane` per agent session;
-N panes in a `ContentSwitcher`; a sideways-scrolling tab bar; an
+N panes in a `ContentSwitcher`; a sideways-scrolling, reorderable tab
+bar (order *is* pane-list order, since the switcher keys on pane id); an
 agent-picker modal; cross-tab signalling (state dot, sticky `*`,
 bell); per-block copy-to-clipboard; an inline working indicator
 (spinner + rotating verb + elapsed timer) mounted inside the

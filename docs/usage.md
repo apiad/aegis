@@ -13,6 +13,8 @@
 | `Ctrl+W` | Close the active tab (closing the last quits) |
 | `Ctrl+1`..`Ctrl+9` | Jump directly to tab N |
 | `Ctrl+Tab` / `Ctrl+→` / `Ctrl+←` | Next / previous tab |
+| `Ctrl+Shift+→` / `Ctrl+Shift+←` | Move the active tab one slot along the bar (`Alt+Shift+←→` alias) |
+| `Drag a tab` | Reorder with the mouse — the tab follows the pointer across its neighbours |
 | `Ctrl+D` | Open / close the queue dashboard |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | Fuzzy file picker |

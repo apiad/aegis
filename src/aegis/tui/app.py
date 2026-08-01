@@ -245,6 +245,14 @@ class AegisApp(App):
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
+        Binding("ctrl+shift+right", "move_tab(1)", "Move tab →",
+                priority=True),
+        Binding("ctrl+shift+left", "move_tab(-1)", "Move tab ←",
+                priority=True),
+        # Aliases for terminals that swallow ctrl+shift+arrow (or bind it
+        # themselves) before it reaches the app.
+        Binding("alt+shift+right", "move_tab(1)", priority=True, show=False),
+        Binding("alt+shift+left", "move_tab(-1)", priority=True, show=False),
         *[Binding(f"ctrl+{n}", f"goto({n})", f"Tab {n}", priority=True)
           for n in range(1, 10)],
     ]
@@ -886,6 +894,25 @@ class AegisApp(App):
         event.stop()
         self._activate(event.index)
 
+    def on_tab_bar_reordered(self, event: TabBar.Reordered) -> None:
+        event.stop()
+        self._move_pane(event.from_index, event.to_index)
+
+    def _move_pane(self, frm: int, to: int) -> bool:
+        """Move the tab at ``frm`` into slot ``to``.
+
+        Tab order *is* ``_panes`` order — the ContentSwitcher keys on pane
+        id, not on child order — so the whole reorder is one list splice
+        plus a repaint. The roster snapshot follows for free: it writes
+        each tab's ``order`` from the list index.
+        """
+        n = len(self._panes)
+        if frm == to or not (0 <= frm < n) or not (0 <= to < n):
+            return False
+        self._panes.insert(to, self._panes.pop(frm))
+        self._refresh_tabbar()
+        return True
+
     def _activate(self, idx: int) -> None:
         if not (0 <= idx < len(self._panes)):
             return
@@ -1057,6 +1084,18 @@ class AegisApp(App):
             return
         cur = self._panes.index(active)
         self._activate((cur - 1) % len(self._panes))
+
+    def action_move_tab(self, delta: int) -> None:
+        """Ctrl+Shift+←/→ — carry the active tab one slot along the bar.
+
+        Clamped at the ends rather than wrapped: a tab that teleports from
+        the first slot to the last reads as a bug, not as a feature.
+        """
+        active = self._active
+        if active is None or active not in self._panes:
+            return
+        cur = self._panes.index(active)
+        self._move_pane(cur, cur + delta)
 
     async def action_close_tab(self) -> None:
         active = self._active

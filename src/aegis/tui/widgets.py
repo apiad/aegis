@@ -171,6 +171,9 @@ class GrowingInput(TextArea):
 class _TabCell(Static):
     """One tab in the bar; width sizes to its content so the row overflows."""
 
+    # Dragging a tab across the bar would otherwise start a text selection.
+    ALLOW_SELECT = False
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         # 0-based pane index this cell stands for; -1 until it renders a tab
@@ -192,6 +195,37 @@ class _TabCell(Static):
         event.stop()
         self.post_message(TabBar.Selected(self._index))
 
+    # --- drag-to-reorder ------------------------------------------------
+    # No mouse capture: cells are positional (cell i always paints tab i),
+    # so the cell the pointer is over already *is* the drop target, and
+    # letting Textual route each MouseMove to the widget under the pointer
+    # does the hit-testing for us. The cost of not capturing is that a
+    # release outside the bar leaves a stale origin behind — harmless,
+    # because a move with no button held clears it before it can act.
+
+    def _bar(self) -> "TabBar | None":
+        return self.parent if isinstance(self.parent, TabBar) else None
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        bar = self._bar()
+        if bar is not None and self._index >= 0:
+            bar.begin_drag(self._index)
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        bar = self._bar()
+        if bar is None:
+            return
+        if not event.button:            # a plain hover, not a drag
+            bar.cancel_drag()
+            return
+        if self._index >= 0:
+            bar.drag_over(self._index)
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        bar = self._bar()
+        if bar is not None:
+            bar.cancel_drag()
+
 
 class TabBar(HorizontalScroll):
     """Sideways-scrolling tab bar; the active tab is kept in view."""
@@ -202,6 +236,16 @@ class TabBar(HorizontalScroll):
         def __init__(self, index: int) -> None:
             super().__init__()
             self.index = index
+
+    class Reordered(Message):
+        """A tab was dragged one or more slots. Both indices are 0-based
+        pane indices, and the move is "pop ``from_index``, insert at
+        ``to_index``"."""
+
+        def __init__(self, from_index: int, to_index: int) -> None:
+            super().__init__()
+            self.from_index = from_index
+            self.to_index = to_index
 
     DEFAULT_CSS = """
     TabBar { height: 1; overflow-x: auto; overflow-y: hidden;
@@ -220,6 +264,24 @@ class TabBar(HorizontalScroll):
         # O(tabs) — 40 panes flipping together cost over a second of frozen
         # UI, all of it re-rendering labels that hadn't changed.
         self._painted: list = []
+        # Index the in-flight drag currently sits at, or None when no
+        # button is down on a tab. It tracks the *live* slot, not the
+        # origin, so a drag across several cells emits one hop per cell.
+        self._drag_from: int | None = None
+
+    def begin_drag(self, index: int) -> None:
+        self._drag_from = index
+
+    def cancel_drag(self) -> None:
+        self._drag_from = None
+
+    def drag_over(self, index: int) -> None:
+        """The pointer entered cell ``index`` mid-drag: hop the tab there."""
+        frm = self._drag_from
+        if frm is None or frm == index or not (0 <= index < len(self._items)):
+            return
+        self._drag_from = index
+        self.post_message(self.Reordered(frm, index))
 
     def set_palette(self, palette) -> None:
         self._palette = palette

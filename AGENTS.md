@@ -357,6 +357,13 @@ To force the local cache to refresh immediately:
 - The TUI is Textual 8.x. Interrupt is `Escape` (Textual reserves `ctrl+c`).
   The line REPL was removed in Phase 1.5; there is no `--plain` mode, so the
   TUI requires a TTY. Live/driver tests do not go through the App.
+- Tab order *is* `AegisApp._panes` order — the ContentSwitcher keys on pane
+  id, not on child order — so reordering (`Ctrl+Shift+←→`, or a mouse drag
+  emitting `TabBar.Reordered`) is one list splice in `_move_pane` plus a
+  `_refresh_tabbar()`. The drag takes no mouse capture: cells are positional,
+  so the cell under the pointer already is the drop target and Textual's
+  routing does the hit-testing; the gate is `MouseMove.button` (1 while a
+  drag is in flight, 0 on a plain hover).
 - Input gestures (`GrowingInput`): `Enter` enqueues (chips mid-turn);
   `Alt+Enter` / `Ctrl+Enter` send-with-interrupt (cut the live turn, send now;
   `Alt+Enter` is the portable key, `Ctrl+Enter` needs the Kitty protocol);

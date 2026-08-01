@@ -558,6 +558,7 @@ ConfigPanel via `F2`.
 | `Ctrl+E` | New terminal tab (`term:<name>`) |
 | `Ctrl+W` | Close tab (last → quit) |
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
+| `Ctrl+Shift+←→` | Move the active tab along the bar (or drag it with the mouse) |
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `Ctrl+D` | Open / close the queue dashboard |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
