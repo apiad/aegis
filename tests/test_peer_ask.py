@@ -130,7 +130,23 @@ def _mgr(sessions: dict[str, AgentSession]) -> SessionManager:
 async def test_refuses_an_unknown_target():
     mgr = _mgr({"alpha": _session([[]], handle="alpha")})
     a = await mgr.peer_ask("alpha", "nobody", "hi")
-    assert not a.ok and "unknown session" in a.error
+    assert not a.ok
+    assert "nobody" in a.error
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_target_names_the_live_ones():
+    """refusal()'s contract is that every refusal names the alternative,
+    and this was the branch that didn't — the one people actually hit,
+    because the feature is *called* @peer everywhere it is discussed, so
+    `@peer <question>` asks for a session literally named "peer"."""
+    mgr = _mgr({"alpha": _session([[]], handle="alpha"),
+                "beta": _session([[]], handle="beta")})
+    a = await mgr.peer_ask("alpha", "peer", "hi")
+    assert not a.ok
+    assert "beta" in a.error, a.error
+    # The asker is not offered: you cannot @ yourself.
+    assert "alpha" not in a.error.split("Open now:")[-1], a.error
 
 
 @pytest.mark.asyncio

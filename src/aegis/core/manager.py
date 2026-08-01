@@ -308,7 +308,10 @@ class SessionManager:
             target_session=self.get(target), prompt=prompt,
             state_dir=self._persist_dir or self.state_root,
             source_log_id=getattr(source, "log_id", None),
-            source_session=source, cc=cc)
+            source_session=source, cc=cc,
+            # So an unknown handle can name the real ones instead of a bare
+            # "unknown session: peer".
+            live=self.list_sessions())
 
     async def read_peer(self, handle: str, turns: int = 12) -> dict:
         """AppBridge-shaped: window a live peer's transcript."""

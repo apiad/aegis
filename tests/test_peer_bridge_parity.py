@@ -48,6 +48,9 @@ class _TuiStub:
     _panes: list = []
     _state_dir = "/tmp/aegis-test-state"
 
+    def list_sessions(self):
+        return []
+
 
 class _WebStub:
     """The equivalent for `SessionManager.peer_ask`."""
@@ -56,6 +59,9 @@ class _WebStub:
 
     def get(self, handle):
         return None
+
+    def list_sessions(self):
+        return []
 
 
 async def _kwargs_from(bridge_method, stub, monkeypatch) -> set[str]:

@@ -1500,7 +1500,10 @@ class AegisApp(App):
             # real turn. Needs BOTH — cc alone is inert, because cc_into
             # returns early on a None source_session.
             source_session=source._core if source else None,
-            cc=cc)
+            cc=cc,
+            # So an unknown handle can name the real ones instead of a bare
+            # "unknown session: peer".
+            live=self.list_sessions())
 
     async def read_peer(self, handle: str, turns: int = 12) -> dict:
         """AppBridge-shaped: window a live peer's transcript.

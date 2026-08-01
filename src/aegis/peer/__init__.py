@@ -89,18 +89,41 @@ class PeerAnswer:
         return " · ".join(bits)
 
 
-def refusal(*, from_handle: str, target: str, session, ready: bool) -> str | None:
+def refusal(*, from_handle: str, target: str, session, ready: bool,
+            live=()) -> str | None:
     """Why this ask must not be sent, or None if it may be.
 
     Every refusal names the alternative. A refused ask is never delivered,
     so it cannot cost the peer a turn.
+
+    ``live`` is the current session list (anything with ``.handle`` and
+    ``.state``), used to make the unknown-handle refusal name real
+    targets. It was the one branch that did not honour the rule above,
+    and the one people actually hit: the feature is *called* ``@peer``
+    everywhere it is discussed, so ``@peer <question>`` reads as the
+    command and asks for a session literally named "peer".
     """
     if not target:
         return "a peer ask needs a target — try @<handle> <question>"
     if target == from_handle:
         return f"{target} cannot ask itself — that is what /btw is for"
     if session is None:
-        return f"unknown session: {target}"
+        # You cannot @ yourself, so offering the asker would be advice
+        # that fails on the next keystroke. Busy peers are marked rather
+        # than hidden, matching the palette completer: a busy target is
+        # refused, and that constraint is worth seeing now rather than as
+        # a second rejection.
+        others = [s for s in live if getattr(s, "handle", None) != from_handle]
+        head = f"no session named '{target}' — @ takes a live session handle"
+        if not others:
+            return f"{head}, and there are no other sessions open right now"
+        names = ", ".join(
+            s.handle if getattr(s, "state", "") == "ready"
+            else f"{s.handle} (busy)"
+            for s in sorted(others,
+                            key=lambda s: (getattr(s, "state", "") != "ready",
+                                           s.handle)))
+        return f"{head}. Open now: {names}"
     if not ready:
         return (f"{target} is mid-turn. Wait for it to finish, or /enqueue "
                 f"the task instead.")
@@ -275,7 +298,8 @@ async def send_and_await(session, *, prompt: str, sender: str,
 async def ask(*, from_handle: str, target: str, source_slug: str,
               target_session, prompt: str,
               state_dir=None, source_log_id: str | None = None,
-              source_session=None, cc: bool = False) -> PeerAnswer:
+              source_session=None, cc: bool = False,
+              live=()) -> PeerAnswer:
     """The half both ``AppBridge`` implementations share.
 
     Best-effort by contract, exactly as ``side_note`` is: every failure
@@ -292,7 +316,7 @@ async def ask(*, from_handle: str, target: str, source_slug: str,
     ready = (target_session is not None
              and target_session.state is not AgentState.working)
     why = refusal(from_handle=from_handle, target=target,
-                  session=target_session, ready=ready)
+                  session=target_session, ready=ready, live=live)
     if why:
         return PeerAnswer(target=target, error=why)
 
