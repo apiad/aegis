@@ -73,6 +73,22 @@ look like and how permission maps to the underlying CLI's flag.
 `effort:` is one of `low`, `medium`, `high`, `max`. Other providers
 ignore it.
 
+### `text_generation` (optional)
+
+Top-level. Names an agent profile whose harness + model handles aegis's own
+small one-shot calls — the `/btw` side note, and anything else that reaches
+the [`generate()` seam](drivers.md#one-shot-generation). These are throwaway
+calls with no session, no MCP and no tools, so they belong on something cheap:
+
+```yaml
+text_generation: haiku
+```
+
+The value must name an entry in `agents:`; an unknown slug is fail-loud at
+boot. Unset, a one-shot call bills at the *session's* own model, and aegis
+says so once per session rather than quietly charging Opus rates for a side
+question.
+
 ## Drop-in overlays
 
 Each top-level section also accepts overlay files under

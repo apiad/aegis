@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-08-01
+
 ### Added
 
 - **Reorderable tabs (TUI).** `Ctrl+Shift+←/→` carries the active tab one slot
@@ -64,6 +66,70 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
   Spec: `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`
 
+- **`/btw` — a side note that doesn't cost a conversation.** `/btw <question>`
+  answers from the current pane's own transcript tail and disappears: a
+  bounded window of the log, one throwaway model call, an inline block. It is
+  legal mid-turn, where `/fork` is not — `/btw` never touches the harness
+  session, it reads aegis's own log and makes an independent call, so a live
+  turn's dangling `tool_use` cannot follow it.
+
+  Notes are transient by construction. A note goes into the pane's history so
+  scrolling keeps it, and is never appended to the session log — so side notes
+  do not compound, and the fifth `/btw` still sees real conversation rather
+  than four of its own prior musings.
+
+  - The window assembler fills **newest-first** under a 32k budget, and its
+    header states what it dropped ("6 of 143 events") to the model and to the
+    reader alike. Filling from the front would have dropped the turn that
+    prompted the question, and `/btw` would confidently answer one nobody
+    asked.
+  - It runs **off the input handler**. Awaiting a 12–17s call inside a Textual
+    message handler held the pane's whole message pump: no working indicator,
+    no tool spinners, no input. A deferred command now mounts a placeholder
+    that echoes your question, dispatches on a worker, and rewrites that block
+    in place — so the note stays where you asked it while the agent's output
+    streams past underneath.
+  - **`Esc` cancels a running note**, ahead of clearing a half-typed line and
+    well ahead of interrupting the turn: the spinning block is the thing on
+    screen billing by the second. Cancelling leaves a tombstone rather than
+    removing the block, and the wording comes from the command, so `@peer`
+    says "stopped waiting" rather than the lie that anything was cancelled.
+  - `/btw` and `@peer` answers **render as markdown on a surface of their
+    own** — a raised panel plus a thin left bar. Making the answer beautiful
+    made it camouflage: for `@peer` especially, a real turn from a different
+    session must not read as your own agent talking.
+
+- **`/fork` — branch a conversation into a worker that already knows.**
+  `/fork [prompt] [--slug S] [--model M] [--effort E]` branches the current
+  pane; `aegis_fork(target_handle, …)` forks an idle peer. A slash command is
+  served by aegis rather than sent to the agent, so the pane is idle and there
+  is no half-written turn to branch from — which is exactly why self-fork over
+  MCP is refused with a pointer at `/fork` rather than a generic reason.
+
+  The parent is untouched by being forked: its `session_id` is unmoved and its
+  log byte-identical, both asserted, because both would break silently. A fork
+  costs roughly $1, and that measurement lives in the MCP docstring where an
+  agent deciding whether to fan out will actually read it.
+
+- **A one-shot `generate()` seam on drivers** — no session, no MCP, no tools.
+  `supports_oneshot` + `generate()`, plus a `text_generation:` config key that
+  decides which model pays for aegis's own small calls.
+
+  It exists because `claude -p` with default flags is not a generator, it is
+  an agent. Same window, same question, haiku: the default run spent 21.9s and
+  $0.0633 on 53,593 input tokens going looking for files a side note has no
+  business reading, then answered "I cannot verify". With `--system-prompt`
+  and `--tools ""` it took 8.5s and $0.0044 on 2,361 tokens and answered
+  correctly. Shedding the tool schemas sheds the urge to use them.
+
+- **`aegis_monitor` refuses `pgrep -f` in a condition, and says what to use
+  instead.** A condition runs in a shell whose own command line contains the
+  pattern, so `pgrep -f 'pytest -q'` matches itself — it is true when nothing
+  is running, and `! pgrep -f …` is false forever. The monitor never trips and
+  times out instead, which reads as a hung process rather than a broken
+  condition. Now a deterministic guard, with the fix in the message: a
+  completion marker in a log, or `! kill -0 <pid>`.
+
 ### Fixed
 
 - **`WorkflowEngine.send()` silently returned `""`.** `workflow/runner.py` has
@@ -72,6 +138,89 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   so every `engine.send()` fell through to fire-and-forget and returned an
   empty string instead of the agent's reply. `SessionManager` now implements
   it. Found while building `@peer`, which is its first real caller.
+
+- **Monitors were invisible in any tab born from a spawn or a fork.** The
+  strip is composed once, in `ConversationPane.compose()`, and only when the
+  caller passed a `monitor_manager` — which three of six construction sites
+  did not, including the one behind `aegis_spawn`, `/spawn`, group spawn and
+  every queue worker. The monitor always worked; only the row was missing,
+  which is why it survived so long. (The strip is composed at construction, so
+  this does not repair tabs in an already-running aegis — restart, and boot
+  restore rebuilds them.)
+
+- **`Ctrl+R` crashed partway down a long session list.** Handles come from a
+  finite pool and only avoid *live* ones, so two logs routinely share one; the
+  history modal keyed its options by handle, and the second collision raised
+  `DuplicateID` out of `on_mount`. On a real 268-session state dir the first
+  collision sat at index 93 — everything older than that was unreachable, and
+  it degrades as more handles recycle. Keyed by `log_id` now, which is minted
+  once at spawn and never reused. Selection lookups moved with it: keying by
+  handle also reopened the *first* row with that handle rather than the
+  highlighted one.
+
+- **Replay rendered the agent talking to itself.** Reopening a conversation
+  showed answers with no questions: the user's own turns are in every
+  transcript (claude runs with `--replay-user-messages`) but had no typed
+  event, so they fell through to `Unknown` and were dropped. `isReplay` is the
+  predicate — measured over 269 transcripts, it marks genuine user turns and
+  nothing else, where matching `type:user` alone would have rendered skill
+  bodies and subagent prompts as things you said. Retroactive: 374 user turns
+  recover from six real logs without a migration.
+
+- **The mounted transcript window is bounded when you scroll up.** The `N_MAX`
+  check was nested inside the stick-to-bottom branch, so reading back through
+  a thread while an agent worked mounted every new block and never evicted —
+  measured climbing past 650, and unbounded on a resumed session. The window
+  grows a second edge and evicts from whichever end is furthest from the
+  viewport, so eviction can no longer fight `_load_older`. This closes the
+  last open finding from 0.28.0's audit.
+
+- **Assistant prose and folded tool blocks are selectable.** Textual extracts
+  a selection only from widgets that render a `Text`; a `Markdown` and a
+  folded `tool_use`+`tool_result` pair are not, so they returned nothing.
+  Blocks already carry a plain-text payload for click-to-copy, and the
+  selection now uses it.
+
+### Performance
+
+Continuing 0.28.0's audit — the same scenario, the reflow tax rather than the
+repaint tax. Textual rebuilds the whole compositor map on any layout change,
+and its cost is linear in the number of mounted widgets, so the wins here are
+about *not asking for layout* and about halving what a mounted block costs.
+
+- **Transcript cells are no longer wrapped in a second widget.**
+  `CopyableBlock` composed a child `Static`, so every block counted twice.
+  At a full 300-block window: one reflow 308 → 140 ms, a keystroke in the
+  input box 226 → 151 ms, one scroll line 261 → 136 ms. The marginal cost of
+  a mounted block falls 0.86 → 0.33 ms.
+
+- **Four places stopped asking for a layout pass when nothing moved.**
+  `StatusBar.update()` defaulted to `layout=True`, firing one full-screen
+  reflow per streamed delta; eviction and back-fill pruned and mounted one
+  block at a time, each a reflow; streaming repaints are now throttled to
+  20/s against the record-is-truth contract. Layout refreshes over 40 deltas:
+  116 → 29. A/B against v0.28.1 at 300 blocks: reflow 236 → 110 ms, keystroke
+  245 → 136 ms, scroll line 286 → 131 ms, 100 gapped deltas 5,614 → 2,723 ms.
+
+- **The 10 Hz timers stopped asking too** — the working indicator and each
+  running tool block, both repainting for the whole duration of every turn.
+  Over one second of a real turn (indicator running, three tools in flight):
+  140 layout passes → 18, or ~880 ms of layout per turn-second down to
+  ~113 ms. That is what the 69% idle CPU on a live TUI actually was.
+
+- **Reopening a session reads its transcript off the event loop.** On the
+  largest real log — 24.8 MB, 17,990 records — decoding is ~500 ms, and it ran
+  on the loop, so the UI froze mid-reopen. Both async call sites now thread
+  it: the `Ctrl+R` reopen, and the boot restore, where it runs once per
+  restored tab and the freezes add up.
+
+### Internal
+
+- **The hermetic suite is hermetic again.** Two `lovelaice` files spawn a real
+  `lovelaice-acp` subprocess and call a real model over the network, but
+  carried only `skipif` gates and not `pytest.mark.live` — so `pytest -m "not
+  live"` had been running two network-dependent tests all along, and failed
+  the day the endpoint went down.
 
 ## [0.28.1] - 2026-07-29
 

@@ -40,6 +40,30 @@ Whatever you can do with one provider, you can do with any. Concretely:
   tagged with the correct sender automatically. No global MCP config
   pollution.
 
+## One-shot generation
+
+Beside the session seam, a driver may declare `supports_oneshot` and implement
+`generate()` — a single prompt in, a string out, with **no session, no MCP and
+no tools**. It backs aegis's own small calls (`/btw`, and the `@peer` teaser's
+neighbours); which model pays is the
+[`text_generation:`](configuration.md#text_generation-optional) config key.
+
+The tool-shedding is the point, not an optimisation. Measured on zion with the
+same window and question, on haiku:
+
+| Invocation | Time | Cost | Input | Result |
+|---|---|---|---|---|
+| default `claude -p` | 21.9s | $0.0633 | 53,593 tok | refusal |
+| `--system-prompt` + `--tools ""` | 8.5s | $0.0044 | 2,361 tok | correct |
+
+`claude -p` with default flags is not a generator, it is an agent, and it
+behaves like one: the default run went looking for files a side note has no
+business reading, failed to find them, and answered "I cannot verify" — the
+worst outcome, at fifteen times the price. `--tools ""` sheds the tool schemas
+(most of those 53k input tokens) and with them the urge to use them;
+`--system-prompt` replaces claude's agentic default, which
+`--append-system-prompt` cannot do.
+
 ## Picking models
 
 Each provider's `model` string is whatever its native CLI accepts:

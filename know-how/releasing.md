@@ -44,13 +44,47 @@ an update:
 uv sync --locked
 ```
 
+## The other one: `[Unreleased]` is routinely a fraction of what shipped
+
+Sessions land features and write the changelog entry *only* for the thing they
+were asked about. At v0.29.0 the `[Unreleased]` block held two entries; the tag
+range held sixty commits, and `/btw`, `/fork`, the `generate()` seam, the
+`pgrep` monitor guard, four perf wins and five user-visible fixes were all
+absent. Release notes assembled from that block would have been a lie about
+most of the release.
+
+**Diff the commits against the block before you promote it**, never the other
+way round:
+
+```bash
+git log --oneline vX.Y.Z..HEAD          # what actually shipped
+git log vX.Y.Z..HEAD --format='=== %h %s%n%b' -- . ':!docs'   # the material
+```
+
+Read the commit *bodies* — this repo writes the reasoning and the measured
+numbers there, so the changelog entry is mostly assembly, not authorship.
+
+Two traps while assembling:
+
+- **A reverted commit still shows in the range.** `perf(tui): halve the
+  mounted transcript window` was in the log and `revert(tui): put N_MAX back
+  to 300` three commits later; documenting the first would have shipped a
+  changelog claiming behaviour the release does not have. Check the current
+  value in the tree, not the commit that set it.
+- **Intra-release fixes are not user-facing fixes.** A bug introduced and
+  fixed between two tags never reached anyone. Leave it out of `### Fixed`.
+
+Same sweep for the docs: grep `README.md docs/*.md` for each new command,
+config key and MCP verb. At v0.29.0 none of `/btw`, `/fork`, `@peer`,
+`text_generation:`, `aegis_fork` or `aegis_read_peer` appeared in any
+user-facing doc — the features had shipped with only AGENTS.md entries.
+
 ## Release checklist
 
 1. Clean tree, on `main`, not behind origin.
 2. Move the CHANGELOG `## [Unreleased]` block to `## [vX.Y.Z] - YYYY-MM-DD`,
-   add a fresh empty `## [Unreleased]` above it. (Double-check every shipped
-   phase actually has an entry — 2C had shipped but was missing from the
-   changelog at v0.18.0.)
+   add a fresh empty `## [Unreleased]` above it — **after** running the
+   coverage diff above, and after closing any doc gaps it exposes.
 3. Bump `version` in `pyproject.toml`.
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then `uv sync --locked` to verify.

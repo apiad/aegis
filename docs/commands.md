@@ -25,6 +25,31 @@ The whole subsystem is harness-agnostic (no Textual/web imports in
 `src/aegis/commands/`), so the TUI and the web client are two thin frontends
 over one shared core.
 
+`@handle <question>` is the one non-`/` prefix: `classify_input` rewrites it
+into `/peer handle <question>`, so it is a slash command in every way that
+matters — same dispatcher, same effect channel, same palette. `@@` is the
+literal-`@` escape, mirroring `//`, and only a leading `@` addresses, so
+`a@b.com` mid-line stays prose.
+
+## Deferred commands
+
+A command that takes 12–17s (`/btw`) or up to 300s (`/peer`) must not be
+awaited inside a frontend's input handler — in Textual that holds the pane's
+message pump for the duration, freezing every spinner in it and the input
+itself. `SlashCommand` therefore declares `deferred=True`: the frontend mounts
+a placeholder block echoing your question, dispatches on a worker, and
+rewrites that block in place when the answer lands, so the note stays where
+you asked it while the agent's own output streams past underneath. One at a
+time per pane; everything else stays available.
+
+`Esc` cancels a running deferred command — ahead of clearing a half-typed
+line, well ahead of interrupting the turn. Cancelling leaves a tombstone
+rather than removing the block, and the wording is per-command
+(`cancel_note`), because the truth is per-command: cancelling `/btw` really is
+clean, since it never touched a harness session, while a cancelled `/peer`
+says "stopped waiting" — the peer already took the turn and finishes into its
+own transcript whether or not anyone is listening.
+
 ## Architecture
 
 ```
@@ -188,6 +213,9 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/sessions` | List live agent sessions; mark the active one. |
 | `/agents [add … \| remove <slug>]` | List / add / remove agent profiles. |
 | `/spawn <agent> [prompt]` | Start a new top-level agent with an optional opening prompt. |
+| `/fork [prompt] [--slug S] [--model M] [--effort E]` | Branch this conversation into a new tab — a worker that already knows. Refused mid-turn; the parent is left untouched. ~$1 a fork. |
+| `/btw <question>` | Answer a side question from this pane's recent window and disappear. Legal mid-turn; never appended to the session log. Deferred — `Esc` cancels. |
+| `/peer <handle> [--cc] <question>` | Ask an **idle** peer, from where you're standing. `@handle …` is sugar for it. `--cc` also lands the answer in your own conversation. Deferred. |
 | `/queues [new <name> [agent] [--ephemeral]]` | List / create queues (persisted, or ephemeral in the live manager only). |
 | `/enqueue <queue> <payload>` | Drop a task on a queue. |
 | `/groups [status \| dissolve <name>]` | List / inspect / dissolve agent groups. |

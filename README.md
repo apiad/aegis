@@ -553,6 +553,9 @@ ConfigPanel via `F2`.
 | `!cmd` | **Shell escape** — run `cmd` locally, inject its output as your message |
 | `/cmd` | **Slash command** — aegis runs it directly (`/help` lists them); never reaches the agent |
 | `/loop <instruction>` | Repeat an instruction every turn until the agent calls `aegis_loop_stop` or the cap (default 20) is hit; `/loop stop` or `Esc` cancels |
+| `/fork [prompt]` | **Branch this conversation** into a new tab — a worker that already knows. Refused mid-turn; the parent is untouched. ~$1 |
+| `/btw <question>` | **A side note that doesn't cost a conversation** — answered from this pane's recent window, never written to the log. Legal mid-turn; `Esc` cancels |
+| `@handle <question>` | **Ask an idle peer**, from where you're standing. The answer is a real turn in *their* transcript and a transient block in yours; `--cc` also lands it in yours |
 | `/usage quota` | Live Claude subscription utilisation — every window, with reset countdowns. The status bar carries the short form (`⧗ 5h 64% · wk 7%`) whenever a Claude agent is open |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+E` | New terminal tab (`term:<name>`) |

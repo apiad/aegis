@@ -58,9 +58,43 @@ with `/`.
 | `/spawn <agent> [prompt]` | Start a new top-level agent, optionally with an opening prompt |
 | `/queue new <name> [agent]` | Create a queue |
 | `/enqueue <queue> <payload>` | Drop a task on a queue |
+| `/fork [prompt]` | Branch this conversation into a new tab |
+| `/btw <question>` | Answer a side question from the recent window |
+| `/peer <handle> [--cc] <question>` | Ask an idle peer (`@handle …` is sugar) |
 
 Precedence: `!` shell escape > `/` slash command > a plain message to the
 agent. An unknown command shows an error block pointing at `/help`.
+
+### Asking without spending the conversation
+
+Three commands sit on the same idea — a question you want answered *near*
+this conversation without paying for it in context, money, or the turn you
+are in the middle of.
+
+- **`/fork [prompt]`** branches this pane into a new tab: a worker that
+  already knows everything you have said. Refused mid-turn (a live turn's
+  tail is a `tool_use` with no matching result, and a fork would inherit the
+  dangling call), and the parent is left byte-identical. It carries the whole
+  conversation, and costs about a dollar.
+- **`/btw <question>`** answers from this pane's recent window and
+  disappears. It never touches the harness session — it reads aegis's own log
+  and makes one independent call — which is why it is legal mid-turn. The
+  answer goes into the pane's scrollback and is *never* written to the
+  session log, so side notes do not compound: the fifth `/btw` still sees
+  real conversation rather than four of its own prior musings.
+- **`@handle <question>`** asks an **idle** peer, sending it a cheap slice of
+  where you are standing. The answer lands as a real turn in *their*
+  transcript and a transient block in yours; your own agent neither sees it
+  nor pays for it. Idle-only is the domain, not a limitation — the point is
+  extracting value from a warm context that is currently producing nothing,
+  and it is legal while your *own* tab is mid-turn, which is exactly when you
+  have dead time to spend. Add `--cc` (at send time — the peer never decides
+  this) to also land the answer in your own conversation.
+
+`/btw` and `/peer` are **deferred**: they mount a placeholder that echoes
+your question and answer in place, so nothing freezes while they run, and
+`Esc` cancels the note before it clears a half-typed line or interrupts the
+turn.
 
 ## Tabs
 
@@ -74,7 +108,10 @@ Each tab is an independent agent session with:
 - A **state dot**: green idle, amber working, red error.
 - A **sticky `*`** when a backgrounded tab finishes — plus a terminal
   bell — so you notice background work completing.
-- A **scrolling tab bar** that keeps the active tab in view.
+- A **scrolling tab bar** that keeps the active tab in view, and that you
+  can **reorder** — `Ctrl+Shift+←/→` moves the active tab one slot, or drag
+  a tab with the mouse. The order is saved with the roster, so it survives a
+  restart.
 
 ## The transcript
 
