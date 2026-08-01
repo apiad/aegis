@@ -1219,13 +1219,18 @@ class AegisApp(App):
         if path is not None:
             await self._open_file_tab(path)
 
-    async def _open_file_tab(self, path: Path, *,
+    async def _open_file_tab(self, path: Path, *, line: int | None = None,
                              foreground: bool = True) -> None:
         from aegis.tui.file_tab import FileTab
         resolved = path.resolve()
         tab_id = f"filetab-{abs(hash(str(resolved)))}"
         for p in self._panes:
             if p.id == tab_id:
+                # Already open: a second ask for a different line must still
+                # move the cursor there, or the gesture looks like a no-op.
+                if line is not None and hasattr(p, "goto_line"):
+                    with contextlib.suppress(Exception):
+                        p.goto_line(line)
                 if foreground:
                     cs = self.query_one(ContentSwitcher)
                     cs.current = tab_id
@@ -1233,7 +1238,7 @@ class AegisApp(App):
                     p.focus_input()
                     self._refresh_tabbar()
                 return
-        tab = FileTab(resolved)
+        tab = FileTab(resolved, line=line)
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
         tab.display = False   # see _mount_hidden note in _mount_and_kick

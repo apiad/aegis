@@ -4,6 +4,8 @@ functions and lookup tables only — no Rich, no HTML, no I/O.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 # Glyph per semantic kind (parity with ACP's tool_call kind enum; claude
 # paths derive kind from the tool name in events.py).
 KIND_ICON = {
@@ -97,6 +99,64 @@ def describe_tool(name: str, raw_input: dict | None,
         if isinstance(v, str) and v.strip():
             return _trunc(v, 60)
     return summary or _loc_tail(locations) or name
+
+
+@dataclass(frozen=True)
+class FileTarget:
+    """The file a tool call acted on, and where in it to land.
+
+    ``line`` is known up front (Read's ``offset``, an ACP location).
+    ``anchor`` is Edit's ``old_string``: the line it starts on can only be
+    found by looking at the file, which is I/O and therefore deferred to
+    the moment someone actually asks to open it.
+    """
+    path: str
+    line: int | None = None
+    anchor: str | None = None
+
+
+def file_target(name: str, raw_input: dict | None,
+                locations=()) -> FileTarget | None:
+    """Which file (and line) a tool call points at, if any. Pure."""
+    inp = raw_input or {}
+    path, line, anchor = "", None, None
+
+    if name in ("Read", "Write", "Edit"):
+        path = str(inp.get("file_path") or "")
+        if name == "Read":
+            offset = inp.get("offset")
+            if isinstance(offset, int) and offset > 0:
+                line = offset
+        elif name == "Edit":
+            old = inp.get("old_string")
+            if isinstance(old, str) and old.strip():
+                anchor = old
+
+    if not path and locations:
+        loc_path, loc_line = locations[0]
+        path = str(loc_path or "")
+        line = loc_line
+
+    return FileTarget(path, line, anchor) if path else None
+
+
+def anchor_line(text: str, anchor: str) -> int | None:
+    """The 1-based line ``anchor`` starts on in ``text``, or None.
+
+    An edit's ``old_string`` is gone from the file by the time you click
+    the block — the whole point of an edit — and the file may have moved on
+    further still. So: try the anchor verbatim, then its opening line
+    alone, then give up. A wrong line is worse than the top of the file.
+    """
+    if not text or not anchor:
+        return None
+    for needle in (anchor, anchor.splitlines()[0] if anchor else ""):
+        if not needle:
+            continue
+        idx = text.find(needle)
+        if idx >= 0:
+            return text.count("\n", 0, idx) + 1
+    return None
 
 
 def format_tool_args(name: str, raw_input: dict | None,

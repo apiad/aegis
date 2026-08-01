@@ -32,7 +32,7 @@ from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
     render_user_line, renders_to_nothing,
 )
-from aegis.render_shared import format_age
+from aegis.render_shared import FileTarget, file_target, format_age
 from aegis.state.session_log import EventReplay, make_session_log_observer
 from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
@@ -55,6 +55,7 @@ _BLOCK_TOOLTIP = ("click to copy | ctrl+click to open here | "
                   "alt+click to open natively")
 
 
+
 @dataclass(slots=True)
 class BlockRecord:
     """One transcript entry. Mutable so streaming aggregation can update
@@ -72,6 +73,7 @@ class BlockRecord:
     tight: bool
     tool_call_id: str | None = None
     events: list | None = None
+    file_target: FileTarget | None = None
 
     def materialize(self, palette) -> RenderableType:
         """The renderable, rendering the deferred events on first use."""
@@ -346,7 +348,8 @@ class CopyableBlock(Static):
 
     def __init__(self, renderable: RenderableType,
                  text_payload: str, *, tight: bool = False,
-                 tool_call_id: str | None = None) -> None:
+                 tool_call_id: str | None = None,
+                 file_target: FileTarget | None = None) -> None:
         # markup=False: the payloads are Rich renderables, and a raw str
         # payload must not be reinterpreted as Textual markup.
         super().__init__(renderable, markup=False,
@@ -354,20 +357,25 @@ class CopyableBlock(Static):
         self._renderable = renderable
         self._text_payload = text_payload
         self._tool_call_id = tool_call_id
+        self._file_target = file_target
         # Resolved on demand: scanning the payload on every update made a
         # streaming message quadratic in its own length, and nothing reads
         # the tokens until you click or hover.
         self._tokens: list[str] | None = None
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        self.tooltip = ("click to expand args" if tool_call_id is not None
-                        else "click to copy")
+        tip = ("click to expand args" if tool_call_id is not None
+               else "click to copy")
+        if file_target is not None:
+            tip = f"{tip} | ctrl+click to open the file"
+        self.tooltip = tip
 
     def on_enter(self, _event) -> None:
         # Advertise the open gestures only when this block actually names
         # something openable. Resolved here rather than on every content
         # update: hovering is rare, streaming is not.
-        if self._tool_call_id is None and self.backtick_tokens:
+        if (self._tool_call_id is None and self._file_target is None
+                and self.backtick_tokens):
             self.tooltip = _BLOCK_TOOLTIP
 
     def update_content(self, renderable: RenderableType,
@@ -405,6 +413,13 @@ class CopyableBlock(Static):
         return selection.extract(self._text_payload), "\n"
 
     def on_click(self, event: Click) -> None:
+        # A Read/Write/Edit block already names its file exactly — ctrl+click
+        # goes straight there, no token guessing. Checked before the
+        # tool-call branch so a replayed block (no live tool_call_id, so no
+        # args to expand) keeps the gesture.
+        if event.ctrl and self._file_target is not None:
+            self._open_tool_file()
+            return
         # Tool-call blocks toggle their collapsed args instead of copying.
         if self._tool_call_id is not None:
             self.post_message(self.ToolExpandToggle(self._tool_call_id))
@@ -429,6 +444,38 @@ class CopyableBlock(Static):
                 f"copied {len(self._text_payload)} chars", timeout=1.5)
         except Exception:
             pass
+
+    @work
+    async def _open_tool_file(self) -> None:
+        """Open the file a Read/Write/Edit call named, at its line.
+
+        No picker and no fuzzy matching: the tool call already told us the
+        exact path. Edit's line is found here rather than at render time —
+        it costs a file read, and nothing needs it until you click.
+        """
+        from aegis.render_shared import anchor_line
+
+        target = self._file_target
+        opener = getattr(self.app, "_open_file_tab", None)
+        if target is None or opener is None:
+            return
+
+        path = Path(target.path).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.is_file():
+            with contextlib.suppress(Exception):
+                self.app.notify(f"{path.name}: not on disk here", timeout=2.0)
+            return
+
+        line = target.line
+        if line is None and target.anchor:
+            try:
+                line = anchor_line(path.read_text(errors="replace"),
+                                   target.anchor)
+            except OSError:
+                line = None
+        await opener(path, line=line)
 
     @work
     async def _open_file_from_tokens(self) -> None:
@@ -981,7 +1028,9 @@ class ConversationPane(Widget):
             if renders_to_nothing(ev):
                 continue
             records.append(BlockRecord(
-                None, _payload_for_event(ev), False, events=[ev]))
+                None, _payload_for_event(ev), False, events=[ev],
+                file_target=(file_target(ev.name, ev.raw_input, ev.locations)
+                             if isinstance(ev, ToolUse) else None)))
             if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
                     and ev.tool_call_id):
                 box_idx[ev.tool_call_id] = len(records) - 1
@@ -998,7 +1047,8 @@ class ConversationPane(Widget):
         t = self._transcript()
         for rec in records[self._window_start:]:
             block = CopyableBlock(rec.materialize(self._palette), rec.payload,
-                                  tight=rec.tight)
+                                  tight=rec.tight,
+                                  file_target=rec.file_target)
             t.mount(block)
             self._mounted_blocks.append(block)
         t.scroll_end(animate=False)
@@ -1085,7 +1135,8 @@ class ConversationPane(Widget):
                 (anchor.region.y - t.region.y) if anchor is not None else 0)
             new_blocks: list[CopyableBlock] = [
                 CopyableBlock(rec.materialize(self._palette), rec.payload,
-                              tight=rec.tight, tool_call_id=rec.tool_call_id)
+                              tight=rec.tight, tool_call_id=rec.tool_call_id,
+                              file_target=rec.file_target)
                 for rec in self._history[new_start : self._window_start]
             ]
             # One batched mount: Textual lays the parent out once per mount
@@ -1237,11 +1288,14 @@ class ConversationPane(Widget):
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
                      *, tight: bool = False,
-                     tool_call_id: str | None = None) -> CopyableBlock:
+                     tool_call_id: str | None = None,
+                     file_target: FileTarget | None = None) -> CopyableBlock:
         self._history.append(
-            BlockRecord(renderable, text_payload, tight, tool_call_id))
+            BlockRecord(renderable, text_payload, tight, tool_call_id,
+                        file_target=file_target))
         block = CopyableBlock(renderable, text_payload, tight=tight,
-                              tool_call_id=tool_call_id)
+                              tool_call_id=tool_call_id,
+                              file_target=file_target)
         t = self._transcript()
         if self._window_end < len(self._history) - 1:
             # The tail is already truncated (we are scrolled up and the
@@ -1331,7 +1385,8 @@ class ConversationPane(Widget):
             self._mounted_blocks.clear()
             new_blocks = [
                 CopyableBlock(rec.materialize(self._palette), rec.payload,
-                              tight=rec.tight, tool_call_id=rec.tool_call_id)
+                              tight=rec.tight, tool_call_id=rec.tool_call_id,
+                              file_target=rec.file_target)
                 for rec in self._history[start:]
             ]
             ind = self._working_indicator()
@@ -1781,7 +1836,9 @@ class ConversationPane(Widget):
             renderable = render_tool_use(ev, self._palette, elapsed=0.0,
                                          running=True, frame=self._spin_frame)
             self._mount_block(renderable, _payload_for_event(ev),
-                              tool_call_id=ev.tool_call_id)
+                              tool_call_id=ev.tool_call_id,
+                              file_target=file_target(
+                                  ev.name, ev.raw_input, ev.locations))
             # Remember this call's block so its (possibly out-of-order,
             # parallel) ToolResult folds in below instead of appending.
             self._tool_use_idx[ev.tool_call_id] = track.idx

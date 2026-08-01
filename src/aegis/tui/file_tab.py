@@ -62,8 +62,9 @@ class FileTab(Widget, can_focus=True):
         Binding("ctrl+x", "open_external", "Open external", priority=True),
     ]
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, line: int | None = None) -> None:
         self._path = path.resolve()
+        self._open_at_line = line
         # Stable id derived from path so duplicate opens are detected.
         tab_id = f"filetab-{abs(hash(str(self._path)))}"
         super().__init__(id=tab_id)
@@ -104,8 +105,22 @@ class FileTab(Widget, can_focus=True):
         except OSError:
             content = f"(could not read {self._path})"
         self.query_one("#ft-editor", TextArea).load_text(content)
+        if self._open_at_line is not None:
+            self.goto_line(self._open_at_line)
         self._refresh_status()
         self.set_interval(_MTIME_POLL_S, self._check_mtime)
+
+    # --- line targeting ---------------------------------------------
+
+    def goto_line(self, line: int) -> None:
+        """Park the cursor on a 1-based line, centred in the viewport.
+
+        Clamped to the buffer: a file that shrank since the tool call that
+        named the line must still open, just at its last line."""
+        editor = self.query_one("#ft-editor", TextArea)
+        row = max(0, min(line - 1, editor.document.line_count - 1))
+        editor.move_cursor((row, 0), center=True)
+        self._refresh_status()
 
     # --- status bar -------------------------------------------------
 

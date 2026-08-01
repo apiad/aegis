@@ -256,7 +256,9 @@ plan → dispatch implementer per task with durable resume),
   `Ctrl+S` saves, Escape with unsaved edits prompts to discard. Agents
   can drop you into the same view via the `aegis_view_file` MCP tool,
   and `Ctrl+click` on a backtick-wrapped filename in any agent
-  response opens it directly.
+  response opens it directly. `Ctrl+click` on a `Read` / `Write` /
+  `Edit` block opens the file that call touched — an `Edit` lands on
+  the line the edit began.
 - **Config panel.** `F2` opens the live `.aegis.yaml` editor inside
   the TUI — see agents/queues at a glance, add an agent
   through a validated modal. Same edit helpers back the scriptable

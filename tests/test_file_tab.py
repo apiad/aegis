@@ -61,6 +61,32 @@ def test_file_tab_deduplication(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_file_tab_opens_at_a_given_line(tmp_path: Path):
+    f = tmp_path / "lines.py"
+    f.write_text("\n".join(f"line {i}" for i in range(1, 21)))
+    tab = FileTab(f, line=7)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        assert editor.cursor_location == (6, 0)
+
+
+@pytest.mark.asyncio
+async def test_file_tab_goto_line_clamps_past_the_end(tmp_path: Path):
+    f = tmp_path / "short.py"
+    f.write_text("a\nb\nc")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tab.goto_line(999)
+        await pilot.pause()
+        editor = tab.query_one(TextArea)
+        assert editor.cursor_location == (2, 0)
+
+
+@pytest.mark.asyncio
 async def test_file_tab_edit_mode_toggle(tmp_path: Path):
     f = tmp_path / "edit.py"
     f.write_text("x = 1")

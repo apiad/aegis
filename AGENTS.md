@@ -364,6 +364,13 @@ To force the local cache to refresh immediately:
   so the cell under the pointer already is the drop target and Textual's
   routing does the hit-testing; the gate is `MouseMove.button` (1 while a
   drag is in flight, 0 on a plain hover).
+- Block gestures (`CopyableBlock.on_click`): plain click copies (or expands a
+  tool call's args); `ctrl+click` opens a file *here* — from the block's
+  `FileTarget` when it has one (Read/Write/Edit, computed by
+  `render_shared.file_target`), else by resolving a backtick token through the
+  picker; `alt+click` (`meta`) hands the token to `xdg-open`. An Edit's line
+  comes from `render_shared.anchor_line` at click time, not render time — the
+  edit has already removed its own `old_string` from the file.
 - Input gestures (`GrowingInput`): `Enter` enqueues (chips mid-turn);
   `Alt+Enter` / `Ctrl+Enter` send-with-interrupt (cut the live turn, send now;
   `Alt+Enter` is the portable key, `Ctrl+Enter` needs the Kitty protocol);

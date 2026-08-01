@@ -5,6 +5,19 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **`Ctrl+click` a `Read`/`Write`/`Edit` block to open that file (TUI).** The
+  gesture prose blocks already had for backtick tokens now works on the tool
+  call itself — and it needs no fuzzy matching, because the call already named
+  the exact path. `Read` lands on its `offset`, `Edit` on the line its
+  `old_string` starts at, which is resolved by reading the file at click time
+  rather than at render time: the edit has by then removed its own anchor, so
+  the answer is only correct if it is computed late. When neither the anchor
+  nor its first line is still findable, the file opens at the top rather than
+  on a guessed line. Plain click still expands the args; harnesses that report
+  a file through ACP `locations` instead of a `file_path` get the gesture too.
+
 ## [0.29.0] - 2026-08-01
 
 ### Added

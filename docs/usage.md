@@ -120,6 +120,14 @@ Each agent message, tool call, and tool result is a separate
 verbatim to your clipboard — useful for grabbing tool outputs, error
 messages, or generated code snippets.
 
+A tool-call block clicks to expand its full arguments instead. On a
+`Read`, `Write`, or `Edit` block, **`Ctrl+click` opens the file that
+call touched** in a `FileTab` — a `Read` with an offset and an `Edit`
+both land on their line (the edit's line is found by looking for the
+text it replaced; if the file has moved on too far, the file still
+opens, at the top). `Ctrl+click` on a backtick-wrapped filename in
+prose does the same thing for whatever the agent named.
+
 While an agent is working, an inline **spinner + rotating verb + elapsed
 timer** appears at the bottom of the transcript:
 
