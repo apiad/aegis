@@ -24,11 +24,13 @@ class ClaimRegistry:
 
     def claim(self, handle: str, prefixes, files,
               intent: str = "shared",
-              desc: str = "") -> tuple[Claim, bool, list[Claim]]:
+              desc: str = "",
+              host: str = "local") -> tuple[Claim, bool, list[Claim]]:
         self._prune_dead()
         candidate = Claim(claim_id=new_ulid(), handle=handle,
                           prefixes=frozenset(prefixes), files=frozenset(files),
-                          intent=intent, desc=desc, since=now_iso())
+                          intent=intent, desc=desc, since=now_iso(),
+                          host=host)
         overlaps = [c for c in self._claims.values()
                     if c.handle != handle and claims_overlap(candidate, c)]
         if intent == "exclusive":

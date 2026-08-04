@@ -12,6 +12,7 @@ class Claim:
     intent: str                # "shared" | "exclusive"
     desc: str
     since: str                 # ISO-8601
+    host: str = "local"        # which machine these paths are on
 
 
 def _file_under_prefix(path: str, prefix: str) -> bool:
@@ -20,6 +21,12 @@ def _file_under_prefix(path: str, prefix: str) -> bool:
 
 
 def claims_overlap(a: Claim, b: Claim) -> bool:
+    # Paths only mean something relative to a machine. The same string
+    # names a different file on a different host, so claims on different
+    # hosts can never overlap — treating them as though they could would
+    # both block honest work and pretend to protect files it does not.
+    if a.host != b.host:
+        return False
     # file ∩ file
     if a.files & b.files:
         return True

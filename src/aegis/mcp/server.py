@@ -1103,13 +1103,19 @@ def build_server(bridge: AppBridge) -> FastMCP:
             intent: "shared" (default) or "exclusive".
             desc: short note on what you're doing (shown to others).
         """
+        # Claims are host-scoped: the same path names a different file on a
+        # different machine, so a claim carries the host of the session that
+        # made it and only overlaps claims on that same host.
+        host = next((s.host for s in bridge.list_sessions()
+                     if s.handle == from_handle), "local")
         claim, granted, overlaps = bridge.locks.claim(
-            from_handle, paths, intent=intent, desc=desc)
+            from_handle, paths, intent=intent, desc=desc, host=host)
         return {
             "claim_id": claim.claim_id,
             "granted": granted,
+            "host": claim.host,
             "overlaps": [
-                {"handle": c.handle,
+                {"handle": c.handle, "host": c.host,
                  "paths": sorted(set(c.prefixes) | set(c.files)),
                  "intent": c.intent, "desc": c.desc}
                 for c in overlaps
@@ -1130,7 +1136,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
         before you claim, or to decide whom to coordinate with.
         """
         return [
-            {"claim_id": c.claim_id, "handle": c.handle,
+            {"claim_id": c.claim_id, "handle": c.handle, "host": c.host,
              "paths": sorted(set(c.prefixes) | set(c.files)),
              "intent": c.intent, "desc": c.desc, "since": c.since}
             for c in bridge.locks.active()

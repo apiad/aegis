@@ -15,10 +15,11 @@ class _LocksBridge:
     root_fn: Callable[[], Path]
 
     def claim(self, handle: str, paths: list[str],
-              intent: str = "shared", desc: str = ""):
+              intent: str = "shared", desc: str = "",
+              host: str = "local"):
         prefixes, files = resolve_paths(paths, self.root_fn())
         return self.registry.claim(handle, prefixes, files,
-                                   intent=intent, desc=desc)
+                                   intent=intent, desc=desc, host=host)
 
     def release(self, claim_id: str, handle: str) -> bool:
         return self.registry.release(claim_id, handle)

@@ -20,7 +20,8 @@ class PersistedClaimLog:
         return {"kind": "claimed", "claim_id": claim.claim_id,
                 "handle": claim.handle, "prefixes": sorted(claim.prefixes),
                 "files": sorted(claim.files), "intent": claim.intent,
-                "desc": claim.desc, "since": claim.since}
+                "desc": claim.desc, "since": claim.since,
+                "host": claim.host}
 
     def released(self, claim_id: str, handle: str, at: str) -> dict[str, Any]:
         return {"kind": "released", "claim_id": claim_id,
@@ -62,7 +63,10 @@ class PersistedClaimLog:
                     prefixes=frozenset(rec.get("prefixes", [])),
                     files=frozenset(rec.get("files", [])),
                     intent=rec.get("intent", "shared"),
-                    desc=rec.get("desc", ""), since=rec.get("since", ""))
+                    desc=rec.get("desc", ""), since=rec.get("since", ""),
+                    # A record with no host predates hosts entirely, which
+                    # is to say: it was local.
+                    host=rec.get("host", "local"))
             elif kind in ("released", "reaped"):
                 live.pop(rec.get("claim_id"), None)
             elif kind == "renamed":
