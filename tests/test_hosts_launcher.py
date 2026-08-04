@@ -200,6 +200,110 @@ def test_ssh_argv_appends_host_ssh_opts():
     assert argv.index("ServerAliveInterval=15") < argv.index("h")
 
 
+def test_link_failure_is_none_while_ssh_is_healthy(tmp_path):
+    from aegis.hosts.connection import HostConnection
+    from aegis.hosts.launcher import SshLauncher
+
+    conn = HostConnection(SPEC, control_path=str(tmp_path / "s.sock"),
+                          mcp_port=1)
+    assert SshLauncher(conn, SPEC).link_failure() is None
+
+
+def test_link_failure_reports_the_host_and_the_stderr(tmp_path):
+    from aegis.hosts.connection import HostConnection
+    from aegis.hosts.errors import RemoteLinkLost
+    from aegis.hosts.launcher import SshLauncher
+
+    conn = HostConnection(SPEC, control_path=str(tmp_path / "s.sock"),
+                          mcp_port=1)
+    lau = SshLauncher(conn, SPEC)
+
+    class _Dead:
+        returncode = 255
+
+    lau._proc = _Dead()
+    lau.stderr_tail = [b"ssh: connect to host vps port 22: No route to host"]
+
+    failure = lau.link_failure()
+    assert isinstance(failure, RemoteLinkLost)
+    assert failure.host == "vps"
+    assert "No route to host" in failure.detail
+    assert "vps" in str(failure)
+
+
+def test_clean_harness_exit_is_not_a_link_failure(tmp_path):
+    # rc 0 means the harness ended normally — an ordinary end of stream,
+    # not a dropped link, and it must not be reported as one.
+    from aegis.hosts.connection import HostConnection
+    from aegis.hosts.launcher import SshLauncher
+
+    conn = HostConnection(SPEC, control_path=str(tmp_path / "s.sock"),
+                          mcp_port=1)
+    lau = SshLauncher(conn, SPEC)
+
+    class _Clean:
+        returncode = 0
+
+    lau._proc = _Clean()
+    assert lau.link_failure() is None
+
+
+def test_a_dropped_link_ends_the_turn_with_an_error_result(tmp_path):
+    """The whole point: EOF from a dead link must not read as an ordinary
+    idle turn."""
+    from aegis.drivers.claude import ClaudeSession
+    from aegis.events import AssistantText, Result
+
+    class DeadLinkLauncher(FakeLauncher):
+        host_key = "vps"
+
+        def link_failure(self):
+            from aegis.hosts.errors import RemoteLinkLost
+            return RemoteLinkLost("vps", "Connection closed by remote host")
+
+        async def spawn(self, argv, *, cwd, env):
+            # A process that exits immediately: stdout EOFs at once, which
+            # is exactly what a dropped ssh link looks like from here.
+            return await LocalLauncher().spawn(
+                ["sh", "-c", "exit 0"], cwd=cwd, env=None)
+
+    async def go():
+        sess = ClaudeSession(["claude", "-p"], str(tmp_path),
+                             handle="a-b", launcher=DeadLinkLauncher())
+        await sess.start()
+        return [ev async for ev in sess.events()]
+
+    evs = asyncio.run(go())
+    texts = [e.text for e in evs if isinstance(e, AssistantText)]
+    assert any("link to vps lost" in t for t in texts)
+    assert any("Connection closed" in t for t in texts)
+    results = [e for e in evs if isinstance(e, Result)]
+    assert results and results[-1].is_error
+    assert results[-1].stop_reason == "link_lost"
+
+
+def test_a_clean_local_exit_emits_no_error_result(tmp_path):
+    """The same EOF, with a healthy launcher, stays an ordinary end of
+    stream — otherwise every normal session close would look like a
+    crash."""
+    from aegis.drivers.claude import ClaudeSession
+    from aegis.events import Result
+
+    class CleanLauncher(FakeLauncher):
+        async def spawn(self, argv, *, cwd, env):
+            return await LocalLauncher().spawn(
+                ["sh", "-c", "exit 0"], cwd=cwd, env=None)
+
+    async def go():
+        sess = ClaudeSession(["claude", "-p"], str(tmp_path),
+                             handle="a-b", launcher=CleanLauncher())
+        await sess.start()
+        return [ev async for ev in sess.events()]
+
+    evs = asyncio.run(go())
+    assert not [e for e in evs if isinstance(e, Result)]
+
+
 def test_deferred_mcp_url_is_substituted_before_exec():
     from aegis.hosts.launcher import _substitute_mcp_url
     from aegis.mcp import mcp_config_json

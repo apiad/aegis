@@ -183,6 +183,57 @@ def test_one_master_is_shared_by_concurrent_spawns(tmp_path):
 
 
 @needs_ssh
+def test_a_really_killed_link_reports_itself(tmp_path):
+    """Kill the ssh session for real and confirm link_failure() sees it.
+
+    The hermetic version of this uses a fake launcher, which proves the
+    wiring but not that an actual dropped link produces a non-zero ssh
+    exit — which is the whole signal.
+    """
+    from aegis.hosts.errors import RemoteLinkLost
+
+    spec = HostSpec(name="localhost", ssh="localhost", cwd=str(tmp_path))
+    conn = HostConnection(spec, control_path=str(tmp_path / "ctl.sock"),
+                          mcp_port=9)
+    lau = SshLauncher(conn, spec, local_root=str(tmp_path))
+
+    async def go():
+        # A remote process that would otherwise sit there for a minute.
+        proc = await lau.spawn(["sleep", "60"], cwd=str(tmp_path), env=None)
+        lau.watch_stderr()
+        await asyncio.sleep(1.0)
+        # Tear the whole master down underneath it — the real-world
+        # equivalent of the laptop sleeping or the network dropping.
+        await conn.close()
+        await asyncio.wait_for(proc.wait(), timeout=15)
+        return lau.link_failure()
+
+    failure = asyncio.run(go())
+    assert isinstance(failure, RemoteLinkLost)
+    assert failure.host == "localhost"
+
+
+@needs_ssh
+def test_a_clean_remote_exit_is_not_reported_as_a_link_failure(tmp_path):
+    """The other half: a remote command that exits 0 over a healthy link
+    must not look like a drop, or every normal close reads as a crash."""
+    spec = HostSpec(name="localhost", ssh="localhost", cwd=str(tmp_path))
+    conn = HostConnection(spec, control_path=str(tmp_path / "ctl.sock"),
+                          mcp_port=9)
+    lau = SshLauncher(conn, spec, local_root=str(tmp_path))
+
+    async def go():
+        proc = await lau.spawn(["true"], cwd=str(tmp_path), env=None)
+        lau.watch_stderr()
+        await asyncio.wait_for(proc.wait(), timeout=15)
+        failure = lau.link_failure()
+        await conn.close()
+        return failure
+
+    assert asyncio.run(go()) is None
+
+
+@needs_ssh
 @pytest.mark.skipif(shutil.which("claude") is None,
                     reason="claude CLI not on PATH")
 def test_claude_runs_over_ssh_and_answers(tmp_path):

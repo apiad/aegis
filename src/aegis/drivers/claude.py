@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from aegis.config import Agent, Effort, Permission
-from aegis.events import Event, ParserState, Result, parse
+from aegis.events import AssistantText, Event, ParserState, Result, parse
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.hooks import SessionHandle
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
@@ -149,6 +149,21 @@ class ClaudeSession(HarnessSession):
             # the turn instead of deadlocking on an empty queue forever.
             pass
         finally:
+            # A dropped SSH link looks exactly like a clean harness exit
+            # from here — stdout just ends. Ask the transport which it was,
+            # so the pane can say "link to vps lost" instead of going
+            # quietly idle on a session that no longer exists.
+            #
+            # No new event type: AssistantText puts the diagnostic where a
+            # reader will see it, and Result(is_error=True) is the terminal
+            # event AgentSession already keys its error state off — so the
+            # tab turns red through the path that already exists.
+            failure = getattr(self._launcher, "link_failure", lambda: None)()
+            if failure is not None:
+                await self._queue.put(AssistantText(text=str(failure)))
+                await self._queue.put(
+                    Result(duration_ms=None, is_error=True,
+                           stop_reason="link_lost"))
             await self._queue.put(None)  # always signal stream end
 
     async def send(self, text: str) -> None:
