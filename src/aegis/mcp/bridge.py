@@ -84,7 +84,9 @@ class AppBridge(Protocol):
                     spawned_by: str | None = None,
                     model: str | None = None,
                     effort: str | None = None,
-                    prompt: str | None = None) -> str: ...
+                    prompt: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None) -> str: ...
     async def fork(self, target: str, *,
                    prompt: str | None = None,
                    slug: str | None = None,

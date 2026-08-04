@@ -315,17 +315,28 @@ class WorkflowEngine:
     # ── spawn / close ────────────────────────────────────────────────
     async def spawn(self, profile: str, *,
                     alias: str | None = None,
-                    handle: str | None = None) -> str:
+                    handle: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None) -> str:
         """Spawn a fresh subagent of ``profile``; track for auto-close on
         workflow exit. ``alias`` is the preferred kwarg; ``handle`` is a
-        legacy alias accepted for back-compat. Returns the new handle."""
+        legacy alias accepted for back-compat. ``host``/``cwd`` place the
+        subagent's harness on another machine (see ``aegis.hosts``).
+        Returns the new handle."""
         requested = alias if alias is not None else handle
         runner = self._runner()
+        place: dict = {}
+        if host is not None:
+            place["host"] = host
+        if cwd is not None:
+            place["cwd"] = cwd
         try:
             if runner is not None and hasattr(runner, "spawn_subagent"):
-                h = await runner.spawn_subagent(profile, alias=requested)
+                h = await runner.spawn_subagent(profile, alias=requested,
+                                                **place)
             else:
-                h = await self._bridge.spawn(profile, handle=requested)
+                h = await self._bridge.spawn(profile, handle=requested,
+                                             **place)
         except Exception as e:  # noqa: BLE001
             raise SubagentSpawnError(
                 f"spawn({profile!r}, alias={requested!r}) failed: {e}"

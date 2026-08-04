@@ -217,7 +217,21 @@ class RemoteSessionManager:
     async def spawn(self, profile: str, *,
                     handle: str | None = None,
                     opening_prompt: str | None = None,
-                    spawned_by: str | None = None) -> str:
+                    spawned_by: str | None = None,
+                    model: str | None = None,
+                    effort: str | None = None,
+                    prompt: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None) -> str:
+        # Execution hosts are resolved by whoever owns the sessions, and in
+        # remote mode that is the serve we are attached to, not us. Its
+        # `hosts:` config is the one that counts, and the WS protocol has
+        # no field to carry a placement request — so refuse clearly rather
+        # than silently spawning in the wrong place.
+        if host is not None or cwd is not None:
+            raise RemoteUnsupportedError(
+                f"host/cwd placement: {_MSG} Configure `hosts:` on the "
+                f"remote aegis and spawn there instead.")
         params: dict = {"agent_profile": profile}
         if handle is not None:
             params["handle"] = handle

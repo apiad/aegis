@@ -454,8 +454,15 @@ class WorkflowRunner:
         return ""
 
     async def spawn_subagent(self, profile: str, *,
-                             alias: str | None = None) -> str:
-        return await self._bridge.spawn(profile, handle=alias)
+                             alias: str | None = None,
+                             host: str | None = None,
+                             cwd: str | None = None) -> str:
+        place: dict = {}
+        if host is not None:
+            place["host"] = host
+        if cwd is not None:
+            place["cwd"] = cwd
+        return await self._bridge.spawn(profile, handle=alias, **place)
 
     async def close_session(self, handle: str) -> None:
         await self._bridge.close(handle)

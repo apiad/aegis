@@ -320,6 +320,142 @@ def test_the_briefing_tells_agents_about_hosts():
     assert "NOT interchangeable" in BRIEFING
 
 
+def test_every_appbridge_spawn_accepts_host_and_cwd():
+    """`host`/`cwd` must reach EVERY AppBridge.spawn implementation.
+
+    There are several — SessionManager, AegisApp, RemoteSessionManager,
+    the adapter the TUI routes through, the Protocol itself — and a slash
+    command or MCP call lands on a different one depending on the
+    frontend. Updating some and not others is invisible to a test that
+    only exercises one: /spawn opus@vps died with a TypeError on the TUI
+    path while the SessionManager tests stayed green. This asserts the
+    whole set at once.
+    """
+    import inspect
+
+    from aegis.core.manager import SessionManager
+    from aegis.mcp.bridge import AppBridge
+    from aegis.tui.app import AegisApp, _SessionManagerAdapter
+    from aegis.tui.remote_manager import RemoteSessionManager
+    from aegis.workflow.engine import WorkflowEngine
+
+    impls = [
+        ("AppBridge (protocol)", AppBridge.spawn),
+        ("SessionManager", SessionManager.spawn),
+        ("AegisApp", AegisApp.spawn),
+        ("RemoteSessionManager", RemoteSessionManager.spawn),
+        ("_SessionManagerAdapter", _SessionManagerAdapter.spawn),
+        ("WorkflowEngine", WorkflowEngine.spawn),
+    ]
+    missing = []
+    for name, fn in impls:
+        params = inspect.signature(fn).parameters
+        for arg in ("host", "cwd"):
+            if arg not in params:
+                missing.append(f"{name}.spawn is missing {arg!r}")
+    assert not missing, "\n".join(missing)
+
+
+@pytest.mark.asyncio
+async def test_the_tui_bridge_actually_forwards_host_and_cwd(monkeypatch):
+    """Behavioural counterpart to the signature check above.
+
+    `/spawn opus@vps` lands on AegisApp.spawn, which delegates to
+    _SessionManagerAdapter. A signature test proves the kwarg is accepted;
+    this proves it is passed on rather than accepted and dropped.
+    """
+    from aegis.tui import app as app_mod
+
+    seen: dict = {}
+
+    class _Adapter:
+        def __init__(self, app):
+            pass
+
+        def spawn(self, profile, **kw):
+            seen.update({"profile": profile, **kw})
+            from types import SimpleNamespace
+            return SimpleNamespace(handle="new-agent")
+
+    monkeypatch.setattr(app_mod, "_SessionManagerAdapter", _Adapter)
+
+    handle = await app_mod.AegisApp.spawn(
+        object(), "opus", host="vps", cwd="/srv/app")
+    assert handle == "new-agent"
+    assert seen["profile"] == "opus"
+    assert seen["host"] == "vps"
+    assert seen["cwd"] == "/srv/app"
+
+
+@pytest.mark.asyncio
+async def test_the_tui_can_reconnect_a_dropped_remote_pane():
+    """/reconnect must work in the TUI, not just via SessionManager — the
+    TUI is where a dropped link is actually noticed."""
+    from types import SimpleNamespace
+
+    from aegis.tui.app import AegisApp
+
+    adopted: list = []
+    built: dict = {}
+
+    class _Session:
+        session_id = "sid-1"
+
+        async def close(self):
+            pass
+
+    core = SimpleNamespace(
+        place=Place("vps", "/w"), session_id="sid-1",
+        agent=object(), _session=_Session(),
+        adopt=adopted.append)
+    pane = SimpleNamespace(handle="a-b", _core=core)
+
+    def _make_session(agent, url, handle, **kw):
+        built.update(kw)
+        return "fresh-harness"
+
+    app = AegisApp.__new__(AegisApp)
+    app._panes = [pane]
+    app._make_session = _make_session
+    app._mcp = SimpleNamespace(url="http://127.0.0.1:1/mcp/")
+    app._refresh_tabbar = lambda: None
+
+    msg = await AegisApp.reconnect(app, "a-b")
+    assert "vps" in msg
+    assert built["place"] == Place("vps", "/w")
+    assert built["resume_from"] == "sid-1"
+    # Same AgentSession adopted the new harness — the pane is not rebuilt.
+    assert adopted == ["fresh-harness"]
+
+
+@pytest.mark.asyncio
+async def test_the_tui_refuses_to_reconnect_a_local_pane():
+    from types import SimpleNamespace
+
+    from aegis.tui.app import AegisApp
+
+    core = SimpleNamespace(place=Place("local", "/w"), session_id="sid-1")
+    app = AegisApp.__new__(AegisApp)
+    app._panes = [SimpleNamespace(handle="a-b", _core=core)]
+
+    with pytest.raises(ValueError, match="local"):
+        await AegisApp.reconnect(app, "a-b")
+
+
+@pytest.mark.asyncio
+async def test_remote_mode_refuses_host_placement_legibly():
+    """In --remote mode the harness lives in the serve we attached to, so
+    placing it from here is meaningless — but it must say so, not raise a
+    TypeError."""
+    from aegis.tui.remote_manager import (
+        RemoteSessionManager, RemoteUnsupportedError,
+    )
+
+    mgr = RemoteSessionManager.__new__(RemoteSessionManager)
+    with pytest.raises(RemoteUnsupportedError, match="host/cwd"):
+        await mgr.spawn("opus", host="vps")
+
+
 def test_session_info_reports_the_host(tmp_path):
     mgr, _ = _manager(tmp_path)
     asyncio.run(mgr.spawn("main", host="vps"))

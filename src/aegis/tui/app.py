@@ -1531,14 +1531,51 @@ class AegisApp(App):
                     spawned_by: str | None = None,
                     model: str | None = None,
                     effort: str | None = None,
-                    prompt: str | None = None) -> str:
+                    prompt: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
         sm_adapter = _SessionManagerAdapter(self)
         sess = sm_adapter.spawn(profile, handle=handle,
                                 opening_prompt=opening_prompt,
                                 spawned_by=spawned_by,
-                                model=model, effort=effort, prompt=prompt)
+                                model=model, effort=effort, prompt=prompt,
+                                host=host, cwd=cwd)
         return sess.handle
+
+    async def reconnect(self, handle: str) -> str:
+        """AppBridge-shaped: rebuild a dropped remote pane's harness.
+
+        The remote harness keeps its own conversation store, so this
+        re-runs it on the same host and resumes the same conversation id
+        in the SAME pane — handle, transcript, observers and scrollback
+        all survive, because only the process underneath is replaced.
+        """
+        import contextlib
+
+        pane = next((p for p in self._panes
+                     if getattr(p, "handle", None) == handle), None)
+        if pane is None:
+            raise ValueError(f"unknown session {handle!r}")
+        core = pane._core
+        place = getattr(core, "place", None)
+        reasons: list[str] = []
+        if place is None or place.is_local:
+            reasons.append(
+                f"{handle} runs local — reconnect is for remote sessions")
+        sid = core.session_id
+        if not sid:
+            reasons.append(f"{handle} has no session id to resume from")
+        if reasons:
+            raise ValueError("; ".join(reasons))
+
+        with contextlib.suppress(Exception):
+            await core._session.close()
+        raw = self._make_session(core.agent, self._mcp.url, handle,
+                                 place=place, resume_from=sid)
+        core.adopt(raw)
+        self._refresh_tabbar()
+        return f"reconnected {handle} on {place.host}"
 
     def _fork_capability(self, harness: str) -> bool:
         """Whether the driver behind ``harness`` can branch a session.
