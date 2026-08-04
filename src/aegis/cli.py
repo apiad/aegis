@@ -41,19 +41,35 @@ from aegis.cli_plugin import app as _plugin_app  # noqa: E402
 app.add_typer(_plugin_app, name="plugin")
 
 
-def _session_factory(cwd: str):
+def _session_factory(cwd: str, hosts=None):
     """The SessionFactory every entry point hands SessionManager.
 
     ``fork_from`` is what SessionManager.fork passes to branch an
     existing conversation; without it this is an ordinary cold spawn.
+    ``place`` says which machine and which working tree the harness runs
+    in — omitted means here, at ``cwd``. ``resume_from`` rebuilds a
+    session on an existing conversation id (see SessionManager.reconnect).
     Kept in one place because all three entry points (tui, serve,
     workflow) need the fork branch and three copies would drift.
     """
-    def make_session(profile, mcp_url, handle, fork_from=None):
+    from aegis.hosts.launcher import LocalLauncher
+    from aegis.hosts.models import Place
+
+    def make_session(profile, mcp_url, handle, fork_from=None, place=None,
+                     resume_from=None):
+        place = place or Place("local", cwd)
+        if hosts is not None:
+            launcher, url = hosts.launcher_for(place, mcp_url)
+        else:
+            launcher, url = LocalLauncher(local_root=cwd), mcp_url
         drv = get_driver(profile.harness)
         if fork_from is not None:
-            return drv.fork(profile, cwd, mcp_url, handle, fork_from)
-        return drv.session(profile, cwd, mcp_url, handle)
+            return drv.fork(profile, place.cwd, url, handle, fork_from,
+                            launcher)
+        if resume_from is not None:
+            return drv.resume(profile, place.cwd, url, handle, resume_from,
+                              launcher)
+        return drv.session(profile, place.cwd, url, handle, launcher)
     return make_session
 
 
@@ -142,6 +158,7 @@ def run(
     # in-place via the watchdog reload path).
     root = find_project_root() or Path.cwd()
     voice_cfg = None
+    hosts: dict = {}
     if not (root / ".aegis.yaml").is_file():
         agents: dict = {}
         default_agent = ""
@@ -166,7 +183,9 @@ def run(
             raise typer.Exit(1)
         from aegis.config.yaml_loader import load_config as _load_yaml
         try:
-            voice_cfg = _load_yaml(root).voice
+            _yc = _load_yaml(root)
+            voice_cfg = _yc.voice
+            hosts = _yc.hosts
         except ConfigError:
             voice_cfg = None
 
@@ -189,7 +208,10 @@ def run(
     except Exception:  # noqa: BLE001
         pass
 
-    make_session = _session_factory(effective_cwd)
+    from aegis.hosts.registry import HostRegistry
+    host_registry = HostRegistry(hosts, state_dir=root / ".aegis" / "state",
+                                 local_root=effective_cwd)
+    make_session = _session_factory(effective_cwd, host_registry)
 
     # Driver registry for workspace resume — one instance per provider so
     # bootstrap_resume can call drv.resume(...) without re-instantiating
@@ -197,7 +219,8 @@ def run(
     drivers = {slug: cls() for slug, cls in DRIVERS.items()}
     AegisApp(agents, default_agent, make_session, AegisMCP(),
              queues=queues, clean=clean, drivers=drivers,
-             cwd=effective_cwd, voice=voice_cfg).run()
+             cwd=effective_cwd, voice=voice_cfg,
+             hosts=hosts, host_registry=host_registry).run()
 
 
 async def _build_remote_manager(*, url: str, token: str | None,
@@ -348,12 +371,15 @@ async def _serve(*, agents, default_agent, make_session, mcp,
                  schedules: dict | None = None,
                  remotes: dict | None = None,
                  remote_plane=None, web=None,
+                 hosts: dict | None = None, host_registry=None,
+                 local_root: str | None = None,
                  inline_schedule_names: set[str] | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
     mgr = SessionManager(agents, default_agent, make_session, mcp,
-                         inbox=inbox)
+                         inbox=inbox, hosts=hosts or {},
+                         local_root=local_root)
     qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
@@ -384,6 +410,10 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     mgr.attach_remote_plane(remote_plane)
     mcp.bind(mgr)
     await mcp.start()
+    # The reverse tunnel forwards THIS port, so the registry can only learn
+    # it once the MCP server has actually bound.
+    if host_registry is not None:
+        host_registry.set_mcp_port(mcp.port)
     await qm.start()
 
     from aegis.config.yaml_loader import AegisConfig as _AegisConfig
@@ -634,8 +664,6 @@ def _run_serve(cwd: str) -> None:
     root = find_project_root() or Path.cwd()
     effective = str(root) if cwd == "." else cwd
 
-    make_session = _session_factory(effective)
-
     try:
         queues = load_queues(root)
     except ConfigError as e:
@@ -655,9 +683,18 @@ def _run_serve(cwd: str) -> None:
         remote_plane = yaml_cfg.remote_plane
         inline_schedule_names = yaml_cfg.inline_schedule_names
         web = yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None
+        hosts = yaml_cfg.hosts
     except ConfigError as e:
         _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
         raise typer.Exit(1)
+
+    # Execution hosts. The registry owns one SSH ControlMaster per host and
+    # is handed the MCP port once the server binds, so it must exist before
+    # the factory that closes over it.
+    from aegis.hosts.registry import HostRegistry
+    host_registry = HostRegistry(hosts, state_dir=root / ".aegis" / "state",
+                                 local_root=effective)
+    make_session = _session_factory(effective, host_registry)
 
     async def main_async():
         stop = asyncio.Event()
@@ -669,6 +706,8 @@ def _run_serve(cwd: str) -> None:
                      stop=stop, queues=queues,
                      schedules=schedules,
                      remotes=remotes, remote_plane=remote_plane, web=web,
+                     hosts=hosts, host_registry=host_registry,
+                     local_root=effective,
                      inline_schedule_names=inline_schedule_names)
 
     asyncio.run(main_async())
@@ -725,7 +764,8 @@ def workflow_run_cmd(
             import_plugins,
             load_config as _load_yaml,
         )
-        import_plugins(_load_yaml(root))
+        yaml_cfg = _load_yaml(root)
+        import_plugins(yaml_cfg)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -747,13 +787,19 @@ def workflow_run_cmd(
             f"Available: {list_workflows()}[/red]")
         raise typer.Exit(1)
 
-    make_session = _session_factory(str(root))
+    from aegis.hosts.registry import HostRegistry
+    _hosts = yaml_cfg.hosts
+    host_registry = HostRegistry(_hosts,
+                                 state_dir=root / ".aegis" / "state",
+                                 local_root=str(root))
+    make_session = _session_factory(str(root), host_registry)
 
     async def main_async():
         from aegis.queue import InboxRouter, QueueManager
         inbox = InboxRouter(state_dir=root / ".aegis" / "state")
         mgr = SessionManager(agents, default_agent, make_session,
-                             AegisMCP(), inbox=inbox)
+                             AegisMCP(), inbox=inbox, hosts=_hosts,
+                             local_root=str(root))
         qm = QueueManager(queues, mgr, inbox,
                           state_dir=root / ".aegis" / "state")
         mgr.attach_queue_manager(qm)
@@ -768,6 +814,7 @@ def workflow_run_cmd(
         mgr.attach_canvas_manager(cm)
         mgr._mcp.bind(mgr)
         await mgr._mcp.start()
+        host_registry.set_mcp_port(mgr._mcp.port)
         await qm.start()
         try:
             out = await run_workflow(

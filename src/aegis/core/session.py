@@ -51,11 +51,17 @@ class AgentSession:
                  inbox=None,
                  opening_prompt: str | None = None,
                  project_root: Path | None = None,
-                 log_id: str | None = None) -> None:
+                 log_id: str | None = None,
+                 place=None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
+        # Which machine and working tree this session's harness runs in.
+        # Local import: core.session is imported early and aegis.hosts
+        # pulls in aegis.mcp transitively.
+        from aegis.hosts.models import Place
+        self.place = place or Place("local", str(project_root or Path.cwd()))
         # Identity of this session's transcript on disk. Minted once and
         # never changed — unlike `handle`, which is recycled out of a finite
         # pool and can be renamed mid-session. Resume passes the stored id.

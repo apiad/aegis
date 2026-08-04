@@ -754,7 +754,8 @@ class ConversationPane(Widget):
                  state_dir_path: Path | None = None,
                  replay: EventReplay | None = None,
                  on_first_user_message: Callable[[str], None] | None = None,
-                 core=None, log_id: str | None = None) -> None:
+                 core=None, log_id: str | None = None,
+                 place=None) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -771,8 +772,13 @@ class ConversationPane(Widget):
             self._core = core
         else:
             self._core = AgentSession(session, agent, agent_slug, handle,
-                                      log_id=log_id)
+                                      log_id=log_id, place=place)
         self._core.add_event_observer(self._on_core_event)
+        # RemotePaneCore has no place of its own — a --remote session's
+        # harness lives in the serve it is attached to, not here.
+        if not hasattr(self._core, "place"):
+            from aegis.hosts.models import Place
+            self._core.place = place or Place("local", ".")
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
         self._core.add_dispatch_observer(self._on_core_dispatch)

@@ -264,12 +264,18 @@ class AegisApp(App):
                  drivers: "dict | None" = None,
                  cwd: "str | None" = None,
                  voice: "VoiceConfig | None" = None,
+                 hosts: "dict | None" = None,
+                 host_registry: "object | None" = None,
                  manager: "object | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        # Execution hosts — the third orthogonal spawn axis. Empty means
+        # every pane runs local, which is the pre-hosts behaviour.
+        self._hosts: dict = hosts or {}
+        self._host_registry = host_registry
         self._clean = clean
         # Driver registry used for workspace resume. Default empty so the
         # test harness doesn't accidentally engage real harness binaries;
@@ -448,6 +454,10 @@ class AegisApp(App):
             return
 
         await self._mcp.start()
+        # The reverse tunnel forwards THIS port, so the registry can only
+        # learn it once the MCP server has actually bound.
+        if self._host_registry is not None:
+            self._host_registry.set_mcp_port(self._mcp.port)
         self._file_indexer.start(Path.cwd())
         await self.queue_manager.start()
 
@@ -645,16 +655,37 @@ class AegisApp(App):
                 return p
         return None
 
+    def _resolve_place(self, agent, host: str | None = None,
+                       cwd: str | None = None):
+        """Where this pane's harness will run. Local unless asked."""
+        from aegis.hosts.resolve import resolve_place
+        return resolve_place(host=host, cwd=cwd,
+                             agent_host=getattr(agent, "host", None),
+                             hosts=self._hosts, local_root=self._cwd)
+
+    def _factory_kwargs(self, place) -> dict:
+        """Extra kwargs for ``_make_session``.
+
+        A default-local place tells the factory nothing it does not
+        already assume, so it is omitted — which is what keeps the
+        pre-hosts ``(profile, url, handle)`` factory signature working.
+        """
+        from aegis.hosts.models import Place
+        return {} if place == Place("local", self._cwd) else {"place": place}
+
     async def _spawn(self, slug: str, *,
                      handle: str | None = None,
                      opening_prompt: str | None = None,
                      foreground: bool = True,
+                     host: str | None = None,
+                     cwd: str | None = None,
                      agent_override: "Agent | None" = None) -> ConversationPane:
         # agent_override carries a transient per-session pick (custom
         # harness/model/effort) that isn't persisted in .aegis.yaml; slug is
         # then just the pane's display label.
         agent = agent_override if agent_override is not None \
             else self._agents[slug]
+        place = self._resolve_place(agent, host, cwd)
         h = handle or generate_name(
             {p.handle for p in self._panes
              if isinstance(p, ConversationPane)})
@@ -689,11 +720,12 @@ class AegisApp(App):
         _write_meta()
 
         pane = ConversationPane(
-            self._make_session(agent, self._mcp.url, h), agent,
+            self._make_session(agent, self._mcp.url, h,
+                               **self._factory_kwargs(place)), agent,
             slug, h, self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir, log_id=log_id,
-            on_first_user_message=_write_meta)
+            on_first_user_message=_write_meta, place=place)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
@@ -1839,16 +1871,21 @@ class _SessionManagerAdapter:
               spawned_by: str | None = None,
               model: str | None = None,
               effort: str | None = None,
-              prompt: str | None = None):
+              prompt: str | None = None,
+              host: str | None = None,
+              cwd: str | None = None):
         from aegis.core.manager import _overlay_agent
         agent = _overlay_agent(self._app._agents[slug], model=model,
                                effort=effort, prompt=prompt)
         h = handle or generate_name({p.handle for p in self._app._panes})
+        place = self._app._resolve_place(agent, host, cwd)
         pane = ConversationPane(
-            self._app._make_session(agent, self._app._mcp.url, h), agent,
+            self._app._make_session(agent, self._app._mcp.url, h,
+                                    **self._app._factory_kwargs(place)),
+            agent,
             slug, h, self._app._palette, digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir)
+            state_dir_path=self._app._state_dir, place=place)
         pane._core.spawned_by = spawned_by
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
@@ -1892,13 +1929,17 @@ class _SessionManagerAdapter:
         # Snapshot the parent's session id now, not when the fork is first
         # typed into: a no-prompt fork must branch from where it forked.
         sid = core.session_id
+        # A fork inherits its parent's machine: branching a conversation
+        # must never silently relocate it.
+        place = getattr(core, "place", None)
         pane = ConversationPane(
-            self._app._make_session(agent, self._app._mcp.url, h,
-                                    fork_from=sid),
+            self._app._make_session(
+                agent, self._app._mcp.url, h, fork_from=sid,
+                **(self._app._factory_kwargs(place) if place else {})),
             agent, slug, h, self._app._palette,
             digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir)
+            state_dir_path=self._app._state_dir, place=place)
         pane._core.forked_from = {"handle": target, "log_id": core.log_id,
                                   "session_id": sid}
         self._app._panes.append(pane)

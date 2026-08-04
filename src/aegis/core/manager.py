@@ -7,6 +7,8 @@ from pathlib import Path
 
 from aegis.config import Agent
 from aegis.core.session import AgentSession
+from aegis.hosts.models import HostSpec, Place
+from aegis.hosts.resolve import resolve_place
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import LoopService
 from aegis.tui.names import generate_name
@@ -51,12 +53,17 @@ class SessionManager:
 
     def __init__(self, agents: dict, default_agent: str,
                  make_session: SessionFactory, mcp,
-                 *, inbox=None) -> None:
+                 *, inbox=None, hosts: dict | None = None,
+                 local_root: str | None = None) -> None:
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
         self._inbox = inbox
+        # Execution hosts: the third orthogonal spawn axis. Empty means
+        # every session runs local, which is the pre-hosts behaviour.
+        self._hosts: dict[str, HostSpec] = dict(hosts or {})
+        self._local_root = local_root or "."
         # AppBridge surface attrs. inbox_router is bound at construction;
         # queue_manager is attached after construction so cli._serve can
         # pass `self` to the QueueManager (avoids the chicken/egg).
@@ -163,23 +170,39 @@ class SessionManager:
                     model: str | None = None,
                     effort: str | None = None,
                     prompt: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None,
                     fork_from: str | None = None,
-                    forked_from: dict | None = None) -> AgentSession:
+                    forked_from: dict | None = None,
+                    place: Place | None = None) -> AgentSession:
         slug = slug or self._default_agent
         if slug not in self._agents:
             raise KeyError(slug)
         agent = _overlay_agent(self._agents[slug], model=model,
                               effort=effort, prompt=prompt)
+        # Resolve placement BEFORE minting a handle or building a session:
+        # an unknown host must fail without leaving a half-built tab behind.
+        place = place or resolve_place(
+            host=host, cwd=cwd,
+            agent_host=getattr(agent, "host", None),
+            hosts=self._hosts, local_root=self._local_root)
         h = handle or generate_name({s.handle for s in self._sessions})
         url = self._mcp.url if self._mcp is not None else ""
-        # Only pass fork_from when forking: the factory signature predates
-        # it and plain (profile, url, handle) callables must keep working.
-        raw = (self._make_session(agent, url, h, fork_from=fork_from)
-               if fork_from is not None
-               else self._make_session(agent, url, h))
+        # Only pass fork_from / place when they are actually needed: the
+        # factory signature predates both and plain (profile, url, handle)
+        # callables must keep working. A place equal to the factory's own
+        # default (local, at the project root) tells it nothing it doesn't
+        # already assume, so it is not passed.
+        extra: dict = {}
+        if fork_from is not None:
+            extra["fork_from"] = fork_from
+        if place != Place("local", self._local_root):
+            extra["place"] = place
+        raw = self._make_session(agent, url, h, **extra)
         s = AgentSession(raw, agent, slug, h,
                          inbox=self._inbox,
-                         opening_prompt=opening_prompt)
+                         opening_prompt=opening_prompt,
+                         place=place)
         s.spawned_by = spawned_by
         s.forked_from = forked_from
         if self._inbox is not None:
@@ -200,15 +223,21 @@ class SessionManager:
                     spawned_by: str | None = None,
                     model: str | None = None,
                     effort: str | None = None,
-                    prompt: str | None = None) -> str:
+                    prompt: str | None = None,
+                    host: str | None = None,
+                    cwd: str | None = None) -> str:
         """AppBridge-shaped async spawn. Returns the new handle.
 
         ``model`` / ``effort`` / ``prompt`` are optional per-session
-        overrides layered over the named profile (never persisted)."""
+        overrides layered over the named profile (never persisted).
+        ``host`` / ``cwd`` place the harness process on another machine —
+        see ``aegis.hosts``. Both are equally per-session and equally
+        unpersisted."""
         sess = self._sync_spawn(profile, handle=handle,
                                 opening_prompt=opening_prompt,
                                 spawned_by=spawned_by,
-                                model=model, effort=effort, prompt=prompt)
+                                model=model, effort=effort, prompt=prompt,
+                                host=host, cwd=cwd)
         return sess.handle
 
     def _fork_capability(self, harness: str) -> bool:
@@ -249,6 +278,9 @@ class SessionManager:
         child = self._sync_spawn(
             s.agent_slug, handle=slug, opening_prompt=prompt,
             model=model, effort=effort,
+            # A fork inherits its parent's machine: branching a
+            # conversation must never silently relocate it.
+            place=s.place,
             fork_from=sid,
             forked_from={"handle": target, "log_id": s.log_id,
                          "session_id": sid})
