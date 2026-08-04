@@ -1170,7 +1170,20 @@ class AegisApp(App):
     @work
     async def action_pick_agent(self) -> None:
         from aegis.tui.picker import (
-            AgentPicker, _ChoicePicker, resolve_transient_agent)
+            AgentPicker, _ChoicePicker, build_host_rows,
+            resolve_transient_agent)
+
+        # Host tier first, and only when there is a choice to make: with no
+        # configured hosts an extra "local" modal would be pure friction.
+        host: str | None = None
+        if self._hosts and not hasattr(self, "_remote_manager"):
+            host = await self.push_screen_wait(_ChoicePicker(
+                build_host_rows(list(self._hosts), local_label=self._cwd),
+                title="host", prefill="local"))
+            if not host:      # escape at the host tier cancels the spawn
+                return
+            if host == "local":
+                host = None
 
         harnesses = self._load_harnesses()
         choice = await self.push_screen_wait(
@@ -1202,7 +1215,8 @@ class AegisApp(App):
                 if not effort:
                     return
             agent = resolve_transient_agent(name, model, effort, harnesses)
-            await self._spawn(f"{name}:{model}", agent_override=agent)
+            await self._spawn(f"{name}:{model}", agent_override=agent,
+                              host=host)
             return
 
         # Named preset.
@@ -1212,7 +1226,7 @@ class AegisApp(App):
             await self._action_new_tab_remote()
             self._default_agent = old_default
         else:
-            await self._spawn(choice)
+            await self._spawn(choice, host=host)
 
     @work
     async def action_new_terminal(self) -> None:

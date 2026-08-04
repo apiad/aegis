@@ -236,6 +236,70 @@ def remove_agent(root: Path, slug: str) -> None:
     _atomic_write(base, payload)
 
 
+# --- hosts -----------------------------------------------------------
+
+def add_host(
+    root: Path,
+    name: str,
+    *,
+    ssh: str,
+    cwd: str,
+    ssh_opts: list[str] | None = None,
+    login_shell: bool = True,
+    remote_mcp_port: int | None = None,
+) -> None:
+    """Add an execution host to .aegis.yaml.
+
+    ``ssh`` is handed to the ssh binary verbatim, so it resolves through
+    the user's ~/.ssh/config. ``cwd`` is the default working tree there.
+
+    Validates by re-loading through the YAML loader; rolls back (file
+    unchanged) on validation failure.
+    """
+    if name == "local":
+        raise ConfigError(
+            "hosts: 'local' is implicit (the machine aegis runs on) and "
+            "cannot be declared.")
+    base = root / ".aegis.yaml"
+    data = _load(base)
+
+    hosts = data.setdefault("hosts", {})
+    if name in hosts:
+        raise ConfigError(f"host {name!r} already exists in {base}")
+
+    entry: dict[str, Any] = {"ssh": ssh, "cwd": cwd}
+    if ssh_opts:
+        entry["ssh_opts"] = list(ssh_opts)
+    if not login_shell:
+        entry["login_shell"] = False
+    if remote_mcp_port is not None:
+        entry["remote_mcp_port"] = int(remote_mcp_port)
+    hosts[name] = entry
+
+    payload = _validate_and_dump(root, data)
+    _atomic_write(base, payload)
+
+
+def remove_host(root: Path, name: str) -> None:
+    """Drop an execution host from .aegis.yaml.
+
+    Fails loud if the name is unknown, or if removing it would leave an
+    agent profile referencing a host that no longer exists — the loader
+    validates that reference, so the rollback catches it.
+    """
+    base = root / ".aegis.yaml"
+    data = _load(base)
+    hosts = data.get("hosts") or {}
+    if name not in hosts:
+        raise ConfigError(f"host {name!r} not in {base}")
+
+    del hosts[name]
+    if not hosts:
+        data.pop("hosts", None)
+    payload = _validate_and_dump(root, data)
+    _atomic_write(base, payload)
+
+
 # --- queues ----------------------------------------------------------
 
 def add_queue(

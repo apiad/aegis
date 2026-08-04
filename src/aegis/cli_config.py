@@ -256,6 +256,100 @@ def queue_remove_cmd(
     _console.print(f"[green]removed queue {name!r}[/green]")
 
 
+# --- host group ------------------------------------------------------
+
+host_app = typer.Typer(add_completion=False, no_args_is_help=True,
+                       help="Manage execution hosts (run a harness on "
+                            "another machine over SSH).")
+app.add_typer(host_app, name="host")
+
+
+@host_app.command("list")
+def host_list_cmd() -> None:
+    """Show declared execution hosts. `local` is implicit and always
+    available."""
+    from aegis.config.yaml_loader import load_config
+    root = _resolve_root()
+    base = root / ".aegis.yaml"
+    if not base.is_file():
+        _console.print("[yellow]no hosts declared.[/yellow]")
+        return
+    try:
+        hosts = load_config(root).hosts
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    if not hosts:
+        _console.print("[yellow]no hosts declared "
+                       "(every session runs local).[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("name")
+    table.add_column("ssh")
+    table.add_column("cwd")
+    table.add_column("login shell")
+    table.add_column("ssh_opts")
+    for name, h in hosts.items():
+        table.add_row(name, h.ssh, h.cwd,
+                      "yes" if h.login_shell else "no",
+                      " ".join(h.ssh_opts) if h.ssh_opts else "—")
+    _console.print(table)
+
+
+@host_app.command("add")
+def host_add_cmd(
+    name: str = typer.Argument(..., help="Host name (used as @<name>)."),
+    ssh: str = typer.Option(
+        ..., "--ssh", "-s",
+        help="ssh destination, e.g. vps.apiad.net or a ~/.ssh/config alias."),
+    cwd: str = typer.Option(
+        ..., "--cwd", "-C",
+        help="Default working directory on that machine."),
+    ssh_opt: list[str] = typer.Option(
+        None, "--ssh-opt",
+        help="Repeatable: extra flag passed to ssh, e.g. "
+             "--ssh-opt=-o --ssh-opt=ServerAliveInterval=15."),
+    no_login_shell: bool = typer.Option(
+        False, "--no-login-shell",
+        help="Do not wrap the remote command in `bash -lc`. Only for a "
+             "host whose profile writes to stdout — without a login shell "
+             "a harness in ~/.local/bin is not on PATH."),
+    remote_mcp_port: int = typer.Option(
+        None, "--remote-mcp-port",
+        help="Pin the remote end of the MCP reverse tunnel instead of "
+             "letting sshd allocate one."),
+) -> None:
+    """Add an execution host. Fails loud on a duplicate or on 'local'."""
+    from aegis.config.edit import add_host
+    root = _resolve_root()
+    try:
+        add_host(root, name, ssh=ssh, cwd=cwd,
+                 ssh_opts=list(ssh_opt or []),
+                 login_shell=not no_login_shell,
+                 remote_mcp_port=remote_mcp_port)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    _console.print(f"[green]added host {name!r}[/green]")
+    _console.print(f"spawn there with: [bold]/spawn <agent>@{name}[/bold]")
+
+
+@host_app.command("remove")
+def host_remove_cmd(
+    name: str = typer.Argument(..., help="Host name."),
+) -> None:
+    """Remove an execution host. Persisted; takes effect on next start."""
+    from aegis.config.edit import remove_host
+    root = _resolve_root()
+    try:
+        remove_host(root, name)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    _console.print(f"[green]removed host {name!r}[/green]")
+    _console.print("restart aegis to drop the live host")
+
+
 # --- harness group ---------------------------------------------------
 
 harness_app = typer.Typer(add_completion=False, no_args_is_help=True,
