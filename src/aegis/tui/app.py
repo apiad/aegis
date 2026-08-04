@@ -31,6 +31,24 @@ from aegis.tui.widgets import TabBar
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+def _tab_suffix(pane, qm) -> str | None:
+    """The trailing annotation on a tab: queue worker label, host, or both.
+
+    A pane running elsewhere is marked ``@vps`` so which machine it is on
+    is never something you have to remember — every path in its transcript
+    means something different from the identical path next door.
+    """
+    parts = []
+    if qm is not None:
+        label = qm.worker_label(pane.handle)
+        if label:
+            parts.append(label)
+    place = getattr(getattr(pane, "_core", None), "place", None)
+    if place is not None and not place.is_local:
+        parts.append(f"@{place.host}")
+    return " ".join(parts) or None
+
+
 class _DisabledPlaneStub:
     """Raised on any attribute access when an aux plane is unavailable
     in --remote mode (mirrors _DisabledPlane in remote_manager.py but lives
@@ -780,8 +798,7 @@ class AegisApp(App):
         qm = None if hasattr(self, "_remote_manager") else self.queue_manager
         items = [
             (i + 1, p.handle, p.agent_slug, p.state, p.unseen,
-             p.id == cs.current,
-             qm.worker_label(p.handle) if qm is not None else None)
+             p.id == cs.current, _tab_suffix(p, qm))
             for i, p in enumerate(self._panes)
         ]
         self.query_one(TabBar).set_tabs(items)

@@ -26,6 +26,18 @@ def build_picker_rows(
     return rows
 
 
+def build_host_rows(hosts: list[str],
+                    local_label: str) -> list[tuple[str, str]]:
+    """(value, label) rows for the host tier of the spawn picker.
+
+    `local` is always first and always present — it is the implicit host
+    and the overwhelmingly common choice.
+    """
+    rows = [("local", f"local — {local_label}")]
+    rows += [(h, h) for h in sorted(hosts)]
+    return rows
+
+
 def resolve_transient_agent(
     harness_name: str,
     model: str,

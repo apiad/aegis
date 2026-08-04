@@ -116,8 +116,17 @@ class FileTarget:
 
 
 def file_target(name: str, raw_input: dict | None,
-                locations=()) -> FileTarget | None:
-    """Which file (and line) a tool call points at, if any. Pure."""
+                locations=(), host: str = "local") -> FileTarget | None:
+    """Which file (and line) a tool call points at, if any. Pure.
+
+    ``host`` is the machine the session's harness runs on. A path from a
+    remote session names a file on THAT machine; the identically-named
+    local file is a different file, and opening it would be a silent
+    wrong answer rather than an error. So there is no local target to
+    offer — the caller shows the host-qualified path instead.
+    """
+    if host != "local":
+        return None
     inp = raw_input or {}
     path, line, anchor = "", None, None
 

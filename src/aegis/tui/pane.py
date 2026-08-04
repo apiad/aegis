@@ -349,7 +349,10 @@ class CopyableBlock(Static):
     def __init__(self, renderable: RenderableType,
                  text_payload: str, *, tight: bool = False,
                  tool_call_id: str | None = None,
-                 file_target: FileTarget | None = None) -> None:
+                 file_target: FileTarget | None = None,
+                 remote_path: str | None = None,
+                 host: str = "local") -> None:
+        self._host = host
         # markup=False: the payloads are Rich renderables, and a raw str
         # payload must not be reinterpreted as Textual markup.
         super().__init__(renderable, markup=False,
@@ -358,6 +361,11 @@ class CopyableBlock(Static):
         self._text_payload = text_payload
         self._tool_call_id = tool_call_id
         self._file_target = file_target
+        # A host-qualified path (``vps:/srv/app/x.py``) for a block whose
+        # file lives on another machine. There is nothing to open here, so
+        # ctrl+click copies this instead of opening the identically-named
+        # local file — which would be a silent wrong answer.
+        self._remote_path = remote_path
         # Resolved on demand: scanning the payload on every update made a
         # streaming message quadratic in its own length, and nothing reads
         # the tokens until you click or hover.
@@ -368,6 +376,8 @@ class CopyableBlock(Static):
                else "click to copy")
         if file_target is not None:
             tip = f"{tip} | ctrl+click to open the file"
+        elif remote_path is not None:
+            tip = f"{tip} | ctrl+click to copy {remote_path}"
         self.tooltip = tip
 
     def on_enter(self, _event) -> None:
@@ -420,11 +430,20 @@ class CopyableBlock(Static):
         if event.ctrl and self._file_target is not None:
             self._open_tool_file()
             return
+        # Off-host: the file is on another machine. Hand over the qualified
+        # path rather than opening the local file of the same name.
+        if event.ctrl and self._remote_path is not None:
+            self.app.copy_to_clipboard(self._remote_path)
+            with contextlib.suppress(Exception):
+                self.app.notify(f"copied {self._remote_path}", timeout=2.0)
+            return
         # Tool-call blocks toggle their collapsed args instead of copying.
         if self._tool_call_id is not None:
             self.post_message(self.ToolExpandToggle(self._tool_call_id))
             return
-        if event.ctrl and self.backtick_tokens:
+        # Token resolution walks the LOCAL tree, so it is meaningless — and
+        # actively misleading — for a pane whose harness is elsewhere.
+        if event.ctrl and self._host == "local" and self.backtick_tokens:
             self._open_file_from_tokens()
             return
         # Textual reports Alt as `meta` (SGR's bit 8). Shift is not usable
@@ -748,6 +767,14 @@ class ConversationPane(Widget):
                              border-bottom: solid $warning; }
     """
 
+    @property
+    def _host(self) -> str:
+        """The machine this pane's harness runs on. Drives every local
+        file affordance: off-host, a path in the transcript names a file
+        that is not here."""
+        return getattr(self, "_place", None).host \
+            if getattr(self, "_place", None) else "local"
+
     def __init__(self, session: HarnessSession, agent: Agent,
                  agent_slug: str, handle: str, palette,
                  *, digest=None, monitor_manager=None,
@@ -779,6 +806,7 @@ class ConversationPane(Widget):
         if not hasattr(self._core, "place"):
             from aegis.hosts.models import Place
             self._core.place = place or Place("local", ".")
+        self._place = self._core.place
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
         self._core.add_dispatch_observer(self._on_core_dispatch)
@@ -1035,7 +1063,8 @@ class ConversationPane(Widget):
                 continue
             records.append(BlockRecord(
                 None, _payload_for_event(ev), False, events=[ev],
-                file_target=(file_target(ev.name, ev.raw_input, ev.locations)
+                file_target=(file_target(ev.name, ev.raw_input, ev.locations,
+                                         host=self._host)
                              if isinstance(ev, ToolUse) else None)))
             if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
                     and ev.tool_call_id):
@@ -1291,17 +1320,32 @@ class ConversationPane(Widget):
             self._apply_command_effect(result.effect)
         return None
 
+    def _remote_path_for(self, ev) -> str | None:
+        """The host-qualified path a remote tool call names, if any.
+
+        ``file_target`` deliberately returns None off-host, so this is
+        what the block offers instead: ``vps:/srv/app/x.py``, which says
+        both which file and — decisively — which machine.
+        """
+        if self._host == "local":
+            return None
+        path = (getattr(ev, "raw_input", None) or {}).get("file_path")
+        return self._place.qualify(str(path)) if path else None
+
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
                      *, tight: bool = False,
                      tool_call_id: str | None = None,
-                     file_target: FileTarget | None = None) -> CopyableBlock:
+                     file_target: FileTarget | None = None,
+                     remote_path: str | None = None) -> CopyableBlock:
         self._history.append(
             BlockRecord(renderable, text_payload, tight, tool_call_id,
                         file_target=file_target))
         block = CopyableBlock(renderable, text_payload, tight=tight,
                               tool_call_id=tool_call_id,
-                              file_target=file_target)
+                              file_target=file_target,
+                              remote_path=remote_path,
+                              host=self._host)
         t = self._transcript()
         if self._window_end < len(self._history) - 1:
             # The tail is already truncated (we are scrolled up and the
@@ -1844,7 +1888,9 @@ class ConversationPane(Widget):
             self._mount_block(renderable, _payload_for_event(ev),
                               tool_call_id=ev.tool_call_id,
                               file_target=file_target(
-                                  ev.name, ev.raw_input, ev.locations))
+                                  ev.name, ev.raw_input, ev.locations,
+                                  host=self._host),
+                              remote_path=self._remote_path_for(ev))
             # Remember this call's block so its (possibly out-of-order,
             # parallel) ToolResult folds in below instead of appending.
             self._tool_use_idx[ev.tool_call_id] = track.idx
