@@ -1,7 +1,8 @@
 # aegis SSH execution hosts
 
-**Status:** approved, not yet planned
+**Status:** approved, planned — not yet implemented
 **Date:** 2026-08-04
+**Plan:** `docs/superpowers/plans/2026-08-04-aegis-ssh-execution-hosts.md`
 
 Run a harness process on another machine over a persistent SSH
 connection, while the aegis session that owns it stays local. One tab in
@@ -165,6 +166,25 @@ means it never has to.
 `_STREAM_LIMIT` (16 MiB) still applies — it is a property of the
 `StreamReader`, which is now reading ssh's stdout rather than claude's,
 with the same payloads flowing through it.
+
+### Two things that must not follow the cwd
+
+**The persona is a local file.** `read_persona(agent, cwd)`
+(`config/persona.py`) resolves a relative `prompt:` path *under the
+session cwd*. With a remote cwd that silently reads the wrong file — or,
+when the path does not exist locally, raises `ConfigError` at spawn. A
+persona lives in the local project regardless of where the harness runs,
+so `Launcher` carries a `persona_root(cwd)` accessor and drivers resolve
+against that. `LocalLauncher` with no explicit root returns `cwd`, which
+makes existing local behaviour byte-identical.
+
+**The MCP URL is not known when argv is built.** `build_argv` bakes
+`mcp_config_json(mcp_url)` into the argv at session-construction time,
+but a remote session's URL depends on the port sshd allocates when the
+tunnel opens — which happens later, inside `SshLauncher.spawn`. The
+registry therefore hands remote sessions an empty URL as a placeholder,
+and `spawn` rewrites exactly that one argv element (matched against
+`mcp_config_json("")`, never a substring) immediately before exec.
 
 ### `HostConnection` — the persistent SSH
 
