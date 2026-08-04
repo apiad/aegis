@@ -13,6 +13,7 @@ from aegis.hooks import SessionHandle
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_pre_spawn_hooks
 from aegis.config.persona import read_persona
+from aegis.hosts.launcher import LOCAL, Launcher
 from aegis.mcp import PRIMING, mcp_config_json
 
 # claude stream-json emits one JSON object per line; a single line carries
@@ -57,12 +58,14 @@ class ClaudeSession(HarnessSession):
 
     def __init__(self, argv: list[str], cwd: str, *,
                  handle: str = "", harness: str = "claude-code",
-                 agent_profile: str = "") -> None:
+                 agent_profile: str = "",
+                 launcher: Launcher = LOCAL) -> None:
         self._argv = argv
         self._cwd = cwd
         self._handle = handle
         self._harness = harness
         self._agent_profile = agent_profile or handle
+        self._launcher = launcher
         self._proc: asyncio.subprocess.Process | None = None
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
         self._reader: asyncio.Task | None = None
@@ -88,17 +91,11 @@ class ClaudeSession(HarnessSession):
             self._session_id = ev.session_id
 
     async def start(self) -> None:
+        # Pre-spawn hooks run against the INNER argv, before any transport
+        # wrapping — a hook that rewrites claude's flags has no business
+        # knowing whether this session runs here or over ssh.
         argv, env = await self._apply_pre_spawn_hooks()
-        kw: dict = dict(
-            cwd=self._cwd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=_STREAM_LIMIT,
-        )
-        if env is not None:
-            kw["env"] = env
-        self._proc = await asyncio.create_subprocess_exec(*argv, **kw)
+        self._proc = await self._launcher.spawn(argv, cwd=self._cwd, env=env)
         self._reader = asyncio.create_task(self._pump_stdout())
 
     async def _apply_pre_spawn_hooks(
@@ -214,7 +211,8 @@ class ClaudeDriver(HarnessDriver):
     supports_oneshot = True
 
     def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str, handle: str) -> list[str]:
+                   mcp_url: str, handle: str,
+                   launcher: Launcher = LOCAL) -> list[str]:
         argv = [
             "claude", "-p",
             "--input-format", "stream-json",
@@ -229,8 +227,9 @@ class ClaudeDriver(HarnessDriver):
             "--append-system-prompt", PRIMING.format(handle=handle),
         ]
         # Persona composes AFTER the primer so the agent still knows its
-        # handle and can call back.
-        persona = read_persona(agent, cwd)
+        # handle and can call back. It is read from the LOCAL project even
+        # when the harness runs remotely — a persona file lives here.
+        persona = read_persona(agent, launcher.persona_root(cwd))
         if persona:
             argv += ["--append-system-prompt", persona]
         return argv
@@ -295,34 +294,40 @@ class ClaudeDriver(HarnessDriver):
         )
 
     def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str) -> ClaudeSession:
+                mcp_url: str, handle: str,
+                launcher: Launcher = LOCAL) -> ClaudeSession:
         return ClaudeSession(
-            self.build_argv(agent, cwd, mcp_url, handle), cwd,
-            handle=handle, harness=agent.harness or "claude-code")
+            self.build_argv(agent, cwd, mcp_url, handle, launcher), cwd,
+            handle=handle, harness=agent.harness or "claude-code",
+            launcher=launcher)
 
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str,
-               session_id: str) -> ClaudeSession:
+               session_id: str,
+               launcher: Launcher = LOCAL) -> ClaudeSession:
         """Build a ClaudeSession that resumes an existing conversation."""
-        argv = self.build_argv(agent, cwd, mcp_url, handle)
+        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher)
         # Insert --resume <session_id> right after the "claude -p" prefix
         resumed_argv = argv[:2] + ["--resume", session_id] + argv[2:]
         return ClaudeSession(resumed_argv, cwd,
                              handle=handle,
-                             harness=agent.harness or "claude-code")
+                             harness=agent.harness or "claude-code",
+                             launcher=launcher)
 
     def fork(self, agent: Agent, cwd: str,
              mcp_url: str, handle: str,
-             session_id: str) -> ClaudeSession:
+             session_id: str,
+             launcher: Launcher = LOCAL) -> ClaudeSession:
         """Build a ClaudeSession branching from an existing conversation.
 
         `--fork-session` is what keeps this from being a plain resume:
         "when resuming, create a new session ID". The parent's own id
         stays where it was, so the two conversations never share a log.
         """
-        argv = self.build_argv(agent, cwd, mcp_url, handle)
+        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher)
         forked_argv = (argv[:2] + ["--fork-session", "--resume", session_id]
                        + argv[2:])
         return ClaudeSession(forked_argv, cwd,
                              handle=handle,
-                             harness=agent.harness or "claude-code")
+                             harness=agent.harness or "claude-code",
+                             launcher=launcher)

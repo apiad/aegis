@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from aegis.config import Agent
 from aegis.events import Event
+from aegis.hosts.launcher import LOCAL, Launcher
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -81,10 +82,12 @@ class HarnessDriver(abc.ABC):
 
     @abc.abstractmethod
     def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str) -> HarnessSession: ...
+                mcp_url: str, handle: str,
+                launcher: Launcher = LOCAL) -> HarnessSession: ...
 
     def resume(self, agent: Agent, cwd: str,
-               mcp_url: str, handle: str, session_id: str) -> HarnessSession:
+               mcp_url: str, handle: str, session_id: str,
+               launcher: Launcher = LOCAL) -> HarnessSession:
         """Build a session bound to an existing driver-side conversation.
 
         Default raises — only resume-capable drivers override.
@@ -93,7 +96,8 @@ class HarnessDriver(abc.ABC):
             f"{type(self).__name__} does not support session resume")
 
     def fork(self, agent: Agent, cwd: str, mcp_url: str,
-             handle: str, session_id: str) -> HarnessSession:
+             handle: str, session_id: str,
+             launcher: Launcher = LOCAL) -> HarnessSession:
         """Build a session branching from an existing conversation.
 
         Sibling of ``resume``: same signature, same default-raises

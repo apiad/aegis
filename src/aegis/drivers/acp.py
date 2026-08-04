@@ -92,6 +92,7 @@ class _RingHandler(logging.Handler):
 from aegis.config import Agent
 from aegis.config.persona import read_persona
 from aegis.drivers.base import HarnessDriver, HarnessSession
+from aegis.hosts.launcher import LOCAL, Launcher
 from aegis.events import (
     AgentPlan,
     AssistantText,
@@ -314,7 +315,9 @@ class AcpSession(HarnessSession):
                  mcp_url: str, handle: str,
                  *, resume_session_id: str | None = None,
                  extra_env: dict[str, str] | None = None,
-                 persona: str | None = None) -> None:
+                 persona: str | None = None,
+                 launcher: Launcher = LOCAL) -> None:
+        self._launcher = launcher
         self._agent = agent
         self._cwd = cwd
         self._mcp_url = mcp_url
@@ -438,16 +441,7 @@ class AcpSession(HarnessSession):
         if self._extra_env:
             base = env if env is not None else dict(os.environ)
             env = {**base, **self._extra_env}
-        kw: dict = dict(
-            cwd=self._cwd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=_STREAM_LIMIT,
-        )
-        if env is not None:
-            kw["env"] = env
-        self._proc = await asyncio.create_subprocess_exec(*argv, **kw)
+        self._proc = await self._launcher.spawn(argv, cwd=self._cwd, env=env)
         # Drain subprocess stderr into a ring buffer in the background.
         # When a ConnectionError/EOF bubbles up from the SDK ("Connection
         # closed") it usually means the subprocess died with a real error
@@ -700,10 +694,13 @@ class AcpDriver(HarnessDriver):
         return {}
 
     def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str) -> AcpSession:
+                mcp_url: str, handle: str,
+                launcher: Launcher = LOCAL) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
                              extra_env=self.extra_env(agent),
-                             persona=read_persona(agent, cwd))
+                             persona=read_persona(
+                                 agent, launcher.persona_root(cwd)),
+                             launcher=launcher)
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
@@ -711,10 +708,13 @@ class AcpDriver(HarnessDriver):
 
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str,
-               session_id: str) -> AcpSession:
+               session_id: str,
+               launcher: Launcher = LOCAL) -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
                              resume_session_id=session_id,
                              extra_env=self.extra_env(agent),
-                             persona=read_persona(agent, cwd))
+                             persona=read_persona(
+                                 agent, launcher.persona_root(cwd)),
+                             launcher=launcher)
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
