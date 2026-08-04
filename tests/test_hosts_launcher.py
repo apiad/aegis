@@ -171,3 +171,27 @@ def test_ssh_argv_appends_host_ssh_opts():
     assert "ServerAliveInterval=15" in argv
     # opts land before the destination, where ssh expects them
     assert argv.index("ServerAliveInterval=15") < argv.index("h")
+
+
+def test_deferred_mcp_url_is_substituted_before_exec():
+    from aegis.hosts.launcher import _substitute_mcp_url
+    from aegis.mcp import mcp_config_json
+
+    argv = ["claude", "-p", "--mcp-config", mcp_config_json(""),
+            "--strict-mcp-config"]
+    out = _substitute_mcp_url(argv, "http://127.0.0.1:41573/mcp/")
+    assert out[3] == mcp_config_json("http://127.0.0.1:41573/mcp/")
+    assert "41573" in out[3]
+    # Nothing else is touched.
+    assert out[0:3] == ["claude", "-p", "--mcp-config"]
+    assert out[4] == "--strict-mcp-config"
+
+
+def test_substitution_leaves_an_empty_argv_element_alone():
+    # An empty string is a legitimate argv value (claude's oneshot path
+    # passes --tools ""). Only the exact placeholder config blob is
+    # rewritten.
+    from aegis.hosts.launcher import _substitute_mcp_url
+
+    out = _substitute_mcp_url(["claude", "--tools", ""], "http://x/mcp/")
+    assert out == ["claude", "--tools", ""]

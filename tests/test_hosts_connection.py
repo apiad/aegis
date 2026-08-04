@@ -7,7 +7,10 @@ from aegis.hosts.connection import (
     parse_allocated_port,
     preflight_command,
 )
-from aegis.hosts.models import HostSpec
+from aegis.hosts.errors import HostError
+from aegis.hosts.launcher import LocalLauncher, SshLauncher
+from aegis.hosts.models import HostSpec, Place
+from aegis.hosts.registry import HostRegistry
 
 SPEC = HostSpec(name="vps", ssh="vps.apiad.net",
                 cwd="/home/apiad/Workspace")
@@ -72,3 +75,65 @@ def test_preflight_checks_both_the_binary_and_the_directory():
 
 def test_preflight_quotes_a_cwd_with_spaces():
     assert "'/srv/my app'" in preflight_command("claude", "/srv/my app")
+
+
+# --- registry -------------------------------------------------------------
+
+
+def _registry(tmp_path):
+    reg = HostRegistry({"vps": SPEC}, state_dir=tmp_path / "state",
+                       local_root="/local/proj")
+    reg.set_mcp_port(8931)
+    return reg
+
+
+def test_local_place_gets_a_local_launcher_and_the_url_unchanged(tmp_path):
+    lau, url = _registry(tmp_path).launcher_for(
+        Place("local", "/local/proj"), "http://127.0.0.1:8931/mcp/")
+    assert isinstance(lau, LocalLauncher)
+    assert url == "http://127.0.0.1:8931/mcp/"
+    assert lau.persona_root("/local/proj") == "/local/proj"
+
+
+def test_remote_place_gets_an_ssh_launcher(tmp_path):
+    lau, _url = _registry(tmp_path).launcher_for(
+        Place("vps", "/home/apiad/Workspace"), "http://127.0.0.1:8931/mcp/")
+    assert isinstance(lau, SshLauncher)
+    assert lau.host_key == "vps"
+    # Persona files live locally even though the harness runs remotely.
+    assert lau.persona_root("/home/apiad/Workspace") == "/local/proj"
+
+
+def test_remote_url_is_deferred_until_the_tunnel_is_up(tmp_path):
+    # launcher_for is synchronous (it is called from _sync_spawn) and the
+    # allocated port is not known until the master opens. The URL is
+    # therefore a placeholder resolved inside spawn().
+    _lau, url = _registry(tmp_path).launcher_for(
+        Place("vps", "/x"), "http://127.0.0.1:8931/mcp/")
+    assert url == ""      # sentinel: resolved at spawn time
+
+
+def test_one_connection_is_reused_per_host(tmp_path):
+    reg = _registry(tmp_path)
+    a, _ = reg.launcher_for(Place("vps", "/x"), "u")
+    b, _ = reg.launcher_for(Place("vps", "/y"), "u")
+    assert a._conn is b._conn
+
+
+def test_control_path_lives_under_the_state_dir(tmp_path):
+    reg = _registry(tmp_path)
+    lau, _ = reg.launcher_for(Place("vps", "/x"), "u")
+    assert str(tmp_path / "state") in lau._conn.control_path
+    assert lau._conn.control_path.endswith("vps.sock")
+
+
+def test_unknown_host_is_a_loud_error(tmp_path):
+    with pytest.raises(HostError, match="nowhere"):
+        _registry(tmp_path).launcher_for(Place("nowhere", "/x"), "u")
+
+
+def test_a_registry_with_no_mcp_port_refuses_a_remote_launcher(tmp_path):
+    reg = HostRegistry({"vps": SPEC}, state_dir=tmp_path / "state",
+                       local_root="/local/proj")
+    with pytest.raises(HostError, match="MCP port"):
+        reg.launcher_for(Place("vps", "/x"), "u")
