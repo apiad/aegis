@@ -17,6 +17,10 @@ class SessionInfo:
     # background-task notification) rather than a real agent turn. Consumers
     # like MonitorManager use this to avoid interrupting a self-resolving turn.
     unsolicited: bool = False
+    # Which machine this session's harness runs on: "local", or a key from
+    # the `hosts:` config. Paths in a remote session's transcript name
+    # files on THAT machine, so consumers must not treat them as local.
+    host: str = "local"
 
 
 class GroupsBridge(Protocol):

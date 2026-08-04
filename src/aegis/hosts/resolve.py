@@ -26,3 +26,19 @@ def resolve_place(*, host: str | None, cwd: str | None,
         known = sorted(hosts) + ["local"]
         raise HostError(f"unknown host {name!r}; known: {known}")
     return Place(name, cwd or spec.cwd)
+
+
+def parse_at_host(token: str) -> tuple[str, str | None, str | None]:
+    """Split ``agent@host:/cwd`` into its three parts.
+
+    ``agent`` alone, ``agent@host``, and ``agent@host:/path`` are all
+    valid. Only the FIRST colon after the host separates the cwd, so a
+    path containing colons survives intact.
+    """
+    agent, sep, rest = token.partition("@")
+    if not sep or not rest:
+        return agent, None, None
+    host, csep, cwd = rest.partition(":")
+    if not host:
+        return agent, None, None
+    return agent, host, (cwd if csep and cwd else None)

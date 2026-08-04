@@ -49,6 +49,19 @@ async def _close(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, f"closed {target}")
 
 
+async def _reconnect(ctx: CommandContext, args) -> CommandResult:
+    """Rebuild a dropped remote session's harness, in place."""
+    target = args.get("handle") or ctx.handle
+    reconnect = getattr(ctx.bridge, "reconnect", None)
+    if reconnect is None:
+        return CommandResult(
+            False, "reconnect is not available in this frontend")
+    try:
+        return CommandResult(True, await reconnect(target))
+    except ValueError as e:
+        return CommandResult(False, f"cannot reconnect: {e}")
+
+
 for _cmd in (
     SlashCommand("rename", "rename the current session",
                  "/rename <new>", _rename,
@@ -60,6 +73,15 @@ for _cmd in (
                          completer=lambda b: [
                              (s.handle, f"{s.agent_slug} · {s.state}")
                              for s in b.list_sessions()]),))),
+    SlashCommand("reconnect",
+                 "rebuild a dropped remote session in place",
+                 "/reconnect [handle]", _reconnect,
+                 spec=ArgSpec(positionals=(
+                     Arg("handle", required=False,
+                         completer=lambda b: [
+                             (s.handle, f"{s.agent_slug} · @{s.host}")
+                             for s in b.list_sessions()
+                             if getattr(s, "host", "local") != "local"]),))),
     SlashCommand("themes", "list themes, or switch to one",
                  "/themes [name]", _themes,
                  spec=ArgSpec(positionals=(

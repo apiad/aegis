@@ -287,6 +287,40 @@ class SessionManager:
         child.spawned_by = forked_by
         return child.handle
 
+    async def reconnect(self, handle: str) -> str:
+        """Rebuild a remote session's harness in place, resuming its
+        conversation.
+
+        The remote harness keeps its own conversation store, so a dropped
+        link costs only the in-flight turn: this re-runs the harness on
+        the same host and resumes the same conversation id, in the same
+        tab, under the same handle.
+
+        Raises ValueError listing every refusal reason at once.
+        """
+        import contextlib
+
+        s = self.get(handle)
+        if s is None:
+            raise ValueError(f"unknown session {handle!r}")
+        reasons: list[str] = []
+        if s.place.is_local:
+            reasons.append(
+                f"{handle} runs local — reconnect is for remote sessions")
+        sid = s.session_id
+        if not sid:
+            reasons.append(f"{handle} has no session id to resume from")
+        if reasons:
+            raise ValueError("; ".join(reasons))
+
+        with contextlib.suppress(Exception):
+            await s._session.close()
+        url = self._mcp.url if self._mcp is not None else ""
+        raw = self._make_session(s.agent, url, handle,
+                                 place=s.place, resume_from=sid)
+        s.adopt(raw)
+        return f"reconnected {handle} on {s.place.host}"
+
     async def side_note(self, handle: str, prompt: str):
         """AppBridge-shaped: a side note off this session's transcript."""
         from aegis.btw import SideNote, side_note_for
@@ -395,7 +429,9 @@ class SessionManager:
                         state=s.state.value, active=(s.handle == top),
                         unseen=False,
                         spawned_by=getattr(s, "spawned_by", None),
-                        unsolicited=getattr(s, "unsolicited_turn", False))
+                        unsolicited=getattr(s, "unsolicited_turn", False),
+                        host=getattr(s, "place", None).host
+                        if getattr(s, "place", None) else "local")
             for s in self._sessions
         ]
 

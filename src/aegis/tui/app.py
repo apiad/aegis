@@ -1449,7 +1449,9 @@ class AegisApp(App):
             SessionInfo(handle=p.handle, agent_slug=p.agent_slug,
                         state=p.state.value, active=(p is active),
                         unseen=p.unseen,
-                        spawned_by=getattr(p._core, "spawned_by", None))
+                        spawned_by=getattr(p._core, "spawned_by", None),
+                        host=getattr(p._core, "place", None).host
+                        if getattr(p._core, "place", None) else "local")
             for p in self._panes
             if isinstance(p, ConversationPane)
         ]

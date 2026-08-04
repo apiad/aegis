@@ -152,6 +152,17 @@ class AgentSession:
     def session_id(self) -> str | None:
         return self._session.session_id
 
+    def adopt(self, session: HarnessSession) -> None:
+        """Replace the underlying harness session in place.
+
+        Everything aegis owns survives: handle, log_id, inbox binding,
+        metrics, observers, transcript. Only the process at the bottom is
+        new. Used by reconnect after a dropped remote link — which is why
+        the tab keeps its history instead of being respawned.
+        """
+        self._session = session
+        self.state = AgentState.ready
+
     def add_event_observer(self, cb: EventCb) -> None:
         """Subscribe an additional event callback. Fires after on_event."""
         self._extra_event_observers.append(cb)
