@@ -75,6 +75,9 @@ def resolve_agent_entry(
     """
     d = dict(body)
     prompt = d.pop("prompt", None)
+    # Execution host is aegis-side placement, not a provider concern — it
+    # must be lifted out before the body is splatted into a provider class.
+    host = d.pop("host", None)
     reg_key = d.pop("harness", None)
     if reg_key is None:
         # Legacy `provider:` shape — build the provider directly from ALL
@@ -89,7 +92,7 @@ def resolve_agent_entry(
             raise ConfigError(
                 f"unknown provider {provider_name!r}; "
                 f"known: {sorted(_PROVIDER_BY_NAME)}")
-        return Agent(provider=cls(**d), prompt=prompt)
+        return Agent(provider=cls(**d), prompt=prompt, host=host)
     # New `harness:` ref shape — credentials come from the registration.
     reg = harnesses.get(reg_key)
     if reg is None:
@@ -113,4 +116,4 @@ def resolve_agent_entry(
             kw["base_url"] = reg.base_url
         if reg.api_key_file is not None:
             kw["api_key_file"] = reg.api_key_file
-    return Agent(provider=cls(**kw), prompt=prompt)
+    return Agent(provider=cls(**kw), prompt=prompt, host=host)

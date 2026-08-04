@@ -33,6 +33,7 @@ from aegis.config.harnesses import (
     merge_harnesses,
     resolve_agent_entry,
 )
+from aegis.hosts.models import HostSpec
 from aegis.remote.config import RemotePlaneSpec, RemoteSpec
 
 
@@ -62,6 +63,7 @@ class AegisConfig:
     scheduler: dict[str, Any] = field(default_factory=dict)
     groups: dict[str, Any] = field(default_factory=dict)
     remotes: dict[str, RemoteSpec] = field(default_factory=dict)
+    hosts: dict[str, HostSpec] = field(default_factory=dict)
     remote_plane: RemotePlaneSpec | None = None
     web: WebConfig | None = None
     voice: VoiceConfig = field(default_factory=VoiceConfig)
@@ -100,7 +102,33 @@ def _harness_from_dict(name: str, d: dict[str, Any]) -> HarnessRegistration:
     )
 
 
-_SECTIONS = ("agents", "harnesses", "queues", "schedules", "remotes")
+def _host_from_dict(name: str, d: dict[str, Any]) -> HostSpec:
+    """Construct a HostSpec from a `hosts:` YAML entry.
+
+    `local` is an implicit host that always exists and cannot be
+    redeclared — allowing it would make the meaning of `host: local`
+    depend on config, which is exactly the ambiguity the implicit host
+    exists to prevent.
+    """
+    if name == "local":
+        raise ConfigError(
+            "hosts: 'local' is implicit (the machine aegis runs on) and "
+            "cannot be declared.")
+    for key in ("ssh", "cwd"):
+        if not d.get(key):
+            raise ConfigError(f"hosts[{name!r}]: {key!r} is required.")
+    port = d.get("remote_mcp_port")
+    return HostSpec(
+        name=name,
+        ssh=str(d["ssh"]),
+        cwd=str(d["cwd"]),
+        ssh_opts=[str(o) for o in (d.get("ssh_opts") or [])],
+        remote_mcp_port=int(port) if port is not None else None,
+    )
+
+
+_SECTIONS = ("agents", "harnesses", "queues", "schedules", "remotes",
+             "hosts")
 
 
 def _collect_overlays(root: Path) -> dict[str, dict[str, Any]]:
@@ -158,6 +186,7 @@ def load_config(root: Path) -> AegisConfig:
         "queues": dict(raw.get("queues") or {}),
         "schedules": dict(raw.get("schedules") or {}),
         "remotes": dict(raw.get("remotes") or {}),
+        "hosts": dict(raw.get("hosts") or {}),
     }
     overlay = _collect_overlays(root)
     merged: dict[str, dict[str, Any]] = {}
@@ -173,6 +202,8 @@ def load_config(root: Path) -> AegisConfig:
               for k, v in merged["agents"].items()}
     queues = {k: QueueSpec(**v) for k, v in merged["queues"].items()}
     remotes = {k: RemoteSpec(**v) for k, v in merged["remotes"].items()}
+    hosts = {k: _host_from_dict(k, dict(v))
+             for k, v in merged["hosts"].items()}
 
     rp_raw = raw.get("remote_plane")
     remote_plane = RemotePlaneSpec(**rp_raw) if rp_raw else None
@@ -214,6 +245,14 @@ def load_config(root: Path) -> AegisConfig:
                 f"{base}: queues[{qname!r}].max_parallel must be an int "
                 f">= 1 (got {qspec.max_parallel!r}).")
 
+    # An agent profile may name a default execution host; it must exist.
+    for aname, aprofile in agents.items():
+        h = getattr(aprofile, "host", None)
+        if h and h != "local" and h not in hosts:
+            raise ConfigError(
+                f"{base}: agents[{aname!r}].host={h!r} does not reference "
+                f"a declared host (known: {sorted(hosts)} + 'local').")
+
     web = _build_web(raw.get("web"))
     voice = _build_voice(raw.get("voice"))
 
@@ -229,6 +268,7 @@ def load_config(root: Path) -> AegisConfig:
         scheduler=dict(raw.get("scheduler") or {}),
         groups=groups,
         remotes=remotes,
+        hosts=hosts,
         remote_plane=remote_plane,
         web=web,
         voice=voice,

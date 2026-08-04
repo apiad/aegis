@@ -97,6 +97,10 @@ class Agent(BaseModel):
     effort: Effort = Effort.high
     permission: Permission = Permission.auto
     prompt: str | None = None   # optional persona system-prompt file path
+    # Optional default execution host — a `hosts:` key, or "local". Purely
+    # aegis-side placement, so it is not a provider concern and does not
+    # participate in the provider/flat sync below.
+    host: str | None = None
 
     @model_validator(mode="after")
     def _sync_provider_and_flat(self) -> "Agent":
