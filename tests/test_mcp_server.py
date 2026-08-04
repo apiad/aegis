@@ -43,7 +43,8 @@ class FakeBridge:
 
     async def spawn(self, profile, *, handle=None,
                     opening_prompt=None, spawned_by=None,
-                    model=None, effort=None, prompt=None):
+                    model=None, effort=None, prompt=None,
+                    host=None, cwd=None):
         self.spawned = {"profile": profile, "handle": handle,
                         "opening_prompt": opening_prompt,
                         "spawned_by": spawned_by,

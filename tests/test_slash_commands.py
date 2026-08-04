@@ -51,9 +51,11 @@ class FakeBridge:
         return self._sessions
 
     async def spawn(self, profile, *, handle=None, opening_prompt=None,
-                    spawned_by=None, model=None, effort=None, prompt=None):
+                    spawned_by=None, model=None, effort=None, prompt=None,
+                    host=None, cwd=None):
         self.spawned.append((profile, opening_prompt, spawned_by))
         self.spawn_overrides = (model, effort, prompt)
+        self.spawn_place = (host, cwd)
         return "beta"
 
     def register_queue(self, queue):

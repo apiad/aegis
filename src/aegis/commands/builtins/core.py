@@ -31,6 +31,22 @@ def _agent_choices(bridge) -> list:
     return out
 
 
+def _agent_at_host_choices(bridge) -> list:
+    """Agent slugs, plus one ``slug@host`` entry per configured host.
+
+    Any harness runs on any host, so the palette offers the product rather
+    than assuming a profile is bound to a machine.
+    """
+    out = list(_agent_choices(bridge))
+    hosts = sorted(getattr(bridge, "_hosts", {}) or {})
+    if not hosts:
+        return out
+    for name in bridge.list_agents():
+        for h in hosts:
+            out.append((f"{name}@{h}", f"{name} · on {h}"))
+    return out
+
+
 async def _help(ctx: CommandContext, args) -> CommandResult:
     order = ["builtin", "user", "plugin"]
     by_source: dict[str, list] = {}
@@ -149,7 +165,12 @@ async def _agents_remove(ctx: CommandContext, args) -> CommandResult:
 
 
 async def _spawn(ctx: CommandContext, args) -> CommandResult:
-    agent = args["agent"]
+    from aegis.hosts.errors import HostError
+    from aegis.hosts.resolve import parse_at_host
+
+    # `<agent>@<host>[:<cwd>]` — host and cwd are per-session placement,
+    # exactly like --model and --effort, and equally unpersisted.
+    agent, host, cwd = parse_at_host(args["agent"])
     prompt = args.get("prompt")
     agents = ctx.bridge.list_agents()
     if agent not in agents:
@@ -157,14 +178,22 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
                              "available: " + ", ".join(agents))
     model = args.get("model")
     effort = args.get("effort")
-    handle = await ctx.bridge.spawn(agent, opening_prompt=prompt,
-                                    spawned_by=ctx.handle,
-                                    model=model, effort=effort)
+    try:
+        handle = await ctx.bridge.spawn(agent, opening_prompt=prompt,
+                                        spawned_by=ctx.handle,
+                                        model=model, effort=effort,
+                                        host=host, cwd=cwd)
+    except HostError as e:
+        return CommandResult(False, f"cannot spawn on {host!r}", str(e))
     detail = f"agent {agent}" + (f" · prompt: {prompt}" if prompt else "")
     if model:
         detail += f" · model: {model}"
     if effort:
         detail += f" · effort: {effort}"
+    if host:
+        detail += f" · host: {host}"
+    if cwd:
+        detail += f" · cwd: {cwd}"
     return CommandResult(True, f"spawned {handle}", detail)
 
 
@@ -366,10 +395,11 @@ for _cmd in (
                          Arg("model", required=False)),
                      flags=(Flag("effort"), Flag("permission")))),
     SlashCommand("spawn", "start a new top-level agent",
-                 "/spawn <agent> [prompt] [--model M] [--effort E]", _spawn,
+                 "/spawn <agent>[@host[:cwd]] [prompt] "
+                 "[--model M] [--effort E]", _spawn,
                  spec=ArgSpec(
                      positionals=(
-                         Arg("agent", completer=_agent_choices),
+                         Arg("agent", completer=_agent_at_host_choices),
                          Arg("prompt", required=False, greedy=True)),
                      flags=(Flag("model"), Flag("effort")))),
     SlashCommand("fork", "branch this conversation into a new tab",

@@ -143,6 +143,183 @@ def test_spawn_command_passes_host_and_cwd(tmp_path):
     assert mgr.get(h).place == Place("vps", "/srv/app")
 
 
+# --- /spawn <agent>@<host>[:<cwd>] ---------------------------------------
+
+
+class _SpawnBridge:
+    _agents: dict = {}
+    _hosts = {"vps": HostSpec(name="vps", ssh="h", cwd="/w")}
+
+    def __init__(self, raise_host_error: bool = False):
+        self.calls: list[dict] = []
+        self._raise = raise_host_error
+
+    def list_agents(self):
+        return ["main", "opus"]
+
+    def list_sessions(self):
+        return []
+
+    async def spawn(self, profile, *, opening_prompt=None, spawned_by=None,
+                    model=None, effort=None, host=None, cwd=None,
+                    prompt=None, handle=None):
+        if self._raise:
+            from aegis.hosts.errors import HostError
+            raise HostError("unknown host 'nowhere'; known: ['vps', 'local']")
+        self.calls.append({"profile": profile, "host": host, "cwd": cwd,
+                           "prompt": opening_prompt})
+        return "new-agent"
+
+
+def _ctx(bridge):
+    from aegis.commands import CommandContext
+    return CommandContext(bridge=bridge, handle="me")
+
+
+def _completion_values(rows) -> list[str]:
+    """Completer rows are either a bare value or a (value, detail) pair —
+    both shapes are legal and the palette handles each."""
+    return [r if isinstance(r, str) else r[0] for r in rows]
+
+
+@pytest.mark.asyncio
+async def test_spawn_plain_agent_stays_local():
+    from aegis.commands import dispatch
+
+    b = _SpawnBridge()
+    res = await dispatch("/spawn main", _ctx(b))
+    assert res.ok
+    assert b.calls[-1] == {"profile": "main", "host": None, "cwd": None,
+                           "prompt": None}
+
+
+@pytest.mark.asyncio
+async def test_spawn_at_host():
+    from aegis.commands import dispatch
+
+    b = _SpawnBridge()
+    await dispatch("/spawn main@vps", _ctx(b))
+    assert b.calls[-1]["profile"] == "main"
+    assert b.calls[-1]["host"] == "vps"
+    assert b.calls[-1]["cwd"] is None
+
+
+@pytest.mark.asyncio
+async def test_spawn_at_host_with_cwd_and_prompt():
+    from aegis.commands import dispatch
+
+    b = _SpawnBridge()
+    await dispatch("/spawn main@vps:/srv/app go and look around", _ctx(b))
+    assert b.calls[-1]["host"] == "vps"
+    assert b.calls[-1]["cwd"] == "/srv/app"
+    assert b.calls[-1]["prompt"] == "go and look around"
+
+
+@pytest.mark.asyncio
+async def test_spawn_validates_the_agent_not_the_whole_token():
+    from aegis.commands import dispatch
+
+    b = _SpawnBridge()
+    res = await dispatch("/spawn nosuch@vps", _ctx(b))
+    assert not res.ok
+    assert "nosuch" in res.title
+    assert not b.calls
+
+
+@pytest.mark.asyncio
+async def test_spawn_reports_an_unknown_host_legibly():
+    from aegis.commands import dispatch
+
+    b = _SpawnBridge(raise_host_error=True)
+    res = await dispatch("/spawn main@nowhere", _ctx(b))
+    assert not res.ok
+    assert "nowhere" in res.title
+    assert "known" in res.body
+
+
+def test_the_palette_offers_agent_at_host_combinations():
+    from aegis.commands.builtins.core import _agent_at_host_choices
+
+    vals = _completion_values(_agent_at_host_choices(_SpawnBridge()))
+    assert "main" in vals and "main@vps" in vals and "opus@vps" in vals
+
+
+def test_the_palette_offers_no_host_entries_when_none_configured():
+    from aegis.commands.builtins.core import _agent_at_host_choices
+
+    class _NoHosts(_SpawnBridge):
+        _hosts: dict = {}
+
+    vals = _completion_values(_agent_at_host_choices(_NoHosts()))
+    assert not any("@" in v for v in vals)
+
+
+@pytest.mark.asyncio
+async def test_aegis_spawn_forwards_host_and_cwd():
+    from aegis.mcp.server import build_server
+    from tests.test_mcp_server import FakeBridge, _call
+
+    br = FakeBridge()
+    seen: dict = {}
+
+    async def _spawn(agent, *, handle=None, opening_prompt=None,
+                     spawned_by=None, model=None, effort=None, prompt=None,
+                     host=None, cwd=None):
+        seen.update({"agent": agent, "host": host, "cwd": cwd})
+        return "new-agent"
+
+    br.spawn = _spawn
+    out = await _call(build_server(br), "aegis_spawn", agent="main",
+                      prompt="go", from_handle="me", host="vps",
+                      cwd="/srv/app")
+    assert out == {"handle": "new-agent"}
+    assert seen == {"agent": "main", "host": "vps", "cwd": "/srv/app"}
+
+
+@pytest.mark.asyncio
+async def test_aegis_spawn_returns_an_error_for_an_unknown_host():
+    from aegis.hosts.errors import HostError
+    from aegis.mcp.server import build_server
+    from tests.test_mcp_server import FakeBridge, _call
+
+    br = FakeBridge()
+
+    async def _spawn(agent, **kw):
+        raise HostError("unknown host 'nowhere'; known: ['vps', 'local']")
+
+    br.spawn = _spawn
+    out = await _call(build_server(br), "aegis_spawn", agent="main",
+                      prompt="go", from_handle="me", host="nowhere")
+    assert "nowhere" in out["error"]
+
+
+@pytest.mark.asyncio
+async def test_aegis_list_sessions_reports_each_peers_host():
+    from aegis.mcp.bridge import SessionInfo
+    from aegis.mcp.server import build_server
+    from tests.test_mcp_server import FakeBridge, _call
+
+    br = FakeBridge()
+    br.list_sessions = lambda: [
+        SessionInfo(handle="here", agent_slug="main", state="ready",
+                    active=True, unseen=False),
+        SessionInfo(handle="there", agent_slug="main", state="ready",
+                    active=False, unseen=False, host="vps"),
+    ]
+    rows = await _call(build_server(br), "aegis_list_sessions")
+    assert {r["handle"]: r["host"] for r in rows} == {
+        "here": "local", "there": "vps"}
+
+
+def test_the_briefing_tells_agents_about_hosts():
+    from aegis.mcp.server import BRIEFING
+
+    assert "EXECUTION HOSTS" in BRIEFING
+    assert "host=\"vps\"" in BRIEFING
+    # The trap worth naming out loud.
+    assert "NOT interchangeable" in BRIEFING
+
+
 def test_session_info_reports_the_host(tmp_path):
     mgr, _ = _manager(tmp_path)
     asyncio.run(mgr.spawn("main", host="vps"))

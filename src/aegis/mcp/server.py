@@ -132,7 +132,12 @@ BRIEFING = (
     "  - aegis_meta() : this briefing.\n"
     "  - aegis_list_sessions() : the live aegis sessions (your peers). "
     "Each entry has handle, agent_slug, state, active, unseen. Use this "
-    "to see who you can hand off to and whether they are idle.\n"
+    "to see who you can hand off to and whether they are idle. Each entry "
+    "also carries `host` — the machine that peer's harness runs on "
+    "(\"local\", or a configured host like \"vps\"). A peer on another host "
+    "reads and writes THAT machine's files: paths are not interchangeable "
+    "between hosts, and file claims are scoped per host. When work belongs "
+    "on a particular box, hand it to a peer already there.\n"
     "  - aegis_list_agents() : the configured agent-profile slugs that "
     "could be spawned (spawn itself is a future tool, not in this "
     "release).\n"
@@ -362,6 +367,17 @@ BRIEFING = (
     "cut its current turn when it needs a blocking correction now. Use "
     "aegis_enqueue when you want a FRESH worker spawned for one task and "
     "the result returned to you.\n\n"
+    "EXECUTION HOSTS. aegis_spawn(..., host=\"vps\", cwd=\"/srv/app\") "
+    "puts the new agent's HARNESS on another machine over a persistent "
+    "SSH connection. It is still an ordinary peer of yours — same handles, "
+    "same handoffs, same canvases, reachable over this same MCP surface — "
+    "but its Bash, Read, Edit and Grep all act on THAT machine's "
+    "filesystem, natively, not one `ssh` call at a time. Reach for it when "
+    "work genuinely belongs on another box; omit host for local, which is "
+    "the default and the common case. Any harness runs on any host. Paths "
+    "are NOT interchangeable across hosts: the same string names a "
+    "different file on each, so never hand a remote peer a path you "
+    "resolved locally, and expect file claims to be scoped per host.\n\n"
     "  - aegis_close(handle, from_handle) : close an agent YOU spawned, "
     "once it has finished — reaping your own workers keeps the tab bar "
     "honest. Refused unless spawned_by matches your handle AND the "
@@ -904,7 +920,9 @@ def build_server(bridge: AppBridge) -> FastMCP:
                           slug: str | None = None,
                           model: str | None = None,
                           effort: str | None = None,
-                          persona: str | None = None) -> dict:
+                          persona: str | None = None,
+                          host: str | None = None,
+                          cwd: str | None = None) -> dict:
         """Create a NEW INDEPENDENT top-level agent and hand it an opening
         prompt. Unlike a harness subagent (the ``Task`` tool), this agent is a
         real peer: it gets its own handle and session, appears as its own tab,
@@ -928,12 +946,24 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 (claude-code only: low/medium/high/max).
             persona: optional path to a persona system-prompt file, overriding
                 the profile's ``prompt:``.
+            host: run the new agent's harness on another machine — a key from
+                the ``hosts:`` config, or "local" (the default). It stays an
+                ordinary peer of yours over this same MCP surface; only its
+                filesystem and shell are elsewhere, so its Bash/Read/Edit act
+                on THAT machine. Any harness runs on any host.
+            cwd: working directory for the new agent, overriding the host's
+                default (or the project root, locally).
         """
-        handle = await bridge.spawn(agent, handle=slug,
-                                    opening_prompt=prompt,
-                                    spawned_by=from_handle,
-                                    model=model, effort=effort,
-                                    prompt=persona)
+        from aegis.hosts.errors import HostError
+        try:
+            handle = await bridge.spawn(agent, handle=slug,
+                                        opening_prompt=prompt,
+                                        spawned_by=from_handle,
+                                        model=model, effort=effort,
+                                        prompt=persona,
+                                        host=host, cwd=cwd)
+        except HostError as e:
+            return {"error": str(e)}
         return {"handle": handle}
 
     @server.tool
