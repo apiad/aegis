@@ -18,6 +18,14 @@ class HostSpec:
     ssh: str
     cwd: str
     ssh_opts: list[str] = field(default_factory=list)
+    # Run the harness under a login shell (``bash -lc``). ON by default:
+    # a non-interactive ssh command does NOT source the user's profile, so
+    # a harness installed in ~/.local/bin — which is where the claude
+    # installer puts it — is simply not on PATH, and the feature fails at
+    # preflight for a reason that has nothing to do with the user. A login
+    # shell finds the harness the way the user's own shell does. Turn off
+    # for a host whose profile writes to stdout.
+    login_shell: bool = True
     # Escape hatch: pin the remote forward port instead of letting sshd
     # allocate one and parsing the choice off ssh's stderr.
     remote_mcp_port: int | None = None

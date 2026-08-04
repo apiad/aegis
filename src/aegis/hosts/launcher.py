@@ -90,18 +90,23 @@ def env_delta(env: dict[str, str] | None,
 
 
 def remote_command(argv: list[str], *, cwd: str,
-                   env: dict[str, str]) -> str:
+                   env: dict[str, str], login_shell: bool = False) -> str:
     """The single shell string ssh will run on the far side.
 
-    ``exec`` matters: it replaces the login shell with the harness, so
-    signals and EOF reach the harness directly rather than a wrapper.
+    ``exec`` matters: it replaces the shell with the harness, so signals
+    and EOF reach the harness directly rather than a wrapper.
+
+    ``login_shell`` wraps the whole thing in ``bash -lc``. Without it the
+    remote command runs in a non-interactive shell that never sources the
+    user's profile, so a harness in ``~/.local/bin`` is not on PATH.
     """
     parts = ["cd", shlex.quote(cwd), "&&", "exec"]
     if env:
         parts.append("env")
         parts += [shlex.quote(f"{k}={v}") for k, v in sorted(env.items())]
     parts += [shlex.quote(a) for a in argv]
-    return " ".join(parts)
+    inner = " ".join(parts)
+    return f"bash -lc {shlex.quote(inner)}" if login_shell else inner
 
 
 def ssh_argv(spec: HostSpec, control_path: str,
@@ -164,7 +169,8 @@ class SshLauncher:
                     ) -> asyncio.subprocess.Process:
         await self._conn.ensure_open()
         argv = _substitute_mcp_url(argv, self._conn.remote_mcp_url)
-        cmd = remote_command(argv, cwd=cwd, env=env_delta(env, os.environ))
+        cmd = remote_command(argv, cwd=cwd, env=env_delta(env, os.environ),
+                             login_shell=self._spec.login_shell)
         proc = await asyncio.create_subprocess_exec(
             *ssh_argv(self._spec, self._conn.control_path, cmd),
             stdin=asyncio.subprocess.PIPE,
@@ -173,15 +179,25 @@ class SshLauncher:
             limit=STREAM_LIMIT,
         )
         self._proc = proc
-        self._stderr_task = asyncio.create_task(self._drain_stderr(proc))
         return proc
 
-    async def _drain_stderr(self, proc) -> None:
-        """Keep the last of what ssh said. This is the only place the
-        difference between 'harness exited' and 'link died' is written
-        down."""
-        if proc.stderr is None:
+    def watch_stderr(self) -> None:
+        """Start draining ssh's stderr into the ring buffer.
+
+        **Opt-in, and only for a caller that will not read stderr
+        itself** — a pipe has exactly one legitimate reader. ClaudeSession
+        never touches stderr (so draining it here is a strict improvement:
+        otherwise a chatty remote fills the pipe and blocks), whereas
+        AcpSession runs its own drain and must not be raced.
+        """
+        proc = self._proc
+        if proc is None or proc.stderr is None or self._stderr_task:
             return
+        self._stderr_task = asyncio.create_task(self._drain_stderr(proc))
+
+    async def _drain_stderr(self, proc) -> None:
+        """Keep the last of what ssh said. This is where the difference
+        between 'harness exited' and 'link died' is written down."""
         try:
             async for raw in proc.stderr:
                 self.stderr_tail.append(raw.rstrip())

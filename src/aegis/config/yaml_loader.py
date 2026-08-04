@@ -123,6 +123,7 @@ def _host_from_dict(name: str, d: dict[str, Any]) -> HostSpec:
         ssh=str(d["ssh"]),
         cwd=str(d["cwd"]),
         ssh_opts=[str(o) for o in (d.get("ssh_opts") or [])],
+        login_shell=bool(d.get("login_shell", True)),
         remote_mcp_port=int(port) if port is not None else None,
     )
 

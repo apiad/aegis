@@ -96,6 +96,12 @@ class ClaudeSession(HarnessSession):
         # knowing whether this session runs here or over ssh.
         argv, env = await self._apply_pre_spawn_hooks()
         self._proc = await self._launcher.spawn(argv, cwd=self._cwd, env=env)
+        # This session reads stdout only, so the transport is free to drain
+        # stderr — which is both how a dropped link gets diagnosed and what
+        # stops a chatty remote from filling the pipe and blocking.
+        watch = getattr(self._launcher, "watch_stderr", None)
+        if watch is not None:
+            watch()
         self._reader = asyncio.create_task(self._pump_stdout())
 
     async def _apply_pre_spawn_hooks(

@@ -136,6 +136,33 @@ def test_remote_command_quotes_env_values():
     assert "'K=a b'" in cmd
 
 
+def test_login_shell_wraps_the_whole_command():
+    # A non-interactive ssh command never sources the user's profile, so a
+    # harness in ~/.local/bin (where the claude installer puts it) is not
+    # on PATH at all. bash -lc is what makes `claude` resolvable.
+    cmd = remote_command(["claude", "-p"], cwd="/srv", env={},
+                         login_shell=True)
+    assert cmd.startswith("bash -lc ")
+    # The inner command survives the extra quoting layer intact.
+    inner = shlex.split(cmd)[2]
+    assert inner == "cd /srv && exec claude -p"
+
+
+def test_login_shell_survives_a_nasty_inner_payload():
+    primer = "You are 'agent-one'.\nCall aegis_meta() first."
+    cmd = remote_command(["claude", "--append-system-prompt", primer],
+                         cwd="/srv/my app", env={"K": "a b"},
+                         login_shell=True)
+    # Two levels of quoting: outer for `bash -lc`, inner for the harness.
+    inner = shlex.split(cmd)[2]
+    assert shlex.split(inner)[-1] == primer
+    assert "/srv/my app" in shlex.split(inner)[1]
+
+
+def test_login_shell_is_off_by_default_in_the_helper():
+    assert not remote_command(["true"], cwd="/x", env={}).startswith("bash")
+
+
 def test_env_delta_keeps_only_what_differs_from_the_local_environment():
     # Shipping the whole local environ over ssh would clobber the remote
     # shell's own environment. Only driver-injected and hook-added keys

@@ -77,6 +77,20 @@ def test_preflight_quotes_a_cwd_with_spaces():
     assert "'/srv/my app'" in preflight_command("claude", "/srv/my app")
 
 
+def test_preflight_honours_the_login_shell():
+    # The preflight must resolve PATH the same way the real spawn will.
+    # A preflight that green-lights a spawn which then fails is worse than
+    # no preflight at all.
+    cmd = preflight_command("claude", "/w", login_shell=True)
+    assert cmd.startswith("bash -lc ")
+    import shlex
+    assert "command -v claude" in shlex.split(cmd)[2]
+
+
+def test_host_spec_defaults_to_a_login_shell():
+    assert HostSpec(name="v", ssh="h", cwd="/w").login_shell is True
+
+
 # --- registry -------------------------------------------------------------
 
 

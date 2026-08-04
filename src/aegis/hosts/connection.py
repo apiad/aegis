@@ -54,10 +54,17 @@ def master_argv(spec: HostSpec, control_path: str,
     ]
 
 
-def preflight_command(binary: str, cwd: str) -> str:
-    """Confirm the harness exists and the working tree is there."""
-    return (f"command -v {shlex.quote(binary)} >/dev/null 2>&1 "
-            f"&& test -d {shlex.quote(cwd)}")
+def preflight_command(binary: str, cwd: str,
+                      login_shell: bool = False) -> str:
+    """Confirm the harness exists and the working tree is there.
+
+    ``login_shell`` must match what the launcher will actually use — a
+    preflight that resolves PATH differently from the real spawn is worse
+    than no preflight, because it green-lights a spawn that then fails.
+    """
+    inner = (f"command -v {shlex.quote(binary)} >/dev/null 2>&1 "
+             f"&& test -d {shlex.quote(cwd)}")
+    return f"bash -lc {shlex.quote(inner)}" if login_shell else inner
 
 
 class HostConnection:
@@ -142,7 +149,7 @@ class HostConnection:
             "ssh", "-T",
             "-o", f"ControlPath={self.control_path}",
             *self._spec.ssh_opts, self._spec.ssh,
-            preflight_command(binary, cwd),
+            preflight_command(binary, cwd, self._spec.login_shell),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
