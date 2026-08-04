@@ -7,7 +7,12 @@ interface, so remoteness lives in one place instead of once per driver.
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
+
+from aegis.hosts.models import HostSpec
 
 # claude stream-json and ACP JSON-RPC both put whole tool payloads on one
 # line; asyncio's 64 KiB default is far too small. Mirrors
@@ -63,3 +68,135 @@ class LocalLauncher:
 
 
 LOCAL = LocalLauncher()
+
+
+# --- ssh transport --------------------------------------------------------
+
+
+def env_delta(env: dict[str, str] | None,
+              base: Mapping[str, str]) -> dict[str, str]:
+    """The environment keys worth sending across the wire.
+
+    A local spawn hands the driver a full copy of ``os.environ`` (that is
+    what ``_apply_pre_spawn_hooks`` returns once any hook fires). Shipping
+    all of it to another machine would clobber the remote shell's own
+    environment with this one's — so only keys that actually differ from
+    the local baseline cross: driver-injected ``extra_env`` and whatever a
+    pre-spawn hook added or changed.
+    """
+    if env is None:
+        return {}
+    return {k: v for k, v in env.items() if base.get(k) != v}
+
+
+def remote_command(argv: list[str], *, cwd: str,
+                   env: dict[str, str]) -> str:
+    """The single shell string ssh will run on the far side.
+
+    ``exec`` matters: it replaces the login shell with the harness, so
+    signals and EOF reach the harness directly rather than a wrapper.
+    """
+    parts = ["cd", shlex.quote(cwd), "&&", "exec"]
+    if env:
+        parts.append("env")
+        parts += [shlex.quote(f"{k}={v}") for k, v in sorted(env.items())]
+    parts += [shlex.quote(a) for a in argv]
+    return " ".join(parts)
+
+
+def ssh_argv(spec: HostSpec, control_path: str,
+             remote_cmd: str) -> list[str]:
+    """A session-carrying ssh invocation that multiplexes over the master.
+
+    ``-T`` disables PTY allocation: stream-json and ACP JSON-RPC need a
+    clean byte stream, and a PTY would inject echo and line discipline
+    into the middle of the protocol.
+    """
+    return [
+        "ssh", "-T",
+        "-o", f"ControlPath={control_path}",
+        *spec.ssh_opts,
+        spec.ssh,
+        remote_cmd,
+    ]
+
+
+def _substitute_mcp_url(argv: list[str], url: str) -> list[str]:
+    """Fill in the MCP URL that wasn't known when argv was built.
+
+    ``build_argv`` bakes ``mcp_config_json(mcp_url)`` into the argv at
+    session-construction time, but a remote session's URL depends on the
+    port sshd allocates when the tunnel opens — which is later. The
+    registry hands drivers an empty URL as a placeholder; this rewrites
+    exactly that one element just before exec. Matching on anything
+    looser (an empty string, a substring) would rewrite unrelated
+    arguments.
+    """
+    from aegis.mcp import mcp_config_json
+    placeholder = mcp_config_json("")
+    real = mcp_config_json(url)
+    return [real if a == placeholder else a for a in argv]
+
+
+class SshLauncher:
+    """Runs the harness on another machine, over a shared ControlMaster."""
+
+    def __init__(self, conn, spec: HostSpec,
+                 local_root: str | None = None) -> None:
+        self._conn = conn
+        self._spec = spec
+        self.host_key = spec.name
+        self.local_root = local_root
+        # Bytes ssh itself wrote — the difference between "the harness
+        # exited" and "the link died", which the session needs at EOF.
+        self.stderr_tail: list[bytes] = []
+        self._proc: asyncio.subprocess.Process | None = None
+        self._stderr_task: asyncio.Task | None = None
+
+    def persona_root(self, cwd: str) -> str:
+        """A persona file lives in the LOCAL project even when the
+        harness runs remotely, so it never resolves under the remote
+        cwd."""
+        return self.local_root or "."
+
+    async def spawn(self, argv: list[str], *, cwd: str,
+                    env: dict[str, str] | None
+                    ) -> asyncio.subprocess.Process:
+        await self._conn.ensure_open()
+        argv = _substitute_mcp_url(argv, self._conn.remote_mcp_url)
+        cmd = remote_command(argv, cwd=cwd, env=env_delta(env, os.environ))
+        proc = await asyncio.create_subprocess_exec(
+            *ssh_argv(self._spec, self._conn.control_path, cmd),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=STREAM_LIMIT,
+        )
+        self._proc = proc
+        self._stderr_task = asyncio.create_task(self._drain_stderr(proc))
+        return proc
+
+    async def _drain_stderr(self, proc) -> None:
+        """Keep the last of what ssh said. This is the only place the
+        difference between 'harness exited' and 'link died' is written
+        down."""
+        if proc.stderr is None:
+            return
+        try:
+            async for raw in proc.stderr:
+                self.stderr_tail.append(raw.rstrip())
+                del self.stderr_tail[:-40]
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    def link_failure(self):
+        """A ``RemoteLinkLost`` if ssh died, else ``None``.
+
+        rc 0 means the harness ended normally and the link was fine.
+        """
+        from aegis.hosts.errors import RemoteLinkLost
+        proc = self._proc
+        if proc is None or proc.returncode in (None, 0):
+            return None
+        detail = b"\n".join(self.stderr_tail).decode("utf-8", "replace")
+        return RemoteLinkLost(self._spec.name, detail.strip())
