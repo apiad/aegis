@@ -1,8 +1,9 @@
 # aegis SSH execution hosts
 
-**Status:** approved, planned — not yet implemented
+**Status:** implemented (2026-08-04)
 **Date:** 2026-08-04
 **Plan:** `docs/superpowers/plans/2026-08-04-aegis-ssh-execution-hosts.md`
+**Procedure:** `know-how/ssh-execution-hosts.md`
 
 Run a harness process on another machine over a persistent SSH
 connection, while the aegis session that owns it stays local. One tab in
@@ -72,6 +73,21 @@ hosts:
 | `ssh` | yes | the destination handed to `ssh`. Resolved through the user's `~/.ssh/config`, so aliases, `ProxyCommand`, jump hosts and non-standard ports all work without aegis reimplementing any of it. |
 | `cwd` | yes | default working directory on that host |
 | `ssh_opts` | no | extra flags appended to every `ssh` invocation for this host |
+| `login_shell` | no (default **true**) | run the harness under `bash -lc` |
+| `remote_mcp_port` | no | pin the reverse-forward port instead of parsing sshd's choice |
+
+`login_shell` was **not** in the original design and was added during
+implementation, because without it the feature does not work at all: a
+non-interactive `ssh host cmd` never sources the user's profile, so a
+harness installed in `~/.local/bin` — which is exactly where the claude
+installer puts it — is not on `PATH`, and every remote spawn dies at
+preflight for a reason that has nothing to do with the user. A login
+shell resolves the harness the way the user's own shell does. Verified
+on zion that it both finds `claude` and leaves stdout clean, so the
+protocol stream is not corrupted. Turn it off only for a host whose
+profile writes to stdout. Preflight honours the same flag — a preflight
+that resolves `PATH` differently from the real spawn is worse than none,
+because it green-lights a spawn that then fails.
 
 `local` is an implicit host that always exists, cannot be declared, and
 whose cwd is `find_project_root()`. Declaring a host named `local` is a

@@ -33,14 +33,18 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 - `know-how/releasing.md` — *reach for it when cutting a release / bumping
   the version / pushing a `vX.Y.Z` tag — especially the `uv.lock` re-lock
   gate that has failed the PyPI publish twice.*
+- `know-how/ssh-execution-hosts.md` — *reach for it when configuring or
+  debugging a `hosts:` entry — a session whose harness runs on another
+  machine (`/spawn main@vps`) — or the SSH ControlMaster / reverse MCP
+  tunnel behind it. Distinct from `--remote` and from `remotes:`.*
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
 harness subprocess is rooted there unless `--cwd` overrides.
 `.aegis.yaml` is the single config substrate — it carries `agents:`,
-`queues:`, `schedules:`, `remotes:`, `groups:`, `web:`, and
+`queues:`, `schedules:`, `remotes:`, `hosts:`, `groups:`, `web:`, and
 `plugin_dirs:` sections. Drop-in overlays live under
-`.aegis/{agents,queues,schedules,groups}/*.yaml` and merge fail-loud
+`.aegis/{agents,queues,schedules,hosts,groups}/*.yaml` and merge fail-loud
 with inline entries. `@workflow`-decorated functions are registered by
 auto-importing every `*.py` under each `plugin_dirs` entry (default
 `.aegis/plugins/`).
@@ -274,6 +278,36 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   Claims auto-reap on session close (the live-handle filter). MCP surface:
   `aegis_claim` / `aegis_release` / `aegis_claims`. New store, coexists
   with `bin/ws-lock`; per-host v1.
+- `src/aegis/hosts/` - SSH execution hosts (eighth coordination
+  primitive): running a harness process on another machine while the
+  session, transcript and MCP peer identity stay local. `models.py`
+  (`HostSpec` config entry + `Place` resolved host+cwd); `resolve.py`
+  (`resolve_place` precedence — explicit > profile default > local — and
+  `parse_at_host` for `agent@host:/cwd`); `launcher.py` (the `Launcher`
+  seam both driver families spawn through: `LocalLauncher` is today's
+  `create_subprocess_exec`, `SshLauncher` wraps the same argv into
+  `ssh -T <dest> 'cd <cwd> && exec <argv>'`); `connection.py`
+  (`HostConnection` — one ControlMaster per host, `-R 0` reverse tunnel
+  carrying the local MCP port with the allocated port parsed off ssh's
+  stderr, preflight, teardown); `registry.py` (`HostRegistry` — one
+  connection per host; `launcher_for` is SYNCHRONOUS because
+  `_sync_spawn` is, so the connection opens lazily inside
+  `SshLauncher.spawn`, which also puts connection errors in a pane that
+  exists to show them).
+  Host is a **third orthogonal spawn axis** beside agent profile and
+  harness — any harness on any host, resolved per spawn and never
+  persisted, exactly like the model/effort overrides.
+  Two traps worth knowing: **`login_shell` defaults to True** because a
+  non-interactive ssh command never sources the profile, so a harness in
+  `~/.local/bin` is not on `PATH` and every spawn dies at preflight; and
+  **only one reader per pipe** — `SshLauncher.watch_stderr()` is opt-in
+  and called only by `ClaudeSession`, since `AcpSession` drains its own
+  stderr.
+  Paths are host-scoped: `Claim.host` gates overlap, and `file_target`
+  returns `None` off-host so ctrl+click cannot silently open the
+  identically-named local file. NOT the same as `--remote` (TUI attached
+  to a remote serve) or `remotes:` (federated serves) — see
+  `know-how/ssh-execution-hosts.md`.
 - `src/aegis/tui/groups/` - TUI surface for groups. `state.py`
   (`GroupTabState` + aggregate-state emoji); `dashboard.py`
   (`GroupDashboard` widget with `render_dashboard` pure function —

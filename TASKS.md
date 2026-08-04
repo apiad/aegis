@@ -36,6 +36,35 @@ GitHub Copilot CLI supports ACP since Jan 2026: `copilot --acp` (stdio).
 Driver is a four-line `AcpDriver` shim — same shape as `GeminiDriver`.
 Auth goes through `gh auth login` (no separate token management).
 
+## Recently shipped
+
+### SSH execution hosts *(specced + planned + built 2026-08-04)*
+
+`hosts:` config; `host` as a third orthogonal spawn axis. `Ctrl+N` host
+tier, `/spawn main@vps:/path`, `aegis_spawn(host=…)`, `/reconnect`,
+host-scoped claims and file affordances, `aegis config host …`. Live
+tests run against `ssh localhost`, including a real `claude` over the
+link and a mutation-checked reverse-tunnel test.
+
+Not durable by design — that stays `aegis --remote ssh://vps:8080`.
+
+Follow-ups worth considering, none blocking:
+
+- **A token on the MCP plane.** The reverse-tunneled port is
+  unauthenticated on the remote loopback, so any user on that box can
+  drive the local aegis. Fine on a personal VPS, a blocker on a shared one.
+- **Filesystem bridge.** Fetch remote files over the control connection so
+  ctrl+click, the indexer and the `@`-picker work against a remote pane.
+  Its own spec.
+- **Stage the launch command as a remote script**, to keep the primer and
+  persona out of the remote `ps`.
+- **Host-aware terminals** (`aegis_term_spawn(host=…)`) — separate
+  substrate, separate treatment.
+
+- Spec: `docs/superpowers/specs/2026-08-04-aegis-ssh-execution-hosts-design.md`
+- Plan: `docs/superpowers/plans/2026-08-04-aegis-ssh-execution-hosts.md`
+- Know-how: `know-how/ssh-execution-hosts.md`
+
 ## Active
 
 ### Claude driver on the Agent SDK *(specced 2026-07-30, no plan yet)*

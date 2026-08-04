@@ -7,6 +7,31 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **SSH execution hosts — run a harness on another machine.** A new
+  `hosts:` config section, and `host` becomes a third orthogonal spawn axis
+  beside agent profile and harness: any harness on any host, resolved per
+  spawn and never persisted, exactly like the `model`/`effort` overrides.
+  Reach it from `Ctrl+N` (a host tier ahead of the usual ones),
+  `/spawn main@vps:/srv/app`, or `aegis_spawn(..., host="vps")` so an agent
+  can place a peer itself. The point is not remote *access* — it is that
+  the agent's `Bash`/`Read`/`Edit` run natively over there instead of one
+  `ssh` invocation per command. One SSH ControlMaster per host is shared by
+  every session on it, and a reverse tunnel carries the local MCP plane
+  across, so a remote agent is an ordinary peer: same handles, same
+  handoffs, same canvases. This is neither `--remote` (the TUI attaching to
+  a remote serve) nor `remotes:` (federated serves) — here there is one
+  aegis, local, and only the subprocess is elsewhere.
+  Paths become host-scoped, which fixes a silent wrong answer:
+  `/home/apiad/Workspace/src/foo.py` exists on both machines and is a
+  *different file*, so `Ctrl+click` on a remote pane now offers
+  `vps:/…/foo.py` rather than opening the local one, file claims carry
+  their host, and the tab is marked `@vps`. A dropped link reports itself
+  instead of leaving a dead tab looking idle, and `/reconnect` rebuilds the
+  harness on the same host, resuming the same conversation in the same tab.
+  `aegis config host add|remove|list` writes it all scriptably.
+  Spec: `docs/superpowers/specs/2026-08-04-aegis-ssh-execution-hosts-design.md`;
+  procedure: `know-how/ssh-execution-hosts.md`.
+
 - **`Ctrl+click` a `Read`/`Write`/`Edit` block to open that file (TUI).** The
   gesture prose blocks already had for backtick tokens now works on the tool
   call itself — and it needs no fuzzy matching, because the call already named

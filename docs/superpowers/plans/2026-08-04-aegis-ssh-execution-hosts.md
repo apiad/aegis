@@ -89,7 +89,7 @@ This is the walking skeleton. It changes no behaviour — it proves the seam exi
   - `aegis.hosts.errors.HostError(Exception)`.
   - `HarnessDriver.session(agent, cwd, mcp_url, handle, launcher: Launcher = LOCAL)` and the same trailing parameter on `resume` and `fork`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_launcher.py`:
 
@@ -139,12 +139,12 @@ def test_local_launcher_passes_cwd():
     assert asyncio.run(go()).endswith("/tmp")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.hosts'`
 
-- [ ] **Step 3: Create the package and the local launcher**
+- [x] **Step 3: Create the package and the local launcher**
 
 Create `src/aegis/hosts/__init__.py`:
 
@@ -238,12 +238,12 @@ class LocalLauncher:
 LOCAL = LocalLauncher()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Thread the launcher through `HarnessDriver`**
+- [x] **Step 5: Thread the launcher through `HarnessDriver`**
 
 In `src/aegis/drivers/base.py`, add the import and the defaulted parameter to the three factory methods. Replace the `build_argv`/`session`/`resume`/`fork` block:
 
@@ -279,7 +279,7 @@ class HarnessDriver(abc.ABC):
 
 Leave the docstrings on `resume` and `fork` exactly as they are; only the signature line changes.
 
-- [ ] **Step 6: Make `ClaudeSession` launcher-driven**
+- [x] **Step 6: Make `ClaudeSession` launcher-driven**
 
 In `src/aegis/drivers/claude.py`:
 
@@ -386,7 +386,7 @@ In `ClaudeDriver`, thread the launcher through all three factories, and resolve 
 
 `build_argv` gaining a defaulted 5th parameter is compatible with the abstract signature in `base.py` (Python does not enforce arity on overrides) and with every existing caller.
 
-- [ ] **Step 7: Make `AcpSession` launcher-driven**
+- [x] **Step 7: Make `AcpSession` launcher-driven**
 
 In `src/aegis/drivers/acp.py`, add `from aegis.hosts.launcher import LOCAL, Launcher` to the imports, add `launcher: Launcher = LOCAL` to `AcpSession.__init__`'s keyword arguments, store `self._launcher = launcher` beside `self._extra_env`, and replace the process-creation block inside `start()` (the `kw: dict = dict(...)` through `create_subprocess_exec` lines) with:
 
@@ -429,7 +429,7 @@ In `AcpDriver.session` and `AcpDriver.resume`, pass the launcher into the sessio
         return s
 ```
 
-- [ ] **Step 8: Add the launcher-agnosticism test**
+- [x] **Step 8: Add the launcher-agnosticism test**
 
 Append to `tests/test_hosts_launcher.py`:
 
@@ -482,12 +482,12 @@ def test_driver_defaults_to_the_local_launcher(tmp_path):
     assert sess._launcher is LOCAL
 ```
 
-- [ ] **Step 9: Run the whole fast suite**
+- [x] **Step 9: Run the whole fast suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS, with no new failures. This is the gate that proves the refactor changed no behaviour.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/aegis/hosts/__init__.py src/aegis/hosts/errors.py \
@@ -513,7 +513,7 @@ git commit -m "refactor(drivers): a Launcher seam under both driver families"
   - `AegisConfig.hosts: dict[str, HostSpec]`.
   - `"hosts"` added to `yaml_loader._SECTIONS`, so `.aegis/hosts/*.yaml` overlays merge fail-loud like every other section.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_config.py`:
 
@@ -624,12 +624,12 @@ hosts:
         load_config(tmp_path)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_config.py -q`
 Expected: FAIL with `AttributeError: 'AegisConfig' object has no attribute 'hosts'`
 
-- [ ] **Step 3: Write `HostSpec`**
+- [x] **Step 3: Write `HostSpec`**
 
 Create `src/aegis/hosts/models.py`:
 
@@ -677,7 +677,7 @@ class Place:
         return path if self.is_local else f"{self.host}:{path}"
 ```
 
-- [ ] **Step 4: Wire the section into the loader**
+- [x] **Step 4: Wire the section into the loader**
 
 In `src/aegis/config/yaml_loader.py`:
 
@@ -759,7 +759,7 @@ And pass it into the returned `AegisConfig`, beside `remotes=remotes`:
         hosts=hosts,
 ```
 
-- [ ] **Step 5: Add the optional `host:` default to `Agent`**
+- [x] **Step 5: Add the optional `host:` default to `Agent`**
 
 In `src/aegis/config/__init__.py`, add one field to the `Agent` model, after `prompt`:
 
@@ -769,17 +769,17 @@ In `src/aegis/config/__init__.py`, add one field to the `Agent` model, after `pr
 
 It is a plain passthrough: `_sync_provider_and_flat` needs no change, because `host` is aegis-side placement and not a provider concern.
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_config.py -q`
 Expected: PASS (8 tests)
 
-- [ ] **Step 7: Run the full fast suite**
+- [x] **Step 7: Run the full fast suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/hosts/models.py src/aegis/config/yaml_loader.py \
@@ -799,7 +799,7 @@ git commit -m "feat(hosts): a hosts: config section with overlays and fail-loud 
 - Consumes: `HostSpec`, `Place` from Task 2.
 - Produces: `aegis.hosts.resolve.resolve_place(*, host: str | None, cwd: str | None, agent_host: str | None, hosts: dict[str, HostSpec], local_root: str) -> Place`. Raises `HostError` for an unknown host name.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_resolve.py`:
 
@@ -859,12 +859,12 @@ def test_unknown_host_error_lists_the_known_ones():
         r(host="nowhere")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_resolve.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.hosts.resolve'`
 
-- [ ] **Step 3: Write the resolver**
+- [x] **Step 3: Write the resolver**
 
 Create `src/aegis/hosts/resolve.py`:
 
@@ -900,12 +900,12 @@ def resolve_place(*, host: str | None, cwd: str | None,
     return Place(name, cwd or spec.cwd)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_resolve.py -q`
 Expected: PASS (8 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/hosts/resolve.py tests/test_hosts_resolve.py
@@ -930,7 +930,7 @@ Pure string work, no `ssh` process. This is where quoting bugs are cheapest to c
   - `aegis.hosts.launcher.ssh_argv(spec: HostSpec, control_path: str, remote_cmd: str) -> list[str]`
   - `aegis.hosts.launcher.SshLauncher(conn, spec, local_root)` — implements `Launcher`, `host_key == spec.name`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_launcher.py`:
 
@@ -1013,12 +1013,12 @@ def test_ssh_argv_appends_host_ssh_opts():
     assert argv.index("ServerAliveInterval=15") < argv.index("h")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: FAIL with `ImportError: cannot import name 'env_delta' from 'aegis.hosts.launcher'`
 
-- [ ] **Step 3: Write the composition helpers and `SshLauncher`**
+- [x] **Step 3: Write the composition helpers and `SshLauncher`**
 
 Append to `src/aegis/hosts/launcher.py` (and add `import os`, `import shlex`, `from collections.abc import Mapping`, `from aegis.hosts.models import HostSpec` to the imports):
 
@@ -1105,12 +1105,12 @@ class SshLauncher:
         )
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: PASS (all tests including the 10 new ones)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/hosts/launcher.py tests/test_hosts_launcher.py
@@ -1133,7 +1133,7 @@ git commit -m "feat(hosts): SshLauncher argv composition with shell-safe quoting
   - `aegis.hosts.connection.preflight_command(binary: str, cwd: str) -> str`
   - `aegis.hosts.connection.HostConnection(spec, control_path, mcp_port)` with `async ensure_open()`, `control_path: str`, `remote_mcp_url: str`, `async close()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_connection.py`:
 
@@ -1214,12 +1214,12 @@ def test_preflight_quotes_a_cwd_with_spaces():
     assert "'/srv/my app'" in preflight_command("claude", "/srv/my app")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_connection.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.hosts.connection'`
 
-- [ ] **Step 3: Write the connection module**
+- [x] **Step 3: Write the connection module**
 
 Create `src/aegis/hosts/connection.py`:
 
@@ -1406,12 +1406,12 @@ class HostConnection:
         self._remote_port = None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_connection.py -q`
 Expected: PASS (10 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/hosts/connection.py tests/test_hosts_connection.py
@@ -1430,7 +1430,7 @@ git commit -m "feat(hosts): HostConnection — ControlMaster, reverse tunnel, pr
 - Consumes: `HostSpec`, `Place`, `HostConnection`, `LocalLauncher`, `SshLauncher`.
 - Produces: `aegis.hosts.registry.HostRegistry(hosts: dict[str, HostSpec], state_dir: Path, local_root: str)` with `set_mcp_port(port: int)`, **synchronous** `launcher_for(place: Place, mcp_url: str) -> tuple[Launcher, str]`, and `async close_all()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_connection.py`:
 
@@ -1496,12 +1496,12 @@ def test_unknown_host_is_a_loud_error(tmp_path):
 
 Add `from aegis.hosts.errors import HostError` to that file's imports.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_connection.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.hosts.registry'`
 
-- [ ] **Step 3: Write the registry**
+- [x] **Step 3: Write the registry**
 
 Create `src/aegis/hosts/registry.py`:
 
@@ -1589,7 +1589,7 @@ class HostRegistry:
         self._conns.clear()
 ```
 
-- [ ] **Step 4: Resolve the deferred URL inside `SshLauncher.spawn`**
+- [x] **Step 4: Resolve the deferred URL inside `SshLauncher.spawn`**
 
 The MCP URL is baked into argv by `build_argv`, which runs before the tunnel exists. `SshLauncher.spawn` therefore rewrites the placeholder just before exec. In `src/aegis/hosts/launcher.py`, replace `SshLauncher.spawn` with:
 
@@ -1630,7 +1630,7 @@ def _substitute_mcp_url(argv: list[str], url: str) -> list[str]:
 
 Only the exact placeholder config blob is replaced — nothing else in argv is touched. Matching on anything looser (an empty string, a substring) would rewrite unrelated arguments.
 
-- [ ] **Step 5: Add the substitution test**
+- [x] **Step 5: Add the substitution test**
 
 Append to `tests/test_hosts_launcher.py`:
 
@@ -1649,12 +1649,12 @@ def test_deferred_mcp_url_is_substituted_before_exec():
     assert out[4] == "--strict-mcp-config"
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_connection.py tests/test_hosts_launcher.py -q`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/hosts/registry.py src/aegis/hosts/launcher.py \
@@ -1679,7 +1679,7 @@ git commit -m "feat(hosts): HostRegistry with a synchronous launcher_for and def
   - `SessionManager._sync_spawn(..., host: str | None = None, cwd: str | None = None)`; same two keywords on `spawn()` and `fork()`.
   - `AgentSession.place: Place`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_spawn_wiring.py`:
 
@@ -1774,12 +1774,12 @@ def test_unknown_host_raises_before_a_session_is_created(tmp_path):
     assert len(mgr.sessions()) == before
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_spawn_wiring.py -q`
 Expected: FAIL with `TypeError: SessionManager.__init__() got an unexpected keyword argument 'hosts'`
 
-- [ ] **Step 3: Give `SessionManager` the host axis**
+- [x] **Step 3: Give `SessionManager` the host axis**
 
 In `src/aegis/core/manager.py`:
 
@@ -1869,7 +1869,7 @@ In `fork`, pass the parent's place so branching a conversation never silently re
             place=s.place,
 ```
 
-- [ ] **Step 4: Give `AgentSession` a place**
+- [x] **Step 4: Give `AgentSession` a place**
 
 In `src/aegis/core/session.py`, add a defaulted keyword to `AgentSession.__init__` and store it:
 
@@ -1886,7 +1886,7 @@ and in the body, before the other assignments:
 
 The local import avoids an import cycle at module load; `core.session` is imported early.
 
-- [ ] **Step 5: Update the session factory**
+- [x] **Step 5: Update the session factory**
 
 In `src/aegis/cli.py`, replace `_session_factory`:
 
@@ -1935,17 +1935,17 @@ and immediately after the MCP runtime starts (wherever `mcp.start()` is called),
     host_registry.set_mcp_port(mcp.port)
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_hosts_spawn_wiring.py -q`
 Expected: PASS (6 tests)
 
-- [ ] **Step 7: Run the full fast suite**
+- [x] **Step 7: Run the full fast suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/cli.py src/aegis/core/manager.py src/aegis/core/session.py \
@@ -1966,7 +1966,7 @@ This is the task that proves the whole mechanism, without needing the VPS. It us
 - Consumes: everything from Tasks 1–7.
 - Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the live test**
+- [x] **Step 1: Write the live test**
 
 Create `tests/test_ssh_hosts_live.py`:
 
@@ -2142,24 +2142,24 @@ def test_claude_runs_over_ssh_and_answers(tmp_path):
     assert "PONG" in asyncio.run(go()).upper()
 ```
 
-- [ ] **Step 2: Run the live test**
+- [x] **Step 2: Run the live test**
 
 Run: `uv run python -m pytest tests/test_ssh_hosts_live.py -v`
 Expected: PASS, or skips with a clear reason if `ssh localhost` is not set up. If you see skips, set up key auth to localhost and re-run — a silently-skipped live test proves nothing.
 
-- [ ] **Step 3: Mutation-check the tunnel test**
+- [x] **Step 3: Mutation-check the tunnel test**
 
 A test that cannot fail licenses shipping. Temporarily break the forward — in `master_argv`, change `-R` to bind a port that cannot carry traffic (e.g. change `f"{remote_port}:127.0.0.1:{mcp_port}"` to `f"{remote_port}:127.0.0.1:1"`).
 
 Run: `uv run python -m pytest tests/test_ssh_hosts_live.py::test_the_reverse_tunnel_actually_carries_traffic -v`
 Expected: **FAIL**. Then revert the change and confirm it passes again. Do not commit the mutation.
 
-- [ ] **Step 4: Confirm the fast suite is unaffected**
+- [x] **Step 4: Confirm the fast suite is unaffected**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS, and the live file contributes zero tests to this run.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_ssh_hosts_live.py
@@ -2183,7 +2183,7 @@ git commit -m "test(hosts): live end-to-end over ssh localhost, tunnel included"
   - `SshLauncher.link_failure() -> RemoteLinkLost | None` — non-`None` only when the ssh process exited non-zero.
   - `ClaudeSession` emits an `Error` event carrying the link-failure text before its stream-end sentinel.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_launcher.py`:
 
@@ -2239,12 +2239,12 @@ def test_clean_harness_exit_is_not_a_link_failure(tmp_path):
     assert lau.link_failure() is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: FAIL with `AttributeError: 'SshLauncher' object has no attribute 'link_failure'`
 
-- [ ] **Step 3: Add the error type**
+- [x] **Step 3: Add the error type**
 
 Append to `src/aegis/hosts/errors.py`:
 
@@ -2264,7 +2264,7 @@ class RemoteLinkLost(HostError):
             f"link to {host} lost — {detail or 'no diagnostic output'}")
 ```
 
-- [ ] **Step 4: Retain ssh's stderr and expose the failure**
+- [x] **Step 4: Retain ssh's stderr and expose the failure**
 
 In `src/aegis/hosts/launcher.py`, add to `SshLauncher.__init__`:
 
@@ -2317,7 +2317,7 @@ And add the two methods:
         return RemoteLinkLost(self._spec.name, detail.strip())
 ```
 
-- [ ] **Step 5: Surface it from the session**
+- [x] **Step 5: Surface it from the session**
 
 In `src/aegis/drivers/claude.py`, replace the `finally` block of `_pump_stdout`:
 
@@ -2347,7 +2347,7 @@ from aegis.events import (
 
 There is deliberately **no new event type** here. `events.py` has no `Error` class, and inventing one would mean touching every renderer. `AssistantText` puts the diagnostic in the transcript where a reader will see it, and `Result(is_error=True)` is the terminal event `AgentSession` already keys its `error` state off — so the tab turns red through the path that already exists.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_launcher.py -q`
 Expected: PASS
@@ -2355,7 +2355,7 @@ Expected: PASS
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/hosts/errors.py src/aegis/hosts/launcher.py \
@@ -2376,7 +2376,7 @@ git commit -m "feat(hosts): a dropped ssh link reports itself instead of looking
 - Consumes: `AgentSession.place`, `HarnessDriver.supports_resume`, `HarnessSession.session_id`.
 - Produces: `SessionManager.reconnect(handle: str) -> str` — rebuilds the session in place via `drv.resume(...)` on the same place, returning a status string. Raises `ValueError` listing every refusal reason at once (the same shape `fork` uses).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_commands.py`:
 
@@ -2462,12 +2462,12 @@ def test_reconnect_refuses_on_a_local_session(tmp_path):
         asyncio.run(mgr.reconnect(h))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: FAIL with `AttributeError: 'SessionManager' object has no attribute 'reconnect'`
 
-- [ ] **Step 3: Implement `reconnect`**
+- [x] **Step 3: Implement `reconnect`**
 
 Add to `SessionManager` in `src/aegis/core/manager.py`:
 
@@ -2522,7 +2522,7 @@ Add `import contextlib` at the top of the module if it is not already imported.
         self.state = AgentState.ready
 ```
 
-- [ ] **Step 4: Extend the session factory with `resume_from`**
+- [x] **Step 4: Extend the session factory with `resume_from`**
 
 In `src/aegis/cli.py`, add the parameter to `make_session`:
 
@@ -2545,7 +2545,7 @@ In `src/aegis/cli.py`, add the parameter to `make_session`:
         return drv.session(profile, place.cwd, url, handle, launcher)
 ```
 
-- [ ] **Step 5: Add the `/reconnect` slash command**
+- [x] **Step 5: Add the `/reconnect` slash command**
 
 In `src/aegis/commands/builtins/session_ctl.py`, add the handler and register it alongside the other session-control commands:
 
@@ -2570,12 +2570,12 @@ Register it in the module's command list, matching the surrounding `SlashCommand
 
 Read the neighbouring registrations first and match their exact `Args`/`ArgSpec` construction — the parser API is declarative and the surrounding entries are the reference.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: PASS (4 tests)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/core/manager.py src/aegis/core/session.py \
@@ -2600,7 +2600,7 @@ git commit -m "feat(hosts): /reconnect resumes a dropped remote session in place
 - Consumes: `Place.host` (Task 2), `AgentSession.place` (Task 7).
 - Produces: `Claim.host: str = "local"`; `claims_overlap` returns `False` across hosts; `ClaimRegistry.claim(..., host: str = "local")`; `SessionInfo.host: str = "local"`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_claims.py`:
 
@@ -2671,12 +2671,12 @@ def test_exclusive_on_the_same_host_still_blocks():
 
 `ClaimRegistry()` may require constructor arguments (a log, a live-handle filter) — read `src/aegis/locks/registry.py` and construct it the way the existing `tests/` for locks do.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_claims.py -q`
 Expected: FAIL with `TypeError: Claim.__init__() got an unexpected keyword argument 'host'`
 
-- [ ] **Step 3: Add `host` to the model and the overlap rule**
+- [x] **Step 3: Add `host` to the model and the overlap rule**
 
 In `src/aegis/locks/models.py`, add the field to `Claim` (last, with a default, so existing positional construction is unaffected):
 
@@ -2711,7 +2711,7 @@ def claims_overlap(a: Claim, b: Claim) -> bool:
 
 The rest of the function is unchanged.
 
-- [ ] **Step 4: Thread `host` through the registry**
+- [x] **Step 4: Thread `host` through the registry**
 
 In `src/aegis/locks/registry.py`:
 
@@ -2731,7 +2731,7 @@ The rest of the method is unchanged.
 
 In `src/aegis/locks/persistence.py`, include `host` in the serialised record and read it back with a `"local"` default, so pre-existing JSONL logs replay unchanged.
 
-- [ ] **Step 5: Have `aegis_claim` derive the host from the caller**
+- [x] **Step 5: Have `aegis_claim` derive the host from the caller**
 
 In `src/aegis/mcp/bridge.py`, add to `SessionInfo`:
 
@@ -2750,7 +2750,7 @@ then add `host=host` to the `registry.claim(...)` call. In `aegis_claims`, inclu
 
 Wherever `SessionInfo` objects are constructed from `AgentSession`s, pass `host=s.place.host`.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_claims.py -q`
 Expected: PASS (6 tests)
@@ -2758,7 +2758,7 @@ Expected: PASS (6 tests)
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/locks/models.py src/aegis/locks/registry.py \
@@ -2780,7 +2780,7 @@ git commit -m "feat(locks): claims are host-scoped — same path, different mach
 - Consumes: `Place.qualify` (Task 2), `AgentSession.place` (Task 7).
 - Produces: `file_target(name, raw_input, locations=(), host: str = "local") -> FileTarget | None` — returns `None` whenever `host != "local"`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_hosts_render.py`:
 
@@ -2817,12 +2817,12 @@ def test_place_qualifies_a_path_for_display():
     assert Place("local", "/w").qualify("/w/x.py") == "/w/x.py"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_render.py -q`
 Expected: FAIL with `TypeError: file_target() got an unexpected keyword argument 'host'`
 
-- [ ] **Step 3: Gate `file_target` on the host**
+- [x] **Step 3: Gate `file_target` on the host**
 
 In `src/aegis/render_shared.py`:
 
@@ -2844,7 +2844,7 @@ def file_target(name: str, raw_input: dict | None,
 
 The rest of the function is unchanged.
 
-- [ ] **Step 4: Pass the pane's host at every call site**
+- [x] **Step 4: Pass the pane's host at every call site**
 
 In `src/aegis/tui/pane.py`, find each `file_target(...)` call and add `host=self._core.place.host` (use whatever accessor the pane already has for its session core). At the block-gesture handler (`CopyableBlock.on_click`), when `file_target` returns `None` **and** the pane is remote, ctrl+click copies the qualified path rather than doing nothing:
 
@@ -2861,7 +2861,7 @@ Also disable the `@`-file picker on a remote pane: where the pane opens `FilePic
 
 Add an `@<host>` suffix to the pane's tab label and status bar wherever the handle is rendered, so a pane's machine is never something you have to remember.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_render.py -q`
 Expected: PASS (4 tests)
@@ -2869,7 +2869,7 @@ Expected: PASS (4 tests)
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/render_shared.py src/aegis/tui/pane.py \
@@ -2890,7 +2890,7 @@ git commit -m "feat(tui): a remote pane shows host-qualified paths instead of op
 - Consumes: `SessionManager.spawn(host=, cwd=)` (Task 7).
 - Produces: `aegis.hosts.resolve.parse_at_host(token: str) -> tuple[str, str | None, str | None]` returning `(agent, host, cwd)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_commands.py`:
 
@@ -2925,12 +2925,12 @@ def test_spawn_command_passes_host_and_cwd(tmp_path):
     assert mgr.get(h).place == Place("vps", "/srv/app")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: FAIL with `ImportError: cannot import name 'parse_at_host'`
 
-- [ ] **Step 3: Write the parser**
+- [x] **Step 3: Write the parser**
 
 Append to `src/aegis/hosts/resolve.py`:
 
@@ -2951,7 +2951,7 @@ def parse_at_host(token: str) -> tuple[str, str | None, str | None]:
     return agent, host, (cwd if csep and cwd else None)
 ```
 
-- [ ] **Step 4: Use it in `/spawn`**
+- [x] **Step 4: Use it in `/spawn`**
 
 In `src/aegis/commands/builtins/core.py`, inside `_spawn`, parse the agent token before dispatching:
 
@@ -2973,12 +2973,12 @@ Keep the existing `model` / `effort` arguments exactly as the current call passe
 
 Extend the `Arg.completer` for the agent argument so the palette offers `<agent>@<host>` combinations, sourced from the bridge's known hosts.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/hosts/resolve.py src/aegis/commands/builtins/core.py \
@@ -2999,7 +2999,7 @@ git commit -m "feat(commands): /spawn agent@host[:cwd]"
 - Consumes: `SessionManager.spawn(host=, cwd=)` (Task 7), `SessionInfo.host` (Task 11).
 - Produces: `aegis_spawn(profile, opening_prompt, from_handle, host=None, cwd=None)`; `aegis_list_sessions` entries carry `host`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_commands.py`:
 
@@ -3012,12 +3012,12 @@ def test_session_info_reports_the_host(tmp_path):
     assert hosts == ["local", "vps"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: FAIL with `AttributeError: 'SessionInfo' object has no attribute 'host'` (or the sessions list not carrying it).
 
-- [ ] **Step 3: Add the parameters and the reporting**
+- [x] **Step 3: Add the parameters and the reporting**
 
 In `src/aegis/mcp/bridge.py`, add `host: str | None = None, cwd: str | None = None` to the `AppBridge.spawn` protocol signature.
 
@@ -3060,7 +3060,7 @@ and one under `aegis_spawn`:
     surface — only its filesystem and shell are elsewhere.
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_commands.py -q`
 Expected: PASS
@@ -3068,7 +3068,7 @@ Expected: PASS
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/mcp/server.py src/aegis/mcp/bridge.py \
@@ -3089,7 +3089,7 @@ git commit -m "feat(mcp): aegis_spawn places an agent on a host; peers report th
 - Consumes: `HostRegistry.known()` (Task 6), `Agent.host` (Task 2).
 - Produces: `aegis.tui.picker.build_host_rows(hosts: list[str], local_label: str) -> list[tuple[str, str]]` — `(value, label)` pairs, `local` always first.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_render.py`:
 
@@ -3109,12 +3109,12 @@ def test_host_rows_with_no_configured_hosts_offer_only_local():
     assert [v for v, _ in build_host_rows([], local_label="/x")] == ["local"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_render.py -q`
 Expected: FAIL with `ImportError: cannot import name 'build_host_rows'`
 
-- [ ] **Step 3: Add the row builder**
+- [x] **Step 3: Add the row builder**
 
 In `src/aegis/tui/picker.py`, beside `build_picker_rows`:
 
@@ -3131,13 +3131,13 @@ def build_host_rows(hosts: list[str],
     return rows
 ```
 
-- [ ] **Step 4: Wire the tier into Ctrl+N**
+- [x] **Step 4: Wire the tier into Ctrl+N**
 
 In `src/aegis/tui/app.py`, in the new-tab action, push a `_ChoicePicker` built from `build_host_rows(...)` **before** the existing `AgentPicker`, then pass the chosen host into the spawn call. When the chosen agent profile carries a `host:` default, pre-select that row. Escape at the host tier cancels the whole spawn, matching how escape behaves at the agent tier.
 
 The existing `_ChoicePicker(options, ...)` modal already takes `(value, label)` pairs, so no new modal class is required — read its constructor and use it directly.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_hosts_render.py -q`
 Expected: PASS
@@ -3145,11 +3145,11 @@ Expected: PASS
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS with no new failures.
 
-- [ ] **Step 6: Manually verify the picker**
+- [x] **Step 6: Manually verify the picker**
 
 Run `uv run aegis` in a directory with a `hosts:` entry configured, press `Ctrl+N`, and confirm the host tier appears with `local` first. This is a TUI affordance — a passing unit test on the row builder does not prove the modal renders.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/tui/picker.py src/aegis/tui/app.py \
@@ -3170,7 +3170,7 @@ git commit -m "feat(tui): Ctrl+N picks a host before an agent"
 - Consumes: `HostSpec` (Task 2).
 - Produces: `aegis.config.edit.add_host(root, name, ssh, cwd, ssh_opts=None)` and `remove_host(root, name)` — comment-preserving ruamel edits with atomic tempfile rename, matching the existing `add_agent`/`remove_agent` helpers.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_hosts_config.py`:
 
@@ -3204,12 +3204,12 @@ def test_remove_host(tmp_path):
     assert load_config(tmp_path).hosts == {}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_hosts_config.py -q`
 Expected: FAIL with `ImportError: cannot import name 'add_host'`
 
-- [ ] **Step 3: Implement the editors**
+- [x] **Step 3: Implement the editors**
 
 In `src/aegis/config/edit.py`, add `add_host` and `remove_host` using the module's existing private helpers — `_load(path)` (ruamel round-trip, comment-preserving), `_validate_and_dump(root, data)` (re-parses the edited document so a bad edit fails before it is written), and `_atomic_write(path, payload)`. Read `add_agent` (`src/aegis/config/edit.py:144`) and `remove_agent` (`:203`) and mirror their exact structure:
 
@@ -3244,11 +3244,11 @@ def remove_host(root: Path, name: str) -> None:
 
 Confirm against `add_agent` whether `_validate_and_dump` takes `(root, data)` in that order and whether `_atomic_write` takes the file path or the root — match the call shape it already uses rather than the one written above if they differ.
 
-- [ ] **Step 4: Mount the CLI subcommands**
+- [x] **Step 4: Mount the CLI subcommands**
 
 In `src/aegis/cli_config.py`, add a `host` sub-app with `add`, `remove`, and `list` verbs, mirroring the existing `agent` sub-app's structure, options, and output formatting. `add` is hot-registering only in the sense that the next spawn picks it up from the reloaded config; `remove` needs a restart — say so in the command's help text, consistent with the other `remove` verbs.
 
-- [ ] **Step 5: Run tests and the CLI**
+- [x] **Step 5: Run tests and the CLI**
 
 Run: `uv run python -m pytest tests/test_hosts_config.py -q`
 Expected: PASS
@@ -3256,7 +3256,7 @@ Expected: PASS
 Run: `uv run aegis config host list`
 Expected: the configured hosts, or an empty listing without a traceback.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/cli_config.py src/aegis/config/edit.py \
@@ -3279,7 +3279,7 @@ git commit -m "feat(config): aegis config host add|remove|list"
 - Consumes: everything.
 - Produces: nothing.
 
-- [ ] **Step 1: Write the know-how doc**
+- [x] **Step 1: Write the know-how doc**
 
 Create `know-how/ssh-execution-hosts.md` covering, with worked commands:
 
@@ -3297,7 +3297,7 @@ Create `know-how/ssh-execution-hosts.md` covering, with worked commands:
 - Why paths are host-scoped: ctrl+click, claims, `@`-completion.
 - When to use `aegis --remote ssh://` instead (durability).
 
-- [ ] **Step 2: Index it in `AGENTS.md`**
+- [x] **Step 2: Index it in `AGENTS.md`**
 
 Add to the Know-how list:
 
@@ -3333,22 +3333,22 @@ Add a Layout entry after the `src/aegis/locks/` bullet:
   serves) — see `know-how/ssh-execution-hosts.md`.
 ```
 
-- [ ] **Step 3: Update `CHANGELOG.md` and `TASKS.md`**
+- [x] **Step 3: Update `CHANGELOG.md` and `TASKS.md`**
 
 Add a CHANGELOG entry under the unreleased heading describing the feature in the repo's existing voice. In `TASKS.md`, add the shipped item and remove it from anything that lists it as pending.
 
-- [ ] **Step 4: Flip the spec status**
+- [x] **Step 4: Flip the spec status**
 
 In the spec's header, change `**Status:** approved, not yet planned` to `**Status:** implemented` and add the plan path beside the spec path. A stale status header misleads the next `/workon`.
 
-- [ ] **Step 5: Final full-suite gate**
+- [x] **Step 5: Final full-suite gate**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS.
 
 Run this as its own tool call, and read the exit code directly — do not pipe it through `tail` or append `echo "rc=$?"`, both of which hand a green result to whatever reads it regardless of what pytest did.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add know-how/ssh-execution-hosts.md AGENTS.md CHANGELOG.md TASKS.md \
