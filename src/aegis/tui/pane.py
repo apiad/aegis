@@ -52,6 +52,32 @@ from aegis.transcript_constants import (  # noqa: F401  (re-exported)
 # subagent events group into a box regardless of the running CLI's naming.
 _SUBAGENT_TOOLS = frozenset({"Task", "Agent"})
 
+
+def fold_plan_events(events: list) -> list:
+    """Collapse AgentPlan revisions to the latest, per plan owner.
+
+    The plan is a mutating object: every TaskCreate / TaskUpdate /
+    TaskList re-emits the whole thing, so a 21-task plan arrives as ~50
+    cumulative events. Appending each would trade N anonymous tool rows
+    for N plan blocks — the same noise wearing a hat.
+
+    The surviving block keeps the position where the plan first appeared;
+    the strip is the live surface, this is the record. Keyed by
+    parent_tool_use_id so a subagent's plan does not overwrite its
+    parent's.
+    """
+    out: list = []
+    slot: dict[str | None, int] = {}
+    for ev in events:
+        if isinstance(ev, AgentPlan):
+            key = ev.parent_tool_use_id
+            if key in slot:
+                out[slot[key]] = ev
+                continue
+            slot[key] = len(out)
+        out.append(ev)
+    return out
+
 _BLOCK_TOOLTIP = ("click to copy | ctrl+click to open here | "
                   "alt+click to open natively")
 
@@ -854,6 +880,9 @@ class ConversationPane(Widget):
         # actually looking at.
         self._window_end: int = 0
         self._streaming_history_idx: int | None = None
+        # Plan owner key (None = top level, else parent_tool_use_id) →
+        # (block, history index). One block per plan, mutated in place.
+        self._plan_blocks: dict = {}
         # tool_call_id → history index of that tool call's ToolUse block, so
         # its ToolResult folds into the *same* block instead of appending a
         # trailing one. Parallel tool calls emit all uses first, then all
@@ -1046,7 +1075,7 @@ class ConversationPane(Widget):
             rec.events.append(ev)          # rendered if the block is mounted
             rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
 
-        for ev in coalesce_chunks(self._replay.events):
+        for ev in fold_plan_events(coalesce_chunks(self._replay.events)):
             # Subagent child → fold flat into its Task box record.
             parent = getattr(ev, "parent_tool_use_id", None)
             if parent is not None and parent in box_idx:
@@ -1333,6 +1362,32 @@ class ConversationPane(Widget):
             return None
         path = (getattr(ev, "raw_input", None) or {}).get("file_path")
         return self._place.qualify(str(path)) if path else None
+
+    def _plan_key(self, ev) -> str | None:
+        return getattr(ev, "parent_tool_use_id", None)
+
+    def _replace_plan_block(self, ev) -> bool:
+        """Update this plan's existing transcript block in place. Returns
+        False when there is none yet, so the caller mounts one."""
+        found = self._plan_blocks.get(self._plan_key(ev))
+        if found is None:
+            return False
+        block, idx = found
+        renderable = render_event(ev, self._palette)
+        if renderable is None:
+            return True
+        payload = _payload_for_event(ev)
+        if 0 <= idx < len(self._history):
+            rec = self._history[idx]
+            rec.renderable, rec.payload = renderable, payload
+        try:
+            block.update_content(renderable, payload)
+        except Exception:
+            # Block pruned by the scroll window; the history record above
+            # is the source of truth and will re-render on remount.
+            self._plan_blocks.pop(self._plan_key(ev), None)
+            return False
+        return True
 
     def _mount_block(self, renderable: RenderableType,
                      text_payload: str,
@@ -1908,6 +1963,8 @@ class ConversationPane(Widget):
             # log keeps so replay can rebuild the dialogue — but rendering
             # it here would print the message a second time.
             pass
+        elif isinstance(ev, AgentPlan) and self._replace_plan_block(ev):
+            pass  # the plan mutated in place; no new block
         else:
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
@@ -1915,6 +1972,9 @@ class ConversationPane(Widget):
                 block = self._mount_block(renderable, _payload_for_event(ev))
                 if isinstance(ev, Result):
                     self._adopt_result_block(block, ev)
+                if isinstance(ev, AgentPlan):
+                    self._plan_blocks[self._plan_key(ev)] = (
+                        block, len(self._history) - 1)
         self.refresh_metrics()
 
     def _adopt_result_block(self, block, ev) -> None:
