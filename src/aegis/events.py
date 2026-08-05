@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 
 
@@ -264,9 +265,31 @@ class ParserState:
     tool_use input."""
     tool_kinds: dict[str, str] = field(default_factory=dict)
     tool_diffs: dict[str, tuple[str, str, str]] = field(default_factory=dict)
+    # Accumulated Task* plan. claude's current task tools speak in deltas
+    # with ids, unlike TodoWrite/ACP which resend a full snapshot, so the
+    # parser folds them here and emits a cumulative AgentPlan after each
+    # mutation. Insertion-ordered, which is the order the agent means.
+    plan_tasks: dict[str, dict] = field(default_factory=dict)
+    # tool_call_id → plan_tasks key, for a TaskCreate whose real id has
+    # not landed yet (it comes in the tool_result, never the tool_use).
+    plan_pending: dict[str, str] = field(default_factory=dict)
+    # Monotonic counter for provisional keys, pre-id.
+    plan_seq: int = 0
     # Running sum of thinking-token deltas since the last thinking block was
     # emitted — stamped onto that block's AssistantThinking, then reset.
     thinking_estimate: int = 0
+
+
+_TASK_CREATED_RE = re.compile(r"Task #(\S+) created successfully")
+
+
+def _plan_entries(state: ParserState) -> tuple[PlanEntry, ...]:
+    """Snapshot the accumulated Task* plan as canonical PlanEntry rows."""
+    return tuple(
+        PlanEntry(content=t["subject"], status=t["status"],
+                  id=t.get("id"), active_form=t.get("active_form"))
+        for t in state.plan_tasks.values()
+    )
 
 
 def _summarize_tool(name: str, tool_input: dict) -> str:
@@ -441,6 +464,51 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                     for t in todos if isinstance(t, dict)
                 )
                 return AgentPlan(entries=entries)
+            # The Task* family is the same channel in delta form: one call
+            # per mutation, with the id arriving in the result. Fold into
+            # the accumulated plan and emit it whole, so a consumer cannot
+            # tell which source it came from. TaskList / TaskGet are reads
+            # and deliberately fall through to the generic tool path.
+            if name in ("TaskCreate", "TaskUpdate"):
+                tcid = block.get("id")
+                if name == "TaskCreate":
+                    state.plan_seq += 1
+                    key = f"pending:{state.plan_seq}"
+                    state.plan_tasks[key] = {
+                        "id": None,
+                        "subject": str(tool_input.get("subject", "")),
+                        "status": "pending",
+                        "active_form": tool_input.get("activeForm")
+                            if isinstance(tool_input.get("activeForm"), str)
+                            else None,
+                    }
+                    if tcid:
+                        state.plan_pending[tcid] = key
+                else:
+                    task_id = str(tool_input.get("taskId", ""))
+                    key = next(
+                        (k for k, t in state.plan_tasks.items()
+                         if t.get("id") == task_id), None)
+                    # An update for a task we never saw created (resumed
+                    # session, truncated log) is ignored, never fatal.
+                    if key is not None:
+                        status = tool_input.get("status")
+                        if status == "deleted":
+                            state.plan_tasks.pop(key, None)
+                        else:
+                            t = state.plan_tasks[key]
+                            if isinstance(status, str):
+                                t["status"] = status
+                            if isinstance(tool_input.get("subject"), str):
+                                t["subject"] = tool_input["subject"]
+                            if isinstance(tool_input.get("activeForm"), str):
+                                t["active_form"] = tool_input["activeForm"]
+                if tcid:
+                    # Marks the matching result for swallowing: this
+                    # tool_use became an AgentPlan, so its result has no
+                    # block to fold into and would mount standalone.
+                    state.tool_kinds[tcid] = "plan"
+                return AgentPlan(entries=_plan_entries(state))
             kind = _KIND_BY_NAME.get(name, "other")
             tool_call_id = block.get("id")
             if tool_call_id:
@@ -486,6 +554,17 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                     text = raw if isinstance(raw, str) else json.dumps(raw)
                     tcid = block.get("tool_use_id")
                     kind = state.tool_kinds.get(tcid) if tcid else None
+                    if kind == "plan":
+                        # TaskCreate's id exists only here — backfill it so
+                        # later TaskUpdates can resolve their target.
+                        key = state.plan_pending.pop(tcid, None)
+                        if key is not None and key in state.plan_tasks:
+                            if m := _TASK_CREATED_RE.search(text):
+                                state.plan_tasks[key]["id"] = m.group(1)
+                        # Swallow: the matching tool_use became an
+                        # AgentPlan, so this would orphan and mount as its
+                        # own block. ContextUpdate renders as None.
+                        return ContextUpdate()
                     diff = state.tool_diffs.get(tcid) if tcid else None
                     return ToolResult(
                         text=text,
