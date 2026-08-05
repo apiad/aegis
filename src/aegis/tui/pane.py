@@ -25,8 +25,8 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AssistantText, AssistantThinking, Result, ThinkingTokens, ToolResult,
-    ToolUse, UserMessage,
+    AgentPlan, AssistantText, AssistantThinking, Result, ThinkingTokens,
+    ToolResult, ToolUse, UserMessage,
 )
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
@@ -38,6 +38,7 @@ from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
+from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
@@ -930,6 +931,7 @@ class ConversationPane(Widget):
             _model = getattr(self._agent, "model", "") if self._agent else ""
             _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
             _eff = getattr(_eff_raw, "value", _eff_raw)  # Effort enum → str
+            yield PlanStrip(self._palette, id="plan-strip")
             yield StatusBar(_model, _eff, self._palette)
             yield CommandPalette(self._palette)
             yield PendingStrip(self._palette)
@@ -1850,6 +1852,10 @@ class ConversationPane(Widget):
         self._mount_block(renderable, payload)
 
     def _on_core_event(self, _core, ev) -> None:
+        # Before any routing: a subagent plan returns early below, but the
+        # dock still needs to learn about it.
+        if isinstance(ev, AgentPlan):
+            self._refresh_plan_surfaces()
         parent = getattr(ev, "parent_tool_use_id", None)
         if parent and parent in self._subagent_boxes:
             self._route_into_box(parent, ev)     # subagent child → its box
@@ -2198,6 +2204,19 @@ class ConversationPane(Widget):
         return Text.assemble(("🤖 ", self._palette.accent),
                              f"{summary} · {status} {count} events")
 
+    def _refresh_plan_surfaces(self) -> None:
+        """Push the session's plan into the strip (and, once open, the
+        dock). Tolerant of a pane whose widgets are not mounted yet or are
+        already torn down — this fires from observer callbacks."""
+        core = self._core
+        if core is None or not hasattr(core, "plan_state"):
+            return
+        try:
+            strip = self.query_one("#plan-strip", PlanStrip)
+        except Exception:
+            return
+        strip.refresh_plan(core.plan_state(), core.plan.working)
+
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
         bar = self._bar()
@@ -2207,6 +2226,9 @@ class ConversationPane(Widget):
         # that acts on your message now) vs subdued while working (the message
         # queues behind the turn). See the `.working` CSS rule.
         self.set_class(state is AgentState.working, "working")
+        # The plan spinner turns iff working time is accruing, so it has to
+        # follow turn state, not just plan events.
+        self._refresh_plan_surfaces()
         # Reconcile the working indicator to the live state: visible iff the
         # agent is working. Keying off `finished` alone orphaned the spinner
         # on interrupt (which emits `ready, finished=False`) — so it "a veces

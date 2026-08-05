@@ -192,3 +192,96 @@ async def test_plan_dock_toggles_and_renders_rows():
         assert dock.toggle() is True
         assert dock.display is True
         assert dock.toggle() is False
+
+
+# -- pane wiring -----------------------------------------------------
+
+
+class _Gated:
+    """Mirrors tests/test_pane_input_state_outline.py's GatedSession."""
+
+    def __init__(self):
+        self.sent: list[str] = []
+        self.started = self.closed = False
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, text):
+        self.sent.append(text)
+
+    async def events(self):
+        from aegis.events import Result
+        yield Result(duration_ms=1, is_error=False, usage=None)
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeMCP:
+    url = "http://127.0.0.1:0/mcp/"
+
+    def bind(self, bridge):
+        pass
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+
+def _app():
+    from aegis.config import Agent
+    from aegis.tui.app import AegisApp
+
+    agent = Agent(harness="claude-code", model="opus", effort="high",
+                  permission="auto")
+    return AegisApp({"default": agent}, "default",
+                    lambda a, u, h: _Gated(), _FakeMCP())
+
+
+@pytest.mark.asyncio
+async def test_pane_feeds_the_strip_from_the_session_plan():
+    """The widget tests above prove the widget. This proves the wiring:
+    an AgentPlan arriving on the core session must reach the strip."""
+    from aegis.events import AgentPlan, PlanEntry
+    from aegis.tui.plan_strip import PlanStrip
+
+    async with _app().run_test() as pilot:
+        pane = pilot.app._panes[0]
+        strip = pane.query_one("#plan-strip", PlanStrip)
+        assert strip.display is False
+
+        pane._core._fire_event(AgentPlan(entries=(
+            PlanEntry(content="explore", status="completed"),
+            PlanEntry(content="build", status="in_progress"),
+        )))
+        await pilot.pause()
+
+        assert strip.display is True
+        out = strip.render().plain
+        assert "1/2" in out and "build" in out
+
+
+@pytest.mark.asyncio
+async def test_a_subagent_plan_does_not_change_the_strip():
+    """The strip is flat and top-level-only: merging several agents'
+    lists into one line is noise."""
+    from aegis.events import AgentPlan, PlanEntry
+    from aegis.tui.plan_strip import PlanStrip
+
+    async with _app().run_test() as pilot:
+        pane = pilot.app._panes[0]
+        strip = pane.query_one("#plan-strip", PlanStrip)
+        pane._core._fire_event(AgentPlan(entries=(
+            PlanEntry(content="a", status="completed"),
+            PlanEntry(content="b", status="in_progress"),
+            PlanEntry(content="c", status="pending"))))
+        await pilot.pause()
+        pane._core._fire_event(AgentPlan(
+            entries=(PlanEntry(content="sub", status="in_progress"),),
+            parent_tool_use_id="tool_1"))
+        await pilot.pause()
+
+        assert "1/3" in strip.render().plain
