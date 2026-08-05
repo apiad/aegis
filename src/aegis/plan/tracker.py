@@ -17,6 +17,10 @@ from datetime import UTC, datetime
 from aegis.events import AgentPlan
 from aegis.plan.models import PlanSnapshot, PlanState, PlanTask
 
+# Prefix marking a positional (id-less) key, so an adopted record can be
+# told apart from one keyed by a real Task* id.
+_POS = "pos:"
+
 
 class PlanTracker:
     def __init__(self) -> None:
@@ -56,7 +60,29 @@ class PlanTracker:
         Snapshot sources (TodoWrite, ACP) have none — resending a full
         ordered list is itself the identity claim, so fall back to
         position plus subject."""
-        return entry.id if entry.id else f"{index}:{entry.content}"
+        return entry.id if entry.id else f"{_POS}{index}:{entry.content}"
+
+    def _prior(self, key: str, entry, index: int) -> dict | None:
+        """The previous record for this entry, tolerating an id that only
+        just arrived.
+
+        TaskCreate emits its plan BEFORE the tool_result carrying the id,
+        so a task first appears unidentified — keyed positionally — and
+        gains its id on the next revision. Keyed naively that reads as one
+        task vanishing and another appearing, and the time already banked
+        is silently dropped. Adopt the positional record instead.
+        """
+        prev = self._tasks.get(key)
+        if prev is not None or not entry.id:
+            return prev
+        by_pos = self._tasks.get(f"{_POS}{index}:{entry.content}")
+        if by_pos is not None:
+            return by_pos
+        # Position may have shifted (a task deleted above it), so fall
+        # back to matching an as-yet-unidentified task by subject.
+        return next((r for k, r in self._tasks.items()
+                     if k.startswith(_POS) and r["subject"] == entry.content),
+                    None)
 
     # -- surface -----------------------------------------------------
 
@@ -65,7 +91,7 @@ class PlanTracker:
         seen: dict[str, dict] = {}
         for i, entry in enumerate(plan.entries):
             key = self._key(entry, i)
-            prev = self._tasks.get(key)
+            prev = self._prior(key, entry, i)
             started = bool(prev and prev["started"]) \
                 or entry.status == "in_progress"
             seen[key] = {

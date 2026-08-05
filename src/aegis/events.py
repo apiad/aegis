@@ -281,6 +281,39 @@ class ParserState:
 
 
 _TASK_CREATED_RE = re.compile(r"Task #(\S+) created successfully")
+# A TaskList row: "#11 [in_progress] T8: fold plan revisions".
+_TASK_ROW_RE = re.compile(r"^#(\S+)\s+\[([a-z_]+)\]\s+(.*)$")
+
+
+def _rehydrate_plan(state: ParserState, text: str) -> bool:
+    """Rebuild the plan accumulator from a TaskList listing.
+
+    ParserState is per-process, so a restart loses every task created
+    before it — and a later TaskUpdate against those ids resolves to
+    nothing and is silently dropped. TaskList returns the whole list,
+    which makes it the natural recovery point.
+
+    Returns False (leaving state untouched) when the text parses to no
+    rows, so an empty or unexpected result cannot wipe a live plan.
+    """
+    rows = []
+    for line in text.splitlines():
+        if m := _TASK_ROW_RE.match(line.strip()):
+            rows.append(m.groups())
+    if not rows:
+        return False
+    prior = {t.get("id"): t for t in state.plan_tasks.values()}
+    state.plan_tasks = {
+        tid: {
+            "id": tid,
+            "subject": subject,
+            "status": status,
+            # The listing carries no activeForm, so keep what we had.
+            "active_form": (prior.get(tid) or {}).get("active_form"),
+        }
+        for tid, status, subject in rows
+    }
+    return True
 
 
 def _plan_entries(state: ParserState) -> tuple[PlanEntry, ...]:
@@ -469,6 +502,13 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             # the accumulated plan and emit it whole, so a consumer cannot
             # tell which source it came from. TaskList / TaskGet are reads
             # and deliberately fall through to the generic tool path.
+            # A TaskList call is the agent asking what its plan is, so
+            # answering with the plan is both the honest rendering and one
+            # fewer empty row. Its result rehydrates the accumulator.
+            if name == "TaskList":
+                if tcid := block.get("id"):
+                    state.tool_kinds[tcid] = "plan_list"
+                return AgentPlan(entries=_plan_entries(state))
             if name in ("TaskCreate", "TaskUpdate"):
                 tcid = block.get("id")
                 if name == "TaskCreate":
@@ -554,6 +594,11 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                     text = raw if isinstance(raw, str) else json.dumps(raw)
                     tcid = block.get("tool_use_id")
                     kind = state.tool_kinds.get(tcid) if tcid else None
+                    if kind == "plan_list":
+                        # Rehydrate from the listing; a result that parses
+                        # to no rows leaves the plan alone.
+                        _rehydrate_plan(state, text)
+                        return AgentPlan(entries=_plan_entries(state))
                     if kind == "plan":
                         # TaskCreate's id exists only here — backfill it so
                         # later TaskUpdates can resolve their target.

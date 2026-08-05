@@ -117,21 +117,23 @@ def test_task_update_can_delete():
     assert ev.entries == ()
 
 
-def test_task_list_and_get_are_reads_and_stay_tool_calls():
+def test_task_get_is_a_read_and_stays_a_tool_call():
+    """TaskGet returns one task, not the list, so it is not a plan
+    channel and renders as an ordinary tool call."""
     st = ParserState()
     parse(_use("TaskCreate", {"subject": "A", "description": "d"}, "t1"), st)
-    assert isinstance(parse(_use("TaskList", {}, "t2"), st), ToolUse)
     assert isinstance(parse(_use("TaskGet", {"taskId": "1"}, "t3"), st),
                       ToolUse)
 
 
-def test_a_read_tool_result_is_still_a_tool_result():
-    """Only the plan-mutating tools' confirmations are swallowed. A
-    TaskList result must still render, or the swallow is too greedy."""
+def test_a_non_plan_tool_result_is_never_swallowed():
+    """The swallow must not be greedy: only the plan channel's own
+    confirmations disappear."""
     st = ParserState()
-    parse(_use("TaskList", {}, "t1"), st)
-    ev = parse(_result("1. A [pending]", "t1"), st)
+    parse(_use("TaskGet", {"taskId": "1"}, "t1"), st)
+    ev = parse(_result("#1 [pending] A", "t1"), st)
     assert not isinstance(ev, ContextUpdate)
+    assert not isinstance(ev, AgentPlan)
 
 
 def test_ordinary_tool_results_are_untouched():
@@ -172,3 +174,79 @@ def test_subagent_task_plans_carry_their_parent_id():
     assert isinstance(ev, AgentPlan)
     assert ev.parent_tool_use_id == "toolu_parent"
 
+
+
+# -- rehydration: surviving a restart --------------------------------
+
+_LISTING = (
+    "#1 [completed] Explore aegis plan-rendering context\n"
+    "#2 [completed] Clarify design questions with Alex\n"
+    "#11 [in_progress] T8: AgentPlan replaces in place\n"
+    "#12 [pending] T9: PlanDock, F3 and /tasks"
+)
+
+
+def test_task_list_result_rehydrates_a_plan_the_parser_never_saw_built():
+    """ParserState resets on restart, so every task created before it is
+    invisible and a TaskUpdate against those ids is silently dropped.
+    TaskList returns the whole list — use it to recover."""
+    st = ParserState()
+    parse(_use("TaskList", {}, "t1"), st)
+    ev = parse(_result(_LISTING, "t1"), st)
+    assert isinstance(ev, AgentPlan)
+    assert [e.id for e in ev.entries] == ["1", "2", "11", "12"]
+    assert [e.status for e in ev.entries] == [
+        "completed", "completed", "in_progress", "pending"]
+    assert ev.entries[2].content == "T8: AgentPlan replaces in place"
+
+
+def test_a_rehydrated_plan_accepts_updates_for_its_ids():
+    """The point of rehydrating: updates land again."""
+    st = ParserState()
+    parse(_use("TaskList", {}, "t1"), st)
+    parse(_result(_LISTING, "t1"), st)
+    ev = parse(_use("TaskUpdate", {"taskId": "11",
+                                   "status": "completed"}, "t2"), st)
+    assert [e.status for e in ev.entries] == [
+        "completed", "completed", "completed", "pending"]
+
+
+def test_rehydration_keeps_active_form_the_listing_does_not_carry():
+    st = ParserState()
+    parse(_use("TaskCreate", {"subject": "T8: AgentPlan replaces in place",
+                              "description": "d",
+                              "activeForm": "Folding revisions"}, "t1"), st)
+    parse(_result("Task #11 created successfully: x", "t1"), st)
+    parse(_use("TaskList", {}, "t2"), st)
+    ev = parse(_result("#11 [in_progress] T8: AgentPlan replaces in place",
+                       "t2"), st)
+    assert ev.entries[0].active_form == "Folding revisions"
+
+
+def test_task_list_use_shows_the_current_plan_rather_than_a_tool_row():
+    """A TaskList call is the agent asking what its plan is; rendering the
+    plan is the honest answer, and it keeps the transcript free of a row
+    that says nothing."""
+    st = ParserState()
+    parse(_use("TaskCreate", {"subject": "A", "description": "d"}, "t1"), st)
+    ev = parse(_use("TaskList", {}, "t2"), st)
+    assert isinstance(ev, AgentPlan)
+    assert [e.content for e in ev.entries] == ["A"]
+
+
+def test_a_non_listing_result_does_not_wipe_the_plan():
+    """An empty or unparseable TaskList result must leave state alone
+    rather than silently clearing every task."""
+    st = ParserState()
+    parse(_use("TaskCreate", {"subject": "A", "description": "d"}, "t1"), st)
+    parse(_result("Task #1 created successfully: A", "t1"), st)
+    parse(_use("TaskList", {}, "t2"), st)
+    ev = parse(_result("(no tasks)", "t2"), st)
+    assert [e.content for e in ev.entries] == ["A"]
+
+
+def test_task_get_stays_an_ordinary_tool_call():
+    """TaskGet returns one task, not the list — it is not a plan channel."""
+    st = ParserState()
+    assert isinstance(parse(_use("TaskGet", {"taskId": "1"}, "t1"), st),
+                      ToolUse)

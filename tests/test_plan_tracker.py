@@ -301,3 +301,19 @@ def test_subagent_trackers_follow_turn_state_too(session):
 def test_a_session_with_no_plan_rolls_up_empty(session):
     r = session.plan_roll_up()
     assert (r.done, r.total, r.current) == (0, 0, None)
+
+
+def test_an_id_arriving_late_does_not_reset_accumulated_time():
+    """TaskCreate emits its plan BEFORE the result carrying the id, so a
+    task first appears unidentified and gains an id on the next revision.
+    Keying naively, the tracker sees one task vanish and another appear —
+    and silently drops the time already banked."""
+    t = PlanTracker()
+    t.set_working(True, ts=0.0)
+    t.apply_plan(AgentPlan(entries=(
+        PlanEntry(content="build it", status="in_progress"),)), ts=0.0)
+    # 5s later the id lands and the same task is re-emitted with it.
+    t.apply_plan(AgentPlan(entries=(
+        PlanEntry(content="build it", status="in_progress", id="13"),)),
+        ts=5.0)
+    assert t.snapshot(ts=5.0).tasks[0].working_s == 5.0
