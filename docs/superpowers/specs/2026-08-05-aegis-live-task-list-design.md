@@ -135,6 +135,22 @@ Three rules at the edges:
 
 ## Surfaces
 
+### Glyph vocabulary
+
+Circles throughout, which is already what aegis ships:
+`render_shared.PLAN_STATUS_GLYPH` and `renderEvent.js:PLAN_GLYPH` both
+define `● completed`, `◐ in_progress`, `○ pending`. Every new surface
+reads from those two maps rather than inventing a second vocabulary —
+no check marks, no triangles.
+
+The one addition: the `◐` **spins** — `◐ ◓ ◑ ◒` — and it spins *only
+while the session is mid-turn*. That is exactly the condition under
+which working time accrues, so the rotating circle is a literal
+rendering of the clock running. A task left `in_progress` across an idle
+gap shows a still `◐`, which is the honest picture: started, not being
+worked on. This mirrors the existing `_TOOL_SPINNER` / `WorkingIndicator`
+precedent in the same idiom.
+
 ### `PlanStrip` — always on
 
 `src/aegis/tui/plan_strip.py`, mirroring `tui/monitor_strip.py`: a pure
@@ -143,8 +159,28 @@ tracker, hidden via `display:none` when there is no plan. It joins
 `QueueStrip` / `MonitorStrip` / `PendingStrip` in `ConversationPane.compose`.
 
 ```
-tasks: ▓▓▓▓░░░░ 1/3 · ▶ Clarifying design questions 1:03
+tasks: ●●◐○○ 2/5 · Clarifying design questions 1:03
 ```
+
+The progress indicator is **one circle per task, in plan order** — not
+`MonitorStrip`'s fixed-width `▓░` bar. A monitor tracks a continuous
+fraction and a bar is right for it; a plan is a small ordered set of
+discrete things, so the strip is the task list in miniature. It shows
+not just how far along but *where* — the `◐` sits at its real position,
+and a plan whose second task is still open looks visibly different from
+one whose fifth is.
+
+Long plans need a rule, since one circle per task cannot scale
+indefinitely. The strip renders one circle per task up to a cap of 20,
+clamped further by available terminal width; past that it windows around
+the in-progress task with a leading `…`:
+
+```
+tasks: …●●◐○○ 14/31 · Reticulating splines 0:47
+```
+
+The `n/total` count is always present, so the number is never inferred
+from counting glyphs.
 
 One line, no horizontal cost, and it is the only surface that works
 unchanged on a phone.
@@ -158,10 +194,12 @@ ConfigPanel) and by a `/tasks` slash command, which gives the web client
 the same toggle through the shared `commands.dispatch()` seam.
 
 ```
-┌ transcript ──────────────────┬ tasks ────────────────┐
-│ ⏺ Read(events.py)            │ ✓ explore ctx    4:12 │
-│ ⏺ Bash(grep …)               │ ▶ clarify Q's    1:03 │
-│ …                            │ ○ write spec       —  │
+┌ transcript ──────────────────┬ tasks ●●◐○○ 2/5 ──────┐
+│ ⏺ Read(events.py)            │ ● explore ctx    4:12 │
+│ ⏺ Bash(grep …)               │ ● read the wire  2:38 │
+│ …                            │ ◐ clarify Q's    1:03 │
+│                              │ ○ write spec       —  │
+│                              │ ○ write plan       —  │
 └──────────────────────────────┴───────────────────────┘
 ```
 
@@ -228,7 +266,10 @@ The layers split cleanly, and the seams are pure functions.
   session held. This is the test that catches a stray `now()` creeping
   into the tracker.
 - **Renderers** — `render_plan` is pure, so strip and dock output assert
-  as text, following `tests/test_render_event.py`.
+  as text, following `tests/test_render_event.py`. Specifically: the
+  circle strip has one glyph per task at the right position; a plan over
+  the cap windows around the in-progress task and keeps its `n/total`
+  honest; the spinner advances only across mid-turn frames.
 - **Coordination** — `aegis_list_sessions()` carries a populated `plan`
   for a session with one, `None` for a session without; `aegis_peer_plan`
   returns the full list and refuses an unknown handle in the wording the
