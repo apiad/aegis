@@ -159,8 +159,16 @@ tracker, hidden via `display:none` when there is no plan. It joins
 `QueueStrip` / `MonitorStrip` / `PendingStrip` in `ConversationPane.compose`.
 
 ```
-tasks: ●●◐○○ 2/5 · Clarifying design questions 1:03
+tasks: ● ● ◐ ○ ○  2/5 · Clarifying design questions 1:03
 ```
+
+**The circles are space-separated, never adjacent.** `●` (U+25CF), `◐`
+(U+25D0) and `○` (U+25CB) are East Asian *Ambiguous* width: Rich measures
+them as one cell, but many terminals draw the glyph wider than its cell,
+so consecutive circles visibly overlap. Every surface that places
+circles side by side puts a space between them. The existing row
+renderers are already safe — `_render_agent_plan` emits `f"  {glyph} "`
+— so this rule binds the new strip and the dock header.
 
 The progress indicator is **one circle per task, in plan order** — not
 `MonitorStrip`'s fixed-width `▓░` bar. A monitor tracks a continuous
@@ -171,12 +179,13 @@ and a plan whose second task is still open looks visibly different from
 one whose fifth is.
 
 Long plans need a rule, since one circle per task cannot scale
-indefinitely. The strip renders one circle per task up to a cap of 20,
+indefinitely — and the separator costs two cells per task, not one. The
+strip renders one circle per task up to a cap of **12** (25 cells),
 clamped further by available terminal width; past that it windows around
 the in-progress task with a leading `…`:
 
 ```
-tasks: …●●◐○○ 14/31 · Reticulating splines 0:47
+tasks: …● ● ◐ ○ ○  14/31 · Reticulating splines 0:47
 ```
 
 The `n/total` count is always present, so the number is never inferred
@@ -194,7 +203,7 @@ ConfigPanel) and by a `/tasks` slash command, which gives the web client
 the same toggle through the shared `commands.dispatch()` seam.
 
 ```
-┌ transcript ──────────────────┬ tasks ●●◐○○ 2/5 ──────┐
+┌ transcript ──────────────────┬ tasks ● ● ◐ ○ ○ 2/5 ──┐
 │ ⏺ Read(events.py)            │ ● explore ctx    4:12 │
 │ ⏺ Bash(grep …)               │ ● read the wire  2:38 │
 │ …                            │ ◐ clarify Q's    1:03 │
@@ -267,9 +276,12 @@ The layers split cleanly, and the seams are pure functions.
   into the tracker.
 - **Renderers** — `render_plan` is pure, so strip and dock output assert
   as text, following `tests/test_render_event.py`. Specifically: the
-  circle strip has one glyph per task at the right position; a plan over
-  the cap windows around the in-progress task and keeps its `n/total`
-  honest; the spinner advances only across mid-turn frames.
+  circle strip has one glyph per task at the right position and a
+  separator between every pair; a plan over the cap windows around the
+  in-progress task and keeps its `n/total` honest; the spinner advances
+  only across mid-turn frames. The no-adjacent-circles rule is asserted
+  directly — no two circle glyphs may be neighbours in any rendered
+  line — so a future surface cannot quietly reintroduce the overlap.
 - **Coordination** — `aegis_list_sessions()` carries a populated `plan`
   for a session with one, `None` for a session without; `aegis_peer_plan`
   returns the full list and refuses an unknown handle in the wording the
