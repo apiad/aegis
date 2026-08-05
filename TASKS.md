@@ -4,7 +4,7 @@ Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
 the public roadmap is `docs/roadmap.md`. This file is the scratch /
 priority list — keep it terse and current.
 
-Current release: **v0.29.0** (2026-08-01).
+Current release: **v0.30.0** (2026-08-05).
 
 ## Resolved — the June 2026 billing scare
 
