@@ -54,6 +54,16 @@ def master_argv(spec: HostSpec, control_path: str,
     ]
 
 
+def warmup_command(remote_port: int) -> str:
+    """Open one TCP connection to the forwarded port, from the far side.
+
+    Pure bash (`/dev/tcp`), so it needs nothing installed on the remote —
+    notably not python3, which a minimal host may lack.
+    """
+    return (f"exec 3<>/dev/tcp/127.0.0.1/{remote_port} "
+            f"&& exec 3<&- && exec 3>&-")
+
+
 def preflight_command(binary: str, cwd: str,
                       login_shell: bool = False) -> str:
     """Confirm the harness exists and the working tree is there.
@@ -109,6 +119,46 @@ class HostConnection:
             stderr=asyncio.subprocess.PIPE,
         )
         self._remote_port = await self._await_port()
+        await self._warm_tunnel()
+
+    async def _warm_tunnel(self) -> None:
+        """Prove the forward carries traffic, before any harness needs it.
+
+        Two things this buys, both learned the hard way:
+
+        A forward that was *allocated* is not necessarily a forward that
+        *works*, and without this the difference only shows up later as an
+        agent whose aegis tools mysteriously aren't there.
+
+        And the first connection through a fresh forward is the slow one.
+        A harness starting cold would otherwise race its own MCP handshake
+        against that setup cost — a remote agent reported its tool list
+        arriving empty on the first turn and populating seconds later,
+        which reads exactly like "the substrate is unreachable".
+
+        Best-effort: a failure here is logged into the stderr ring and
+        surfaces through the ordinary open path rather than blocking a
+        spawn on a check that is itself only a heuristic.
+        """
+        if self._remote_port is None:
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", "-T",
+                "-o", f"ControlPath={self.control_path}",
+                *self._spec.ssh_opts, self._spec.ssh,
+                f"bash -c {shlex.quote(warmup_command(self._remote_port))}",
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=10)
+            if proc.returncode != 0:
+                self._stderr.append(
+                    f"tunnel warm-up failed (rc={proc.returncode}): "
+                    f"{err.decode('utf-8', 'replace').strip()}")
+        except (OSError, asyncio.TimeoutError) as e:
+            self._stderr.append(f"tunnel warm-up failed: {e}")
 
     async def _await_port(self) -> int:
         """Read ssh's stderr until it announces the forward, or fail.

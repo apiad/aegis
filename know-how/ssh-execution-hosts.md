@@ -114,6 +114,23 @@ like the `model` / `effort` overrides. An agent profile may carry
   line.
 - **Preflight** runs once per host (`command -v <harness>` + `test -d
   <cwd>`) so a missing harness is a sentence rather than a mysterious EOF.
+- **A tunnel warm-up** opens one TCP connection through the fresh forward
+  before any harness needs it. A forward that was *allocated* is not
+  necessarily one that *works*, and the first connection through a new
+  forward is the slow one — without the warm-up a cold harness races its
+  own MCP handshake against that setup cost.
+
+### Symptom this prevents: "the aegis tools aren't there"
+
+The first remote agent spawned through this feature reported its system
+prompt saying the aegis MCP server was *still connecting*, and an
+exact-name `ToolSearch("select:aegis_meta,…")` returning **no matching
+tools**. A keyword search seconds later resolved the full surface.
+
+An agent that takes that first miss at face value concludes the substrate
+is unreachable and gives up. If you see it: retry the search rather than
+believing it, and check the warm-up isn't silently failing (its
+diagnostic lands in the connection's stderr ring).
 
 ## Paths are host-scoped
 

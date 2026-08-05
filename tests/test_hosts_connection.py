@@ -87,6 +87,17 @@ def test_preflight_honours_the_login_shell():
     assert "command -v claude" in shlex.split(cmd)[2]
 
 
+def test_warmup_opens_the_forwarded_port_with_pure_bash():
+    # Pure bash /dev/tcp, so a minimal remote with no python3 still works.
+    from aegis.hosts.connection import warmup_command
+
+    cmd = warmup_command(41573)
+    assert "/dev/tcp/127.0.0.1/41573" in cmd
+    assert "python" not in cmd
+    # ...and it closes what it opened rather than leaking an fd.
+    assert "3<&-" in cmd and "3>&-" in cmd
+
+
 def test_host_spec_defaults_to_a_login_shell():
     assert HostSpec(name="v", ssh="h", cwd="/w").login_shell is True
 
