@@ -138,6 +138,13 @@ BRIEFING = (
     "reads and writes THAT machine's files: paths are not interchangeable "
     "between hosts, and file claims are scoped per host. When work belongs "
     "on a particular box, hand it to a peer already there.\n"
+    "Each entry also carries `plan`: the peer's plan roll-up "
+    "({done, total, current, current_working_s}), or null when it has no "
+    "plan. That tells you not just whether a peer is busy but how far "
+    "along it is and what it is on right now.\n"
+    "  - aegis_peer_plan(handle) : the drill-down — a peer's full task "
+    "list, each with status and accumulated working time. Working time "
+    "counts only mid-turn seconds, so an idle agent does not inflate.\n"
     "  - aegis_list_agents() : the configured agent-profile slugs that "
     "could be spawned (spawn itself is a future tool, not in this "
     "release).\n"
@@ -840,6 +847,35 @@ def build_server(bridge: AppBridge) -> FastMCP:
     async def aegis_list_sessions() -> list[dict]:
         """Live aegis sessions (peers you can hand off to)."""
         return [dataclasses.asdict(s) for s in bridge.list_sessions()]
+
+    @server.tool
+    async def aegis_peer_plan(handle: str) -> dict:
+        """The full task list a peer session is working through.
+
+        aegis_list_sessions already gives you the roll-up on every peer
+        (3/8, and what it is on right now); this is the drill-down —
+        every task with its status and accumulated working time.
+
+        Working time counts only the peer's mid-turn seconds, so an agent
+        idle between turns does not inflate: a task reading 1:03 means one
+        minute of actual work, not one minute of wall clock.
+        """
+        if not any(s.handle == handle for s in bridge.list_sessions()):
+            return {"error": f"no session {handle!r} "
+                             f"(use aegis_list_sessions)"}
+        state = bridge.plan_state(handle)
+        if state is None:
+            return {"handle": handle, "done": 0, "total": 0, "tasks": []}
+        return {
+            "handle": handle,
+            "done": state.done,
+            "total": state.total,
+            "tasks": [
+                {"subject": t.subject, "status": t.status,
+                 "working_s": t.working_s}
+                for t in state.tasks
+            ],
+        }
 
     @server.tool
     async def aegis_list_agents() -> list[str]:

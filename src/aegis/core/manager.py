@@ -422,6 +422,22 @@ class SessionManager:
         self._mru.clear()
 
     # --- AppBridge --------------------------------------------------------
+    @staticmethod
+    def _plan_roll_up(session):
+        """None when the session has no plan at all — a peer reading 0/0
+        would think the agent had planned nothing, not that it had not
+        planned yet."""
+        roll = session.plan_roll_up() if hasattr(session, "plan_roll_up") \
+            else None
+        return roll if roll is not None and roll.total else None
+
+    def plan_state(self, handle: str):
+        """The full task list for a peer, backing aegis_peer_plan."""
+        for s in self._sessions:
+            if s.handle == handle and hasattr(s, "plan_state"):
+                return s.plan_state()
+        return None
+
     def list_sessions(self) -> list[SessionInfo]:
         top = self._mru[0] if self._mru else None
         return [
@@ -431,7 +447,8 @@ class SessionManager:
                         spawned_by=getattr(s, "spawned_by", None),
                         unsolicited=getattr(s, "unsolicited_turn", False),
                         host=getattr(s, "place", None).host
-                        if getattr(s, "place", None) else "local")
+                        if getattr(s, "place", None) else "local",
+                        plan=self._plan_roll_up(s))
             for s in self._sessions
         ]
 

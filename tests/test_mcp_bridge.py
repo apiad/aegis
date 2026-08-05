@@ -27,6 +27,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         def inline_schedule_names(self): return set()
         def list_sessions(self): return []
         def list_agents(self): return []
+        def plan_state(self, handle: str): return None
         async def handoff(self, a, b, c): return "ok"
         async def spawn(self, profile, *, handle=None): return "h"
         async def fork(self, target, *, prompt=None, slug=None,
@@ -65,6 +66,7 @@ def test_appbridge_requires_full_surface():
         def inline_schedule_names(self): return set()
         def list_sessions(self): return []
         def list_agents(self): return []
+        def plan_state(self, handle: str): return None
         async def handoff(self, a, b, c): return "ok"
         async def spawn(self, profile, *, handle=None): return "h"
         async def fork(self, target, *, prompt=None, slug=None,

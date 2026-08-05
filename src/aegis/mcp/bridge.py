@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from aegis.plan import PlanSnapshot
+
 
 @dataclass(frozen=True)
 class SessionInfo:
@@ -21,6 +23,10 @@ class SessionInfo:
     # the `hosts:` config. Paths in a remote session's transcript name
     # files on THAT machine, so consumers must not treat them as local.
     host: str = "local"
+    # Plan roll-up, so a peer deciding who to hand work to also learns how
+    # far along everyone is and what they are on. None means the session
+    # has no plan — distinct from a plan with no tasks, which is 0/0.
+    plan: "PlanSnapshot | None" = None
 
 
 class GroupsBridge(Protocol):
@@ -75,6 +81,7 @@ class AppBridge(Protocol):
     def inline_schedule_names(self) -> set[str]: ...
 
     def list_sessions(self) -> list[SessionInfo]: ...
+    def plan_state(self, handle: str): ...
     def list_agents(self) -> list[str]: ...
     async def handoff(self, from_handle: str, target_handle: str,
                       context: str) -> str: ...

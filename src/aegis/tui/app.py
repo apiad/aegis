@@ -31,14 +31,30 @@ from aegis.tui.widgets import TabBar
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+def _plan_roll_up(core):
+    """A session's plan roll-up, or None when it has no plan.
+
+    None rather than 0/0: a peer reading 0/0 would take it to mean the
+    agent planned nothing, not that it has not planned yet.
+    """
+    roll = core.plan_roll_up() if hasattr(core, "plan_roll_up") else None
+    return roll if roll is not None and roll.total else None
+
+
 def _tab_suffix(pane, qm) -> str | None:
-    """The trailing annotation on a tab: queue worker label, host, or both.
+    """The trailing annotation on a tab: plan progress, queue worker label,
+    host, or any combination.
 
     A pane running elsewhere is marked ``@vps`` so which machine it is on
     is never something you have to remember — every path in its transcript
-    means something different from the identical path next door.
+    means something different from the identical path next door. Plan
+    progress rides here too, so the tab bar answers "how far along is that
+    other agent" without switching to it.
     """
     parts = []
+    roll = _plan_roll_up(getattr(pane, "_core", None))
+    if roll is not None:
+        parts.append(f"{roll.done}/{roll.total}")
     if qm is not None:
         label = qm.worker_label(pane.handle)
         if label:
@@ -663,6 +679,16 @@ class AegisApp(App):
             return self.query_one(ContentSwitcher)
         except NoMatches:
             return None
+
+    def plan_state(self, handle: str):
+        """The full task list for a peer, backing aegis_peer_plan."""
+        for p in self._panes:
+            core = getattr(p, "_core", None)
+            if (getattr(p, "handle", None) == handle
+                    and core is not None
+                    and hasattr(core, "plan_state")):
+                return core.plan_state()
+        return None
 
     @property
     def _active(self):
@@ -1490,7 +1516,8 @@ class AegisApp(App):
                         unseen=p.unseen,
                         spawned_by=getattr(p._core, "spawned_by", None),
                         host=getattr(p._core, "place", None).host
-                        if getattr(p._core, "place", None) else "local")
+                        if getattr(p._core, "place", None) else "local",
+                        plan=_plan_roll_up(p._core))
             for p in self._panes
             if isinstance(p, ConversationPane)
         ]

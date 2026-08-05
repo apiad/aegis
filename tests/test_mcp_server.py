@@ -105,7 +105,7 @@ def test_build_server_registers_all_aegis_tools():
     srv = build_server(FakeBridge())
     tools = asyncio.run(srv.list_tools())
     assert {t.name for t in tools} == {
-        "aegis_meta", "aegis_list_sessions",
+        "aegis_meta", "aegis_list_sessions", "aegis_peer_plan",
         "aegis_list_agents", "aegis_handoff", "aegis_rename",
         "aegis_spawn", "aegis_fork", "aegis_close",
         "aegis_read_peer",
