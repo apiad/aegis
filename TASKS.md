@@ -67,6 +67,55 @@ Follow-ups worth considering, none blocking:
 
 ## Active
 
+### The conversational corpus *(specced + planned 2026-08-05, not started)*
+
+aegis has kept a durable per-session ledger since May and nothing can ask it
+anything. Two consumers want it and they are the same object underneath:
+**recall** (`aegis_recall("did we discuss X")`) and **mining** (shard the
+corpus for offline fan-out). Both need one middle step — turning raw event
+logs into *exchanges* — so this is one feature, not two.
+
+An exchange is one operator turn plus the agent's response arc up to the
+next. Tool *results* are excluded: ~60% of corpus bytes, no retrieval signal.
+`files_touched` is the sleeper facet — *"when were we working on the
+geocoder"* is a path lookup, not a semantic query.
+
+- Spec: `docs/superpowers/specs/2026-08-04-aegis-conversational-corpus-design.md`
+- Plan: `docs/superpowers/plans/2026-08-05-conversational-corpus-vs1.md` —
+  VS1 only (extractor → beaver index → `aegis_recall` / `aegis_recall_expand`
+  → `aegis history index`), 7 TDD tasks. VS2 = provenance at source +
+  `Interrupted`/`TurnAborted` + `SessionMeta.host`; VS3 = `history export`;
+  VS4 = embeddings + RRF.
+
+**Groundwork already landed (2026-08-05), outside the repo:** 1,492 Claude
+Code transcripts archived to `state/claude-import/` (930 MB → 385 MB, 0
+corrupt) and 212 provenance sidecars written to `state/backfill/`. Operator
+turns in the ledger went 346 → 3,232; sessions with zero operator turns 93% →
+29%. May and June are unrecoverable — Claude Code had already swept them.
+So VS1 has a real corpus to test against on day one.
+
+- **Why the ledger was blind:** `UserMessage` is claude's
+  `--replay-user-messages` echo (`drivers/claude.py:241`) and that flag landed
+  only weeks ago — 0/54 sessions in May, 0/73 in June, 15/16 in August.
+- Three beaver traps, each probed against the real library and each a silent
+  bug if missed: **`Document` has only `id` and `body`** (no `metadata=` —
+  structured fields go in a pydantic model via `db.docs(name, model=…)`); the
+  **sync `.search()` scores every hit `-0.0`** (use the async
+  `query().fts(…).execute()`, which gives real BM25 — and it is *negative*,
+  more negative is better); and **`.where(Model.field == x)` raises
+  `AttributeError`** on pydantic v2, so all filtering happens in Python.
+- FTS5 rejects punctuation — `registry.syalia.dev?` is a syntax error, and
+  that is exactly the query shape a user types. Sanitize to OR-joined terms.
+- **Never write into `state/sessions/`.** `repair.py:61`,
+  `session_log.py:160` and `history.py:203` each glob `sessions/*.jsonl`;
+  a sidecar placed there is read back as a session log. And never rewrite an
+  existing log — it is the only copy of that conversation.
+- Task 3 adds `beaver-db>=2.3` and re-locks `uv.lock`; coordinate if a peer
+  is live in the tree.
+- Open question deferred to VS4, not VS1: the index makes 730 MB searchable
+  that nobody previously grepped, including every secret ever pasted into a
+  session. Local-only, never network-exposed, no redaction pass in v1.
+
 ### Claude driver on the Agent SDK *(specced 2026-07-30, no plan yet)*
 
 A **second** Claude driver (`claude-sdk`) beside `claude-code`, built on

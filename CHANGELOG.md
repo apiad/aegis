@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-08-05
+
 ### Added
 
 - **SSH execution hosts — run a harness on another machine.** A new
@@ -29,7 +31,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   instead of leaving a dead tab looking idle, and `/reconnect` rebuilds the
   harness on the same host, resuming the same conversation in the same tab.
   `aegis config host add|remove|list` writes it all scriptably.
-  Spec: `docs/superpowers/specs/2026-08-04-aegis-ssh-execution-hosts-design.md`;
+  A host runs its harness under a login shell by default (`login_shell`,
+  on unless you turn it off): a non-interactive `ssh host cmd` never
+  sources your profile, so a harness installed in `~/.local/bin` — where
+  the Claude Code installer puts it — would not be on `PATH` at all, and
+  on a machine carrying both a system and a user install it is the login
+  shell that resolves the newer one.
+  Docs: [Execution hosts](https://apiad.github.io/aegis/hosts/); spec:
+  `docs/superpowers/specs/2026-08-04-aegis-ssh-execution-hosts-design.md`;
   procedure: `know-how/ssh-execution-hosts.md`.
 
 - **`Ctrl+click` a `Read`/`Write`/`Edit` block to open that file (TUI).** The
