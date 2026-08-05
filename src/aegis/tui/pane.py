@@ -14,7 +14,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
 from textual.reactive import reactive
@@ -38,6 +38,7 @@ from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
+from aegis.tui.plan_dock import PlanDock
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
@@ -751,7 +752,9 @@ class ConversationPane(Widget):
     DEFAULT_CSS = """
     ConversationPane { layout: vertical; height: 1fr;
                        background: $background; }
-    ConversationPane #transcript { height: 1fr; background: $background;
+    ConversationPane #transcript-row { height: 1fr; }
+    ConversationPane #transcript { height: 1fr; width: 1fr;
+                                   background: $background;
                                    padding: 1 4; scrollbar-size: 0 0; }
     ConversationPane StatusBar { height: 1; background: $panel;
                                  color: $foreground; padding: 0 2; }
@@ -950,7 +953,9 @@ class ConversationPane(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield VerticalScroll(id="transcript")
+            with Horizontal(id="transcript-row"):
+                yield VerticalScroll(id="transcript")
+                yield PlanDock(self._palette, id="plan-dock")
             if self._digest is not None:
                 yield QueueStrip(self._digest, self._palette)
             if self._monitor_manager is not None:
@@ -1251,6 +1256,8 @@ class ConversationPane(Widget):
         kind = effect.get("kind")
         if kind == "theme":
             self.app.theme = effect["name"]
+        elif kind == "tasks":
+            self.toggle_task_dock()
         elif kind == "clear":
             from rich.text import Text
 
@@ -1362,6 +1369,15 @@ class ConversationPane(Widget):
             return None
         path = (getattr(ev, "raw_input", None) or {}).get("file_path")
         return self._place.qualify(str(path)) if path else None
+
+    def toggle_task_dock(self) -> bool:
+        """Open/close the task dock. Bound to F3 and to `/tasks`."""
+        try:
+            dock = self.query_one("#plan-dock", PlanDock)
+        except Exception:
+            return False
+        self._refresh_plan_surfaces()
+        return dock.toggle()
 
     def _plan_key(self, ev) -> str | None:
         return getattr(ev, "parent_tool_use_id", None)
@@ -2276,6 +2292,12 @@ class ConversationPane(Widget):
         except Exception:
             return
         strip.refresh_plan(core.plan_state(), core.plan.working)
+        try:
+            dock = self.query_one("#plan-dock", PlanDock)
+        except Exception:
+            return
+        dock.refresh_plan(core.plan_state(), core.subplan_states(),
+                          core.plan.working)
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:

@@ -285,3 +285,88 @@ async def test_a_subagent_plan_does_not_change_the_strip():
         await pilot.pause()
 
         assert "1/3" in strip.render().plain
+
+
+@pytest.mark.asyncio
+async def test_f3_toggles_the_dock_and_it_shows_the_session_plan():
+    from aegis.events import AgentPlan, PlanEntry
+    from aegis.tui.plan_dock import PlanDock
+
+    async with _app().run_test() as pilot:
+        pane = pilot.app._panes[0]
+        dock = pane.query_one("#plan-dock", PlanDock)
+        pane._core._fire_event(AgentPlan(entries=(
+            PlanEntry(content="explore", status="completed"),
+            PlanEntry(content="build", status="in_progress"),
+        )))
+        await pilot.pause()
+        assert dock.display is False           # hidden until asked for
+
+        await pilot.press("f3")
+        await pilot.pause()
+        assert dock.display is True
+        out = dock.render().plain
+        assert "explore" in out and "build" in out and "1/2" in out
+
+        await pilot.press("f3")
+        await pilot.pause()
+        assert dock.display is False
+
+
+@pytest.mark.asyncio
+async def test_the_tasks_command_toggles_the_same_dock():
+    """One dispatch seam, so the web client gets the toggle for free."""
+    from aegis.tui.plan_dock import PlanDock
+
+    async with _app().run_test() as pilot:
+        pane = pilot.app._panes[0]
+        dock = pane.query_one("#plan-dock", PlanDock)
+        pane._apply_command_effect({"kind": "tasks"})
+        await pilot.pause()
+        assert dock.display is True
+
+
+@pytest.mark.asyncio
+async def test_the_transcript_keeps_its_width_while_the_dock_is_shut():
+    """A hidden dock must cost nothing — the transcript owns the row."""
+    from aegis.tui.plan_dock import PlanDock
+
+    async with _app().run_test(size=(120, 30)) as pilot:
+        pane = pilot.app._panes[0]
+        wide = pane.query_one("#transcript").size.width
+        pane.query_one("#plan-dock", PlanDock).toggle()
+        await pilot.pause()
+        narrow = pane.query_one("#transcript").size.width
+        assert narrow < wide, "opening the dock must reflow the transcript"
+        assert narrow > 40, "the transcript must keep a usable width"
+
+
+@pytest.mark.asyncio
+async def test_dock_labels_use_the_dock_s_real_width_not_the_minimum():
+    """A wider terminal must mean longer labels. toggle() paints before
+    Textual lays out a previously-hidden widget, so without an on_resize
+    repaint the dock renders at DOCK_MIN and a 200-col terminal shows
+    SHORTER labels than a 120-col one."""
+    from aegis.events import AgentPlan, PlanEntry
+    from aegis.tui.plan_dock import PlanDock
+
+    subject = "Explore the plan-rendering context in some detail"
+
+    async def widest_label(cols):
+        async with _app().run_test(size=(cols, 30)) as pilot:
+            pane = pilot.app._panes[0]
+            pane._core._fire_event(AgentPlan(entries=(
+                PlanEntry(content=subject, status="in_progress"),)))
+            await pilot.pause()
+            await pilot.press("f3")
+            await pilot.pause()
+            dock = pane.query_one("#plan-dock", PlanDock)
+            row = dock.render().plain.splitlines()[1]
+            return dock.size.width, len(row)
+
+    narrow_w, narrow_label = await widest_label(100)
+    wide_w, wide_label = await widest_label(200)
+    assert wide_w > narrow_w
+    assert wide_label > narrow_label, (
+        f"dock {wide_w} cols rendered a {wide_label}-char row while "
+        f"dock {narrow_w} cols rendered {narrow_label}")

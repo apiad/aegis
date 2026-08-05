@@ -35,6 +35,14 @@ async def _clear(ctx: CommandContext, args) -> CommandResult:
                          effect={"kind": "clear"})
 
 
+async def _tasks(ctx: CommandContext, args) -> CommandResult:
+    """Toggle the task dock. Carried as an effect rather than done here so
+    the TUI and the web client both get it through the one dispatch seam
+    (the TUI also binds F3)."""
+    return CommandResult(True, "task dock toggled",
+                         effect={"kind": "tasks"})
+
+
 async def _rename(ctx: CommandContext, args) -> CommandResult:
     new = args["new"]
     res = await ctx.bridge.rename_handle(ctx.handle, new)
@@ -88,5 +96,7 @@ for _cmd in (
                      Arg("name", required=False, completer=THEME_NAMES),))),
     SlashCommand("clear", "clear the visible transcript (cosmetic)",
                  "/clear", _clear),
+    SlashCommand("tasks", "show or hide the task dock (also F3)",
+                 "/tasks", _tasks),
 ):
     register(_cmd)

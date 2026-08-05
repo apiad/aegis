@@ -12,13 +12,22 @@ from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
 
 _TICK = 0.25
-DOCK_WIDTH = 26
+# Proportional, not a magic number. Across 344 real task subjects the
+# median is 35 characters and p90 is 49, so no fixed width works: 26
+# columns truncates 99% of them, and fitting 90% would need a 59-column
+# dock — half a laptop screen. A share of the pane adapts instead, and the
+# bounds keep it useful on an 80-col terminal without eating a 200-col one.
+DOCK_PCT = 34
+DOCK_MIN = 26
+DOCK_MAX = 60
 
 
 class PlanDock(Static):
     DEFAULT_CSS = f"""
     PlanDock {{
-        width: {DOCK_WIDTH};
+        width: {DOCK_PCT}%;
+        min-width: {DOCK_MIN};
+        max-width: {DOCK_MAX};
         padding: 0 1;
     }}
     """
@@ -35,6 +44,17 @@ class PlanDock(Static):
 
     def on_mount(self) -> None:
         self.set_interval(_TICK, self._tick)
+
+    def on_resize(self) -> None:
+        """Repaint at the real width.
+
+        toggle() paints immediately, but a widget that was display:none has
+        not been laid out yet — size.width is still 0, so the first paint
+        falls back to DOCK_MIN and truncates labels far harder than the
+        dock's actual width requires. This also covers a terminal resize.
+        """
+        if self._open:
+            self._paint()
 
     def _tick(self) -> None:
         if self._open and self._working and self._state.current is not None:
@@ -59,7 +79,10 @@ class PlanDock(Static):
             self._paint()
 
     def _paint(self) -> None:
+        # Measure at paint time: the dock is a share of the pane, so its
+        # width changes when the terminal is resized.
+        w = self.size.width or DOCK_MIN
         self.update(render_plan_dock(
             self._state, self._palette, working=self._working,
-            frame=self._frame, width=DOCK_WIDTH - 2,
+            frame=self._frame, width=max(DOCK_MIN, w) - 2,
             subplans=self._subplans))

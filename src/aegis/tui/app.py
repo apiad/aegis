@@ -260,6 +260,7 @@ class AegisApp(App):
                 show=False),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
         Binding("f2", "open_config_panel", "Config", priority=True),
+        Binding("f3", "toggle_tasks", "Tasks", priority=True),
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
@@ -1252,6 +1253,13 @@ class AegisApp(App):
         self._refresh_tabbar()
         tab.focus_input()
         return tab
+
+    def action_toggle_tasks(self) -> None:
+        """Show or hide the active pane's task dock (also `/tasks`)."""
+        pane = self._active
+        toggle = getattr(pane, "toggle_task_dock", None)
+        if toggle is not None:
+            toggle()
 
     async def action_open_config_panel(self) -> None:
         """Open (or focus) the ConfigPanel tab."""
