@@ -132,6 +132,13 @@ class PlanEntry:
     content: str
     status: str            # pending / in_progress / completed
     priority: str = "medium"   # high / medium / low (default for claude)
+    # Stable identifier, present only for claude's Task* family. Snapshot
+    # sources (TodoWrite, ACP) resend a full ordered list each time and
+    # carry no identity, so this stays None for them.
+    id: str | None = None
+    # Present-continuous label ("Writing the spec") the Task* tools supply
+    # beside the imperative subject. Shown while the task is in progress.
+    active_form: str | None = None
 
 
 @dataclass(frozen=True)

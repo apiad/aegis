@@ -116,7 +116,8 @@ def _encode_inner(ev: Event) -> dict:
         return {"t": "AgentPlan",
                 "entries": [
                     {"content": e.content, "status": e.status,
-                     "priority": e.priority}
+                     "priority": e.priority, "id": e.id,
+                     "active_form": e.active_form}
                     for e in ev.entries
                 ]}
     if isinstance(ev, ContextUpdate):
@@ -212,7 +213,8 @@ def _decode_inner(d: dict) -> Event:
     if t == "AgentPlan":
         entries = tuple(
             PlanEntry(content=e["content"], status=e["status"],
-                      priority=e.get("priority", "medium"))
+                      priority=e.get("priority", "medium"),
+                      id=e.get("id"), active_form=e.get("active_form"))
             for e in d.get("entries", [])
         )
         return AgentPlan(entries=entries)
