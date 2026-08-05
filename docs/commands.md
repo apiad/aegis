@@ -212,7 +212,7 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/help` | List every command (`usage — summary`), grouped by source. |
 | `/sessions` | List live agent sessions; mark the active one. |
 | `/agents [add … \| remove <slug>]` | List / add / remove agent profiles. |
-| `/spawn <agent> [prompt]` | Start a new top-level agent with an optional opening prompt. |
+| `/spawn <agent>[@host[:cwd]] [prompt]` | Start a new top-level agent with an optional opening prompt. `@host` runs its harness on another machine — see [Execution hosts](hosts.md); `:cwd` overrides that host's default working tree. |
 | `/fork [prompt] [--slug S] [--model M] [--effort E]` | Branch this conversation into a new tab — a worker that already knows. Refused mid-turn; the parent is left untouched. ~$1 a fork. |
 | `/btw <question>` | Answer a side question from this pane's recent window and disappear. Legal mid-turn; never appended to the session log. Deferred — `Esc` cancels. |
 | `/peer <handle> [--cc] <question>` | Ask an **idle** peer, from where you're standing. `@handle …` is sugar for it. `--cc` also lands the answer in your own conversation. Deferred. |
@@ -222,6 +222,7 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/schedules [show \| enable \| disable \| remove \| logs <name>]` | List / inspect scheduled workflows. |
 | `/terminals [new \| run \| close <name> [cmd]]` | List / spawn / run / close shared terminals. |
 | `/rename <new>` | Rename the current session. |
+| `/reconnect [handle]` | Rebuild a dropped [remote session's](hosts.md#when-the-link-drops) harness in place, resuming its conversation in the same tab. Refused for a local session, or one with no session id to resume from. |
 | `/close [handle]` | Close the current or a named session. |
 | `/themes [name]` | List themes / switch theme (`effect: theme`). |
 | `/clear` | Cosmetically clear the transcript (`effect: clear`). |

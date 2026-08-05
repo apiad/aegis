@@ -16,8 +16,9 @@ surface is exactly what aegis declares.
 | Tool | Purpose |
 |---|---|
 | `aegis_meta()` | Self-orientation briefing — what aegis is, what tools are available, how the inbox works. Always the first tool a new agent should call. |
-| `aegis_list_sessions()` | Live peer sessions: handle, agent_slug, state, active, unseen. Use this to see who you can hand off to and whether they are idle. |
+| `aegis_list_sessions()` | Live peer sessions: handle, agent_slug, state, active, unseen, and `host`. Use this to see who you can hand off to and whether they are idle. `host` is the machine that peer's harness runs on — `"local"`, or a configured [execution host](hosts.md). |
 | `aegis_list_agents()` | Configured agent profile slugs that could be spawned. |
+| `aegis_spawn(agent, prompt, from_handle, …, host=None, cwd=None)` | Create a new independent top-level peer and hand it an opening prompt. Fire-and-forget: returns the new handle without waiting. `host` places its harness on another machine — see [Execution hosts](hosts.md) — where its `Bash`/`Read`/`Edit` act on *that* filesystem while it stays an ordinary peer of yours. |
 | `aegis_handoff(from_handle, target_handle, context)` | One-way (fire-and-forget) context transfer to a live peer. The target receives a tagged user turn and starts working; you do not wait for its reply. |
 | `aegis_enqueue(queue, payload, from_handle, callback=true)` | Delegate work onto a named queue. Returns `{task_id, queued_position}`. If `callback=true`, the worker's final result arrives in your inbox later. See [Queues](queues.md). |
 | `aegis_task_status(task_id)` | Inspect a previously enqueued task — useful when `callback=false` or you want to poll. |

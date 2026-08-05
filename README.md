@@ -361,6 +361,48 @@ aegis plugin install memory-system --from gh:apiad/aegis#plugins/memory-system
 
 Full protocol reference: [Plugins documentation](https://apiad.github.io/aegis/plugins/).
 
+## Execution hosts — run an agent on another machine
+
+Give aegis an SSH destination and any agent can run *its harness* over
+there, while its tab, transcript and peer identity stay here:
+
+```yaml
+hosts:
+  vps:
+    ssh: vps.apiad.net
+    cwd: /home/apiad/Workspace
+```
+
+```
+/spawn main@vps               # or Ctrl+N → host tier
+/spawn main@vps:/srv/app      # …in a specific tree
+```
+
+The point is not remote *access* — it is that the agent's `Bash`,
+`Read`, `Edit` and `Grep` act on **that** machine's filesystem,
+natively, instead of one `ssh` invocation per command. One SSH
+ControlMaster is shared by every session on a host, and a reverse tunnel
+carries the MCP plane back, so the remote agent is an ordinary peer:
+
+```python
+# from a local agent — the new peer runs on the VPS
+aegis_spawn(agent="main", prompt="Audit the nginx config",
+            from_handle="lucid-knuth", host="vps")
+# → it can aegis_handoff back to you, join your canvas, and shows up
+#   in aegis_list_sessions carrying host="vps"
+```
+
+Paths become host-scoped, because `/srv/app/x.py` on two machines is two
+different files: `Ctrl+click` on a remote pane copies `vps:/srv/app/x.py`
+rather than opening the local one, and file claims don't collide across
+hosts. If the link drops, the pane says so instead of looking idle, and
+`/reconnect` rebuilds the harness in the same tab with its history.
+
+Not durable by design — for "keep working while the laptop sleeps", run
+`aegis serve` on the box and attach with `aegis --remote`.
+
+→ **[Execution hosts](https://apiad.github.io/aegis/hosts/)**
+
 ## Remote plane — cross-machine handoff
 
 `aegis serve` can expose a second HTTP plane — distinct from the
@@ -692,6 +734,7 @@ Full documentation: **[https://apiad.github.io/aegis/](https://apiad.github.io/a
 - [Canvas](https://apiad.github.io/aegis/canvas/) — shared markdown blackboard
 - [Terminals](https://apiad.github.io/aegis/terminals/) — shared live PTY
 - [Groups](https://apiad.github.io/aegis/groups/) — broadcast-and-gather committees
+- [Execution hosts](https://apiad.github.io/aegis/hosts/) — run an agent's harness on another machine over SSH
 - [Remote plane](https://apiad.github.io/aegis/remote/) — laptop ↔ VPS enqueue over HTTP
 - [Workflows](https://apiad.github.io/aegis/workflows/) — Python orchestration + catalog
 - [Budgets](https://apiad.github.io/aegis/budget/)

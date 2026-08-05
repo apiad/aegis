@@ -1,5 +1,18 @@
 # Remote plane
 
+!!! info "Three things named 'remote' — which one do you want?"
+    - **Remote plane** (this page, `remotes:`) — one `aegis serve`
+      enqueues work into *another* `aegis serve`. Two aegises, federated.
+    - **`aegis --remote ws://…`** — your local TUI attaches to a remote
+      `aegis serve`. One aegis, remote; the UI is what moved.
+    - **[Execution hosts](hosts.md)** (`hosts:`) — one *local* aegis runs
+      an agent's harness on another machine over SSH. The session stays
+      here; only the subprocess is elsewhere.
+
+    Rule of thumb: use **execution hosts** for "run this agent over
+    there", `--remote` for "keep working while my laptop sleeps", and the
+    **remote plane** to let two aegises delegate to each other.
+
 A **remote plane** lets one `aegis serve` enqueue work into another
 `aegis serve` over HTTP. One agent on one machine can hand a task off
 to another machine — typically because the work is long-running, needs

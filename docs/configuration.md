@@ -253,7 +253,52 @@ workflows:
   - my_builtin
 ```
 
+## Execution hosts
+
+Optional. Declares machines an agent's harness can run on, over a
+persistent SSH connection. The session, tab and transcript stay local;
+only the subprocess is elsewhere. Full guide: [Execution
+hosts](hosts.md).
+
+```yaml
+hosts:
+  vps:
+    ssh: vps.apiad.net          # handed to ssh verbatim — ~/.ssh/config applies
+    cwd: /home/apiad/Workspace  # default working tree there
+  smaug:
+    ssh: smaug.local
+    cwd: /home/apiad/work
+    ssh_opts: ["-o", "ServerAliveInterval=15"]
+    login_shell: true           # default; see below
+```
+
+| key | required | meaning |
+|---|---|---|
+| `ssh` | yes | ssh destination — an alias from `~/.ssh/config` works, as do `ProxyCommand` and jump hosts |
+| `cwd` | yes | default working directory on that machine |
+| `ssh_opts` | no | extra flags appended to every ssh invocation for this host |
+| `login_shell` | no (`true`) | run the harness under `bash -lc`. Leave it on: a non-interactive ssh command does not source your profile, so a harness in `~/.local/bin` would not be on `PATH`. |
+| `remote_mcp_port` | no | pin the remote end of the MCP tunnel instead of letting sshd allocate one |
+
+`local` is implicit and cannot be declared. Overlays live at
+`.aegis/hosts/<name>.yaml`. An agent profile may name a default host:
+
+```yaml
+agents:
+  deploy:
+    harness: claude-code
+    model: opus
+    host: vps
+```
+
+Scriptable equivalents: `aegis config host add|list|remove`.
+
 ## Remote plane
+
+!!! note "Not the same thing as [execution hosts](hosts.md)"
+    The remote plane federates **two aegises**. Execution hosts keep one
+    local aegis and move only the harness process. See the
+    [disambiguation table](hosts.md#this-is-not-remote-and-not-the-remote-plane).
 
 Optional. Lets this `aegis serve` enqueue work into another `aegis
 serve` over HTTP and/or accept incoming enqueues from peers on the
@@ -317,6 +362,8 @@ Every section above is also reachable through `aegis config`:
 aegis config show [--json]
 aegis config agent list / add <slug> --provider --model [--effort] [--permission] / remove <slug>
 aegis config queue list / add <name> --agent --max-parallel [--budget …]+ / remove <name>
+aegis config host list / add <name> --ssh --cwd [--ssh-opt …]+ [--no-login-shell]
+                                    [--remote-mcp-port N] / remove <name>
 aegis config telegram show / set [--token --chat-id --auto-prompt
                                   + matching --clear-* variants]
 aegis config default-agent <slug>

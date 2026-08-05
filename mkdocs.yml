@@ -85,6 +85,7 @@ nav:
       - Terminals: terminals.md
       - Workflows: workflows.md
       - Groups: groups.md
+      - Execution hosts: hosts.md
       - Remote plane: remote.md
       - MCP plane: mcp.md
       - Budgets: budget.md
