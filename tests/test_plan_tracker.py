@@ -8,8 +8,14 @@ minute of work. Elapsed accrues only while the session is mid-turn.
 Every method takes an explicit ts. The tracker never reads a clock — that
 is what makes a replayed log reproduce the live numbers exactly.
 """
-from aegis.events import AgentPlan, PlanEntry
+import asyncio
+
+import pytest
+
+from aegis.core.session import AgentSession
+from aegis.events import AgentPlan, PlanEntry, Result
 from aegis.plan import PlanTracker
+from aegis.tui.state import AgentState
 
 
 def plan(*pairs, parent=None):
@@ -206,3 +212,92 @@ def test_replaying_the_same_event_sequence_reproduces_the_state():
     assert live == replayed
     assert live.tasks[0].working_s == 15.0    # 12 + 3, idle gap excluded
     assert live.tasks[1].working_s == 7.0
+
+
+# -- AgentSession wiring ---------------------------------------------
+
+class _FakeSession:
+    """Mirrors tests/test_core_session.py's FakeSession."""
+
+    def __init__(self, events=()):
+        self._events = list(events)
+        self.started = False
+        self.closed = False
+        self.sent: list[str] = []
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, t):
+        self.sent.append(t)
+
+    async def close(self):
+        self.closed = True
+
+    async def events(self):
+        for e in self._events:
+            await asyncio.sleep(0)
+            yield e
+
+
+@pytest.fixture
+def session():
+    return AgentSession(_FakeSession(), agent=None, agent_slug="default",
+                        handle="h-plan")
+
+
+def _entries(*pairs):
+    return tuple(PlanEntry(content=c, status=s) for c, s in pairs)
+
+
+def test_agent_session_folds_plans_into_its_tracker(session):
+    session._fire_event(AgentPlan(entries=_entries(
+        ("a", "completed"), ("b", "in_progress"))))
+    st = session.plan_state()
+    assert (st.done, st.total) == (1, 2)
+    assert session.plan_roll_up().current == "b"
+
+
+def test_a_subagent_plan_does_not_overwrite_the_top_level_plan(session):
+    """The failure this guards: a 1-item subagent plan replacing the
+    parent's 3-item one, so the strip reads 0/1 while the real plan is
+    1/3."""
+    session._fire_event(AgentPlan(entries=_entries(
+        ("a", "completed"), ("b", "in_progress"), ("c", "pending"))))
+    session._fire_event(AgentPlan(
+        entries=_entries(("sub", "in_progress")),
+        parent_tool_use_id="tool_1"))
+
+    assert session.plan_state().total == 3          # unchanged
+    assert session.subplan_states()["tool_1"].total == 1
+
+
+def test_two_subagents_keep_separate_plans(session):
+    session._fire_event(AgentPlan(entries=_entries(("x", "in_progress")),
+                                  parent_tool_use_id="tool_1"))
+    session._fire_event(AgentPlan(entries=_entries(("y", "pending"),
+                                                   ("z", "pending")),
+                                  parent_tool_use_id="tool_2"))
+    subs = session.subplan_states()
+    assert subs["tool_1"].total == 1 and subs["tool_2"].total == 2
+
+
+def test_turn_state_drives_the_working_flag(session):
+    session._emit_state(AgentState.working, finished=False)
+    assert session.plan.working is True
+    session._emit_state(AgentState.ready, finished=True)
+    assert session.plan.working is False
+
+
+def test_subagent_trackers_follow_turn_state_too(session):
+    session._emit_state(AgentState.working, finished=False)
+    session._fire_event(AgentPlan(entries=_entries(("x", "in_progress")),
+                                  parent_tool_use_id="tool_1"))
+    assert session.subplans["tool_1"].working is True
+    session._emit_state(AgentState.ready, finished=True)
+    assert session.subplans["tool_1"].working is False
+
+
+def test_a_session_with_no_plan_rolls_up_empty(session):
+    r = session.plan_roll_up()
+    assert (r.done, r.total, r.current) == (0, 0, None)

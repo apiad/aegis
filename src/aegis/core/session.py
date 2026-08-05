@@ -8,8 +8,10 @@ from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AssistantText, Event, Result, ThinkingTokens, ToolResult, ToolUse,
+    AgentPlan, AssistantText, Event, Result, ThinkingTokens, ToolResult,
+    ToolUse,
 )
+from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
     SessionHandle, SessionStartEvent, Turn,
@@ -79,6 +81,14 @@ class AgentSession:
             provider=_harness,
             model=_model)
         self._now = now
+        # Plan state is session state, not view state: the TUI strip, the
+        # web client, and the MCP coordination plane are all readers.
+        self.plan = PlanTracker()
+        # Subagent plans, keyed by the dispatching Task tool_use id. Kept
+        # apart from the top-level plan because a subagent's short list
+        # would otherwise overwrite its parent's — the strip would read
+        # 0/1 while the real plan is 5/8.
+        self.subplans: dict[str, PlanTracker] = {}
         self._started = False
         self._task: asyncio.Task | None = None
         self._inbox = inbox                       # InboxRouter | None
@@ -260,6 +270,14 @@ class AgentSession:
 
     def _emit_state(self, state: AgentState, *, finished: bool) -> None:
         self.state = state
+        # Working time accrues only mid-turn, so every tracker follows the
+        # session's turn state — including the subagents', which are also
+        # only doing work while this session's turn is live.
+        now = self._now()
+        working = state == AgentState.working
+        self.plan.set_working(working, ts=now)
+        for tracker in self.subplans.values():
+            tracker.set_working(working, ts=now)
         if self.on_state is not None:
             self.on_state(self, state, finished)
         for cb in self._extra_state_observers:
@@ -533,10 +551,37 @@ class AgentSession:
         self._chain_if_pending()
 
     def _fire_event(self, ev: Event) -> None:
+        # Fold before observers run, so a subscriber reading plan_state()
+        # from its callback sees this event already applied.
+        if isinstance(ev, AgentPlan):
+            self._apply_plan(ev)
         if self.on_event is not None:
             self.on_event(self, ev)
         for cb in self._extra_event_observers:
             cb(self, ev)
+
+    def _apply_plan(self, ev: AgentPlan) -> None:
+        """Route by parent: top-level plans to our own tracker, a
+        subagent's to a tracker of its own."""
+        now = self._now()
+        if ev.parent_tool_use_id is None:
+            self.plan.apply_plan(ev, ts=now)
+            return
+        tracker = self.subplans.get(ev.parent_tool_use_id)
+        if tracker is None:
+            tracker = self.subplans[ev.parent_tool_use_id] = PlanTracker()
+            tracker.set_working(self.plan.working, ts=now)
+        tracker.apply_plan(ev, ts=now)
+
+    def plan_state(self) -> PlanState:
+        return self.plan.snapshot(ts=self._now())
+
+    def plan_roll_up(self) -> PlanSnapshot:
+        return self.plan.roll_up(ts=self._now())
+
+    def subplan_states(self) -> dict[str, PlanState]:
+        now = self._now()
+        return {k: t.snapshot(ts=now) for k, t in self.subplans.items()}
 
     def _chain_if_pending(self) -> None:
         if self._inbox_buffer:
