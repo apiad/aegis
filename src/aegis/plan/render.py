@@ -8,6 +8,7 @@ glyph wider, and adjacent circles visibly overlap.
 """
 from __future__ import annotations
 
+from rich.cells import cell_len, set_cell_size
 from rich.text import Text
 
 from aegis.plan.models import PlanState
@@ -19,6 +20,24 @@ from aegis.render_shared import PLAN_STATUS_GLYPH
 SPINNER_FRAMES = "◐◓◑◒"
 
 _STRIP_LABEL = "tasks: "
+
+# glyph + space + label + space + a right-aligned clock. The clock column
+# is what every row lines its right edge up on, so it is a constant and
+# the label gets whatever is left.
+_CLOCK_W = 6
+_ROW_CHROME = 3 + _CLOCK_W      # glyph, the two spaces, the clock
+
+
+def _fit(text: str, cells: int) -> str:
+    """Truncate to `cells` display columns, ellipsis included in the
+    budget. Measured in cells, never in characters: one emoji is one
+    character and two columns, and a row padded by len() puts its clock a
+    column out of line with every other row."""
+    if cells <= 0:
+        return ""
+    if cell_len(text) <= cells:
+        return text
+    return "…" if cells == 1 else set_cell_size(text, cells - 1) + "…"
 
 
 def fmt_working(seconds: float | None) -> str:
@@ -57,12 +76,20 @@ def _window(state: PlanState, cap: int) -> tuple[list, bool, bool]:
 
 
 def render_plan_strip(state: PlanState, colors, *, working: bool = False,
-                      frame: int = 0, cap: int = 12) -> Text:
+                      frame: int = 0, cap: int = 12,
+                      width: int | None = None) -> Text:
     """One line: circle strip, count, current task, working clock.
 
     One circle per task rather than a fixed-width bar, because a plan is a
     small ordered set of discrete things — the strip is the task list in
     miniature and shows not just how far along but where.
+
+    `width` is opt-in — omit it to measure, pass the pane width to paint.
+    When given, the current label absorbs the whole shortfall: the circles
+    and the count are the reason the strip exists, so a narrow pane drops
+    the label and keeps the progress. Without it the strip is unbounded
+    and a long `active_form` wraps the widget to two lines, which makes
+    the transcript jump every time the current task changes.
     """
     out = Text()
     if not state:
@@ -79,9 +106,18 @@ def render_plan_strip(state: PlanState, colors, *, working: bool = False,
         out.append("…", style=colors.muted)
     out.append(f"  {state.done}/{state.total}", style=colors.ink)
     if cur := state.current:
-        out.append(" · ", style=colors.muted)
-        out.append(cur.label, style=colors.ink)
-        out.append(f" {fmt_working(cur.working_s)}", style=colors.muted)
+        clock = fmt_working(cur.working_s)
+        label = cur.label
+        if width is not None:
+            # Everything ahead of the label is already in `out`, so measure
+            # it rather than re-deriving it — the separator and the clock
+            # are all that still have to fit.
+            label = _fit(label, width - cell_len(out.plain)
+                         - cell_len(" · ") - 1 - cell_len(clock))
+        if label:
+            out.append(" · ", style=colors.muted)
+            out.append(label, style=colors.ink)
+            out.append(f" {clock}", style=colors.muted)
     return out
 
 
@@ -89,11 +125,10 @@ def _dock_row(out: Text, task, colors, working: bool, frame: int,
               label_w: int, indent: str) -> None:
     out.append(indent)
     out.append(_glyph(task, working, frame), style=_style(task, colors))
-    label = task.label
-    if len(label) > label_w:
-        label = label[:label_w - 1] + "…"
-    out.append(f" {label:<{label_w}} ", style=colors.ink)
-    out.append(f"{fmt_working(task.working_s):>6}\n", style=colors.muted)
+    label = set_cell_size(_fit(task.label, label_w), label_w)
+    out.append(f" {label} ", style=colors.ink)
+    out.append(f"{fmt_working(task.working_s):>{_CLOCK_W}}\n",
+               style=colors.muted)
 
 
 def render_plan_dock(state: PlanState, colors, *, working: bool = False,
@@ -107,7 +142,7 @@ def render_plan_dock(state: PlanState, colors, *, working: bool = False,
     out = Text()
     out.append(f"tasks {state.done}/{state.total}\n",
                style=f"bold {colors.accent}")
-    label_w = max(8, width - 8)
+    label_w = max(8, width - _ROW_CHROME)
     for task in state.tasks:
         _dock_row(out, task, colors, working, frame, label_w, indent="")
     for sub in (subplans or {}).values():
@@ -116,6 +151,8 @@ def render_plan_dock(state: PlanState, colors, *, working: bool = False,
         out.append(f"  └ subagent {sub.done}/{sub.total}\n",
                    style=colors.muted)
         for task in sub.tasks:
+            # The four indent columns come out of the label, so a nested
+            # row lands on the same right edge as a top-level one.
             _dock_row(out, task, colors, working, frame,
                       max(6, label_w - 4), indent="    ")
     return out

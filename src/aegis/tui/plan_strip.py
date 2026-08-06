@@ -40,7 +40,16 @@ class PlanStrip(Static):
         self.display = bool(state)
         self._paint()
 
+    def on_resize(self) -> None:
+        """Repaint at the real width — the label is truncated to fit, so a
+        stale width leaves it cut short (or wrapping) after a resize."""
+        self._paint()
+
     def _paint(self) -> None:
+        # `or None` matters: a widget that has not been laid out yet reports
+        # width 0, and a 0-column budget would truncate the label away
+        # entirely. Unbounded until the first resize is the safe fallback.
         self.update(render_plan_strip(
             self._state, self._palette,
-            working=self._working, frame=self._frame))
+            working=self._working, frame=self._frame,
+            width=self.size.width or None))

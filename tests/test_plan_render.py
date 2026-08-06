@@ -9,6 +9,7 @@ a doc, because a note decays and a test does not.
 import re
 
 import pytest
+from rich.cells import cell_len
 
 from aegis.plan import PlanState, PlanTask
 from aegis.plan.render import (
@@ -136,9 +137,13 @@ def test_never_started_task_shows_a_dash_not_a_zero():
 
 
 def test_dock_truncates_a_long_label_rather_than_wrapping():
+    """The bound is the width itself, not a slack multiple of it. The
+    original `<= 40` for a 24-column dock passed while every row was
+    width+1 — a gate loose enough to pass in both the healthy and the
+    broken state, which is why the overflow survived to live use."""
     s = state(("x" * 200, "pending"))
     for line in as_text(render_plan_dock(s, C, width=24)).splitlines():
-        assert len(line) <= 40
+        assert cell_len(line) <= 24, repr(line)
 
 
 def test_dock_nests_subagent_plans_under_the_top_level_plan():
@@ -154,6 +159,77 @@ def test_dock_nests_subagent_plans_under_the_top_level_plan():
 
 def test_dock_with_no_plan_at_all():
     assert "no plan" in as_text(render_plan_dock(PlanState(), C))
+
+
+# -- fitting the width -----------------------------------------------
+#
+# All three of these were found by rendering a real plan into a real pane
+# rather than by reading the code. Each is a geometry assertion in cells,
+# because `len()` is not width the moment a subject carries an emoji — the
+# same East Asian Ambiguous problem the module docstring already warns
+# about for the circles, one layer up.
+
+def test_every_dock_row_fits_the_width_exactly():
+    """Rows were width+1 at every width: the row is glyph + space + label
+    + space + a 6-cell clock, so the label budget is width-9, and it was
+    width-8."""
+    s = state(("Reconcile the plan doc with what shipped", "completed"),
+              ("Fix the task panel layout defects", "in_progress"),
+              ("Task 13 — AGENTS.md, CHANGELOG, full suite", "pending"))
+    for width in (24, 26, 36, 58):
+        for line in as_text(render_plan_dock(s, C, width=width)).splitlines():
+            assert cell_len(line) <= width, (width, repr(line))
+
+
+def test_nested_subagent_rows_fit_the_width_too():
+    """The indented rows carry the same budget arithmetic four columns in,
+    so they overflowed identically and no test looked at them."""
+    top = state(("dispatch", "in_progress"))
+    sub = state(("Grep every consumer of the prefix", "completed"),
+                ("Write the failing test for the dock", "in_progress"))
+    out = as_text(render_plan_dock(top, C, width=36, subplans={"t1": sub}))
+    for line in out.splitlines():
+        assert cell_len(line) <= 36, repr(line)
+
+
+def test_dock_measures_labels_in_cells_not_characters():
+    """A subject with an emoji is one character but two cells wide, so
+    padding by len() pushes that row's clock a column out of the column
+    every other row lines up in."""
+    s = state(("Deploy 🚀 the geocoder to demos and verify", "pending"),
+              ("Plain ascii row of about the same length!", "pending"))
+    rows = [l for l in as_text(render_plan_dock(s, C, width=36)).splitlines()
+            if l.startswith(tuple(CIRCLES))]
+    assert len({cell_len(r) for r in rows}) == 1, [repr(r) for r in rows]
+
+
+def test_strip_fits_a_given_width_by_truncating_the_current_label():
+    """The strip is documented as a one-line summary, but it took no width
+    and never truncated, so a long active_form wrapped it to two lines and
+    the transcript jumped every time the current task changed."""
+    s = state(("Reconcile the plan doc", "completed"),
+              ("Fix the task panel layout defects", "in_progress"),
+              ("Docs and suite", "pending"),
+              times={"Fix the task panel layout defects": 7.3})
+    assert cell_len(as_text(render_plan_strip(s, C, width=40))) <= 40
+    assert cell_len(as_text(render_plan_strip(s, C, width=80))) <= 80
+
+
+def test_strip_without_a_width_is_unbounded():
+    """Width is opt-in: the pure renderer stays pure for callers that are
+    measuring rather than painting."""
+    s = state(("a" * 300, "in_progress"))
+    assert "a" * 300 in as_text(render_plan_strip(s, C))
+
+
+def test_a_strip_too_narrow_for_a_label_still_shows_the_circles():
+    """Degrade by dropping the label, never by dropping the progress —
+    the circles and the count are the reason the strip exists."""
+    s = state(("some quite long task subject here", "in_progress"),
+              ("b", "pending"))
+    out = as_text(render_plan_strip(s, C, width=18))
+    assert cell_len(out) <= 18
+    assert "0/2" in out
 
 
 # -- widgets ---------------------------------------------------------
@@ -173,6 +249,76 @@ async def test_plan_strip_hides_when_there_is_no_plan():
         assert strip.display is False
         strip.refresh_plan(state(("a", "in_progress")), working=True)
         assert strip.display is True
+
+
+@pytest.mark.asyncio
+async def test_plan_strip_stays_one_line_in_a_narrow_pane():
+    """The regression that started all this. Asserted on the laid-out
+    widget, not the string: the pure renderer was fine on its own terms
+    and it was `_paint` that never told it how much room there was."""
+    from textual.app import App, ComposeResult
+    from textual.containers import Vertical
+
+    from aegis.tui.plan_strip import PlanStrip
+
+    class _A(App):
+        def compose(self) -> ComposeResult:
+            with Vertical():
+                yield PlanStrip(C, id="plan-strip")
+
+    # The label must genuinely exceed the pane: the chrome is ~25 cells, so
+    # at width 60 anything under ~35 characters fits and the assertion
+    # passes without ever exercising the overflow. Present-continuous
+    # `active_form` is the realistic worst case — it is what the strip
+    # shows while a task is running, and it is the longer of the two.
+    long = state(("Reconcile the plan doc", "completed"),
+                 ("Fix the task panel layout defects", "in_progress"),
+                 ("Docs and suite", "pending"))
+    long = PlanState(tuple(
+        t if t.status != "in_progress" else PlanTask(
+            key=t.key, subject=t.subject, status=t.status,
+            active_form="Fixing the task panel layout defects found in live use",
+            working_s=7.3)
+        for t in long.tasks))
+    async with _A().run_test(size=(60, 10)) as pilot:
+        strip = pilot.app.query_one("#plan-strip", PlanStrip)
+        strip.refresh_plan(long, working=True)
+        await pilot.pause()
+        assert cell_len(as_text(render_plan_strip(long, C, working=True))) > 60, (
+            "the fixture stopped overflowing — this test would pass vacuously")
+        assert strip.size.height == 1, "the one-line strip wrapped"
+
+
+@pytest.mark.asyncio
+async def test_plan_dock_fills_its_content_box_exactly():
+    """Neither overflowing nor leaving a dead column. `size` is already the
+    content box, so subtracting the padding again wasted a column that the
+    labels — truncated at p90 — could really use."""
+    from textual.app import App, ComposeResult
+    from textual.containers import Horizontal, VerticalScroll
+
+    from aegis.tui.plan_dock import PlanDock
+
+    class _A(App):
+        def compose(self) -> ComposeResult:
+            with Horizontal():
+                yield VerticalScroll(id="transcript")
+                yield PlanDock(C, id="plan-dock")
+
+    s = state(("Reconcile the plan doc with what actually shipped", "completed"),
+              ("Fix the task panel layout defects", "in_progress"))
+    for term_w in (80, 120):
+        async with _A().run_test(size=(term_w, 12)) as pilot:
+            dock = pilot.app.query_one("#plan-dock", PlanDock)
+            dock.toggle()
+            dock.refresh_plan(s, {}, working=True)
+            await pilot.pause()
+            rows = [l for l in dock.render().plain.splitlines()
+                    if l.startswith(tuple(CIRCLES))]
+            assert rows
+            for row in rows:
+                assert cell_len(row) == dock.size.width, (
+                    term_w, dock.size.width, repr(row))
 
 
 @pytest.mark.asyncio

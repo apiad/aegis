@@ -81,8 +81,13 @@ class PlanDock(Static):
     def _paint(self) -> None:
         # Measure at paint time: the dock is a share of the pane, so its
         # width changes when the terminal is resized.
-        w = self.size.width or DOCK_MIN
+        #
+        # `size` is already the content box — Textual excludes padding from
+        # it — so the `padding: 0 1` above must NOT be subtracted again
+        # here. It was, and the row arithmetic was over by one in the other
+        # direction, so the two errors cancelled at some widths and left a
+        # dead column at others. Both are fixed; do not re-add either.
         self.update(render_plan_dock(
             self._state, self._palette, working=self._working,
-            frame=self._frame, width=max(DOCK_MIN, w) - 2,
+            frame=self._frame, width=self.size.width or DOCK_MIN - 2,
             subplans=self._subplans))
