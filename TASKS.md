@@ -199,19 +199,15 @@ long turn's dead time on someone who is free is the whole use case.
 
 - Spec: `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`
 - Plan: `docs/superpowers/plans/2026-07-31-aegis-at-mention-peer-ask.md`
-- **Outstanding: three TUI wiring changes** in `tui/app.py` + `tui/pane.py`
-  (the `("/", "@")` gate; `state_dir`/`source_log_id` kwargs on
-  `AegisApp.peer_ask`; an `AegisApp.read_peer`). Handed to `btw-rendering`,
-  which holds those files. Until they land, `@` works on the web client and
-  is delivered as **literal text** in the TUI — the one failure mode worse
-  than not shipping it.
-- **Also outstanding: `deferred=True` on `/peer`.** `@peer` is `await`ed
-  inline in the pane's input handler, so it blocks the Textual message pump
-  for the whole peer turn — up to `PEER_ASK_TIMEOUT_S = 300`. That defeats
-  the feature's best property (asking while your own tab is busy). Waiting
-  on btw-rendering's `deferred` primitive; `cancel_note` template is
-  `"stopped waiting — {handle}'s turn is still running, so go read its tab"`,
-  because "cancelled" is a lie — the peer's turn is real and completes.
+- ~~Outstanding: three TUI wiring changes~~ **all landed** (verified
+  2026-08-06). The `("/", "@")` gate is `tui/pane.py:1700` and carries a
+  comment explaining why it must travel with `classify_input`;
+  `AegisApp.peer_ask` takes the full kwarg set (`tui/app.py:1652`, fixed in
+  `e97f759` — "the @peer bridge was forwarding three parameters short");
+  `AegisApp.read_peer` is at `tui/app.py:1689`.
+- ~~Also outstanding: `deferred=True` on `/peer`~~ **landed** —
+  `commands/builtins/core.py:425,434`, with the `_DeferredTrack` machinery
+  in `tui/pane.py`. `@peer` no longer blocks the Textual message pump.
 - Deferred to v2, not built: multicast `@a @b` (more attractive under
   idle-only — "poll every free peer, one block, N answers" — but it changes
   the block layout and the timeout story); clickable `@handle` in *agent
