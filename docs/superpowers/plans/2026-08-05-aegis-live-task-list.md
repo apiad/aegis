@@ -2,7 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Tasks 1–10 implemented (`fff6f17`..`20ee0bd`). Task 11 half-landed — the tab-bar suffix shipped in `20ee0bd`, the group-dashboard roll-up was deliberately skipped (`DashboardSnapshot` has no live data path, so `member_detail` would be dead code). Tasks 12 (web strip + slide-over) and 13 (suite, AGENTS.md, CHANGELOG) not started.
+**Status: complete on the TUI** (2026-08-06). Tasks 1–10 implemented (`fff6f17`..`20ee0bd`); Task 13 in `7c4fec3`..`acfdbc4`. Two halves deliberately not built, both recorded in `TASKS.md` rather than left silent:
+
+- **Task 11, group-dashboard roll-up — skipped.** The tab-bar suffix shipped in `20ee0bd`; `member_detail` did not, because `DashboardSnapshot` has no live data path and the helper would be dead code. Wiring that path is its own slice.
+- **Task 12, the web strip and slide-over — deferred** at Alex's direction (2026-08-06), to finish the TUI end to end first. The TUI and PWA are co-equal per `AGENTS.md`, so this is a real debt, not a closed item.
+
+Two defects that only appeared when the feature was driven through a real pane, both fixed with mutation-checked tests (`e056127`, `acfdbc4`): the surfaces did not fit their width (the one-line strip wrapped; every dock row was width+1), and the plan did not survive a restart (the tracker is per-process and nothing replayed it).
 
 **Goal:** Make agent plan state first-class session state — parsed from every harness, timed in real time, and rendered as a live task list in the TUI, the web client, and the MCP coordination plane.
 
@@ -1767,6 +1772,8 @@ git commit -m "feat(mcp): plan roll-up on SessionInfo and aegis_peer_plan drill-
 
 ### Task 11: TabBar count and group dashboard roll-up
 
+> **Partially shipped.** The tab-bar suffix landed in `20ee0bd`; the group-dashboard `member_detail` half was skipped deliberately — `DashboardSnapshot` has no live data path, so the helper would be dead code. Its steps below stay unticked on purpose.
+
 The human coordinator's view of the same data. Both are small reads of what Task 10 already exposes.
 
 **Files:**
@@ -1829,6 +1836,8 @@ git commit -m "feat(tui): plan roll-up in the tab bar and group dashboard"
 ```
 
 ---
+
+> **Deferred 2026-08-06** — Alex scoped this session to the TUI. Not started; the web surfaces remain the outstanding half of this plan.
 
 ### Task 12: The web strip and slide-over
 
@@ -1922,20 +1931,20 @@ git commit -m "feat(web): live plan strip and task slide-over"
 
 ### Task 13: Full suite, docs, release notes
 
-- [ ] **Step 1: Run the whole hermetic suite**
+- [x] **Step 1: Run the whole hermetic suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: green. A failing test is a real failure, not flake — the 0.25.0 fixes removed the historical flakiness, so investigate rather than re-roll.
 
-- [ ] **Step 2: Update AGENTS.md**
+- [x] **Step 2: Update AGENTS.md**
 
 Add `src/aegis/plan/` to the Layout section, describing the two layers (parser normalizes shape; tracker adds time) and stating the two rules a future contributor will otherwise break: circles are always space-separated, and the tracker never reads a clock.
 
-- [ ] **Step 3: Update CHANGELOG.md**
+- [x] **Step 3: Update CHANGELOG.md**
 
 Add a Features entry covering: the `Task*` family now renders as a live plan rather than anonymous tool calls; per-task working time; the strip, the dock, and the web surfaces; plan roll-up on `aegis_list_sessions` and the new `aegis_peer_plan`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add AGENTS.md CHANGELOG.md

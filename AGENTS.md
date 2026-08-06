@@ -221,6 +221,28 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `/peer handle …`, rewritten in `classify_input`, so no new input route
   exists. Spec:
   `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`.
+- `src/aegis/plan/` - agent plan state as first-class session state, in two
+  layers. The **parser** (`events.py`) folds the `TaskCreate`/`TaskUpdate`
+  delta family and `TodoWrite` into the one cumulative `AgentPlan` event, so
+  claude-legacy, claude-current and ACP all arrive in one shape. The
+  **tracker** (`tracker.py`, owned by `AgentSession`, routed by
+  `parent_tool_use_id` so a subagent gets its own) adds per-task working
+  time; `models.py` holds `PlanTask`/`PlanState`/`PlanSnapshot` and
+  `render.py` the pure strip and dock renderers. The strip
+  (`tui/plan_strip.py`) is always on, the dock (`tui/plan_dock.py`) is `F3`
+  / `/tasks`, and `SessionInfo.plan` + `aegis_peer_plan` are readers of the
+  same tracker.
+  Four rules a contributor will otherwise break, each already paid for:
+  **circles are always space-separated** (East Asian Ambiguous — Rich
+  measures one cell, terminals draw wider, neighbours overlap);
+  **the tracker never reads a clock** — every method takes an explicit
+  `ts`, which is what makes a replayed log reproduce the live numbers, and
+  `rehydrate_plan` depends on it to restore a plan across a restart;
+  **width budgets are measured in cells, not `len()`** (one emoji is one
+  character and two columns, and the row's clock drifts out of its column);
+  and a dock row is `glyph + space + label + space + a 6-cell clock`, so
+  **the label budget is `width - 9`** while the widget's `size` is already
+  the content box and must not have its padding subtracted again.
 - `src/aegis/workflow/` - the workflow scaffold (v1). `@workflow`
   decorator + auto-registry (`decorator.py`); `WorkflowEngine` runtime
   with `delegate` (one-shot via queue), `send`/`drain` (live-agent

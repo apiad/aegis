@@ -5,6 +5,48 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **The live task list — a plan is now session state, not a run of
+  anonymous tool calls.** `TaskCreate` / `TaskUpdate` / `TodoWrite` and
+  ACP's plan updates all fold into one cumulative plan, and a tracker on
+  the session times each task as it runs. The time is *working* time, not
+  wall clock: it accrues only while the session is mid-turn, so a task left
+  in progress overnight reports the minute of work it actually got rather
+  than nine hours of idling — and the in-progress circle spins on exactly
+  that condition, so the rotation is a literal rendering of the clock
+  running.
+  Three surfaces read the one tracker. An always-on **strip** above the
+  status bar carries a circle per task, the count, and what is running now.
+  **`F3`** (or `/tasks`) opens a **dock** beside the transcript with a row
+  per task and its working time, subagent plans nested underneath — which
+  is what makes a fan-out legible, since it shows which of several parallel
+  agents is still grinding. And the plan reaches other agents: the tab bar
+  carries a `3/8`, `aegis_list_sessions` rolls it up on `SessionInfo.plan`,
+  and the new **`aegis_peer_plan`** drills into a peer's full list, so an
+  agent deciding who to hand work to learns not just that a peer is busy
+  but how far along it is and what it is on.
+
+### Fixed
+
+- **The plan survives a restart.** The tracker is per-process, and the only
+  path back was a later `TaskList` result — reactive, so nothing triggered
+  it on resume and the strip stayed blank until the agent happened to list
+  its tasks. A resumed session now replays its own transcript through the
+  tracker, recovering the tasks *and* their banked working time exactly
+  rather than restarting the clocks at zero. A log that stops mid-turn
+  always replays to idle, so an interrupted session cannot come back
+  claiming hours on its first paint.
+- **The plan surfaces fit the width they are given.** The one-line strip
+  took no width and never truncated, so a long task label wrapped it to two
+  lines and the transcript jumped every time the current task changed; it
+  now spends the shortfall on the label and keeps the circles and the
+  count. Every dock row was one column too wide, while the widget
+  subtracted its padding a second time — the two cancelled at some widths
+  and left a dead column at others. Labels are measured in display cells
+  now, so a subject carrying an emoji no longer pushes that row's clock out
+  of the column the others line up in.
+
 ## [0.30.0] - 2026-08-05
 
 ### Added

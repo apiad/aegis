@@ -65,6 +65,44 @@ Follow-ups worth considering, none blocking:
 - Plan: `docs/superpowers/plans/2026-08-04-aegis-ssh-execution-hosts.md`
 - Know-how: `know-how/ssh-execution-hosts.md`
 
+### Live task list *(TUI complete 2026-08-06; web outstanding)*
+
+Plan state is first-class session state — parsed from every harness, timed
+in working seconds, and rendered on the strip, the `F3` dock, the tab bar
+and the coordination plane (`SessionInfo.plan`, `aegis_peer_plan`).
+
+Two defects that unit tests could not see, both found by driving a real
+plan through a real pane and both fixed with mutation-checked tests:
+
+- The surfaces did not fit their width — the "one-line" strip wrapped to
+  two lines (it took no width and never truncated), and every dock row was
+  width+1 while the widget subtracted its padding twice, so the errors
+  cancelled at some widths and left a dead column at others. `e056127`.
+- The plan did not survive a restart. The tracker is per-process and the
+  only path back was a reactive `TaskList` result, so the strip stayed
+  blank until the agent happened to list its tasks. A resumed session now
+  replays its transcript through the tracker, recovering banked working
+  time exactly — the property Task 4 built the tracker for and nothing had
+  ever used. `acfdbc4`.
+
+**Outstanding, deliberately:**
+
+- **The web strip and slide-over (plan Task 12) — not built.** Deferred at
+  Alex's direction to finish the TUI first. `AGENTS.md` calls the TUI and
+  the PWA co-equal, so this is the honest debt of the feature:
+  `renderEvent.js:planHtml` already renders `AgentPlan` rows, so only the
+  live surfaces are new.
+- **Group-dashboard roll-up (plan Task 11's second half) — skipped.**
+  `DashboardSnapshot` has no live data path, so a `member_detail` helper
+  would be dead code. Needs that data path first; own slice.
+- **`TaskList`-triggered rehydration still loses banked time.** The
+  restart path is now exact, but the older `TaskList`-result path
+  (`1cabfb6`) restores rows with their clocks at `—`. Worth unifying on
+  the replay path.
+
+- Spec: `docs/superpowers/specs/2026-08-05-aegis-live-task-list-design.md`
+- Plan: `docs/superpowers/plans/2026-08-05-aegis-live-task-list.md`
+
 ## Active
 
 ### The conversational corpus *(specced + planned 2026-08-05, not started)*
