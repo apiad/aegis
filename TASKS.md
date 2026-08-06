@@ -105,7 +105,41 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
-### The conversational corpus *(specced + planned 2026-08-05, not started)*
+### The conversational corpus *(VS1 tasks 1–2 of 7 shipped 2026-08-06; paused)*
+
+**Where this stopped.** The two pure/read layers are on `main` and green;
+nothing is half-finished, and the next task is a clean start.
+
+- **Done:** Task 1, the pure extractor (`src/aegis/corpus/extract.py`,
+  `a2a3c90`) and Task 2, the sidecar merge + provenance
+  (`src/aegis/corpus/source.py`, `2d3604d`). 14 tests.
+- **Next:** Task 3, the incremental beaver index. **It adds
+  `beaver-db>=2.3` and re-locks `uv.lock`** — the reason this paused, since
+  a re-lock lands on every peer sharing the checkout. Do it when the tree
+  is quiet, or coordinate first.
+- **Then:** Task 4 recall, 5 the `aegis history index` CLI, 6 the two MCP
+  tools, 7 end-to-end against the real corpus.
+
+**Two corrections to the plan, found by running the extractor over the real
+corpus rather than its synthetic fixtures** — the fixtures invented the
+field names, so they agreed with the bug. Both fixed in `1c50299`, both
+written into the plan header so they are not reintroduced:
+
+- **The tool field is `raw_input`, not `input`.** No persisted `ToolUse`
+  event has an `input` key (19,008 real events checked), so `files_touched`
+  was empty on every log in the corpus — the sleeper facet, dead on
+  arrival. `locations` is harvested too. Over 40 real logs: 0% of exchanges
+  carried a file before, 44% after, 1,213 distinct paths.
+- **Half the corpus has no `SessionMeta` record** (28 of 60 logs), so
+  `handle`/`cwd` were `None` and the key degraded to `?@<ts>`. The handle
+  now falls back to the log filename via `parse_log_id`; a real
+  `SessionMeta` still wins.
+
+**The real corpus lives in the Workspace state dir**
+(`/home/apiad/Workspace/.aegis/state` — 322 sessions, 212 sidecars, 1,492
+imports), *not* the aegis repo's, which has none. Task 7 must point there.
+
+---
 
 aegis has kept a durable per-session ledger since May and nothing can ask it
 anything. Two consumers want it and they are the same object underneath:
