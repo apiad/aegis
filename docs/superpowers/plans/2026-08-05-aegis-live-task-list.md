@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Tasks 1–10 implemented (`fff6f17`..`20ee0bd`). Task 11 half-landed — the tab-bar suffix shipped in `20ee0bd`, the group-dashboard roll-up was deliberately skipped (`DashboardSnapshot` has no live data path, so `member_detail` would be dead code). Tasks 12 (web strip + slide-over) and 13 (suite, AGENTS.md, CHANGELOG) not started.
+
 **Goal:** Make agent plan state first-class session state — parsed from every harness, timed in real time, and rendered as a live task list in the TUI, the web client, and the MCP coordination plane.
 
 **Architecture:** Two layers. The parser (`events.py`) folds the `TaskCreate`/`TaskUpdate` delta family into the cumulative `AgentPlan` event it already emits for `TodoWrite`, so all three sources (claude legacy, claude current, ACP) produce one shape. A tracker (`src/aegis/plan/`) owned by `AgentSession` folds those events plus turn boundaries into a `PlanState` carrying per-task working time. Strip, dock, tab bar, `SessionInfo.plan` and `aegis_peer_plan` are all readers of that one tracker.
@@ -61,7 +63,7 @@ The `Task*` family has stable ids and a present-continuous label; `TodoWrite` an
 **Interfaces:**
 - Produces: `PlanEntry(content: str, status: str, priority: str = "medium", id: str | None = None, active_form: str | None = None)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_plan_parser.py
@@ -90,12 +92,12 @@ def test_codec_round_trips_new_plan_entry_fields():
     assert decode_event(encode_event(ev)) == ev
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_parser.py -v`
 Expected: FAIL — `TypeError: PlanEntry.__init__() got an unexpected keyword argument 'id'`
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 In `src/aegis/events.py`, extend `PlanEntry`:
 
@@ -138,12 +140,12 @@ entries = tuple(
 )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_parser.py tests/test_agent_plan.py tests/test_state_event_codec.py -v`
 Expected: PASS, including the pre-existing tests untouched.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/events.py src/aegis/state/event_codec.py tests/test_plan_parser.py
@@ -168,7 +170,7 @@ The whole rendering complaint lives here. `events.py:424` special-cases only `To
 - Consumes: `PlanEntry(..., id=, active_form=)` from Task 1.
 - Produces: `parse()` returns a cumulative `AgentPlan` for `TaskCreate`/`TaskUpdate` tool_use blocks, and `None`-rendering `ContextUpdate()` for their confirmation results.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/test_plan_parser.py
@@ -250,12 +252,12 @@ def test_todowrite_snapshot_path_is_unchanged():
     assert [e.status for e in ev.entries] == ["completed", "pending"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_parser.py -v`
 Expected: FAIL — `test_task_create_becomes_a_cumulative_plan` asserts `isinstance(ev, AgentPlan)` but gets `ToolUse`.
 
-- [ ] **Step 3: Implement the accumulator**
+- [x] **Step 3: Implement the accumulator**
 
 In `src/aegis/events.py`, add to `ParserState` (after `tool_diffs`):
 
@@ -348,12 +350,12 @@ In the `tool_result` branch (`events.py:477`), before building the `ToolResult`,
                         return ContextUpdate()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_parser.py tests/test_agent_plan.py tests/test_events.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify against a real recorded log**
+- [x] **Step 5: Verify against a real recorded log**
 
 The repo's own state dir carries real `Task*` traffic. Confirm the fold produces a sane plan end to end:
 
@@ -371,7 +373,7 @@ print('parser wired; run against a live session to eyeball')
 
 Then run `aegis`, ask an agent for a multi-step task, and confirm the transcript shows plan blocks rather than `⏺ TaskUpdate(1)`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/events.py tests/test_plan_parser.py
@@ -396,7 +398,7 @@ Pure domain layer, no Textual and no I/O. Every method takes an explicit `ts` so
   - `PlanSnapshot(done: int, total: int, current: str | None, current_working_s: float | None, updated_at: str | None)`.
   - `PlanTracker()` with `apply_plan(plan: AgentPlan, ts: float) -> None`, `set_working(working: bool, ts: float) -> None`, `snapshot(ts: float) -> PlanState`, `roll_up(ts: float) -> PlanSnapshot`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_plan_tracker.py
@@ -474,12 +476,12 @@ def test_roll_up_carries_the_current_task():
     assert r.current_working_s == 3.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_tracker.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.plan'`
 
-- [ ] **Step 3: Write the models**
+- [x] **Step 3: Write the models**
 
 ```python
 # src/aegis/plan/models.py
@@ -549,7 +551,7 @@ from aegis.plan.tracker import PlanTracker
 __all__ = ["PlanSnapshot", "PlanState", "PlanTask", "PlanTracker"]
 ```
 
-- [ ] **Step 4: Write the tracker**
+- [x] **Step 4: Write the tracker**
 
 ```python
 # src/aegis/plan/tracker.py
@@ -672,12 +674,12 @@ class PlanTracker:
         return self._working
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_tracker.py -v`
 Expected: PASS, all nine.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/plan/ tests/test_plan_tracker.py
@@ -696,7 +698,7 @@ The property that matters most, and the one that catches a stray `now()` creepin
 **Interfaces:**
 - Consumes: `PlanTracker` from Task 3.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/test_plan_tracker.py
@@ -727,12 +729,12 @@ def test_replaying_the_same_event_sequence_reproduces_the_state():
     assert live.tasks[1].working_s == 7.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails or passes**
+- [x] **Step 2: Run test to verify it fails or passes**
 
 Run: `uv run python -m pytest tests/test_plan_tracker.py::test_replaying_the_same_event_sequence_reproduces_the_state -v`
 Expected: PASS if Task 3 is correct. **If it fails, the tracker has a clock read or a carry-over bug — fix the tracker, not the test.**
 
-- [ ] **Step 3: Mutation-check the gate**
+- [x] **Step 3: Mutation-check the gate**
 
 A test that cannot fail is worth less than none. Temporarily break the tracker to prove the test bites:
 
@@ -742,7 +744,7 @@ uv run python -m pytest tests/test_plan_tracker.py -v   # MUST fail
 # revert
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_plan_tracker.py
@@ -767,7 +769,7 @@ Pure functions producing Rich `Text`, so widgets stay dumb and tests assert on s
   - `fmt_working(seconds: float | None) -> str`
   - `SPINNER_FRAMES: str`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_plan_render.py
@@ -876,12 +878,12 @@ def test_dock_row_per_task_with_glyph_and_time():
     assert "◐ clarify" in out and "1:03" in out
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_render.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.plan.render'`
 
-- [ ] **Step 3: Write the renderers**
+- [x] **Step 3: Write the renderers**
 
 ```python
 # src/aegis/plan/render.py
@@ -986,12 +988,12 @@ def render_plan_dock(state: PlanState, colors, *, working: bool = False,
     return out
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_render.py -v`
 Expected: PASS, all nine.
 
-- [ ] **Step 5: Mutation-check the overlap guard**
+- [x] **Step 5: Mutation-check the overlap guard**
 
 The single most important assertion in this plan. Prove it bites:
 
@@ -1001,7 +1003,7 @@ uv run python -m pytest tests/test_plan_render.py::test_no_two_circles_are_ever_
 # MUST fail. Then restore.
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/plan/render.py tests/test_plan_render.py
@@ -1024,7 +1026,7 @@ Plan state belongs to the session core, not a TUI widget — that is what lets t
 
 **Routing matters here.** A subagent dispatched via `Task`/`Agent` keeps its own task list, and its `AgentPlan` events carry `parent_tool_use_id`. Folding those into the same tracker would let a subagent's three-item plan *overwrite* the main agent's eight-item one — the strip would show 1/3 while the real plan is 5/8. Route by `parent_tool_use_id`: `None` goes to the top-level tracker, anything else to a per-parent tracker.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # append to tests/test_plan_tracker.py
@@ -1059,12 +1061,12 @@ def test_a_subagent_plan_does_not_overwrite_the_top_level_plan(session):
 
 There is no shared session fixture in `tests/conftest.py` (it carries `isolated_project_dir`, the queue mocks and `workflow_context`). Add a local `session` fixture to `tests/test_plan_tracker.py` that builds an `AgentSession` over the same fake harness `tests/test_core_session.py` already uses — read that module and copy its construction rather than inventing a second fake.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_tracker.py -k agent_session -v`
 Expected: FAIL — `AttributeError: 'AgentSession' object has no attribute 'plan_state'`
 
-- [ ] **Step 3: Wire the tracker**
+- [x] **Step 3: Wire the tracker**
 
 In `src/aegis/core/session.py`, in `AgentSession.__init__`:
 
@@ -1122,12 +1124,12 @@ Add the read helpers:
 
 `time.monotonic()` is correct here and not a violation of the no-clock rule: the *tracker* never reads a clock, the caller supplies it. Monotonic is required — wall-clock jumps would corrupt durations.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_tracker.py tests/test_core_session.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/core/session.py tests/test_plan_tracker.py
@@ -1149,7 +1151,7 @@ The always-on surface. Mirrors `tui/monitor_strip.py` exactly.
 - Consumes: `render_plan_strip` (Task 5), `AgentSession.plan` (Task 6).
 - Produces: `PlanStrip(Static)` with `refresh_plan(state: PlanState, working: bool) -> None`.
 
-- [ ] **Step 1: Write the widget**
+- [x] **Step 1: Write the widget**
 
 ```python
 # src/aegis/tui/plan_strip.py
@@ -1202,7 +1204,7 @@ class PlanStrip(Static):
             working=self._working, frame=self._frame))
 ```
 
-- [ ] **Step 2: Mount it in the pane**
+- [x] **Step 2: Mount it in the pane**
 
 In `src/aegis/tui/pane.py`, import `PlanStrip` and add it to `compose()` beside the other strips:
 
@@ -1249,7 +1251,7 @@ with:
         self.query_one("#plan-strip", PlanStrip).refresh_plan(state, working)
 ```
 
-- [ ] **Step 3: Write the smoke test**
+- [x] **Step 3: Write the smoke test**
 
 ```python
 # append to tests/test_plan_render.py
@@ -1273,16 +1275,16 @@ async def test_plan_strip_hides_when_there_is_no_plan():
         assert strip.display is True
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_render.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify in the real TUI**
+- [x] **Step 5: Verify in the real TUI**
 
 A widget test proves the widget; it does not prove the wiring. Run `aegis`, give an agent a multi-step task, and confirm the strip appears, counts up, and its circle spins while working and stills when the turn ends.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/plan_strip.py src/aegis/tui/pane.py tests/test_plan_render.py
@@ -1303,7 +1305,7 @@ Each `TaskCreate`/`TaskUpdate` now emits a cumulative `AgentPlan`, so an unchang
 **Interfaces:**
 - Consumes: `AgentPlan` with `parent_tool_use_id` (Task 2).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pane_plan_fold.py
@@ -1344,12 +1346,12 @@ def test_subagent_plans_are_kept_separate_from_the_parent_plan():
     assert {pl.parent_tool_use_id for pl in plans} == {None, "tool_1"}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_pane_plan_fold.py -v`
 Expected: FAIL — `ImportError: cannot import name 'fold_plan_events'`
 
-- [ ] **Step 3: Implement the fold**
+- [x] **Step 3: Implement the fold**
 
 Add to `src/aegis/tui/pane.py`, next to the existing `coalesce_chunks` usage:
 
@@ -1380,16 +1382,16 @@ Apply it in the replay path (where `coalesce_chunks` is already called), and in 
 
 For the web, mirror it in `coalesce.js` with the same keying.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_pane_plan_fold.py tests/test_render_event.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify in the real TUI**
+- [x] **Step 5: Verify in the real TUI**
 
 Run `aegis`, give an agent a five-step task, and confirm the transcript holds exactly one plan block that mutates — not five.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/pane.py src/aegis/web/static/js/coalesce.js tests/test_pane_plan_fold.py
@@ -1411,7 +1413,7 @@ git commit -m "feat(plan): AgentPlan revisions replace in place in the transcrip
 
 The spec calls for subagent plans to **nest** under the dock — that is where a fan-out becomes legible, showing which of three parallel agents is still grinding. The strip stays flat and top-level-only; merging four agents' lists into one line is noise.
 
-- [ ] **Step 1: Write the dock widget**
+- [x] **Step 1: Write the dock widget**
 
 ```python
 # src/aegis/tui/plan_dock.py
@@ -1479,7 +1481,7 @@ class PlanDock(Static):
 
 Initialise `self._subplans: dict = {}` in `__init__` alongside `self._state`.
 
-- [ ] **Step 1b: Extend the dock renderer to nest subagent plans**
+- [x] **Step 1b: Extend the dock renderer to nest subagent plans**
 
 In `src/aegis/plan/render.py`, add a `subplans` parameter to `render_plan_dock` and emit each subagent's tasks indented beneath a header. Insert the nesting block after the top-level task loop:
 
@@ -1534,7 +1536,7 @@ def test_dock_nests_subagent_plans_under_the_top_level_plan():
     assert not re.search(f"[{CIRCLES}][{CIRCLES}]", out)
 ```
 
-- [ ] **Step 2: Wrap the transcript**
+- [x] **Step 2: Wrap the transcript**
 
 In `pane.py:compose`, change:
 
@@ -1559,7 +1561,7 @@ Extend `_refresh_plan_surfaces` from Task 7 to refresh the dock as well:
             state, sess.subplan_states(), working)
 ```
 
-- [ ] **Step 3: Add the F3 binding and /tasks command**
+- [x] **Step 3: Add the F3 binding and /tasks command**
 
 In `src/aegis/tui/app.py`, add to `BINDINGS` (`F2` is already the ConfigPanel):
 
@@ -1576,7 +1578,7 @@ In `src/aegis/tui/app.py`, add to `BINDINGS` (`F2` is already the ConfigPanel):
 
 In `src/aegis/commands/builtins/session_ctl.py`, register `/tasks` following the shape of the neighbouring commands in that module, returning a `CommandResult` whose `effect` toggles the dock. This is what gives the web client the same toggle through the shared `dispatch()` seam.
 
-- [ ] **Step 4: Write the test**
+- [x] **Step 4: Write the test**
 
 ```python
 # append to tests/test_plan_render.py
@@ -1599,12 +1601,12 @@ async def test_plan_dock_toggles_and_renders_rows():
         assert dock.toggle() is False
 ```
 
-- [ ] **Step 5: Run tests and verify in the real TUI**
+- [x] **Step 5: Run tests and verify in the real TUI**
 
 Run: `uv run python -m pytest tests/test_plan_render.py -v`
 Expected: PASS. Then run `aegis`, press `F3` mid-plan, confirm the dock opens with one row per task and the transcript reflows rather than being overdrawn.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/plan_dock.py src/aegis/tui/pane.py src/aegis/tui/app.py src/aegis/commands/builtins/session_ctl.py tests/test_plan_render.py
@@ -1625,7 +1627,7 @@ The half that makes plan state worth putting in the core: a peer or coordinator 
 - Consumes: `PlanSnapshot`, `AgentSession.plan_roll_up()` (Tasks 3, 6).
 - Produces: `SessionInfo.plan: PlanSnapshot | None = None`; MCP tool `aegis_peer_plan(handle: str) -> dict`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_plan_coordination.py
@@ -1696,12 +1698,12 @@ async def test_peer_plan_on_a_session_with_no_plan_is_empty_not_an_error(
 
 `mcp_bridge` and `call_tool` are placeholders for whatever `tests/test_mcp_server.py` already names its fixture and invocation helper — match that module exactly rather than adding new ones.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_plan_coordination.py -v`
 Expected: FAIL — `TypeError: SessionInfo.__init__() got an unexpected keyword argument 'plan'`
 
-- [ ] **Step 3: Add the field and the tool**
+- [x] **Step 3: Add the field and the tool**
 
 In `src/aegis/mcp/bridge.py`, append to `SessionInfo` (after `host`):
 
@@ -1745,16 +1747,16 @@ In `src/aegis/mcp/server.py`, add beside `aegis_list_sessions`:
 
 Add `plan_state(handle) -> PlanState | None` to the `AppBridge` Protocol and implement it on both `SessionManager` and `AegisApp`. Add a line describing `aegis_peer_plan` to the `BRIEFING` string, next to the `aegis_list_sessions` entry, and note there that each session entry now carries `plan`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_plan_coordination.py tests/test_mcp_server.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify live**
+- [x] **Step 5: Verify live**
 
 From one aegis session with a plan in flight, call `aegis_list_sessions()` in another and confirm the `plan` roll-up is populated, then `aegis_peer_plan(<handle>)` and confirm the full list comes back with plausible working times.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/mcp/bridge.py src/aegis/mcp/server.py src/aegis/core/manager.py src/aegis/tui/app.py src/aegis/tui/remote_manager.py tests/test_plan_coordination.py
