@@ -252,6 +252,47 @@ async def test_plan_strip_hides_when_there_is_no_plan():
 
 
 @pytest.mark.asyncio
+async def test_the_plan_strip_wears_the_same_box_model_as_its_siblings():
+    """Every other strip above the status bar is `padding: 0 2;
+    margin-bottom: 1; background: $panel` — PlanStrip shipped with no
+    DEFAULT_CSS at all, so it sat flush against the status bar, hard against
+    the left edge, and transparent instead of the shared grey.
+
+    Asserted against a live sibling rather than as literal numbers: the
+    invariant is "the strips match", so this keeps holding if the house
+    style moves.
+    """
+    from types import SimpleNamespace
+
+    from textual.app import App, ComposeResult
+    from textual.containers import Vertical
+
+    from aegis.tui.plan_strip import PlanStrip
+    from aegis.tui.strip import QueueStrip
+
+    class _Manager:
+        def subscribe(self, _cb):
+            return lambda: None
+
+    digest = SimpleNamespace(_manager=_Manager(),
+                             snapshot=lambda: SimpleNamespace(queues=[]))
+
+    class _A(App):
+        def compose(self) -> ComposeResult:
+            with Vertical():
+                yield QueueStrip(digest, C)
+                yield PlanStrip(C, id="plan-strip")
+
+    async with _A().run_test(size=(100, 12)) as pilot:
+        plan = pilot.app.query_one("#plan-strip", PlanStrip)
+        sibling = pilot.app.query_one(QueueStrip)
+        assert plan.styles.padding == sibling.styles.padding
+        assert plan.styles.margin == sibling.styles.margin
+        assert plan.styles.background == sibling.styles.background
+        assert plan.styles.color == sibling.styles.color
+
+
+@pytest.mark.asyncio
 async def test_plan_strip_stays_one_line_in_a_narrow_pane():
     """The regression that started all this. Asserted on the laid-out
     widget, not the string: the pure renderer was fine on its own terms
@@ -287,6 +328,12 @@ async def test_plan_strip_stays_one_line_in_a_narrow_pane():
         assert cell_len(as_text(render_plan_strip(long, C, working=True))) > 60, (
             "the fixture stopped overflowing — this test would pass vacuously")
         assert strip.size.height == 1, "the one-line strip wrapped"
+        # The height assertion alone stopped being able to fail once the
+        # strip got `height: 1` from the shared strip CSS — an overlong line
+        # is then clipped rather than wrapped, and clipping looks fine right
+        # up until it eats the clock. What must hold is that the painted
+        # line fits the box, which is what the truncation is for.
+        assert cell_len(strip.render().plain) <= strip.size.width
 
 
 @pytest.mark.asyncio

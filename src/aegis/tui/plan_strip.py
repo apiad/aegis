@@ -17,6 +17,15 @@ _TICK = 0.25
 class PlanStrip(Static):
     """Hidden (display:none) until the session has a plan."""
 
+    # The shared box model of the strips above the status bar — the same
+    # rule QueueStrip and MonitorStrip carry. Without it this one rendered
+    # transparent, hard against the left edge and flush to the status bar,
+    # which read as a different kind of thing rather than one of the strips.
+    DEFAULT_CSS = """
+    PlanStrip { height: 1; padding: 0 2; margin-bottom: 1;
+                background: $panel; color: $foreground; }
+    """
+
     def __init__(self, palette, **kw) -> None:
         super().__init__("", **kw)
         self._palette = palette
