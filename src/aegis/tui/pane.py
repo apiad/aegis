@@ -853,6 +853,13 @@ class ConversationPane(Widget):
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, self.log_id))
         self._replay = replay
+        # Rebuild plan state before the pane paints anything, so a resumed
+        # tab shows its task list immediately instead of staying blank
+        # until the agent happens to call TaskList. Every resume path
+        # (boot, reopen-from-history, /reconnect) funnels through here.
+        # Guarded: a RemotePaneCore has no tracker to rehydrate.
+        if replay is not None and hasattr(self._core, "rehydrate_plan"):
+            self._core.rehydrate_plan(replay.events, replay.stamps)
         # Fires once, with the text of the first user-initiated turn — the
         # hook AegisApp uses to write the session's Ctrl+H history header
         # lazily (so its preview is populated). Both delivery paths
@@ -980,6 +987,11 @@ class ConversationPane(Widget):
         if self.display:
             self._mount_replay()
         self.refresh_metrics()
+        # Paint a rehydrated plan once at mount. Every other call site is
+        # event-driven (an AgentPlan arriving, or turn state changing), and
+        # a resumed tab may sit for a long time before either fires — which
+        # is exactly how a restored plan still showed a blank strip.
+        self._refresh_plan_surfaces()
         t = self._transcript()
         self.watch(t, "scroll_y", self._on_scroll_y)
         self.query_one(GrowingInput).key_interceptor = self._palette_key

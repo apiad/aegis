@@ -61,6 +61,12 @@ class EventReplay:
     interrupted: bool
     damaged: int = 0      # lines that did not parse as a whole record
     recovered: int = 0    # records salvaged out of those lines
+    # Epoch seconds per event, positionally parallel to ``events``. The
+    # PlanTracker takes an explicit ts on every method so that a replay
+    # reproduces the live working times exactly; that is only true if the
+    # persisted ``aegis_ts`` comes back with the event. Defaults empty so
+    # every existing construction site stays valid.
+    stamps: list[float] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -353,15 +359,36 @@ def scan_log(path: Path) -> LogScan:
 _TURN_EVENTS = (AssistantText, AssistantThinking, ToolUse)
 
 
+def _parse_ts(raw) -> float:
+    """``aegis_ts`` as epoch seconds, 0.0 when it is missing or unreadable.
+
+    Never raises: a damaged stamp must cost that event its clock, not take
+    down the replay of a whole conversation."""
+    if not isinstance(raw, str):
+        return 0.0
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
 def replay_events(state_dir_path: Path, log_id: str) -> EventReplay:
     scan = scan_log(session_log_path(state_dir_path, log_id))
     events: list[Event] = []
+    stamps: list[float] = []
     damaged = scan.damaged
     for rec in scan.records:
         try:
-            events.append(decode_event(rec["event"]))
+            ev = decode_event(rec["event"])
         except Exception:  # noqa: BLE001 — one unreadable record, not a log
             damaged += 1
+            continue
+        events.append(ev)
+        # Appended together so the two lists stay index-aligned even when a
+        # record carries no readable stamp — a legacy log replays with the
+        # rows intact and the clocks at zero, rather than misaligning every
+        # later event by one.
+        stamps.append(_parse_ts(rec.get("aegis_ts")))
     interrupted = False
     if events:
         # Scan backwards: was the last "non-Result" event part of a turn?
@@ -374,4 +401,5 @@ def replay_events(state_dir_path: Path, log_id: str) -> EventReplay:
                 break
         interrupted = last_turn_evt is not None
     return EventReplay(events=events, interrupted=interrupted,
-                       damaged=damaged, recovered=scan.recovered)
+                       damaged=damaged, recovered=scan.recovered,
+                       stamps=stamps)

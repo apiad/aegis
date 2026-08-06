@@ -8,8 +8,8 @@ from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, Event, Result, ThinkingTokens, ToolResult,
-    ToolUse,
+    AgentPlan, AssistantText, AssistantThinking, Event, Result,
+    ThinkingTokens, ToolResult, ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.hooks import (
@@ -26,6 +26,11 @@ from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
 log = logging.getLogger("aegis.core.session")
+
+# Seeing any of these in a replayed log means the session was mid-turn at
+# that stamp. Same set ``session_log`` uses to decide whether a log ends
+# interrupted — kept deliberately in step with it.
+_REPLAY_TURN_EVENTS = (AssistantText, AssistantThinking, ToolUse)
 
 EventCb = Callable[["AgentSession", Event], None]
 StateCb = Callable[["AgentSession", AgentState, bool], None]
@@ -273,11 +278,7 @@ class AgentSession:
         # Working time accrues only mid-turn, so every tracker follows the
         # session's turn state — including the subagents', which are also
         # only doing work while this session's turn is live.
-        now = self._now()
-        working = state == AgentState.working
-        self.plan.set_working(working, ts=now)
-        for tracker in self.subplans.values():
-            tracker.set_working(working, ts=now)
+        self._trackers_working(state == AgentState.working, self._now())
         if self.on_state is not None:
             self.on_state(self, state, finished)
         for cb in self._extra_state_observers:
@@ -560,10 +561,13 @@ class AgentSession:
         for cb in self._extra_event_observers:
             cb(self, ev)
 
-    def _apply_plan(self, ev: AgentPlan) -> None:
+    def _apply_plan(self, ev: AgentPlan, ts: float | None = None) -> None:
         """Route by parent: top-level plans to our own tracker, a
-        subagent's to a tracker of its own."""
-        now = self._now()
+        subagent's to a tracker of its own.
+
+        ``ts`` is explicit only on the replay path, where the persisted
+        stamp is what reproduces the original working times."""
+        now = self._now() if ts is None else ts
         if ev.parent_tool_use_id is None:
             self.plan.apply_plan(ev, ts=now)
             return
@@ -572,6 +576,49 @@ class AgentSession:
             tracker = self.subplans[ev.parent_tool_use_id] = PlanTracker()
             tracker.set_working(self.plan.working, ts=now)
         tracker.apply_plan(ev, ts=now)
+
+    def _trackers_working(self, working: bool, ts: float) -> None:
+        """The session's turn state drives every tracker — the subagents'
+        too, since they are only doing work while this session's turn is
+        live."""
+        self.plan.set_working(working, ts=ts)
+        for tracker in self.subplans.values():
+            tracker.set_working(working, ts=ts)
+
+    def rehydrate_plan(self, events, stamps) -> None:
+        """Rebuild plan state from a replayed transcript.
+
+        A restart used to wipe the task list off the strip and the dock: the
+        tracker is per-process, and the only path back was a later TaskList
+        *result*, which is reactive — nothing calls TaskList on resume, so
+        the surface stayed blank until the agent happened to list its tasks.
+
+        The tracker was built for exactly this. It never reads a clock and
+        takes an explicit ts on every method, so feeding it the persisted
+        events with their persisted stamps reproduces the original working
+        times rather than restarting them at zero.
+
+        Turn boundaries are recovered from the events themselves: any of the
+        mid-turn event kinds means the session was working, and a Result
+        closes the turn. The replay always ends idle — a log that stops
+        mid-turn (an interrupted session) would otherwise leave a task
+        accruing from its last stamp and report hours on the first paint.
+        """
+        last = 0.0
+        for i, ev in enumerate(events):
+            ts = (stamps[i] if i < len(stamps) else 0.0) or last
+            last = ts
+            if isinstance(ev, AgentPlan):
+                # A plan is promoted from a TodoWrite/Task* tool call, so
+                # it is itself proof the session was mid-turn — and the
+                # originating ToolUse is not always in the log to say so.
+                self._trackers_working(True, ts)
+                self._apply_plan(ev, ts=ts)
+            elif isinstance(ev, Result):
+                self._trackers_working(False, ts)
+            elif isinstance(ev, _REPLAY_TURN_EVENTS):
+                self._trackers_working(True, ts)
+        self._trackers_working(False, last)
 
     def plan_state(self) -> PlanState:
         return self.plan.snapshot(ts=self._now())
