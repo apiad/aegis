@@ -16,6 +16,7 @@
 | `Ctrl+Shift+→` / `Ctrl+Shift+←` | Move the active tab one slot along the bar (`Alt+Shift+←→` alias) |
 | `Drag a tab` | Reorder with the mouse — the tab follows the pointer across its neighbours |
 | `Ctrl+D` | Open / close the queue dashboard |
+| `F3` | Open / close the task dock — the agent's plan, one row per task with its working time (`/tasks` does the same) |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | Fuzzy file picker |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
@@ -208,6 +209,37 @@ again.
 If a modal screen is on top (the queue dashboard, the agent picker),
 `Escape` dismisses the modal instead — the interrupt path only fires
 on the default screen.
+
+## The task list
+
+When an agent is working through a plan, a one-line **strip** above the
+status bar shows a circle per task, how many are done, and what it is on
+right now with a running clock:
+
+```
+tasks: ● ● ◐ ○ ○  2/5 · Fixing the task panel layout 1:36
+```
+
+The clock is **working time, not wall clock** — it accrues only while the
+session is mid-turn, so a task left in progress overnight reports the
+minute of work it actually got rather than nine hours of idling. The
+in-progress circle spins on exactly that condition, so the rotation is a
+literal rendering of the clock running.
+
+Press **`F3`** (or type `/tasks`) for the **dock** beside the transcript:
+one row per task with its working time, and any subagent's plan nested
+underneath — which is what makes a fan-out legible, since it shows which
+of several parallel agents is still grinding. A task that never started
+reads `—`, not `0:00`; the two mean different things.
+
+The plan survives a restart: a resumed session replays its own transcript
+and comes back with the tasks *and* their banked time intact.
+
+Other agents can see it too. The tab bar carries a compact `3/8` for any
+tab with a plan, `aegis_list_sessions` rolls it up, and
+[`aegis_peer_plan`](mcp.md) drills into a peer's full list — so an agent
+deciding who to hand work to learns not just that a peer is busy but how
+far along it is.
 
 ## Queue dashboard
 

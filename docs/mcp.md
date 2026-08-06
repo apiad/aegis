@@ -23,6 +23,7 @@ surface is exactly what aegis declares.
 | `aegis_enqueue(queue, payload, from_handle, callback=true)` | Delegate work onto a named queue. Returns `{task_id, queued_position}`. If `callback=true`, the worker's final result arrives in your inbox later. See [Queues](queues.md). |
 | `aegis_task_status(task_id)` | Inspect a previously enqueued task — useful when `callback=false` or you want to poll. |
 | `aegis_fork(target_handle, …)` | Branch an **idle** peer's conversation into a new agent that already has its context. Self-fork is refused with a pointer at `/fork` — calling the tool is itself what puts you mid-turn. ~$1 a fork. |
+| `aegis_peer_plan(handle)` | A peer's full task list — every task with its status and accumulated **working time** (mid-turn seconds only, so an idle agent does not inflate). `aegis_list_sessions` already carries the `done/total` roll-up and what each peer is on; this is the drill-down. |
 | `aegis_read_peer(handle, turns=12)` | Read a window of a peer's transcript. It unlocks nothing (the logs are plain JSONL and every agent has Read); what it fixes is *addressing* — a log id carries the session's **birth** handle and is never renamed, so current-handle → file is not derivable. |
 | `aegis_run_workflow(name, kwargs, from_handle, callback=true)` | Invoke a registered Python workflow. Non-blocking; returns `{workflow_run_id, status:'running'}` immediately. See [Workflows](workflows.md). |
 
