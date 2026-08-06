@@ -86,11 +86,25 @@ def extract_exchanges(events, meta=None) -> list[Exchange]:
             name = ev.get("name") or ""
             if name:
                 cur["tools"].append(name)
-            inp = ev.get("input")
+            # Persisted events carry `raw_input`; `input` is accepted only as
+            # a fallback for a caller feeding live parser output. Reading
+            # `input` alone is what left files_touched empty on every real
+            # log — the field does not exist in any of them.
+            inp = ev.get("raw_input")
+            if not isinstance(inp, dict):
+                inp = ev.get("input")
             if isinstance(inp, dict):
                 fp = inp.get("file_path")
                 if name in FILE_TOOLS and fp:
                     cur["files"].append(fp)
+            # `locations` is [[path, line], ...], populated by the drivers
+            # for file-ish tools regardless of tool name — a second real
+            # source of the same facet, and the only one for tools whose
+            # path does not arrive as `file_path`.
+            for loc in ev.get("locations") or ():
+                path = loc[0] if isinstance(loc, (list, tuple)) and loc else None
+                if path:
+                    cur["files"].append(path)
         elif t in ("Interrupted", "TurnAborted"):
             cur["friction"].append(t.lower())
         # ToolResult deliberately ignored: ~60% of corpus bytes, no signal.

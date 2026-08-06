@@ -53,6 +53,35 @@ def test_file_and_tool_facets_are_collected():
     assert set(out[0].tools_used) == {"Edit", "Bash"}
 
 
+def test_file_facets_read_the_field_real_logs_actually_carry():
+    """Persisted `ToolUse` events carry **`raw_input`**, not `input`. Across
+    19,008 real events there is no `input` key at all, so reading it gave an
+    always-empty `files_touched` — and that is the facet that makes "when
+    were we working on the geocoder" a path lookup rather than a semantic
+    query. Captured from the real log, not assumed: a synthetic fixture that
+    invents the field name only re-asserts the mistake.
+    """
+    evs = [
+        ({"t": "UserMessage", "text": "edit it", "source": "operator"}, "2026-07-01T10:00:00Z"),
+        ({"t": "ToolUse", "name": "Read", "kind": "read",
+          "raw_input": {"file_path": "/w/real.py"}}, "2026-07-01T10:00:01Z"),
+    ]
+    out = extract_exchanges(evs, meta={"handle": "h1", "cwd": "/w"})
+    assert out[0].files_touched == ("/w/real.py",)
+
+
+def test_locations_also_contribute_file_facets():
+    """`locations` is `[[path, line], ...]` and is populated by the drivers
+    for file-ish tools — a second real source of the same facet."""
+    evs = [
+        ({"t": "UserMessage", "text": "read it", "source": "operator"}, "2026-07-01T10:00:00Z"),
+        ({"t": "ToolUse", "name": "Read", "kind": "read",
+          "locations": [["/w/from-locations.md", None]]}, "2026-07-01T10:00:01Z"),
+    ]
+    out = extract_exchanges(evs, meta={"handle": "h1", "cwd": "/w"})
+    assert "/w/from-locations.md" in out[0].files_touched
+
+
 def test_tool_results_are_excluded_from_text():
     evs = [
         ({"t": "UserMessage", "text": "read it", "source": "operator"}, "2026-07-01T10:00:00Z"),
