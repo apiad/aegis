@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-08-06
+
 ### Added
 
 - **The live task list — a plan is now session state, not a run of
@@ -27,25 +29,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   agent deciding who to hand work to learns not just that a peer is busy
   but how far along it is and what it is on.
 
-### Fixed
-
-- **The plan survives a restart.** The tracker is per-process, and the only
-  path back was a later `TaskList` result — reactive, so nothing triggered
-  it on resume and the strip stayed blank until the agent happened to list
-  its tasks. A resumed session now replays its own transcript through the
-  tracker, recovering the tasks *and* their banked working time exactly
-  rather than restarting the clocks at zero. A log that stops mid-turn
-  always replays to idle, so an interrupted session cannot come back
-  claiming hours on its first paint.
-- **The plan surfaces fit the width they are given.** The one-line strip
-  took no width and never truncated, so a long task label wrapped it to two
-  lines and the transcript jumped every time the current task changed; it
-  now spends the shortfall on the label and keeps the circles and the
-  count. Every dock row was one column too wide, while the widget
-  subtracted its padding a second time — the two cancelled at some widths
-  and left a dead column at others. Labels are measured in display cells
-  now, so a subject carrying an emoji no longer pushes that row's clock out
-  of the column the others line up in.
+  The plan **survives a restart**: a resumed session replays its own
+  transcript through the tracker and comes back with the tasks *and* their
+  banked working time intact, rather than blank until the agent next
+  happens to list them. A log that stops mid-turn always replays to idle,
+  so an interrupted session cannot return claiming hours on its first
+  paint. A task that never started reads `—`, never `0:00` — the two mean
+  different things and must not look alike.
 
 ## [0.30.0] - 2026-08-05
 
