@@ -10,6 +10,15 @@
 
 Spec: `docs/superpowers/specs/2026-08-04-aegis-conversational-corpus-design.md`
 
+**Status (2026-08-06):** Tasks 1–2 shipped (`a2a3c90`, `1c50299`, `2d3604d`). Tasks 3–7 not started.
+
+**Two corrections to this plan, both found by running Task 1's extractor over the real corpus instead of only its synthetic fixtures.** The fixtures invented field names and so agreed with the bug:
+
+- **The tool field is `raw_input`, not `input`.** No persisted `ToolUse` event has an `input` key — across 19,008 real events it is `raw_input`, so the code below produced an always-empty `files_touched`. `locations` (`[[path, line], ...]`) is a second real source and is now harvested too. Measured over 40 real logs: 0% of exchanges carried a file before, 44% after.
+- **Half the corpus has no `SessionMeta` record** (28 of 60 logs), so `handle`/`cwd` came back `None` and `Exchange.key` degraded to `?@<ts>`. `read_log` now seeds the handle from the log filename via `parse_log_id`, with a real `SessionMeta` still winning when present.
+
+The real corpus is in the **Workspace** state dir (`/home/apiad/Workspace/.aegis/state`: 322 sessions, 212 sidecars, 1,492 imports), not the aegis repo's — Task 7 must point there.
+
 ## Global Constraints
 
 - Package manager is `uv`. Never `pip`. Tests: `uv run python -m pytest -q -m "not live"`.
@@ -53,7 +62,7 @@ Spec: `docs/superpowers/specs/2026-08-04-aegis-conversational-corpus-design.md`
 - Consumes: `aegis.events` (`UserMessage`, `AssistantText`, `ToolUse`, `SessionMeta`)
 - Produces: `Exchange` dataclass; `extract_exchanges(events: list, meta: SessionMeta | None) -> list[Exchange]`; module constant `BOUNDARY_SOURCES: frozenset[str]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_corpus_extract.py
@@ -114,12 +123,12 @@ def test_tool_results_are_excluded_from_text():
     assert "aaaa" not in out[0].assistant_text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_corpus_extract.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.corpus'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/aegis/corpus/__init__.py
@@ -231,12 +240,12 @@ def extract_exchanges(events, meta=None) -> list[Exchange]:
     return out
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_corpus_extract.py -q`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/corpus/__init__.py src/aegis/corpus/extract.py tests/test_corpus_extract.py
@@ -255,7 +264,7 @@ git commit -m "feat(corpus): pure exchange extractor"
 - Consumes: `extract_exchanges` from Task 1
 - Produces: `read_log(log_path: Path, backfill_dir: Path | None) -> tuple[list[tuple[dict, str]], dict]`; `derive_source(text: str) -> tuple[str, str | None]`; `exchanges_for_log(log_path, backfill_dir) -> list[Exchange]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_corpus_source.py
@@ -332,12 +341,12 @@ def test_missing_sidecar_is_not_an_error(tmp_path):
     assert len(exchanges_for_log(log, tmp_path / "nope")) == 1
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_corpus_source.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.corpus.source'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/aegis/corpus/source.py
@@ -419,12 +428,12 @@ def exchanges_for_log(log_path: Path, backfill_dir: Path | None) -> list[Exchang
     return extract_exchanges(events, meta)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_corpus_source.py -q`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/corpus/source.py tests/test_corpus_source.py
