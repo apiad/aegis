@@ -165,6 +165,15 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   becomes transcript + input. **A collapsed surface must therefore never
   set `display` imperatively** — an inline style beats the rule, which is
   why `PlanStrip` uses the `-empty` class its siblings already used.
+  Two more the column has already paid for: **`SIDEBAR_MIN/MAX` are the
+  frame, so they carry `SIDEBAR_PAD_X` on top of the content budget** —
+  charging the rows for the padding drops a segment outright at 80 cols,
+  because `fit_rows` answers "no tier fits" by omitting it, so a *section
+  disappears* rather than a row getting shorter; and **a section composes
+  a renderer without inheriting its framing** — `render_plan_dock` is
+  free-standing, so `_plan()` trims its `tasks d/t` header and trailing
+  newline at the composition site rather than in the renderer, which
+  keeps its own contract in `tests/test_plan_render.py`.
   `pane.py` also renders the subagent view: a
   `Task`/`Agent` tool_use opens a collapsible `SubagentBox`; events tagged
   with that `parent_tool_use_id` route inside (the web mirrors this in
