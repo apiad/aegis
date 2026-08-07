@@ -25,8 +25,8 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Result, ThinkingTokens,
-    ToolResult, ToolUse, UserMessage,
+    AgentPlan, AssistantText, AssistantThinking, Result, SessionMeta,
+    ThinkingTokens, ToolResult, ToolUse, UserMessage,
 )
 from aegis.render import (
     coalesce_chunks, render_event, render_inbox_block, render_tool_use,
@@ -860,6 +860,16 @@ class ConversationPane(Widget):
         # Guarded: a RemotePaneCore has no tracker to rehydrate.
         if replay is not None and hasattr(self._core, "rehydrate_plan"):
             self._core.rehydrate_plan(replay.events, replay.stamps)
+        # Same reasoning for the title, and it matters more than the label:
+        # title_source is what stops an agent overwriting what Alex typed,
+        # so a resumed session that forgot it would hand his authority back
+        # to the agents on every restart. Last non-empty wins, exactly as
+        # the history fold reads it (state/history.py).
+        if replay is not None and hasattr(self._core, "title"):
+            for ev in replay.events:
+                if isinstance(ev, SessionMeta) and ev.title:
+                    self._core.title = ev.title
+                    self._core.title_source = ev.title_source
         # Fires once, with the text of the first user-initiated turn — the
         # hook AegisApp uses to write the session's Ctrl+H history header
         # lazily (so its preview is populated). Both delivery paths

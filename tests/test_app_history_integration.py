@@ -424,3 +424,37 @@ async def test_an_agent_title_is_refused_against_a_human_one(tmp_path: Path,
         assert "error" in res
         assert "human" in res["error"]
         assert app._active._core.title == "operator wrote this"
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_pane_recovers_its_title(tmp_path: Path,
+                                                 monkeypatch):
+    """A restart must not quietly hand a human title back to the agents.
+
+    The tracker is per-process, so a resumed session rebuilds its state
+    from the transcript. If the title is not among what it rebuilds, the
+    live session comes back with title_source="" — and the operator's
+    authority, which is the entire point of the precedence rule, is gone
+    the first time aegis restarts.
+    """
+    monkeypatch.chdir(tmp_path)
+    sd = tmp_path / ".aegis" / "state"
+
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        handle = app._active.handle
+        log_id = app._active.log_id
+        await app.set_title(handle, "eviction race", source="human")
+        await pilot.pause()
+
+    # A fresh pane over the same transcript — what resume constructs.
+    from aegis.tui.pane import ConversationPane
+    from aegis.tui.app import _safe_replay
+    replay = _safe_replay(sd, log_id)
+    pane = ConversationPane(
+        FakeSession(), _agent(), "sonnet", handle, app._palette,
+        state_dir_path=sd, log_id=log_id, replay=replay)
+
+    assert pane._core.title == "eviction race"
+    assert pane._core.title_source == "human"
