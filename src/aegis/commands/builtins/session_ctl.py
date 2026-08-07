@@ -51,6 +51,22 @@ async def _rename(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, f"renamed {ctx.handle} → {new}")
 
 
+async def _title(ctx: CommandContext, args) -> CommandResult:
+    """Set the session's display label, beside (never instead of) its handle.
+
+    Bare ``/title`` clears it. Once generation lands it will instead
+    *regenerate* — until then, clearing is what it honestly does, and it is
+    also how you undo a bad manual one.
+    """
+    text = args.get("text") or ""
+    res = await ctx.bridge.set_title(ctx.handle, text, source="human")
+    if isinstance(res, dict) and res.get("error"):
+        return CommandResult(False, "title rejected", res["error"])
+    stored = res.get("title") if isinstance(res, dict) else text
+    return (CommandResult(True, f"title → {stored}") if stored
+            else CommandResult(True, "title cleared"))
+
+
 async def _close(ctx: CommandContext, args) -> CommandResult:
     target = args.get("handle") or ctx.handle
     await ctx.bridge.close(target)
@@ -74,6 +90,10 @@ for _cmd in (
     SlashCommand("rename", "rename the current session",
                  "/rename <new>", _rename,
                  spec=ArgSpec(positionals=(Arg("new"),))),
+    SlashCommand("title", "set the session's display title (bare: clear)",
+                 "/title [text]", _title,
+                 spec=ArgSpec(positionals=(
+                     Arg("text", required=False, greedy=True),))),
     SlashCommand("close", "close the current or a named session",
                  "/close [handle]", _close,
                  spec=ArgSpec(positionals=(

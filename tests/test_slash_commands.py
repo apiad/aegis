@@ -35,6 +35,8 @@ class FakeBridge:
         self.registered = []
         self.registered_agents = []
         self.closed, self.renamed = [], []
+        self.titles = []
+        self.set_title_result = None
         self._sessions = [FakeSession("alpha", "opus", active=True)]
         self.queue_manager = FakeQueueManager()
         import pathlib
@@ -69,9 +71,16 @@ class FakeBridge:
     async def close(self, handle):
         self.closed.append(handle)
 
-    async def rename_handle(self, old, new):
+    async def rename_handle(self, old, new, title=None):
         self.renamed.append((old, new))
         return {"old": old, "new": new}
+
+    async def set_title(self, handle, title, *, source):
+        self.titles.append((handle, title, source))
+        if self.set_title_result is not None:
+            return self.set_title_result
+        return {"ok": True, "handle": handle, "title": title,
+                "source": source if title else ""}
 
 
 def _ctx():
@@ -485,3 +494,30 @@ async def test_queue_new_ephemeral_skips_persistence(monkeypatch):
     assert res.ok is True
     assert "ephemeral" in res.title
     assert [q.name for q in ctx.bridge.registered] == ["build"]
+
+
+async def test_title_sets_a_human_title():
+    bridge = FakeBridge()
+    res = await dispatch("/title fix the eviction race",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    # Greedy positional: the whole tail is the title, no quoting needed.
+    assert bridge.titles == [("me", "fix the eviction race", "human")]
+
+
+async def test_bare_title_clears():
+    bridge = FakeBridge()
+    res = await dispatch("/title", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
+    assert bridge.titles == [("me", "", "human")]
+    assert "cleared" in res.title
+
+
+async def test_title_surfaces_a_refusal():
+    bridge = FakeBridge()
+    bridge.set_title_result = {"error": "title is set by 'human' and "
+                                        "'agent' cannot overwrite it"}
+    res = await dispatch("/title nope",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is False
+    assert "cannot overwrite" in res.body
