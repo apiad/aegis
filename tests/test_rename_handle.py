@@ -253,8 +253,9 @@ class _FakeBridge:
     async def spawn(self, *a, **k): return ""
     async def close(self, *a, **k): return None
 
-    async def rename_handle(self, old: str, new: str) -> dict:
-        return await self._sm.rename_handle(old, new)
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict:
+        return await self._sm.rename_handle(old, new, title)
 
 
 @pytest.mark.asyncio

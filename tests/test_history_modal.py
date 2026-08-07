@@ -4,7 +4,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Label, OptionList
 
 from aegis.state.history import SessionHistoryRow
-from aegis.tui.history import HistoryModal
+from aegis.tui.history import HistoryModal, _row_label
 
 
 def _row(handle: str, *, is_open: bool = False,
@@ -12,13 +12,16 @@ def _row(handle: str, *, is_open: bool = False,
          profile: str = "claude-sonnet",
          provider: str = "claude-code",
          log_id: str | None = None,
+         preview: str = "hello",
+         title: str = "",
          last: str = "2026-05-28T14:00:00Z") -> SessionHistoryRow:
     return SessionHistoryRow(
         log_id=log_id or f"20260528T140000Z-{handle}",
         handle=handle, profile=profile, provider=provider,
         cwd="/tmp", created_at=last, closed_at=None,
-        last_activity_at=last, preview="hello",
-        session_id=session_id, is_open=is_open, crash_inferred=False)
+        last_activity_at=last, preview=preview,
+        session_id=session_id, is_open=is_open, crash_inferred=False,
+        title=title)
 
 
 class _Harness(App):
@@ -190,3 +193,37 @@ async def test_escape_dismisses_none():
         await pilot.press("escape")
         await pilot.pause()
         assert app.result is None
+
+
+# ---- session titles ----
+#
+# The title is what a session was *about*; the preview is only the first
+# thing anyone happened to say. When both exist the title is the useful one.
+
+_AGENTS = {"claude-sonnet"}
+_RESUMABLE = {"claude-code"}
+
+
+def test_row_label_prefers_the_title_over_the_preview():
+    row = _row("lucid-knuth", title="eviction race",
+               preview="hey can you look at the cache thing")
+    label = _row_label(row, _AGENTS, _RESUMABLE)
+    assert "eviction race" in label
+    assert "hey can you look" not in label
+
+
+def test_row_label_falls_back_to_the_preview_without_a_title():
+    row = _row("lucid-knuth", title="",
+               preview="hey can you look at the cache thing")
+    label = _row_label(row, _AGENTS, _RESUMABLE)
+    assert "hey can you look" in label
+
+
+def test_the_filter_matches_on_the_title():
+    # _matches touches no DOM, so this needs no running App.
+    modal = HistoryModal(
+        [_row("lucid-knuth", title="eviction race",
+              preview="unrelated words")],
+        agents=_AGENTS, resume_capable_providers=_RESUMABLE)
+    assert modal._matches(modal._rows[0], "eviction") is True
+    assert modal._matches(modal._rows[0], "nonsense") is False

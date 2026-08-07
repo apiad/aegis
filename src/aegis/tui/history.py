@@ -67,14 +67,16 @@ def _row_label(row: SessionHistoryRow, agents: set[str],
                resume_capable: set[str]) -> str:
     glyph = _glyph(row, agents, resume_capable)
     rel = _relative_time(row.last_activity_at)
-    preview = (row.preview or "").replace("\n", " ")[:40]
+    # The title says what the session was about; the preview is only the
+    # first thing anyone happened to say. Prefer the title when there is one.
+    tail = (row.title or row.preview or "").replace("\n", " ")[:40]
     profile = row.profile if row.profile in agents else f"<{row.profile}?>"
     if row.inferred:
         # The log predates SessionMeta, so the profile is the caller's
         # default rather than what actually ran — say so, since resume may
         # well fail on it.
         profile = f"{profile}~"
-    return f"{glyph} {row.handle:<18} {profile:<16} {rel:<9} {preview}"
+    return f"{glyph} {row.handle:<18} {profile:<16} {rel:<9} {tail}"
 
 
 class HistoryModal(ModalScreen):
@@ -132,7 +134,8 @@ class HistoryModal(ModalScreen):
             return True
         needle = needle.lower()
         haystack = " ".join(
-            [row.handle, row.profile, row.cwd, row.preview]).lower()
+            [row.handle, row.title, row.profile, row.cwd,
+             row.preview]).lower()
         return needle in haystack
 
     def _refresh(self, needle: str) -> None:
