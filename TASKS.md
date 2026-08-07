@@ -303,8 +303,9 @@ existing `_overlay_agent`. Forking a *closed* session works too — it needs a
 **Slice 1 is on `main` and green** — a title beside the handle, settable by
 hand (`/title`) or by the agent (`aegis_title`, `aegis_rename(title=…)`),
 persisted in the transcript, surviving a restart, with `human > agent > auto`
-enforced. **Zero LLM calls.** 2891 tests (+59). Plan:
-`docs/superpowers/plans/2026-08-07-aegis-session-titles-slice1.md`.
+enforced. **Zero LLM calls.** 2896 tests (+64 over baseline). Plan:
+`docs/superpowers/plans/2026-08-07-aegis-session-titles-slice1.md`;
+commits `f2b73be..080d265`.
 
 - **The tab bar was the wrong home, and the spec was stale about why.** It
   assumed `worker_label` owned the suffix; since the live task list shipped,
@@ -317,11 +318,59 @@ enforced. **Zero LLM calls.** 2891 tests (+59). Plan:
   `7af708a`), and a resumed session forgot its title *and its
   `title_source`*, so an agent could overwrite Alex's title after any restart
   — the precedence rule was as strong as one uptime (`945190c`).
-- **Next: slice 2, the `generate()` seam** — `supports_oneshot` +
-  `generate(schema, *instructions)` on `HarnessDriver`, `claude-code` first,
-  plus `text_generation:` config and the shared tolerant parser. Then slice 3
-  (first-turn auto-titling, at which point bare `/title` becomes *regenerate*
-  rather than *clear*) and slice 4 (the other three drivers).
+
+#### Picking this up next — read this before the spec's slice list
+
+**The spec's slices 2–4 are stale. Slice 2 is already built**, and not by
+this feature: `/btw` needed the same one-shot seam and shipped it. Verified
+on `main` 2026-08-07 — do not build it again:
+
+| the spec asks for | already on `main` |
+|---|---|
+| `supports_oneshot` | `drivers/base.py:77`; `claude.py:232` sets it `True` |
+| `generate(schema, *instructions)` | `drivers/base.py:127`, over `generate_detailed` at `:113` |
+| the tolerant parser | `drivers/oneshot.py:parse_structured` (+ `Generation`) |
+| `text_generation:` config | `config/yaml_loader.py:75,231`; resolved by `btw.generation_agent` |
+| a claude implementation | `drivers/claude.py:288 generate_detailed` |
+
+So the remaining work is smaller than the spec makes it look:
+
+- **Slice 3 — auto-titling. This is the whole job.** Fire one
+  `generate()` after the *first* turn's `Result` (not every turn — a title
+  that churns is worse than a handle that doesn't), write at
+  `source="auto"`, run the result through the existing
+  `state/titles.py:sanitize_title`, and catch-and-log so a failed
+  generation can never touch the conversation. Reuse
+  `btw.generation_agent(fallback, agents, root)` to pick the model —
+  it already reads `text_generation:` and reports when the key is unset so
+  the call isn't silently billed at Opus rates ($0.0044 on haiku, measured).
+  The t3code prompt to copy is in the spec under *Generation*.
+  **Also in slice 3:** bare `/title` currently *clears* — it should become
+  *regenerate*. That behaviour is documented in `_title`'s docstring in
+  `commands/builtins/session_ctl.py`, so change both together.
+- **Slice 4 — the other drivers.** Only claude implements
+  `generate_detailed`; the base returns an empty `Generation`, so gemini /
+  opencode / lovelaice silently produce no title today. That is a correct
+  degradation, not a bug, and `text_generation:` can point at a claude
+  profile meanwhile. When picking it up: the spec's open question ("do
+  gemini and opencode emit parseable JSON without a schema flag?") is
+  what `parse_structured` exists to absorb, and `supports_oneshot = False`
+  is an acceptable answer for either.
+
+**Honest gaps in slice 1**, so nobody re-verifies what was verified or
+trusts what wasn't:
+
+- **No hand-driven interactive TUI pass.** The tab-bar decision came from
+  rendering real `_TabCell`s and measuring cell widths; restart and
+  precedence came from integration tests against a real `AegisApp`. Nobody
+  has yet typed `/title` into a running aegis and looked at it.
+- **The web client shows nothing.** `SessionInfo.title` reaches the browser
+  for free (`asdict` in `web/subscriptions.py:71`), and `set_title` has a WS
+  RPC, but no web surface renders it. Same debt shape as the live task
+  list's web strip — worth doing in one pass with that.
+- `MissingSpawn` in `tests/test_mcp_bridge.py` is now non-conforming for two
+  reasons rather than one (no `spawn`, no `set_title`); it still asserts what
+  it was written to assert, but the name is half a lie.
 
 Original design notes follow.
 

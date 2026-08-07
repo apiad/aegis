@@ -226,12 +226,19 @@ filter matches on it.
    the tab bar — see *TUI*). **No generation at all.** Done when a
    human-set title survives a restart and an agent's `aegis_title` is
    refused against it: both hold, and both took a bug fix to make true.
-2. **The seam.** `supports_oneshot` + `generate()` + the tolerant parser,
+2. ✅ **The seam.** `supports_oneshot` + `generate()` + the tolerant parser,
    implemented for `claude-code` first, with `text_generation:` config.
+   **Already shipped — by `/btw`, not by this feature.** `drivers/base.py:77,113,127`,
+   `drivers/oneshot.py` (`parse_structured`, `Generation`),
+   `drivers/claude.py:232,288`, `config/yaml_loader.py:75`,
+   `btw.generation_agent`. Nothing to build here; see TASKS.md.
 3. **Auto-titling.** First-turn generation writing at `source=auto`, the
-   sanitizer, catch-and-log.
-4. **Remaining drivers.** gemini / opencode / lovelaice, each with a live
-   test that skips when its CLI is off PATH.
+   sanitizer (built — `state/titles.py`), catch-and-log. **This is now the
+   only substantial work left**, and it also flips bare `/title` from
+   *clear* to *regenerate*.
+4. **Remaining drivers.** gemini / opencode / lovelaice `generate_detailed`,
+   each with a live test that skips when its CLI is off PATH. Until then
+   they degrade to no title, which `text_generation:` works around.
 
 Slice 1 is independently worth shipping: it makes tabs legible today via
 `aegis_rename(title=…)` and CLAUDE.md's existing self-naming habit, and
