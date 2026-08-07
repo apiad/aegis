@@ -212,6 +212,12 @@ class SessionMeta:
     created_at: str
     origin: str
     preview: str = ""
+    # A label, never an identity. The handle keeps doing routing and log-id
+    # duty; this is only what a human reads on a tab. ``title_source``
+    # records who set it, so a late write cannot clobber a more
+    # authoritative one — see ``aegis.state.titles.outranks``.
+    title: str = ""
+    title_source: str = ""   # "" | auto | agent | human
 
 
 @dataclass(frozen=True)

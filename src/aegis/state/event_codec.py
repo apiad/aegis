@@ -142,7 +142,8 @@ def _encode_inner(ev: Event) -> dict:
                 "handle": ev.handle, "profile": ev.profile,
                 "provider": ev.provider, "cwd": ev.cwd,
                 "created_at": ev.created_at, "origin": ev.origin,
-                "preview": ev.preview}
+                "preview": ev.preview,
+                "title": ev.title, "title_source": ev.title_source}
     if isinstance(ev, SessionClosed):
         return {"t": "SessionClosed",
                 "closed_at": ev.closed_at, "reason": ev.reason}
@@ -247,7 +248,9 @@ def _decode_inner(d: dict) -> Event:
             handle=d["handle"], profile=d["profile"],
             provider=d["provider"], cwd=d["cwd"],
             created_at=d["created_at"], origin=d["origin"],
-            preview=d.get("preview", ""))
+            preview=d.get("preview", ""),
+            title=d.get("title", ""),
+            title_source=d.get("title_source", ""))
     if t == "SessionClosed":
         return SessionClosed(closed_at=d["closed_at"],
                              reason=d["reason"])
