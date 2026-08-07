@@ -336,55 +336,66 @@ async def test_plan_strip_stays_one_line_in_a_narrow_pane():
         assert cell_len(strip.render().plain) <= strip.size.width
 
 
+def _plan_rows(text: str) -> list[str]:
+    """The task rows of a rendered sidebar — robust to the sections around
+    the PLAN block, which grow as the dashboard gains data sources."""
+    return [ln for ln in text.splitlines() if ln.startswith(tuple(CIRCLES))]
+
+
 @pytest.mark.asyncio
-async def test_plan_dock_fills_its_content_box_exactly():
+async def test_sidebar_plan_rows_fill_the_content_box_exactly():
     """Neither overflowing nor leaving a dead column. `size` is already the
     content box, so subtracting the padding again wasted a column that the
-    labels — truncated at p90 — could really use."""
+    labels — truncated at p90 — could really use.
+
+    Inherited from PlanDock, which the sidebar absorbed: the PLAN section
+    calls render_plan_dock verbatim precisely so this stays true.
+    """
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, VerticalScroll
 
-    from aegis.tui.plan_dock import PlanDock
+    from aegis.tui.sidebar import Sidebar, SidebarModel
 
     class _A(App):
         def compose(self) -> ComposeResult:
             with Horizontal():
                 yield VerticalScroll(id="transcript")
-                yield PlanDock(C, id="plan-dock")
+                yield Sidebar(C, id="sidebar")
 
     s = state(("Reconcile the plan doc with what actually shipped", "completed"),
               ("Fix the task panel layout defects", "in_progress"))
     for term_w in (80, 120):
         async with _A().run_test(size=(term_w, 12)) as pilot:
-            dock = pilot.app.query_one("#plan-dock", PlanDock)
-            dock.toggle()
-            dock.refresh_plan(s, {}, working=True)
+            bar = pilot.app.query_one("#sidebar", Sidebar)
+            bar.toggle()
+            bar.refresh_model(SidebarModel(plan=s, plan_working=True))
             await pilot.pause()
-            rows = [l for l in dock.render().plain.splitlines()
-                    if l.startswith(tuple(CIRCLES))]
+            rows = _plan_rows(bar.plain())
             assert rows
             for row in rows:
-                assert cell_len(row) == dock.size.width, (
-                    term_w, dock.size.width, repr(row))
+                assert cell_len(row) == bar.size.width, (
+                    term_w, bar.size.width, repr(row))
 
 
 @pytest.mark.asyncio
-async def test_plan_dock_toggles_and_renders_rows():
+async def test_sidebar_toggles_and_renders_rows():
     from textual.app import App, ComposeResult
 
-    from aegis.tui.plan_dock import PlanDock
+    from aegis.tui.sidebar import Sidebar, SidebarModel
 
     class _A(App):
         def compose(self) -> ComposeResult:
-            yield PlanDock(C, id="plan-dock")
+            yield Sidebar(C, id="sidebar")
 
     async with _A().run_test() as pilot:
-        dock = pilot.app.query_one("#plan-dock", PlanDock)
-        assert dock.display is False
-        dock.refresh_plan(state(("a", "in_progress")), {}, working=True)
-        assert dock.toggle() is True
-        assert dock.display is True
-        assert dock.toggle() is False
+        bar = pilot.app.query_one("#sidebar", Sidebar)
+        assert bar.display is False
+        bar.refresh_model(SidebarModel(plan=state(("a", "in_progress")),
+                                       plan_working=True))
+        assert bar.toggle() is True
+        assert bar.display is True
+        assert "a" in bar.plain()
+        assert bar.toggle() is False
 
 
 # -- pane wiring -----------------------------------------------------
@@ -481,67 +492,65 @@ async def test_a_subagent_plan_does_not_change_the_strip():
 
 
 @pytest.mark.asyncio
-async def test_f3_toggles_the_dock_and_it_shows_the_session_plan():
+async def test_f3_toggles_the_sidebar_and_it_shows_the_session_plan():
     from aegis.events import AgentPlan, PlanEntry
-    from aegis.tui.plan_dock import PlanDock
+    from aegis.tui.sidebar import Sidebar
 
     async with _app().run_test() as pilot:
         pane = pilot.app._panes[0]
-        dock = pane.query_one("#plan-dock", PlanDock)
+        bar = pane.query_one("#sidebar", Sidebar)
         pane._core._fire_event(AgentPlan(entries=(
             PlanEntry(content="explore", status="completed"),
             PlanEntry(content="build", status="in_progress"),
         )))
         await pilot.pause()
-        assert dock.display is False           # hidden until asked for
+        assert bar.display is False            # hidden until asked for
 
         await pilot.press("f3")
         await pilot.pause()
-        assert dock.display is True
-        out = dock.render().plain
+        assert bar.display is True
+        out = bar.plain()
         assert "explore" in out and "build" in out and "1/2" in out
 
         await pilot.press("f3")
         await pilot.pause()
-        assert dock.display is False
+        assert bar.display is False
 
 
 @pytest.mark.asyncio
-async def test_the_tasks_command_toggles_the_same_dock():
+async def test_the_tasks_command_toggles_the_same_sidebar():
     """One dispatch seam, so the web client gets the toggle for free."""
-    from aegis.tui.plan_dock import PlanDock
+    from aegis.tui.sidebar import Sidebar
 
     async with _app().run_test() as pilot:
         pane = pilot.app._panes[0]
-        dock = pane.query_one("#plan-dock", PlanDock)
+        bar = pane.query_one("#sidebar", Sidebar)
         pane._apply_command_effect({"kind": "tasks"})
         await pilot.pause()
-        assert dock.display is True
+        assert bar.display is True
 
 
 @pytest.mark.asyncio
-async def test_the_transcript_keeps_its_width_while_the_dock_is_shut():
-    """A hidden dock must cost nothing — the transcript owns the row."""
-    from aegis.tui.plan_dock import PlanDock
-
+async def test_the_transcript_keeps_its_width_while_the_sidebar_is_shut():
+    """A hidden sidebar must cost nothing — the transcript owns the row."""
     async with _app().run_test(size=(120, 30)) as pilot:
         pane = pilot.app._panes[0]
         wide = pane.query_one("#transcript").size.width
-        pane.query_one("#plan-dock", PlanDock).toggle()
+        pane.toggle_task_dock()
         await pilot.pause()
         narrow = pane.query_one("#transcript").size.width
-        assert narrow < wide, "opening the dock must reflow the transcript"
+        assert narrow < wide, "opening the sidebar must reflow the transcript"
         assert narrow > 40, "the transcript must keep a usable width"
 
 
 @pytest.mark.asyncio
-async def test_dock_labels_use_the_dock_s_real_width_not_the_minimum():
+async def test_sidebar_labels_use_its_real_width_not_the_minimum():
     """A wider terminal must mean longer labels. toggle() paints before
     Textual lays out a previously-hidden widget, so without an on_resize
-    repaint the dock renders at DOCK_MIN and a 200-col terminal shows
+    repaint the sidebar renders at SIDEBAR_MIN and a 200-col terminal shows
     SHORTER labels than a 120-col one."""
     from aegis.events import AgentPlan, PlanEntry
-    from aegis.tui.plan_dock import PlanDock
+    from aegis.tui.sidebar import Sidebar
 
     subject = "Explore the plan-rendering context in some detail"
 
@@ -553,13 +562,13 @@ async def test_dock_labels_use_the_dock_s_real_width_not_the_minimum():
             await pilot.pause()
             await pilot.press("f3")
             await pilot.pause()
-            dock = pane.query_one("#plan-dock", PlanDock)
-            row = dock.render().plain.splitlines()[1]
-            return dock.size.width, len(row)
+            bar = pane.query_one("#sidebar", Sidebar)
+            row = _plan_rows(bar.plain())[0]
+            return bar.size.width, len(row)
 
     narrow_w, narrow_label = await widest_label(100)
     wide_w, wide_label = await widest_label(200)
     assert wide_w > narrow_w
     assert wide_label > narrow_label, (
-        f"dock {wide_w} cols rendered a {wide_label}-char row while "
-        f"dock {narrow_w} cols rendered {narrow_label}")
+        f"sidebar {wide_w} cols rendered a {wide_label}-char row while "
+        f"sidebar {narrow_w} cols rendered {narrow_label}")

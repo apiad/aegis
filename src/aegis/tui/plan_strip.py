@@ -15,7 +15,15 @@ _TICK = 0.25
 
 
 class PlanStrip(Static):
-    """Hidden (display:none) until the session has a plan."""
+    """Hidden via the ``-empty`` class until the session has a plan.
+
+    A class, not ``self.display``: an imperative display is an *inline
+    style* and beats CSS, so the sidebar's
+    ``ConversationPane.-sidebar PlanStrip { display: none }`` would be
+    silently overridden on the next plan update and the strip would
+    reappear underneath the open sidebar. QueueStrip and MonitorStrip
+    already used the class idiom; this one now matches them.
+    """
 
     # The shared box model of the strips above the status bar — the same
     # rule QueueStrip and MonitorStrip carry. Without it this one rendered
@@ -24,6 +32,7 @@ class PlanStrip(Static):
     DEFAULT_CSS = """
     PlanStrip { height: 1; padding: 0 2; margin-bottom: 1;
                 background: $panel; color: $foreground; }
+    PlanStrip.-empty { display: none; }
     """
 
     def __init__(self, palette, **kw) -> None:
@@ -32,7 +41,7 @@ class PlanStrip(Static):
         self._state = PlanState()
         self._working = False
         self._frame = 0
-        self.display = False
+        self.add_class("-empty")
 
     def on_mount(self) -> None:
         self.set_interval(_TICK, self._tick)
@@ -46,7 +55,7 @@ class PlanStrip(Static):
 
     def refresh_plan(self, state: PlanState, working: bool) -> None:
         self._state, self._working = state, working
-        self.display = bool(state)
+        self.set_class(not state, "-empty")
         self._paint()
 
     def on_resize(self) -> None:

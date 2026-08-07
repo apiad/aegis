@@ -157,7 +157,15 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   modal (picker.py), PendingStrip/Chip — the click-to-dequeue queue of
   text-box messages shown above the input while the agent is mid-turn
   (pending.py), Theme registry + AegisColors role map (themes.py;
-  `aegis-ink` default). `pane.py` also renders the subagent view: a
+  `aegis-ink` default), and the `F3` **Sidebar** (sidebar.py) — the
+  dashboard column holding SESSION / CONTEXT / PLAN / QUEUES / MONITORS /
+  SYSTEM, ordered by volatility because the panel scrolls. `F3` toggles a
+  *mode*: one `-sidebar` class on the pane hides `QueueStrip`,
+  `MonitorStrip`, `PlanStrip` and `StatusBar` by CSS, and the main column
+  becomes transcript + input. **A collapsed surface must therefore never
+  set `display` imperatively** — an inline style beats the rule, which is
+  why `PlanStrip` uses the `-empty` class its siblings already used.
+  `pane.py` also renders the subagent view: a
   `Task`/`Agent` tool_use opens a collapsible `SubagentBox`; events tagged
   with that `parent_tool_use_id` route inside (the web mirrors this in
   `coalesce.js`/`renderEvent.js`). tool_use↔tool_result pairing folds by
@@ -229,9 +237,10 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `parent_tool_use_id` so a subagent gets its own) adds per-task working
   time; `models.py` holds `PlanTask`/`PlanState`/`PlanSnapshot` and
   `render.py` the pure strip and dock renderers. The strip
-  (`tui/plan_strip.py`) is always on, the dock (`tui/plan_dock.py`) is `F3`
-  / `/tasks`, and `SessionInfo.plan` + `aegis_peer_plan` are readers of the
-  same tracker.
+  (`tui/plan_strip.py`) is the collapsed surface; `render_plan_dock` now
+  draws the PLAN section of the `F3` sidebar (`tui/sidebar.py`, also
+  `/tasks`) rather than a dock of its own, and `SessionInfo.plan` +
+  `aegis_peer_plan` are readers of the same tracker.
   Four rules a contributor will otherwise break, each already paid for:
   **circles are always space-separated** (East Asian Ambiguous — Rich
   measures one cell, terminals draw wider, neighbours overlap);

@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 
 from rich.cells import cell_len
 from rich.text import Text
+from textual.containers import VerticalScroll
+from textual.widgets import Static
 
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
@@ -175,3 +177,106 @@ def render_sidebar(model: SidebarModel, palette, width: int) -> Text:
             out.append("\n\n")
         out.append_text(b)
     return out
+
+
+_TICK = 0.25
+# Proportional, not a magic number, and inherited from the dock this
+# replaces: across 344 real task subjects the median is 35 characters and
+# p90 is 49, so no fixed width works. A share of the pane adapts instead,
+# and the bounds keep it useful on an 80-col terminal without eating a
+# 200-col one.
+SIDEBAR_PCT = 34
+SIDEBAR_MIN = 26
+SIDEBAR_MAX = 60
+
+
+class Sidebar(VerticalScroll):
+    """The F3 column. Scrolls: fully populated it is ~25 rows, and an 80x24
+    terminal has about twenty to give."""
+
+    DEFAULT_CSS = f"""
+    Sidebar {{
+        width: {SIDEBAR_PCT}%;
+        min-width: {SIDEBAR_MIN};
+        max-width: {SIDEBAR_MAX};
+        padding: 0 1;
+        scrollbar-size: 0 0;
+    }}
+    """
+
+    def __init__(self, palette, **kw) -> None:
+        super().__init__(**kw)
+        self._palette = palette
+        self._model = SidebarModel()
+        self._body = Static("")
+        self._open = False
+        self._paints = 0        # test seam for the closed-mode no-op
+        self.display = False
+
+    def compose(self):
+        yield self._body
+
+    def on_mount(self) -> None:
+        self.set_interval(_TICK, self._tick)
+
+    def set_palette(self, palette) -> None:
+        self._palette = palette
+        if self._open:
+            self._paint()
+
+    def on_resize(self) -> None:
+        """Repaint at the real width.
+
+        A widget that was display:none has not been laid out, so size.width
+        is still 0 and the first paint after a toggle falls back to the
+        minimum — truncating far harder than the real width requires.
+        """
+        if self._open:
+            self._paint()
+
+    def _tick(self) -> None:
+        # Repaint only while a task is actually running: a settled panel is
+        # static and must not burn a redraw four times a second.
+        if self._open and self._model.plan_working:
+            self._model.plan_frame += 1
+            self._paint()
+
+    def toggle(self) -> bool:
+        self._open = not self._open
+        self.display = self._open
+        if self._open:
+            self._paint()
+        return self._open
+
+    @property
+    def is_open(self) -> bool:
+        return self._open
+
+    def refresh_model(self, model: SidebarModel) -> None:
+        """Replace the snapshot; repaint only when open.
+
+        The model is stored either way — it is a dataclass, and dropping it
+        while closed would make the first frame after a toggle stale. What
+        the closed mode skips is the *render*, which is the expensive half.
+        Same discipline PlanDock.refresh_plan used.
+        """
+        model.plan_frame = self._model.plan_frame
+        self._model = model
+        if self._open:
+            self._paint()
+
+    def _width(self) -> int:
+        # `size` is already the content box — Textual excludes padding from
+        # it — so the `padding: 0 1` above must NOT be subtracted again.
+        return self.size.width or SIDEBAR_MIN - 2
+
+    def _paint(self) -> None:
+        self._paints += 1
+        self._body.update(
+            render_sidebar(self._model, self._palette, self._width()))
+
+    def plain(self) -> str:
+        """The current column as plain text. A test seam: reaching into a
+        Static's renderable couples the tests to Textual's internals."""
+        return render_sidebar(
+            self._model, self._palette, self._width()).plain

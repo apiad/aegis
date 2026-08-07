@@ -38,8 +38,8 @@ from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
-from aegis.tui.plan_dock import PlanDock
 from aegis.tui.plan_strip import PlanStrip
+from aegis.tui.sidebar import Sidebar, SidebarModel
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
@@ -752,7 +752,16 @@ class ConversationPane(Widget):
     DEFAULT_CSS = """
     ConversationPane { layout: vertical; height: 1fr;
                        background: $background; }
-    ConversationPane #transcript-row { height: 1fr; }
+    ConversationPane #pane-row { height: 1fr; }
+    ConversationPane #main-column { width: 1fr; height: 1fr; }
+    /* The mode switch. One class, not five imperative display flags:
+       widgets toggled by hand drift out of sync with each other, a class
+       cannot, and the closed mode is defined by the class's absence — so
+       an untoggled pane is what it was before the sidebar existed. */
+    ConversationPane.-sidebar QueueStrip,
+    ConversationPane.-sidebar MonitorStrip,
+    ConversationPane.-sidebar PlanStrip,
+    ConversationPane.-sidebar StatusBar { display: none; }
     ConversationPane #transcript { height: 1fr; width: 1fr;
                                    background: $background;
                                    padding: 1 4; scrollbar-size: 0 0; }
@@ -977,26 +986,35 @@ class ConversationPane(Widget):
             w.set_palette(palette)
         for w in self.query(PendingStrip):
             w.set_palette(palette)
+        for w in self.query(Sidebar):
+            w.set_palette(palette)
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            with Horizontal(id="transcript-row"):
+        # Two columns, full pane height: the sidebar runs past the input
+        # rather than stopping at the transcript the way PlanDock did. Six
+        # sections want every row they can get, and a panel that stops two
+        # rows short of the bottom reads as one that failed to reach.
+        with Horizontal(id="pane-row"):
+            with Vertical(id="main-column"):
                 yield VerticalScroll(id="transcript")
-                yield PlanDock(self._palette, id="plan-dock")
-            if self._digest is not None:
-                yield QueueStrip(self._digest, self._palette)
-            if self._monitor_manager is not None:
-                yield MonitorStrip(self._monitor_manager, self._palette,
-                                   handle_of=lambda: self.handle)
-            # In remote mode, agent may be None; fall back to empty strings.
-            _model = getattr(self._agent, "model", "") if self._agent else ""
-            _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
-            _eff = getattr(_eff_raw, "value", _eff_raw)  # Effort enum → str
-            yield PlanStrip(self._palette, id="plan-strip")
-            yield StatusBar(_model, _eff, self._palette)
-            yield CommandPalette(self._palette)
-            yield PendingStrip(self._palette)
-            yield GrowingInput(placeholder="type a message…")
+                if self._digest is not None:
+                    yield QueueStrip(self._digest, self._palette)
+                if self._monitor_manager is not None:
+                    yield MonitorStrip(self._monitor_manager, self._palette,
+                                       handle_of=lambda: self.handle)
+                # In remote mode, agent may be None; fall back to empty
+                # strings.
+                _model = getattr(self._agent, "model", "") \
+                    if self._agent else ""
+                _eff_raw = getattr(self._agent, "effort", "") \
+                    if self._agent else ""
+                _eff = getattr(_eff_raw, "value", _eff_raw)  # Effort → str
+                yield PlanStrip(self._palette, id="plan-strip")
+                yield StatusBar(_model, _eff, self._palette)
+                yield CommandPalette(self._palette)
+                yield PendingStrip(self._palette)
+                yield GrowingInput(placeholder="type a message…")
+            yield Sidebar(self._palette, id="sidebar")
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
@@ -1414,13 +1432,17 @@ class ConversationPane(Widget):
         return self._place.qualify(str(path)) if path else None
 
     def toggle_task_dock(self) -> bool:
-        """Open/close the task dock. Bound to F3 and to `/tasks`."""
+        """Open/close the sidebar. Bound to F3 and to `/tasks`."""
         try:
-            dock = self.query_one("#plan-dock", PlanDock)
+            bar = self.query_one("#sidebar", Sidebar)
         except Exception:
             return False
+        # Refresh before toggling: refresh_model stores while closed and
+        # only skips the render, so the first painted frame is current.
         self._refresh_plan_surfaces()
-        return dock.toggle()
+        opened = bar.toggle()
+        self.set_class(opened, "-sidebar")
+        return opened
 
     def _plan_key(self, ev) -> str | None:
         return getattr(ev, "parent_tool_use_id", None)
@@ -2342,9 +2364,9 @@ class ConversationPane(Widget):
                              f"{summary} · {status} {count} events")
 
     def _refresh_plan_surfaces(self) -> None:
-        """Push the session's plan into the strip (and, once open, the
-        dock). Tolerant of a pane whose widgets are not mounted yet or are
-        already torn down — this fires from observer callbacks."""
+        """Push the session's plan into the strip and the sidebar. Tolerant
+        of a pane whose widgets are not mounted yet or are already torn
+        down — this fires from observer callbacks."""
         core = self._core
         if core is None or not hasattr(core, "plan_state"):
             return
@@ -2353,12 +2375,27 @@ class ConversationPane(Widget):
         except Exception:
             return
         strip.refresh_plan(core.plan_state(), core.plan.working)
+        self._refresh_sidebar()
+
+    def _refresh_sidebar(self) -> None:
+        """Repaint the sidebar if it is open. Cheap when closed: the widget
+        keeps the model and returns without rendering."""
         try:
-            dock = self.query_one("#plan-dock", PlanDock)
+            bar = self.query_one("#sidebar", Sidebar)
         except Exception:
             return
-        dock.refresh_plan(core.plan_state(), core.subplan_states(),
-                          core.plan.working)
+        bar.refresh_model(self._sidebar_model())
+
+    def _sidebar_model(self) -> SidebarModel:
+        """The sidebar's snapshot. Task 5 of the plan adds the status-bar
+        segments and the queue/monitor sources; the plan alone is enough to
+        prove the mode switch."""
+        core = self._core
+        if core is None or not hasattr(core, "plan_state"):
+            return SidebarModel()
+        return SidebarModel(
+            plan=core.plan_state(), subplans=core.subplan_states(),
+            plan_working=core.plan.working)
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:
