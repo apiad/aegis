@@ -110,9 +110,16 @@ async def _aegis_group_rename_impl(bridge, *, old: str, new: str) -> dict:
 
 
 async def _aegis_rename_impl(bridge, *, old_handle: str,
-                             new_handle: str) -> dict:
+                             new_handle: str,
+                             title: str | None = None) -> dict:
     """Rename a live aegis session's handle in place."""
-    return await bridge.rename_handle(old_handle, new_handle)
+    return await bridge.rename_handle(old_handle, new_handle, title)
+
+
+async def _aegis_title_impl(bridge, *, from_handle: str,
+                            title: str) -> dict:
+    """Set a session's display title at agent authority."""
+    return await bridge.set_title(from_handle, title, source="agent")
 
 
 async def _aegis_group_move_member_impl(bridge, *, handle: str,
@@ -157,7 +164,16 @@ BRIEFING = (
     "for other agents. Format: 2-3 alphanumeric segments separated by "
     "hyphens, starting with a letter. Also call this when Alex asks you "
     "to rename. Returns {ok, old, new} on success or {error: ...} on "
-    "format failure / collision.\n"
+    "format failure / collision. Takes an optional `title` to set a "
+    "readable label in the same call.\n"
+    "  - aegis_title(from_handle, title) : give your session a short "
+    "human-readable title beside your handle — 3-8 words on what you are "
+    "actually doing ('fix the eviction race'). The handle stays your "
+    "identity (routing, inbox, log id); the title is only the label Alex "
+    "reads on the tab and in the Ctrl+R history, where ten sessions all "
+    "named 'lucid-knuth' tell him nothing. Prefer this over renaming "
+    "yourself just to be legible. A title Alex set by hand wins over "
+    "yours, and the refusal says so.\n"
     "  - aegis_handoff(from_handle, target_handle, context, interrupt=False) "
     ": one-way (fire-and-forget) context transfer to a live peer session. "
     "You pass your own aegis handle as from_handle — it is in your system "
@@ -929,7 +945,8 @@ def build_server(bridge: AppBridge) -> FastMCP:
     server.tool(make_handoff(bridge))
 
     @server.tool
-    async def aegis_rename(old_handle: str, new_handle: str) -> dict:
+    async def aegis_rename(old_handle: str, new_handle: str,
+                           title: str | None = None) -> dict:
         """Rename a live aegis session's handle in place.
 
         Use this to change your own handle (or a peer's) from the generated
@@ -944,12 +961,38 @@ def build_server(bridge: AppBridge) -> FastMCP:
         tabbar label all migrate atomically; messages already queued for
         the old handle are re-routed.
 
+        Pass ``title`` to set a readable label in the same call — this is
+        the self-naming path, and the two are different things: the handle
+        is your identity, the title is only what a human reads. A title
+        the operator set by hand wins, in which case the rename still
+        succeeds and only the title is declined.
+
         Returns ``{"ok": True, "old": ..., "new": ...}`` on success or
         ``{"error": "..."}`` on validation failure / unknown old /
         collision with another live session.
         """
         return await _aegis_rename_impl(
-            bridge, old_handle=old_handle, new_handle=new_handle)
+            bridge, old_handle=old_handle, new_handle=new_handle,
+            title=title)
+
+    @server.tool
+    async def aegis_title(from_handle: str, title: str) -> dict:
+        """Give your session a human-readable title, beside your handle.
+
+        The handle stays your identity — it is ``from_handle`` on every
+        call, your inbox routing key, and half your log id. The title is
+        only a label: it is what Alex reads on the tab and in the Ctrl+R
+        history when ten sessions are open, all of them named things like
+        ``lucid-knuth``. Set it once the session's purpose has settled;
+        3-8 words describing what you are actually doing, e.g. "fix the
+        eviction race". Prefer this over renaming yourself for legibility.
+
+        Refused when the operator has set a title by hand — theirs wins,
+        and the refusal says so rather than failing silently. Returns
+        ``{"ok": True, ...}`` or ``{"error": "..."}``.
+        """
+        return await _aegis_title_impl(
+            bridge, from_handle=from_handle, title=title)
 
     @server.tool
     async def aegis_spawn(agent: str, prompt: str, from_handle: str,

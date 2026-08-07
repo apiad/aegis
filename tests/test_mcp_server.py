@@ -28,6 +28,28 @@ class FakeBridge:
         self._sessions = [
             SessionInfo(handle="lucid-knuth", agent_slug="default",
                         state="ready", active=True, unseen=False)]
+        # handle -> (title, source). Stored rather than delegated: the
+        # precedence rule itself is unit-tested against a real
+        # SessionManager in test_session_titles.py.
+        self._titles: dict[str, tuple[str, str]] = {}
+
+    async def set_title(self, handle, title, *, source):
+        from aegis.state.titles import outranks, sanitize_title
+        cur = self._titles.get(handle, ("", ""))
+        if not outranks(source, cur[1]):
+            return {"error": f"title is set by {cur[1]!r} and "
+                             f"{source!r} cannot overwrite it"}
+        clean = sanitize_title(title)
+        self._titles[handle] = (clean, source if clean else "")
+        return {"ok": True, "handle": handle, "title": clean,
+                "source": self._titles[handle][1]}
+
+    async def rename_handle(self, old, new, title=None):
+        self.renamed = (old, new)
+        self._titles[new] = self._titles.pop(old, ("", ""))
+        if title is not None:
+            await self.set_title(new, title, source="agent")
+        return {"ok": True, "old": old, "new": new}
 
     def list_sessions(self):
         return list(self._sessions)
@@ -106,7 +128,7 @@ def test_build_server_registers_all_aegis_tools():
     tools = asyncio.run(srv.list_tools())
     assert {t.name for t in tools} == {
         "aegis_meta", "aegis_list_sessions", "aegis_peer_plan",
-        "aegis_list_agents", "aegis_handoff", "aegis_rename",
+        "aegis_list_agents", "aegis_handoff", "aegis_rename", "aegis_title",
         "aegis_spawn", "aegis_fork", "aegis_close",
         "aegis_read_peer",
         "aegis_claim", "aegis_release", "aegis_claims",
@@ -487,3 +509,44 @@ async def test_aegis_fork_refuses_self_fork_mid_turn():
                       from_handle="parent-x")
     assert "error" in out
     assert "/fork" in out["error"]
+
+
+# ---- session titles ----
+
+async def test_aegis_title_sets_an_agent_title():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_title", from_handle="lucid-knuth",
+                      title="eviction race")
+    assert out["ok"] is True
+    assert br._titles["lucid-knuth"] == ("eviction race", "agent")
+
+
+async def test_aegis_title_is_refused_against_a_human_title():
+    br = FakeBridge()
+    await br.set_title("lucid-knuth", "operator wrote this", source="human")
+    srv = build_server(br)
+    out = await _call(srv, "aegis_title", from_handle="lucid-knuth",
+                      title="agent wrote this")
+    assert "error" in out
+    # The refusal names the authority that beat it, rather than failing mute.
+    assert "human" in out["error"]
+    assert br._titles["lucid-knuth"][0] == "operator wrote this"
+
+
+async def test_aegis_rename_without_a_title_is_unchanged():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_rename", old_handle="lucid-knuth",
+                      new_handle="fix-eviction")
+    assert out == {"ok": True, "old": "lucid-knuth", "new": "fix-eviction"}
+    assert br._titles["fix-eviction"] == ("", "")
+
+
+async def test_aegis_rename_can_carry_a_title():
+    br = FakeBridge()
+    srv = build_server(br)
+    out = await _call(srv, "aegis_rename", old_handle="lucid-knuth",
+                      new_handle="fix-eviction", title="eviction race")
+    assert out["ok"] is True
+    assert br._titles["fix-eviction"] == ("eviction race", "agent")
