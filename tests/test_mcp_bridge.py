@@ -38,7 +38,9 @@ def test_appbridge_is_runtime_checkable_protocol():
             return None
         async def close(self, handle): return None
         async def interrupt(self, handle): return None
-        async def rename_handle(self, old, new): return {"ok": True}
+        async def rename_handle(self, old, new, title=None):
+            return {"ok": True}
+        async def set_title(self, handle, title, *, source): return {"ok": True}
         def register_agent(self, slug, agent): pass
         def register_queue(self, queue): pass
         def reload_plugins(self): pass
@@ -77,7 +79,9 @@ def test_appbridge_requires_full_surface():
             return None
         async def close(self, handle): return None
         async def interrupt(self, handle): return None
-        async def rename_handle(self, old, new): return {"ok": True}
+        async def rename_handle(self, old, new, title=None):
+            return {"ok": True}
+        async def set_title(self, handle, title, *, source): return {"ok": True}
         def register_agent(self, slug, agent): pass
         def register_queue(self, queue): pass
         def reload_plugins(self): pass

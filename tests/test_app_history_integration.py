@@ -356,3 +356,71 @@ async def test_history_resume_reads_the_transcript_off_the_event_loop(
     assert ran_on, "replay never ran"
     assert loop_thread not in ran_on, (
         "transcript read blocked the event loop")
+
+
+# --- session titles -------------------------------------------------
+#
+# The manager's precedence rule is unit-tested elsewhere. What only shows
+# up here is persistence: a title must reach the log, and — the trap —
+# must survive a rename, whose header re-derives every other field.
+
+@pytest.mark.asyncio
+async def test_set_title_appends_a_header_carrying_it(tmp_path: Path,
+                                                      monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        handle = app._active.handle
+        res = await app.set_title(handle, "fix the eviction race",
+                                  source="human")
+        assert res["ok"] is True
+        await pilot.pause()
+        sd = tmp_path / ".aegis" / "state"
+        log_id = list((sd / "sessions").glob("*.jsonl"))[0].stem
+        metas = [e for e in replay_events(sd, log_id).events
+                 if isinstance(e, SessionMeta)]
+        assert metas[-1].title == "fix the eviction race"
+        assert metas[-1].title_source == "human"
+
+
+@pytest.mark.asyncio
+async def test_a_rename_does_not_blank_the_title(tmp_path: Path,
+                                                 monkeypatch):
+    """_record_rename re-derives every SessionMeta field. If it omits the
+    title, the header it appends says title="" and the operator's title is
+    silently lost on the next /rename."""
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        handle = app._active.handle
+        await app.set_title(handle, "eviction race", source="human")
+        await app.rename_handle(handle, "fix-eviction")
+        await pilot.pause()
+
+        sd = tmp_path / ".aegis" / "state"
+        log_id = list((sd / "sessions").glob("*.jsonl"))[0].stem
+        metas = [e for e in replay_events(sd, log_id).events
+                 if isinstance(e, SessionMeta)]
+        # The rename header itself carries the title forward...
+        assert metas[-1].handle == "fix-eviction"
+        assert metas[-1].title == "eviction race"
+        # ...and the live session still has it.
+        assert app._active._core.title == "eviction race"
+        assert app._active._core.title_source == "human"
+
+
+@pytest.mark.asyncio
+async def test_an_agent_title_is_refused_against_a_human_one(tmp_path: Path,
+                                                             monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        handle = app._active.handle
+        await app.set_title(handle, "operator wrote this", source="human")
+        res = await app.set_title(handle, "agent wrote this", source="agent")
+        assert "error" in res
+        assert "human" in res["error"]
+        assert app._active._core.title == "operator wrote this"

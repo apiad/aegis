@@ -283,8 +283,16 @@ class RemoteSessionManager:
         })
         return r["result"]
 
-    async def rename_handle(self, old: str, new: str) -> dict:
-        return await self._ws.rpc("rename_handle", {"old": old, "new": new})
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict:
+        return await self._ws.rpc("rename_handle", {"old": old, "new": new,
+                                                    "title": title})
+
+    async def set_title(self, handle: str, title: str, *,
+                        source: str) -> dict:
+        return await self._ws.rpc("set_title", {"handle": handle,
+                                                "title": title,
+                                                "source": source})
 
     def list_sessions(self) -> list[SessionInfo]:
         return list(self._infos.values())
@@ -330,6 +338,7 @@ class RemoteSessionManager:
             active=si["active"],
             unseen=si["unseen"],
             spawned_by=si.get("spawned_by"),
+            title=si.get("title", ""),
         )
         self._infos[info.handle] = info
         self._sessions.setdefault(info.handle,

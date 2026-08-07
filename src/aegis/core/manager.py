@@ -11,6 +11,7 @@ from aegis.hosts.models import HostSpec, Place
 from aegis.hosts.resolve import resolve_place
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import LoopService
+from aegis.state.titles import outranks, sanitize_title
 from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
@@ -448,7 +449,8 @@ class SessionManager:
                         unsolicited=getattr(s, "unsolicited_turn", False),
                         host=getattr(s, "place", None).host
                         if getattr(s, "place", None) else "local",
-                        plan=self._plan_roll_up(s))
+                        plan=self._plan_roll_up(s),
+                        title=getattr(s, "title", ""))
             for s in self._sessions
         ]
 
@@ -458,10 +460,38 @@ class SessionManager:
     def live_handles(self) -> set[str]:
         return {s.handle for s in self._sessions}
 
-    async def rename_handle(self, old: str, new: str) -> dict:
+    async def set_title(self, handle: str, title: str, *,
+                        source: str) -> dict:
+        """Set a session's display title, subject to source precedence.
+
+        An empty ``title`` clears it, and clears the source with it —
+        otherwise nothing could ever set a title on that session again.
+        That is how bare ``/title`` undoes a bad manual one.
+        """
+        session = self.get(handle)
+        if session is None:
+            return {"error":
+                    f"no session {handle!r} (use aegis_list_sessions)"}
+        if not outranks(source, session.title_source):
+            return {"error":
+                    f"title is set by {session.title_source!r} and "
+                    f"{source!r} cannot overwrite it"}
+        clean = sanitize_title(title)
+        session.title = clean
+        session.title_source = source if clean else ""
+        return {"ok": True, "handle": handle, "title": clean,
+                "source": session.title_source}
+
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict:
         """Swap a live session's handle. Used by the ``aegis_rename`` MCP
         tool so an agent can give itself a more meaningful name once the
         session's purpose has settled.
+
+        ``title`` is the self-naming path: an agent that has worked out
+        what it is doing sets both at once. It is applied at ``agent``
+        authority and separately from the rename, so a declined title
+        (the operator already set one) never fails the rename itself.
 
         Returns ``{"ok": True, "old": old, "new": new}`` on success or
         ``{"error": "..."}`` on validation failure / unknown old / collision.
@@ -471,6 +501,8 @@ class SessionManager:
             session = self.get(old)
             if session is None:
                 return {"error": f"no session {old!r}"}
+            if title is not None:
+                await self.set_title(old, title, source="agent")
             return {"ok": True, "old": old, "new": new}
         if not is_valid_handle(new):
             return {"error":
@@ -491,6 +523,10 @@ class SessionManager:
         if self._inbox is not None:
             self._inbox.rename(old, new)
         self.locks.rename(old, new)
+        # The title rides on the session object, so it crosses the rename
+        # untouched — this only handles the caller supplying a new one.
+        if title is not None:
+            await self.set_title(new, title, source="agent")
         return {"ok": True, "old": old, "new": new}
 
     async def handoff(self, from_handle: str, target_handle: str,

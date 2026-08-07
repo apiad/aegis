@@ -79,6 +79,8 @@ class FakeManager:
         self._cores = cores or {}
         self.spawned: list = []
         self.handoff_calls: list = []
+        self.rename_calls: list = []
+        self.title_calls: list = []
         self.handoff_result: str = ""
         self.rename_result: dict | None = None
 
@@ -107,8 +109,16 @@ class FakeManager:
         self.handoff_calls.append((from_handle, target_handle, context))
         return self.handoff_result
 
-    async def rename_handle(self, old: str, new: str) -> dict:
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict:
+        self.rename_calls.append((old, new, title))
         return self.rename_result or {"old": old, "new": new}
+
+    async def set_title(self, handle: str, title: str, *,
+                        source: str) -> dict:
+        self.title_calls.append((handle, title, source))
+        return {"ok": True, "handle": handle, "title": title,
+                "source": source}
 
 
 def _cfg() -> WebConfig:

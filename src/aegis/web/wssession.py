@@ -304,7 +304,11 @@ class WSSession:
             return {"result": result}
         if method == "rename_handle":
             return await self._m.rename_handle(
-                params["old"], params["new"])
+                params["old"], params["new"], params.get("title"))
+        if method == "set_title":
+            return await self._m.set_title(
+                params["handle"], params["title"],
+                source=params.get("source", "human"))
         raise _RpcUnknown(method)
 
     # -- subscribe / resume ----------------------------------------------

@@ -1517,7 +1517,8 @@ class AegisApp(App):
                         spawned_by=getattr(p._core, "spawned_by", None),
                         host=getattr(p._core, "place", None).host
                         if getattr(p._core, "place", None) else "local",
-                        plan=_plan_roll_up(p._core))
+                        plan=_plan_roll_up(p._core),
+                        title=getattr(p._core, "title", ""))
             for p in self._panes
             if isinstance(p, ConversationPane)
         ]
@@ -1800,6 +1801,7 @@ class AegisApp(App):
                     active=si_dict.get("active", False),
                     unseen=si_dict.get("unseen", False),
                     spawned_by=si_dict.get("spawned_by"),
+                    title=si_dict.get("title", ""),
                 )
                 # Use run_worker to schedule on the Textual event loop.
                 if self.is_running:
@@ -1845,11 +1847,44 @@ class AegisApp(App):
         if pane is not None:
             pane.clear_transcript()
 
-    async def rename_handle(self, old: str, new: str) -> dict:
+    async def set_title(self, handle: str, title: str, *,
+                        source: str) -> dict:
+        """AppBridge-shaped: set a pane's display title.
+
+        Subject to source precedence (``human > agent > auto``). An empty
+        ``title`` clears it and the source with it, which is how bare
+        ``/title`` undoes a bad manual one.
+        """
+        from aegis.state.titles import outranks, sanitize_title
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return {"error":
+                    f"no session {handle!r} (use aegis_list_sessions)"}
+        current = pane._core.title_source
+        if not outranks(source, current):
+            return {"error":
+                    f"title is set by {current!r} and {source!r} "
+                    f"cannot overwrite it"}
+        clean = sanitize_title(title)
+        pane._core.title = clean
+        pane._core.title_source = source if clean else ""
+        self._record_title(pane)
+        self._refresh_tabbar()
+        return {"ok": True, "handle": handle, "title": clean,
+                "source": pane._core.title_source}
+
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict:
         """AppBridge-shaped: rename a live pane's handle in-place.
 
         Swaps the pane's handle, the inbox-router binding, and the
         tabbar label. Used by the ``aegis_rename`` MCP tool.
+
+        ``title`` is the self-naming path — set both in one call. It is
+        applied separately and at ``agent`` authority, so a declined title
+        never fails the rename.
         """
         from aegis.core.manager import is_valid_handle
         if old == new:
@@ -1858,6 +1893,8 @@ class AegisApp(App):
                          and p.handle == old), None)
             if pane is None:
                 return {"error": f"no session {old!r}"}
+            if title is not None:
+                await self.set_title(old, title, source="agent")
             return {"ok": True, "old": old, "new": new}
         if not is_valid_handle(new):
             return {"error":
@@ -1887,19 +1924,39 @@ class AegisApp(App):
         # session under the handle it was born with.
         self._record_rename(pane, new)
         self._refresh_tabbar()
+        if title is not None:
+            await self.set_title(new, title, source="agent")
         return {"ok": True, "old": old, "new": new}
 
     def _record_rename(self, pane, new_handle: str) -> None:
         """Append a SessionMeta carrying the session's new handle."""
+        self._append_meta(pane, handle=new_handle)
+
+    def _record_title(self, pane) -> None:
+        """Append a SessionMeta carrying the session's new title."""
+        self._append_meta(pane, handle=pane.handle)
+
+    def _append_meta(self, pane, *, handle: str) -> None:
+        """Append a mutation record for ``pane``.
+
+        Every field is re-derived, so the title has to be re-stated
+        explicitly: a header that omitted it would contradict live state,
+        and ``aegis doctor --repair`` reads these back too. (The reader
+        takes the last *non-empty* title, so this is belt and braces —
+        deliberately, because only one of the two has to be got wrong for
+        a rename to silently blank the operator's title.)
+        """
         from datetime import datetime, timezone
         from aegis.events import SessionMeta
         from aegis.state.session_log import append_meta
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with contextlib.suppress(Exception):
             append_meta(self._state_dir, pane.log_id, SessionMeta(
-                handle=new_handle, profile=pane.agent_slug,
+                handle=handle, profile=pane.agent_slug,
                 provider=_provider_slug(pane), cwd=self._cwd,
-                created_at=now_iso, origin="tui", preview=""))
+                created_at=now_iso, origin="tui", preview="",
+                title=pane._core.title,
+                title_source=pane._core.title_source))
 
 
 class _GroupSessionAdapter:

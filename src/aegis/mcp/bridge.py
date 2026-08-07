@@ -27,6 +27,9 @@ class SessionInfo:
     # far along everyone is and what they are on. None means the session
     # has no plan — distinct from a plan with no tasks, which is 0/0.
     plan: "PlanSnapshot | None" = None
+    # Human-readable label beside the handle — what the session is *about*,
+    # where the handle is only who it is. "" when nobody has set one.
+    title: str = ""
 
 
 class GroupsBridge(Protocol):
@@ -140,7 +143,10 @@ class AppBridge(Protocol):
         that deliver their own message immediately after pass ``drain=False``
         so both go out together."""
         ...
-    async def rename_handle(self, old: str, new: str) -> dict: ...
+    async def rename_handle(self, old: str, new: str,
+                            title: str | None = None) -> dict: ...
+    async def set_title(self, handle: str, title: str, *,
+                        source: str) -> dict: ...
 
     def register_agent(self, slug: str, agent: object) -> None:
         """Add a freshly-validated Agent to the live agent map. Idempotent

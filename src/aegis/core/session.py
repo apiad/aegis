@@ -64,6 +64,11 @@ class AgentSession:
         self.agent = agent
         self.agent_slug = agent_slug
         self.handle = handle
+        # A label, not an identity — see aegis.state.titles. The handle is
+        # what routes; this is what a human reads on a tab. Empty until
+        # something sets it, and a rename carries it across untouched.
+        self.title: str = ""
+        self.title_source: str = ""
         # Which machine and working tree this session's harness runs in.
         # Local import: core.session is imported early and aegis.hosts
         # pulls in aegis.mcp transitively.
