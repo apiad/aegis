@@ -141,9 +141,24 @@ def _fold_file(path: Path) -> _Fold | None:
 
 
 INDEX_NAME = "history_index.json"
-# 2: folds gained title / title_source. A cached v1 fold knows nothing
-# about titles, and serving it would leave every pre-existing session
-# permanently titleless — so discard the whole index once and re-fold.
+# 2: folds gained title / title_source.
+#
+# **This bump was a mistake — do not copy the reasoning.** It was made on
+# the theory that a cached v1 fold, knowing nothing about titles, would
+# leave pre-existing sessions permanently titleless. It would not:
+# `_entry_to_fold` reads the two fields with `.get(..., "")`, and a log
+# only *gains* a title by appending a SessionMeta, which changes its size
+# and mtime and so busts that entry's stamp anyway. No log written before
+# 0.32.0 could carry a title, because the field did not exist. The stamp
+# check already covered every case.
+#
+# The cost is real and falls on the user: discarding the index re-folds
+# the whole corpus on the next Ctrl+R — 767MB / 332 logs measured ~60s on
+# zion, during which the modal does not appear at all. Warm is 0.07s.
+#
+# So: bump this ONLY when a change makes an existing entry actively
+# *wrong*, not merely incomplete. Adding a field that defaults sanely and
+# is refreshed by the stamp is not a reason.
 INDEX_VERSION = 2
 
 
