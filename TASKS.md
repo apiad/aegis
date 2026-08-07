@@ -298,7 +298,32 @@ existing `_overlay_agent`. Forking a *closed* session works too — it needs a
   (worktree the *repo*, never the project root — `repos/` is gitignored and
   `vault/` must not be branched under autosync).
 
-### Session titles + one-shot generation seam *(specced 2026-07-30, no plan yet)*
+### Session titles + one-shot generation seam *(slice 1 shipped 2026-08-07; slices 2–4 open)*
+
+**Slice 1 is on `main` and green** — a title beside the handle, settable by
+hand (`/title`) or by the agent (`aegis_title`, `aegis_rename(title=…)`),
+persisted in the transcript, surviving a restart, with `human > agent > auto`
+enforced. **Zero LLM calls.** 2891 tests (+59). Plan:
+`docs/superpowers/plans/2026-08-07-aegis-session-titles-slice1.md`.
+
+- **The tab bar was the wrong home, and the spec was stale about why.** It
+  assumed `worker_label` owned the suffix; since the live task list shipped,
+  `_tab_suffix` packs plan roll-up + worker label + `@host` in there. Measured:
+  four tabs are **127 cells** untitled — already past a 120-col terminal — and
+  190–210 with a title. The title went to the **status bar** (`P_TITLE = 25`,
+  active session only, degrades on narrow terminals) and **`Ctrl+R`**.
+- **Two bugs no unit test could see**, both found by driving it end to end:
+  a `/rename` blanked the title (`_record_rename` re-derives every field —
+  `7af708a`), and a resumed session forgot its title *and its
+  `title_source`*, so an agent could overwrite Alex's title after any restart
+  — the precedence rule was as strong as one uptime (`945190c`).
+- **Next: slice 2, the `generate()` seam** — `supports_oneshot` +
+  `generate(schema, *instructions)` on `HarnessDriver`, `claude-code` first,
+  plus `text_generation:` config and the shared tolerant parser. Then slice 3
+  (first-turn auto-titling, at which point bare `/title` becomes *regenerate*
+  rather than *clear*) and slice 4 (the other three drivers).
+
+Original design notes follow.
 
 Ten tabs read `lucid-knuth` / `deep-dijkstra`. 0.28 made many tabs fast; it
 didn't make them legible. CLAUDE.md's *"rename yourself once the purpose has

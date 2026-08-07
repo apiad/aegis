@@ -1,7 +1,8 @@
 ---
 title: Session titles, and a one-shot generation seam
 date: 2026-07-30
-status: design
+status: slice 1 implemented (2026-08-07); slices 2-4 outstanding
+plan: docs/superpowers/plans/2026-08-07-aegis-session-titles-slice1.md
 ---
 
 # Session titles, and a one-shot generation seam
@@ -184,26 +185,47 @@ Generation failing must never touch the conversation. Catch everything,
 log once, leave the title unset. The session is unaffected and the tab
 reads as it does today.
 
-## TUI
+## TUI — resolved 2026-08-07: **the title is not in the tab bar**
 
-`_TabCell.render_tab(idx, handle, slug, state, unseen, active, suffix,
-colors)` already renders a muted `suffix`, currently fed by
-`QueueManager.worker_label` (`<queue>#<task>` on in-flight workers). The
-title wants the same slot, so precedence needs deciding: a worker tab's
-queue label is operationally more useful than its title, so
-**worker_label wins when present**, title otherwise.
+*(This section originally proposed the tab-bar `suffix` slot, on the
+premise that `QueueManager.worker_label` owned it. That premise expired
+when the live task list shipped on 2026-08-06: `_tab_suffix`
+(`tui/app.py:54-65`) now composes plan roll-up, worker label **and**
+`@host` into that one slot. Superseded by the measurement below.)*
 
-Width is a real constraint, not a detail — the bar scrolls sideways and
-keeps the active tab in view, so a long title on an inactive tab pushes
-things around. Truncate at render, not at store.
+Rendering four realistic `_TabCell`s at the Ink palette:
+
+| layout | total width |
+|---|---|
+| today, no title | **127 cells** |
+| title appended to the suffix | 210 cells (+65%) |
+| title replacing `·slug·` | 190 cells (+50%) |
+
+Four tabs already overflow a 120-column terminal *before* any title. The
+tab bar is not short of a good place to put a title; it is short of room.
+
+**So the title lives in the status bar**, which shows only the *active*
+session — one title instead of N — and already has the machinery for it:
+a priority ladder that degrades segments until the line fits
+(`aegis.tui.fit`). The title enters as `P_TITLE = 25`, above `P_IDENTITY`
+(what a session is doing beats which model it is doing it with) and below
+`P_METRICS`, which follows the bar's own rule — *on a narrow terminal you
+lose what never changes and keep what does*, and a title never changes.
+At 80 columns it is dropped along with the identity segment; that is
+correct, not a bug.
+
+`Ctrl+R` is the other surface, and the more valuable one: a whole line
+per row, so the title simply replaces the preview when present, and the
+filter matches on it.
 
 ## Slices
 
-1. **Storage + manual set.** `SessionMeta.title` / `title_source`, the
-   precedence rule, `/title <text>`, `aegis_title`, the `title=` param on
-   `aegis_rename`, tab-bar and `Ctrl+R` rendering. **No generation at
-   all.** Done when a human-set title survives a restart and an agent's
-   `aegis_title` is refused against it.
+1. ✅ **Storage + manual set.** *(shipped 2026-08-07)* `SessionMeta.title` /
+   `title_source`, the precedence rule, `/title <text>`, `aegis_title`, the
+   `title=` param on `aegis_rename`, status-bar and `Ctrl+R` rendering (not
+   the tab bar — see *TUI*). **No generation at all.** Done when a
+   human-set title survives a restart and an agent's `aegis_title` is
+   refused against it: both hold, and both took a bug fix to make true.
 2. **The seam.** `supports_oneshot` + `generate()` + the tolerant parser,
    implemented for `claude-code` first, with `text_generation:` config.
 3. **Auto-titling.** First-turn generation writing at `source=auto`, the
@@ -232,11 +254,35 @@ it does it without a single LLM call.
 
 ## Open questions
 
-- **Does the tab bar have room?** The cell already carries five elements.
-  It may be that the title belongs in `Ctrl+R` and the status bar and
-  *not* in the tab bar at all. Build slice 1 and look at it before
-  deciding — this is a question a screenshot answers, not a spec.
+- ~~**Does the tab bar have room?**~~ **Answered 2026-08-07: no.** Four
+  tabs measure 127 cells untitled; a title takes that to 190–210. The
+  title went to the status bar and `Ctrl+R` instead — see *TUI* above.
 - **Do gemini and opencode reliably emit parseable JSON without a schema
   flag?** Slice 4 answers it. If they don't, `supports_oneshot = False`
   for them is an acceptable outcome, since `text_generation:` can point
   at any profile.
+
+## What slice 1 actually shipped (2026-08-07)
+
+`SessionMeta.title` / `.title_source` + codec; `aegis.state.titles`
+(`outranks`, `sanitize_title`); the history fold, `SessionHistoryRow.title`
+and `INDEX_VERSION = 2`; `AgentSession.title` with `AppBridge.set_title`
+on all four bridge implementations; `/title [text]`; `aegis_title` and
+`title=` on `aegis_rename`; `Ctrl+R` display + filter; the status-bar
+segment. 2891 tests green, +59 over the pre-slice baseline.
+
+Two defects that only surfaced by driving the real thing, both of the
+shape this repo keeps paying for — unit-testable logic that was never
+wired to anything:
+
+- **A rename blanked the title.** `_record_rename` re-derives every
+  `SessionMeta` field, so the header it appends said `title=""`. Fixed on
+  both sides: the fold takes the last *non-empty* title, and the record
+  carries the current one forward. `7af708a`
+- **A resumed session forgot its title — and with it, the operator's
+  authority.** The tracker is per-process, and nothing rebuilt the title
+  from the transcript, so after a restart `title_source` was `""` and an
+  agent could overwrite what Alex had typed. The precedence rule was
+  exactly as strong as one uptime. Rehydrated in `pane.py` beside
+  `rehydrate_plan`, which every resume path already funnels through.
+  `945190c`

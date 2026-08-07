@@ -5,6 +5,38 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **Session titles — a label beside the handle, so ten tabs stop reading
+  `lucid-knuth`.** A session now carries a `title` that says what it is
+  *doing*, distinct from the handle, which stays what it always was:
+  identity — `from_handle` on every MCP call, the inbox routing key, half
+  the log id. Conflating the two was the actual bug behind the old
+  "rename yourself once your purpose settles" workaround.
+  Set it by hand with **`/title <text>`**, or let the agent name itself
+  with **`aegis_title`** / **`aegis_rename(title=…)`**. Writes are ordered
+  `human > agent > auto`: an agent cannot overwrite what you typed, and the
+  refusal says so instead of failing quietly. That ordering is also the
+  entire concurrency story — a title that loses simply never lands, so
+  there is no request-id bookkeeping anywhere.
+  Titles ride the append-only `SessionMeta` record the transcript already
+  uses for renames, so they survive a restart, and **`Ctrl+R`** shows and
+  filters on them — which is worth more than the tab bar, where a whole
+  line per row means the title can simply replace the preview. The active
+  session's title also sits in the status bar.
+  Not in the tab bar, deliberately: four tabs already measure 127 cells
+  before any title, past a 120-column terminal, and a title takes that to
+  190–210.
+  **No LLM call anywhere in this feature** — generation is the next slice.
+
+### Fixed
+
+- A `/rename` silently blanked the session's title: the header it appends
+  re-derives every field, and wrote `title=""` over what you had set.
+- A resumed session forgot its title *and its `title_source`*, so after any
+  restart an agent could overwrite a title the operator had set by hand —
+  the precedence rule was only ever as strong as one uptime.
+
 ## [0.31.0] - 2026-08-06
 
 ### Added
