@@ -10,11 +10,11 @@ from __future__ import annotations
 import pytest
 
 from aegis.config import Agent
-from aegis.events import AssistantText, Result
+from aegis.events import AgentPlan, AssistantText, PlanEntry, Result
 from aegis.tui.app import AegisApp
 from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.plan_strip import PlanStrip
-from aegis.tui.sidebar import Sidebar
+from aegis.tui.sidebar import SIDEBAR_MIN, Sidebar
 from aegis.tui.strip import QueueStrip
 from aegis.tui.widgets import StatusBar
 
@@ -213,3 +213,123 @@ async def test_the_first_frame_after_opening_is_not_stale():
         pane.toggle_task_dock()
         await pilot.pause()
         assert "cpu 99%" in _sidebar_text(pane)
+
+
+# --- the column reads as a surface, not as bare transcript --------------
+
+
+@pytest.mark.asyncio
+async def test_the_open_sidebar_is_tinted_off_the_transcript():
+    """The four strips it absorbs each sat on `$panel`. Sharing that token
+    is what makes the column read as one surface instead of text floating
+    beside the transcript, which is on `$background`.
+
+    Asserted on `background_colors[1]` — the colour the widget actually
+    composites to — not on `styles.background`, which is the *declared*
+    value and reads as transparent on any widget that never set one. That
+    version of this test passed against the untinted sidebar.
+    """
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        await pilot.pause()
+        sidebar = pane.query_one(Sidebar).background_colors[1]
+        transcript = pane.query_one("#transcript").background_colors[1]
+        bar = pane.query_one(StatusBar).background_colors[1]
+        assert sidebar != transcript
+        assert sidebar == bar        # the token the absorbed strips used
+
+
+@pytest.mark.asyncio
+async def test_the_open_sidebar_is_padded_on_all_four_sides():
+    """A tinted column with no vertical padding puts its first heading
+    hard against the tab bar and the tint hard against the pane edge."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        await pilot.pause()
+        pad = pane.query_one(Sidebar).styles.padding
+        assert pad.top >= 1 and pad.bottom >= 1
+        assert pad.left >= 2 and pad.right >= 2
+
+
+@pytest.mark.asyncio
+async def test_the_render_width_excludes_the_padding_it_grew():
+    """`size` is already the content box, so `_width` must not subtract
+    the padding a second time — and the fallback taken before the first
+    layout has to track the real padding rather than the `0 1` it was
+    written against, or a never-shown tab truncates to the wrong budget."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        await pilot.pause()
+        sidebar = pane.query_one(Sidebar)
+        pad = sidebar.styles.padding
+
+        # Laid out: the content box, taken whole.
+        assert sidebar._width() == sidebar.size.width
+        assert sidebar.size.width \
+            == sidebar.outer_size.width - pad.left - pad.right
+
+        # Never laid out (a fresh widget's size is 0x0): the fallback is
+        # the narrowest content box the CSS can produce, not the frame.
+        assert Sidebar(pane._palette)._width() \
+            == SIDEBAR_MIN - pad.left - pad.right
+
+
+# --- the PLAN section is a section, not a dock in a box -----------------
+
+
+def _with_plan(pane, *entries):
+    """Drive the pane's real tracker, not a hand-built PlanState — the
+    dock reads working time off it and a fabricated state renders rows
+    the live one never would."""
+    now = pane._core._now()
+    pane._core._trackers_working(True, ts=now - 154.0)
+    pane._core._apply_plan(AgentPlan(entries=tuple(
+        PlanEntry(content=c, status=s, id=str(i))
+        for i, (c, s) in enumerate(entries))), ts=now - 154.0)
+    pane._refresh_plan_surfaces()
+
+
+@pytest.mark.asyncio
+async def test_the_plan_section_leaves_one_blank_row_like_every_other():
+    """`render_plan_dock` ends every row with a newline, so the block it
+    returns carries a trailing one. Pasted between the sidebar's own
+    "\\n\\n" separators that renders as two blank rows after PLAN and one
+    after each of its five siblings — a gap that reads as a missing
+    section rather than as spacing."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        # SYSTEM after it: a trailing blank at the very end of the column
+        # is invisible, so PLAN has to be followed by something for the
+        # doubled gap to exist at all.
+        pane.set_system(("cpu 34%",))
+        _with_plan(pane, ("alpha", "completed"), ("beta", "in_progress"))
+        await pilot.pause()
+        lines = _sidebar_text(pane).split("\n")
+        assert "SYSTEM" in lines
+        assert not any(a == "" and b == ""
+                       for a, b in zip(lines, lines[1:])), lines
+
+
+@pytest.mark.asyncio
+async def test_the_plan_counter_is_not_printed_twice():
+    """The dock opened with its own `tasks d/t` header because it was a
+    free-standing surface. As a section it is not: `heading` already puts
+    the same counter at the right edge of the PLAN row."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        _with_plan(pane, ("alpha", "completed"), ("beta", "in_progress"))
+        await pilot.pause()
+        text = _sidebar_text(pane)
+        assert text.count("1/2") == 1, text
+        assert "tasks 1/2" not in text
+        assert "alpha" in text and "beta" in text     # rows still render

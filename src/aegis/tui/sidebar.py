@@ -129,7 +129,17 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
                             width=width, subplans=m.subplans)
     head = heading("PLAN", palette, width,
                    right=f"{done}/{total}" if total else "")
-    return _block(head, [body])
+    # The dock was a free-standing surface, so it opens with its own
+    # `tasks d/t` line and ends every row — including the last — with a
+    # newline. As a *section* it needs neither: `head` already carries the
+    # counter at the right edge, and the trailing newline lands between
+    # the "\n\n" separators below as a second blank row, which reads as a
+    # missing section rather than as spacing. Trimmed at the composition
+    # site rather than in `render_plan_dock`: that function is a pure
+    # renderer with its own contract in `tests/test_plan_render.py` (the
+    # header and the `(no plan)` body are both asserted there), and this
+    # is a fact about framing it in a section, not about how a row looks.
+    return _block(head, list(body.split("\n", allow_blank=False))[1:])
 
 
 def _queues(m: SidebarModel, palette, width: int) -> Text | None:
@@ -185,21 +195,36 @@ _TICK = 0.25
 # p90 is 49, so no fixed width works. A share of the pane adapts instead,
 # and the bounds keep it useful on an 80-col terminal without eating a
 # 200-col one.
+# Named because `_width`'s no-layout fallback has to subtract exactly what
+# the CSS adds. The two drift apart the moment the padding changes, and the
+# only symptom is a never-shown tab truncating to the wrong budget.
+SIDEBAR_PAD_Y = 1
+SIDEBAR_PAD_X = 2
 SIDEBAR_PCT = 34
-SIDEBAR_MIN = 26
-SIDEBAR_MAX = 60
+# The bounds are the *frame*, so they carry the padding on top of the
+# content budget the dock was tuned against (24..56). Padding is chrome and
+# the rows must not pay for it: charging them the 4 columns took an 80-col
+# terminal below the widest system segment, which `fit_rows` then dropped
+# outright — a section vanishing, not a row getting shorter.
+SIDEBAR_MIN = 26 + 2 * SIDEBAR_PAD_X
+SIDEBAR_MAX = 60 + 2 * SIDEBAR_PAD_X
 
 
 class Sidebar(VerticalScroll):
     """The F3 column. Scrolls: fully populated it is ~25 rows, and an 80x24
     terminal has about twenty to give."""
 
+    # `$panel` is the token the four strips this absorbs already sat on.
+    # Sharing it is what makes the column read as one surface rather than
+    # text floating beside a transcript, which is on `$background`.
     DEFAULT_CSS = f"""
     Sidebar {{
         width: {SIDEBAR_PCT}%;
         min-width: {SIDEBAR_MIN};
         max-width: {SIDEBAR_MAX};
-        padding: 0 1;
+        padding: {SIDEBAR_PAD_Y} {SIDEBAR_PAD_X};
+        background: $panel;
+        color: $foreground;
         scrollbar-size: 0 0;
     }}
     """
@@ -267,8 +292,10 @@ class Sidebar(VerticalScroll):
 
     def _width(self) -> int:
         # `size` is already the content box — Textual excludes padding from
-        # it — so the `padding: 0 1` above must NOT be subtracted again.
-        return self.size.width or SIDEBAR_MIN - 2
+        # it — so the padding above must NOT be subtracted again. The
+        # fallback is the other case: before the first layout `size` is 0,
+        # and there the frame has to be turned into a content box by hand.
+        return self.size.width or SIDEBAR_MIN - 2 * SIDEBAR_PAD_X
 
     def _paint(self) -> None:
         self._paints += 1
