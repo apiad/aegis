@@ -6,7 +6,7 @@ from __future__ import annotations
 from aegis.commands import (
     CommandContext, CommandResult, SlashCommand, register,
 )
-from aegis.commands.args import Arg, ArgSpec
+from aegis.commands.args import Arg, ArgSpec, Flag
 from aegis.theme_names import THEME_NAMES
 
 
@@ -54,11 +54,30 @@ async def _rename(ctx: CommandContext, args) -> CommandResult:
 async def _title(ctx: CommandContext, args) -> CommandResult:
     """Set the session's display label, beside (never instead of) its handle.
 
-    Bare ``/title`` clears it. Once generation lands it will instead
-    *regenerate* — until then, clearing is what it honestly does, and it is
-    also how you undo a bad manual one.
+    Bare ``/title`` *regenerates* from where the conversation is now —
+    which is the point of regenerating rather than re-running the opening
+    summary. ``--clear`` drops the title instead, which is also how you
+    hand a hand-written one back to auto-titling.
     """
+    if args.flags.get("clear"):
+        res = await ctx.bridge.set_title(ctx.handle, "", source="human")
+        if isinstance(res, dict) and res.get("error"):
+            return CommandResult(False, "title rejected", res["error"])
+        return CommandResult(True, "title cleared")
+
     text = args.get("text") or ""
+    if not text:
+        regen = getattr(ctx.bridge, "regenerate_title", None)
+        if regen is None:
+            return CommandResult(
+                False, "cannot regenerate a title in this frontend",
+                "use `/title <text>`, or `/title --clear`")
+        res = await regen(ctx.handle)
+        if isinstance(res, dict) and res.get("error"):
+            return CommandResult(False, "could not regenerate the title",
+                                 res["error"])
+        return CommandResult(True, f"title → {res.get('title', '')}")
+
     res = await ctx.bridge.set_title(ctx.handle, text, source="human")
     if isinstance(res, dict) and res.get("error"):
         return CommandResult(False, "title rejected", res["error"])
@@ -90,10 +109,12 @@ for _cmd in (
     SlashCommand("rename", "rename the current session",
                  "/rename <new>", _rename,
                  spec=ArgSpec(positionals=(Arg("new"),))),
-    SlashCommand("title", "set the session's display title (bare: clear)",
-                 "/title [text]", _title,
+    SlashCommand("title",
+                 "set the session's title (bare: regenerate it)",
+                 "/title [text] [--clear]", _title,
                  spec=ArgSpec(positionals=(
-                     Arg("text", required=False, greedy=True),))),
+                     Arg("text", required=False, greedy=True),),
+                     flags=(Flag("clear", takes_value=False),))),
     SlashCommand("close", "close the current or a named session",
                  "/close [handle]", _close,
                  spec=ArgSpec(positionals=(

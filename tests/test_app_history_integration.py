@@ -584,3 +584,62 @@ async def test_a_failing_generation_leaves_the_session_untouched(
         await pilot.pause()
         assert pane._core.title == ""
         assert pane._core.title_source == ""
+
+
+@pytest.mark.asyncio
+async def test_regenerate_reads_the_tail_and_knows_the_previous_title(
+        tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    async def _fake_title_for(*, opening, agent, agents, cwd,
+                              previous=None):
+        seen["opening"] = opening
+        seen["previous"] = previous
+        return "now about the indexer"
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _fake_title_for)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._submit("the cache evicts too early")
+        await pilot.pause()
+        await app.set_title(pane.handle, "eviction race", source="human")
+        await pilot.pause()
+
+        res = await app.regenerate_title(pane.handle)
+        assert res["ok"] is True
+        # It summarizes the transcript, not the opening message...
+        assert "ok" in seen["opening"]      # the agent's reply is in there
+        # ...and it is told what the title already is.
+        assert seen["previous"] == "eviction race"
+        # A regenerate deliberately hands the title back to auto.
+        assert pane._core.title == "now about the indexer"
+        assert pane._core.title_source == "auto"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_regeneration_keeps_the_existing_title(
+        tmp_path: Path, monkeypatch):
+    """Generation runs before anything is overwritten, so a bad day at the
+    endpoint must not cost the operator the title they typed."""
+    monkeypatch.chdir(tmp_path)
+
+    async def _nothing(*, opening, agent, agents, cwd, previous=None):
+        return ""
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _nothing)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._submit("hello")
+        await pilot.pause()
+        await app.set_title(pane.handle, "keep me", source="human")
+        await pilot.pause()
+
+        res = await app.regenerate_title(pane.handle)
+        assert "error" in res
+        assert pane._core.title == "keep me"
+        assert pane._core.title_source == "human"

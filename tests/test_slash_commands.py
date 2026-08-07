@@ -37,6 +37,8 @@ class FakeBridge:
         self.closed, self.renamed = [], []
         self.titles = []
         self.set_title_result = None
+        self.regenerated = []
+        self.regenerate_result = None
         self._sessions = [FakeSession("alpha", "opus", active=True)]
         self.queue_manager = FakeQueueManager()
         import pathlib
@@ -74,6 +76,13 @@ class FakeBridge:
     async def rename_handle(self, old, new, title=None):
         self.renamed.append((old, new))
         return {"old": old, "new": new}
+
+    async def regenerate_title(self, handle):
+        self.regenerated.append(handle)
+        if self.regenerate_result is not None:
+            return self.regenerate_result
+        return {"ok": True, "handle": handle,
+                "title": "now about the indexer", "source": "auto"}
 
     async def set_title(self, handle, title, *, source):
         self.titles.append((handle, title, source))
@@ -505,12 +514,33 @@ async def test_title_sets_a_human_title():
     assert bridge.titles == [("me", "fix the eviction race", "human")]
 
 
-async def test_bare_title_clears():
+async def test_bare_title_regenerates():
+    """Bare /title asks for a fresh title from where the conversation is
+    now — it does not clear, and it does not re-run the opening summary."""
     bridge = FakeBridge()
     res = await dispatch("/title", CommandContext(bridge=bridge, handle="me"))
     assert res.ok is True
+    assert bridge.regenerated == ["me"]
+    assert bridge.titles == []          # nothing set through the manual path
+    assert "now about the indexer" in res.title
+
+
+async def test_title_clear_flag_clears():
+    bridge = FakeBridge()
+    res = await dispatch("/title --clear",
+                         CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is True
     assert bridge.titles == [("me", "", "human")]
+    assert bridge.regenerated == []
     assert "cleared" in res.title
+
+
+async def test_a_failed_regeneration_is_reported_not_swallowed():
+    bridge = FakeBridge()
+    bridge.regenerate_result = {"error": "the model returned nothing usable"}
+    res = await dispatch("/title", CommandContext(bridge=bridge, handle="me"))
+    assert res.ok is False
+    assert "nothing usable" in res.body
 
 
 async def test_title_surfaces_a_refusal():

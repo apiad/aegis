@@ -1887,6 +1887,54 @@ class AegisApp(App):
             # and a later human title cannot be clobbered by this one.
             await self.set_title(handle, title, source="auto")
 
+    async def regenerate_title(self, handle: str) -> dict:
+        """AppBridge-shaped: re-derive a pane's title from where it is now.
+
+        Unlike the first-turn pass this reads the *transcript tail*, not
+        the opening message, and tells the model what the title already is
+        — a conversation eight turns past its opening request is exactly
+        the case where the original title has stopped being true.
+
+        Generation runs BEFORE anything is overwritten, so a failed
+        regeneration leaves the existing title intact rather than
+        destroying it on the way to replacing it. On success the write
+        bypasses precedence deliberately: the operator asked for this, so
+        they are knowingly handing the title back to ``auto``.
+        """
+        import asyncio
+
+        from aegis.btw.window import assemble
+        from aegis.state.session_log import replay_events
+        from aegis.titlegen import title_for
+
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return {"error":
+                    f"no session {handle!r} (use aegis_list_sessions)"}
+        try:
+            replay = await asyncio.to_thread(
+                replay_events, self._state_dir, pane.log_id)
+        except Exception as e:                                # noqa: BLE001
+            return {"error": f"could not read the transcript: {e}"}
+        window = assemble(replay)
+        if not window.text.strip():
+            return {"error": "nothing to summarize yet"}
+        title = await title_for(
+            opening=window.text, previous=pane._core.title or None,
+            agent=pane._agent, agents=self._agents,
+            cwd=str(pane._core.project_root))
+        if not title:
+            return {"error": "the model returned nothing usable"}
+        pane._core.title = title
+        pane._core.title_source = "auto"
+        self._record_title(pane)
+        pane.refresh_title()
+        self._refresh_tabbar()
+        return {"ok": True, "handle": handle, "title": title,
+                "source": "auto"}
+
     async def set_title(self, handle: str, title: str, *,
                         source: str) -> dict:
         """AppBridge-shaped: set a pane's display title.
