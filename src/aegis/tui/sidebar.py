@@ -25,7 +25,10 @@ from rich.text import Text
 
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
+from aegis.plan.render import render_plan_dock
 from aegis.tui.fit import Segment, fit_rows
+from aegis.tui.monitor_strip import format_mon
+from aegis.tui.strip import format_q
 
 
 @dataclass
@@ -109,12 +112,55 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
     return _block(heading("CONTEXT", palette, width), rows)
 
 
+def _plan(m: SidebarModel, palette, width: int) -> Text | None:
+    if not m.plan and not m.subplans:
+        return None
+    # PlanState already computes both — do not re-derive them.
+    done = m.plan.done if m.plan else 0
+    total = m.plan.total if m.plan else 0
+    # render_plan_dock verbatim: it already space-separates the circles
+    # (East Asian Ambiguous — Rich measures one cell, terminals draw two,
+    # neighbours overlap) and budgets labels at width - 9. Re-implementing
+    # rows here would re-pay both bugs.
+    body = render_plan_dock(m.plan or PlanState(), palette,
+                            working=m.plan_working, frame=m.plan_frame,
+                            width=width, subplans=m.subplans)
+    head = heading("PLAN", palette, width,
+                   right=f"{done}/{total}" if total else "")
+    return _block(head, [body])
+
+
+def _queues(m: SidebarModel, palette, width: int) -> Text | None:
+    snap = m.queues
+    if snap is None or not snap.queues:
+        return None
+    return _block(heading("QUEUES", palette, width),
+                  [format_q(q, palette) for q in snap.queues])
+
+
+def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
+    if not m.monitors:
+        return None
+    # One monitor per row rather than sharing a line — the strip's rule,
+    # for the same reason: a long description must not push another
+    # monitor's bar off the edge.
+    return _block(heading("MONITORS", palette, width),
+                  [format_mon(v, palette) for v in m.monitors])
+
+
+def _system(m: SidebarModel, palette, width: int) -> Text | None:
+    rows = _rows([Segment("system", m.system, 0)], palette, width)
+    if not rows:
+        return None
+    return _block(heading("SYSTEM", palette, width), rows)
+
+
 # Ordered by volatility, highest first — what changes and what demands
 # action at the top, what never changes at the bottom. Same principle as
 # StatusBar's priority ladder, turned ninety degrees: the panel scrolls, so
 # what you see without scrolling should be what moves.
 SECTIONS: tuple[Callable[[SidebarModel, object, int], Text | None], ...] = (
-    _session, _context,
+    _session, _context, _plan, _queues, _monitors, _system,
 )
 
 

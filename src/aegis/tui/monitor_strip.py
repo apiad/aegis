@@ -24,7 +24,9 @@ def _bar(pct: float, width: int = 8) -> str:
     return "▓" * fill + "░" * (width - fill)
 
 
-def _format_mon(v: MonitorView, palette) -> Text:
+def format_mon(v: MonitorView, palette) -> Text:
+    """One monitor's description and bar. Shared with the sidebar's
+    MONITORS section, so the bar is drawn the same way in both."""
     t = Text()
     t.append(v.description, style=palette.ink)
     if v.pct is not None:
@@ -51,7 +53,7 @@ def render_monitors(views: list[MonitorView], palette) -> Text:
             out.append("\n")
         out.append(_LABEL if i == 0 else " " * len(_LABEL),
                    style=palette.muted)
-        out.append_text(_format_mon(v, palette))
+        out.append_text(format_mon(v, palette))
     return out
 
 

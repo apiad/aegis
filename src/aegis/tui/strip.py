@@ -13,7 +13,9 @@ from textual.widgets import Static
 from aegis.queue.digest import QueueDigest, QueueView, Snapshot
 
 
-def _format_q(q: QueueView, palette) -> Text:
+def format_q(q: QueueView, palette) -> Text:
+    """One queue's counters. Shared with the sidebar's QUEUES section, so a
+    glyph change shows in both surfaces rather than one of them."""
     t = Text()
     t.append(q.name, style=palette.ink)
     t.append(f" ●{q.running}", style=palette.work)
@@ -37,7 +39,7 @@ def render_strip(snap: Snapshot, palette) -> Text:
         for i, q in enumerate(snap.queues):
             if i:
                 line.append(" · ", style=palette.muted)
-            line.append_text(_format_q(q, palette))
+            line.append_text(format_q(q, palette))
     else:
         total_running = sum(q.running for q in snap.queues)
         total_cap = sum(q.max_parallel for q in snap.queues)
