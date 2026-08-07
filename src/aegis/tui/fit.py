@@ -81,3 +81,32 @@ def fit(segments: Sequence[Segment], width: int, sep: str = "    ") -> str:
         # One segment left and still too wide: hard-truncate the plain text.
         out = strip_markup(out)[:width]
     return out
+
+
+def fit_rows(segments: Sequence[Segment], width: int) -> list[str]:
+    """Compose ``segments`` one per row, each at the widest tier that fits.
+
+    The vertical counterpart of ``fit``, for the sidebar column. Because
+    rows do not share horizontal space, segments do not compete and
+    ``priority`` is never consulted — each is considered on its own. That
+    is the whole difference: ``fit`` decides what to *sacrifice*, this
+    decides only how narrow each thing gets to be.
+
+    A segment whose *narrowest* tier still overflows is dropped rather than
+    truncated: half a number reads as a number, which is worse than no row.
+
+    ``width <= 0`` means "unmeasured" (the widget has not been laid out
+    yet) and renders every segment at tier 0, matching ``fit``.
+    """
+    rows: list[str] = []
+    for seg in segments:
+        tiers = [t for t in seg.tiers if t]
+        if not tiers:
+            continue
+        if width <= 0:
+            rows.append(tiers[0])
+            continue
+        pick = next((t for t in tiers if plain_width(t) <= width), None)
+        if pick is not None:
+            rows.append(pick)
+    return rows
