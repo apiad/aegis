@@ -114,6 +114,50 @@ Each tab is an independent agent session with:
   a tab with the mouse. The order is saved with the roster, so it survives a
   restart.
 
+## Session titles
+
+A handle tells you *which* session; a title tells you what it is **about**.
+Ten tabs reading `lucid-knuth`, `deep-dijkstra`, `wry-hopper` are fast to
+switch between and impossible to choose between, so a session also carries
+a short title — beside the handle, never instead of it.
+
+That distinction is the whole design. The handle is **identity**: it is
+`from_handle` on every MCP call, the inbox routing key, and half the
+immutable log id. The title is only a label, so setting one moves nothing
+and breaks no routing.
+
+You get one three ways:
+
+- **Automatically.** When a session's first turn finishes, aegis makes one
+  cheap call to summarize what you asked for, and titles the session with
+  it. Once per session, not per turn — a label that churns is worse than
+  one that doesn't. Point `text_generation:` at a small profile in
+  `.aegis.yaml` to keep this off your main model's bill:
+
+    ```yaml
+    text_generation: haiku
+    ```
+
+- **By hand.** `/title fix the eviction race`. Bare `/title` regenerates
+  from where the conversation is *now* — worth doing when a thread has
+  wandered eight turns from what it opened with. `/title --clear` drops it.
+- **By the agent.** An agent can name itself with `aegis_title`, or set a
+  name and a title together with `aegis_rename(new_handle, title=…)`.
+
+Writes are ordered **`human > agent > auto`**. What you typed wins; an
+agent cannot overwrite it, and the refusal says so rather than failing
+quietly. That ordering is also the entire concurrency story — a title that
+loses simply never lands, so a slow auto-generation arriving after you
+typed one is discarded on arrival.
+
+Titles are stored in the transcript, so they survive a restart, and
+**`Ctrl+R`** shows and filters on them — which is where they earn the most,
+since a history row has a whole line to spend. The active session's title
+also sits in the status line.
+
+Generation is best-effort by contract: if the model is having a bad day the
+session simply stays untitled. It can never disturb a turn.
+
 ## The transcript
 
 Each agent message, tool call, and tool result is a separate

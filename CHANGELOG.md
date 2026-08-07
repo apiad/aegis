@@ -5,29 +5,40 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-08-07
+
 ### Added
 
 - **Session titles — a label beside the handle, so ten tabs stop reading
-  `lucid-knuth`.** A session now carries a `title` that says what it is
+  `lucid-knuth`.** A session now carries a `title` saying what it is
   *doing*, distinct from the handle, which stays what it always was:
   identity — `from_handle` on every MCP call, the inbox routing key, half
   the log id. Conflating the two was the actual bug behind the old
   "rename yourself once your purpose settles" workaround.
-  Set it by hand with **`/title <text>`**, or let the agent name itself
-  with **`aegis_title`** / **`aegis_rename(title=…)`**. Writes are ordered
-  `human > agent > auto`: an agent cannot overwrite what you typed, and the
-  refusal says so instead of failing quietly. That ordering is also the
-  entire concurrency story — a title that loses simply never lands, so
-  there is no request-id bookkeeping anywhere.
+  **A session titles itself.** When its first turn finishes, aegis makes
+  one cheap structured call to summarize what you asked for and titles the
+  session with the result — once per session, not per turn, because a
+  label that churns is worse than one that doesn't. Point the existing
+  `text_generation:` key at a small profile to keep it off your main
+  model's bill. Generation is best-effort by contract: a bad day at the
+  endpoint leaves the session untitled and cannot disturb the turn.
+  Set one by hand with **`/title <text>`**; bare **`/title`** regenerates
+  from where the conversation is *now* (told the previous title, and given
+  the transcript tail rather than the opening request — the case where the
+  original title has stopped being true), and **`/title --clear`** drops
+  it. Agents name themselves with **`aegis_title`** or
+  **`aegis_rename(…, title=…)`**.
+  Writes are ordered `human > agent > auto`: an agent cannot overwrite
+  what you typed, and the refusal says so instead of failing quietly. That
+  ordering is also the entire concurrency story — a title that loses simply
+  never lands, so there is no request-id bookkeeping anywhere.
   Titles ride the append-only `SessionMeta` record the transcript already
   uses for renames, so they survive a restart, and **`Ctrl+R`** shows and
-  filters on them — which is worth more than the tab bar, where a whole
-  line per row means the title can simply replace the preview. The active
-  session's title also sits in the status bar.
+  filters on them — where they earn the most, a history row having a whole
+  line to spend. The active session's title also sits in the status line.
   Not in the tab bar, deliberately: four tabs already measure 127 cells
-  before any title, past a 120-column terminal, and a title takes that to
-  190–210.
-  **No LLM call anywhere in this feature** — generation is the next slice.
+  before any title, past a 120-column terminal, and a title takes that
+  to 190–210.
 
 ### Fixed
 
