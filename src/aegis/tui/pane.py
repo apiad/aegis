@@ -811,6 +811,7 @@ class ConversationPane(Widget):
                  state_dir_path: Path | None = None,
                  replay: EventReplay | None = None,
                  on_first_user_message: Callable[[str], None] | None = None,
+                 on_first_result: Callable[[str], None] | None = None,
                  core=None, log_id: str | None = None,
                  place=None) -> None:
         super().__init__(id=f"pane-{handle}")
@@ -877,6 +878,15 @@ class ConversationPane(Widget):
         # _record_first_user_message.
         self._on_first_user_message = on_first_user_message
         self._first_msg_recorded = False
+        # Fires once, when the FIRST turn terminates — carrying that turn's
+        # opening message. This is the auto-title trigger: at the Result
+        # rather than at the message because a title for a request the
+        # agent has not yet begun is a title for a guess, and once rather
+        # than per-turn because a label that churns is worse than a handle
+        # that doesn't.
+        self._on_first_result = on_first_result
+        self._first_result_fired = False
+        self._opening_text = ""
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
@@ -1784,6 +1794,8 @@ class ConversationPane(Widget):
     def _record_first_user_message(self, text: str) -> None:
         """Fire the first-user-message hook exactly once. Never let a
         history-write failure break a turn."""
+        if text and not self._opening_text:
+            self._opening_text = text
         if (text and not self._first_msg_recorded
                 and self._on_first_user_message is not None):
             self._first_msg_recorded = True
@@ -1791,6 +1803,21 @@ class ConversationPane(Widget):
                 self._on_first_user_message(text)
             except Exception:
                 pass
+
+    def _fire_first_result(self) -> None:
+        """Fire the first-turn-finished hook exactly once.
+
+        Same contract as the history-header hook above: a failure here is a
+        missing label, never a broken turn.
+        """
+        if (self._first_result_fired or self._on_first_result is None
+                or not self._opening_text):
+            return
+        self._first_result_fired = True
+        try:
+            self._on_first_result(self._opening_text)
+        except Exception:
+            pass
 
     def _submit(self, text: str) -> None:
         """Programmatic turn (opening prompt). Direct send — bypasses the
@@ -2021,6 +2048,7 @@ class ConversationPane(Widget):
                 block = self._mount_block(renderable, _payload_for_event(ev))
                 if isinstance(ev, Result):
                     self._adopt_result_block(block, ev)
+                    self._fire_first_result()
                 if isinstance(ev, AgentPlan):
                     self._plan_blocks[self._plan_key(ev)] = (
                         block, len(self._history) - 1)

@@ -770,7 +770,10 @@ class AegisApp(App):
             slug, h, self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir, log_id=log_id,
-            on_first_user_message=_write_meta, place=place)
+            on_first_user_message=_write_meta,
+            on_first_result=(
+                lambda opening, _h=h: self._autotitle(_h, opening)),
+            place=place)
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
@@ -1846,6 +1849,43 @@ class AegisApp(App):
         pane = self.pane_for(fr.get("handle", ""))
         if pane is not None:
             pane.clear_transcript()
+
+    def _autotitle(self, handle: str, opening: str) -> None:
+        """Kick off first-turn auto-titling for ``handle``, off the loop.
+
+        Synchronous and fire-and-forget on purpose: this runs from the
+        event path at the moment a turn ends, and a one-shot call is 1-3s.
+        Nothing here may block the pane, and nothing here may raise into
+        it — a title is a convenience, the turn is not.
+        """
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None or pane._core.title_source:
+            # Already titled by hand or by the agent — auto cannot outrank
+            # either, so skip the call rather than pay for a refusal.
+            return
+        if self.is_running:
+            self.run_worker(self._autotitle_worker(handle, opening),
+                            group=f"autotitle-{handle}", exclusive=True)
+
+    async def _autotitle_worker(self, handle: str, opening: str) -> None:
+        from aegis.titlegen import title_for
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return
+        try:
+            title = await title_for(
+                opening=opening, agent=pane._agent, agents=self._agents,
+                cwd=str(pane._core.project_root))
+        except Exception:                                     # noqa: BLE001
+            return          # title_for is best-effort; belt and braces
+        if title:
+            # source="auto": the operator or the agent can still override,
+            # and a later human title cannot be clobbered by this one.
+            await self.set_title(handle, title, source="auto")
 
     async def set_title(self, handle: str, title: str, *,
                         source: str) -> dict:

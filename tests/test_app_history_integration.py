@@ -481,3 +481,106 @@ async def test_the_status_bar_shows_the_title_end_to_end(tmp_path: Path,
                             source="human")
         await pilot.pause()
         assert "fix the eviction race" in pane._bar().render_plain()
+
+
+# --- auto-titling (slice 3) ------------------------------------------
+
+@pytest.mark.asyncio
+async def test_the_first_turn_auto_titles_the_session(tmp_path: Path,
+                                                      monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    async def _fake_title_for(*, opening, agent, agents, cwd,
+                              previous=None):
+        seen["opening"] = opening
+        return "fix the eviction race"
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _fake_title_for)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._submit("the cache evicts too early, take a look")
+        await pilot.pause()
+        await pilot.pause()
+        assert seen["opening"] == "the cache evicts too early, take a look"
+        assert pane._core.title == "fix the eviction race"
+        assert pane._core.title_source == "auto"
+
+
+@pytest.mark.asyncio
+async def test_auto_titling_fires_only_on_the_first_turn(tmp_path: Path,
+                                                         monkeypatch):
+    """A label that churns is worse than a handle that doesn't.
+
+    The generator returns "" on purpose: a successful first title would
+    set title_source="auto", and *that* guard would block the second call
+    regardless — masking whether the fire-once flag works at all. With no
+    title ever set, only the flag can keep the count at one.
+    """
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    async def _fake_title_for(*, opening, agent, agents, cwd,
+                              previous=None):
+        calls.append(opening)
+        return ""
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _fake_title_for)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._submit("first message")
+        await pilot.pause()
+        pane._submit("second message")
+        await pilot.pause()
+        await pilot.pause()
+        assert calls == ["first message"]
+
+
+@pytest.mark.asyncio
+async def test_auto_titling_skips_a_session_the_operator_already_titled(
+        tmp_path: Path, monkeypatch):
+    """Auto cannot outrank human, so the call would be refused anyway —
+    skip it rather than pay for a refusal."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    async def _fake_title_for(*, opening, agent, agents, cwd,
+                              previous=None):
+        calls.append(opening)
+        return "generated"
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _fake_title_for)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        await app.set_title(pane.handle, "mine", source="human")
+        pane._submit("hello")
+        await pilot.pause()
+        await pilot.pause()
+        assert calls == []
+        assert pane._core.title == "mine"
+
+
+@pytest.mark.asyncio
+async def test_a_failing_generation_leaves_the_session_untouched(
+        tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    async def _boom(*, opening, agent, agents, cwd, previous=None):
+        raise RuntimeError("the endpoint is having a bad day")
+
+    monkeypatch.setattr("aegis.titlegen.title_for", _boom)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._submit("hello")
+        await pilot.pause()
+        await pilot.pause()
+        assert pane._core.title == ""
+        assert pane._core.title_source == ""
