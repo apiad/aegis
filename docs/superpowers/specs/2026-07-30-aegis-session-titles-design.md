@@ -1,7 +1,7 @@
 ---
 title: Session titles, and a one-shot generation seam
 date: 2026-07-30
-status: slice 1 implemented (2026-08-07); slices 2-4 outstanding
+status: shipped in v0.32.0 (2026-08-07) — slices 1-3 done, slice 4 optional
 plan: docs/superpowers/plans/2026-08-07-aegis-session-titles-slice1.md
 ---
 
@@ -232,10 +232,11 @@ filter matches on it.
    `drivers/oneshot.py` (`parse_structured`, `Generation`),
    `drivers/claude.py:232,288`, `config/yaml_loader.py:75`,
    `btw.generation_agent`. Nothing to build here; see TASKS.md.
-3. **Auto-titling.** First-turn generation writing at `source=auto`, the
-   sanitizer (built — `state/titles.py`), catch-and-log. **This is now the
-   only substantial work left**, and it also flips bare `/title` from
-   *clear* to *regenerate*.
+3. ✅ **Auto-titling.** *(shipped 2026-08-07)* First-turn generation at
+   `source=auto` (`titlegen.py`, the pane's `on_first_result` hook,
+   `AegisApp._autotitle`), the sanitizer, catch-and-log. Bare `/title`
+   became *regenerate* — from the transcript tail, told the previous
+   title — with `--clear` keeping the old affordance.
 4. **Remaining drivers.** gemini / opencode / lovelaice `generate_detailed`,
    each with a live test that skips when its CLI is off PATH. Until then
    they degrade to no title, which `text_generation:` works around.
