@@ -45,6 +45,8 @@ class SessionHistoryRow:
     is_open: bool
     crash_inferred: bool
     inferred: bool = False   # rebuilt from the log; had no SessionMeta
+    title: str = ""          # display label; "" when never set
+    title_source: str = ""   # "" | auto | agent | human
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,8 @@ class _Fold:
     session_id: str | None
     preview: str
     has_content: bool
+    title: str = ""
+    title_source: str = ""
 
 
 def _fold_file(path: Path) -> _Fold | None:
@@ -68,6 +72,8 @@ def _fold_file(path: Path) -> _Fold | None:
     closed_at: str | None = None
     session_id: str | None = None
     preview = ""
+    title = ""
+    title_source = ""
     saw_record = False
     has_content = False
     try:
@@ -106,6 +112,13 @@ def _fold_file(path: Path) -> _Fold | None:
                     if ev.preview and not preview:
                         preview = ev.preview
                         has_content = True   # the user said something
+                    # Last *non-empty* wins, not simply last: a rename
+                    # appends a header that re-derives every field, so a
+                    # plain last-wins would blank a title the operator set
+                    # (see tui/app.py:_record_rename).
+                    if ev.title:
+                        title = ev.title
+                        title_source = ev.title_source
                 elif isinstance(ev, SessionClosed):
                     closed_at = ev.closed_at
                 elif isinstance(ev, SystemInit):
@@ -123,11 +136,15 @@ def _fold_file(path: Path) -> _Fold | None:
         return None
     return _Fold(meta=meta, last_handle=last_handle, first_ts=first_ts,
                  last_ts=last_ts, closed_at=closed_at, session_id=session_id,
-                 preview=preview, has_content=has_content)
+                 preview=preview, has_content=has_content,
+                 title=title, title_source=title_source)
 
 
 INDEX_NAME = "history_index.json"
-INDEX_VERSION = 1
+# 2: folds gained title / title_source. A cached v1 fold knows nothing
+# about titles, and serving it would leave every pre-existing session
+# permanently titleless — so discard the whole index once and re-fold.
+INDEX_VERSION = 2
 
 
 def _index_path(state_dir_path: Path) -> Path:
@@ -165,6 +182,7 @@ def _fold_to_entry(fold: _Fold) -> dict:
             "preview": meta.preview,
         },
         "last_handle": fold.last_handle,
+        "title": fold.title, "title_source": fold.title_source,
         "first_ts": fold.first_ts, "last_ts": fold.last_ts,
         "closed_at": fold.closed_at, "session_id": fold.session_id,
         "preview": fold.preview, "has_content": fold.has_content,
@@ -182,7 +200,9 @@ def _entry_to_fold(entry: dict) -> "_Fold | None":
             meta=meta, last_handle=entry["last_handle"],
             first_ts=entry["first_ts"], last_ts=entry["last_ts"],
             closed_at=entry["closed_at"], session_id=entry["session_id"],
-            preview=entry["preview"], has_content=entry["has_content"])
+            preview=entry["preview"], has_content=entry["has_content"],
+            title=entry.get("title", ""),
+            title_source=entry.get("title_source", ""))
     except (KeyError, TypeError):
         return None
 
@@ -250,6 +270,8 @@ def list_history(state_dir_path: Path, *, live_handles: set[str],
             is_open=is_open,
             crash_inferred=(fold.closed_at is None and not is_open),
             inferred=meta is None,
+            title=fold.title,
+            title_source=fold.title_source,
         ))
     if dirty or len(fresh) != len(cached):
         # Best-effort: a read-only state dir must not break the listing.

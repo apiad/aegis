@@ -15,11 +15,13 @@ from aegis.state.history import list_history
 from aegis.state.session_log import append_event
 
 
-def _meta(handle: str, preview: str = "hello") -> SessionMeta:
+def _meta(handle: str, preview: str = "hello",
+          title: str = "", title_source: str = "") -> SessionMeta:
     return SessionMeta(handle=handle, profile="default",
                        provider="claude-code", cwd="/tmp",
                        created_at="2026-07-29T00:00:00Z", origin="user",
-                       preview=preview)
+                       preview=preview, title=title,
+                       title_source=title_source)
 
 
 def _log(state_dir: Path, log_id: str, handle: str, n: int = 5) -> None:
@@ -121,3 +123,24 @@ def test_rows_match_what_a_cold_scan_would_produce(tmp_path):
                  r.closed_at, r.session_id, r.crash_inferred) for r in rows]
 
     assert shape(cached) == shape(warm) == shape(cold)
+
+
+def test_title_survives_the_fold_cache_round_trip(tmp_path):
+    append_event(tmp_path, "20260807T100000000000Z-lucid-knuth",
+                 _meta("lucid-knuth", title="eviction race",
+                       title_source="human"))
+    append_event(tmp_path, "20260807T100000000000Z-lucid-knuth",
+                 AssistantText("hi"))
+    first, = _rows(tmp_path)    # cold: folds the log and saves the index
+    second, = _rows(tmp_path)   # warm: served straight from that index
+    assert second.title == first.title == "eviction race"
+    assert second.title_source == "human"
+
+
+def test_a_stale_index_version_is_discarded(tmp_path):
+    from aegis.state.history import INDEX_NAME, INDEX_VERSION, _load_index
+    (tmp_path / INDEX_NAME).write_text(
+        '{"version": 1, "entries": {"x.jsonl": {"stamp": [0, 0]}}}',
+        encoding="utf-8")
+    assert INDEX_VERSION > 1
+    assert _load_index(tmp_path) == {}

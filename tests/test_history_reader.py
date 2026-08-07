@@ -10,12 +10,14 @@ from aegis.state.session_log import (
 def _meta(handle: str, profile: str = "claude-sonnet",
           provider: str = "claude-code",
           created_at: str = "2026-05-28T14:00:00Z",
-          preview: str = "a real turn") -> SessionMeta:
+          preview: str = "a real turn",
+          title: str = "", title_source: str = "") -> SessionMeta:
     # A non-empty preview by default: a header with no preview and no events
     # is a spawned-but-unused tab, which list_history deliberately drops.
     return SessionMeta(
         handle=handle, profile=profile, provider=provider,
-        cwd="/tmp", created_at=created_at, origin="tui", preview=preview)
+        cwd="/tmp", created_at=created_at, origin="tui", preview=preview,
+        title=title, title_source=title_source)
 
 
 def _put(sd, handle: str, **kw) -> None:
@@ -234,3 +236,34 @@ def test_list_history_closed_marker_clears_crash_inferred(tmp_path: Path):
     rows = list_history(sd, live_handles=set())
     assert rows[0].closed_at == "2026-05-28T15:00:00Z"
     assert rows[0].crash_inferred is False
+
+
+def test_history_row_carries_the_last_non_empty_title(tmp_path: Path):
+    sd = tmp_path / "state"
+    # Three headers: spawn (no title), a /title, then a plain rename. The
+    # rename re-derives every field, so a naive last-wins fold would let it
+    # blank the title the operator just set.
+    _put(sd, "lucid-knuth")
+    _put(sd, "lucid-knuth", title="eviction race", title_source="human")
+    append_meta(sd, "lucid-knuth", _meta("fix-eviction"))
+    row, = list_history(sd, live_handles=set())
+    assert row.handle == "fix-eviction"
+    assert row.title == "eviction race"
+    assert row.title_source == "human"
+
+
+def test_history_row_has_no_title_when_none_was_ever_set(tmp_path: Path):
+    sd = tmp_path / "state"
+    _put(sd, "deep-dijkstra")
+    row, = list_history(sd, live_handles=set())
+    assert row.title == ""
+    assert row.title_source == ""
+
+
+def test_a_later_title_replaces_an_earlier_one(tmp_path: Path):
+    sd = tmp_path / "state"
+    _put(sd, "lucid-knuth", title="first", title_source="agent")
+    _put(sd, "lucid-knuth", title="second", title_source="human")
+    row, = list_history(sd, live_handles=set())
+    assert row.title == "second"
+    assert row.title_source == "human"
