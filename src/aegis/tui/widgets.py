@@ -341,6 +341,12 @@ class StatusBar(Static):
     # and does it demand action", not by how interesting it is.
     P_CONNECTION, P_STATE, P_LOOP = 70, 60, 50
     P_QUOTA, P_METRICS, P_IDENTITY, P_SYSTEM = 40, 30, 20, 10
+    # Above identity (model · effort tells you less about a session than
+    # what it is doing), below metrics (which move). This is where the
+    # title lives rather than the tab bar: four tabs already measure 127
+    # cells before any title, and the bar shows only the ACTIVE session,
+    # so it is one title instead of N.
+    P_TITLE = 25
 
     def __init__(self, model: str, effort: str, colors) -> None:
         super().__init__(markup=True)
@@ -357,6 +363,7 @@ class StatusBar(Static):
             short_model(model),
         )
         self._state = AgentState.ready
+        self._title: tuple[str, ...] = ()
         self._metrics: tuple[str, ...] = ()
         self._system: tuple[str, ...] = ()
         self._loop: tuple[str, ...] = ()
@@ -383,6 +390,11 @@ class StatusBar(Static):
 
     def set_state(self, state: AgentState) -> None:
         self._state = state
+        self._refresh()
+
+    def set_session_title(self, title: str) -> None:
+        """The active session's display title; empty hides the segment."""
+        self._title = self._tiers(title)
         self._refresh()
 
     def set_metrics(self, text) -> None:
@@ -440,6 +452,7 @@ class StatusBar(Static):
         # List order is visual order; priority is independent of it.
         segments = [
             Segment("identity", self._identity, self.P_IDENTITY),
+            Segment("title", self._title, self.P_TITLE),
             Segment("state", (self._state.label,), self.P_STATE),
             Segment("metrics", self._metrics, self.P_METRICS),
             Segment("loop", self._loop, self.P_LOOP),

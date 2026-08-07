@@ -458,3 +458,26 @@ async def test_a_resumed_pane_recovers_its_title(tmp_path: Path,
 
     assert pane._core.title == "eviction race"
     assert pane._core.title_source == "human"
+
+
+@pytest.mark.asyncio
+async def test_the_status_bar_shows_the_title_end_to_end(tmp_path: Path,
+                                                         monkeypatch):
+    """The bar segment is only worth having if something pushes to it.
+
+    Width is forced wide: run_test() lays out at 80 columns, where `fit`
+    correctly drops both the title and the identity segment in favour of
+    state and metrics. That degradation is the bar's documented rule —
+    lose what never changes, keep what does — and a title never changes.
+    """
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = app._active
+        pane._bar()._width_override = 200
+        assert "eviction" not in pane._bar().render_plain()
+        await app.set_title(pane.handle, "fix the eviction race",
+                            source="human")
+        await pilot.pause()
+        assert "fix the eviction race" in pane._bar().render_plain()

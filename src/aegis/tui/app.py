@@ -1871,6 +1871,7 @@ class AegisApp(App):
         pane._core.title = clean
         pane._core.title_source = source if clean else ""
         self._record_title(pane)
+        pane.refresh_title()
         self._refresh_tabbar()
         return {"ok": True, "handle": handle, "title": clean,
                 "source": pane._core.title_source}

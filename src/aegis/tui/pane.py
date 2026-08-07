@@ -990,6 +990,7 @@ class ConversationPane(Widget):
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
+        self.refresh_title()
         # Boot mounts every resumed tab hidden and only shows one, so a pane
         # you may never look at shouldn't pay to paint itself. Deferred to
         # on_show, which makes boot cost O(1) in tab count instead of the
@@ -1172,6 +1173,16 @@ class ConversationPane(Widget):
         if bar is not None:
             bar.set_metrics(
                 self._core.metrics.render_tiers(time.monotonic()))
+
+    def refresh_title(self) -> None:
+        """Push the session's title to the StatusBar.
+
+        Called on mount (so a resumed pane shows a title it recovered from
+        its transcript) and after every set_title.
+        """
+        bar = self._bar()
+        if bar is not None:
+            bar.set_session_title(getattr(self._core, "title", ""))
 
     def set_system(self, text) -> None:
         """Push the system-stats segment (sampled app-side) to the StatusBar."""

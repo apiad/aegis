@@ -67,3 +67,47 @@ def test_strip_no_running_omits_last():
         queues=[_qv(queued=2)], tasks=[], last_started=None)
     txt = render_strip(snap, PAL).plain
     assert "last:" not in txt
+
+
+# ---- session title in the status bar ----
+#
+# The tab bar is the wrong home: four tabs already measure 127 cells (wider
+# than a 120-col terminal) before any title, and appending one pushes that
+# to 210. The status bar shows the ACTIVE session only — one title, not N —
+# so it costs a single segment that degrades like every other.
+
+def _bar():
+    from aegis.tui.themes import INK, aegis_colors
+    from aegis.tui.widgets import StatusBar
+    return StatusBar("claude-sonnet-4-5", "medium", aegis_colors(INK))
+
+
+def test_status_bar_shows_the_session_title():
+    bar = _bar()
+    bar._width_override = 200
+    bar.set_session_title("fix the eviction race")
+    assert "fix the eviction race" in bar.render_plain()
+
+
+def test_clearing_the_title_restores_the_untitled_bar():
+    untitled = _bar()
+    untitled._width_override = 200
+    untitled.set_session_title("")      # also forces the first _refresh
+    baseline = untitled.render_plain()
+
+    bar = _bar()
+    bar._width_override = 200
+    bar.set_session_title("fix the eviction race")
+    assert bar.render_plain() != baseline
+    bar.set_session_title("")
+    assert bar.render_plain() == baseline
+
+
+def test_the_title_is_dropped_before_the_agent_state_on_a_narrow_bar():
+    """Priority, not visual order, decides what survives. The state label
+    demands action; a title is only orientation."""
+    bar = _bar()
+    bar._width_override = 24
+    bar.set_session_title("a fairly long session title")
+    out = bar.render_plain()
+    assert "fairly long session" not in out
