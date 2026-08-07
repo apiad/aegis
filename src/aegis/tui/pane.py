@@ -955,6 +955,14 @@ class ConversationPane(Widget):
         # through _bar() / _working_indicator(), which are on the per-event
         # path — a deep query there walks the whole transcript.
         self._status_bar: "StatusBar | None" = None
+        # App-pushed status segments, cached for the sidebar: the bar is
+        # write-only, and the sidebar rebuilds its whole model on refresh.
+        self._system_tiers: tuple[str, ...] = ()
+        self._quota_tiers: tuple[str, ...] = ()
+        self._loop_tiers: tuple[str, ...] = ()
+        self._connection_tiers: tuple[str, ...] = ()
+        # Subscription handles held for the pane's lifetime (see on_unmount).
+        self._unsubs: list = []
         self._indicator: "WorkingIndicator | None" = None
         # Replay is painted on first show, not on mount (see on_mount).
         self._replayed: bool = False
@@ -1018,6 +1026,16 @@ class ConversationPane(Widget):
 
     async def on_mount(self) -> None:
         self.query_one(StatusBar).set_state(AgentState.ready)
+        # The strips subscribe to these themselves; the sidebar rides the
+        # same sources rather than a second observer chain. Both managers
+        # outlive any one pane, so the handles MUST be released on unmount
+        # — see on_unmount.
+        if self._digest is not None:
+            self._unsubs.append(self._digest._manager.subscribe(
+                lambda _ev: self._refresh_sidebar()))
+        if self._monitor_manager is not None:
+            self._unsubs.append(
+                self._monitor_manager.subscribe(self._refresh_sidebar))
         self.refresh_title()
         # Boot mounts every resumed tab hidden and only shows one, so a pane
         # you may never look at shouldn't pay to paint itself. Deferred to
@@ -1034,6 +1052,21 @@ class ConversationPane(Widget):
         t = self._transcript()
         self.watch(t, "scroll_y", self._on_scroll_y)
         self.query_one(GrowingInput).key_interceptor = self._palette_key
+
+    def on_unmount(self) -> None:
+        """Release the sidebar's subscriptions.
+
+        The queue digest and the monitor manager are app-lived; a pane that
+        subscribes and never releases leaves a bound method pointing at a
+        torn-down widget, which fires on the next event and lands as
+        `RuntimeError: Event loop is closed` at shutdown. Same shape as the
+        watchdog observer that leaked one inotify instance per test app
+        until `Observer.start()` began raising EMFILE mid-run.
+        """
+        for unsub in self._unsubs:
+            with contextlib.suppress(Exception):
+                unsub()
+        self._unsubs.clear()
 
     def on_show(self) -> None:
         """Tab brought forward: paint a deferred replay if this is the first
@@ -1201,6 +1234,7 @@ class ConversationPane(Widget):
         if bar is not None:
             bar.set_metrics(
                 self._core.metrics.render_tiers(time.monotonic()))
+        self._refresh_sidebar()
 
     def refresh_title(self) -> None:
         """Push the session's title to the StatusBar.
@@ -1211,18 +1245,35 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_session_title(getattr(self._core, "title", ""))
+        self._refresh_sidebar()
 
     def set_system(self, text) -> None:
         """Push the system-stats segment (sampled app-side) to the StatusBar."""
+        self._system_tiers = tuple(text or ())
         bar = self._bar()
         if bar is not None:
             bar.set_system(text)
+        self._refresh_sidebar()
 
     def set_quota(self, tiers) -> None:
         """Push the quota segment (sampled app-side) to the StatusBar."""
+        self._quota_tiers = tuple(tiers or ())
         bar = self._bar()
         if bar is not None:
             bar.set_quota(tiers)
+        self._refresh_sidebar()
+
+    def set_connection_state(self, up: bool, reason: str = "") -> None:
+        """WS connect/disconnect. Cached for the sidebar, which shows it at
+        the head of SESSION rather than in a section of its own — it is the
+        one segment that demands action, and burying it under a heading at
+        some scroll offset would be worse than the bar it replaces."""
+        self._connection_tiers = () if up else (
+            "⚠ disconnected — reconnecting…", "⚠ disconnected")
+        bar = self._bar()
+        if bar is not None:
+            bar.set_connection_state(up, reason)
+        self._refresh_sidebar()
 
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
@@ -1985,6 +2036,10 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_loop(state.status() if state is not None else None)
+            # Reuse the bar's own tier construction rather than duplicating
+            # the format string in two places.
+            self._loop_tiers = bar._loop
+        self._refresh_sidebar()
         if state is None and reason != "stopped":
             self.app.notify(f"loop {reason}", timeout=5.0)
 
@@ -2387,15 +2442,35 @@ class ConversationPane(Widget):
         bar.refresh_model(self._sidebar_model())
 
     def _sidebar_model(self) -> SidebarModel:
-        """The sidebar's snapshot. Task 5 of the plan adds the status-bar
-        segments and the queue/monitor sources; the plan alone is enough to
-        prove the mode switch."""
+        """The sidebar's snapshot, from the sources the strips and the bar
+        already read — no new data path, no second subscription."""
         core = self._core
         if core is None or not hasattr(core, "plan_state"):
             return SidebarModel()
+
+        _model = getattr(self._agent, "model", "") if self._agent else ""
+        _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
+        _eff = getattr(_eff_raw, "value", _eff_raw)
+        ident = f"{_model} · {_eff}" if _model else ""
+        if self._host != "local":
+            ident = f"{ident} · {self._host}" if ident else self._host
+
         return SidebarModel(
+            connection=self._connection_tiers,
+            title=getattr(core, "title", "") or "",
+            identity=(ident,) if ident else (),
+            state_label=core.state.label,
+            loop=self._loop_tiers,
+            metrics=tuple(core.metrics.render_tiers(time.monotonic())),
+            quota=self._quota_tiers,
             plan=core.plan_state(), subplans=core.subplan_states(),
-            plan_working=core.plan.working)
+            plan_working=core.plan.working,
+            queues=self._digest.snapshot()
+            if self._digest is not None else None,
+            monitors=self._monitor_manager.snapshot(for_handle=self.handle)
+            if self._monitor_manager is not None else [],
+            system=self._system_tiers,
+        )
 
     def _on_core_state(self, _core, state: AgentState,
                        finished: bool) -> None:

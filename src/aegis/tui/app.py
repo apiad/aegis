@@ -1813,12 +1813,16 @@ class AegisApp(App):
                         group=f"remote-pane-{handle}", exclusive=False)
 
     def _on_ws_connection(self, up: bool) -> None:
-        """Propagate WS connect/disconnect state to all live pane status bars."""
-        from aegis.tui.widgets import StatusBar
+        """Propagate WS connect/disconnect state to all live panes.
+
+        Routed through the pane rather than straight to its StatusBar: the
+        pane caches the segment for the sidebar, which renders it at the
+        head of SESSION.
+        """
         for p in self._panes:
             if isinstance(p, ConversationPane):
                 try:
-                    p.query_one(StatusBar).set_connection_state(up)
+                    p.set_connection_state(up)
                 except Exception:  # noqa: BLE001 — pane may not be mounted yet
                     pass
 
