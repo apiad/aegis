@@ -65,6 +65,45 @@ Follow-ups worth considering, none blocking:
 - Plan: `docs/superpowers/plans/2026-08-04-aegis-ssh-execution-hosts.md`
 - Know-how: `know-how/ssh-execution-hosts.md`
 
+### F3 side dashboard *(shipped 2026-08-07)*
+
+`F3` toggles a mode, not a widget. Open, a full-height sidebar carries the
+plan, the queues, the monitors and all eight status-bar segments, and the
+main column is transcript and input; closed, the pane is what it was.
+`PlanDock` is gone — the sidebar's PLAN section calls `render_plan_dock`
+verbatim rather than re-implementing rows, which is what keeps the circle
+spacing and the `width - 9` label budget from being re-paid.
+
+Three traps worth knowing before you add a fifth collapsed surface or a
+seventh section:
+
+- The mode switch is a single `-sidebar` class and a CSS `display: none`,
+  so a surface that sets `display` **imperatively** silently wins over it.
+  `PlanStrip` did, and moved to the `-empty` class idiom its two sibling
+  strips already used. The toggle test asserts on real widget visibility,
+  never on the class, and is mutation-checked.
+- **The column's bounds are the frame, so they carry the padding on top of
+  the content budget** (`SIDEBAR_MIN/MAX = 26/60 + 2 * SIDEBAR_PAD_X`).
+  Charging the rows for the chrome took an 80-col terminal below the
+  widest system segment, and `fit_rows` responds to "no tier fits" by
+  dropping the segment — the section disappears rather than getting
+  shorter, which does not look like a width bug.
+- **A section composes a renderer; it does not inherit its framing.**
+  `render_plan_dock` was free-standing, so it opens with its own
+  `tasks d/t` line and newline-terminates its last row. Dropped straight
+  in that duplicated the heading's counter and put two blank rows after
+  PLAN where every sibling has one. Both are trimmed at the composition
+  site in `_plan()`, not in the renderer, which has its own contract in
+  `tests/test_plan_render.py`.
+
+**Outstanding, deliberately: the web client renders no sidebar.** Same
+call as the live task list's Task 12 and the session-title web gap below —
+three TUI-first features now owe the PWA the same debt, and `AGENTS.md`
+calls the two UIs co-equal. Worth doing as one web slice rather than three.
+
+- Spec: `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md`
+- Plan: `docs/superpowers/plans/2026-08-07-aegis-f3-side-dashboard.md`
+
 ### Live task list *(TUI complete 2026-08-06; web outstanding)*
 
 Plan state is first-class session state — parsed from every harness, timed

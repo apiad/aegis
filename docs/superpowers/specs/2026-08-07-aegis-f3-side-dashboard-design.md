@@ -1,6 +1,6 @@
 # F3 side dashboard — design
 
-**Status:** approved 2026-08-07, no plan yet
+**Status:** implemented 2026-08-07 (`5d44bc8`, live-pass fixes in `e36b636`)
 **Scope:** TUI only. The web client is explicitly out of scope.
 
 ## The problem

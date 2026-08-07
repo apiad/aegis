@@ -58,7 +58,7 @@ values.
 - Consumes: `Segment(key, tiers, priority)` and `plain_width`, both already in `fit.py`.
 - Produces: `fit_rows(segments: Sequence[Segment], width: int) -> list[str]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_statusbar_fit.py`:
 
@@ -106,12 +106,12 @@ def test_rows_ignores_markup_when_measuring():
     assert fit_rows(seg, 5) == ["[dim]12345[/]"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_statusbar_fit.py -q`
 Expected: FAIL — `ImportError: cannot import name 'fit_rows'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append to `src/aegis/tui/fit.py`:
 
@@ -142,12 +142,12 @@ def fit_rows(segments: Sequence[Segment], width: int) -> list[str]:
     return rows
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_statusbar_fit.py -q`
 Expected: PASS, including the pre-existing `fit` tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/fit.py tests/test_statusbar_fit.py
@@ -177,7 +177,7 @@ empty-section omission — proved with the two sections that use `fit_rows`
   - `heading(text: str, palette, width: int, right: str = "") -> Text`.
   - `SECTIONS: tuple[Callable[[SidebarModel, object, int], Text | None], ...]` — the ordered section renderers; Task 3 extends it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_sidebar_render.py`:
 
@@ -260,12 +260,12 @@ def test_heading_without_a_counter_is_just_the_word():
     assert as_text(heading("SESSION", C, 20)) == "SESSION"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_sidebar_render.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.tui.sidebar'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/tui/sidebar.py`:
 
@@ -396,12 +396,12 @@ def render_sidebar(model: SidebarModel, palette, width: int) -> Text:
     return out
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_sidebar_render.py -q`
 Expected: PASS (8 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/sidebar.py tests/test_sidebar_render.py
@@ -432,7 +432,7 @@ implementation would re-pay both bugs.
 - Consumes: `render_plan_dock(state, colors, *, working, frame, width, subplans) -> Text` from `aegis.plan.render`; `Snapshot`/`QueueView` from `aegis.queue.digest`; `MonitorView` from `aegis.monitor.schema`.
 - Produces: `format_q(q: QueueView, palette) -> Text` in `strip.py`; `format_mon(v: MonitorView, palette) -> Text` in `monitor_strip.py`; `SECTIONS` extended to six.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_sidebar_render.py`:
 
@@ -512,12 +512,12 @@ def test_full_model_renders_every_section_in_volatility_order():
                      "MONITORS", "SYSTEM"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_sidebar_render.py -q`
 Expected: FAIL — the six new tests fail on missing sections (`assert "PLAN" in out`); the eight from Task 2 still pass.
 
-- [ ] **Step 3: Publish the two shared formatters**
+- [x] **Step 3: Publish the two shared formatters**
 
 In `src/aegis/tui/strip.py`, rename `_format_q` to `format_q` and update
 its one caller inside `render_strip`:
@@ -546,7 +546,7 @@ In `src/aegis/tui/monitor_strip.py`, rename `_format_mon` to `format_mon`
 with the same body, and update its one caller inside `render_monitors`
 (`out.append_text(_format_mon(v, palette))` → `format_mon(v, palette)`).
 
-- [ ] **Step 4: Write the four section renderers**
+- [x] **Step 4: Write the four section renderers**
 
 In `src/aegis/tui/sidebar.py`, add these imports at the top:
 
@@ -610,12 +610,12 @@ SECTIONS: tuple[Callable[[SidebarModel, object, int], Text | None], ...] = (
 )
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_sidebar_render.py tests/test_tui_strip.py tests/test_monitor_strip.py tests/test_plan_render.py -q`
 Expected: PASS. The strip tests confirm the two renames did not change strip output.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/sidebar.py src/aegis/tui/strip.py \
@@ -661,7 +661,7 @@ overridden every time a plan updates. `PlanStrip` must move to the
   - `Sidebar(palette, **kw)` — a `VerticalScroll` with `toggle() -> bool`, `is_open: bool`, and `refresh_model(model: SidebarModel) -> None`.
   - `ConversationPane.toggle_task_dock() -> bool` — unchanged name and signature, now toggling the sidebar.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_sidebar_toggle.py`:
 
@@ -785,12 +785,12 @@ def _one_task_plan():
         PlanTask(key="1", subject="a", status="in_progress"),))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_sidebar_toggle.py -q`
 Expected: FAIL — `ImportError: cannot import name 'Sidebar'`.
 
-- [ ] **Step 3: Add the widget**
+- [x] **Step 3: Add the widget**
 
 Append to `src/aegis/tui/sidebar.py`:
 
@@ -899,7 +899,7 @@ class Sidebar(VerticalScroll):
             self.size.width or SIDEBAR_MIN - 2).plain
 ```
 
-- [ ] **Step 4: Move `PlanStrip` off the inline display**
+- [x] **Step 4: Move `PlanStrip` off the inline display**
 
 In `src/aegis/tui/plan_strip.py`:
 
@@ -912,7 +912,7 @@ The class docstring line "Hidden (display:none) until the session has a
 plan" becomes "Hidden via `-empty` until the session has a plan — an
 inline `display` would beat the sidebar's CSS."
 
-- [ ] **Step 5: Rewire the pane**
+- [x] **Step 5: Rewire the pane**
 
 In `src/aegis/tui/pane.py`:
 
@@ -1005,7 +1005,7 @@ In `set_palette`, add the sidebar beside the strips:
             w.set_palette(palette)
 ```
 
-- [ ] **Step 6: Delete the dock and update the binding and docs**
+- [x] **Step 6: Delete the dock and update the binding and docs**
 
 ```bash
 git rm src/aegis/tui/plan_dock.py
@@ -1031,7 +1031,7 @@ In `AGENTS.md`, in the `src/aegis/tui/` layout entry, replace the
 > `PlanStrip` therefore must not set `display` inline — an inline style
 > beats the rule.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_sidebar_toggle.py -q`
 Expected: PASS (4 tests).
@@ -1039,7 +1039,7 @@ Expected: PASS (4 tests).
 Then the blast radius: `uv run python -m pytest tests/ -q -m "not live" -k "pane or strip or plan or tui or app"`
 Expected: PASS.
 
-- [ ] **Step 8: Mutation-check the toggle test**
+- [x] **Step 8: Mutation-check the toggle test**
 
 This is the test that matters — the pure renderers will be right, but a
 green suite could ship a pane with both a status bar and a sidebar on
@@ -1055,7 +1055,7 @@ screen. Prove the test can fail:
 If step 3 passes, the test is vacuous — most likely it is asserting on
 something other than `.display`. Fix the test before continuing.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/tui/sidebar.py src/aegis/tui/plan_strip.py \
@@ -1090,7 +1090,7 @@ added.
 - Consumes: `SidebarModel` (Task 2); `SessionMetrics.render_tiers(now) -> tuple[str, str, str, str]`; `AgentState.label -> str`; `QueueDigest.snapshot() -> Snapshot`; `MonitorManager.snapshot(for_handle=…) -> list[MonitorView]`.
 - Produces: a `ConversationPane._sidebar_model()` that fills every `SidebarModel` field.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_sidebar_toggle.py`:
 
@@ -1160,14 +1160,14 @@ async def test_the_first_frame_after_opening_is_not_stale():
         assert "cpu 99%" in _sidebar_text(pane)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_sidebar_toggle.py -q`
 Expected: FAIL on the first two — the sidebar renders only the PLAN
 section, so `SYSTEM` and `full suite` are absent. The third already passes
 (the no-op guard shipped in Task 4); keep it as a regression guard.
 
-- [ ] **Step 3: Fill out the model assembler**
+- [x] **Step 3: Fill out the model assembler**
 
 In `src/aegis/tui/pane.py`, replace `_sidebar_model` with:
 
@@ -1251,7 +1251,7 @@ and in `app.py:_on_ws_connection`, route through it:
 The `from aegis.tui.widgets import StatusBar` import inside that method
 becomes unused — remove it.
 
-- [ ] **Step 4: Push to the sidebar on the same calls**
+- [x] **Step 4: Push to the sidebar on the same calls**
 
 Add one line to each existing push site in `pane.py`. Extract the repaint
 so the sites stay one-liners — add beside `_refresh_plan_surfaces`:
@@ -1295,17 +1295,17 @@ open sidebar. In `on_mount`, after the existing body:
             self._monitor_manager.subscribe(self._refresh_sidebar)
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_sidebar_toggle.py -q`
 Expected: PASS (7 tests).
 
-- [ ] **Step 6: Run the full fast suite**
+- [x] **Step 6: Run the full fast suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS. A red run here is a regression to investigate, not noise.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/tui/pane.py tests/test_sidebar_toggle.py
@@ -1330,7 +1330,7 @@ that pass, plus the documentation the feature owes.
 - Modify: `TASKS.md`
 - Modify: `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md` (status header)
 
-- [ ] **Step 1: Drive it by hand**
+- [x] **Step 1: Drive it by hand**
 
 Start a real TUI in the aegis checkout: `uv run aegis`
 
@@ -1349,13 +1349,54 @@ Check each and note what you see:
    come out truncated to the minimum.
 6. `/tasks` toggles the same thing as `F3`.
 
-- [ ] **Step 2: Fix anything step 1 surfaced, with a test first**
+**What the pass actually covered (2026-08-07).** Driven through the real
+`AegisApp` in a Textual pilot at 80, 100 and 160 columns, reading the
+*composited screen* (`screen._compositor.render_strips()`) rather than a
+widget's own text, and cross-checked against PNG exports of
+`export_screenshot`. That covers 1, 3 and 4. Item 5 is covered by a unit
+test instead (`test_the_render_width_excludes_the_padding_it_grew`
+asserts the `size == 0` fallback directly, which is more precise than
+eyeballing a fresh tab). **Items 2 and 6 were not exercised** — restoring
+the previous pane and the `/tasks` alias both have toggle tests from Task
+4, but neither was driven in an interactive TTY.
 
-Any defect found here gets a failing test before its fix — the same
-discipline the rest of the plan runs on. If step 1 is clean, say so
-explicitly rather than silently skipping.
+One thing the PNG exports showed that the terminal does not: right-aligned
+cells appearing a second time at the far left of the frame. That is
+`cairosvg` mis-placing right-anchored SVG text, and the composited screen
+is clean. Read the compositor, not the screenshot, before filing a layout
+bug from this rig.
 
-- [ ] **Step 3: Record it in `TASKS.md`**
+- [x] **Step 2: Fix anything step 1 surfaced, with a test first**
+
+Not clean — three defects, each with a failing test first, all in
+`e36b636`:
+
+1. **The column had no background.** It read as text floating beside the
+   transcript rather than as the surface replacing four strips that all
+   sat on `$panel`. Also had no vertical padding.
+2. **The padding was charged to the content.** Adding `padding: 1 2` to
+   the existing bounds took an 80-col terminal's content box to 22 cells,
+   below the widest system segment — and `fit_rows` answers "no tier
+   fits" by dropping the segment, so SYSTEM disappeared entirely. The
+   bounds now carry the padding on top of the content budget.
+3. **The PLAN section inherited the dock's framing.** `render_plan_dock`
+   was free-standing: it opens with its own `tasks d/t` line and
+   newline-terminates its last row. In a section that printed the counter
+   twice and left two blank rows after PLAN where every sibling has one.
+
+The first two were also what Alex reported from a live `F3`. The blank
+panel he saw was something else entirely and not a defect in this code:
+his aegis process had been started before Task 4 committed, so it was
+running a `_sidebar_model` stub that returned only the plan. A restart is
+what fixes that.
+
+Worth noting for the tests: the tint assertion passed on the *first* try
+against the untinted sidebar, because `styles.background` is the
+*declared* value and reads transparent on any widget that never set one.
+It only became a real gate once it compared `background_colors[1]`, the
+colour the widget composites to.
+
+- [x] **Step 3: Record it in `TASKS.md`**
 
 Under `## Recently shipped`, above the *Live task list* entry, add:
 
@@ -1385,13 +1426,13 @@ calls the two UIs co-equal. Worth doing as one web slice rather than three.
 - Plan: `docs/superpowers/plans/2026-08-07-aegis-f3-side-dashboard.md`
 ```
 
-- [ ] **Step 4: Flip the spec status header**
+- [x] **Step 4: Flip the spec status header**
 
 In the spec, change `**Status:** approved 2026-08-07, no plan yet` to
 `**Status:** implemented <commit>` with the Task 5 commit sha. A stale
 status header corrupts the next `/workon` briefing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add TASKS.md docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md
@@ -1400,7 +1441,7 @@ git commit -m "docs(sidebar): record the F3 dashboard and its web debt
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: Push**
+- [x] **Step 6: Push**
 
 ```bash
 git push origin main
