@@ -16,6 +16,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from rich.cells import cell_len, set_cell_size
+
 _MARKUP = re.compile(r"\[[^\]]*\]")
 
 
@@ -32,6 +34,22 @@ def plain_width(text: str) -> int:
     dependency is pulled in for the general case.
     """
     return len(strip_markup(text))
+
+
+def truncate_cells(text: str, cells: int) -> str:
+    """``text`` cut to ``cells`` display columns, ellipsis included in the
+    budget.
+
+    Measured in cells, never in characters: one emoji is one character and
+    two columns, so a budget spent with ``len()`` overshoots and the row it
+    belongs to wraps. ``aegis.plan.render._fit`` is the same function for
+    the plan package, which has no Textual dependency to share this one.
+    """
+    if cells <= 0:
+        return ""
+    if cell_len(text) <= cells:
+        return text
+    return "…" if cells == 1 else set_cell_size(text, cells - 1) + "…"
 
 
 @dataclass(frozen=True)

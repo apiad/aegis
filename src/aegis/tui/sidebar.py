@@ -147,7 +147,7 @@ def _queues(m: SidebarModel, palette, width: int) -> Text | None:
     if snap is None or not snap.queues:
         return None
     return _block(heading("QUEUES", palette, width),
-                  [format_q(q, palette) for q in snap.queues])
+                  [format_q(q, palette, width) for q in snap.queues])
 
 
 def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
@@ -157,7 +157,7 @@ def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
     # for the same reason: a long description must not push another
     # monitor's bar off the edge.
     return _block(heading("MONITORS", palette, width),
-                  [format_mon(v, palette) for v in m.monitors])
+                  [format_mon(v, palette, width) for v in m.monitors])
 
 
 def _system(m: SidebarModel, palette, width: int) -> Text | None:

@@ -4,6 +4,8 @@ Sections are ordered by volatility, highest first: on a short terminal the
 panel scrolls, and what you see without scrolling should be what moves.
 An empty section renders nothing at all — not a heading over a blank.
 """
+from rich.cells import cell_len
+
 from aegis.monitor.schema import MonitorView
 from aegis.plan import PlanState, PlanTask
 from aegis.queue.digest import QueueView, Snapshot
@@ -149,3 +151,106 @@ def test_full_model_renders_every_section_in_volatility_order():
              if ln.split() and ln.split()[0].isupper()]
     assert heads == ["SESSION", "CONTEXT", "PLAN", "QUEUES",
                      "MONITORS", "SYSTEM"]
+
+
+# -- fitting the width -------------------------------------------------
+#
+# The column is 26..60 cells wide and its body is a Static inside a
+# VerticalScroll, so an over-long row does not clip — it *wraps*, and one
+# monitor silently becomes three rows that push the sections below it off
+# screen. Every other surface in this file's neighbourhood already pays
+# for this lesson; the sidebar's own renderer had no such assertion.
+
+
+def _every_row_fits(m: SidebarModel, width: int) -> None:
+    for line in as_text(render_sidebar(m, C, width)).split("\n"):
+        assert cell_len(line) <= width, (width, repr(line))
+
+
+def test_a_long_queue_name_does_not_overflow_the_column():
+    snap = Snapshot(queues=[QueueView(
+        name="documentation-backfill-workers", agent="opus",
+        max_parallel=4, running=3, queued=17, ok=128, err=6)])
+    for width in (26, 33, 40, 60):
+        _every_row_fits(SidebarModel(queues=snap), width)
+
+
+def test_a_long_monitor_description_does_not_overflow_the_column():
+    """`format_mon` was written for a full-width strip, where the bar sits
+    far to the right of any realistic description. In a 26-cell column the
+    description alone can be wider than the row."""
+    mons = [MonitorView(id="m1", state="running", elapsed_s=154.0,
+                        description="the full hermetic suite plus the live "
+                                    "round-trips", pct=42.0, eta_s=930.0),
+            MonitorView(id="m2", state="running", elapsed_s=12.0,
+                        description="rebuilding the airgapped .deb bundle",
+                        pct=None, eta_s=None)]
+    for width in (26, 33, 40, 60):
+        _every_row_fits(SidebarModel(monitors=mons), width)
+
+
+def test_the_counters_survive_a_name_that_has_to_be_cut():
+    """Truncation comes out of the variable half. A queue whose counters
+    were cut instead would show a name and no numbers, which is the half
+    with no information in it."""
+    snap = Snapshot(queues=[QueueView(
+        name="documentation-backfill-workers", agent="opus",
+        max_parallel=4, running=3, queued=17, ok=128, err=6)])
+    out = as_text(render_sidebar(SidebarModel(queues=snap), C, 26))
+    assert "●3/4" in out and "○17" in out and "✓128" in out and "✗6" in out
+    assert "…" in out
+
+
+def test_the_monitor_tail_yields_before_the_description_does():
+    """Both halves give way, in this order. A row cut only from the right
+    would keep a description already legible at half the width and throw
+    away the bar, the percentage and the ETA. A row that only cut the
+    description would leave "the full h…", which does not say which of
+    three monitors it is."""
+    v = MonitorView(id="m1", state="running", elapsed_s=154.0,
+                    description="the full hermetic suite plus the live ones",
+                    pct=42.0, eta_s=930.0)
+
+    wide = as_text(render_sidebar(SidebarModel(monitors=[v]), C, 60))
+    assert "▓" in wide and "42%" in wide and "ETA 15:30" in wide
+
+    narrow = as_text(render_sidebar(SidebarModel(monitors=[v]), C, 26))
+    assert "▓" not in narrow          # the bar goes first
+    assert "42%" in narrow            # the number is the last thing kept
+    assert "…" in narrow              # and only then is the label cut
+    row = narrow.split("\n")[-1]
+    assert cell_len(row.split("…")[0]) >= 14, row
+
+
+def test_the_plan_trim_drops_only_the_docks_own_header():
+    """The PLAN section drops `render_plan_dock`'s first line, which is
+    the dock's `tasks d/t` header. A subagent's `└ subagent d/t` header is
+    a *middle* line and must survive — losing it would leave the nested
+    rows dangling under the top-level plan with nothing saying whose they
+    are, which is the whole point of nesting them."""
+    top = PlanState(tasks=(PlanTask(key="1", subject="dispatch",
+                                    status="in_progress"),))
+    sub = PlanState(tasks=(
+        PlanTask(key="a", subject="grind", status="in_progress"),
+        PlanTask(key="b", subject="finished", status="completed")))
+    out = as_text(render_sidebar(
+        SidebarModel(plan=top, subplans={"tool_1": sub}), C, 40))
+    assert "tasks 0/1" not in out          # the dock header is gone
+    assert "PLAN" in out and "0/1" in out  # ...and the section carries it
+    assert "subagent 1/2" in out           # the nested header survives
+    assert "dispatch" in out and "grind" in out and "finished" in out
+
+
+def test_nested_rows_line_up_on_the_same_right_edge():
+    """The four indent columns come out of the label, so a subagent row
+    ends where a top-level row ends. A section that re-budgeted the width
+    would break the column the eye tracks."""
+    top = PlanState(tasks=(PlanTask(key="1", subject="dispatch a fan-out",
+                                    status="in_progress", working_s=61.0),))
+    sub = PlanState(tasks=(PlanTask(key="a", subject="grind on it",
+                                    status="in_progress", working_s=42.0),))
+    lines = [ln for ln in as_text(render_sidebar(
+        SidebarModel(plan=top, subplans={"tool_1": sub}), C, 40)).split("\n")
+        if ln.rstrip().endswith(("1:01", "0:42"))]
+    assert len(lines) == 2, lines
+    assert len({cell_len(ln) for ln in lines}) == 1, lines

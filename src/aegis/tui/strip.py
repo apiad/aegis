@@ -11,21 +11,34 @@ from rich.text import Text
 from textual.widgets import Static
 
 from aegis.queue.digest import QueueDigest, QueueView, Snapshot
+from aegis.tui.fit import truncate_cells
 
 
-def format_q(q: QueueView, palette) -> Text:
+def format_q(q: QueueView, palette, width: int | None = None) -> Text:
     """One queue's counters. Shared with the sidebar's QUEUES section, so a
-    glyph change shows in both surfaces rather than one of them."""
-    t = Text()
-    t.append(q.name, style=palette.ink)
-    t.append(f" ●{q.running}", style=palette.work)
-    t.append(f"/{q.max_parallel}", style=palette.muted)
+    glyph change shows in both surfaces rather than one of them.
+
+    ``width`` bounds the whole row and the *name* gives way — the counters
+    are the half carrying information, and a row cut from the right would
+    keep the name and drop every number. Unbounded by default (the strip,
+    which is the full pane); the sidebar passes its column width, where a
+    name alone can be wider than the row. See ``format_mon``.
+    """
+    tail = Text()
+    tail.append(f" ●{q.running}", style=palette.work)
+    tail.append(f"/{q.max_parallel}", style=palette.muted)
     if q.queued:
-        t.append(f" ○{q.queued}", style=palette.muted)
+        tail.append(f" ○{q.queued}", style=palette.muted)
     if q.ok:
-        t.append(f" ✓{q.ok}", style=palette.ok)
+        tail.append(f" ✓{q.ok}", style=palette.ok)
     if q.err:
-        t.append(f" ✗{q.err}", style=palette.err)
+        tail.append(f" ✗{q.err}", style=palette.err)
+
+    name = q.name
+    if width is not None:
+        name = truncate_cells(name, max(1, width - tail.cell_len))
+    t = Text(name, style=palette.ink)
+    t.append_text(tail)
     return t
 
 

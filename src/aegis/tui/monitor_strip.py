@@ -7,10 +7,12 @@ Sits above the status bar (mirrors QueueStrip). Two pieces:
 """
 from __future__ import annotations
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.widgets import Static
 
 from aegis.monitor.schema import MonitorView
+from aegis.tui.fit import truncate_cells
 
 
 def _fmt_dur(seconds: float) -> str:
@@ -24,18 +26,67 @@ def _bar(pct: float, width: int = 8) -> str:
     return "▓" * fill + "░" * (width - fill)
 
 
-def format_mon(v: MonitorView, palette) -> Text:
+# A description narrower than this says nothing — "the full h…" does not
+# identify which of three monitors it is. The tail gives up its optional
+# parts before the description is cut below it.
+_DESC_FLOOR = 14
+
+
+def _tail_tiers(v: MonitorView, palette) -> list[Text]:
+    """The row's fixed half, widest first. Same ladder idea as the status
+    bar's segments: drop detail rather than let the row overflow."""
+    def t(*parts: tuple[str, str]) -> Text:
+        out = Text()
+        for text, style in parts:
+            out.append(text, style=style)
+        return out
+
+    if v.pct is None:
+        # The spinner already says "watching", so the word is the first
+        # thing to go.
+        dur = _fmt_dur(v.elapsed_s)
+        return [t((f"  ⣾ {dur} watching", palette.muted)),
+                t((f"  ⣾ {dur}", palette.muted))]
+
+    pct = (f"{v.pct:.0f}%", palette.ink)
+    bar = (f"  {_bar(v.pct)} ", palette.work)
+    if v.eta_s is None:
+        return [t(bar, pct), t(("  ", palette.muted), pct)]
+    eta = (f" · ETA {_fmt_dur(v.eta_s)}", palette.muted)
+    return [t(bar, pct, eta), t(("  ", palette.muted), pct, eta),
+            t(("  ", palette.muted), pct)]
+
+
+def format_mon(v: MonitorView, palette, width: int | None = None) -> Text:
     """One monitor's description and bar. Shared with the sidebar's
-    MONITORS section, so the bar is drawn the same way in both."""
-    t = Text()
-    t.append(v.description, style=palette.ink)
-    if v.pct is not None:
-        t.append(f"  {_bar(v.pct)} ", style=palette.work)
-        t.append(f"{v.pct:.0f}%", style=palette.ink)
-        if v.eta_s is not None:
-            t.append(f" · ETA {_fmt_dur(v.eta_s)}", style=palette.muted)
+    MONITORS section, so the bar is drawn the same way in both.
+
+    ``width`` bounds the whole row. Unbounded by default, which is the
+    strip: the row is the full pane there, and the bar sits far right of
+    any real description. The sidebar is 26 cells and its body is a Static
+    inside a VerticalScroll, so an over-long row *wraps* rather than
+    clips — one monitor becomes three rows and pushes SYSTEM off the
+    panel.
+
+    Both halves give way, in order: the tail drops its optional detail
+    until the description clears `_DESC_FLOOR`, and only then is the
+    description itself cut. Cutting the row from the right instead would
+    take the bar, the percentage and the ETA — everything it exists to
+    show — while keeping a description already legible at half the width.
+    """
+    tiers = _tail_tiers(v, palette)
+    if width is None:
+        tail, budget = tiers[0], None
     else:
-        t.append(f"  ⣾ {_fmt_dur(v.elapsed_s)} watching", style=palette.muted)
+        floor = min(cell_len(v.description), _DESC_FLOOR)
+        tail = next((x for x in tiers if width - x.cell_len >= floor),
+                    tiers[-1])
+        budget = max(1, width - tail.cell_len)
+
+    desc = v.description if budget is None else truncate_cells(
+        v.description, budget)
+    t = Text(desc, style=palette.ink)
+    t.append_text(tail)
     return t
 
 
