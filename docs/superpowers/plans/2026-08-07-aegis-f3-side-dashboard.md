@@ -1396,6 +1396,44 @@ against the untinted sidebar, because `styles.background` is the
 It only became a real gate once it compared `background_colors[1]`, the
 colour the widget composites to.
 
+**Second pass, same day.** Asked what the plan had missed, four more
+things, three of them defects. All in `f19bd0c`, each with a failing test
+first and each mutation-checked.
+
+4. **The clock could outgrow its own column.** `_CLOCK_W` is 6 and every
+   row lines its right edge up on it, but `:>6` pads to *at least* six and
+   never truncates — so `fmt_working`'s `H:MM:SS` form spent seven and an
+   hour-plus task wrapped its row. Reachable in an hour of work on one
+   task, which is ordinary here. The hour form is now `1h06`, which also
+   cannot be misread as the `1:06` minute form one row above. The existing
+   width test missed it because none of its tasks ever entered
+   `in_progress`, so every clock in it was the one-cell `—`.
+5. **QUEUES and MONITORS never fit the column.** Task 3 published
+   `format_q` and `format_mon` so the two surfaces would share them, but
+   both were written for a *full-width strip* where the strip does the
+   fitting — neither took a width. In a 26-cell column one monitor
+   rendered 68 cells and wrapped to three rows. Both now take an optional
+   width (unbounded by default, so the strips are unchanged), and
+   `format_mon` degrades through a tier ladder: the bar goes first, then
+   the ETA, and only then is the description cut, with a 14-cell floor.
+   Cutting from the right instead would have kept a description already
+   legible at half the width and thrown away the bar, the percentage and
+   the ETA.
+6. **The renderer suite had no "every row fits" invariant** — the single
+   assertion a fixed-width column most needs, and the one that would have
+   caught 5 the day it was written. `tests/test_sidebar_render.py` now has
+   it across 26/33/40/60.
+7. Not a defect: the PLAN trim from `e36b636` drops only the dock's own
+   first line, so a `└ subagent d/t` header survives and nested rows still
+   land on the same right edge. Now asserted rather than assumed.
+
+Items 2 and 6 of step 1 are also closed, as unit tests rather than by
+hand: `test_closing_restores_every_collapsed_surface` and
+`test_slash_tasks_toggles_the_same_mode_as_f3`. The latter drives the real
+command seam end to end, because `_apply_command_effect` ignores unknown
+effect kinds by design — so a renamed effect would leave `/tasks`
+reporting ok while doing nothing, with no test failing.
+
 - [x] **Step 3: Record it in `TASKS.md`**
 
 Under `## Recently shipped`, above the *Live task list* entry, add:

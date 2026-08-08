@@ -95,6 +95,24 @@ seventh section:
   PLAN where every sibling has one. Both are trimmed at the composition
   site in `_plan()`, not in the renderer, which has its own contract in
   `tests/test_plan_render.py`.
+- **A formatter shared with a strip has not been fitted to a column.**
+  `format_q` and `format_mon` were made public so both surfaces would
+  share them, but they were written for a full-pane strip that does its
+  own fitting. In 26 cells one monitor rendered 68 and wrapped to three
+  rows. Both now take an optional width; `format_mon` degrades through a
+  tier ladder (bar, then ETA, then the description, floored at 14 cells)
+  rather than cutting the row from the right, which would throw away
+  everything the row exists to show.
+- **A right-aligned field pads but does not truncate.** `:>6` spends
+  seven cells on a seven-cell string, so `fmt_working`'s old `H:MM:SS`
+  wrapped any row whose task had worked an hour. The hour form is `1h06`
+  — under budget, and not misreadable as the `1:06` minute form.
+
+The invariant that catches most of this class is one line and lives in
+`tests/test_sidebar_render.py`: **every rendered row fits the width, at
+26/33/40/60.** The column's body is a Static inside a `VerticalScroll`,
+so an over-long row does not clip — it wraps, and the sections below it
+go off the panel.
 
 **Outstanding, deliberately: the web client renders no sidebar.** Same
 call as the live task list's Task 12 and the session-title web gap below —
