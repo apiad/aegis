@@ -160,7 +160,12 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `aegis-ink` default), and the `F3` **Sidebar** (sidebar.py) — the
   dashboard column holding SESSION / CONTEXT / PLAN / QUEUES / MONITORS /
   SYSTEM, ordered by volatility because the panel scrolls. `F3` toggles a
-  *mode*: one `-sidebar` class on the pane hides `QueueStrip`,
+  *mode*, and the mode is **app-wide**: `AegisApp.sidebar_mode` is the one
+  flag, `set_sidebar_mode` fans it out to every pane, and a pane adopts it
+  in `on_mount` — so `F3`, `/tasks` and `pane.toggle_task_dock()` all move
+  every tab, and a tab opened later comes up in the mode rather than
+  collapsed beside its siblings. Per pane, one `-sidebar` class hides
+  `QueueStrip`,
   `MonitorStrip`, `PlanStrip` and `StatusBar` by CSS, and the main column
   becomes transcript + input. **A collapsed surface must therefore never
   set `display` imperatively** — an inline style beats the rule, which is

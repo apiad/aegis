@@ -221,7 +221,7 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/groups [status \| dissolve <name>]` | List / inspect / dissolve agent groups. |
 | `/schedules [show \| enable \| disable \| remove \| logs <name>]` | List / inspect scheduled workflows. |
 | `/terminals [new \| run \| close <name> [cmd]]` | List / spawn / run / close shared terminals. |
-| `/tasks` | Open / close the task dock — the agent's plan, one row per task with its working time. `F3` does the same. See [The task list](usage.md#the-task-list). |
+| `/tasks` | Open / close the task dock — the agent's plan, one row per task with its working time. App-wide: every tab follows. `F3` does the same. See [The task list](usage.md#the-task-list). |
 | `/rename <new>` | Rename the current session. |
 | `/title [text] [--clear]` | Set the session's **title** — a readable label beside the handle, not instead of it. Bare `/title` regenerates one from where the conversation is now; `--clear` drops it. See [Session titles](usage.md#session-titles). |
 | `/reconnect [handle]` | Rebuild a dropped [remote session's](hosts.md#when-the-link-drops) harness in place, resuming its conversation in the same tab. Refused for a local session, or one with no session id to resume from. |

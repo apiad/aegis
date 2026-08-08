@@ -332,6 +332,8 @@ class AegisApp(App):
         # Pending debounced roster write (see _schedule_snapshot).
         self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
+        # F3 dashboard mode — app-wide, not per-pane (see set_sidebar_mode).
+        self._sidebar_mode = False
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
         self._voice_pane: ConversationPane | None = None
@@ -1284,11 +1286,30 @@ class AegisApp(App):
         return tab
 
     def action_toggle_tasks(self) -> None:
-        """Show or hide the active pane's sidebar (also `/tasks`)."""
-        pane = self._active
-        toggle = getattr(pane, "toggle_task_dock", None)
-        if toggle is not None:
-            toggle()
+        """Show or hide the dashboard sidebar (also `/tasks`)."""
+        self.toggle_sidebar_mode()
+
+    @property
+    def sidebar_mode(self) -> bool:
+        return self._sidebar_mode
+
+    def toggle_sidebar_mode(self) -> bool:
+        return self.set_sidebar_mode(not self._sidebar_mode)
+
+    def set_sidebar_mode(self, opened: bool) -> bool:
+        """Put every pane in (or out of) dashboard mode.
+
+        The mode is app-wide: F3 says how you want to read aegis, and a
+        tab switch that flipped the layout back made it read as a per-tab
+        widget instead. Panes mounted later adopt it from
+        ``sidebar_mode`` at mount.
+        """
+        self._sidebar_mode = opened
+        for pane in self._panes:
+            setter = getattr(pane, "set_task_dock", None)
+            if setter is not None:
+                setter(opened)
+        return opened
 
     async def action_open_config_panel(self) -> None:
         """Open (or focus) the ConfigPanel tab."""

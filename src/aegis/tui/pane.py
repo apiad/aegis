@@ -1052,6 +1052,10 @@ class ConversationPane(Widget):
         t = self._transcript()
         self.watch(t, "scroll_y", self._on_scroll_y)
         self.query_one(GrowingInput).key_interceptor = self._palette_key
+        # Dashboard mode is app-wide, so a tab opened while it is up comes
+        # up already in it rather than needing its own F3.
+        if getattr(self.app, "sidebar_mode", False):
+            self.set_task_dock(True)
 
     def on_unmount(self) -> None:
         """Release the sidebar's subscriptions.
@@ -1483,15 +1487,35 @@ class ConversationPane(Widget):
         return self._place.qualify(str(path)) if path else None
 
     def toggle_task_dock(self) -> bool:
-        """Open/close the sidebar. Bound to F3 and to `/tasks`."""
+        """Flip the dashboard mode. Bound to F3 and to `/tasks`.
+
+        The mode is app-wide, not per-tab: it says how you want to read
+        aegis right now, and a tab switch that silently changed the layout
+        made it read as a per-tab widget. So this asks the app to flip it
+        for every pane rather than only for self.
+        """
+        app_toggle = getattr(self.app, "toggle_sidebar_mode", None)
+        if app_toggle is None:            # pane hosted outside AegisApp
+            return self.set_task_dock(not self.sidebar_open)
+        return app_toggle()
+
+    @property
+    def sidebar_open(self) -> bool:
+        try:
+            return self.query_one("#sidebar", Sidebar).is_open
+        except Exception:
+            return False
+
+    def set_task_dock(self, opened: bool) -> bool:
+        """Put this pane in (or out of) dashboard mode."""
         try:
             bar = self.query_one("#sidebar", Sidebar)
         except Exception:
             return False
-        # Refresh before toggling: refresh_model stores while closed and
+        # Refresh before opening: refresh_model stores while closed and
         # only skips the render, so the first painted frame is current.
         self._refresh_plan_surfaces()
-        opened = bar.toggle()
+        bar.set_open(opened)
         self.set_class(opened, "-sidebar")
         return opened
 

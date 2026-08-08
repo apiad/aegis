@@ -366,3 +366,67 @@ async def test_slash_tasks_toggles_the_same_mode_as_f3():
         await pilot.pause()
         assert not pane.query_one(Sidebar).display
         assert pane.query_one(StatusBar).display
+
+
+# --- the mode is app-wide, not per-tab ----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_f3_puts_every_tab_in_the_mode(tmp_path, monkeypatch):
+    """F3 is a reading mode for aegis, not a widget on one pane: it moves
+    every tab at once, so switching tabs cannot change the layout."""
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await app._spawn(app._default_agent)
+        await pilot.pause()
+        first, second = app._panes[0], app._panes[1]
+
+        app.action_toggle_tasks()
+        await pilot.pause()
+        assert first.query_one(Sidebar).display
+        assert second.query_one(Sidebar).display
+        assert not second.query_one(StatusBar).display
+
+        app.action_toggle_tasks()
+        await pilot.pause()
+        assert not first.query_one(Sidebar).display
+        assert not second.query_one(Sidebar).display
+        assert second.query_one(StatusBar).display
+
+
+@pytest.mark.asyncio
+async def test_the_pane_entry_point_moves_the_whole_app(tmp_path,
+                                                        monkeypatch):
+    """`/tasks` and the pane's own toggle reach the mode through the pane
+    that received them — they must still flip it everywhere, or the two
+    entry points would disagree with F3."""
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        await app._spawn(app._default_agent)
+        await pilot.pause()
+        first, second = app._panes[0], app._panes[1]
+
+        second.toggle_task_dock()
+        await pilot.pause()
+        assert first.query_one(Sidebar).display
+        assert second.query_one(Sidebar).display
+
+
+@pytest.mark.asyncio
+async def test_a_tab_opened_while_the_mode_is_on_comes_up_in_it(
+        tmp_path, monkeypatch):
+    """A pane mounted later adopts the mode. Without this a fresh tab
+    lands collapsed beside its siblings and F3 has to be pressed twice."""
+    monkeypatch.chdir(tmp_path)
+    app = _app()
+    async with app.run_test() as pilot:
+        app.action_toggle_tasks()
+        await pilot.pause()
+
+        await app._spawn(app._default_agent)
+        await pilot.pause()
+        fresh = app._panes[-1]
+        assert fresh.query_one(Sidebar).display
+        assert not fresh.query_one(StatusBar).display

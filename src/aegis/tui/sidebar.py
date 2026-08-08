@@ -266,12 +266,15 @@ class Sidebar(VerticalScroll):
             self._model.plan_frame += 1
             self._paint()
 
-    def toggle(self) -> bool:
-        self._open = not self._open
-        self.display = self._open
-        if self._open:
+    def set_open(self, opened: bool) -> bool:
+        self._open = opened
+        self.display = opened
+        if opened:
             self._paint()
         return self._open
+
+    def toggle(self) -> bool:
+        return self.set_open(not self._open)
 
     @property
     def is_open(self) -> bool:

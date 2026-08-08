@@ -1,6 +1,7 @@
 # F3 side dashboard — design
 
-**Status:** implemented 2026-08-07 (`5d44bc8`, live-pass fixes in `e36b636`)
+**Status:** implemented 2026-08-07 (`5d44bc8`, live-pass fixes in `e36b636`;
+the mode went app-wide rather than per-pane on 2026-08-07 — see below)
 **Scope:** TUI only. The web client is explicitly out of scope.
 
 ## The problem
@@ -29,7 +30,14 @@ let the main column be the conversation.
 
 ## The shape
 
-`F3` toggles a **mode**, not a widget.
+`F3` toggles a **mode**, not a widget — and the mode belongs to the app,
+not to a pane. Shipped per-pane first, and the cost showed up immediately:
+switching tabs changed the layout under you, and every new tab landed
+collapsed beside its open siblings. A mode is how you want to *read*
+aegis; scoping it to one tab made it read as a widget again. So `F3`,
+`/tasks` and `toggle_task_dock` all flip one app-level flag
+(`AegisApp.sidebar_mode`), which fans out to every pane, and a pane
+adopts it at mount.
 
 **Open** — the sidebar holds every ambient surface; the main column is
 transcript and input:

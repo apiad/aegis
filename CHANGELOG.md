@@ -5,6 +5,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Changed
+
+- **`F3` is one mode for the whole app, not a per-tab widget.** The
+  dashboard sidebar shipped scoped to the active pane, which meant
+  switching tabs changed the layout under you and every new tab landed
+  collapsed beside its open siblings. `F3`, `/tasks` and the pane's own
+  toggle now flip a single app-level flag that fans out to every pane,
+  and a pane mounted later adopts it.
+
 ## [0.32.0] - 2026-08-07
 
 ### Added

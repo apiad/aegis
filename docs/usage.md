@@ -16,7 +16,7 @@
 | `Ctrl+Shift+→` / `Ctrl+Shift+←` | Move the active tab one slot along the bar (`Alt+Shift+←→` alias) |
 | `Drag a tab` | Reorder with the mouse — the tab follows the pointer across its neighbours |
 | `Ctrl+D` | Open / close the queue dashboard |
-| `F3` | Open / close the task dock — the agent's plan, one row per task with its working time (`/tasks` does the same) |
+| `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | Fuzzy file picker |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
@@ -272,7 +272,8 @@ literal rendering of the clock running.
 
 Press **`F3`** (or type `/tasks`) for the **dock** beside the transcript:
 one row per task with its working time, and any subagent's plan nested
-underneath — which is what makes a fan-out legible, since it shows which
+underneath. It is a mode, and the mode is app-wide — every tab opens it
+together, and a tab you open later comes up already in it — which is what makes a fan-out legible, since it shows which
 of several parallel agents is still grinding. A task that never started
 reads `—`, not `0:00`; the two mean different things.
 
