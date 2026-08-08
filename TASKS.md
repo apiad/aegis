@@ -208,6 +208,104 @@ gives per-sub-turn context (39 k–163 k).  Compaction fires intra-turn as a
   even on a 30-sub-turn session.  `test_session_log_hot_path.py` or similar:
   ContextUpdate routing for ACP.
 
+### Mandatory file claims *(specced + planned 2026-08-07; no code yet)*
+
+`src/aegis/locks/` is advisory: `claim()` returns `granted: false` and the
+only consequence is that the claim is not recorded. Nothing stops the write.
+So peers clobber each other's in-flight work — discovered at `git diff`, hours
+later — and the board is only as accurate as the agents are disciplined,
+which under-reports exactly the sessions most likely to collide.
+
+**Threat model is the careless agent, not the adversarial one**, and that
+choice is what makes it affordable. Making an agent genuinely *incapable* of
+writing needs a kernel PEP, and claims are dynamic, which rules out the cheap
+options: **Landlock is structurally disqualified** (a ruleset only ever
+restricts further, never re-grants, so an agent that claims a path mid-session
+could never write to it); uid+ACL needs root and collides with Alex's editor
+and the autosync timer; per-agent FUSE is the clean total answer and costs a
+mount per session. FUSE is the escalation path if the cheap gate proves
+insufficient — the PDP boundary is exactly the seam it would consult.
+
+**Shape: one PDP, three PEPs.** `ClaimRegistry` decides; enforcement goes
+where aegis already sits on the write path — `AcpSession.request_permission` /
+`write_text_file` (`drivers/acp.py:276,284`, where aegis performs the write
+itself), a Claude `PreToolUse` hook injected via `--settings` in
+`build_argv` (`drivers/claude.py:234`), and Bash. Remote hosts need no work:
+`hosts/connection.py` already reverse-tunnels the MCP port.
+
+Four decisions worth not re-litigating:
+
+- **Auto-claim on write, exclusive-only denial.** Literal deny-by-default
+  teaches every agent a ritual — hit wall, call `aegis_claim(["src/"])`,
+  which *always* succeeds against a shared claim — so the board fills with
+  giant meaningless claims and you have spent the signal without buying
+  exclusion. Auto-claim instead makes the board accurate for free.
+- **Only full overwrite of an existing file is denied among shared claims.**
+  `Edit` carries an `old_string` and fails on its own if a peer moved the
+  region; creating a new file clobbers nothing. Friction goes exactly on the
+  clobber vector so the interstitial fires too rarely to ritualize.
+- **The acknowledgment is `aegis_claim` itself.** A `PreToolUse` deny returns
+  a reason and the model retries — there is no protocol slot on `Write` for a
+  "yes I know" flag. So joining the shared claim *is* the ack, it needs no new
+  primitive, it is unsatisfiable without reading the deny message, and it
+  records the bookkeeping we wanted anyway.
+- **Bash inverts the rule: deny only on positive match, pass on any parse
+  failure.** Any static analysis of a shell command is a guess and a
+  deny-by-default guess makes Bash unusable within one turn. Bash is porous
+  here and the spec says so out loud.
+
+**`live_handles` is the thing to fix first.** It is tab existence
+(`core/manager.py:460`, `tui/app.py:428`) — fine for an advisory board,
+wrong under enforcement, because agents in aegis characteristically finish and
+sit there. A session done three hours ago is "live" and its exclusive claim is
+a permanent wall whose deny message points at a handle that will never answer.
+Hence gone / live / **dormant**, where dormant *degrades* exclusive to shared
+rather than deleting it: the board still reads "bob was working here", only the
+wall comes down. **The notification is the liveness probe** — if the holder is
+really alive its inbox wakes it and it can re-claim exclusive. That is why
+there is no `force` verb and no break-in tool, and why restart and dropped-SSH
+self-heal with no extra code ("has a future" is deliberately the same
+predicate `core/close_guard.py` uses to refuse a close).
+
+Traps already found while planning, each of which would otherwise cost a cycle:
+
+- **Auto-claim breaks `aegis_close`.** `mcp/server.py:1155` counts *all* of a
+  handle's claims into `CloseFacts.claims` and refuses on any, so every agent
+  that ever edited a file becomes unclosable. `explicit_count()` (auto-claims
+  excluded) is in the plan as part of the same task that lands auto-claim.
+- **`AegisColors` has no `warning` role**, and lives in `aegis.themes`, not
+  `aegis.tui.themes`. Roles are ready/working/error/accent/muted/ok/err/user/
+  user_bg, and it has no defaults. Contested rows use `err`.
+- **`CommandResult` fields are `(ok, title, body)`** — `summary` belongs to
+  `SlashCommand`, not to the result.
+- **`fit.plain_width` measures with `len()`, not `cell_len`**, on the docstring's
+  assertion that the bar's glyphs are single-width. Status-bar claim glyphs must
+  stay single-width or that function moves to `cell_len` first. (`truncate_cells`
+  already uses `cell_len`; the two are inconsistent today and this is where it
+  surfaces.)
+- **The sidebar section cannot list claims.** Under auto-claim a session that
+  edited thirty files holds thirty claims. Rank by what demands action —
+  contested, then explicit, then auto rolled up to a common prefix — and let a
+  contested row lead with the **peer handle**, not the path, so the handle
+  survives when the row narrows. `fit_rows` drops a segment whose narrowest
+  tier does not fit, so a conflict vanishing at 80 cols is the worst failure
+  this feature has; the render test pins it at the 26-cell floor.
+
+Deliberately not planned: the spec's third notification (a TUI toast) stops at
+the inbox, since the sidebar CLAIMS section already puts contested state
+permanently on screen. One-task follow-up if it turns out to be wanted.
+
+- Spec: `docs/superpowers/specs/2026-08-07-aegis-mandatory-file-claims-design.md`
+- Plan: `docs/superpowers/plans/2026-08-07-aegis-mandatory-file-claims.md` —
+  11 TDD tasks as vertical slices. **Task 5 (the ACP PEP) is the first point
+  where an agent actually gets blocked end to end**; tasks 1–4 exist to make
+  that slice safe to land (policy, then liveness *before* any enforcement can
+  deadlock on a ghost, then registry + the close fix, then config kill-switch
+  and the root-subtree domain).
+- Config: `locks: {enforce: true, dormant_after: 20m}`. `enforce: false`
+  disables the PEPs but **keeps auto-claim**, so the board stays accurate with
+  the walls down.
+
 ### The conversational corpus *(VS1 tasks 1–2 of 7 shipped 2026-08-06; paused)*
 
 **Where this stopped.** The two pure/read layers are on `main` and green;
