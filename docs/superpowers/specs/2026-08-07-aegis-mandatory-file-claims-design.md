@@ -1,6 +1,7 @@
 # Mandatory file claims
 
-**Status:** design approved, not yet planned
+**Status:** design approved; implementation plan at
+`docs/superpowers/plans/2026-08-07-aegis-mandatory-file-claims.md`
 **Date:** 2026-08-07
 **Supersedes nothing.** Extends the claims primitive in `src/aegis/locks/`
 (seventh coordination primitive) from advisory to enforced.
