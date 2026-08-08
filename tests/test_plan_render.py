@@ -119,7 +119,12 @@ def test_fmt_working():
     assert fmt_working(None) == "—"
     assert fmt_working(0.0) == "0:00"
     assert fmt_working(63.0) == "1:03"
-    assert fmt_working(3723.0) == "1:02:03"
+    assert fmt_working(3723.0) == "1h02"
+    assert fmt_working(360_000.0) == "100h"
+    # The invariant the row geometry depends on.
+    for secs in (0.0, 59.0, 3599.0, 3600.0, 359_999.0,
+                 360_000.0, 36_000_000.0):
+        assert cell_len(fmt_working(secs)) <= 6, secs
 
 
 # -- the dock --------------------------------------------------------
@@ -144,6 +149,31 @@ def test_dock_truncates_a_long_label_rather_than_wrapping():
     s = state(("x" * 200, "pending"))
     for line in as_text(render_plan_dock(s, C, width=24)).splitlines():
         assert cell_len(line) <= 24, repr(line)
+
+
+def test_a_task_worked_for_over_an_hour_still_fits_its_row():
+    """`_CLOCK_W` is a constant because every row lines its right edge up
+    on it — but `:>6` pads to *at least* six and never truncates, so the
+    `H:MM:SS` form silently spends seven. The row then exceeds the width
+    by one and the Static wraps it onto a second line.
+
+    Reachable in an hour of work on a single task, which is ordinary for
+    these sessions. The existing width test missed it because its tasks
+    never entered in_progress, so every clock in it was the 1-cell "—".
+    """
+    for secs in (3600.0, 3723.0, 86_399.0, 359_999.0):
+        s = state(("grind away at it", "in_progress"), times={
+            "grind away at it": secs})
+        for line in as_text(render_plan_dock(s, C, width=24)).splitlines():
+            assert cell_len(line) <= 24, (secs, repr(line))
+
+
+def test_the_over_an_hour_clock_is_not_mistakable_for_minutes():
+    """Dropping to `H:MM` would fit, but `1:02` already means one minute
+    two seconds one row above. The hour form has to carry its own unit."""
+    assert fmt_working(62.0) == "1:02"
+    assert fmt_working(3720.0) != "1:02"
+    assert "h" in fmt_working(3720.0)
 
 
 def test_dock_nests_subagent_plans_under_the_top_level_plan():

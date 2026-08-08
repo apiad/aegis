@@ -42,12 +42,21 @@ def _fit(text: str, cells: int) -> str:
 
 def fmt_working(seconds: float | None) -> str:
     """A task that never entered in_progress reads "—", not "0:00": the
-    two mean different things and must not look alike."""
+    two mean different things and must not look alike.
+
+    Never wider than `_CLOCK_W`. The hour form used to be `H:MM:SS`, which
+    is seven cells — and `:>6` pads to *at least* six without truncating,
+    so an hour-plus task pushed its row one column past the width and the
+    Static wrapped it onto a second line. `H:MM` would fit but reads as
+    the minute form one row above, so the hour carries its own unit
+    instead. Past 100 hours the minutes stop being interesting.
+    """
     if seconds is None:
         return "—"
     s = int(seconds)
     if s >= 3600:
-        return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+        h = s // 3600
+        return f"{h}h" if h >= 100 else f"{h}h{(s % 3600) // 60:02d}"
     return f"{s // 60}:{s % 60:02d}"
 
 
