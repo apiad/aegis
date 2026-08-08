@@ -1397,7 +1397,8 @@ It only became a real gate once it compared `background_colors[1]`, the
 colour the widget composites to.
 
 **Second pass, same day.** Asked what the plan had missed, four more
-things, three of them defects. All in `f19bd0c`, each with a failing test
+things, three of them defects. In `753c43c`, `dbb4ab8` and `0039b17`,
+each with a failing test
 first and each mutation-checked.
 
 4. **The clock could outgrow its own column.** `_CLOCK_W` is 6 and every
