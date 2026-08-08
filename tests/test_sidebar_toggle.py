@@ -333,3 +333,36 @@ async def test_the_plan_counter_is_not_printed_twice():
         assert text.count("1/2") == 1, text
         assert "tasks 1/2" not in text
         assert "alpha" in text and "beta" in text     # rows still render
+
+
+# --- the two paths into the mode ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_slash_tasks_toggles_the_same_mode_as_f3():
+    """`/tasks` reaches the sidebar through the command seam's `effect`
+    dict, and `_apply_command_effect` ignores kinds it does not know so a
+    new client can send new ones. That tolerance is also what would let a
+    renamed effect silently do nothing, with the command still reporting
+    ok — so the wiring is asserted end to end, from the typed line to the
+    widget, rather than at either end alone.
+    """
+    from aegis.commands import CommandContext, dispatch
+
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        assert not pane.query_one(Sidebar).display
+
+        res = await dispatch("/tasks", CommandContext(
+            bridge=app, handle=pane.handle))
+        assert res.ok and res.effect is not None
+        pane._apply_command_effect(res.effect)
+        await pilot.pause()
+        assert pane.query_one(Sidebar).display
+        assert not pane.query_one(StatusBar).display
+
+        pane._apply_command_effect(res.effect)
+        await pilot.pause()
+        assert not pane.query_one(Sidebar).display
+        assert pane.query_one(StatusBar).display
