@@ -38,6 +38,61 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Recently shipped
 
+### Context gauge accuracy + compaction detection *(shipped 2026-08-10)*
+
+The ctx% gauge reads >100% on most agentic turns because
+`SessionMetrics.commit()` uses `Result.usage.true_input`, which accumulates
+across every sub-turn. And Claude's auto-compaction fires invisibly.
+
+**The 2026-08-09 draft was written from two session logs and half of it did not
+survive contact with the corpus.** Re-running its hypotheses over all 381 local
+logs (6,871 turns):
+
+- **Gauge fix confirmed, and understated.** 4,256/6,871 turns (61.9%) render
+  >100% today; worst is **92,956%** (1,138 sub-turns). Replaying the proposed
+  fix leaves **1 turn in 6,871** over 100%. Land it as written.
+- **The >50% drop heuristic is refuted.** It fires **1,272 times against 17
+  real compactions** — ~1.3% precision. 47% of its detections carry a
+  `parent_tool_use_id` (subagents); 98% recover within the same turn. No online
+  variant beats 12% precision. The draft's own two evidence sessions never
+  compacted: both are Opus (1M window, not the 200k it assumed) with zero
+  `compact_boundary` events, so its two "observed compactions" at 124k and 163k
+  are subagent context switches.
+- **Claude emits `system`/`compact_boundary`** carrying `trigger`, `pre_tokens`,
+  `post_tokens`, `cumulative_dropped_tokens`. 17 in the corpus, one per affected
+  session, all `trigger: auto`, all firing at `pre_tokens` ≈ the 1M ceiling.
+  Exact, no thresholds. It currently parses as `Unknown`, so `events.py` does
+  need a change after all.
+
+Three traps the plan already carries: `core/session.py` has **two** identical
+event loops and both need every routing change; `render_tiers()` must keep
+returning **four** tiers (`StatusBar._tiers` reads a fifth element as a fifth
+tier, so the colour goes in as Rich markup, which `fit.plain_width` strips
+before measuring); and the registry provider key is `claude-code`, where any
+model containing `opus` resolves to a 1M window.
+
+**Shipped** in `dea1704`…`0133e3e` (8 tasks, TDD). Acceptance gate — replaying
+the *shipped* `SessionMetrics` over all 381 logs: **1 turn in 7,042 above 100%**
+(an OpenCode session whose window the new ACP `context_size` override now
+supplies), and **17 `compact_boundary` events, one per affected session**.
+Mutation-checked both ways: reintroducing the one-line `commit()` bug takes the
+gate to **4,271 turns over 100%** and rc=1. Full hermetic suite 2,986 passed.
+
+Adding `CompactBoundary` to the `Event` union tripped
+`test_renders_to_nothing_matches_render_event_for_every_event_type`, which
+exists to force a decision about both render functions for any new type. The
+decision: renders to nothing, like `ContextUpdate` — the boundary drives the
+status bar, not the transcript.
+
+- Spec: `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`
+  (revised; keeps the rejected heuristic and its numbers so it is not
+  reintroduced)
+- Plan: `docs/superpowers/plans/2026-08-10-context-gauge-and-compaction.md`
+- Deliberately not done: compaction detection for ACP harnesses (no protocol
+  signal, and the heuristic is worse than showing nothing), and the
+  `── compacted ──` transcript separator — now a one-event change off
+  `CompactBoundary` if it turns out to be wanted.
+
 ### SSH execution hosts *(specced + planned + built 2026-08-04)*
 
 `hosts:` config; `host` as a third orthogonal spawn axis. `Ctrl+N` host
@@ -161,49 +216,6 @@ plan through a real pane and both fixed with mutation-checked tests:
 - Plan: `docs/superpowers/plans/2026-08-05-aegis-live-task-list.md`
 
 ## Active
-
-### Context gauge accuracy + compaction detection *(re-specced + planned 2026-08-10; no code yet)*
-
-The ctx% gauge reads >100% on most agentic turns because
-`SessionMetrics.commit()` uses `Result.usage.true_input`, which accumulates
-across every sub-turn. And Claude's auto-compaction fires invisibly.
-
-**The 2026-08-09 draft was written from two session logs and half of it did not
-survive contact with the corpus.** Re-running its hypotheses over all 381 local
-logs (6,871 turns):
-
-- **Gauge fix confirmed, and understated.** 4,256/6,871 turns (61.9%) render
-  >100% today; worst is **92,956%** (1,138 sub-turns). Replaying the proposed
-  fix leaves **1 turn in 6,871** over 100%. Land it as written.
-- **The >50% drop heuristic is refuted.** It fires **1,272 times against 17
-  real compactions** — ~1.3% precision. 47% of its detections carry a
-  `parent_tool_use_id` (subagents); 98% recover within the same turn. No online
-  variant beats 12% precision. The draft's own two evidence sessions never
-  compacted: both are Opus (1M window, not the 200k it assumed) with zero
-  `compact_boundary` events, so its two "observed compactions" at 124k and 163k
-  are subagent context switches.
-- **Claude emits `system`/`compact_boundary`** carrying `trigger`, `pre_tokens`,
-  `post_tokens`, `cumulative_dropped_tokens`. 17 in the corpus, one per affected
-  session, all `trigger: auto`, all firing at `pre_tokens` ≈ the 1M ceiling.
-  Exact, no thresholds. It currently parses as `Unknown`, so `events.py` does
-  need a change after all.
-
-Three traps the plan already carries: `core/session.py` has **two** identical
-event loops and both need every routing change; `render_tiers()` must keep
-returning **four** tiers (`StatusBar._tiers` reads a fifth element as a fifth
-tier, so the colour goes in as Rich markup, which `fit.plain_width` strips
-before measuring); and the registry provider key is `claude-code`, where any
-model containing `opus` resolves to a 1M window.
-
-- Spec: `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`
-  (revised; keeps the rejected heuristic and its numbers so it is not
-  reintroduced)
-- Plan: `docs/superpowers/plans/2026-08-10-context-gauge-and-compaction.md` —
-  8 TDD tasks. Task 2 alone kills the >100% bug; task 8 re-runs the corpus
-  replay as the acceptance gate, because synthetic fixtures already agreed with
-  this bug once.
-- Deliberately not doing: compaction detection for ACP harnesses. No protocol
-  signal exists, and the heuristic is worse than showing nothing.
 
 ### Mandatory file claims *(specced + planned 2026-08-07; no code yet)*
 

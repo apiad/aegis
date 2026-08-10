@@ -2,9 +2,33 @@
 
 Newest first. Patch releases bundle under their minor parent.
 
+## Unreleased
+
+- **The context gauge tells the truth.** `ctx N (P%)` read over 100% on
+  most agentic turns because `commit()` used `Result.usage.true_input`,
+  which accumulates across every sub-turn — a 30-sub-turn turn reported
+  1052%, and the worst real turn in the corpus read 92,956%. It now keeps
+  the largest single sub-turn. Replaying the fix over 381 real session
+  logs leaves 1 turn in 7,042 above 100%.
+- **Compaction is visible.** Claude's `system`/`compact_boundary` event
+  parses into a typed `CompactBoundary`, feeding a `✂N` counter in the
+  status bar (yellow at one, red at two or more) and re-baselining the
+  gauge to the post-compaction size. Authoritative, not inferred: a >50%
+  token-drop heuristic was measured at ~1.3% precision over the corpus
+  and is documented as rejected in the design spec.
+- **The ctx segment is coloured** — `$warning` at ≥50% full, `$error` at
+  ≥75%.
+- **ACP sessions get a real gauge.** `ContextUpdate.cost.context_used`
+  feeds the same funnel, and `context_size` overrides the YAML registry
+  with the model's actual window.
+
+> **Note:** the entries below stop at v0.14.0 while the package is at
+> v0.32.0 — this file has not been maintained per-release. `CHANGELOG.md`
+> and `TASKS.md` carry the intervening history.
+
 ## Shipped
 
-### v0.14.0 — 2026-05-28 *(current)*
+### v0.14.0 — 2026-05-28
 - **Workspace recovery is complete.** Every ConversationPane
   (claude via `claude --resume`; gemini / opencode via ACP
   `loadSession`), every TerminalTab, and every FileTab restore on

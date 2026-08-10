@@ -53,7 +53,7 @@ and the ACP `ContextUpdate` path feed.
   dropped_tokens: int = 0, duration_ms: int = 0)`, importable from
   `aegis.events`, returned by `parse()` for `system`/`compact_boundary` lines.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_events.py`:
 
@@ -94,12 +94,12 @@ def test_parse_compact_boundary_tolerates_missing_metadata():
 Add `CompactBoundary` to the existing `from aegis.events import (...)` block at
 the top of the file.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_events.py -k compact_boundary -v`
 Expected: FAIL with `ImportError: cannot import name 'CompactBoundary'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/events.py`, add the dataclass next to `ContextUpdate` (`:156`):
 
@@ -134,12 +134,12 @@ In `_classify_event`, directly after the `thinking_tokens` branch (`:423-427`):
         )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_events.py -q`
 Expected: PASS, including the pre-existing `test_unknown_never_raises`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/events.py tests/test_events.py
@@ -160,7 +160,7 @@ git commit -m "feat(events): parse system/compact_boundary into a typed event"
   funnel every harness's context-size snapshot goes through. `commit()` now
   sets `last_true_input` from the per-sub-turn peak.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_metrics.py`:
 
@@ -216,13 +216,13 @@ def test_gauge_stays_under_100_percent_on_a_long_agentic_turn():
     assert m.last_true_input == 60_000 + 29 * 700
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_metrics.py -k "peak or funnel or agentic or fallback" -v`
 Expected: FAIL — `test_commit_keeps_per_subturn_peak_not_the_accumulated_total`
 asserts `123000 == 333000`, and `observe_context` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/tui/metrics.py`, replace `observe` (`:133-138`) with:
 
@@ -271,14 +271,14 @@ In `commit` (`:152`), capture the peak before the reset on `:161`:
 Leave the rest of `commit` (the `_provisional` reset, `_end_time`, the tok/s
 feed) exactly as it is.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_metrics.py -q`
 Expected: PASS, all of them. If a pre-existing test asserted the old
 `last_true_input == result.true_input` behaviour, it encoded the bug — update
 it to the peak and say so in the commit message.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/metrics.py tests/test_metrics.py
@@ -299,7 +299,7 @@ git commit -m "fix(metrics): gauge the peak sub-turn, not the accumulated total"
 - Produces: `SessionMetrics.compaction_count: int` and
   `SessionMetrics.note_compaction(post_tokens: int) -> None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_metrics.py`:
 
@@ -338,12 +338,12 @@ def test_compaction_count_accumulates_across_turns():
     assert m.compaction_count == 2
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_metrics.py -k compaction -v`
 Expected: FAIL with `AttributeError: 'SessionMetrics' object has no attribute 'note_compaction'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add the field to the dataclass beside `last_true_input` (`:84`):
 
@@ -370,12 +370,12 @@ Add the method after `observe_context`:
             self.last_true_input = post_tokens
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_metrics.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/metrics.py tests/test_metrics.py
@@ -396,7 +396,7 @@ git commit -m "feat(metrics): count compactions and re-baseline the gauge"
 - Produces: a session whose `metrics.compaction_count` advances when the
   harness emits a boundary.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_core_session.py`, reusing the module's existing
 `FakeSession` helper (do not invent a second one):
@@ -453,12 +453,12 @@ Extend the module's import line to
 Both of these drive the live-turn loop. The second loop is not reachable from
 this harness, so Step 4's `grep -c` is what gates it — do not skip that step.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_core_session.py -k compact -v`
 Expected: FAIL — `compaction_count == 0`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In **both** loops, extend the `elif` chain that already handles `ToolUse` /
 `ToolResult` / `ThinkingTokens` (first loop `:506-511`):
@@ -476,7 +476,7 @@ Note the structure: the `isinstance(ev, Result)` check below is a *separate*
 carrying a `usage` attribute. `CompactBoundary` has no `usage` attribute, so it
 falls through that branch harmlessly — no guard needed.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_core_session.py -q`
 Expected: PASS
@@ -486,7 +486,7 @@ Then confirm both loops were edited:
 Run: `grep -c "CompactBoundary" src/aegis/core/session.py`
 Expected: `3` (one import, two routing branches)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/core/session.py tests/test_core_session.py
@@ -507,7 +507,7 @@ git commit -m "feat(session): route CompactBoundary to the metrics counter"
 - Produces: ACP sessions (OpenCode, Lovelaice) whose gauge populates and whose
   `context_window` comes from the harness rather than the YAML registry.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 @pytest.mark.asyncio
@@ -546,12 +546,12 @@ async def test_context_update_without_cost_leaves_the_window_alone():
 Extend the module's imports with `ContextUpdate` and `CostUsage` from
 `aegis.events` (field names verified against `events.py:145-168`).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_core_session.py -k context_update -v`
 Expected: FAIL — `p_in == 0`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In **both** loops, add to the same `elif` chain:
 
@@ -570,7 +570,7 @@ Add `ContextUpdate` to the imports if it is not already there.
 the drop heuristic measured 12% precision at best. ACP sessions get an accurate
 gauge and no `✂` segment.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_core_session.py -q`
 Expected: PASS
@@ -578,7 +578,7 @@ Expected: PASS
 Run: `grep -c "ContextUpdate" src/aegis/core/session.py`
 Expected: at least `3` (import + two branches)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/core/session.py tests/test_core_session.py
@@ -598,7 +598,7 @@ git commit -m "feat(session): feed ACP ContextUpdate into the context gauge"
 - Produces: `render_tiers()` still returns exactly **four** strings; the `ctx`
   segment inside them carries Rich markup when ≥50% full.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_ctx_segment_is_uncoloured_below_half():
@@ -638,12 +638,12 @@ def test_render_tiers_still_returns_four_tiers():
     assert len(m.render_tiers(now=0.0)) == 4
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_metrics.py -k ctx_segment -v`
 Expected: FAIL — no markup in the output.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `render_tiers`, replace the ctx block (`:221-226`):
 
@@ -669,12 +669,12 @@ In `render_tiers`, replace the ctx block (`:221-226`):
 The signature and the four-tuple return are unchanged; `tui/pane.py` needs no
 edit.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_metrics.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/metrics.py tests/test_metrics.py
@@ -693,7 +693,7 @@ git commit -m "feat(metrics): colour the ctx gauge yellow at 50%, red at 75%"
 - Consumes: `compaction_count` (Task 3), the tier layout from Task 6.
 - Produces: a `✂N` segment in tiers T0 and T1 only.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_no_scissors_segment_when_nothing_compacted():
@@ -727,12 +727,12 @@ def test_scissors_glyph_is_single_width():
     assert cell_len("✂") == 1
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_metrics.py -k scissors -v`
 Expected: FAIL — no `✂` in the output.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `render_tiers`, build the segment after the ctx block:
 
@@ -755,18 +755,18 @@ both, leaving T2 and T3 untouched:
         )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_metrics.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Run the full fast suite**
+- [x] **Step 5: Run the full fast suite**
 
 Run: `uv run pytest -q -m "not live"`
 Expected: PASS. A failure here is a real regression — investigate, do not
 re-run.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/metrics.py tests/test_metrics.py
@@ -788,7 +788,7 @@ git commit -m "feat(metrics): show a compaction counter in the status bar"
 - Consumes: everything above.
 - Produces: no code. A verification result and honest doc state.
 
-- [ ] **Step 1: Replay the fix over real session logs**
+- [x] **Step 1: Replay the fix over real session logs**
 
 This is the check that matters — the unit tests use synthetic numbers, and
 synthetic fixtures already agreed with this bug once (see the corpus
@@ -809,14 +809,14 @@ Record both numbers in the commit message. If the >100% count is materially
 above 1, the fix is wrong — stop and re-open the spec rather than adjusting the
 threshold.
 
-- [ ] **Step 2: Exercise it in the real TUI**
+- [x] **Step 2: Exercise it in the real TUI**
 
 Run `aegis` and open a session. Confirm by eye that the status bar shows
 `ctx Nk (P%)` with a plausible percentage, that it is uncoloured early in a
 session, and that the number does not jump at turn end. A green suite is not
 evidence the bar renders — it is the artifact the user actually reads.
 
-- [ ] **Step 3: Update the docs**
+- [x] **Step 3: Update the docs**
 
 - Flip the spec's status header to `implemented (<commit>)`.
 - Tick the task list in `TASKS.md`, and move the section from `## Active` to
@@ -825,7 +825,7 @@ evidence the bar renders — it is the artifact the user actually reads.
 
 Leave anything genuinely unverified unchecked with an honest note.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add TASKS.md docs/roadmap.md \

@@ -1,6 +1,9 @@
 # Context gauge accuracy and compaction detection — design
 
-**Status:** revised 2026-08-10 after corpus-wide re-verification; ready to plan
+**Status:** implemented 2026-08-10 (`dea1704`…`0133e3e`). Corpus replay of the
+shipped code: **1 turn in 7,042 above 100%** (an OpenCode session whose window
+the ACP `context_size` override now supplies), down from 4,271 with the bug
+reintroduced; **17 `compact_boundary` events, one per affected session.**
 **Scope:** `SessionMetrics`, `core/session.py`, `events.py`, `tui/metrics.py`
 (render), status-bar colour. TUI only for the visual layer; the detection fix
 benefits all frontends.
