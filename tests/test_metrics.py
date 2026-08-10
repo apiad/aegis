@@ -446,3 +446,52 @@ def test_compaction_count_accumulates_across_turns():
     m.commit(_u(inp=100, out=10), now=1.0)
     m.note_compaction(post_tokens=20_000)
     assert m.compaction_count == 2
+
+
+# --- ctx segment colour ------------------------------------------------
+
+def test_ctx_segment_is_uncoloured_below_half():
+    m = SessionMetrics(context_window=200_000, last_true_input=40_000)
+    t0 = m.render_tiers(now=0.0)[0]
+    assert "ctx 40k (20%)" in t0
+    assert "[$warning]" not in t0 and "[$error]" not in t0
+
+
+def test_ctx_segment_warns_at_half_full():
+    m = SessionMetrics(context_window=200_000, last_true_input=120_000)
+    t0 = m.render_tiers(now=0.0)[0]
+    assert "[$warning]ctx 120k (60%)[/$warning]" in t0
+
+
+def test_ctx_segment_errors_at_three_quarters():
+    m = SessionMetrics(context_window=200_000, last_true_input=160_000)
+    t0 = m.render_tiers(now=0.0)[0]
+    assert "[$error]ctx 160k (80%)[/$error]" in t0
+
+
+def test_ctx_short_tier_is_coloured_too():
+    """T2 reduces ctx to its percentage -- the part you act on -- so it
+    is exactly the tier that must keep the warning."""
+    m = SessionMetrics(context_window=200_000, last_true_input=160_000)
+    assert "[$error]ctx 80%[/$error]" in m.render_tiers(now=0.0)[2]
+
+
+def test_ctx_colour_does_not_consume_width_budget():
+    """fit.plain_width strips markup before measuring, so a coloured
+    segment must measure the same as its visible text."""
+    from aegis.tui.fit import plain_width
+    hot = SessionMetrics(context_window=200_000, last_true_input=160_000)
+    cool = SessionMetrics(context_window=200_000, last_true_input=160_00)
+    t0_hot = hot.render_tiers(now=0.0)[0]
+    assert plain_width(t0_hot) == len(
+        t0_hot.replace("[$error]", "").replace("[/$error]", ""))
+    # And the tag itself costs nothing relative to identical plain text.
+    assert plain_width(t0_hot) > plain_width(cool.render_tiers(now=0.0)[0]) - 10
+
+
+def test_render_tiers_still_returns_four_tiers():
+    """StatusBar.set_metrics feeds the tuple straight into _tiers(), which
+    treats every element as a tier -- a fifth element would render as a
+    fifth, narrower variant of the whole bar."""
+    m = SessionMetrics(context_window=200_000, last_true_input=160_000)
+    assert len(m.render_tiers(now=0.0)) == 4

@@ -267,8 +267,20 @@ class SessionMetrics:
         if self.context_window > 0:
             live = self.p_in if self._provisional else self.last_true_input
             ctx_pct = round(100 * live / self.context_window)
-            ctx = f"ctx {_fmt_tokens(live)} ({ctx_pct}%) · "
-            ctx_short = f"ctx {ctx_pct}% · "
+            # Rich markup rather than a fifth return value: the tuple goes
+            # straight to StatusBar.set_metrics -> _tiers(), which reads
+            # every element as a tier, so a fifth would render as a fifth
+            # (narrower) variant of the whole bar. fit.plain_width strips
+            # tags before measuring, so the colour costs no width budget.
+            tag = ("$error" if ctx_pct >= 75
+                   else "$warning" if ctx_pct >= 50 else "")
+            body = f"ctx {_fmt_tokens(live)} ({ctx_pct}%)"
+            body_short = f"ctx {ctx_pct}%"
+            if tag:
+                body = f"[{tag}]{body}[/{tag}]"
+                body_short = f"[{tag}]{body_short}[/{tag}]"
+            ctx = f"{body} · "
+            ctx_short = f"{body_short} · "
         cost = self._render_cost()
         tps = self.recent_tps()
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
