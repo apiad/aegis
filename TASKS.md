@@ -162,6 +162,52 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### Context gauge accuracy + compaction detection *(specced 2026-08-09, ready to implement)*
+
+**Spec:** `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`
+
+**Why now.** The ctx% gauge frequently shows 1000%+ on long agentic turns;
+Claude's auto-compaction fires invisibly with no user indication.  Both are
+fixable with small, targeted changes and no protocol work.
+
+**Handoff context (investigation 2026-08-09).**
+Analysed sessions `vast-valiant.jsonl` and `true-tarjan.jsonl` in
+`.aegis/state/sessions/`.  Root cause confirmed: `Result.usage.true_input`
+accumulates across all sub-turns (30 sub-turns × 70 k avg = 2.1 M ÷ 200 k
+window = 1050%).  The streaming `AssistantText.usage.true_input` correctly
+gives per-sub-turn context (39 k–163 k).  Compaction fires intra-turn as a
+>50% drop in `true_input` between consecutive streaming events.
+
+**Tasks — implement in order:**
+
+- [ ] **1. Fix `commit()` in `tui/metrics.py`** — save `p_in` (per-sub-turn
+  peak) as `last_true_input` before zeroing it; stop using
+  `Result.usage.true_input` for the gauge.  One-liner fix, immediately kills
+  the 1000% bug.
+
+- [ ] **2. Add `observe_context(ti)` to `SessionMetrics`** — refactor
+  `observe()` to call it; put compaction detection logic there (`p_in > 20k
+  and ti < p_in * 0.5 → compaction_count++; reset p_in to ti`).  Add new
+  fields: `compaction_count`, `_compaction_happened_this_turn`, `last_live_ti`.
+
+- [ ] **3. Route `ContextUpdate` in `session.py`** — add `elif isinstance(ev,
+  ContextUpdate)` branch that calls `observe_context(ev.cost.context_used)` and
+  updates `context_window` from `ev.cost.context_size` when present.  Makes
+  ACP harnesses (OpenCode, Lovelaice) get the same accurate gauge and
+  compaction detection.
+
+- [ ] **4. Colour the ctx segment** — in `render_tiers()` return a fifth
+  `ctx_color` value; apply in `pane.py` status-bar render.  Yellow ≥ 50%;
+  red ≥ 75%.
+
+- [ ] **5. Add `✂N` compaction counter** — append to T0/T1 status-bar tiers
+  when `compaction_count > 0`.  Yellow at 1, red at 2+.
+
+- [ ] **6. Tests** — `test_metrics.py`: compaction detection fires at correct
+  threshold; does not fire on normal inter-sub-turn growth; gauge stays ≤ 100%
+  even on a 30-sub-turn session.  `test_session_log_hot_path.py` or similar:
+  ContextUpdate routing for ACP.
+
 ### The conversational corpus *(VS1 tasks 1–2 of 7 shipped 2026-08-06; paused)*
 
 **Where this stopped.** The two pure/read layers are on `main` and green;
