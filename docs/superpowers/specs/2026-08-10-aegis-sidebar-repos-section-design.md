@@ -1,0 +1,233 @@
+# F3 sidebar — REPOS section
+
+**Status:** design approved 2026-08-10; implementation plan at
+`docs/superpowers/plans/2026-08-10-aegis-sidebar-repos-section.md`
+**Scope:** TUI only. The web client is explicitly out of scope, same call
+the F3 sidebar itself made.
+**Extends** `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md`.
+
+## The problem
+
+aegis runs many agents over one checkout, and nothing on screen says where
+they are standing. A pane tells you what *this* agent is doing (`SESSION`,
+`CONTEXT`, `PLAN`), and the queues and monitors tell you what the substrate
+is doing, but the question a multi-agent harness actually raises — *which
+repos are being written to right now, on what branch, and is more than one
+agent in there* — has no surface at all.
+
+The workspace makes this sharper than it would be elsewhere. `repos/*` are
+independent git repos nested inside a git-tracked workspace, each with its
+own branch and index, and the standing rule is to `cd` into a repo before
+committing precisely because the shell's cwd lies. Two agents writing to
+the same repo is the collision `bin/ws-lock` and `src/aegis/locks/` both
+exist to prevent, and today you find out at `git diff`, hours later.
+
+There is a second, quieter failure. An agent that writes seven files into a
+repo and then moves on leaves them uncommitted, and nothing surfaces that
+until someone happens to run `git status` in the right directory. The same
+goes for commits that were never pushed — a VPS job that clones `origin`
+silently gets the old tree.
+
+## The shape
+
+One more section in the `F3` column, between `MONITORS` and `SYSTEM`:
+
+```
+REPOS                       3
+● aegis        main    ~7 ↑2
+● Workspace    main    ~2
+· warden       feat/kv ~3  · calm-hopper
+! enciclopedia (detached) ~1
+```
+
+| element | meaning |
+|---|---|
+| heading counter | repos on the list |
+| `●` | this pane's agent is one of the writers |
+| `·` | only peers have written here |
+| `●` in amber | more than one live writer — the collision |
+| `~n` | dirty files |
+| `↑n` / `↓n` | commits ahead of / behind upstream |
+| `!` | detached HEAD, or a rebase / merge / cherry-pick in flight |
+
+Sorted **most-recently-written first**. The list is short (two to five rows
+in practice), so recency beats alphabetical: the repo you just wrote to is
+the one you are about to ask about.
+
+The section is app-wide but rendered per pane, which is what makes the
+`●`/`·` distinction do any work. Both precedents already exist in this
+column — `SESSION`/`CONTEXT`/`PLAN` are the pane, `QUEUES`/`MONITORS`/
+`SYSTEM` are the app — and `REPOS` is app-wide data with a per-pane mark.
+
+### Section placement
+
+Between `MONITORS` and `SYSTEM`. The column is ordered by volatility, and
+repo state sits where it belongs on that axis: dirty counts move whenever an
+agent writes, but a row demands less action than a monitor that just failed,
+and far more than a version string that never changes.
+
+### Row tiers
+
+`fit_rows` picks, per row, the widest tier that fits the column:
+
+1. `● aegis  main  ~7 ↑2  · calm-hopper`
+2. `● aegis  main  ~7 ↑2  +1`
+3. `● aegis  main  ~7`
+4. `● aegis  main`
+5. `● aegis` — repo name truncated to fit
+
+**Tier 5 must always fit**, which is why it truncates rather than relying on
+the budget. `fit_rows` answers "no tier fits" by omitting the segment
+entirely — the trap the F3 spec already paid for, where charging a row for
+the frame's padding made a whole *section* disappear at 80 columns. Here the
+same mechanism would make a repo silently vanish because its name was long,
+which is worse: a missing section reads as "nothing to report", and so does
+a missing row.
+
+## Membership: what enters the list, and what leaves
+
+**Writes promote, reads do not.** A repo enters when an agent runs `Write`,
+`Edit`, or `NotebookEdit` (or an ACP `write_text_file`) on a path inside it.
+Reads and greps do not promote — otherwise every repo an agent searched
+appears, and the section stops meaning *work is happening here*.
+
+**A repo stays for the life of the session.** No time decay: a repo you
+wrote to an hour ago is still a repo you are responsible for, and the
+uncommitted-work case is precisely the one where the agent has moved on.
+When a session closes its attribution drops, and a repo with no live writer
+left disappears. The tracker is in-memory; a restart clears it, same as
+`QueueDigest`.
+
+**Bash writes are missed, deliberately.** Statically parsing a shell command
+for write targets is the guess the mandatory-claims spec already declined to
+dress up as complete (`2026-08-07-aegis-mandatory-file-claims-design.md`,
+"the Bash rule inverts"). A `sed -i` will not register its repo. Under-
+reporting is the right failure here: a row that appeared because a heuristic
+misread a `>` inside a quoted string would make the whole section untrusted.
+
+## Repo identity
+
+The **repo root path** — the nearest ancestor containing `.git` — is the
+identity; the basename is what gets displayed. This resolves the workspace's
+nesting correctly with no special cases: `repos/aegis/src/...` → `aegis`,
+`vault/Calendar/...` → `Workspace`.
+
+Two checkouts sharing a basename (a `git worktree`) are distinct rows,
+disambiguated by parent directory. A `.git` **file** rather than a directory
+(worktree, submodule) is resolved through its `gitdir:` pointer.
+
+A path with no `.git` ancestor produces no row at all, which is what keeps
+writes to `/tmp` and `~/.cache` off the board.
+
+## Components
+
+New package `src/aegis/repos/`, in the shape `src/aegis/plan/` already uses
+(models + tracker + pure renderer):
+
+### `models.py`
+
+`RepoState` — root path, branch, ahead, behind, dirty count, in-progress
+flag, `stale: bool`. `RepoView` — the render row: a `RepoState` plus the set
+of live writer handles.
+
+### `tracker.py` — `RepoTracker`
+
+App-owned, one instance, `subscribe(cb)` in the shape `MonitorManager`
+already uses so the pane's `on_mount` has somewhere familiar to hang.
+
+- `record(handle, path)` — resolve to repo root, add the handle, bump recency.
+- `drop(handle)` — on session close; removes the row when it was the last writer.
+- `snapshot(for_handle)` — `RepoView`s with the mark resolved for that pane.
+
+### `probe.py`
+
+One `git status --porcelain=v2 --branch` per repo returns branch, upstream,
+ahead/behind, and the dirty list in a **single** subprocess, so the design
+question is never "which fields" but "do we shell out at all."
+
+Off the UI thread, into a cache with a ~5s TTL. `git status` over the
+workspace tree (vault plus thousands of files) can take a couple of hundred
+milliseconds and a paint must never wait on it.
+
+### `render.py`
+
+`render_repos(views, palette, width) -> Text | None`. Pure, no Textual
+import, tested as a plain function — the property that makes `fit.py` and
+`plan/render.py` trustworthy. `None` when the list is empty, which is how
+every section in this column stays honest.
+
+### `tui/sidebar.py`
+
+A `repos: list[RepoView]` field on `SidebarModel` and a `_repos()` section
+composer, calling `render_repos` the way `_plan()` calls `render_plan_dock`
+— trimming at the composition site rather than in the renderer, so the
+renderer keeps its own contract in its own test.
+
+## Data flow
+
+The TUI has no unified `SessionManager` — panes construct `AgentSession`
+directly (`tui/pane.py:841`). So the recording hook goes **inside
+`AgentSession`**, where `PlanTracker` already lives: on a `ToolUse` for a
+write tool, call `tracker.record(self.handle, file_path)`. The app passes
+its one `RepoTracker` at construction.
+
+That placement earns headless and queue-worker sessions for free, without a
+second observer chain, and it is the same seam that made plan state
+first-class session state rather than a TUI concern.
+
+`pane.py` subscribes the tracker in `on_mount` alongside `_digest` and
+`_monitor_manager`, and releases it in `on_unmount`. Both of those managers
+outlive any one pane and a leaked handle is a cost this file has already
+paid once.
+
+**A hidden sidebar no-ops**, and no probe runs at all while it is closed.
+The closed mode costs one branch per event, not a second render tree — the
+discipline `PlanDock.refresh_plan` and `PlanStrip._tick` already use.
+
+## Error handling
+
+Every case below degrades rather than lies:
+
+| case | behaviour |
+|---|---|
+| no `.git` ancestor | no row |
+| `git` not on `PATH` | branch only, read from `.git/HEAD`; no counts, no flag |
+| probe times out (3s) or exits non-zero | keep last known values, render dim, `stale: true` |
+| first paint after a repo enters | branch from `.git/HEAD` (free); counts fill in next tick |
+| remote-host session | row reads `warden@vps`; no branch, no counts, never probed |
+| sidebar closed | no probe at all |
+
+The remote-host rule is not a nicety. A path from a `vps` session names a
+file on that machine; running `git status` against the identically-named
+local path returns a **silently wrong answer** rather than an error, which is
+exactly the reasoning `Claim.host` and `render_shared.file_target` already
+encode.
+
+## Testing
+
+- **`render_repos`** — pure. Tier selection, the `●`/`·` mark, the amber
+  multi-writer row, the empty-list `None`, the tier-5 truncation of a long
+  repo name, 26 versus 60 columns. Plain-text assertions via the existing
+  `strip_markup`.
+- **`RepoTracker`** — fake `ToolUse` events in, membership and attribution
+  out. `drop` removes the handle, and removes the row when it was the last
+  writer. Recency ordering.
+- **`probe`** against a **real temporary git repo** — `init`, commit, dirty a
+  file, add a local upstream and commit ahead of it, detach `HEAD`. Not
+  mocked. A mocked probe asserts my model of `--porcelain=v2`, which is the
+  part most likely to be wrong, and would stay green while the real parse
+  broke.
+- **The section in an open sidebar** — assert the row is *actually rendered*
+  for a real temp repo, and that the section is absent when nothing has been
+  written. Mutation-check the absent case: break it and confirm the test goes
+  red. This is the one that matters; the pure functions will be right.
+
+## Deliberately out of scope
+
+- **The web client renders no `REPOS`** — same call as the sidebar itself and
+  the live task list, recorded as debt in `TASKS.md` rather than quietly
+  dropped.
+- **Bash write detection**, per the membership rule above.
+- **Acting on a row.** No click-to-commit, no click-to-open. A dashboard
+  section that reports is a smaller thing than one that mutates a repo, and
+  the second is a different feature.
