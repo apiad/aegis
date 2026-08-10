@@ -67,6 +67,15 @@ happening, nothing runs.
 If the worker errors, the callback header reports `error` instead of
 `ok`, and the body carries the error reason.
 
+**Every ending carries the worker's last message.** A cancelled task
+(`aegis_cancel`) and a task interrupted by a restart both report the
+outcome *and* whatever the worker had already said, rather than the bare
+word `cancelled` or a canned restart notice — a worker that did twenty
+minutes of work and said so should not reach its producer as one word.
+The same text lands on the task's `result`, so `aegis_task_status` shows
+it too. Nothing is invented: a worker that had said nothing yet gets a
+callback that says exactly that.
+
 ## Restart safety
 
 On startup the substrate replays each queue's JSONL log

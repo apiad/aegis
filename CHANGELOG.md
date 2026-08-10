@@ -7,6 +7,56 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **A queue callback carries the worker's last *message*, not its last
+  chunk.** Assistant text arrives as a token stream — one message is many
+  events, which is the entire reason `render.coalesce_chunks` exists — and
+  the queue captured "the last `AssistantText`" by overwriting on each one.
+  So a worker that signed off with *"Fixed the deadlock in storage.py;
+  suite is green."* reported back to its producer as **`"green."`**. Short
+  single-chunk replies came through intact, which is why this survived: the
+  bug is invisible exactly until the worker has something substantial to
+  say. Chunks now accumulate by `message_id`, with the same run rule
+  `coalesce_chunks` uses — adjacent events with equal ids are one message
+  (equal includes both `None`, the pre-slice-2 claude case), and any other
+  event ends the run, without which an id-less driver would concatenate the
+  worker's whole monologue.
+
+  The same capture also folded in **subagent narration**. `capture_next_reply`
+  states the rule — "a peer that runs a `Task` must not fold its subagent's
+  commentary into the answer the operator reads" — and the queue was the one
+  capture path in the codebase that never applied it, so a worker that
+  dispatched a `Task` could report its subagent's chatter back to the
+  producer as its own answer. Events carrying a `parent_tool_use_id` are now
+  skipped (skipped, not treated as an intervening event — ending the run
+  there would truncate the worker's own message whenever a subagent spoke
+  mid-stream), which also keeps the queue dashboard's tail in the worker's
+  own voice.
+
+- **A queue callback carries what the worker actually said.** The task
+  result *is* the worker's final assistant text — that is the contract
+  `aegis_enqueue` sells ("phrase the payload so the worker's natural final
+  answer is the thing you want back"). Two paths that end a worker threw
+  it away:
+
+  - **`cancel()`** sent the producer the literal string `"cancelled"`. A
+    worker that had done twenty minutes of work and said so was reduced to
+    one word, and the producer had no way to know anything had happened.
+    The body now leads with the outcome and carries the last message under
+    it, and the text is recorded as the task's `result` so
+    `aegis_task_status` shows it too.
+  - **`_mark_interrupted()`** (boot replay after a crash) sent only the
+    restart notice. The `deferred` record now persists the worker's last
+    text — the one point at which a *live* worker's words reach disk — so
+    a worker that was waiting when the process died still reports back.
+
+  A worker that ends having emitted no assistant text at all (tool calls
+  only) used to produce an **empty** callback body, which in an inbox is
+  indistinguishable from a message that failed to render. It now says what
+  happened. Nothing invents a quote for a worker that said nothing: each
+  path passes its own honest note for the empty case ("never dispatched",
+  "the worker had not said anything yet", "nothing of the worker survived
+  the restart").
+
 - **A queue worker that armed a waker no longer dies at its turn
   boundary.** Ending a turn is how an agent *waits* — the monitor briefing
   says so outright ("returns `{monitor_id}` immediately; END YOUR TURN") —

@@ -223,6 +223,31 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   finalizer's `except` around the probe **logs** rather than swallows:
   a bare one hid an `AttributeError` from `gather_facts` and made the
   fix read as inert against its own failing tests.
+  **Assistant text is a token stream, so the result accumulates by
+  `message_id`** — overwriting on each `AssistantText` captured the last
+  *chunk*, and a worker signing off with a full sentence reported back as
+  its last two words. `on_event` follows `coalesce_chunks`'s run rule
+  (equal ids — including both `None` — continue a message; any other event
+  ends it); the open run lives in `_chunk_run`, beside `_workers` rather
+  than inside its tuple so the `(task, last_text)` shape every other call
+  site unpacks stays a 2-tuple. The `_assistant_text_hook` still gets the
+  raw chunk on purpose: the digest keeps a rolling tail of fragments, and
+  feeding it the accumulation would render "Fixed", "Fixed the", …
+  Events with a `parent_tool_use_id` are **skipped** — a subagent's
+  narration is not the worker's answer (`capture_next_reply` has said so
+  since `@peer` shipped; the queue was the one capture path that never
+  checked). Skipped rather than ending the run: doing the latter
+  truncates the worker's own message whenever a subagent speaks
+  mid-stream.
+  **Every path that ends a worker owes the producer its last message** —
+  `_with_last_message` composes outcome + text for `cancel` and
+  `_mark_interrupted`, which used to send the bare word `"cancelled"` and
+  a canned restart notice. It takes an explicit `none_note` rather than
+  defaulting to silence, because an empty callback body in an inbox reads
+  as a message that failed to render and a fabricated quote is worse. The
+  `deferred` record persists `last_text` because it is the only point at
+  which a *live* worker's words reach disk, and so the only thing crash
+  replay has to hand back.
   `QueueManager` (FIFO + max-parallel cap + substrate-deterministic
   dispatch on every enqueue/completion event; JSONL lifecycle log
   under `.aegis/state/queues/<queue>.jsonl`; `start()` replays on

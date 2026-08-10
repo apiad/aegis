@@ -47,6 +47,34 @@ from aegis.tui.state import AgentState
 _LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed",
                                "failed"})
 
+# "no assistant-text run is open for this worker". Distinct from a run
+# whose message_id is None, which is a real run (the pre-slice-2 claude
+# case, where chunks carry no id and adjacency is the only signal).
+_NO_RUN = object()
+
+
+def _with_last_message(headline: str, last_text: str, *, none_note: str
+                       ) -> str:
+    """A callback body that carries what the worker actually said.
+
+    The task result IS the worker's final assistant text — that is the
+    contract ``aegis_enqueue`` sells. When a worker ends some way other
+    than finishing (cancelled, or interrupted by a restart), the outcome
+    alone is not a substitute: a worker that had done twenty minutes of
+    work and said so was reduced to the string "cancelled", and the
+    producer could not tell that anything had happened at all.
+
+    The headline stays first so a producer reading only the opening words
+    still learns the task did not finish, and ``none_note`` is why this
+    takes an explicit one rather than defaulting to silence — an empty
+    body in an inbox reads as a message that failed to render, and
+    inventing a quote for a worker that said nothing is worse.
+    """
+    text = (last_text or "").strip()
+    if not text:
+        return f"{headline} ({none_note})"
+    return f"{headline} — the worker's last message was:\n\n{text}"
+
 
 def _adapt_metrics(metrics):
     """Map SessionMetrics committed counters to cost.compute's expected
@@ -88,6 +116,11 @@ class QueueManager:
         self._all: dict[str, Task] = {}
         # per-worker result accumulators: handle -> (task, last_assistant_text)
         self._workers: dict[str, tuple[Task, str]] = {}
+        # worker handle -> the message_id of the assistant-text run
+        # currently open for it, or _NO_RUN. Kept beside _workers rather
+        # than inside its tuple so the (task, last_text) shape every
+        # other call site unpacks stays a 2-tuple.
+        self._chunk_run: dict[str, object] = {}
         # lifecycle observers — see subscribe()
         self._observers: list[QueueObserver] = []
         # optional sink for live assistant-text forwarding (e.g. QueueDigest)
@@ -239,33 +272,42 @@ class QueueManager:
             return {"ok": True, "status": t.status, "note": "already terminal"}
 
         worker_handle = t.worker_handle
+        last_text = ""
         if t.status == "pending":
             self._pending[t.queue] = [
                 x for x in self._pending[t.queue] if x.id != task_id]
         else:  # dispatched / in-flight
             # Pop from _workers first so any finalize the close triggers
-            # early-returns and can't overwrite the cancelled status.
-            self._workers.pop(worker_handle, None)
+            # early-returns and can't overwrite the cancelled status —
+            # but read its last text on the way out. Cancelling is not a
+            # reason to throw away everything the worker had already said.
+            _, last_text = self._workers.pop(worker_handle, (None, ""))
+            self._chunk_run.pop(worker_handle, None)
             self._inflight[t.queue] = [
                 x for x in self._inflight[t.queue] if x.id != task_id]
 
+        body = _with_last_message(
+            "cancelled", last_text,
+            none_note=("never dispatched" if t.status == "pending"
+                       else "the worker had not said anything yet"))
         cancelled = Task(**{**t.__dict__,
                             "status": "cancelled",
+                            "result": last_text or None,
                             "completed_at": self._now()})
         self._all[task_id] = cancelled
         self._log(t.queue, {
             "event": "failed", "task_id": task_id,
-            "result": None, "error": "cancelled",
+            "result": cancelled.result, "error": "cancelled",
             "completed_at": cancelled.completed_at, "cost": {}})
         self._emit(QueueCompleted(
             task_id=task_id, queue=t.queue, outcome="interrupted",
-            result=None, error="cancelled",
+            result=cancelled.result, error="cancelled",
             completed_at=cancelled.completed_at))
         if t.callback:
             msg = InboxMessage(
                 sender=sender_queue(t.queue),
                 timestamp=self._now(),
-                body="cancelled",
+                body=body,
                 task_id=task_id,
                 status="error")
             await self._inbox.deliver(_handle_of(t.enqueued_by), msg)
@@ -387,14 +429,52 @@ class QueueManager:
         # the TUI's ConversationPane._core, whose renderer cannot be
         # clobbered.
         def on_event(_s, ev):
+            h = session.handle
             if isinstance(ev, AssistantText):
-                t, _last = self._workers[session.handle]
-                self._workers[session.handle] = (t, ev.text)
+                if h not in self._workers:
+                    return
+                # A subagent's narration is not the worker's answer.
+                # `capture_next_reply` states the rule — "a peer that runs
+                # a Task must not fold its subagent's commentary into the
+                # answer the operator reads" — and the queue was the one
+                # capture path that never applied it, so a producer's
+                # callback could be the subagent talking. Skipped rather
+                # than treated as an intervening event: ending the run
+                # here would truncate the worker's own message whenever a
+                # subagent spoke mid-stream. The digest hook below sits
+                # behind this too, so the dashboard tail is the worker's
+                # own voice rather than its subagents' interleaved.
+                if getattr(ev, "parent_tool_use_id", None) is not None:
+                    return
+                t, last = self._workers[h]
+                # Assistant text arrives as a TOKEN STREAM — one message
+                # is many events, which is the whole reason
+                # `render.coalesce_chunks` exists. Overwriting on each
+                # one captured the last *chunk*, so a worker that ended
+                # with "Fixed the deadlock in storage.py; suite is
+                # green." reported back to its producer as "green.".
+                #
+                # Same run rule as coalesce_chunks: adjacent events with
+                # equal message_id are one message (equal includes both
+                # None, the pre-slice-2 claude case), and any other event
+                # ends the run — without that, an id-less driver would
+                # concatenate the worker's entire monologue.
+                mid = getattr(ev, "message_id", None)
+                run = self._chunk_run.get(h, _NO_RUN)
+                same = run is not _NO_RUN and run == mid
+                self._workers[h] = (t, (last + ev.text) if same else ev.text)
+                self._chunk_run[h] = mid
                 if self._assistant_text_hook is not None:
                     try:
-                        self._assistant_text_hook(session.handle, ev.text)
+                        # The raw chunk, deliberately: the digest keeps a
+                        # rolling tail of fragments, and feeding it the
+                        # accumulation would show "Fixed", "Fixed the",
+                        # "Fixed the deadlock", …
+                        self._assistant_text_hook(h, ev.text)
                     except Exception:  # noqa: BLE001
                         pass
+            else:
+                self._chunk_run[h] = _NO_RUN
 
         def on_state(_s, st, finished):
             if not finished:
@@ -446,13 +526,18 @@ class QueueManager:
             # is waiting on wakes it, that turn ends, and this runs again
             # — every deferring condition is self-terminating, which is
             # why `claims` is deliberately not one of them.
-            task, _ = self._workers[session.handle]
+            task, said = self._workers[session.handle]
             self._log(task.queue, {
                 "event": "deferred", "task_id": task.id,
                 "worker_handle": session.handle,
-                "waiting_on": waiting, "at": self._now()})
+                "waiting_on": waiting, "at": self._now(),
+                # The only point at which a live worker's words reach
+                # disk. If the process dies while it is waiting, this is
+                # all `_mark_interrupted` will have to hand the producer.
+                "last_text": said})
             return
         task, last_text = self._workers.pop(session.handle)
+        self._chunk_run.pop(session.handle, None)
         ok = (st is AgentState.ready)
         status = "completed" if ok else "failed"
         result = last_text if ok else None
@@ -487,7 +572,13 @@ class QueueManager:
             result=result, error=error,
             completed_at=completed.completed_at))
         if task.callback:
-            body = result if ok else (error or "")
+            # A worker can finish cleanly having emitted only tool calls.
+            # An empty body in an inbox reads as a message that failed to
+            # render, so say what happened rather than nothing.
+            body = (result or "") if ok else (error or "")
+            if not body.strip():
+                body = ("the worker finished without a final message"
+                        if ok else "the worker exited with no message")
             msg = InboxMessage(
                 sender=sender_queue(task.queue),
                 timestamp=self._now(),
@@ -583,7 +674,7 @@ class QueueManager:
             callback=bool(last.get("callback", False)),
             status="failed",
             worker_handle=last.get("worker_handle"),
-            result=None,
+            result=last.get("last_text") or None,
             error="interrupted: aegis restarted mid-flight",
             completed_at=self._now())
         self._all[tid] = completed
@@ -600,7 +691,13 @@ class QueueManager:
             msg = InboxMessage(
                 sender=sender_queue(queue),
                 timestamp=self._now(),
-                body=completed.error or "",
+                # Whatever the log kept of the worker before the process
+                # died — written by the `deferred` record, so a worker
+                # that was waiting has words here and one that never
+                # reached a turn boundary honestly has none.
+                body=_with_last_message(
+                    completed.error or "interrupted", last.get("last_text", ""),
+                    none_note="nothing of the worker survived the restart"),
                 task_id=tid,
                 status="error")
             await self._inbox.deliver(
