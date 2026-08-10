@@ -281,6 +281,13 @@ class SessionMetrics:
                 body_short = f"[{tag}]{body_short}[/{tag}]"
             ctx = f"{body} · "
             ctx_short = f"{body_short} · "
+        # Compaction counter. T0/T1 only — a context-integrity signal, not
+        # a per-turn one. `✂` is EAW=Neutral (cell_len 1), which matters
+        # because fit.plain_width measures with len().
+        cut = ""
+        if self.compaction_count > 0:
+            cut_tag = "$error" if self.compaction_count >= 2 else "$warning"
+            cut = f"[{cut_tag}]✂{self.compaction_count}[/{cut_tag}] · "
         cost = self._render_cost()
         tps = self.recent_tps()
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
@@ -290,8 +297,8 @@ class SessionMetrics:
         head_full = f"{head} ({pct}% cached) ↓{_fmt_tokens(out)}{think_seg} · "
         head_bare = f"{head} ↓{_fmt_tokens(out)} · "
         return (
-            f"{head_full}{tps_seg}{ctx}{cost}{tool} · {turn} / {session}",
-            f"{head_full}{ctx}{cost}{turn} / {session}",
+            f"{head_full}{tps_seg}{ctx}{cost}{cut}{tool} · {turn} / {session}",
+            f"{head_full}{ctx}{cost}{cut}{turn} / {session}",
             f"{head_bare}{ctx_short}{cost}{turn} / {session}",
             f"{head_bare}{cost}{turn}".rstrip(" ·"),
         )

@@ -495,3 +495,36 @@ def test_render_tiers_still_returns_four_tiers():
     fifth, narrower variant of the whole bar."""
     m = SessionMetrics(context_window=200_000, last_true_input=160_000)
     assert len(m.render_tiers(now=0.0)) == 4
+
+
+# --- compaction counter segment ---------------------------------------
+
+def test_no_scissors_segment_when_nothing_compacted():
+    m = SessionMetrics(context_window=200_000, last_true_input=40_000)
+    assert "✂" not in m.render_tiers(now=0.0)[0]
+
+
+def test_scissors_segment_in_t0_and_t1_only():
+    """It is a context-integrity signal, not a turn-by-turn one, so it
+    drops out before the numbers you act on every turn."""
+    m = SessionMetrics(context_window=200_000, last_true_input=40_000,
+                       compaction_count=2)
+    t0, t1, t2, t3 = m.render_tiers(now=0.0)
+    assert "✂2" in t0
+    assert "✂2" in t1
+    assert "✂" not in t2
+    assert "✂" not in t3
+
+
+def test_scissors_is_yellow_at_one_and_red_at_two():
+    one = SessionMetrics(context_window=200_000, compaction_count=1)
+    assert "[$warning]✂1[/$warning]" in one.render_tiers(now=0.0)[0]
+    two = SessionMetrics(context_window=200_000, compaction_count=2)
+    assert "[$error]✂2[/$error]" in two.render_tiers(now=0.0)[0]
+
+
+def test_scissors_glyph_is_single_width():
+    """fit.plain_width counts characters after stripping markup, so a
+    double-width glyph would overflow the bar by one column per use."""
+    from rich.cells import cell_len
+    assert cell_len("✂") == 1

@@ -357,7 +357,7 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
     """
     import typing
     from aegis.events import Event, UserMessage, ContextUpdate, ThinkingTokens
-    from aegis.events import SessionMeta, SessionClosed
+    from aegis.events import SessionMeta, SessionClosed, CompactBoundary
     from aegis.render import renders_to_nothing
 
     samples = [
@@ -370,6 +370,12 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
         ToolResult(text="ok", is_error=False),
         AgentPlan(entries=(PlanEntry(content="do it", status="pending"),)),
         ContextUpdate(),
+        # Renders to nothing on purpose: the compaction boundary drives the
+        # status-bar ✂ counter, not the transcript. A visual
+        # "── compacted ──" separator is deferred (see the design spec's
+        # out-of-scope list); it would be an addition to BOTH functions.
+        CompactBoundary(trigger="auto", pre_tokens=999_917,
+                        post_tokens=15_022),
         Result(duration_ms=1, is_error=False),
         UserMessage(text="work on aegis"),
         Unknown(raw="{}"),
