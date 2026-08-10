@@ -159,7 +159,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (pending.py), Theme registry + AegisColors role map (themes.py;
   `aegis-ink` default), and the `F3` **Sidebar** (sidebar.py) — the
   dashboard column holding SESSION / CONTEXT / PLAN / QUEUES / MONITORS /
-  SYSTEM, ordered by volatility because the panel scrolls. `F3` toggles a
+  REPOS / SYSTEM, ordered by volatility because the panel scrolls. `F3` toggles a
   *mode*, and the mode is **app-wide**: `AegisApp.sidebar_mode` is the one
   flag, `set_sidebar_mode` fans it out to every pane, and a pane adopts it
   in `on_mount` — so `F3`, `/tasks` and `pane.toggle_task_dock()` all move
@@ -266,6 +266,32 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   and a dock row is `glyph + space + label + space + a 6-cell clock`, so
   **the label budget is `width - 9`** while the widget's `size` is already
   the content box and must not have its padding subtracted again.
+- `src/aegis/repos/` - which git repos the live agents are writing to,
+  backing the `REPOS` section of the `F3` sidebar. `writes.py`
+  (`write_target` — Claude's write tools by name, ACP's by *kind*, since
+  every ACP harness titles its tools differently; Bash deliberately
+  excluded); `probe.py` (`find_repo_root` walks up for `.git`, which yields
+  the *nearest* root and so resolves `repos/aegis` inside a git-tracked
+  workspace to `aegis`; `probe_repo` folds one
+  `git status --porcelain=v2 --branch` into branch/ahead/behind/dirty plus
+  an in-progress-operation flag read off disk, and degrades to a `stale`
+  branch-only state on any failure rather than raising into a paint);
+  `tracker.py` (`RepoTracker` — app-owned, keyed `(host, root)`,
+  `record`/`drop`/`rename`/`snapshot`/`subscribe`, TTL-gated `refresh`
+  running probes in the executor); `render.py` (pure rows).
+  Three rules a contributor will otherwise break, each already paid for:
+  **the narrowest row tier truncates rather than being dropped** —
+  `fit_rows` omits a segment whose narrowest tier overflows, so a long repo
+  name makes the *row vanish*, which reads exactly like a repo nobody
+  touched; **the recording hook is `AgentSession._fire_event`, which the
+  replay walk does not call** — move it somewhere replay reaches and a
+  resumed session repopulates the board from its whole transcript; and
+  **an off-host path is never resolved against the local disk** — the same
+  string names a different tree there, so `git status` locally returns a
+  silently wrong answer rather than an error (same reasoning as
+  `Claim.host` and `render_shared.file_target`). The probe runs only while
+  the sidebar is open. Spec:
+  `docs/superpowers/specs/2026-08-10-aegis-sidebar-repos-section-design.md`.
 - `src/aegis/workflow/` - the workflow scaffold (v1). `@workflow`
   decorator + auto-registry (`decorator.py`); `WorkflowEngine` runtime
   with `delegate` (one-shot via queue), `send`/`drain` (live-agent

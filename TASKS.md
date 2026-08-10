@@ -173,9 +173,34 @@ go off the panel.
 call as the live task list's Task 12 and the session-title web gap below —
 three TUI-first features now owe the PWA the same debt, and `AGENTS.md`
 calls the two UIs co-equal. Worth doing as one web slice rather than three.
+The `REPOS` section below joins the same debt: four now, one slice.
 
 - Spec: `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md`
 - Plan: `docs/superpowers/plans/2026-08-07-aegis-f3-side-dashboard.md`
+
+### REPOS in the sidebar *(TUI complete 2026-08-10; web outstanding)*
+
+Which repos the live agents are writing to, on what branch, with dirty and
+ahead/behind counts, and a per-pane mark separating this agent from peers.
+Membership is learned from write tools only and keyed on `(host, root)`, so
+the same path on two machines is two rows rather than a phantom collision.
+
+Two things a contributor will otherwise break, both already paid for:
+
+- **The narrowest row tier truncates rather than being dropped.**
+  `fit_rows` answers "no tier fits" by omitting the segment, so without a
+  guaranteed-fitting floor a repo *disappears* because its name was long —
+  and a missing row reads exactly like a repo nobody touched.
+- **The recording hook is in `AgentSession._fire_event`, which the replay
+  walk does not call.** Move it somewhere the replay reaches and a resumed
+  session repopulates the board from its whole transcript, reporting agents
+  standing in repos nobody is in.
+
+**Outstanding: the web client renders no `REPOS`.** Rolls into the sidebar
+web slice above.
+
+- Spec: `docs/superpowers/specs/2026-08-10-aegis-sidebar-repos-section-design.md`
+- Plan: `docs/superpowers/plans/2026-08-10-aegis-sidebar-repos-section.md`
 
 ### Live task list *(TUI complete 2026-08-06; web outstanding)*
 

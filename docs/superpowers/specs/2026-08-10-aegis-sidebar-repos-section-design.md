@@ -1,7 +1,8 @@
 # F3 sidebar — REPOS section
 
-**Status:** design approved 2026-08-10; implementation plan at
+**Status:** implemented 2026-08-10; plan at
 `docs/superpowers/plans/2026-08-10-aegis-sidebar-repos-section.md`
+(one change during implementation — see *The mark*, below)
 **Scope:** TUI only. The web client is explicitly out of scope, same call
 the F3 sidebar itself made.
 **Extends** `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md`.
@@ -33,11 +34,11 @@ silently gets the old tree.
 One more section in the `F3` column, between `MONITORS` and `SYSTEM`:
 
 ```
-REPOS                       3
-● aegis        main    ~7 ↑2
-● Workspace    main    ~2
-· warden       feat/kv ~3  · calm-hopper
-! enciclopedia (detached) ~1
+REPOS                              2
+● aegis        main ~6 ↑6  calm-hopper
+● Workspace    main ~2
+· warden       feat/kv ~3  +1
+· enciclopedia (detached) ~1
 ```
 
 | element | meaning |
@@ -48,7 +49,23 @@ REPOS                       3
 | `●` in amber | more than one live writer — the collision |
 | `~n` | dirty files |
 | `↑n` / `↓n` | commits ahead of / behind upstream |
-| `!` | detached HEAD, or a rebase / merge / cherry-pick in flight |
+| `(detached)` / `(rebase)` | in the branch cell, in the error colour |
+
+### The mark
+
+**Changed during implementation.** The draft gave a detached or mid-rebase
+repo a third mark, `!`, in the column that otherwise carries `●`/`·`. That
+column answers *is anyone here*, and spending it on *what state is the repo
+in* answers a different question at the cost of the first — a repo you are
+writing to right now would stop saying so at exactly the moment it went
+detached.
+
+Both facts fit without competing: the mark stays `●`/`·`, and the alarming
+state goes in the **branch cell**, in `palette.err`, *replacing* the branch
+rather than annotating it. On a repo mid-rebase the branch name is the least
+true thing that could be printed there, so nothing is lost by the swap. The
+draft's mock also carried both `!` and `(detached)` on the same row, which
+was the redundancy that gave this away.
 
 Sorted **most-recently-written first**. The list is short (two to five rows
 in practice), so recency beats alphabetical: the repo you just wrote to is

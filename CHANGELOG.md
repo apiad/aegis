@@ -5,6 +5,49 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **`REPOS` in the `F3` sidebar — which repos the agents are writing to,
+  on what branch, and whether more than one is in there.** aegis runs many
+  agents over one checkout and nothing on screen said where they were
+  standing; two agents in one repo is the collision `src/aegis/locks/`
+  exists to prevent, and you found out at `git diff`, hours later.
+
+  ```
+  REPOS                              2
+  ● aegis        main ~6 ↑6  calm-hopper
+  ● Workspace    main ~2
+  ```
+
+  `●` is you, `·` is peers only, amber is more than one live writer. `~n`
+  is uncommitted files — how you spot the seven an agent left behind in a
+  repo it stopped working in an hour ago — and `↑n` is unpushed commits,
+  which is the "a VPS job clones `origin` and silently gets the old tree"
+  failure made visible. A detached `HEAD` or a rebase in flight replaces
+  the branch, in the error colour.
+
+  **Membership is writes only.** A repo enters when an agent runs `Write` /
+  `Edit` / `NotebookEdit` (ACP is recognised by tool *kind*, since every
+  harness on that seam picks its own titles) and stays for the life of that
+  session. Reads do not promote — otherwise every repo an agent merely
+  grepped shows up and the section stops meaning *work is happening here*.
+  Bash is missed on purpose: guessing write targets out of a shell command
+  is the heuristic the mandatory-claims spec already declined to dress up
+  as complete, and a row that appeared because something misread a `>`
+  inside a quoted string would make the whole section untrusted.
+
+  One `git status --porcelain=v2 --branch` per repo returns branch,
+  upstream, ahead/behind and the dirty list together. It runs off the UI
+  thread behind a 5s TTL, **only while the sidebar is open**, and a paint
+  never waits on it: a new row shows its branch immediately from
+  `.git/HEAD` (one file read) and fills in counts on the next tick. Repos
+  on a remote host are listed and never probed — the same path names a
+  different tree there, so `git status` locally would be a silently wrong
+  answer rather than an error.
+
+  TUI only; the web client renders no `REPOS`, the same debt the sidebar
+  itself and the live task list already owe.
+
 ### Changed
 
 - **`F3` is one mode for the whole app, not a per-tab widget.** The
