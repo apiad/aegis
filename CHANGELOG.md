@@ -7,6 +7,42 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **`/spawn <agent> <prompt>` now carries where you were standing.** Typed
+  from a live pane, the new agent's opening turn gets the same three things
+  `@peer` sends: provenance of *place* ("the operator started you from tab
+  `alpha` (opus)"), a bounded tail of that pane's transcript, and a pointer
+  to `aegis_read_peer("alpha")` for the rest. So `/spawn opus please verify
+  this test` now means something — the new agent can see which test, and go
+  read the conversation if the tail is not enough.
+
+  It closes the last row of the context-carrying table. `aegis_handoff`
+  carries nothing and you retype it; `@peer` carries a bounded slice to an
+  idle peer; `/fork` carries the entire conversation for about a dollar;
+  `/spawn` carried nothing at all, which is why a fresh agent's first four
+  turns went to grepping for a referent that was one log read away.
+
+  One thing inverts on purpose. `@peer` tells its target *not* to start long
+  work — it is spending someone else's idle turn. A spawn is the opposite:
+  paying for a new agent is exactly buying one that goes and does the thing,
+  so the composed body says do the work, and offers `aegis_handoff` back to
+  the source as the way home.
+
+  The tail is assembled at the **teaser** budget (2k tokens), not
+  `read_peer`'s own 24k default. Measured on a real 410KB transcript, the
+  wide budget turned a 3-turn window into 95,346 characters of preamble in
+  front of the three words the operator typed — and the turn bound does not
+  save you, because one long in-flight turn is a single turn. `read_peer`
+  grew `budget_tokens` / `item_chars` on both bridges for this, pinned by
+  `test_read_peer_takes_the_same_window_knobs_on_both_bridges`.
+
+  The preamble rides on the tail: a pane whose first input is the `/spawn`
+  itself, a damaged log, or a bridge without `read_peer` all fall back to
+  the bare prompt, because provenance pointing at a transcript nobody can
+  read buys the new agent a failed tool call and a paragraph of confusion.
+  `aegis_spawn` over MCP is unchanged — an agent calling it is told to write
+  a self-contained payload and has the context to do so. Spec:
+  `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`.
+
 - **`REPOS` in the `F3` sidebar — which repos the agents are writing to,
   on what branch, and whether more than one is in there.** aegis runs many
   agents over one checkout and nothing on screen said where they were

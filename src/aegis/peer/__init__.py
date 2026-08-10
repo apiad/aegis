@@ -158,7 +158,9 @@ async def teaser(state_dir, log_id):
         return None
 
 
-async def read_window(state_dir, log_id, turns: int = 12) -> dict:
+async def read_window(state_dir, log_id, turns: int = 12,
+                      budget_tokens: int | None = None,
+                      item_chars: int | None = None) -> dict:
     """Window a peer's transcript for ``aegis_read_peer``.
 
     Unlocks nothing: the logs are plain JSONL inside the project root and
@@ -166,6 +168,13 @@ async def read_window(state_dir, log_id, turns: int = 12) -> dict:
     — the log id carries the session's **birth** handle and is never
     renamed, so current-handle → file is not derivable by an agent that
     only knows who it is talking to.
+
+    ``budget_tokens`` / ``item_chars`` default to the READ pair — the
+    wide window, which is the whole point of the pull. `/spawn` passes
+    the TEASER pair instead, because it is *pushing*: measured on a real
+    410KB transcript, the READ budget turned a 3-turn window into 95,346
+    chars, and the turn bound does not save you when one long in-flight
+    turn is a single turn.
     """
     import asyncio
 
@@ -178,8 +187,8 @@ async def read_window(state_dir, log_id, turns: int = 12) -> dict:
         replay = await asyncio.to_thread(
             session_log.replay_events, state_dir, log_id)
         w = assemble(replay, max_turns=turns,
-                     budget_tokens=READ_BUDGET_TOKENS,
-                     item_chars=READ_ITEM_CHARS)
+                     budget_tokens=budget_tokens or READ_BUDGET_TOKENS,
+                     item_chars=item_chars or READ_ITEM_CHARS)
     except Exception as e:                                    # noqa: BLE001
         return {"ok": False, "text": "", "header": "",
                 "error": f"could not read the transcript: {e}"}
@@ -263,6 +272,45 @@ def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
         f"rather than an answer, say so and stop, and the operator will "
         f"delegate it properly.\n\n"
         f"The operator's question: {prompt}"
+    )
+
+
+def compose_spawn(*, source: str, slug: str, prompt: str,
+                  tail: str, header: str) -> str:
+    """The opening turn a `/spawn <prompt>` hands its new agent.
+
+    Same three jobs as ``compose`` — provenance of *place, not author*, a
+    bounded tail, and a pull pointer whose burden sits on answering
+    without reading — with one deliberate inversion at the end.
+
+    ``compose`` tells a peer *not* to start long work: it is spending an
+    idle peer's turn, and a peer that wanders off has stopped being idle
+    for whoever needed it next. A spawn is the opposite — paying for a
+    new agent is exactly buying one that goes and does the thing — so
+    this says do the work, and offers the way back the peer path does not
+    need (a peer answers into the ask; a spawned agent's result lands
+    nowhere unless it hands off).
+
+    Takes the tail as two strings rather than a ``Window`` because it is
+    fed across the ``read_peer`` dict seam. Callers pass a tail or do not
+    call: the preamble rides on it, and pointing a fresh agent at a
+    transcript nobody can read buys it a failed tool call.
+
+    Spec: ``docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md``
+    """
+    return (
+        f"The operator started you from inside another conversation — tab "
+        f"`{source}` ({slug}) — and this probably refers to what is "
+        f"happening there. Below is the recent tail of it — {header}.\n\n"
+        f"--- tail of {source} ---\n{tail}\n--- end ---\n\n"
+        f'Read the fuller conversation with aegis_read_peer("{source}") '
+        f"before you start, unless the task is plainly self-contained. "
+        f"That tail is a snapshot taken when you were spawned; `{source}` "
+        f"has kept going since.\n\n"
+        f"Then do the work — you are a real agent with your own tab, not "
+        f"a question being answered. When you are done, hand the result "
+        f'back with aegis_handoff to "{source}" if it matters there.\n\n'
+        f"The operator's task: {prompt}"
     )
 
 

@@ -380,7 +380,9 @@ class SessionManager:
             # "unknown session: peer".
             live=self.list_sessions())
 
-    async def read_peer(self, handle: str, turns: int = 12) -> dict:
+    async def read_peer(self, handle: str, turns: int = 12,
+                        budget_tokens: int | None = None,
+                        item_chars: int | None = None) -> dict:
         """AppBridge-shaped: window a live peer's transcript."""
         from aegis.peer import read_window
         s = self.get(handle)
@@ -388,7 +390,8 @@ class SessionManager:
             return {"ok": False, "text": "", "header": "",
                     "error": f"unknown session: {handle}"}
         return await read_window(self._persist_dir or self.state_root,
-                                 getattr(s, "log_id", None), turns)
+                                 getattr(s, "log_id", None), turns,
+                                 budget_tokens, item_chars)
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:

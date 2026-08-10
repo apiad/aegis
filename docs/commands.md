@@ -212,7 +212,7 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/help` | List every command (`usage — summary`), grouped by source. |
 | `/sessions` | List live agent sessions; mark the active one. |
 | `/agents [add … \| remove <slug>]` | List / add / remove agent profiles. |
-| `/spawn <agent>[@host[:cwd]] [prompt]` | Start a new top-level agent with an optional opening prompt. `@host` runs its harness on another machine — see [Execution hosts](hosts.md); `:cwd` overrides that host's default working tree. |
+| `/spawn <agent>[@host[:cwd]] [prompt]` | Start a new top-level agent, **from where you're standing**: with a prompt, the new agent also gets where it was spawned from, a bounded tail of this pane's transcript, and `aegis_read_peer` to pull the rest — so `/spawn opus please verify this test` knows which test. `@host` runs its harness on another machine — see [Execution hosts](hosts.md); `:cwd` overrides that host's default working tree. |
 | `/fork [prompt] [--slug S] [--model M] [--effort E]` | Branch this conversation into a new tab — a worker that already knows. Refused mid-turn; the parent is left untouched. ~$1 a fork. |
 | `/btw <question>` | Answer a side question from this pane's recent window and disappear. Legal mid-turn; never appended to the session log. Deferred — `Esc` cancels. |
 | `/peer <handle> [--cc] <question>` | Ask an **idle** peer, from where you're standing. `@handle …` is sugar for it. `--cc` also lands the answer in your own conversation. Deferred. |

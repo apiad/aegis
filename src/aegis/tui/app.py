@@ -1717,7 +1717,9 @@ class AegisApp(App):
             # "unknown session: peer".
             live=self.list_sessions())
 
-    async def read_peer(self, handle: str, turns: int = 12) -> dict:
+    async def read_peer(self, handle: str, turns: int = 12,
+                        budget_tokens: int | None = None,
+                        item_chars: int | None = None) -> dict:
         """AppBridge-shaped: window a live peer's transcript.
 
         Deliberately NOT on the AppBridge Protocol — the MCP tool resolves
@@ -1734,7 +1736,8 @@ class AegisApp(App):
         if pane is None:
             return {"ok": False, "text": "", "header": "",
                     "error": f"unknown session: {handle}"}
-        return await read_window(self._state_dir, pane.log_id, turns)
+        return await read_window(self._state_dir, pane.log_id, turns,
+                                 budget_tokens, item_chars)
 
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""

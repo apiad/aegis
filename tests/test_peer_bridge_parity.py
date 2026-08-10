@@ -116,3 +116,16 @@ def test_both_bridges_implement_the_same_peer_surface(method):
     be told this frontend cannot read peer transcripts."""
     assert hasattr(AegisApp, method), f"AegisApp is missing {method}"
     assert hasattr(SessionManager, method), f"SessionManager is missing {method}"
+
+
+def test_read_peer_takes_the_same_window_knobs_on_both_bridges():
+    """`/spawn` asks `read_peer` for a *teaser*-sized window, not the
+    24k default one — and swallows the failure, so a bridge whose
+    `read_peer` does not take those knobs would silently drop the
+    provenance preamble in that frontend only. Same class of bug as
+    `peer_ask` above, one seam over."""
+    tui = set(inspect.signature(AegisApp.read_peer).parameters)
+    web = set(inspect.signature(SessionManager.read_peer).parameters)
+    assert tui == web, (f"only in SessionManager: {sorted(web - tui)}; "
+                        f"only in AegisApp: {sorted(tui - web)}")
+    assert {"budget_tokens", "item_chars"} <= tui

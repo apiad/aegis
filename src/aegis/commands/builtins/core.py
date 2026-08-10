@@ -164,6 +164,56 @@ async def _agents_remove(ctx: CommandContext, args) -> CommandResult:
                          "profile")
 
 
+async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
+    """The new agent's first turn: the operator's words, plus where they
+    were standing when they typed them.
+
+    `/spawn opus please verify this test` used to hand a fresh agent three
+    words and no referent — the one row of the context-carrying table
+    (handoff / @peer / fork / spawn) that arrived blind. This closes it
+    with `@peer`'s machinery: a bounded tail of the source transcript and
+    a pointer to `aegis_read_peer` for the rest.
+
+    ``read_peer`` is reused rather than growing a second bridge method:
+    both ``AppBridge`` implementations already have it and both are
+    already correct, and the TUI's ``peer_ask`` shipped a degraded path
+    three times by being a second copy of a call ``SessionManager`` got
+    right.
+
+    Every failure returns the bare prompt. The preamble rides on the
+    tail — a pane whose first input is this `/spawn`, a bridge with no
+    ``read_peer``, a damaged log — because provenance pointing at a
+    transcript nobody can read buys the new agent a failed tool call and
+    a paragraph of confusion.
+    """
+    from aegis.peer import (
+        TEASER_BUDGET_TOKENS, TEASER_ITEM_CHARS, TEASER_MAX_TURNS,
+        compose_spawn,
+    )
+    read = getattr(ctx.bridge, "read_peer", None)
+    if read is None or not ctx.handle:
+        return prompt
+    try:
+        # The TEASER pair, not `read_peer`'s own READ defaults: this is a
+        # push, and the READ budget measured 95,346 chars of preamble on
+        # a real 410KB transcript. `test_read_peer_takes_the_same_window_
+        # knobs_on_both_bridges` pins both bridges accepting them, since
+        # the except below would otherwise turn a signature drift into a
+        # silently missing preamble in one frontend.
+        window = await read(ctx.handle, TEASER_MAX_TURNS,
+                            budget_tokens=TEASER_BUDGET_TOKENS,
+                            item_chars=TEASER_ITEM_CHARS)
+    except Exception:                                         # noqa: BLE001
+        return prompt
+    if not window.get("ok") or not window.get("text"):
+        return prompt
+    slug = next((s.agent_slug for s in ctx.bridge.list_sessions()
+                 if s.handle == ctx.handle), "")
+    return compose_spawn(source=ctx.handle, slug=slug or "unknown",
+                         prompt=prompt, tail=window["text"],
+                         header=window.get("header", ""))
+
+
 async def _spawn(ctx: CommandContext, args) -> CommandResult:
     from aegis.hosts.errors import HostError
     from aegis.hosts.resolve import parse_at_host
@@ -178,8 +228,12 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
                              "available: " + ", ".join(agents))
     model = args.get("model")
     effort = args.get("effort")
+    # The confirmation line below echoes `prompt`, not this — printing the
+    # whole composed preamble back into the source pane would bury the
+    # three words the operator actually typed.
+    opening = await _spawn_opening(ctx, prompt) if prompt else None
     try:
-        handle = await ctx.bridge.spawn(agent, opening_prompt=prompt,
+        handle = await ctx.bridge.spawn(agent, opening_prompt=opening,
                                         spawned_by=ctx.handle,
                                         model=model, effort=effort,
                                         host=host, cwd=cwd)
@@ -394,7 +448,7 @@ for _cmd in (
                              completer=tuple(sorted(_VALID_PROVIDERS))),
                          Arg("model", required=False)),
                      flags=(Flag("effort"), Flag("permission")))),
-    SlashCommand("spawn", "start a new top-level agent",
+    SlashCommand("spawn", "start a new agent, from where you're standing",
                  "/spawn <agent>[@host[:cwd]] [prompt] "
                  "[--model M] [--effort E]", _spawn,
                  spec=ArgSpec(

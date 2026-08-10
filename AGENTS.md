@@ -243,6 +243,23 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `/peer handle …`, rewritten in `classify_input`, so no new input route
   exists. Spec:
   `docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md`.
+  `compose_spawn` is the same push aimed at a *new* agent, used by
+  `/spawn <agent> <prompt>` through
+  `commands.builtins.core._spawn_opening`: same provenance-of-place +
+  tail + `aegis_read_peer` pull, with the ending inverted (a peer is told
+  not to start long work; a spawn is told to do it, and to hand off
+  back). Two rules already paid for: the preamble **rides on the tail**,
+  so every failure path returns the bare prompt rather than pointing a
+  fresh agent at a transcript nobody can read; and it asks `read_peer`
+  for the **TEASER** budget, not the READ default — measured on a real
+  410KB transcript, the READ budget made a 3-turn window 95,346 chars,
+  because one long in-flight turn is a single turn and the turn bound
+  never binds. That is why `read_peer` takes `budget_tokens` /
+  `item_chars` on **both** bridges
+  (`test_read_peer_takes_the_same_window_knobs_on_both_bridges`): the
+  caller swallows exceptions, so a signature that drifted on one bridge
+  would drop the preamble in that frontend and nowhere else. Spec:
+  `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`.
 - `src/aegis/plan/` - agent plan state as first-class session state, in two
   layers. The **parser** (`events.py`) folds the `TaskCreate`/`TaskUpdate`
   delta family and `TodoWrite` into the one cumulative `AgentPlan` event, so

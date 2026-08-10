@@ -56,7 +56,7 @@ with `/`.
 | `/help` | List the available slash commands |
 | `/sessions` | List live agent tabs (`handle · agent · state`) |
 | `/agents` | List configured agent profiles (`name · harness · model · permission`) |
-| `/spawn <agent> [prompt]` | Start a new top-level agent, optionally with an opening prompt |
+| `/spawn <agent> [prompt]` | Start a new top-level agent, from where you're standing |
 | `/queue new <name> [agent]` | Create a queue |
 | `/enqueue <queue> <payload>` | Drop a task on a queue |
 | `/fork [prompt]` | Branch this conversation into a new tab |
@@ -68,9 +68,10 @@ agent. An unknown command shows an error block pointing at `/help`.
 
 ### Asking without spending the conversation
 
-Three commands sit on the same idea — a question you want answered *near*
-this conversation without paying for it in context, money, or the turn you
-are in the middle of.
+Four commands sit on the same idea — work you want done *near* this
+conversation without paying for it in context, money, or the turn you are
+in the middle of. What separates them is how much of where you are
+standing travels with the question, and what it costs to send it.
 
 - **`/fork [prompt]`** branches this pane into a new tab: a worker that
   already knows everything you have said. Refused mid-turn (a live turn's
@@ -91,6 +92,17 @@ are in the middle of.
   and it is legal while your *own* tab is mid-turn, which is exactly when you
   have dead time to spend. Add `--cc` (at send time — the peer never decides
   this) to also land the answer in your own conversation.
+
+- **`/spawn <agent> <prompt>`** is the fourth, and the only one that starts
+  a *cold* agent — no inherited conversation, no inherited bill. With a
+  prompt it now carries the same cheap slice `@peer` sends: where it was
+  spawned from, a bounded tail of this pane, and `aegis_read_peer` to pull
+  the rest. That is what makes `/spawn opus please verify this test` a
+  sentence — the new agent can see which test, and go read the conversation
+  when the tail is not enough. Unlike `@peer`, it is told to go *do* the
+  work and hand the result back, which is what you were paying a new agent
+  for. With no prompt, or from a pane with nothing in it yet, nothing is
+  attached.
 
 `/btw` and `/peer` are **deferred**: they mount a placeholder that echoes
 your question and answer in place, so nothing freezes while they run, and
