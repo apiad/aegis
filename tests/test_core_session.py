@@ -5,7 +5,10 @@ import asyncio
 import pytest
 
 from aegis.core.session import AgentSession
-from aegis.events import AssistantText, Result
+from aegis.events import (
+    AssistantText, CompactBoundary, ContextUpdate, CostUsage, Result,
+    TokenUsage,
+)
 from aegis.tui.state import AgentState
 
 
@@ -299,3 +302,54 @@ async def test_unsolicited_turn_flag_tracks_drain():
     assert s.state is AgentState.ready
     assert s.unsolicited_turn is False
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_compact_boundary_advances_the_session_counter():
+    """The boundary is the only compaction signal aegis trusts. Both of
+    session.py's event loops must route it; a change landed in one loop
+    only is the defining bug of this file."""
+    evs = [
+        AssistantText(text="working",
+                      usage=TokenUsage(input=999_917, cache_creation=0,
+                                       cache_read=0, output=10)),
+        CompactBoundary(trigger="auto", pre_tokens=999_917,
+                        post_tokens=15_022),
+        AssistantText(text="resumed",
+                      usage=TokenUsage(input=20_000, cache_creation=0,
+                                       cache_read=0, output=5)),
+        # A real turn ends with usage; Result(usage=None) is the
+        # error/interrupt path, which commits no tokens at all.
+        Result(duration_ms=10, is_error=False,
+               usage=TokenUsage(input=1_019_917, cache_creation=0,
+                                cache_read=0, output=15)),
+    ]
+    s = AgentSession(FakeSession(evs), agent=None, agent_slug="default",
+                     handle="h1")
+    await s.send("go")
+    await s._task
+
+    assert s.metrics.compaction_count == 1
+    # The re-baseline is a floor reset, so post-boundary growth registers:
+    # 20k beats the 15,022 baseline, and the pre-compaction 999,917 is gone.
+    assert s.metrics.last_true_input == 20_000
+
+
+@pytest.mark.asyncio
+async def test_compact_boundary_without_tokens_still_counts():
+    """A boundary carrying no metadata must advance the counter without
+    zeroing the gauge."""
+    evs = [
+        AssistantText(text="a",
+                      usage=TokenUsage(input=50_000, cache_creation=0,
+                                       cache_read=0, output=1)),
+        CompactBoundary(),
+        Result(duration_ms=1, is_error=False,
+               usage=TokenUsage(input=50_000, cache_creation=0,
+                                cache_read=0, output=1)),
+    ]
+    s = AgentSession(FakeSession(evs), None, "default", "h1")
+    await s.send("go")
+    await s._task
+    assert s.metrics.compaction_count == 1
+    assert s.metrics.last_true_input == 50_000

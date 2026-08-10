@@ -8,8 +8,8 @@ from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Event, Result,
-    ThinkingTokens, ToolResult, ToolUse,
+    AgentPlan, AssistantText, AssistantThinking, CompactBoundary, Event,
+    Result, ThinkingTokens, ToolResult, ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.hooks import (
@@ -509,6 +509,8 @@ class AgentSession:
                     self.metrics.record_tool_error()
                 elif isinstance(ev, ThinkingTokens):
                     self.metrics.observe_thinking(ev.delta)
+                elif isinstance(ev, CompactBoundary):
+                    self.metrics.note_compaction(ev.post_tokens)
 
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
@@ -718,6 +720,8 @@ class AgentSession:
                     self.metrics.record_tool_error()
                 elif isinstance(ev, ThinkingTokens):
                     self.metrics.observe_thinking(ev.delta)
+                elif isinstance(ev, CompactBoundary):
+                    self.metrics.note_compaction(ev.post_tokens)
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True
