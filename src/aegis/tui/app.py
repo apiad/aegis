@@ -344,6 +344,12 @@ class AegisApp(App):
         self._state_dir: Path = state_dir(Path.cwd())
         from aegis.tui.file_index import FileIndexer
         self._file_indexer = FileIndexer()
+        # Which repos the live agents are writing to — app-wide, so a pane
+        # can say "a peer is in here too". Built before the remote-mode
+        # branch: a --remote session's panes still record their own writes,
+        # and the section is the same either way.
+        from aegis.repos.tracker import RepoTracker
+        self.repo_tracker = RepoTracker()
 
         if manager is not None:
             # --remote path: use the externally-built manager as the AppBridge.
@@ -2033,6 +2039,7 @@ class AegisApp(App):
         self.locks.rename(old, new)
         self.monitor_manager.rename(old, new)
         self.reminder_service.rename(old, new)
+        self.repo_tracker.rename(old, new)
         # The transcript keeps its id, so nothing moves on disk — but the
         # log has to learn the new name, or Ctrl+R would keep listing the
         # session under the handle it was born with.

@@ -53,6 +53,13 @@ from aegis.transcript_constants import (  # noqa: F401  (re-exported)
 # subagent events group into a box regardless of the running CLI's naming.
 _SUBAGENT_TOOLS = frozenset({"Task", "Agent"})
 
+# How often the open sidebar re-probes the repos on its board. Comfortably
+# longer than a `git status` on a large tree and comfortably shorter than
+# the time it takes to notice a stale dirty count. The tracker's own TTL is
+# what actually gates the subprocess; this only decides how often it is
+# asked.
+_REPO_TICK = 5.0
+
 
 def fold_plan_events(events: list) -> list:
     """Collapse AgentPlan revisions to the latest, per plan owner.
@@ -830,6 +837,10 @@ class ConversationPane(Widget):
         self._palette = palette
         self._digest = digest
         self._monitor_manager = monitor_manager
+        # Set at mount from the app; a pane hosted outside AegisApp (tests,
+        # the remote shell) keeps these and renders no REPOS section.
+        self._repo_tracker = None
+        self._repo_timer = None
         self._created_at: str = (
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         self.unseen = False
@@ -1036,6 +1047,20 @@ class ConversationPane(Widget):
         if self._monitor_manager is not None:
             self._unsubs.append(
                 self._monitor_manager.subscribe(self._refresh_sidebar))
+        # Attached here rather than at construction: `self.app` is only
+        # reachable once mounted, and no write can be recorded before the
+        # harness has started, so nothing is missed by waiting.
+        self._repo_tracker = getattr(self.app, "repo_tracker", None)
+        if self._repo_tracker is not None:
+            with contextlib.suppress(AttributeError):
+                self._core.repo_tracker = self._repo_tracker
+            self._unsubs.append(
+                self._repo_tracker.subscribe(self._refresh_sidebar))
+            # The probe is the only thing in this column that costs a
+            # subprocess, so it runs only while the sidebar is open — the
+            # closed mode stays one branch per event, as designed.
+            self._repo_timer = self.set_interval(
+                _REPO_TICK, self._tick_repos, pause=True)
         self.refresh_title()
         # Boot mounts every resumed tab hidden and only shows one, so a pane
         # you may never look at shouldn't pay to paint itself. Deferred to
@@ -1071,6 +1096,12 @@ class ConversationPane(Widget):
             with contextlib.suppress(Exception):
                 unsub()
         self._unsubs.clear()
+        # The tab is gone, so this agent is no longer standing anywhere. A
+        # repo it was the last writer of leaves the board with it.
+        tracker = getattr(self, "_repo_tracker", None)
+        if tracker is not None:
+            with contextlib.suppress(Exception):
+                tracker.drop(self.handle)
 
     def on_show(self) -> None:
         """Tab brought forward: paint a deferred replay if this is the first
@@ -1517,6 +1548,14 @@ class ConversationPane(Widget):
         self._refresh_plan_surfaces()
         bar.set_open(opened)
         self.set_class(opened, "-sidebar")
+        # The REPOS probe follows the panel: closed, no `git status` runs at
+        # all. Opening probes at once rather than waiting out a tick, so the
+        # first frame carries counts instead of five seconds of branch-only.
+        timer = getattr(self, "_repo_timer", None)
+        if timer is not None:
+            timer.resume() if opened else timer.pause()
+            if opened:
+                self._tick_repos(force=True)
         return opened
 
     def _plan_key(self, ev) -> str | None:
@@ -2456,6 +2495,21 @@ class ConversationPane(Widget):
         strip.refresh_plan(core.plan_state(), core.plan.working)
         self._refresh_sidebar()
 
+    def _tick_repos(self, *, force: bool = False) -> None:
+        """Re-probe the repos on the board. Fire-and-forget.
+
+        The tracker notifies subscribers when a state actually changed, so
+        the repaint rides `_refresh_sidebar` rather than being scheduled
+        here — a tick that found nothing new costs no render.
+        """
+        tracker = getattr(self, "_repo_tracker", None)
+        if tracker is None:
+            return
+        with contextlib.suppress(RuntimeError):     # no running loop
+            self.run_worker(tracker.refresh(force=force),
+                            name=f"repos-{self.handle}", exclusive=True,
+                            group="repos", exit_on_error=False)
+
     def _refresh_sidebar(self) -> None:
         """Repaint the sidebar if it is open. Cheap when closed: the widget
         keeps the model and returns without rendering."""
@@ -2491,6 +2545,8 @@ class ConversationPane(Widget):
             plan_working=core.plan.working,
             queues=self._digest.snapshot()
             if self._digest is not None else None,
+            repos=self._repo_tracker.snapshot(for_handle=self.handle)
+            if getattr(self, "_repo_tracker", None) is not None else [],
             monitors=self._monitor_manager.snapshot(for_handle=self.handle)
             if self._monitor_manager is not None else [],
             system=self._system_tiers,

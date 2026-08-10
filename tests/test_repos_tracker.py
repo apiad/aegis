@@ -128,6 +128,18 @@ def test_dropping_an_unknown_handle_is_a_no_op(repos):
     assert len(t.snapshot()) == 1
 
 
+def test_a_rename_follows_the_handle(repos):
+    """Otherwise the row names a handle nobody answers to, and drop() on
+    close misses it — a ghost writer holding the repo forever."""
+    t = _tracker()
+    t.record("mild-micali", repos["aegis"] / "a.py")
+    t.rename("mild-micali", "sidebar-repos")
+    assert t.snapshot()[0].writers == ("sidebar-repos",)
+    assert t.snapshot(for_handle="sidebar-repos")[0].mine is True
+    t.drop("sidebar-repos")
+    assert t.snapshot() == []
+
+
 # --- subscribers ------------------------------------------------------
 
 def test_subscribers_are_notified_on_a_new_repo(repos):

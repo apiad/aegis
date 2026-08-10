@@ -119,6 +119,22 @@ class RepoTracker:
         if changed:
             self._notify()
 
+    def rename(self, old: str, new: str) -> None:
+        """Follow a live session's handle change.
+
+        Same contract as ``ClaimRegistry.rename`` / ``MonitorManager.rename``
+        and called from the same place. Without it a renamed agent's rows
+        keep naming a handle nobody answers to, and ``drop`` on close misses
+        them — a ghost writer holding a repo on the board forever.
+        """
+        changed = False
+        for mem in self._repos.values():
+            if old in mem.writers:
+                mem.writers[mem.writers.index(old)] = new
+                changed = True
+        if changed:
+            self._notify()
+
     def _key(self, path: str | Path,
              host: str) -> tuple[str, Path] | None:
         if host != "local":

@@ -28,6 +28,8 @@ from textual.widgets import Static
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
+from aegis.repos.models import RepoView
+from aegis.repos.render import render_repos
 from aegis.tui.fit import Segment, fit_rows
 from aegis.tui.monitor_strip import format_mon
 from aegis.tui.strip import format_q
@@ -56,6 +58,8 @@ class SidebarModel:
     queues: object | None = None          # aegis.queue.digest.Snapshot
     # MONITORS
     monitors: list[MonitorView] = field(default_factory=list)
+    # REPOS
+    repos: list[RepoView] = field(default_factory=list)
     # SYSTEM
     system: tuple[str, ...] = ()
 
@@ -160,6 +164,18 @@ def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
                   [format_mon(v, palette, width) for v in m.monitors])
 
 
+def _repos(m: SidebarModel, palette, width: int) -> Text | None:
+    body = render_repos(m.repos, palette, width)
+    if body is None:
+        return None
+    # The counter is the section's own, not the renderer's: `render_repos`
+    # draws rows and nothing else, the way `format_q` and `format_mon` do,
+    # and the heading with its right-aligned count is what every section
+    # here shares.
+    head = heading("REPOS", palette, width, right=str(len(m.repos)))
+    return _block(head, list(body.split("\n", allow_blank=False)))
+
+
 def _system(m: SidebarModel, palette, width: int) -> Text | None:
     rows = _rows([Segment("system", m.system, 0)], palette, width)
     if not rows:
@@ -172,7 +188,7 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
 # StatusBar's priority ladder, turned ninety degrees: the panel scrolls, so
 # what you see without scrolling should be what moves.
 SECTIONS: tuple[Callable[[SidebarModel, object, int], Text | None], ...] = (
-    _session, _context, _plan, _queues, _monitors, _system,
+    _session, _context, _plan, _queues, _monitors, _repos, _system,
 )
 
 
