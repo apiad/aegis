@@ -230,8 +230,14 @@ BRIEFING = (
     "monitor's message is the single wake — you never get a competing "
     "double-wake, so pairing a monitor with a native background task is "
     "safe (the monitor leads).\n"
-    "  - aegis_monitors() / aegis_monitor_cancel(monitor_id) : list live "
-    "monitors / stop one (no agent callback on cancel).\n"
+    "Arming a monitor, and every monitor wake, also hands you a roster of "
+    "your OTHER live monitors. READ IT: a monitor whose process you killed "
+    "or superseded keeps watching for a marker that will never arrive, and "
+    "you will not notice on your own. Cancel those as they appear.\n"
+    "  - aegis_monitors(from_handle?) / aegis_monitor_cancel(monitor_id) : "
+    "list live monitors — pass your handle to see only your own, since "
+    "unscoped it lists every peer's too — / stop one (no agent callback on "
+    "cancel).\n"
     "  - aegis_remind(from_handle, note, after?) : leave a note for your "
     "future self, delivered back to your OWN inbox. Omit `after` for a "
     "turn-end reminder — it comes back as your LAST turn, strictly behind "
@@ -449,7 +455,11 @@ PRIMING = (
     "condition echoing 0–100 (tests run over tests collected, bytes over "
     "total, the percentage the tool already logs) — so the operator "
     "watching sees a bar and an ETA instead of a bare spinner. Omit it "
-    "only when the work truly has no measurable fraction."
+    "only when the work truly has no measurable fraction. Arming a monitor "
+    "and every monitor wake also list your other live monitors — read that "
+    "roster and cancel any whose process you already killed or superseded, "
+    "because it will otherwise keep watching for something that will never "
+    "happen."
 )
 
 
@@ -1381,6 +1391,13 @@ def build_server(bridge: AppBridge) -> FastMCP:
         your current turn to finish — it cuts that turn mid-flight, throwing
         away whatever it had left to do.
         ``from_handle`` is your own aegis handle (from your system prompt).
+
+        When you already have monitors running, the result also carries
+        ``also_watching`` — READ IT. A monitor outlives the process it
+        watches: kill that process (a PID sweep, a superseding run) and the
+        monitor keeps polling for a marker nothing will ever write, then
+        wakes you with a stale verdict or times out much later. You have no
+        other cue that this happened, so this list is the moment to cancel it.
         """
         root = getattr(bridge, "state_root", None)
         where = str(root) if root else None
@@ -1400,12 +1417,27 @@ def build_server(bridge: AppBridge) -> FastMCP:
                 interrupt=interrupt)
         except ValueError as exc:
             return {"error": str(exc)}
-        return {"monitor_id": mid}
+        out: dict = {"monitor_id": mid}
+        others = bridge.monitor_manager.roster(from_handle, exclude=mid)
+        if others:
+            out["also_watching"] = others
+            out["note"] = (
+                f"You now have {len(others) + 1} live monitors. Check the "
+                "ones above are still watching something real — cancel any "
+                "whose process you already killed or superseded with "
+                "aegis_monitor_cancel(monitor_id), or it will sit there "
+                "until it times out.")
+        return out
 
     @server.tool
-    async def aegis_monitors() -> list[dict]:
-        """List live + recently-terminal monitors (id, description, state)."""
-        return bridge.monitor_manager.list_monitors()
+    async def aegis_monitors(from_handle: str | None = None) -> list[dict]:
+        """List live + recently-terminal monitors (id, description, state).
+
+        Unscoped this is every monitor of every peer. Pass your own handle as
+        ``from_handle`` to see just yours — which is what you want when you
+        are checking whether you left one watching a process that is gone.
+        """
+        return bridge.monitor_manager.list_monitors(for_handle=from_handle)
 
     @server.tool
     async def aegis_monitor_cancel(monitor_id: str) -> dict:

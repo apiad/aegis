@@ -112,3 +112,65 @@ def test_briefing_and_priming_push_a_progress_condition():
     assert "progress" in PRIMING
     for text in (BRIEFING, PRIMING):
         assert "ALWAYS pass `progress`" in text
+
+
+# ----- the anti-stale roster on the MCP surface ---------------------------
+
+async def test_arming_a_monitor_reports_the_ones_already_running():
+    """The notice that would have caught une-tools-release's orphan: it armed
+    two monitors while a dead-process one sat at 60%, and never looked."""
+    mm = _mm()
+    server = build_server(_Bridge(mm))
+    first = await _call(server, "aegis_monitor", from_handle="p",
+                        description="suite limpia", done="never",
+                        interval_s=999)
+    second = await _call(server, "aegis_monitor", from_handle="p",
+                         description="diagnóstico", done="never",
+                         interval_s=999)
+    assert [r["id"] for r in second["also_watching"]] == [first["monitor_id"]]
+    assert second["also_watching"][0]["description"] == "suite limpia"
+    assert "aegis_monitor_cancel" in second["note"]
+    assert "2" in second["note"]  # "You now have 2 live monitors"
+
+
+async def test_the_first_monitor_gets_no_roster_noise():
+    mm = _mm()
+    server = build_server(_Bridge(mm))
+    out = await _call(server, "aegis_monitor", from_handle="p",
+                      description="x", done="never", interval_s=999)
+    assert "also_watching" not in out
+    assert "note" not in out
+    assert set(out) == {"monitor_id"}
+
+
+async def test_the_roster_at_arming_time_is_scoped_to_the_arming_agent():
+    mm = _mm()
+    server = build_server(_Bridge(mm))
+    await _call(server, "aegis_monitor", from_handle="peer",
+                description="theirs", done="never", interval_s=999)
+    out = await _call(server, "aegis_monitor", from_handle="p",
+                      description="mine", done="never", interval_s=999)
+    assert "also_watching" not in out
+
+
+async def test_aegis_monitors_can_scope_to_one_handle():
+    """Unscoped, the list is every monitor of every peer — 12 rows in the
+    session that motivated this, with nothing saying which were the agent's
+    own. That is the call the roster tells the agent to make."""
+    mm = _mm()
+    server = build_server(_Bridge(mm))
+    mine = await _call(server, "aegis_monitor", from_handle="p",
+                       description="mine", done="never", interval_s=999)
+    await _call(server, "aegis_monitor", from_handle="peer",
+                description="theirs", done="never", interval_s=999)
+    assert len(await _call(server, "aegis_monitors")) == 2
+    scoped = await _call(server, "aegis_monitors", from_handle="p")
+    assert [r["id"] for r in scoped] == [mine["monitor_id"]]
+
+
+def test_briefing_and_priming_tell_the_agent_to_read_the_roster():
+    """The roster only works if the agent knows to act on it — a list it
+    scrolls past is the same as no list."""
+    for text in (BRIEFING, PRIMING):
+        assert "roster" in text.lower()
+        assert "cancel" in text.lower()

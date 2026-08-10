@@ -27,6 +27,7 @@ from aegis.monitor.schema import (
     condition_error,
     eta_seconds,
     parse_pct,
+    roster_block,
     terminal_label,
 )
 from aegis.queue.schema import InboxMessage, new_ulid, now_iso, sender_monitor
@@ -96,8 +97,30 @@ class MonitorManager:
         return {"id": m.id, "description": m.description, "state": m.state,
                 "pct": m.pct, "eta_s": m.eta_s}
 
-    def list_monitors(self) -> list[dict]:
-        return [self.status(mid) for mid in self._monitors]
+    def list_monitors(self, *, for_handle: str | None = None) -> list[dict]:
+        return [self.status(m.id) for m in self._monitors.values()
+                if for_handle is None or m.from_handle == for_handle]
+
+    def roster(self, handle: str, *, exclude: str | None = None) -> list[dict]:
+        """The live monitors ``handle`` still owns — the anti-stale roster.
+
+        Agents forget monitors. A process gets killed by a PID sweep or
+        superseded by a newer run, and its monitor keeps watching for a marker
+        that can never arrive; the agent notices only when the operator points
+        at it from outside. So the roster is surfaced at the two moments the
+        agent is already looking at monitors — when it arms one, and when one
+        wakes it — where the orphan sits right next to the thing it cares
+        about instead of needing a deliberate ``aegis_monitors()`` call it has
+        no reason to make.
+        """
+        now = self._clock()
+        return [
+            {"id": m.id, "description": m.description, "pct": m.pct,
+             "elapsed_s": int(now - m.started_at)}
+            for m in self._monitors.values()
+            if m.state == WATCHING and m.from_handle == handle
+            and m.id != exclude
+        ]
 
     # ----- lifecycle -------------------------------------------------
     def start_monitor(self, *, from_handle: str, description: str, done: str,
@@ -241,7 +264,10 @@ class MonitorManager:
 
     async def _deliver(self, mon: Monitor) -> None:
         elapsed = int((mon.ended_at or self._clock()) - mon.started_at)
-        body = f"{mon.description} — {terminal_label(mon.state)} ({elapsed}s)"
+        # _finalize() has already marked this one terminal, so it drops out of
+        # its own roster.
+        body = (f"{mon.description} — {terminal_label(mon.state)} ({elapsed}s)"
+                + roster_block(self.roster(mon.from_handle)))
         msg = InboxMessage(
             sender=sender_monitor(mon.id[-4:]),
             timestamp=self._now(),

@@ -70,6 +70,40 @@ def terminal_label(state: str) -> str:
     return _TERMINAL_LABEL.get(state, state)
 
 
+def format_elapsed(seconds: float) -> str:
+    """``754`` → ``12m``. Coarse on purpose: this is a staleness cue."""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    return f"{s // 3600}h{(s % 3600) // 60}m"
+
+
+def roster_block(rows: list[dict]) -> str:
+    """The agent's OTHER live monitors, rendered for an inbox wake.
+
+    Empty string when there are none, so the common single-monitor wake stays
+    exactly as terse as it was. Ids are printed in full: the whole point is
+    that the next thing the agent may want to do is cancel one.
+
+    Elapsed is shown beside pct because that pair is what exposes an orphan —
+    a monitor frozen at 60% for twenty minutes is watching for a marker its
+    process will never write.
+    """
+    if not rows:
+        return ""
+    lines = [f"\n\nStill watching ({len(rows)}):"]
+    for r in rows:
+        pct = f" · {r['pct']:.0f}%" if r.get("pct") is not None else ""
+        lines.append(f"  · {r['id']} — {r['description']}"
+                     f"{pct} · {format_elapsed(r['elapsed_s'])}")
+    lines.append("Cancel any whose process you already killed or superseded "
+                 "— aegis_monitor_cancel(monitor_id) — or it will sit there "
+                 "until it times out.")
+    return "\n".join(lines)
+
+
 def parse_pct(out: str) -> float | None:
     """First number in ``out``, clamped to 0–100. None if there's no number."""
     m = _NUM.search(out or "")
