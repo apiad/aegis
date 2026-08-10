@@ -1,14 +1,23 @@
 # Context gauge accuracy and compaction detection — design
 
-**Status:** specced 2026-08-09, not yet planned  
-**Scope:** `SessionMetrics`, `session.py`, `tui/metrics.py` (render), status-bar colour.
-TUI only for the visual layer; the detection fix benefits all frontends.
+**Status:** revised 2026-08-10 after corpus-wide re-verification; ready to plan
+**Scope:** `SessionMetrics`, `core/session.py`, `events.py`, `tui/metrics.py`
+(render), status-bar colour. TUI only for the visual layer; the detection fix
+benefits all frontends.
+
+**Revision note.** The first draft (2026-08-09) was written from two session
+logs. Re-running its hypotheses over the whole local corpus (381 logs, 6,871
+turns) confirmed Fix 1 far more strongly than claimed and **refuted Fix 2**:
+the >50% drop heuristic has ~1.3% precision, and the two compactions the
+original draft cited as evidence never happened. Claude Code emits an explicit
+`compact_boundary` event that makes the heuristic unnecessary. The rejected
+approach is kept in full at the end so it is not reintroduced.
 
 ---
 
 ## The problems
 
-### 1. ctx% shows 1000%+ for long agentic turns
+### 1. ctx% shows >100% on most agentic turns
 
 `SessionMetrics.commit()` writes:
 
@@ -17,39 +26,30 @@ self.last_true_input = usage.true_input   # BUG
 ```
 
 `usage` here is `Result.usage`, which in the Claude stream-json protocol
-accumulates across **all sub-turns** within a single user interaction.  A
-30-sub-turn agentic response with average 70 k context per sub-turn yields
-`true_input ≈ 2.1 M`.  Divided by a 200 k context window → **1050 %**.
+accumulates across **all sub-turns** of a single user interaction. The gauge
+then divides that sum by the context window.
 
-Investigation (2026-08-09, `.playground/analyze_compaction.py`, sessions
-`vast-valiant.jsonl` and `true-tarjan.jsonl`): the streaming `AssistantText /
-AssistantThinking / ToolUse` events each carry a *per-sub-turn* `usage`
-snapshot.  `SessionMetrics.observe()` already tracks these via `p_in = max(p_in,
-u.true_input)`.  Those values are sane (39 k–163 k for an Opus 4.7 session),
-and `p_in` is what we want — it gets zeroed in `commit()` before
-`last_true_input` is written, so the gauge briefly reads something reasonable
-during a turn but snaps to a wrong value at turn end.
+Measured over the corpus:
+
+| | |
+|---|---|
+| turns rendering >100% today | **4,256 / 6,871 (61.9%)** |
+| turns where `Result.usage.true_input` exceeds the per-sub-turn peak | 5,800 / 6,871 (84.4%) |
+| worst single turn | **92,956%** — 1,138 sub-turns, `blithe-backus`, opus-4-7 |
+
+The streaming `AssistantText / AssistantThinking / ToolUse` events each carry a
+*per-sub-turn* usage snapshot. `observe()` already tracks their maximum as
+`p_in`, and that value is the real single-sub-turn context size — but
+`commit()` zeroes `p_in` and overwrites `last_true_input` with the accumulated
+figure, so the gauge reads sanely mid-turn and snaps to a wrong value at turn
+end.
 
 ### 2. Compaction is invisible to the user
 
-Claude's auto-compaction fires **intra-turn** — the context drops mid-agentic-
-loop, not between user messages.  Both events observed in `vast-valiant`:
-
-| session | sub-turn before | sub-turn after | drop |
-|---|---|---|---|
-| vast-valiant turn 3 | 124,897 | 51,452 | −59 % |
-| vast-valiant turn 5 | 163,160 | 50,064 | −69 % |
-
-After compaction the model only sees a compressed summary (~50 k) instead of
-the full conversation.  The user has no indication this happened.
-
-### 3. The Result-level drop is a false positive
-
-Comparing `Result.usage.true_input` between consecutive user turns is
-unreliable: a short turn (num_turns=1) will show a 94% "drop" vs a long turn
-(num_turns=18) purely because it accumulated fewer sub-turn tokens — no
-compaction involved.  (Verified: turn 6→7 in vast-valiant, both starting at
-~136 k per-sub-turn context.)
+Claude's auto-compaction fires **intra-turn**. After it, the model sees a
+compressed summary instead of the full conversation, and the user has no
+indication it happened. The gauge is also stuck: `p_in` retains the
+pre-compaction high-water mark for the rest of the turn.
 
 ---
 
@@ -57,15 +57,13 @@ compaction involved.  (Verified: turn 6→7 in vast-valiant, both starting at
 
 **Where:** `SessionMetrics.commit()` in `tui/metrics.py`
 
-Save `p_in` as `last_true_input` *before* zeroing it:
+Save the per-sub-turn peak before zeroing it:
 
 ```python
 def commit(self, usage: TokenUsage | None, now: float) -> None:
-    # Capture per-sub-turn peak BEFORE reset.
-    # p_in is the max true_input seen in streaming events this turn —
-    # that is the real single-sub-turn context size.
-    # Result.usage.true_input accumulates across all sub-turns and must
-    # NOT be used as the context gauge denominator.
+    # p_in is the max true_input seen in streaming events this turn — the
+    # real single-sub-turn context size. Result.usage.true_input accumulates
+    # across all sub-turns and must NOT be used as the gauge numerator.
     peak_ti = self.p_in
     if usage is not None:
         self.c_in += usage.true_input
@@ -77,13 +75,159 @@ def commit(self, usage: TokenUsage | None, now: float) -> None:
     ...
 ```
 
-No other change to the render path — `render_tiers()` already uses
-`last_true_input` for the committed gauge.
+Cumulative accounting (`c_in`, cost) is unaffected — accumulation is correct
+there. Only the gauge numerator changes.
 
-**ACP bonus:** ACP's `UsageUpdate` fires `ContextUpdate(cost=CostUsage(
-context_used=N, context_size=M))`.  The `context_size` field is the model's
-actual window limit — more reliable than the YAML registry.  Wire it in
-`session.py`:
+**Verified:** replaying this against the corpus leaves **1 turn in 6,871**
+above 100%, down from 4,256.
+
+### Why `max()` over interleaved contexts is safe
+
+The stream carries more than one context. A turn's events interleave the main
+agent's context with each subagent's, and `parent_tool_use_id` does not
+reliably distinguish them (see the rejected approach below). `observe()` maxes
+over all of them.
+
+This is safe for the gauge because a subagent's context is smaller than its
+parent's — the max is the main thread in practice, which is what the corpus
+measurement above demonstrates. It is an empirical guarantee, not a structural
+one; if it ever breaks, the fix is to track the main thread explicitly, and the
+signal to watch is a gauge that drops while the session is still growing.
+
+### Context window resolution
+
+Worth recording because the original draft got it wrong: the registry provider
+key is **`claude-code`**, not `claude`, and `get_context_window` falls through
+to a substring pattern table (`data/models.yaml:24-29`) — any model containing
+`opus` or `1m` resolves to **1,000,000**, everything else to 200,000. Every
+session in the corpus is Opus, so the live window is 1M, and the >100% readings
+are driven purely by sub-turn count.
+
+---
+
+## Fix 2 — compaction from the explicit boundary event
+
+Claude Code emits a system event at every compaction:
+
+```json
+{"type": "system", "subtype": "compact_boundary",
+ "session_id": "...", "uuid": "...",
+ "compact_metadata": {
+   "trigger": "auto",
+   "pre_tokens": 999917,
+   "post_tokens": 15022,
+   "cumulative_dropped_tokens": 984895,
+   "duration_ms": 163448}}
+```
+
+It currently falls through `_classify_event` to `Unknown(raw=line)`.
+
+**Corpus evidence:** 17 events across 381 logs, exactly one per affected
+session, `trigger: "auto"` in all 17. `pre_tokens` is ~1,000,000 in every case
+— compaction is a **window-ceiling event**, not mid-session drift.
+`post_tokens` ranges 10,615–50,572.
+
+| date | pre_tokens | post_tokens | session |
+|---|---|---|---|
+| 2026-06-10 | 999,235 | 21,677 | deep-dijkstra |
+| 2026-06-14 | 1,000,130 | 13,459 | blithe-backus |
+| 2026-06-16 | 1,004,373 | 30,759 | civic-codd |
+| 2026-07-29 | 1,000,296 | 10,615 | manifoldx-modeling |
+| 2026-07-30 | 999,917 | 15,022 | ainbox-bugfix-relay |
+
+*(17 total; five shown.)*
+
+### New typed event
+
+```python
+@dataclass
+class CompactBoundary:
+    trigger: str            # "auto" | "manual"
+    pre_tokens: int
+    post_tokens: int
+    dropped_tokens: int = 0
+    duration_ms: int = 0
+```
+
+Parsed in `_classify_event` alongside the existing `system`/`init` and
+`system`/`thinking_tokens` branches (`events.py:402`, `:423`), and added to the
+`Event` union (`events.py:234`).
+
+### Metrics
+
+```python
+def note_compaction(self, post_tokens: int) -> None:
+    """An authoritative compaction boundary from the harness.
+
+    Resets the high-water mark to the post-compaction size: p_in holds the
+    pre-compaction peak (~the full window), and without this the gauge would
+    read ~100% for the rest of the turn.
+    """
+    self.compaction_count += 1
+    self.p_in = post_tokens
+    self.last_true_input = post_tokens
+```
+
+New fields: `compaction_count: int = 0`.
+
+There is no threshold, no floor and no ratio — the harness has already decided.
+
+### Routing
+
+`core/session.py` has **two** structurally identical event loops (the live turn
+at `:504-522` and the second at `:708-730`); both route metrics and both need
+the branch:
+
+```python
+elif isinstance(ev, CompactBoundary):
+    self.metrics.note_compaction(ev.post_tokens)
+```
+
+---
+
+## Fix 3 — colour on the context gauge
+
+**Where:** `tui/metrics.py:render_tiers()` and the status-bar render in
+`tui/pane.py`
+
+| pct | colour | meaning |
+|---|---|---|
+| < 50 % | (default) | plenty of room |
+| 50–74 % | `$warning` | getting full |
+| ≥ 75 % | `$error` | approaching compaction |
+
+`render_tiers()` returns a fifth value `ctx_color: str` so the caller does not
+parse formatted strings. Note `AegisColors` has **no `warning` role** — its
+roles are ready/working/error/accent/muted/ok/err/user/user_bg — so this uses
+Textual's `$warning`/`$error` theme variables in markup, or `err` from the
+palette.
+
+---
+
+## Fix 4 — compaction counter in the status bar
+
+When `compaction_count > 0`, append a `✂N` segment to the T0 and T1 tiers only
+(it is a context-integrity signal, not a turn-by-turn one):
+
+```
+↑45k (32% cached) ↓3k · ctx 142k (71%) · $1.84 · ⚒ 12 · ✂2 · 2m14s / 18m
+```
+
+Yellow at ✂1, red at ✂2+. The glyph must stay single-width: `fit.plain_width`
+measures with `len()`, not `cell_len`, on the documented assumption that
+status-bar glyphs are single-width.
+
+---
+
+## Generalisation across harnesses
+
+| harness | gauge signal | compaction |
+|---|---|---|
+| Claude (stream-json) | streaming `usage.true_input` → `observe()` | `compact_boundary` → `note_compaction()` |
+| ACP (OpenCode, Lovelaice) | `ContextUpdate.cost.context_used` → `observe_context()` | **none** — no protocol signal |
+| Gemini (ACP) | same, if `UsageUpdate` fires (untested) | none |
+
+For ACP, wire the gauge in the same two loops:
 
 ```python
 elif isinstance(ev, ContextUpdate):
@@ -94,123 +238,56 @@ elif isinstance(ev, ContextUpdate):
             self.metrics.context_window = ev.cost.context_size
 ```
 
-(`observe_context` is the new shared method described below.)
-
----
-
-## Fix 2 — compaction detection
-
-**Where:** `SessionMetrics.observe()` → refactored into `observe_context(ti)`
-
-All per-sub-turn context size observations funnel through one method, regardless
-of harness:
+`observe_context(ti)` is the shared funnel — `observe()` calls it for the
+Claude path, the `ContextUpdate` branch calls it for ACP:
 
 ```python
 def observe_context(self, ti: int) -> None:
-    """Record one sub-turn context-size snapshot.
-
-    Called from observe() (Claude streaming usage) and from the
-    ContextUpdate path (ACP UsageUpdate). Detects intra-turn compaction
-    as a >50% drop from the current p_in high-water mark.
-    """
-    if self.p_in > _COMPACTION_MIN and ti < self.p_in * _COMPACTION_RATIO:
-        self.compaction_count += 1
-        self._compaction_happened_this_turn = True
-        # Reset the high-water mark to the new (post-compaction) baseline
-        # so the gauge reads correctly after the drop.
-        self.p_in = ti
-    else:
-        self.p_in = max(self.p_in, ti)
-    self.last_live_ti = ti   # most recent snapshot; for provisional gauge
-
-
-def observe(self, u: TokenUsage) -> None:
-    """Streaming usage snapshot from Claude (per-sub-turn)."""
-    self.observe_context(u.true_input)
-    self.p_out = max(self.p_out, u.output)
-    self.p_cached = max(self.p_cached, u.cache_read)
-    self._provisional = True
+    """Record one sub-turn context-size snapshot, from any harness."""
+    self.p_in = max(self.p_in, ti)
 ```
 
-Thresholds (empirical, two real sessions):
-```python
-_COMPACTION_MIN   = 20_000   # ignore noise below this
-_COMPACTION_RATIO = 0.50     # >50% drop = compaction
-```
+ACP sessions get an accurate gauge and no `✂` segment. **Do not fall back to
+the drop heuristic there** — at 12% precision it is worse than showing nothing.
 
-Both observed compactions were −59% and −69%; normal inter-sub-turn growth
-never drops.  Normal *inter-turn* starts (e.g. 136 k → 90 k) are −34%, safely
-below the threshold.
-
-New fields on `SessionMetrics`:
-```python
-compaction_count: int = 0
-_compaction_happened_this_turn: bool = False
-last_live_ti: int = 0
-```
-
-Reset `_compaction_happened_this_turn` in `start_turn()`.
+`ContextUpdate.cost.context_size` is the model's real window and overrides the
+YAML registry for ACP sessions.
 
 ---
 
-## Fix 3 — visual colour on the context gauge
+## Rejected: the >50% intra-turn drop heuristic
 
-**Where:** `tui/metrics.py:render_tiers()` and the status-bar widget
+The 2026-08-09 draft proposed detecting compaction as a >50% drop in streaming
+`true_input` above a 20k floor. **Do not reintroduce this.** Replayed over the
+corpus it fires **1,272 times** against 17 real compactions — ~1.3% precision.
 
-The ctx segment currently renders as plain text.  Wrap it in a Textual
-`Rich` markup colour tag keyed on `ctx_pct`:
-
-| pct | colour | meaning |
-|---|---|---|
-| < 50 % | (default) | plenty of room |
-| 50–74 % | yellow / `#f59e0b` | getting full |
-| ≥ 75 % | red / `#ef4444` | approaching compaction |
-
-Implementation options:
-- Return the colour tag alongside the tier strings so the caller can mark it up.
-- Or: expose `ctx_color(pct) -> str` helper and apply it in `pane.py`'s
-  status-bar render.
-
-`render_tiers()` already returns four tier strings fed through `fit()` then
-into a Textual `Label`.  Textual's `Label` respects Rich markup, so wrapping
-the ctx segment in `[yellow]...[/yellow]` / `[red]...[/red]` is sufficient.
-The render path in `pane.py` can apply the colour after calling
-`metrics.render_tiers()` by finding the `ctx …%` substring and wrapping it —
-or `render_tiers()` returns the colour as a fifth element so callers don't need
-to parse the string.
-
-Recommended: fifth return value `ctx_color: str` from `render_tiers()` so the
-caller doesn't parse formatted strings.
-
----
-
-## Fix 4 — compaction counter in the status bar
-
-When `compaction_count > 0`, append a `✂N` segment to T0 and T1 tiers only
-(it's a context-integrity signal, not a turn-by-turn one):
+Why it fails: the event stream interleaves independent contexts, and
+`parent_tool_use_id` tags only some of them. A real turn from `ample-adleman`:
 
 ```
-↑45k (32% cached) ↓3k · ctx 142k (71%) · $1.84 · ⚒ 12 · ✂2 · 2m14s / 18m
+22 AssistantThinking  ti=123,312  cc= 2,059  cr=121,252   <- main, climbing
+23 ToolUse            ti= 34,823  cc=34,817  cr=      0   <- a fresh context
+24 ToolUse            ti=123,312  cc= 2,059  cr=121,252   <- back to main
+25 ToolUse            ti= 34,823  cc=     0  cr= 34,817
 ```
 
-Yellow colour at ✂1; red at ✂2+, since multiple compactions in one session
-means the agent is working with a heavily pruned picture.
+Diagnostics on the 1,272 detections:
 
----
+- **596 (47%)** carry a `parent_tool_use_id` — subagents outright.
+- **1,244 (98%)** recover to ≥90% of the pre-drop peak later in the same turn.
+  Compaction is irreversible; these are context switches.
+- Filtering to main-thread events *and* applying offline irreversibility leaves
+  22 — close to the 17 real ones, but that filter needs the future.
+- An online approximation (confirm a drop only if the next *k* snapshots stay
+  below `peak × confirm`), swept over k ∈ {1,2,3,5} × confirm ∈ {60,75,90}%,
+  reaches 100% recall at **12% precision at best**. The oscillation is
+  persistent, so no lookahead window separates the classes.
 
-## Generalisation across harnesses
-
-The detection lives entirely in `SessionMetrics.observe_context(ti)` — no
-driver changes needed.  Routing:
-
-| harness | signal source | session.py path |
-|---|---|---|
-| Claude (stream-json) | `AssistantText / AssistantThinking / ToolUse .usage.true_input` | existing `getattr(ev, "usage", None)` → `observe(u)` → `observe_context()` |
-| ACP (OpenCode, Lovelaice, …) | `UsageUpdate` → `ContextUpdate.cost.context_used` | new `elif isinstance(ev, ContextUpdate)` branch → `observe_context()` |
-| Gemini (ACP) | depends on whether `UsageUpdate` is fired — untested | same branch; degrades to 0 if not fired |
-
-The YAML registry `context_window` lookup remains as fallback; for ACP sessions
-it gets overridden by the live `context_size` from `ContextUpdate`.
+The draft's own evidence does not survive: `vast-valiant` (opus-4-8) and
+`true-tarjan` (opus-5) both have **zero** `compact_boundary` events. Its two
+"observed compactions" — 124,897→51,452 and 163,160→50,064 — are subagent
+switches at 12% and 16% of a 1M window, not compaction. The draft read them as
+compaction only because it assumed a 200k window.
 
 ---
 
@@ -218,38 +295,37 @@ it gets overridden by the live `context_size` from `ContextUpdate`.
 
 | file | what changes |
 |---|---|
-| `src/aegis/tui/metrics.py` | `observe_context()`, `observe()` refactor, `commit()` fix, new fields, `render_tiers()` colour output |
-| `src/aegis/core/session.py` | `elif isinstance(ev, ContextUpdate)` routing for ACP |
-| `src/aegis/tui/pane.py` | apply `ctx_color` to status-bar label |
-| `src/aegis/events.py` | no changes needed |
-| `src/aegis/drivers/*.py` | no changes needed |
+| `src/aegis/events.py` | `CompactBoundary` dataclass, `_classify_event` branch, `Event` union |
+| `src/aegis/tui/metrics.py` | `commit()` fix, `observe_context()`, `note_compaction()`, `compaction_count`, `render_tiers()` colour + `✂N` |
+| `src/aegis/core/session.py` | `CompactBoundary` + `ContextUpdate` routing in **both** event loops |
+| `src/aegis/tui/pane.py` | apply `ctx_color` to the status-bar label |
+| `src/aegis/drivers/*.py` | none |
 
 ---
 
-## Out of scope for this spec
+## Out of scope
 
-- **Agent priming**: telling the agent it can call a history-read tool after
-  compaction.  Requires a new MCP tool (`aegis_read_self`) and a PRIMING
-  addition; tracked separately.
-- **Transcript separator**: visual `── compacted ──` line in the pane body.
-  Can be done by emitting a synthetic `Unknown` or `AssistantText` event when
-  `_compaction_happened_this_turn` becomes True; save for a polish pass.
-- **Web client**: no colour or counter changes there yet.
+- **Agent priming** — telling the agent it can read its own history after
+  compaction. Needs an `aegis_read_self` MCP tool and a PRIMING addition.
+- **Transcript separator** — a visual `── compacted ──` line in the pane body.
+  Now trivial to emit off `CompactBoundary`; save for a polish pass.
+- **Web client** — no colour or counter changes there yet.
+- **Compaction for ACP harnesses** — no protocol signal exists.
 
 ---
 
-## Discovered facts (investigation 2026-08-09)
+## Discovered facts (corpus re-verification, 2026-08-10)
 
-- Sessions `vast-valiant.jsonl` (4.1 MB, 9 result events) and
-  `true-tarjan.jsonl` (1.4 MB, 22 result events) from
-  `/home/apiad/Workspace/.aegis/state/sessions/`.
-- Script: `/home/apiad/Workspace/.playground/analyze_compaction.py`
-- Both sessions ran `claude-opus-4-7`; context window 200 k.
-- Per-sub-turn true_input ranged 39 k–163 k — all sane, all well under 200 k.
-- Result.usage.true_input ranged 137 k–12.4 M — accumulation artefact.
-- Compaction threshold empirical: both drops were 59% and 69%.  50% ratio is
-  safe; normal inter-sub-turn growth never drops; inter-turn starts drop at most
-  ~34%.
-- Post-compaction context (summary): ~50–52 k in both cases.
-- ACP's `ContextUpdate.cost.context_size` can replace the YAML registry for
-  ACP sessions — more reliable.
+- Corpus: 381 logs in `/home/apiad/Workspace/.aegis/state/sessions/`, 6,871
+  turns carrying streaming usage, spanning 2026-05-22 to 2026-08-10.
+  Scripts: `.playground/ctx-gauge/verify{,2,3,4,5}.py` (throwaway).
+- Models seen: `claude-opus-5` (150), `claude-opus-4-8` (117),
+  `claude-opus-4-7` (85), OpenCode (3). All Claude entries resolve to a **1M**
+  window through the `opus` substring pattern.
+- 152 streaming events carry a zero `true_input`; they must be skipped, not fed
+  to any detector.
+- A step's usage repeats verbatim across consecutive events — dedupe before
+  any sequential analysis.
+- Real compaction always fires at `pre_tokens` ≈ the window ceiling. If a
+  future harness compacts mid-session, that assumption is worth re-checking,
+  but nothing should depend on it: the boundary event is authoritative.
