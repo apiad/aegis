@@ -1133,57 +1133,9 @@ def build_server(bridge: AppBridge) -> FastMCP:
             handle: the agent to close.
             from_handle: your own aegis handle.
         """
-        from aegis.core.close_guard import CloseFacts, refuse_reasons
+        from aegis.core.close_guard import gather_facts, refuse_reasons
 
-        info = next((s for s in bridge.list_sessions()
-                     if s.handle == handle), None)
-
-        def _count(fn, *a, **kw) -> int:
-            try:
-                return len(fn(*a, **kw) or [])
-            except Exception:  # noqa: BLE001 — a missing plane is not a block
-                return 0
-
-        mm = getattr(bridge, "monitor_manager", None)
-        rs = getattr(bridge, "reminder_service", None)
-        ib = getattr(bridge, "inbox_router", None)
-        qm = getattr(bridge, "queue_manager", None)
-        ls = getattr(bridge, "loop_service", None)
-        locks = getattr(bridge, "locks", None)
-
-        loop_armed = False
-        if ls is not None:
-            try:
-                loop_armed = bool(ls.status(from_handle=handle).get("loop"))
-            except Exception:  # noqa: BLE001
-                loop_armed = False
-        worker_label = None
-        if qm is not None:
-            try:
-                worker_label = qm.worker_label(handle)
-            except Exception:  # noqa: BLE001
-                worker_label = None
-        claims = 0
-        if locks is not None:
-            try:
-                claims = len([c for c in (locks.active() or [])
-                              if getattr(c, "handle", None) == handle])
-            except Exception:  # noqa: BLE001
-                claims = 0
-
-        facts = CloseFacts(
-            exists=info is not None,
-            spawned_by=getattr(info, "spawned_by", None),
-            state=getattr(info, "state", "ready"),
-            monitors=(_count(mm.snapshot, for_handle=handle)
-                      if mm is not None else 0),
-            reminders=(_count(rs.list_reminders, from_handle=handle)
-                       if rs is not None else 0),
-            inbox_depth=(_count(ib.pending, handle) if ib is not None else 0),
-            worker_label=worker_label,
-            loop_armed=loop_armed,
-            claims=claims,
-        )
+        facts = gather_facts(bridge, handle)
         reasons = refuse_reasons(facts, requester=from_handle, target=handle)
         if reasons:
             return {"closed": False, "reasons": reasons}

@@ -40,6 +40,21 @@ happening, nothing runs.
    `payload`. It runs to completion.
 3. **Result capture.** The worker's final assistant text is captured
    verbatim by the substrate as the task result.
+
+   A turn boundary is *not* by itself completion. Ending a turn is how an
+   agent waits — that is exactly what `aegis_monitor` tells it to do — so
+   before finalizing, the substrate checks whether the worker is still
+   waiting on something it armed: a live monitor, a pending reminder, an
+   unconsumed inbox message, an armed loop. If it is, the task stays in
+   flight, no callback is sent, the worker stays alive, and a `deferred`
+   record goes in the queue log. The waker fires, the worker takes its
+   reporting turn, and *that* boundary finalizes.
+
+   Every deferring condition is self-terminating, so this cannot hang a
+   slot: monitors have timeouts, reminders have fire times, inbox
+   messages resolve at the next turn boundary. A held **file claim is
+   deliberately not** one of them — only the holder releases a claim, so
+   a worker that forgot would pin its `max_parallel` slot forever.
 4. **Callback.** If the producer asked for `callback=true`, the result
    is delivered to their inbox as a normal user-message turn, prefixed
    with a header:

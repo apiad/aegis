@@ -205,6 +205,24 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `--strict-mcp-config`: the user's other MCP servers are not present
   inside aegis; built-in claude tools (Read/Edit/Bash/…) are unchanged.
 - `src/aegis/queue/` - inter-agent task queues + agent inboxes.
+  **A turn boundary is not completion.** Ending a turn is how an agent
+  *waits* — the monitor briefing says "returns {monitor_id} immediately;
+  END YOUR TURN" — so `_finalize` consults
+  `close_guard.still_working_reasons` before it marks a task done, sends
+  the callback, or closes the worker; if the worker is waiting it logs a
+  `deferred` record and returns, and the next turn boundary tries again.
+  Reading the boundary as completion once closed a worker mid-wait,
+  orphaning its monitor and stranding real work uncommitted in a shared
+  checkout (2026-08-10, `repos/ainbox` warden). Two rules inside it: only
+  **self-terminating** conditions defer (monitors time out, reminders
+  fire, inbox messages resolve next turn) — a held **file claim does
+  not**, because nothing but the holder releases it and the slot would
+  be pinned forever; and the facts come from the shared
+  `close_guard.gather_facts`, never a second copy, because
+  `aegis_close` has refused exactly this since it shipped. Note the
+  finalizer's `except` around the probe **logs** rather than swallows:
+  a bare one hid an `AttributeError` from `gather_facts` and made the
+  fix read as inert against its own failing tests.
   `QueueManager` (FIFO + max-parallel cap + substrate-deterministic
   dispatch on every enqueue/completion event; JSONL lifecycle log
   under `.aegis/state/queues/<queue>.jsonl`; `start()` replays on

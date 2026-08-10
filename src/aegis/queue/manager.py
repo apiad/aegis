@@ -41,6 +41,13 @@ from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
 
+# The events that define where a task IS. Everything else a queue log
+# carries is diagnostic and must not move the task's status on replay —
+# see the comment in `start()`.
+_LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed",
+                               "failed"})
+
+
 def _adapt_metrics(metrics):
     """Map SessionMetrics committed counters to cost.compute's expected
     attribute names. Returns a lightweight object — duck-typed."""
@@ -397,8 +404,53 @@ class QueueManager:
         session.add_event_observer(on_event)
         session.add_state_observer(on_state)
 
+    def _still_working(self, handle: str, st) -> list[str]:
+        """Why this worker's turn ending does not mean it is finished.
+
+        **Ending a turn is how an agent waits.** The monitor briefing says
+        so outright — "returns {monitor_id} immediately; END YOUR TURN" —
+        so a turn boundary on its own carries no information about whether
+        the work is done, and treating it as completion is what closed a
+        worker mid-wait on 2026-08-10: its monitor's wake had nowhere to
+        land, the producer's callback was the string "I'll report when it
+        lands", and the real work sat uncommitted in a shared checkout.
+
+        The planes are read through the same ``gather_facts`` that
+        ``aegis_close`` uses, so the substrate cannot drift from the tool
+        that has been refusing exactly this since it shipped.
+        """
+        from aegis.core.close_guard import gather_facts, still_working_reasons
+        try:
+            facts = gather_facts(self._sm, handle,
+                                 state=getattr(st, "value", str(st)))
+        except Exception as e:  # noqa: BLE001 — never strand a task on a probe
+            # Logged, not swallowed. This handler already hid the fix
+            # once: `gather_facts` raised AttributeError on a bridge with
+            # no `list_sessions`, every worker read as "not waiting", and
+            # the change looked inert against its own failing tests.
+            task = self._workers.get(handle, (None, ""))[0]
+            if task is not None:
+                self._log(task.queue, {
+                    "event": "waiting_probe_failed", "task_id": task.id,
+                    "worker_handle": handle,
+                    "error": f"{type(e).__name__}: {e}", "at": self._now()})
+            return []
+        return still_working_reasons(facts)
+
     async def _finalize(self, session, st) -> None:
         if session.handle not in self._workers:
+            return
+        waiting = self._still_working(session.handle, st)
+        if waiting:
+            # Leave the task in flight and the worker alive. The thing it
+            # is waiting on wakes it, that turn ends, and this runs again
+            # — every deferring condition is self-terminating, which is
+            # why `claims` is deliberately not one of them.
+            task, _ = self._workers[session.handle]
+            self._log(task.queue, {
+                "event": "deferred", "task_id": task.id,
+                "worker_handle": session.handle,
+                "waiting_on": waiting, "at": self._now()})
             return
         task, last_text = self._workers.pop(session.handle)
         ok = (st is AgentState.ready)
@@ -477,7 +529,16 @@ class QueueManager:
                 if tid is None:
                     continue
                 tasks.setdefault(tid, {}).update(rec)
-                tasks[tid]["status"] = rec["event"]
+                # Only a LIFECYCLE event moves the status. Diagnostic
+                # records (`deferred`, `waiting_probe_failed`) merge their
+                # fields and leave the task where it was — a deferred task
+                # is still `dispatched`, and replaying it as anything else
+                # matches no branch below, so the task disappears from
+                # `_all` with no `failed:interrupted` and no callback. The
+                # producer then blocks forever on a task the substrate has
+                # forgotten: the fix for one hang, introducing another.
+                if rec["event"] in _LIFECYCLE_EVENTS:
+                    tasks[tid]["status"] = rec["event"]
             for tid, r in tasks.items():
                 if r["status"] == "dispatched":
                     await self._mark_interrupted(queue_name, tid, r)

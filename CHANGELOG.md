@@ -5,6 +5,47 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A queue worker that armed a waker no longer dies at its turn
+  boundary.** Ending a turn is how an agent *waits* — the monitor briefing
+  says so outright ("returns `{monitor_id}` immediately; END YOUR TURN") —
+  but `QueueManager._finalize` read any turn boundary as completion:
+  marked the task `completed`, sent the producer a callback, and closed the
+  session.
+
+  Paid for on 2026-08-10 in `repos/ainbox`. A worker took the warden
+  write-lock-deadlock task, did the work, armed a monitor on the test
+  suite, said *"Waiting on the warden suite — I'll report when it lands"*
+  and ended its turn. It was closed on the spot. The monitor's wake had
+  nowhere to land, so the suite result was never read; the producer's
+  callback was that sentence, which is a promise and not a result; the task
+  read `completed`; and the actual work — a `beaver-db` pin bump, a
+  `Storage.health` probe, a `/healthz` route and its integration test — sat
+  **uncommitted in a shared checkout** that Alex and other agents were
+  writing to.
+
+  `_finalize` now asks whether the worker is still waiting on something
+  before finalizing anything. If it is, the task stays in flight, no
+  callback is sent, the session stays alive, and a `deferred` record goes
+  in the queue log. The waker fires, the worker takes its reporting turn,
+  and *that* boundary finalizes normally.
+
+  Deferring conditions are exactly the **self-terminating** ones — live
+  monitors (they have timeouts), pending reminders (they have fire times),
+  unconsumed inbox messages (they resolve at the next turn boundary), an
+  armed loop. Held **file claims deliberately do not defer**: a claim is
+  released only by the agent holding it, so a worker that forgot would pin
+  a `max_parallel` slot until the process died. `aegis_close` is right to
+  refuse on one — a human is asking and can go look — and the substrate is
+  right not to.
+
+  The conditions are not a second copy: the fact-gathering that
+  `aegis_close` did inline moved to `close_guard.gather_facts`, and both
+  callers now read the same planes. `still_working_reasons` is the
+  substrate's half of `refuse_reasons`, with the ownership questions
+  dropped because nobody is asking permission.
+
 ### Added
 
 - **`/spawn <agent> <prompt>` now carries where you were standing.** Typed
