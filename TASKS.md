@@ -242,6 +242,39 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
+
+**A live shared terminal makes `Ctrl+Q` hang forever.** Reproduced on a clean
+instance: boot, `/terminals new t1` (or `aegis_term_spawn`), `Ctrl+Q` — the
+screen clears and the process never exits. Confirmed with a faulthandler dump,
+not inferred:
+
+    Thread: ptyprocess.py:522 in read → concurrent/futures/thread.py:59 in run
+    Main:   asyncio/runners.py:72 in close        ← blocked here
+
+`action_quit` closes panes, the queue digest, the quota service, the queue
+manager, the MCP plane and the file indexer — but never the `TerminalManager`.
+Each terminal's `_reader_loop` awaits `state.pty.read()`, which is a blocking
+`ptyprocess` read hoisted onto asyncio's **default executor**, so the reader
+thread survives the loop: cancelling `reader_task` cancels the *await*, not the
+thread parked in `os.read` on the master fd. `Runner.close()` then sits in
+`shutdown_default_executor` (300 s in 3.13), and the atexit join behind it never
+returns at all.
+
+`TerminalManager.close()` has the same hole even when called explicitly —
+`reader_task.cancel()` + `pty.close(force=True)` leaves the executor thread
+blocked; whether the fd close wakes it is unverified.
+
+**Decision: do not patch this.** Terminals get redesigned from scratch in a
+future session — the fix is the design (own the reader thread, or read the pty
+fd on the loop via `add_reader` / a dedicated daemon thread, so shutdown is a
+thing the manager can actually perform), not a `close()` call bolted into
+`action_quit`. Anyone reaching for the one-line fix first: it does not exist,
+because nothing on the current seam can interrupt that read.
+
+Files: `src/aegis/terminal/manager.py` (`_reader_loop` ~311, `close` ~211),
+`src/aegis/tui/app.py` (`action_quit` ~1505).
+
 ### Mandatory file claims *(specced + planned 2026-08-07; no code yet)*
 
 `src/aegis/locks/` is advisory: `claim()` returns `granted: false` and the
