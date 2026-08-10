@@ -8,8 +8,8 @@ from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, CompactBoundary, Event,
-    Result, ThinkingTokens, ToolResult, ToolUse,
+    AgentPlan, AssistantText, AssistantThinking, CompactBoundary,
+    ContextUpdate, Event, Result, ThinkingTokens, ToolResult, ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.hooks import (
@@ -511,6 +511,16 @@ class AgentSession:
                     self.metrics.observe_thinking(ev.delta)
                 elif isinstance(ev, CompactBoundary):
                     self.metrics.note_compaction(ev.post_tokens)
+                elif isinstance(ev, ContextUpdate):
+                    # ACP's in-band context telemetry. No compaction
+                    # fallback here on purpose: ACP has no boundary signal,
+                    # and inferring one from token movement measured ~12%
+                    # precision at best — worse than showing nothing.
+                    if ev.cost:
+                        if ev.cost.context_used:
+                            self.metrics.observe_context(ev.cost.context_used)
+                        if ev.cost.context_size:
+                            self.metrics.context_window = ev.cost.context_size
 
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
@@ -722,6 +732,16 @@ class AgentSession:
                     self.metrics.observe_thinking(ev.delta)
                 elif isinstance(ev, CompactBoundary):
                     self.metrics.note_compaction(ev.post_tokens)
+                elif isinstance(ev, ContextUpdate):
+                    # ACP's in-band context telemetry. No compaction
+                    # fallback here on purpose: ACP has no boundary signal,
+                    # and inferring one from token movement measured ~12%
+                    # precision at best — worse than showing nothing.
+                    if ev.cost:
+                        if ev.cost.context_used:
+                            self.metrics.observe_context(ev.cost.context_used)
+                        if ev.cost.context_size:
+                            self.metrics.context_window = ev.cost.context_size
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True

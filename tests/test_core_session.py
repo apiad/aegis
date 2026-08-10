@@ -353,3 +353,49 @@ async def test_compact_boundary_without_tokens_still_counts():
     await s._task
     assert s.metrics.compaction_count == 1
     assert s.metrics.last_true_input == 50_000
+
+
+@pytest.mark.asyncio
+async def test_context_update_feeds_the_gauge_and_window():
+    """ACP harnesses report context through UsageUpdate -> ContextUpdate.
+    context_size is the model's real window, so it overrides the YAML
+    registry for these sessions."""
+    evs = [
+        ContextUpdate(cost=CostUsage(context_used=42_000,
+                                     context_size=262_144)),
+        Result(duration_ms=1, is_error=False,
+               usage=TokenUsage(input=42_000, cache_creation=0,
+                                cache_read=0, output=10)),
+    ]
+    s = AgentSession(FakeSession(evs), None, "default", "h1")
+    await s.send("go")
+    await s._task
+
+    assert s.metrics.context_window == 262_144
+    # commit() moved the peak into last_true_input at Result.
+    assert s.metrics.last_true_input == 42_000
+
+
+@pytest.mark.asyncio
+async def test_context_update_without_cost_leaves_the_window_alone():
+    """A ContextUpdate with no cost block must not zero the window --
+    an unknown window hides the ctx segment entirely.
+
+    Asserting on the end state alone does NOT gate this: dropping the
+    `if ev.cost:` guard raises AttributeError, the turn's `except
+    Exception` swallows it, and context_window is left untouched anyway
+    -- so the window assertion passes against the broken code (verified
+    by mutation). The turn reaching `ready` is what actually pins it."""
+    st: list[tuple[AgentState, bool]] = []
+    s = AgentSession(
+        FakeSession([ContextUpdate(cost=None, mode="build"),
+                     Result(duration_ms=1, is_error=False, usage=None)]),
+        None, "default", "h1")
+    s.on_state = lambda se, x, f: st.append((x, f))
+    s.metrics.context_window = 200_000
+    await s.send("go")
+    await s._task
+    assert st[-1] == (AgentState.ready, True), (
+        f"a cost-less ContextUpdate broke the turn: {st}")
+    assert s.metrics.context_window == 200_000
+    assert s.last_error is None
