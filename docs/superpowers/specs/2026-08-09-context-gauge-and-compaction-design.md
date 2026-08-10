@@ -196,11 +196,24 @@ elif isinstance(ev, CompactBoundary):
 | 50–74 % | `$warning` | getting full |
 | ≥ 75 % | `$error` | approaching compaction |
 
-`render_tiers()` returns a fifth value `ctx_color: str` so the caller does not
-parse formatted strings. Note `AegisColors` has **no `warning` role** — its
-roles are ready/working/error/accent/muted/ok/err/user/user_bg — so this uses
-Textual's `$warning`/`$error` theme variables in markup, or `err` from the
-palette.
+The colour goes in as **Rich markup inside the existing tier strings**, and
+`render_tiers()` keeps returning exactly four of them.
+
+The 2026-08-09 draft proposed a fifth return value `ctx_color: str`. That
+breaks the consumer: `pane.refresh_metrics` passes the tuple straight to
+`StatusBar.set_metrics`, which normalises it through `_tiers()`
+(`tui/widgets.py:377-383`) — every element is read as a tier, so a colour
+string would render as a fifth, narrower variant of the whole bar.
+
+Markup is already the established pattern here and costs nothing: `StatusBar`
+is constructed with `markup=True` (`widgets.py:352`), and `fit.plain_width`
+strips tags before measuring (`tui/fit.py:29-36`), so a coloured segment
+consumes no extra width budget. `render_plain()` strips it for the plain copy.
+
+Note `AegisColors` has **no `warning` role** — its roles are
+ready/working/error/accent/muted/ok/err/user/user_bg — so this uses Textual's
+`$warning` / `$error` theme variables in the markup rather than the palette
+object.
 
 ---
 
@@ -298,8 +311,12 @@ compaction only because it assumed a 200k window.
 | `src/aegis/events.py` | `CompactBoundary` dataclass, `_classify_event` branch, `Event` union |
 | `src/aegis/tui/metrics.py` | `commit()` fix, `observe_context()`, `note_compaction()`, `compaction_count`, `render_tiers()` colour + `✂N` |
 | `src/aegis/core/session.py` | `CompactBoundary` + `ContextUpdate` routing in **both** event loops |
-| `src/aegis/tui/pane.py` | apply `ctx_color` to the status-bar label |
+| `src/aegis/tui/pane.py` | none — the colour rides inside the tier strings |
 | `src/aegis/drivers/*.py` | none |
+
+Glyph check: `✂` (U+2702) is EAW=Neutral and `rich.cells.cell_len` measures it
+as 1, so it is safe in the bar. (`⚡`, already in use, is genuinely two cells —
+a pre-existing off-by-one in `fit.plain_width`, out of scope here.)
 
 ---
 

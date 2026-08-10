@@ -162,51 +162,48 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
-### Context gauge accuracy + compaction detection *(specced 2026-08-09, ready to implement)*
+### Context gauge accuracy + compaction detection *(re-specced + planned 2026-08-10; no code yet)*
 
-**Spec:** `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`
+The ctx% gauge reads >100% on most agentic turns because
+`SessionMetrics.commit()` uses `Result.usage.true_input`, which accumulates
+across every sub-turn. And Claude's auto-compaction fires invisibly.
 
-**Why now.** The ctx% gauge frequently shows 1000%+ on long agentic turns;
-Claude's auto-compaction fires invisibly with no user indication.  Both are
-fixable with small, targeted changes and no protocol work.
+**The 2026-08-09 draft was written from two session logs and half of it did not
+survive contact with the corpus.** Re-running its hypotheses over all 381 local
+logs (6,871 turns):
 
-**Handoff context (investigation 2026-08-09).**
-Analysed sessions `vast-valiant.jsonl` and `true-tarjan.jsonl` in
-`.aegis/state/sessions/`.  Root cause confirmed: `Result.usage.true_input`
-accumulates across all sub-turns (30 sub-turns × 70 k avg = 2.1 M ÷ 200 k
-window = 1050%).  The streaming `AssistantText.usage.true_input` correctly
-gives per-sub-turn context (39 k–163 k).  Compaction fires intra-turn as a
->50% drop in `true_input` between consecutive streaming events.
+- **Gauge fix confirmed, and understated.** 4,256/6,871 turns (61.9%) render
+  >100% today; worst is **92,956%** (1,138 sub-turns). Replaying the proposed
+  fix leaves **1 turn in 6,871** over 100%. Land it as written.
+- **The >50% drop heuristic is refuted.** It fires **1,272 times against 17
+  real compactions** — ~1.3% precision. 47% of its detections carry a
+  `parent_tool_use_id` (subagents); 98% recover within the same turn. No online
+  variant beats 12% precision. The draft's own two evidence sessions never
+  compacted: both are Opus (1M window, not the 200k it assumed) with zero
+  `compact_boundary` events, so its two "observed compactions" at 124k and 163k
+  are subagent context switches.
+- **Claude emits `system`/`compact_boundary`** carrying `trigger`, `pre_tokens`,
+  `post_tokens`, `cumulative_dropped_tokens`. 17 in the corpus, one per affected
+  session, all `trigger: auto`, all firing at `pre_tokens` ≈ the 1M ceiling.
+  Exact, no thresholds. It currently parses as `Unknown`, so `events.py` does
+  need a change after all.
 
-**Tasks — implement in order:**
+Three traps the plan already carries: `core/session.py` has **two** identical
+event loops and both need every routing change; `render_tiers()` must keep
+returning **four** tiers (`StatusBar._tiers` reads a fifth element as a fifth
+tier, so the colour goes in as Rich markup, which `fit.plain_width` strips
+before measuring); and the registry provider key is `claude-code`, where any
+model containing `opus` resolves to a 1M window.
 
-- [ ] **1. Fix `commit()` in `tui/metrics.py`** — save `p_in` (per-sub-turn
-  peak) as `last_true_input` before zeroing it; stop using
-  `Result.usage.true_input` for the gauge.  One-liner fix, immediately kills
-  the 1000% bug.
-
-- [ ] **2. Add `observe_context(ti)` to `SessionMetrics`** — refactor
-  `observe()` to call it; put compaction detection logic there (`p_in > 20k
-  and ti < p_in * 0.5 → compaction_count++; reset p_in to ti`).  Add new
-  fields: `compaction_count`, `_compaction_happened_this_turn`, `last_live_ti`.
-
-- [ ] **3. Route `ContextUpdate` in `session.py`** — add `elif isinstance(ev,
-  ContextUpdate)` branch that calls `observe_context(ev.cost.context_used)` and
-  updates `context_window` from `ev.cost.context_size` when present.  Makes
-  ACP harnesses (OpenCode, Lovelaice) get the same accurate gauge and
-  compaction detection.
-
-- [ ] **4. Colour the ctx segment** — in `render_tiers()` return a fifth
-  `ctx_color` value; apply in `pane.py` status-bar render.  Yellow ≥ 50%;
-  red ≥ 75%.
-
-- [ ] **5. Add `✂N` compaction counter** — append to T0/T1 status-bar tiers
-  when `compaction_count > 0`.  Yellow at 1, red at 2+.
-
-- [ ] **6. Tests** — `test_metrics.py`: compaction detection fires at correct
-  threshold; does not fire on normal inter-sub-turn growth; gauge stays ≤ 100%
-  even on a 30-sub-turn session.  `test_session_log_hot_path.py` or similar:
-  ContextUpdate routing for ACP.
+- Spec: `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`
+  (revised; keeps the rejected heuristic and its numbers so it is not
+  reintroduced)
+- Plan: `docs/superpowers/plans/2026-08-10-context-gauge-and-compaction.md` —
+  8 TDD tasks. Task 2 alone kills the >100% bug; task 8 re-runs the corpus
+  replay as the acceptance gate, because synthetic fixtures already agreed with
+  this bug once.
+- Deliberately not doing: compaction detection for ACP harnesses. No protocol
+  signal exists, and the heuristic is worse than showing nothing.
 
 ### Mandatory file claims *(specced + planned 2026-08-07; no code yet)*
 
