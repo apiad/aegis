@@ -206,16 +206,36 @@ class MonitorManager:
         self._notify()
 
     async def cancel(self, mid: str) -> dict:
+        """Stop a monitor, and say plainly what died and what is still alive.
+
+        No inbox callback — the agent asked for this, so waking it about its
+        own decision is noise. The tool result carries the acknowledgement
+        instead: the description of what was cancelled (ULIDs differ in a few
+        characters, so ``{ok: true}`` alone asks the agent to take on faith
+        that it hit the one it meant) and the roster of what remains. Cancel
+        is when an agent is pruning, which makes it the best moment of the
+        three to show the rest of the pile.
+        """
         mon = self._monitors.get(mid)
         if mon is None:
             return {"ok": False, "error": f"unknown monitor {mid!r}"}
         if mon.state != WATCHING:
-            return {"ok": True, "state": mon.state, "note": "already terminal"}
+            return {"ok": True, "state": mon.state,
+                    "description": mon.description,
+                    "note": f"already terminal ({terminal_label(mon.state)}) "
+                            "— nothing to cancel"}
         await self._finalize(mid, CANCELLED, notify_agent=False)
         task = self._tasks.pop(mid, None)
         if task is not None:
             task.cancel()
-        return {"ok": True, "state": CANCELLED}
+        rest = self.roster(mon.from_handle)
+        return {"ok": True, "state": CANCELLED,
+                "description": mon.description,
+                "still_watching": rest,
+                "note": (f"cancelled — you have {len(rest)} live monitor"
+                         f"{'' if len(rest) == 1 else 's'} left"
+                         if rest else
+                         "cancelled — you now have no monitors running")}
 
     def rename(self, handle: str, new_handle: str) -> None:
         """Follow a session that renamed itself.

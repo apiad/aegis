@@ -174,3 +174,18 @@ def test_briefing_and_priming_tell_the_agent_to_read_the_roster():
     for text in (BRIEFING, PRIMING):
         assert "roster" in text.lower()
         assert "cancel" in text.lower()
+
+
+async def test_cancel_confirms_the_kill_and_shows_the_remainder():
+    mm = _mm()
+    server = build_server(_Bridge(mm))
+    keep = await _call(server, "aegis_monitor", from_handle="p",
+                       description="diagnóstico", done="never", interval_s=999)
+    drop = await _call(server, "aegis_monitor", from_handle="p",
+                       description="huérfana", done="never", interval_s=999)
+    res = await _call(server, "aegis_monitor_cancel",
+                      monitor_id=drop["monitor_id"])
+    assert res["ok"] is True and res["state"] == "cancelled"
+    assert res["description"] == "huérfana"
+    assert [r["id"] for r in res["still_watching"]] == [keep["monitor_id"]]
+    assert "1 live monitor left" in res["note"]

@@ -1,6 +1,6 @@
-"""The anti-stale roster: an agent's OTHER live monitors, surfaced at the two
-moments it is already thinking about monitors — arming one, and being woken by
-one finishing.
+"""The anti-stale roster: an agent's OTHER live monitors, surfaced at the three
+moments it is already thinking about monitors — arming one, being woken by one
+finishing, and cancelling one.
 
 Motivating burn (2026-08-10, session ``une-tools-release``): the agent killed a
 chained pytest by PID, which also killed the ``bash`` waiting to write the
@@ -145,8 +145,8 @@ async def test_a_failed_monitor_also_carries_the_roster():
 
 
 @pytest.mark.asyncio
-async def test_cancel_delivers_nothing_at_all():
-    """Cancel is deliberate — no wake, so no roster either."""
+async def test_cancel_delivers_no_inbox_wake():
+    """Deliberate — the acknowledgement is the tool result, not a turn."""
     mm = _mm({})
     mm.start_monitor(from_handle="p", description="other", done="never",
                      autorun=False)
@@ -185,3 +185,77 @@ def test_roster_block_shows_pct_when_present():
         {"id": "01ABC", "description": "suite", "pct": 60.0,
          "elapsed_s": 754}])
     assert "60%" in block and "12m" in block and "01ABC" in block
+
+
+# ----- cancel: confirm what died, and what is still alive ------------------
+
+@pytest.mark.asyncio
+async def test_cancel_names_what_it_cancelled():
+    """`{ok: true}` alone makes the agent take on faith that it hit the one
+    it meant — with ULIDs that differ in four characters, that is a bad bet."""
+    mm = _mm({})
+    mid = mm.start_monitor(from_handle="p", done="never", autorun=False,
+                           description="suite limpia (huérfana)")
+    res = await mm.cancel(mid)
+    assert res["ok"] is True
+    assert res["state"] == "cancelled"
+    assert res["description"] == "suite limpia (huérfana)"
+
+
+@pytest.mark.asyncio
+async def test_cancel_reports_what_is_still_watching():
+    """Cancelling is when an agent is pruning, so it is the best moment to
+    show the rest of the pile."""
+    clock = FakeClock()
+    mm = _mm({"prog60": (0, "60")}, clock=clock)
+    keep = mm.start_monitor(from_handle="p", description="diagnóstico",
+                            done="never", progress="prog60", autorun=False)
+    drop = mm.start_monitor(from_handle="p", description="huérfana",
+                            done="never", autorun=False)
+    await mm.tick(keep)
+    clock.t = 754.0
+    res = await mm.cancel(drop)
+    assert [r["id"] for r in res["still_watching"]] == [keep]
+    assert res["still_watching"][0]["pct"] == 60.0
+    assert res["still_watching"][0]["elapsed_s"] == 754
+    assert "1" in res["note"]
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_last_one_says_so_plainly():
+    mm = _mm({})
+    mid = mm.start_monitor(from_handle="p", description="x", done="never",
+                           autorun=False)
+    res = await mm.cancel(mid)
+    assert res["still_watching"] == []
+    assert "no monitors" in res["note"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_does_not_count_a_peers_monitors():
+    mm = _mm({})
+    mm.start_monitor(from_handle="peer", description="theirs", done="never",
+                     autorun=False)
+    mid = mm.start_monitor(from_handle="p", description="mine", done="never",
+                           autorun=False)
+    res = await mm.cancel(mid)
+    assert res["still_watching"] == []
+
+
+@pytest.mark.asyncio
+async def test_cancelling_an_already_terminal_monitor_still_names_it():
+    mm = _mm({"done-now": (0, "")})
+    mid = mm.start_monitor(from_handle="p", description="ya terminó",
+                           done="done-now", autorun=False)
+    await mm.tick(mid)
+    res = await mm.cancel(mid)
+    assert res["state"] == "done"
+    assert res["description"] == "ya terminó"
+    assert "already terminal" in res["note"]
+
+
+@pytest.mark.asyncio
+async def test_cancelling_an_unknown_id_is_still_an_error():
+    mm = _mm({})
+    res = await mm.cancel("01NOPE")
+    assert res["ok"] is False and "unknown monitor" in res["error"]

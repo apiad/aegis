@@ -236,8 +236,9 @@ BRIEFING = (
     "you will not notice on your own. Cancel those as they appear.\n"
     "  - aegis_monitors(from_handle?) / aegis_monitor_cancel(monitor_id) : "
     "list live monitors — pass your handle to see only your own, since "
-    "unscoped it lists every peer's too — / stop one (no agent callback on "
-    "cancel).\n"
+    "unscoped it lists every peer's too — / stop one. Cancel sends no inbox "
+    "wake (you asked for it); its result names what died and what you have "
+    "left.\n"
     "  - aegis_remind(from_handle, note, after?) : leave a note for your "
     "future self, delivered back to your OWN inbox. Omit `after` for a "
     "turn-end reminder — it comes back as your LAST turn, strictly behind "
@@ -1441,7 +1442,13 @@ def build_server(bridge: AppBridge) -> FastMCP:
 
     @server.tool
     async def aegis_monitor_cancel(monitor_id: str) -> dict:
-        """Stop a monitor. No agent callback is delivered on cancel."""
+        """Stop a monitor. No inbox callback — you asked for this.
+
+        The result confirms it instead: ``description`` names what was
+        actually cancelled, and ``still_watching`` lists what you have left.
+        Cancelling is usually pruning, so read that list — it is where the
+        next orphan shows up.
+        """
         return await bridge.monitor_manager.cancel(monitor_id)
 
     @server.tool
