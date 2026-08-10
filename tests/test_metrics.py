@@ -399,3 +399,50 @@ def test_gauge_stays_under_100_percent_on_a_long_agentic_turn():
     pct = round(100 * m.last_true_input / m.context_window)
     assert pct <= 100, f"gauge read {pct}%"
     assert m.last_true_input == 60_000 + 29 * 700
+
+
+# --- compaction: authoritative, from the harness boundary -------------
+
+def test_note_compaction_rebaselines_the_gauge():
+    """After compaction the model sees a summary, not the old context.
+    p_in still holds the pre-compaction peak (~the full window), so
+    without a re-baseline the gauge would read ~100% for the rest of
+    the turn."""
+    m = SessionMetrics(context_window=1_000_000)
+    m.observe(_u(inp=999_917))
+    m.note_compaction(post_tokens=15_022)
+
+    assert m.compaction_count == 1
+    assert m.p_in == 15_022
+    assert m.last_true_input == 15_022
+
+
+def test_note_compaction_lets_the_gauge_climb_again():
+    """The re-baseline is a floor reset, not a lock -- growth after the
+    boundary must register normally."""
+    m = SessionMetrics(context_window=1_000_000)
+    m.observe(_u(inp=999_917))
+    m.note_compaction(post_tokens=15_022)
+    m.observe(_u(inp=40_000))
+    assert m.p_in == 40_000
+
+
+def test_note_compaction_without_tokens_does_not_zero_the_gauge():
+    """A boundary with no metadata still counts, but must not wipe the
+    gauge -- an empty payload is missing information, not a 0-token
+    context."""
+    m = SessionMetrics(context_window=1_000_000)
+    m.observe(_u(inp=50_000))
+    m.note_compaction(post_tokens=0)
+    assert m.compaction_count == 1
+    assert m.p_in == 50_000
+
+
+def test_compaction_count_accumulates_across_turns():
+    """The counter is session-scoped: it is a context-integrity signal,
+    not a per-turn one, so commit() must not reset it."""
+    m = SessionMetrics(context_window=1_000_000)
+    m.note_compaction(post_tokens=15_000)
+    m.commit(_u(inp=100, out=10), now=1.0)
+    m.note_compaction(post_tokens=20_000)
+    assert m.compaction_count == 2

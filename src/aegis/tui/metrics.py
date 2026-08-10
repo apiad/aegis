@@ -83,6 +83,10 @@ class SessionMetrics:
     # the % gauge in render().
     last_true_input: int = 0
     context_window: int = 0
+    # Times the harness compacted this session. Session-scoped on purpose
+    # — it is a context-integrity signal, not a per-turn one, so commit()
+    # must not reset it.
+    compaction_count: int = 0
     # provider + model strings drive the cost lookup. Empty strings mean
     # cost rendering is skipped (no $ segment in the status line).
     provider: str = ""
@@ -145,6 +149,24 @@ class SessionMetrics:
         has broken is a gauge that falls while the session is still growing.
         """
         self.p_in = max(self.p_in, ti)
+
+    def note_compaction(self, post_tokens: int) -> None:
+        """An authoritative compaction boundary from the harness.
+
+        No threshold and no ratio: the harness has already decided.
+        Inferring compaction from token movement instead was measured at
+        ~1.3% precision over the real corpus — see the rejected approach
+        in the design spec, and do not reintroduce it.
+
+        Re-baselines the gauge because p_in holds the pre-compaction peak
+        (~the full window); without this the gauge reads ~100% for the
+        rest of the turn. `post_tokens` of 0 means the boundary carried no
+        metadata — count it, but leave the gauge alone.
+        """
+        self.compaction_count += 1
+        if post_tokens > 0:
+            self.p_in = post_tokens
+            self.last_true_input = post_tokens
 
     def observe(self, u: TokenUsage) -> None:
         """A streamed (non-authoritative) usage snapshot — provisional."""
