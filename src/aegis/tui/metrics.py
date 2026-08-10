@@ -130,9 +130,25 @@ class SessionMetrics:
     def record_tool_error(self) -> None:
         self.tool_errors += 1
 
+    def observe_context(self, ti: int) -> None:
+        """Record one sub-turn context-size snapshot, from any harness.
+
+        The single funnel for context size: the Claude streaming path
+        reaches it through observe(), the ACP path through the
+        ContextUpdate branch in core.session.
+
+        The stream interleaves independent contexts — the main agent's and
+        each subagent's — so this is a max over all of them. That is safe
+        because a subagent's context is smaller than its parent's, an
+        empirical property of the real corpus (replaying it leaves 1 turn
+        in 6871 above 100%), not a structural guarantee. The signal that it
+        has broken is a gauge that falls while the session is still growing.
+        """
+        self.p_in = max(self.p_in, ti)
+
     def observe(self, u: TokenUsage) -> None:
         """A streamed (non-authoritative) usage snapshot — provisional."""
-        self.p_in = max(self.p_in, u.true_input)
+        self.observe_context(u.true_input)
         self.p_out = max(self.p_out, u.output)
         self.p_cached = max(self.p_cached, u.cache_read)
         self._provisional = True
@@ -150,14 +166,21 @@ class SessionMetrics:
         self.turn_start = None
 
     def commit(self, usage: TokenUsage | None, now: float) -> None:
-        """Turn end. `usage` (result.usage) is authoritative; provisional
-        is discarded. `None` (error/no-result) commits no tokens."""
+        """Turn end. `usage` (result.usage) is authoritative for cumulative
+        accounting; provisional is discarded. `None` (error/no-result)
+        commits no tokens."""
+        # p_in is the largest single sub-turn context seen this turn — the
+        # real context size. Result.usage.true_input sums every sub-turn, so
+        # a 30-sub-turn turn reports ~2.1M and the gauge reads 1052%. Only
+        # the gauge numerator changes here; c_in and the cost computation
+        # want the accumulated figure and keep it.
+        peak_ti = self.p_in
         if usage is not None:
             self.c_in += usage.true_input
             self.c_out += usage.output
             self.c_cached += usage.cache_read
             self.c_cache_write += usage.cache_creation
-            self.last_true_input = usage.true_input
+            self.last_true_input = peak_ti if peak_ti > 0 else usage.true_input
         self.p_in = self.p_out = self.p_cached = 0
         self._provisional = False
         self._end_time(now)

@@ -346,3 +346,56 @@ def test_tier3_is_the_irreducible_core():
     tiers = _loaded_metrics().render_tiers(0.0)
     assert "ctx" not in tiers[3]
     assert "↑" in tiers[3] and "↓" in tiers[3]
+
+
+# --- context gauge: peak sub-turn, not the accumulated total ----------
+
+def test_commit_keeps_per_subturn_peak_not_the_accumulated_total():
+    """Result.usage.true_input accumulates across every sub-turn of an
+    agentic turn, so it is not a context size. The gauge must keep the
+    largest single sub-turn instead.
+
+    Numbers are a scaled-down real turn: three sub-turns at 97k/113k/123k
+    commit a Result of 333k. Measured over 6871 real turns, using the
+    Result value put 61.9% of them above 100% of the window."""
+    m = SessionMetrics(context_window=200_000)
+    for ti in (97_000, 113_000, 123_000):
+        m.observe(_u(inp=ti))
+    m.commit(_u(inp=333_000, out=500), now=1.0)
+
+    assert m.last_true_input == 123_000     # the peak sub-turn
+    assert m.c_in == 333_000                # cumulative accounting unchanged
+
+
+def test_commit_falls_back_to_result_when_no_streaming_usage():
+    """A turn with no streamed usage (short turn, or a harness that does
+    not stream it) still has to show something."""
+    m = SessionMetrics(context_window=200_000)
+    m.commit(_u(inp=42_000, out=100), now=1.0)
+    assert m.last_true_input == 42_000
+
+
+def test_observe_context_is_the_shared_funnel():
+    """Both the Claude streaming path and the ACP ContextUpdate path feed
+    one method, so the gauge behaves identically per harness."""
+    m = SessionMetrics(context_window=200_000)
+    m.observe_context(50_000)
+    m.observe_context(30_000)      # a smaller snapshot never lowers the peak
+    assert m.p_in == 50_000
+    m.observe_context(80_000)
+    assert m.p_in == 80_000
+
+
+def test_gauge_stays_under_100_percent_on_a_long_agentic_turn():
+    """Regression for the 1000%+ bug. A 30-sub-turn turn averaging 70k
+    commits a ~2.1M Result; the gauge must still read the peak sub-turn."""
+    m = SessionMetrics(context_window=200_000)
+    total = 0
+    for i in range(30):
+        ti = 60_000 + i * 700
+        total += ti
+        m.observe(_u(inp=ti))
+    m.commit(_u(inp=total, out=1000), now=1.0)
+    pct = round(100 * m.last_true_input / m.context_window)
+    assert pct <= 100, f"gauge read {pct}%"
+    assert m.last_true_input == 60_000 + 29 * 700
