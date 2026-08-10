@@ -4,7 +4,7 @@ import pytest
 from aegis.events import (
     parse, SystemInit, AssistantText, AssistantThinking, ThinkingTokens,
     ToolUse, ToolResult, Result, Unknown, ParserState,
-    AgentPlan, PlanEntry, UserMessage,
+    AgentPlan, PlanEntry, UserMessage, CompactBoundary,
 )
 
 FIX = Path(__file__).parent / "fixtures"
@@ -662,3 +662,36 @@ def test_parse_assistant_without_usage_is_none():
     }))
     assert isinstance(ev, AssistantText)
     assert ev.usage is None
+
+
+def test_parse_compact_boundary_event():
+    """Claude emits an explicit boundary at every auto-compaction. The
+    payload is authoritative -- pre/post token counts come from the
+    harness, so nothing here is inferred from a drop heuristic."""
+    ev = parse(json.dumps({
+        "type": "system", "subtype": "compact_boundary",
+        "session_id": "8ac5c9fe", "uuid": "7b0f20f8",
+        "compact_metadata": {
+            "trigger": "auto",
+            "pre_tokens": 999917,
+            "post_tokens": 15022,
+            "cumulative_dropped_tokens": 984895,
+            "duration_ms": 163448,
+        },
+    }))
+    assert isinstance(ev, CompactBoundary)
+    assert ev.trigger == "auto"
+    assert ev.pre_tokens == 999917
+    assert ev.post_tokens == 15022
+    assert ev.dropped_tokens == 984895
+    assert ev.duration_ms == 163448
+
+
+def test_parse_compact_boundary_tolerates_missing_metadata():
+    """A boundary with no metadata block must still parse -- the counter
+    is worth having even when the numbers are absent."""
+    ev = parse(json.dumps({"type": "system", "subtype": "compact_boundary"}))
+    assert isinstance(ev, CompactBoundary)
+    assert ev.trigger == ""
+    assert ev.pre_tokens == 0
+    assert ev.post_tokens == 0

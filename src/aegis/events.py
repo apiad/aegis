@@ -167,6 +167,27 @@ class ContextUpdate:
 
 
 @dataclass
+class CompactBoundary:
+    """The harness compacted the conversation.
+
+    Authoritative: nothing downstream infers compaction from token
+    movement. Detecting it from a >50% drop in streamed true_input was
+    measured at ~1.3% precision over the real session corpus — the stream
+    interleaves the main agent's context with each subagent's, so most
+    "drops" are context switches. See the rejected approach in
+    `docs/superpowers/specs/2026-08-09-context-gauge-and-compaction-design.md`.
+
+    Claude-only for now; ACP has no equivalent signal.
+    `trigger` is "auto" or "manual".
+    """
+    trigger: str = ""
+    pre_tokens: int = 0
+    post_tokens: int = 0
+    dropped_tokens: int = 0
+    duration_ms: int = 0
+
+
+@dataclass
 class AgentPlan:
     """Canonical plan-tracking event. Emitted by:
     - the claude parser when it sees a TodoWrite tool_use (the model's
@@ -230,7 +251,7 @@ class SessionClosed:
 
 Event = (
     SystemInit | AssistantText | AssistantThinking | ThinkingTokens
-    | ToolUse | ToolResult | AgentPlan | ContextUpdate
+    | ToolUse | ToolResult | AgentPlan | ContextUpdate | CompactBoundary
     | Result | UserMessage | Unknown | SessionMeta | SessionClosed
 )
 
@@ -425,6 +446,18 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
         est = int(obj.get("estimated_tokens") or 0)
         state.thinking_estimate += delta
         return ThinkingTokens(estimated=est, delta=delta)
+
+    if etype == "system" and obj.get("subtype") == "compact_boundary":
+        meta = obj.get("compact_metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+        return CompactBoundary(
+            trigger=meta.get("trigger") or "",
+            pre_tokens=int(meta.get("pre_tokens") or 0),
+            post_tokens=int(meta.get("post_tokens") or 0),
+            dropped_tokens=int(meta.get("cumulative_dropped_tokens") or 0),
+            duration_ms=int(meta.get("duration_ms") or 0),
+        )
 
     if etype == "result":
         usage = obj.get("usage")
