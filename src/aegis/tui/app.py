@@ -856,8 +856,19 @@ class AegisApp(App):
         if self._snapshot_timer is not None:
             return                       # one already pending
         try:
-            self._snapshot_timer = self.set_timer(
-                self.SNAPSHOT_DEBOUNCE_S, self._flush_snapshot)
+            # Arm it inside the app's context. A Timer's task copies the
+            # context that created it and Timer._tick reads active_app, but
+            # _refresh_tabbar reaches here from AppBridge methods that run
+            # in an MCP handler task (aegis_title, aegis_rename, spawn,
+            # close, …) — no active_app there, so the timer died on its
+            # first tick with LookupError. Nothing retrieved that exception
+            # until Timer._stop_all awaited the task at shutdown, which is
+            # why every Ctrl+Q printed a crash dump; and because
+            # _flush_snapshot never ran, _snapshot_timer stayed set and
+            # silently disabled every later roster write.
+            with self._context():
+                self._snapshot_timer = self.set_timer(
+                    self.SNAPSHOT_DEBOUNCE_S, self._flush_snapshot)
         except Exception:                # noqa: BLE001 — app not running yet
             self._write_snapshot()
 
