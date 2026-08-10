@@ -12,6 +12,7 @@ from aegis.events import (
     ContextUpdate, Event, Result, ThinkingTokens, ToolResult, ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
+from aegis.repos.writes import write_target
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
     SessionHandle, SessionStartEvent, Turn,
@@ -59,7 +60,8 @@ class AgentSession:
                  opening_prompt: str | None = None,
                  project_root: Path | None = None,
                  log_id: str | None = None,
-                 place=None) -> None:
+                 place=None,
+                 repo_tracker=None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
@@ -94,6 +96,10 @@ class AgentSession:
         # Plan state is session state, not view state: the TUI strip, the
         # web client, and the MCP coordination plane are all readers.
         self.plan = PlanTracker()
+        # App-wide, shared with every other session — which is what lets the
+        # sidebar say "a peer is in this repo too". Optional: headless
+        # callers and every test that predates it pass nothing.
+        self.repo_tracker = repo_tracker
         # Subagent plans, keyed by the dispatching Task tool_use id. Kept
         # apart from the top-level plan because a subagent's short list
         # would otherwise overwrite its parent's — the strip would read
@@ -573,10 +579,34 @@ class AgentSession:
         # from its callback sees this event already applied.
         if isinstance(ev, AgentPlan):
             self._apply_plan(ev)
+        elif isinstance(ev, ToolUse):
+            self._record_repo(ev)
         if self.on_event is not None:
             self.on_event(self, ev)
         for cb in self._extra_event_observers:
             cb(self, ev)
+
+    def _record_repo(self, ev: ToolUse) -> None:
+        """Note the repo behind a write tool call.
+
+        Only reached from ``_fire_event``, which the replay path does not
+        call — so a resumed session starts with an empty board rather than
+        resurrecting every repo its transcript ever mentioned.
+
+        A subagent's write is recorded under this session's handle: the
+        subagent has no handle of its own, and the repo is this session's
+        responsibility either way.
+        """
+        if self.repo_tracker is None:
+            return
+        path = write_target(ev.name, ev.raw_input, ev.locations, ev.kind)
+        if not path:
+            return
+        try:
+            self.repo_tracker.record(self.handle, path,
+                                     host=self.place.host)
+        except Exception:  # noqa: BLE001 — a dashboard must never take a turn
+            log.exception("repo tracker raised on record; continuing")
 
     def _apply_plan(self, ev: AgentPlan, ts: float | None = None) -> None:
         """Route by parent: top-level plans to our own tracker, a
