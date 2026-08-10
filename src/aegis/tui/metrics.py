@@ -239,18 +239,33 @@ class SessionMetrics:
             return 0.0
         return now - self.session_start
 
-    def render(self, now: float) -> str:
+    def render(self, now: float, colors=None) -> str:
         """Widest form of the status-line metrics segment."""
-        return self.render_tiers(now)[0]
+        return self.render_tiers(now, colors)[0]
 
-    def render_tiers(self, now: float) -> tuple[str, str, str, str]:
+    def render_tiers(self, now: float,
+                     colors=None) -> tuple[str, str, str, str]:
         """Four progressively narrower forms of the metrics segment.
 
         T0 is everything. T1 drops the tool counter and throughput — both are
         curiosities rather than decisions. T2 additionally drops the cached and
         reasoning shares and reduces ``ctx`` to its percentage, which is the
         part you act on. T3 is the irreducible core: tokens, cost, turn time.
+
+        ``colors`` is an ``AegisColors`` palette, and it is what the severity
+        markup is written in — the same shape ``sysmeter`` and the strips
+        take. Passing it is how a caller says "I render markup"; the default
+        (``None``) emits none at all, which is what the web wire wants, since
+        it sets the segment as ``textContent`` and would show the tags.
         """
+        # Two renderers read these strings: the StatusBar is a Textual
+        # ``Static``, the sidebar parses them with ``rich.text.Text``. A
+        # palette hex closed by the bare ``[/]`` is the one dialect both
+        # accept — the Textual-only ``[$error]`` form raised MarkupError in
+        # Rich the moment the gauge went yellow. See StatusBar.__init__,
+        # which has always coloured this way.
+        warn = getattr(colors, "working", "") if colors is not None else ""
+        err = getattr(colors, "error", "") if colors is not None else ""
         in_t = self.c_in + self.p_in
         out = self.c_out + self.p_out
         cached = self.c_cached + self.p_cached
@@ -272,13 +287,13 @@ class SessionMetrics:
             # every element as a tier, so a fifth would render as a fifth
             # (narrower) variant of the whole bar. fit.plain_width strips
             # tags before measuring, so the colour costs no width budget.
-            tag = ("$error" if ctx_pct >= 75
-                   else "$warning" if ctx_pct >= 50 else "")
+            tag = (err if ctx_pct >= 75
+                   else warn if ctx_pct >= 50 else "")
             body = f"ctx {_fmt_tokens(live)} ({ctx_pct}%)"
             body_short = f"ctx {ctx_pct}%"
             if tag:
-                body = f"[{tag}]{body}[/{tag}]"
-                body_short = f"[{tag}]{body_short}[/{tag}]"
+                body = f"[{tag}]{body}[/]"
+                body_short = f"[{tag}]{body_short}[/]"
             ctx = f"{body} · "
             ctx_short = f"{body_short} · "
         # Compaction counter. T0/T1 only — a context-integrity signal, not
@@ -286,8 +301,9 @@ class SessionMetrics:
         # because fit.plain_width measures with len().
         cut = ""
         if self.compaction_count > 0:
-            cut_tag = "$error" if self.compaction_count >= 2 else "$warning"
-            cut = f"[{cut_tag}]✂{self.compaction_count}[/{cut_tag}] · "
+            cut_tag = err if self.compaction_count >= 2 else warn
+            cut = (f"[{cut_tag}]✂{self.compaction_count}[/] · " if cut_tag
+                   else f"✂{self.compaction_count} · ")
         cost = self._render_cost()
         tps = self.recent_tps()
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""

@@ -254,3 +254,23 @@ def test_nested_rows_line_up_on_the_same_right_edge():
         if ln.rstrip().endswith(("1:01", "0:42"))]
     assert len(lines) == 2, lines
     assert len({cell_len(ln) for ln in lines}) == 1, lines
+
+
+def test_a_coloured_metrics_segment_survives_the_rich_parser():
+    """The CONTEXT rows come from `SessionMetrics.render_tiers`, which is
+    also read by the StatusBar — a Textual `Static`. The sidebar parses the
+    same strings with *Rich*, and the two markup dialects are not the same
+    one: Textual accepts `[$error]`, Rich reads the closing `[/$error]` as
+    a stray tag and raises `MarkupError`. The colours only appear once the
+    context is half full, so the crash waits for a long session to arrive.
+    """
+    from aegis.tui.metrics import SessionMetrics
+    hot = SessionMetrics(context_window=200_000, last_true_input=160_000,
+                         compaction_count=2)
+    out = as_text(render_sidebar(
+        SidebarModel(metrics=tuple(hot.render_tiers(now=0.0, colors=C))),
+        C, 60))
+    assert "CONTEXT" in out
+    assert "ctx 160k (80%)" in out
+    assert "✂2" in out
+    assert "$error" not in out and "[" not in out

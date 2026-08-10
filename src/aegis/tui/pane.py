@@ -1268,7 +1268,8 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_metrics(
-                self._core.metrics.render_tiers(time.monotonic()))
+                self._core.metrics.render_tiers(time.monotonic(),
+                                                self._palette))
         self._refresh_sidebar()
 
     def refresh_title(self) -> None:
@@ -2539,7 +2540,8 @@ class ConversationPane(Widget):
             identity=(ident,) if ident else (),
             state_label=core.state.label,
             loop=self._loop_tiers,
-            metrics=tuple(core.metrics.render_tiers(time.monotonic())),
+            metrics=tuple(core.metrics.render_tiers(time.monotonic(),
+                                                    self._palette)),
             quota=self._quota_tiers,
             plan=core.plan_state(), subplans=core.subplan_states(),
             plan_working=core.plan.working,

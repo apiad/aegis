@@ -1,5 +1,6 @@
 from aegis.events import TokenUsage
 from aegis.tui.metrics import SessionMetrics, context_window_for
+from aegis.tui.themes import INK, aegis_colors
 
 
 def _u(inp=0, cc=0, cr=0, out=0):
@@ -450,30 +451,54 @@ def test_compaction_count_accumulates_across_turns():
 
 # --- ctx segment colour ------------------------------------------------
 
+C = aegis_colors(INK)          # house pattern — see tests/test_render_event.py
+
+
 def test_ctx_segment_is_uncoloured_below_half():
     m = SessionMetrics(context_window=200_000, last_true_input=40_000)
-    t0 = m.render_tiers(now=0.0)[0]
+    t0 = m.render_tiers(now=0.0, colors=C)[0]
     assert "ctx 40k (20%)" in t0
-    assert "[$warning]" not in t0 and "[$error]" not in t0
+    assert "[" not in t0
 
 
 def test_ctx_segment_warns_at_half_full():
     m = SessionMetrics(context_window=200_000, last_true_input=120_000)
-    t0 = m.render_tiers(now=0.0)[0]
-    assert "[$warning]ctx 120k (60%)[/$warning]" in t0
+    t0 = m.render_tiers(now=0.0, colors=C)[0]
+    assert f"[{C.working}]ctx 120k (60%)[/]" in t0
 
 
 def test_ctx_segment_errors_at_three_quarters():
     m = SessionMetrics(context_window=200_000, last_true_input=160_000)
-    t0 = m.render_tiers(now=0.0)[0]
-    assert "[$error]ctx 160k (80%)[/$error]" in t0
+    t0 = m.render_tiers(now=0.0, colors=C)[0]
+    assert f"[{C.error}]ctx 160k (80%)[/]" in t0
 
 
 def test_ctx_short_tier_is_coloured_too():
     """T2 reduces ctx to its percentage -- the part you act on -- so it
     is exactly the tier that must keep the warning."""
     m = SessionMetrics(context_window=200_000, last_true_input=160_000)
-    assert "[$error]ctx 80%[/$error]" in m.render_tiers(now=0.0)[2]
+    assert f"[{C.error}]ctx 80%[/]" in m.render_tiers(now=0.0, colors=C)[2]
+
+
+def test_a_caller_with_no_palette_gets_no_markup():
+    """The web wire sets this string as `textContent`, so a tag it cannot
+    parse is a tag the reader sees. No palette means no markup at all."""
+    m = SessionMetrics(context_window=200_000, last_true_input=160_000,
+                       compaction_count=2)
+    t0 = m.render_tiers(now=0.0)[0]
+    assert "ctx 160k (80%)" in t0 and "✂2" in t0
+    assert "[" not in t0 and "]" not in t0
+
+
+def test_coloured_segments_survive_the_rich_parser():
+    """The sidebar reads these same strings through `rich.text.Text`, not
+    through Textual. A Textual-only `[$error]` tag parses there and raises
+    MarkupError here -- so the dialect has to be the one both accept."""
+    from rich.text import Text
+    m = SessionMetrics(context_window=200_000, last_true_input=160_000,
+                       compaction_count=2)
+    for tier in m.render_tiers(now=0.0, colors=C):
+        Text.from_markup(tier)          # must not raise
 
 
 def test_ctx_colour_does_not_consume_width_budget():
@@ -482,11 +507,12 @@ def test_ctx_colour_does_not_consume_width_budget():
     from aegis.tui.fit import plain_width
     hot = SessionMetrics(context_window=200_000, last_true_input=160_000)
     cool = SessionMetrics(context_window=200_000, last_true_input=160_00)
-    t0_hot = hot.render_tiers(now=0.0)[0]
+    t0_hot = hot.render_tiers(now=0.0, colors=C)[0]
     assert plain_width(t0_hot) == len(
-        t0_hot.replace("[$error]", "").replace("[/$error]", ""))
+        t0_hot.replace(f"[{C.error}]", "").replace("[/]", ""))
     # And the tag itself costs nothing relative to identical plain text.
-    assert plain_width(t0_hot) > plain_width(cool.render_tiers(now=0.0)[0]) - 10
+    assert plain_width(t0_hot) > plain_width(
+        cool.render_tiers(now=0.0, colors=C)[0]) - 10
 
 
 def test_render_tiers_still_returns_four_tiers():
@@ -518,9 +544,9 @@ def test_scissors_segment_in_t0_and_t1_only():
 
 def test_scissors_is_yellow_at_one_and_red_at_two():
     one = SessionMetrics(context_window=200_000, compaction_count=1)
-    assert "[$warning]✂1[/$warning]" in one.render_tiers(now=0.0)[0]
+    assert f"[{C.working}]✂1[/]" in one.render_tiers(now=0.0, colors=C)[0]
     two = SessionMetrics(context_window=200_000, compaction_count=2)
-    assert "[$error]✂2[/$error]" in two.render_tiers(now=0.0)[0]
+    assert f"[{C.error}]✂2[/]" in two.render_tiers(now=0.0, colors=C)[0]
 
 
 def test_scissors_glyph_is_single_width():

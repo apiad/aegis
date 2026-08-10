@@ -7,6 +7,21 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **The sidebar no longer crashes the app when the context fills up.** The
+  `ctx N (P%)` gauge and the `✂N` compaction counter colour themselves once
+  the window is half full, and they wrote that colour as Textual's
+  theme-variable markup (`[$warning]…[/$warning]`). The status bar is a
+  Textual `Static` and reads it; the F3 sidebar parses the *same strings*
+  with `rich.text.Text`, and Rich does not accept `[$warning]` as an opening
+  tag while it does accept `[/$warning]` as a closing one — so it raised
+  `MarkupError` and took the TUI down. Nothing carried a tag below 50%,
+  which is why this only ever fired on a long session. `render_tiers` now
+  takes the palette, the way `sysmeter` and the strips already do, and
+  writes a palette hex closed by the bare `[/]` — the one dialect both
+  parsers accept. A caller with no palette gets no markup at all, which
+  also fixes the web client showing a literal `[$warning]✂1[/$warning]`
+  where the segment should be (it sets the string as `textContent`).
+
 - **A queue callback carries the worker's last *message*, not its last
   chunk.** Assistant text arrives as a token stream — one message is many
   events, which is the entire reason `render.coalesce_chunks` exists — and
