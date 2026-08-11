@@ -7,6 +7,174 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **The `F3` side dashboard — the pane's whole right-hand column, instead of
+  four strips fighting for one row.** Press `F3` (or type `/tasks`) and a
+  full-height sidebar carries `SESSION`, `CONTEXT`, `PLAN`, `QUEUES`,
+  `MONITORS`, `REPOS` and `SYSTEM`; the main column becomes transcript and
+  input. Press it again and the pane is exactly what it was.
+
+  The status bar had run out of room. Eight segments compete for one line,
+  and each new thing worth watching — a plan, a queue depth, a monitor's
+  progress — arrived as another collapsed strip above the input, each doing
+  its own truncation. The column's vertical axis is free, which is the whole
+  argument for it: sections are ordered by **volatility**, highest first,
+  because the panel scrolls and what you see without scrolling should be what
+  moves. An empty section renders nothing at all, not a heading over a blank.
+
+  **`F3` toggles a mode, and the mode is app-wide.** One flag fans out to
+  every pane, and a tab opened later comes up in the mode rather than
+  collapsed beside its siblings — which is what makes a fan-out readable,
+  since the point is comparing agents. It shipped per-pane and that was
+  wrong: switching tabs changed the layout under you.
+
+  Every row is fitted to the column, top tier down, at 26 / 33 / 40 / 60
+  cells — one invariant in `tests/test_sidebar_render.py` pins it, because
+  the body is a `Static` in a `VerticalScroll` and an over-long row does not
+  clip, it wraps and pushes everything below it off the panel.
+
+- **The sidebar's `SYSTEM` block now says when and where.** Under the
+  CPU/RAM/disk meters it carries three more rows: the date, time, zone and
+  locale; the directory this aegis is rooted at (`CWD ~/Workspace/repos/aegis`
+  — home collapsed to `~`, narrowing from the head, since in a path you
+  already live in the prefix is the part you can reconstruct); and the build
+  actually running (`aegis 0.32.0+b78cb3d`, off `version.BUILD`, which
+  latches at import for exactly this reason — under an editable checkout
+  "what am I running" and "what is on disk" diverge the moment a commit
+  lands beneath a live TUI).
+
+  Sidebar-only: a one-row status bar has no space for four more segments,
+  and the column's vertical axis is free — which is what the panel is for.
+  Ordered by volatility like every other section, one level down: the
+  meters move every tick, the clock every minute, the last two never. The
+  repaint rides the existing app tick (`set_system` already fires every
+  second and lands on `_refresh_sidebar`), so the clock stays current
+  without a timer of its own.
+
+- **`/spawn <agent> <prompt>` now carries where you were standing.** Typed
+  from a live pane, the new agent's opening turn gets the same three things
+  `@peer` sends: provenance of *place* ("the operator started you from tab
+  `alpha` (opus)"), a bounded tail of that pane's transcript, and a pointer
+  to `aegis_read_peer("alpha")` for the rest. So `/spawn opus please verify
+  this test` now means something — the new agent can see which test, and go
+  read the conversation if the tail is not enough.
+
+  It closes the last row of the context-carrying table. `aegis_handoff`
+  carries nothing and you retype it; `@peer` carries a bounded slice to an
+  idle peer; `/fork` carries the entire conversation for about a dollar;
+  `/spawn` carried nothing at all, which is why a fresh agent's first four
+  turns went to grepping for a referent that was one log read away.
+
+  One thing inverts on purpose. `@peer` tells its target *not* to start long
+  work — it is spending someone else's idle turn. A spawn is the opposite:
+  paying for a new agent is exactly buying one that goes and does the thing,
+  so the composed body says do the work, and offers `aegis_handoff` back to
+  the source as the way home.
+
+  The tail is assembled at the **teaser** budget (2k tokens), not
+  `read_peer`'s own 24k default. Measured on a real 410KB transcript, the
+  wide budget turned a 3-turn window into 95,346 characters of preamble in
+  front of the three words the operator typed — and the turn bound does not
+  save you, because one long in-flight turn is a single turn. `read_peer`
+  grew `budget_tokens` / `item_chars` on both bridges for this, pinned by
+  `test_read_peer_takes_the_same_window_knobs_on_both_bridges`.
+
+  The preamble rides on the tail: a pane whose first input is the `/spawn`
+  itself, a damaged log, or a bridge without `read_peer` all fall back to
+  the bare prompt, because provenance pointing at a transcript nobody can
+  read buys the new agent a failed tool call and a paragraph of confusion.
+  `aegis_spawn` over MCP is unchanged — an agent calling it is told to write
+  a self-contained payload and has the context to do so. Spec:
+  `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`.
+
+- **`REPOS` in the `F3` sidebar — which repos the agents are writing to,
+  on what branch, and whether more than one is in there.** aegis runs many
+  agents over one checkout and nothing on screen said where they were
+  standing; two agents in one repo is the collision `src/aegis/locks/`
+  exists to prevent, and you found out at `git diff`, hours later.
+
+  ```
+  REPOS                              2
+  ● aegis        main ~6 ↑6  calm-hopper
+  ● Workspace    main ~2
+  ```
+
+  `●` is you, `·` is peers only, amber is more than one live writer. `~n`
+  is uncommitted files — how you spot the seven an agent left behind in a
+  repo it stopped working in an hour ago — and `↑n` is unpushed commits,
+  which is the "a VPS job clones `origin` and silently gets the old tree"
+  failure made visible. A detached `HEAD` or a rebase in flight replaces
+  the branch, in the error colour.
+
+  **Membership is writes only.** A repo enters when an agent runs `Write` /
+  `Edit` / `NotebookEdit` (ACP is recognised by tool *kind*, since every
+  harness on that seam picks its own titles) and stays for the life of that
+  session. Reads do not promote — otherwise every repo an agent merely
+  grepped shows up and the section stops meaning *work is happening here*.
+  Bash is missed on purpose: guessing write targets out of a shell command
+  is the heuristic the mandatory-claims spec already declined to dress up
+  as complete, and a row that appeared because something misread a `>`
+  inside a quoted string would make the whole section untrusted.
+
+  One `git status --porcelain=v2 --branch` per repo returns branch,
+  upstream, ahead/behind and the dirty list together. It runs off the UI
+  thread behind a 5s TTL, **only while the sidebar is open**, and a paint
+  never waits on it: a new row shows its branch immediately from
+  `.git/HEAD` (one file read) and fills in counts on the next tick. Repos
+  on a remote host are listed and never probed — the same path names a
+  different tree there, so `git status` locally would be a silently wrong
+  answer rather than an error.
+
+  TUI only; the web client renders no `REPOS`, the same debt the sidebar
+  itself and the live task list already owe.
+
+- **A compaction counter, `✂n`, beside the context gauge.** When the harness
+  drops older context to keep going, that is the single most consequential
+  thing that can happen to a long session and nothing on screen said it had.
+  Claude Code reports it exactly — a `system` / `compact_boundary` event
+  carrying `trigger`, `pre_tokens` and `post_tokens`, which aegis now parses
+  into a typed event — so the counter is a count, not an inference. Yellow at
+  one, red at two or more, and each boundary re-baselines the gauge to the
+  post-compaction size, without which `ctx` would sit at ~100% for the rest
+  of the turn.
+
+  There is deliberately **no heuristic fallback for ACP harnesses**. The
+  obvious one — a large drop in reported context — was tried and measured
+  against the local corpus: it fires 1,272 times against 17 real
+  compactions, ~1.3% precision, and no online variant beat 12%. Nearly half
+  its detections are subagent context switches and 98% recover inside the
+  same turn. So on a harness with no protocol signal the counter stays
+  absent, which is the honest reading.
+
+- **A monitor now tells an agent what else it is watching.** A monitor
+  outlives the process it watches: kill that process — a PID sweep, a
+  superseding run — and the monitor keeps polling for a marker nothing will
+  ever write, then wakes the agent with a stale verdict or times out much
+  later. Nothing said so, and the one tool that would show it,
+  `aegis_monitors()`, is a call an agent has no reason to make.
+
+  So the roster goes where the agent is already looking. `aegis_monitor`
+  returns `also_watching`, every monitor callback appends a *"Still watching
+  (N)"* block, and both print full ids with percent beside elapsed — that
+  pair is what exposes an orphan, since a monitor frozen at 60% for nineteen
+  minutes is plainly watching a corpse. `aegis_monitors()` also takes an
+  optional `from_handle`, because unscoped it lists every peer's monitors
+  with nothing marking ownership, and that is the state the roster now sends
+  agents to inspect.
+
+  **`aegis_monitor_cancel` says what it killed.** `{ok: true, state:
+  "cancelled"}` asked the agent to take on faith that it hit the monitor it
+  meant, and ULIDs differ in a handful of characters. The result now names
+  the description of what died and hands back the remaining roster, counted
+  — cancelling is when an agent is pruning, which makes it the best of the
+  three moments to show the rest of the pile. Neither path sends an inbox
+  wake: the agent just made that decision and does not need reminding of it.
+
+  Paid for on 2026-08-10: a session killed a chained pytest by PID, which
+  also killed the shell waiting to write the marker file. Its monitor sat at
+  60% forever, the agent armed two more, was woken by one of them and never
+  noticed — Alex had to point at it twice from outside. Either touch point
+  alone would have caught it.
+
 - **A call into the aegis layer now looks like one.** Every `aegis_*` tool
   renders with a glyph from the layer's own family, in the layer's own
   colour, on a line that names the counterpart — `⇄ weary-turing · "the
@@ -26,7 +194,48 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   that lands in another agent's inbox minutes later share one. Filter with
   `--handle` (matches either end), `--thread`, `--family`, `--since`.
 
+### Changed
+
+- **`F3` is one mode for the whole app, not a per-tab widget.** The
+  dashboard sidebar shipped scoped to the active pane, which meant
+  switching tabs changed the layout under you and every new tab landed
+  collapsed beside its open siblings. `F3`, `/tasks` and the pane's own
+  toggle now flip a single app-level flag that fans out to every pane,
+  and a pane mounted later adopts it.
+
 ### Fixed
+
+- **The context gauge measured the wrong thing, and read over 100% on most
+  agentic turns.** `ctx` is meant to answer "how full is the model's window",
+  but it was fed the turn's *accumulated* true input — and an agentic turn is
+  many round trips, so the figure grew with every tool call. Replayed over
+  the 381 local session logs (6,871 turns), **4,256 of them — 61.9% — render
+  above 100% today**, the worst at **92,956%** across 1,138 sub-turns. The
+  gauge now takes the **peak single sub-turn**, which is the quantity that
+  actually has to fit in the window: replaying the shipped code over the same
+  corpus leaves **1 turn in 7,042 above 100%**, and reintroducing the
+  one-line bug takes it back to 4,271. Cumulative accounting (cost, session
+  input) is unaffected — it was never the same number.
+
+  ACP sessions get a real window too: `context_size` off the harness's own
+  context update overrides the bundled model registry, which is what closes
+  the last outlying turn.
+
+- **Every `Ctrl+Q` printed a `LookupError` crash dump, and the tab roster
+  silently stopped being saved.** The debounce timer behind the roster write
+  is armed from `AppBridge` methods that run in MCP handler tasks
+  (`aegis_title`, `aegis_rename`, spawn, close) — and a Textual `Timer`
+  copies the context that armed it, then reads `active_app` on its first
+  tick. There is none in a handler task, so the timer died immediately and
+  nothing retrieved the exception until shutdown awaited the dead task.
+
+  The dump at quit was the visible half. The invisible half is worse: the
+  flush never ran, so the timer handle stayed set, so every later debounced
+  roster write for the rest of the session was dropped on the early return —
+  and a crash then lost the tab roster entirely, since only the synchronous
+  write in `action_quit` survived. Fixed by arming the timer inside the app's
+  context, verified by hand on a fresh instance (agent calls `aegis_title`,
+  then `Ctrl+Q` → rc=0, no traceback) and not only in the suite.
 
 - **The sidebar no longer crashes the app when the context fills up.** The
   `ctx N (P%)` gauge and the `✂N` compaction counter colour themselves once
@@ -131,112 +340,6 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   callers now read the same planes. `still_working_reasons` is the
   substrate's half of `refuse_reasons`, with the ownership questions
   dropped because nobody is asking permission.
-
-### Added
-
-- **The sidebar's `SYSTEM` block now says when and where.** Under the
-  CPU/RAM/disk meters it carries three more rows: the date, time, zone and
-  locale; the directory this aegis is rooted at (`CWD ~/Workspace/repos/aegis`
-  — home collapsed to `~`, narrowing from the head, since in a path you
-  already live in the prefix is the part you can reconstruct); and the build
-  actually running (`aegis 0.32.0+b78cb3d`, off `version.BUILD`, which
-  latches at import for exactly this reason — under an editable checkout
-  "what am I running" and "what is on disk" diverge the moment a commit
-  lands beneath a live TUI).
-
-  Sidebar-only: a one-row status bar has no space for four more segments,
-  and the column's vertical axis is free — which is what the panel is for.
-  Ordered by volatility like every other section, one level down: the
-  meters move every tick, the clock every minute, the last two never. The
-  repaint rides the existing app tick (`set_system` already fires every
-  second and lands on `_refresh_sidebar`), so the clock stays current
-  without a timer of its own.
-
-- **`/spawn <agent> <prompt>` now carries where you were standing.** Typed
-  from a live pane, the new agent's opening turn gets the same three things
-  `@peer` sends: provenance of *place* ("the operator started you from tab
-  `alpha` (opus)"), a bounded tail of that pane's transcript, and a pointer
-  to `aegis_read_peer("alpha")` for the rest. So `/spawn opus please verify
-  this test` now means something — the new agent can see which test, and go
-  read the conversation if the tail is not enough.
-
-  It closes the last row of the context-carrying table. `aegis_handoff`
-  carries nothing and you retype it; `@peer` carries a bounded slice to an
-  idle peer; `/fork` carries the entire conversation for about a dollar;
-  `/spawn` carried nothing at all, which is why a fresh agent's first four
-  turns went to grepping for a referent that was one log read away.
-
-  One thing inverts on purpose. `@peer` tells its target *not* to start long
-  work — it is spending someone else's idle turn. A spawn is the opposite:
-  paying for a new agent is exactly buying one that goes and does the thing,
-  so the composed body says do the work, and offers `aegis_handoff` back to
-  the source as the way home.
-
-  The tail is assembled at the **teaser** budget (2k tokens), not
-  `read_peer`'s own 24k default. Measured on a real 410KB transcript, the
-  wide budget turned a 3-turn window into 95,346 characters of preamble in
-  front of the three words the operator typed — and the turn bound does not
-  save you, because one long in-flight turn is a single turn. `read_peer`
-  grew `budget_tokens` / `item_chars` on both bridges for this, pinned by
-  `test_read_peer_takes_the_same_window_knobs_on_both_bridges`.
-
-  The preamble rides on the tail: a pane whose first input is the `/spawn`
-  itself, a damaged log, or a bridge without `read_peer` all fall back to
-  the bare prompt, because provenance pointing at a transcript nobody can
-  read buys the new agent a failed tool call and a paragraph of confusion.
-  `aegis_spawn` over MCP is unchanged — an agent calling it is told to write
-  a self-contained payload and has the context to do so. Spec:
-  `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`.
-
-- **`REPOS` in the `F3` sidebar — which repos the agents are writing to,
-  on what branch, and whether more than one is in there.** aegis runs many
-  agents over one checkout and nothing on screen said where they were
-  standing; two agents in one repo is the collision `src/aegis/locks/`
-  exists to prevent, and you found out at `git diff`, hours later.
-
-  ```
-  REPOS                              2
-  ● aegis        main ~6 ↑6  calm-hopper
-  ● Workspace    main ~2
-  ```
-
-  `●` is you, `·` is peers only, amber is more than one live writer. `~n`
-  is uncommitted files — how you spot the seven an agent left behind in a
-  repo it stopped working in an hour ago — and `↑n` is unpushed commits,
-  which is the "a VPS job clones `origin` and silently gets the old tree"
-  failure made visible. A detached `HEAD` or a rebase in flight replaces
-  the branch, in the error colour.
-
-  **Membership is writes only.** A repo enters when an agent runs `Write` /
-  `Edit` / `NotebookEdit` (ACP is recognised by tool *kind*, since every
-  harness on that seam picks its own titles) and stays for the life of that
-  session. Reads do not promote — otherwise every repo an agent merely
-  grepped shows up and the section stops meaning *work is happening here*.
-  Bash is missed on purpose: guessing write targets out of a shell command
-  is the heuristic the mandatory-claims spec already declined to dress up
-  as complete, and a row that appeared because something misread a `>`
-  inside a quoted string would make the whole section untrusted.
-
-  One `git status --porcelain=v2 --branch` per repo returns branch,
-  upstream, ahead/behind and the dirty list together. It runs off the UI
-  thread behind a 5s TTL, **only while the sidebar is open**, and a paint
-  never waits on it: a new row shows its branch immediately from
-  `.git/HEAD` (one file read) and fills in counts on the next tick. Repos
-  on a remote host are listed and never probed — the same path names a
-  different tree there, so `git status` locally would be a silently wrong
-  answer rather than an error.
-
-  TUI only; the web client renders no `REPOS`, the same debt the sidebar
-  itself and the live task list already owe.
-
-### Changed
-
-- **`F3` is one mode for the whole app, not a per-tab widget.** The
-  dashboard sidebar shipped scoped to the active pane, which meant
-  switching tabs changed the layout under you and every new tab landed
-  collapsed beside its open siblings. `F3`, `/tasks` and the pane's own
-  toggle now flip a single app-level flag that fans out to every pane,
-  and a pane mounted later adopts it.
 
 ## [0.32.0] - 2026-08-07
 
