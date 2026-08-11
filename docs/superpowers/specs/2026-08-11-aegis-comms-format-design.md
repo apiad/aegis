@@ -98,38 +98,54 @@ without spending an extra cell on a sigil. Within the family:
 
 **Bright tier — a named counterpart exists.** This is the conversation.
 
-| tool | glyph | line |
-|---|---|---|
-| `handoff` | `⇄` | `⇄ weary-turing · "parser is green, render is yours"` |
-| `handoff(interrupt=True)` | `⇅` | `⇅ weary-turing · cut · "stop, wrong branch"` |
-| `spawn` | `✧` | `✧ calm-hopper · main@vps · "audit the ledger"` |
-| `fork` | `✧` | `✧ calm-hopper · forked from weary-turing` |
-| `close` | `✦` | `✦ calm-hopper · reaped` |
-| `enqueue` | `⇉` | `⇉ general#01K4TZ · "port the fixtures"` |
-| queue callback | `⇇` | `⇇ general#01K4TZ · ok · 4m12s` |
-| `delegate` | `⇛` | `⇛ general · blocking · "resolve the merge"` |
-| `cancel` | `⇎` | `⇎ general#01K4TZ · in-flight` |
-| `canvas_write_section` | `▤` | `▤ report §Findings · +18 lines` |
-| `canvas_append_to_section` | `▤` | `▤ report §Log · +3 lines` |
-| `canvas_open` / `canvas_subscribe` | `▥` | `▥ report · all sections` |
-| `group_broadcast` | `⁂` | `⁂ reviewers · 4 members · "review your section"` |
-| `group_wait_all` / `group_wait_any` | `⁑` | `⁑ reviewers · waiting on 4` |
-| `term_run` | `⌸` | `⌸ build · exit 0 · 12s` |
-| `term_keys` | `⌹` | `⌹ build · ^C` |
-| `remind` | `◵` | `◵ self · in 20m · "check the tag"` |
+A glyph names a **semantic act**, not a tool, so tools that mean the same
+thing share one. Nineteen acts cover all 35 bright tools; a per-tool glyph
+for each would be nineteen distinctions the reader has to learn and thirty-five
+rare codepoints to hope the terminal font carries.
 
-**Coordination tier — an act on shared substrate, no addressee.** Same
-colour, still bright: other agents are affected even though nobody receives
-a message.
-
-| tool | glyph | line |
+| glyph | act | tools |
 |---|---|---|
-| `claim` | `⊙` | `⊙ exclusive · src/aegis/mcp/ · 3 paths` |
-| `release` | `⊚` | `⊚ src/aegis/mcp/` |
-| `monitor` | `◷` | `◷ pytest · 62%` |
-| `monitor_cancel` | `◶` | `◶ pytest` |
-| `loop_stop` | `◼` | `◼ loop · "wired end to end"` |
-| `rename` / `title` | `❖` | `❖ aegis-call-format · "design the call format"` |
+| `⇄` | hand context to a peer | `handoff` |
+| `⇅` | cut a peer's turn | `handoff(interrupt=True)` |
+| `✧` | bring an agent into being | `spawn`, `fork`, `group_spawn`, `group_spawn_mixed` |
+| `✦` | reap an agent | `close` |
+| `⇉` | send work to a queue | `enqueue`, `delegate` |
+| `⇎` | kill queued work | `cancel` |
+| `⁂` | speak to a group | `group_broadcast` |
+| `⁑` | wait on a group | `group_wait_all`, `group_wait_any` |
+| `⌗` | reshape a group | `group_rename`, `group_dissolve`, `group_move_member` |
+| `▤` | write a canvas section | `canvas_write_section`, `canvas_append_to_section` |
+| `▥` | attach to a shared surface | `canvas_open`, `canvas_subscribe`, `term_spawn`, `term_subscribe` |
+| `▧` | detach from one | `canvas_unsubscribe`, `term_unsubscribe`, `term_close` |
+| `■` | drive a terminal | `term_run`, `term_keys` |
+| `⊙` | take a claim | `claim` |
+| `⊚` | drop a claim | `release` |
+| `◷` | arm a waker | `monitor`, `remind` |
+| `◶` | disarm a waker | `monitor_cancel`, `reminder_cancel` |
+| `◼` | stop a loop | `loop_stop` |
+| `❖` | rename or retitle self | `rename`, `title` |
+
+```
+⇄ weary-turing · "parser is green, render is yours"
+⇅ weary-turing · cut · "stop, wrong branch"
+✧ main@vps · "audit the ledger"
+✦ calm-hopper · reaped
+⇉ general · "port the fixtures"
+⁂ reviewers · "review your section"
+▤ report §Findings · +18 lines
+■ build · pytest -q
+⊙ exclusive · src/aegis/mcp/ · 3 paths
+◷ pytest · 62%
+❖ aegis-call-format · "design the call format"
+```
+
+`spawn` shows `<profile>@<host>`, not a handle: the handle does not exist
+until the call returns, and the transcript line is built from the call's
+arguments.
+
+The queue *callback* (`⇇ general#01K4TZ · ok`) is deliberately absent. It is
+not a tool call — it arrives as an inbox message and `render_inbox_header`
+already gives it a typed format. Touching that is a separate change.
 
 **Pale tier — reading the room.** `list_sessions`, `list_agents`, `claims`,
 `monitors`, `reminders`, `canvas_list`, `term_list`, `peer_plan`,
@@ -171,6 +187,12 @@ One `Envelope` per call, minted by a FastMCP middleware. Fields:
 | `thread` | the substrate id when one exists, else `call_id` |
 | `outcome` | `ok` \| `error` |
 | `duration_ms` | measured across the call |
+
+The substrate ids live in the *result*, not the arguments — `enqueue`
+returns `{"task_id": …}`, `monitor` returns `{"monitor_id": …}` — and the
+middleware sees both sides: `result.structured_content` carries the tool's
+dict verbatim. A failing tool raises `fastmcp.exceptions.ToolError` through
+the middleware, which is how `outcome: error` is detected.
 
 **`to` is typed, not a string.** `kind` is one of `agent`, `queue`,
 `canvas`, `group`, `term`, `path`, `self`, or absent. The renderer's bright
@@ -249,10 +271,17 @@ exist and silently miss the sixty-first.
 
 ### Name normalisation
 
-Tool names arrive as `mcp__aegis__aegis_handoff` — the only prefix present
-across all 2,616 corpus calls. `descriptor_for()` strips a leading
-`mcp__<server>__` and then requires the `aegis_` prefix, so an ACP harness
-that does not prefix resolves to the same descriptor.
+The two consumers see two different names, verified against a live FastMCP
+3.2.0 server:
+
+- The **renderer** sees what the harness called the tool. In the transcript
+  corpus that is `mcp__aegis__aegis_handoff`, on all 2,616 calls.
+- The **middleware** sees the bare registered name, `aegis_handoff`.
+  `context.message.name` never carries the `mcp__` prefix.
+
+So `descriptor_for()` strips a leading `mcp__<server>__` and then requires
+the `aegis_` prefix. The middleware passes through the same function
+unchanged, and an ACP harness that does not prefix resolves identically.
 
 ### Three sutures
 
@@ -267,8 +296,13 @@ that does not prefix resolves to the same descriptor.
    copy of `KIND_ICON` (`renderEvent.js:7`) is deleted.** That duplicated
    table is existing debt; adding a second parallel table to it is not an
    option, so this slice pays it.
-3. **`themes.py`** — one new `aegis` colour role on `AegisColors`. The pale
-   tier is that role dimmed, not a second role.
+3. **`themes/__init__.py`** — one new `comms` field on `AegisColors`,
+   derived from `theme.primary`. No theme YAML is edited: `primary` is
+   required by `to_textual_theme()` so all three bundled themes already
+   carry it, and `aegis_colors()` is currently the one consumer that never
+   reads it. `to_css_variables()` already emits `--aegis-primary`, so the
+   web needs no new variable either. The pale tier is that colour dimmed,
+   not a second role.
 
 Plus `aegis comms` in `cli.py`.
 
@@ -282,10 +316,10 @@ TDD, failing test first, commit per logical unit — repo convention.
 - **`descriptors.py` is pure**, so it gets a table of
   `(tool, args) → (glyph, line, target, family)` cases, one row per tool.
   Cheap and exhaustive.
-- **A registry-coverage test**: every tool registered by `build_server()`
-  has a descriptor. This is the test that stops tool sixty-one from
-  silently falling out of the format. Without it the design decays on its
-  own.
+- **A registry-coverage test**: every tool `await server.list_tools()`
+  reports has a descriptor. Today that is **72** tools — 35 bright, 37
+  pale. This is the test that stops tool seventy-three from silently
+  falling out of the format. Without it the design decays on its own.
 - **Middleware**: a call that succeeds and a call that raises produce two
   envelopes with the right `outcome` and a present `duration_ms`; a
   middleware that raises internally does **not** fail the tool.
