@@ -154,10 +154,14 @@ every `config_*` / `schedule_*` / `run_workflow` admin call. One shared
 glyph `∘`, rendered *dimmer than a native tool line*.
 
 ```
-∘ 7 sessions
-∘ claims · 3 held
-∘ config · 12 agents
+∘ list sessions
+∘ read peer · weary-turing
+∘ config show
 ```
+
+A pale line describes the *call*, not its answer — "7 sessions" lives in
+the tool result, which renders on its own line right below. The renderer
+only ever sees the arguments.
 
 The grouping is the design, not decoration. `monitor` alone is 28% of all
 aegis calls and `meta`/`list_sessions`/`claims`/`monitors` together are 308.
@@ -195,8 +199,9 @@ dict verbatim. A failing tool raises `fastmcp.exceptions.ToolError` through
 the middleware, which is how `outcome: error` is detected.
 
 **`to` is typed, not a string.** `kind` is one of `agent`, `queue`,
-`canvas`, `group`, `term`, `path`, `self`, or absent. The renderer's bright
-counterpart and the ledger's `to` come from the same `descriptor.target()`.
+`canvas`, `group`, `term`, `path`, `claim`, `self`, or absent. The
+renderer's bright counterpart and the ledger's `to` come from the same
+`descriptor.target()`.
 
 **`thread` correlates the round trip.** The substrate already mints ids for
 nearly everything it does: `task_id`, `monitor_id`, `reminder_id`,
