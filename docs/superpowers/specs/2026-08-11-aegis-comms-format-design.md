@@ -1,6 +1,8 @@
 # A format for the aegis layer — glyphs on screen, envelopes on disk
 
-**Status:** designed 2026-08-11; not yet planned.
+**Status:** implemented 2026-08-11; plan at
+`docs/superpowers/plans/2026-08-11-aegis-comms-format.md`
+(three changes during implementation — see *Deviations*, at the end).
 **Scope:** the MCP surface (all `aegis_*` tools plus plugin `@tool`s), the
 three renderers (TUI, web, HTML export), and one new state store. No change
 to any tool's signature, semantics, or return value.
@@ -345,3 +347,29 @@ TDD, failing test first, commit per logical unit — repo convention.
   live view; a second live plane would be a parallel truth.
 - **Re-rendering historical transcripts.** New lines get the format; old
   logs render as they always did.
+
+## Deviations
+
+Three things the design got wrong, found by running the artifact rather
+than reasoning about it.
+
+**`aegis comms list`, not `aegis comms`.** Typer collapses a single-command
+app when it is invoked bare, so a test against the standalone `comms_app`
+passed on `[]` — a form nobody can type. Mounted under the top-level `aegis`
+app it does *not* collapse, and the real binary wanted `aegis comms list`.
+The tests now drive `aegis.cli.app`, which is the artifact, and the CLI was
+exercised against a real ledger on disk.
+
+**`primary` cannot be missing from a Textual `Theme`** — it is a required
+positional argument, so the `comms` colour's "no primary" fallback is
+unreachable. The reachable degenerate case is `primary=""`, which paints
+nothing; that is what the fallback and its test now cover.
+
+**`ToolUse` requires `summary`, and `kind` is set by the stream parser**, not
+the constructor. A hand-built event without either would have made the
+"native tools keep their emoji" test fail for a reason unrelated to this
+feature.
+
+One thing the design got right and is worth keeping: the coverage test was
+verified by mutation. Dropping a single pale entry turns it red and names
+the tool that fell out.

@@ -409,6 +409,36 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   Claims auto-reap on session close (the live-handle filter). MCP surface:
   `aegis_claim` / `aegis_release` / `aegis_claims`. New store, coexists
   with `bin/ws-lock`; per-host v1.
+- `src/aegis/comms/` - what a call into the aegis MCP surface looks like on
+  screen and what it leaves behind on disk. `descriptors.py` (the pure
+  registry: verb → glyph + family + one-line description + typed target,
+  covering all 72 registered tools; `descriptor_for` normalises both name
+  shapes — the renderer sees `mcp__aegis__aegis_handoff`, the middleware the
+  bare `aegis_handoff`, verified against a live FastMCP 3.2.0 server);
+  `models.py` (`Envelope`); `persistence.py` (`CommsLedger`, daily JSONL
+  under `.aegis/state/comms/`); `middleware.py` (`CommsMiddleware`, an
+  `on_call_tool` hook mounted in `build_server`). Read it back with
+  `aegis comms list`. Glyphs name **semantic acts, not tools**, so
+  `spawn`/`fork`/`group_spawn` share `✧`; a `∘` pale tier covers every
+  read-the-room call, because `monitor` alone is 28% of aegis traffic and
+  giving polling the conversation's weight is the bug this replaced, with
+  better typography.
+  Four rules a contributor will otherwise break, each already paid for:
+  **the coverage test in `tests/test_comms_coverage.py` is the design** —
+  without it a newly-added tool reverts silently to the generic dot and the
+  first-stringy-argument fallback, and nothing else notices (verified by
+  mutation: dropping one entry names it); **the glyph is resolved
+  server-side and sent on the wire** (`web/compact.py`), because
+  `renderEvent.js` kept its own `KIND_ICON` copy and a second parallel table
+  would drift again — that copy is now deleted; **the ledger never fails a
+  call** — `CommsMiddleware._record` logs a write error rather than raising,
+  since observability that can break what it observes is a liability, and it
+  logs rather than swallows so a broken writer cannot look like a working
+  one; and **`from` is best-effort** — the MCP server is co-resident and
+  shared, so there is no transport identity and `from_handle` is a parameter
+  convention. A call without one is recorded and rendered unattributed
+  rather than guessed at. Spec:
+  `docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`.
 - `src/aegis/hosts/` - SSH execution hosts (eighth coordination
   primitive): running a harness process on another machine while the
   session, transcript and MCP peer identity stay local. `models.py`

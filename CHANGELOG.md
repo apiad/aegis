@@ -5,6 +5,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **A call into the aegis layer now looks like one.** Every `aegis_*` tool
+  renders with a glyph from the layer's own family, in the layer's own
+  colour, on a line that names the counterpart — `⇄ weary-turing · "the
+  render is yours"`, `⊙ exclusive · src/aegis/mcp/ · 3 paths`. Before this,
+  all 72 of them fell through `describe_tool`'s unknown-tool branch and
+  rendered as *the first stringy argument, truncated* — for a handoff, the
+  caller's own handle, which says nothing about the call. Nineteen glyphs
+  name semantic acts rather than tools; read-the-room calls (`list_sessions`,
+  `claims`, every `config_*`) share one pale `∘` so polling never wears the
+  conversation's weight. A coverage test over `server.list_tools()` fails
+  the build if a newly-added tool has no descriptor.
+- **`aegis comms list`** reads back who talked to whom. A FastMCP
+  `on_call_tool` middleware appends one envelope per call — `from`, typed
+  `to`, family, verb, thread, outcome, duration — to a daily JSONL under
+  `.aegis/state/comms/`. `thread` adopts the substrate's own ids
+  (`task_id`, `monitor_id`, `claim_id`, …), so an `enqueue` and the callback
+  that lands in another agent's inbox minutes later share one. Filter with
+  `--handle` (matches either end), `--thread`, `--family`, `--since`.
+
 ### Fixed
 
 - **The sidebar no longer crashes the app when the context fills up.** The
