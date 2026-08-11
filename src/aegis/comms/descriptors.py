@@ -206,6 +206,28 @@ def _d_group_move(a: dict) -> str:
     return _join(_s(a, "handle"), hop if _s(a, "to_group") else "")
 
 
+def _d_claim(a: dict) -> str:
+    paths = a.get("paths") or []
+    first = str(paths[0]) if paths else ""
+    count = f"{len(paths)} paths" if len(paths) > 1 else ""
+    return _join(_s(a, "intent") or "shared", first, count)
+
+
+def _t_claim(a: dict) -> Target | None:
+    paths = a.get("paths") or []
+    return Target("path", str(paths[0])) if paths else None
+
+
+def _d_remind(a: dict) -> str:
+    after = a.get("after")
+    when = f"in {after}" if after else "at turn end"
+    return _join(when, _quote(_s(a, "note")))
+
+
+def _d_rename(a: dict) -> str:
+    return _join(_s(a, "new_handle"), _quote(_s(a, "title")))
+
+
 DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     "handoff": AegisToolDescriptor(
         "handoff", CONVERSATION, _g_handoff, _d_handoff,
@@ -289,7 +311,100 @@ DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     "group_move_member": AegisToolDescriptor(
         "group_move_member", COORDINATION, "⌗", _d_group_move,
         _target_at("group", "to_group")),
+    # --- coordination: acts on shared substrate, with no addressee ---
+    "claim": AegisToolDescriptor(
+        "claim", COORDINATION, "⊙", _d_claim, _t_claim),
+    "release": AegisToolDescriptor(
+        "release", COORDINATION, "⊚", lambda a: _s(a, "claim_id"),
+        _target_at("claim", "claim_id")),
+    "monitor": AegisToolDescriptor(
+        "monitor", COORDINATION, "◷", lambda a: _s(a, "description"),
+        _target_at("self", "from_handle")),
+    "remind": AegisToolDescriptor(
+        "remind", COORDINATION, "◷", _d_remind,
+        _target_at("self", "from_handle")),
+    "monitor_cancel": AegisToolDescriptor(
+        "monitor_cancel", COORDINATION, "◶", lambda a: _s(a, "monitor_id")),
+    "reminder_cancel": AegisToolDescriptor(
+        "reminder_cancel", COORDINATION, "◶",
+        lambda a: _s(a, "reminder_id")),
+    "loop_stop": AegisToolDescriptor(
+        "loop_stop", COORDINATION, "◼", lambda a: _quote(_s(a, "reason")),
+        _target_at("self", "from_handle")),
+    "rename": AegisToolDescriptor(
+        "rename", COORDINATION, "❖", _d_rename, _agent_at("new_handle")),
+    "title": AegisToolDescriptor(
+        "title", COORDINATION, "❖", lambda a: _quote(_s(a, "title")),
+        _target_at("self", "from_handle")),
 }
+
+
+# --- the pale tier ----------------------------------------------------
+
+#: The one argument worth showing beside a pale verb, where one exists.
+_PALE_ARGS: dict[str, tuple[str, ...]] = {
+    "peer_plan": ("handle",),
+    "read_peer": ("handle",),
+    "view_file": ("path",),
+    "canvas_read": ("name",),
+    "term_read": ("name",),
+    "task_status": ("task_id",),
+    "workflow_status": ("workflow_id",),
+    "workflow_cancel": ("workflow_id",),
+    "group_status": ("group",),
+    "monitors": ("from_handle",),
+    "reminders": ("from_handle",),
+    "run_workflow": ("name",),
+    "config_add_agent": ("slug",),
+    "config_remove_agent": ("slug",),
+    "config_add_queue": ("name",),
+    "config_remove_queue": ("name",),
+    "config_add_plugin_dir": ("path",),
+    "config_remove_plugin_dir": ("path",),
+    "config_set_schedule_enabled": ("name",),
+    "config_toggle_schedule_enabled": ("name",),
+    "schedule_show": ("name",),
+    "schedule_logs": ("name",),
+    "schedule_remove": ("name",),
+    "schedule_push": ("name",),
+}
+
+_INTROSPECTION_VERBS = (
+    "meta", "list_sessions", "list_agents", "peer_plan", "read_peer",
+    "view_file", "claims", "monitors", "reminders", "canvas_list",
+    "canvas_read", "term_list", "term_read", "task_status", "budget_status",
+    "workflow_status", "group_status",
+)
+
+_ADMIN_VERBS = (
+    "config_show", "config_list_agents", "config_list_queues",
+    "config_list_schedules", "config_add_agent", "config_remove_agent",
+    "config_add_queue", "config_remove_queue", "config_add_plugin_dir",
+    "config_remove_plugin_dir", "config_set_schedule_enabled",
+    "config_toggle_schedule_enabled", "schedule_list", "schedule_logs",
+    "schedule_push", "schedule_remove", "schedule_show", "run_workflow",
+    "run_dynamic_workflow", "workflow_cancel",
+)
+
+_PALE_FAMILY: dict[str, str] = (
+    {v: INTROSPECTION for v in _INTROSPECTION_VERBS}
+    | {v: ADMIN for v in _ADMIN_VERBS}
+)
+
+
+def pale_descriptor(verb: str) -> AegisToolDescriptor:
+    """A read-the-room call: one shared glyph, the verb spelled out, and the
+    single argument worth naming when there is one."""
+    label = verb.replace("_", " ")
+    keys = _PALE_ARGS.get(verb, ())
+
+    def describe(args: dict) -> str:
+        return _join(label, _s(args, *keys) if keys else "")
+
+    return AegisToolDescriptor(verb, _PALE_FAMILY[verb], PALE_GLYPH, describe)
+
+
+DESCRIPTORS.update({v: pale_descriptor(v) for v in _PALE_FAMILY})
 
 
 # --- lookup -----------------------------------------------------------

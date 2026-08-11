@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 
 from aegis.comms.descriptors import (
-    CONVERSATION, Target, aegis_describe, aegis_family, aegis_glyph,
-    aegis_target, descriptor_for,
+    ADMIN, CONVERSATION, COORDINATION, INTROSPECTION, PALE_GLYPH, Target,
+    aegis_describe, aegis_family, aegis_glyph, aegis_target, descriptor_for,
 )
 
 
@@ -185,3 +185,72 @@ def test_group_membership_verbs_take_the_reshape_glyph():
     assert aegis_describe("aegis_group_move_member",
                           {"handle": "calm-hopper", "from_group": "a",
                            "to_group": "b"}) == "calm-hopper · a to b"
+
+
+def test_claim_and_release_are_opposite_circles():
+    claim = {"paths": ["src/aegis/mcp/", "src/aegis/comms/"],
+             "from_handle": "me", "intent": "exclusive"}
+    assert aegis_glyph("aegis_claim", claim) == "⊙"
+    assert aegis_describe("aegis_claim", claim) == (
+        "exclusive · src/aegis/mcp/ · 2 paths")
+    assert aegis_target("aegis_claim", claim) == Target(
+        "path", "src/aegis/mcp/")
+    assert aegis_family("aegis_claim") == COORDINATION
+
+    rel = {"claim_id": "01K4TZ", "from_handle": "me"}
+    assert aegis_glyph("aegis_release", rel) == "⊚"
+    assert aegis_describe("aegis_release", rel) == "01K4TZ"
+    assert aegis_target("aegis_release", rel) == Target("claim", "01K4TZ")
+
+
+def test_a_single_path_claim_does_not_say_one_paths():
+    claim = {"paths": ["src/aegis/mcp/"], "intent": "shared"}
+    assert aegis_describe("aegis_claim", claim) == "shared · src/aegis/mcp/"
+
+
+def test_wakers_arm_and_disarm():
+    mon = {"from_handle": "me", "description": "pytest", "done": "test -f ok"}
+    assert aegis_glyph("aegis_monitor", mon) == "◷"
+    assert aegis_describe("aegis_monitor", mon) == "pytest"
+    assert aegis_target("aegis_monitor", mon) == Target("self", "me")
+
+    rem = {"from_handle": "me", "note": "check the tag", "after": "20m"}
+    assert aegis_glyph("aegis_remind", rem) == "◷"
+    assert aegis_describe("aegis_remind", rem) == 'in 20m · "check the tag"'
+    assert aegis_describe("aegis_remind",
+                          {"note": "check the tag"}) == (
+        'at turn end · "check the tag"')
+
+    assert aegis_glyph("aegis_monitor_cancel", {"monitor_id": "m1"}) == "◶"
+    assert aegis_describe("aegis_monitor_cancel", {"monitor_id": "m1"}) == "m1"
+    assert aegis_glyph("aegis_reminder_cancel", {"reminder_id": "r1"}) == "◶"
+
+
+def test_loop_stop_and_self_naming():
+    stop = {"from_handle": "me", "reason": "wired end to end"}
+    assert aegis_glyph("aegis_loop_stop", stop) == "◼"
+    assert aegis_describe("aegis_loop_stop", stop) == '"wired end to end"'
+
+    ren = {"old_handle": "civic-cook", "new_handle": "aegis-call-format",
+           "title": "design the call format"}
+    assert aegis_glyph("aegis_rename", ren) == "❖"
+    assert aegis_describe("aegis_rename", ren) == (
+        'aegis-call-format · "design the call format"')
+    assert aegis_target("aegis_rename", ren) == Target(
+        "agent", "aegis-call-format")
+
+    tit = {"from_handle": "me", "title": "fix the eviction race"}
+    assert aegis_glyph("aegis_title", tit) == "❖"
+    assert aegis_describe("aegis_title", tit) == '"fix the eviction race"'
+
+
+def test_the_pale_tier_shares_one_glyph_and_describes_the_call():
+    assert aegis_glyph("aegis_list_sessions", {}) == PALE_GLYPH
+    assert aegis_describe("aegis_list_sessions", {}) == "list sessions"
+    assert aegis_family("aegis_list_sessions") == INTROSPECTION
+
+    assert aegis_describe("aegis_read_peer", {"handle": "weary-turing"}) == (
+        "read peer · weary-turing")
+    assert aegis_describe("aegis_config_show", {}) == "config show"
+    assert aegis_family("aegis_config_show") == ADMIN
+    assert aegis_target("aegis_list_sessions", {}) is None
