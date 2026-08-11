@@ -56,12 +56,12 @@ Two artifacts from one registry.
 
 ```
 ⇄ weary-turing · "parser is green, render is yours"
-✧ calm-hopper · main@vps · "audit the ledger"
-⇉ general#01K4TZ · "port the fixtures"
+✧ main@vps · "audit the ledger"
+⇉ general · "port the fixtures"
 ⊙ exclusive · src/aegis/mcp/ · 3 paths
-▤ report §Findings · +18 lines
-◷ pytest · 62%
-∘ 7 sessions
+▤ report §Findings · 18 lines
+◷ pytest
+∘ list sessions
 ```
 
 **On disk** — one envelope per call, in an append-only ledger:
@@ -84,9 +84,10 @@ would be lying about a conversation the screen showed correctly.
 <glyph> <counterpart> · <detail> · <detail>
 ```
 
-- **glyph** — exactly one, leading, in the `aegis` colour role. Never a
+- **glyph** — exactly one, leading, in the `comms` colour role. Never a
   second semantic glyph in the body, and never an arrow: direction is
-  encoded in the glyph itself (`⇄` out to a peer, `⇇` back from a queue).
+  encoded in the glyph itself (`⇄` hands context to a peer, `⇉` sends work
+  out to a queue, `⊙` and `⊚` take and drop a claim).
 - **counterpart** — who or what is on the other end, and the only bright
   segment: a handle, a `queue#task`, a `canvas §section`, a group, a path.
   This is the segment that says *agents talking*.
