@@ -29,6 +29,11 @@ class AegisColors:
     # so without a surface of their own they read as the agent talking.
     panel: str = ""      # subtle raised background
     rule: str = ""       # subtle border on that background
+    # The aegis layer's own colour: every glyph and counterpart on a call
+    # into the MCP surface. Derived from the theme's `primary`, which is the
+    # one colour every theme declares and this mapping never read — so no
+    # theme YAML has to grow a key for it.
+    comms: str = ""
 
 
 def aegis_colors(theme: TextualTheme) -> AegisColors:
@@ -55,6 +60,7 @@ def aegis_colors(theme: TextualTheme) -> AegisColors:
         # than the quietest. Degrade toward the surface instead.
         panel=theme.panel or theme.surface or theme.background or "",
         rule=variables.get("aegis-rule") or var("aegis-muted"),
+        comms=theme.primary or theme.accent or fg,
     )
 
 
