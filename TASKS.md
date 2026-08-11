@@ -242,6 +242,47 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### Per-session MCP identity — make `from_handle` a transport fact
+
+*Surfaced 2026-08-11 while shipping the comms format. Not a regression: the
+gap predates it, the ledger only made it visible.*
+
+**The MCP server cannot tell which agent is calling it.** `AegisMCP` is
+co-resident and shared — every session on this aegis reaches the same HTTP
+port — so there is no per-connection identity to read a handle from. That is
+why `from_handle` is a *parameter* in the first place, baked into each
+agent's primer system prompt and passed back by convention.
+
+Three consequences, all live today:
+
+- An agent can pass a handle that is not its own, by mistake or otherwise.
+  Nothing checks it.
+- Tools that do not take `from_handle` (`aegis_list_sessions`,
+  `aegis_claims`, `aegis_canvas_list`, `aegis_meta`, every `config_*`)
+  cannot be attributed at all.
+- The comms ledger therefore records `from: ""` for those, and
+  `aegis comms list` prints `(unattributed)`. `CommsMiddleware` deliberately
+  does not guess — a fabricated attribution in an audit record is worse than
+  an honest gap — but a ledger whose whole point is *who talked to whom* has
+  a hole in the *who*.
+
+**Shape of the fix:** mint a per-session token at spawn and inject it
+alongside the primer (`mcp_config_json` already writes per-invocation MCP
+config via `--mcp-config`, and ACP carries `mcp_servers` in `new_session`),
+then resolve `from_handle` server-side from the token rather than trusting
+the argument. The parameter can stay for one release as a fallback so
+nothing breaks, then become advisory.
+
+**Payoff beyond attribution:** `aegis_claim` / `aegis_release` /
+`aegis_close` / `aegis_loop_stop` all gate on `from_handle` matching, and
+each currently trusts the caller for it.
+
+Touches: `src/aegis/mcp/{runtime,server}.py`, `mcp_config_json`, the primer
+in `PRIMING`, `src/aegis/comms/middleware.py` (drop the `args.get`
+best-effort read). Spec:
+`docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`
+(*`from` is best-effort, and says so*).
+
 ### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
 
 **A live shared terminal makes `Ctrl+Q` hang forever.** Reproduced on a clean
