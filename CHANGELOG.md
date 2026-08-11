@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-08-11
+
 ### Added
 
 - **The `F3` side dashboard — the pane's whole right-hand column, instead of
