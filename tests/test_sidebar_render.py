@@ -136,6 +136,29 @@ def test_system_section_is_last():
     assert lines.index("SYSTEM") == len(lines) - 2
 
 
+def test_system_section_carries_clock_cwd_and_build_under_the_meters():
+    """Volatility again, one level down: the meters move every tick, the
+    clock every minute, and the last two never move at all."""
+    m = SidebarModel(system=("CPU 34% · RAM 61% · DSK 12%",),
+                     clock=("2026-08-11 11:03 CDT · en_US.UTF-8",),
+                     cwd=("CWD ~/Workspace/repos/aegis",),
+                     build=("aegis 0.21.0+d35b07a",))
+    lines = [ln for ln in as_text(render_sidebar(m, C, 60)).split("\n") if ln]
+    assert lines == ["SYSTEM",
+                     "CPU 34% · RAM 61% · DSK 12%",
+                     "2026-08-11 11:03 CDT · en_US.UTF-8",
+                     "CWD ~/Workspace/repos/aegis",
+                     "aegis 0.21.0+d35b07a"]
+
+
+def test_system_section_renders_without_the_meters():
+    """psutil is sampled inside a suppress() — the static rows must not
+    disappear with it."""
+    out = as_text(render_sidebar(SidebarModel(cwd=("CWD ~/w",)), C, 40))
+    assert "SYSTEM" in out
+    assert "CWD ~/w" in out
+
+
 def test_full_model_renders_every_section_in_volatility_order():
     m = SidebarModel(
         title="fix the eviction race", identity=("opus · high",),

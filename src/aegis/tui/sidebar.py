@@ -62,6 +62,9 @@ class SidebarModel:
     repos: list[RepoView] = field(default_factory=list)
     # SYSTEM
     system: tuple[str, ...] = ()
+    clock: tuple[str, ...] = ()
+    cwd: tuple[str, ...] = ()
+    build: tuple[str, ...] = ()
 
 
 def heading(text: str, palette, width: int, right: str = "") -> Text:
@@ -177,7 +180,15 @@ def _repos(m: SidebarModel, palette, width: int) -> Text | None:
 
 
 def _system(m: SidebarModel, palette, width: int) -> Text | None:
-    rows = _rows([Segment("system", m.system, 0)], palette, width)
+    # The section ordering applied one level down: the meters move every
+    # tick, the clock every minute, the last two never. The pair at the
+    # bottom is the pair you go looking for rather than notice — which
+    # directory this aegis is rooted at, and which build of it is running.
+    segs = [Segment("system", m.system, 0),
+            Segment("clock", m.clock, 0),
+            Segment("cwd", m.cwd, 0),
+            Segment("build", m.build, 0)]
+    rows = _rows(segs, palette, width)
     if not rows:
         return None
     return _block(heading("SYSTEM", palette, width), rows)

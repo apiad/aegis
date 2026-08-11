@@ -292,6 +292,13 @@ reads `—`, not `0:00`; the two mean different things.
 The plan survives a restart: a resumed session replays its own transcript
 and comes back with the tasks *and* their banked time intact.
 
+The panel's foot is a **SYSTEM** block: the CPU/RAM/disk meters, then the
+date, time and locale, the directory this aegis is rooted at, and the build
+it is actually running (`aegis 0.32.0+b78cb3d`). The last two are the pair
+you go looking for rather than notice — under an editable checkout that
+keeps moving, "which version am I running" and "which version is on disk"
+diverge the moment a commit lands beneath a live TUI.
+
 Other agents can see it too. The tab bar carries a compact `3/8` for any
 tab with a plan, `aegis_list_sessions` rolls it up, and
 [`aegis_peer_plan`](mcp.md) drills into a peer's full list — so an agent

@@ -113,6 +113,24 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **The sidebar's `SYSTEM` block now says when and where.** Under the
+  CPU/RAM/disk meters it carries three more rows: the date, time, zone and
+  locale; the directory this aegis is rooted at (`CWD ~/Workspace/repos/aegis`
+  — home collapsed to `~`, narrowing from the head, since in a path you
+  already live in the prefix is the part you can reconstruct); and the build
+  actually running (`aegis 0.32.0+b78cb3d`, off `version.BUILD`, which
+  latches at import for exactly this reason — under an editable checkout
+  "what am I running" and "what is on disk" diverge the moment a commit
+  lands beneath a live TUI).
+
+  Sidebar-only: a one-row status bar has no space for four more segments,
+  and the column's vertical axis is free — which is what the panel is for.
+  Ordered by volatility like every other section, one level down: the
+  meters move every tick, the clock every minute, the last two never. The
+  repaint rides the existing app tick (`set_system` already fires every
+  second and lands on `_refresh_sidebar`), so the clock stays current
+  without a timer of its own.
+
 - **`/spawn <agent> <prompt>` now carries where you were standing.** Typed
   from a live pane, the new agent's opening turn gets the same three things
   `@peer` sends: provenance of *place* ("the operator started you from tab

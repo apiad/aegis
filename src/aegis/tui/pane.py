@@ -41,6 +41,8 @@ from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.sidebar import Sidebar, SidebarModel
 from aegis.tui.strip import QueueStrip
+from aegis.tui.sysmeter import (
+    current_locale, format_build, format_clock, format_cwd)
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
     N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
@@ -2552,6 +2554,16 @@ class ConversationPane(Widget):
             monitors=self._monitor_manager.snapshot(for_handle=self.handle)
             if self._monitor_manager is not None else [],
             system=self._system_tiers,
+            # Read off the process here rather than pushed from the app
+            # tick like the meters: these cost a `strftime` and a `Path`,
+            # and `metrics` above already reads a live clock at this exact
+            # point. The tick still drives the repaint — `set_system` fires
+            # every second and lands on `_refresh_sidebar` — so the clock
+            # row stays current without a timer of its own.
+            clock=format_clock(datetime.now().astimezone(),
+                               current_locale(), self._palette),
+            cwd=format_cwd(Path.cwd(), self._palette),
+            build=format_build(self._palette),
         )
 
     def _on_core_state(self, _core, state: AgentState,
