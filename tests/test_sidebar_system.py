@@ -54,10 +54,26 @@ def _app():
 
 
 def _painted(pane) -> str:
-    from textual.widgets import Static
-    body = pane.query_one(Sidebar).query_one(Static)
-    return "\n".join(body.render_line(y).text
-                     for y in range(body.size.height))
+    """What the sidebar put in its widget — every row of it.
+
+    Read off the `Static`'s own renderable rather than off `SidebarModel`:
+    a model assertion is green against a section that was never wired into
+    `SECTIONS`, which is the bug this file exists to catch.
+
+    Deliberately NOT `render_line` over `range(body.size.height)`. Geometry
+    lags content by a layout pass, so under load one `pilot.pause()` leaves
+    the widget measuring a row short, and the last row of the last section
+    drops out of the assertion's view while sitting right there on screen.
+    Reproduced by dropping the pause: content 10 rows, `size.height` 0,
+    `BUILD` in the content and absent from the read. It cost one red suite
+    whose failure would not reproduce alone.
+
+    `_paints` carries the half that a re-render cannot: that the widget was
+    actually updated, rather than the column merely being composable.
+    """
+    sidebar = pane.query_one(Sidebar)
+    assert sidebar._paints > 0, "the sidebar never painted"
+    return sidebar.plain()
 
 
 @pytest.mark.asyncio
@@ -79,6 +95,24 @@ async def test_the_open_sidebar_answers_where_and_which_build():
         cwd_row = next((ln for ln in painted.split("\n") if "CWD" in ln), "")
         assert Path.cwd().name in cwd_row
         assert BUILD in painted
+
+
+@pytest.mark.asyncio
+async def test_the_read_does_not_depend_on_the_layout_having_settled():
+    """The seam these tests assert through must not lag the content.
+
+    A layout pass is not a precondition of the column being composed, but
+    `size.height` is a layout fact — so reading rows out of it silently
+    hides whatever sits past the stale bound, worst at the bottom of the
+    last section. This is the same open sidebar with the pause removed,
+    which is what a loaded machine produces; the old read returned nothing
+    at all here.
+    """
+    app = _app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        assert BUILD in _painted(pane)
 
 
 @pytest.mark.asyncio

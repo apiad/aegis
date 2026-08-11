@@ -74,17 +74,21 @@ def repo(tmp_path):
 
 
 def _painted(pane) -> str:
-    """What the sidebar actually drew.
+    """What the sidebar put in its widget — every row of it.
 
-    Read off `render_line` — the compositor's own output — rather than off
-    `SidebarModel`. A model assertion is green against a section that was
-    never wired into `SECTIONS`, which is the one bug this file exists to
-    catch.
+    Read off the column's own composition rather than off `SidebarModel`: a
+    model assertion is green against a section that was never wired into
+    `SECTIONS`, which is the one bug this file exists to catch. `_paints`
+    carries the other half — that the widget really was updated.
+
+    Deliberately NOT `render_line` over `range(body.size.height)`, for the
+    reason written out in `test_sidebar_system.py`: geometry lags content by
+    a layout pass, so a loaded machine reads the column a row short and the
+    bottom row of the bottom section vanishes from the assertion's view.
     """
-    from textual.widgets import Static
-    body = pane.query_one(Sidebar).query_one(Static)
-    return "\n".join(body.render_line(y).text
-                     for y in range(body.size.height))
+    sidebar = pane.query_one(Sidebar)
+    assert sidebar._paints > 0, "the sidebar never painted"
+    return sidebar.plain()
 
 
 def _write(pane, path):
