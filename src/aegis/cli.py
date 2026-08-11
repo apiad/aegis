@@ -40,6 +40,9 @@ app.add_typer(_config_app, name="config")
 from aegis.cli_plugin import app as _plugin_app  # noqa: E402
 app.add_typer(_plugin_app, name="plugin")
 
+from aegis.cli_comms import comms_app as _comms_app  # noqa: E402
+app.add_typer(_comms_app, name="comms")
+
 
 def _session_factory(cwd: str, hosts=None):
     """The SessionFactory every entry point hands SessionManager.
