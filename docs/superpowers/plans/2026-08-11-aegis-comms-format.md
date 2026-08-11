@@ -60,7 +60,7 @@ ES modules for the web client, typer for the CLI.
   - `aegis_family(name: str) -> str | None`
   - Constants `CONVERSATION`, `COORDINATION`, `INTROSPECTION`, `ADMIN`, `PALE_GLYPH`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_descriptors.py`:
 
@@ -172,12 +172,12 @@ def test_fork_and_close_name_the_handle_they_act_on():
     assert aegis_target("aegis_close", close) == Target("agent", "calm-hopper")
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'aegis.comms'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/comms/__init__.py`:
 
@@ -385,12 +385,12 @@ def aegis_family(name: str) -> str | None:
     return None if d is None else d.family
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py -q`
 Expected: PASS, 10 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/comms/__init__.py src/aegis/comms/descriptors.py \
@@ -417,7 +417,7 @@ git commit -m "feat(comms): the descriptor registry and the agent verbs"
   `group_wait_any`, `group_rename`, `group_dissolve`, `group_move_member`
   (19 entries).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_comms_descriptors.py`:
 
@@ -504,13 +504,13 @@ def test_group_membership_verbs_take_the_reshape_glyph():
                            "to_group": "b"}) == "calm-hopper · a to b"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py -q`
 Expected: 6 failures, each `TypeError: 'NoneType' object is not ...` or
 `AssertionError: assert None == '▤'` — the descriptors do not exist yet.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add to `src/aegis/comms/descriptors.py`, above `DESCRIPTORS` (the helpers)
 and inside it (the entries):
@@ -662,12 +662,12 @@ Then extend `DESCRIPTORS` with:
         _target_at("group", "to_group")),
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py -q`
 Expected: PASS, 16 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/comms/descriptors.py tests/test_comms_descriptors.py
@@ -688,7 +688,7 @@ git commit -m "feat(comms): descriptors for canvases, terminals and groups"
 - Produces: `DESCRIPTORS` covering all 72 registered tools;
   `pale_descriptor(verb: str) -> AegisToolDescriptor`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_comms_descriptors.py`:
 
@@ -819,13 +819,13 @@ def test_every_descriptor_survives_empty_arguments(tool_names):
         assert d.target({}) is None or d.target({}).kind
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py tests/test_comms_coverage.py -q`
 Expected: the coverage test fails with a list of ~53 unmapped tool names; the
 descriptor tests fail on the missing coordination verbs.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add to `src/aegis/comms/descriptors.py`:
 
@@ -951,12 +951,12 @@ Finally, after the literal `DESCRIPTORS` definition, fold in the pale tier:
 DESCRIPTORS.update({v: pale_descriptor(v) for v in _PALE_FAMILY})
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py tests/test_comms_coverage.py -q`
 Expected: PASS. `test_every_registered_tool_has_a_descriptor` covers 72 tools.
 
-- [ ] **Step 5: Mutate the gate and confirm it fails**
+- [x] **Step 5: Mutate the gate and confirm it fails**
 
 A gate that cannot fail licenses shipping. Prove this one bites:
 
@@ -983,12 +983,12 @@ git checkout src/aegis/comms/descriptors.py
 and re-apply Step 3's implementation (or `git stash pop` if you stashed).
 Simpler: make the edit by hand, observe the red, undo the edit by hand.
 
-- [ ] **Step 6: Run the tests once more to confirm green after the revert**
+- [x] **Step 6: Run the tests once more to confirm green after the revert**
 
 Run: `uv run python -m pytest tests/test_comms_descriptors.py tests/test_comms_coverage.py -q`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/comms/descriptors.py tests/test_comms_descriptors.py \
@@ -1009,7 +1009,7 @@ git commit -m "feat(comms): coordination verbs, the pale tier, and the coverage 
 - Produces: `AegisColors.comms: str` — the colour every aegis-layer glyph and
   counterpart is painted in.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_theme.py`:
 
@@ -1044,12 +1044,12 @@ def test_comms_falls_back_to_the_accent_when_primary_is_absent():
     assert aegis_colors(bare).comms == "#FF00FF"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_theme.py -q`
 Expected: FAIL with `AttributeError: 'AegisColors' object has no attribute 'comms'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `src/aegis/themes/__init__.py`, add one field to `AegisColors` after
 `rule`:
@@ -1068,12 +1068,12 @@ And in `aegis_colors()`, add to the constructor call:
         comms=theme.primary or theme.accent or fg,
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_theme.py -q`
 Expected: PASS, 7 tests (3 themes × 2 parametrised + 1).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/themes/__init__.py tests/test_comms_theme.py
@@ -1096,7 +1096,7 @@ git commit -m "feat(themes): a colour role for the aegis layer"
 - Produces: `describe_tool` returning the registry's line for aegis tools;
   `render_tool_use` painting the aegis glyph in `colors.comms`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_render.py`:
 
@@ -1185,13 +1185,13 @@ def test_html_export_uses_the_same_glyph_and_line():
         'general · "port the fixtures"' in html)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_render.py -q`
 Expected: FAIL — `describe_tool` returns `"me"` (the first stringy arg) and
 `render_tool_use` starts with `⏺ `.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `src/aegis/render_shared.py`, add the import at the top:
 
@@ -1242,19 +1242,19 @@ In `src/aegis/render_html.py`, replace line 42:
 
 and add `tool_glyph` to the `render_shared` import on line 16.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_render.py -q`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Run the render regression suite**
+- [x] **Step 5: Run the render regression suite**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "render or html or transcript"`
 Expected: PASS. Existing snapshot-ish assertions about native tools must be
 untouched; if one fails on an aegis tool line, it was asserting the old
 fallback and should be updated to the new line.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/render_shared.py src/aegis/render.py \
@@ -1277,7 +1277,7 @@ git commit -m "feat(render): the transcript speaks the aegis layer's language"
 - Produces: the compact `ToolUse` wire dict gains `icon` (resolved
   server-side) and `comms` (bool — whether this is an aegis-layer call).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_web_wire.py`:
 
@@ -1329,12 +1329,12 @@ def test_the_browser_paints_aegis_calls_with_their_own_class():
     assert "tool-use comms" in src
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_web_wire.py -q`
 Expected: 4 failures — `KeyError: 'icon'`, and `KIND_ICON` still present.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `src/aegis/web/compact.py`, change the import on line 6 and the `ToolUse`
 branch:
@@ -1386,12 +1386,12 @@ In `src/aegis/web/static/css/base.css`, after line 235, add:
 .tool-use.comms .tool-desc { color: var(--aegis-primary); }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_web_wire.py -q`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Check the JS still parses as a module**
+- [x] **Step 5: Check the JS still parses as a module**
 
 `node --check` returns 0 on syntax errors in ESM files. Check it as `.mjs`:
 
@@ -1403,12 +1403,12 @@ node --check /tmp/renderEvent.mjs; echo "rc=$?"
 Expected: `rc=0`. Then prove the check can fail — append a stray `}` to the
 copy, re-run, confirm a non-zero rc, and delete the copy.
 
-- [ ] **Step 6: Run the web suite**
+- [x] **Step 6: Run the web suite**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "web or compact or wire"`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/web/compact.py src/aegis/web/static/js/renderEvent.js \
@@ -1436,7 +1436,7 @@ git commit -m "feat(web): the glyph comes off the wire, and the duplicate table 
     `.days() -> list[str]`, `.read_all() -> list[dict]`. The day string is
     `env.ts[:10]`, so the ledger never reads a clock of its own.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_ledger.py`:
 
@@ -1512,12 +1512,12 @@ def test_reading_a_ledger_that_does_not_exist_yet_is_empty(tmp_path: Path):
     assert CommsLedger(tmp_path).read_all() == []
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_ledger.py -q`
 Expected: collection error — `No module named 'aegis.comms.models'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/comms/models.py`:
 
@@ -1622,12 +1622,12 @@ class CommsLedger:
         return rows
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_ledger.py -q`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/comms/models.py src/aegis/comms/persistence.py \
@@ -1660,7 +1660,7 @@ re-derive them:**
 - A failing tool propagates `fastmcp.exceptions.ToolError` through
   `call_next`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_middleware.py`:
 
@@ -1791,12 +1791,12 @@ def test_the_middleware_ignores_tools_that_are_not_ours(tmp_path: Path):
     assert ledger.read_all() == []
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_middleware.py -q`
 Expected: collection error — `No module named 'aegis.comms.middleware'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/comms/middleware.py`:
 
@@ -1901,12 +1901,12 @@ In `src/aegis/mcp/server.py`, at the top of `build_server` (after
                     else Path.cwd() / ".aegis" / "state")))
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_middleware.py -q`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Confirm the real server still builds and still has 72 tools**
+- [x] **Step 5: Confirm the real server still builds and still has 72 tools**
 
 Run:
 
@@ -1922,12 +1922,12 @@ print(len(asyncio.run(s.list_tools())))
 
 Expected: `72`.
 
-- [ ] **Step 6: Run the MCP suite**
+- [x] **Step 6: Run the MCP suite**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "mcp or queue or comms"`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/comms/middleware.py src/aegis/mcp/server.py \
@@ -1950,7 +1950,7 @@ git commit -m "feat(comms): mint an envelope for every call through the MCP surf
   `aegis comms`; `filter_rows(rows, handle, thread, family, since_iso)` —
   the pure filter, tested directly.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_comms_cli.py`:
 
@@ -2024,12 +2024,12 @@ def test_the_command_says_so_when_the_ledger_is_empty(tmp_path, monkeypatch):
     assert "no aegis calls recorded" in result.stdout.lower()
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_comms_cli.py -q`
 Expected: collection error — `No module named 'aegis.cli_comms'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/cli_comms.py`:
 
@@ -2111,12 +2111,12 @@ from aegis.cli_comms import comms_app as _comms_app
 app.add_typer(_comms_app, name="comms")
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_comms_cli.py -q`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Exercise it the way it will be used**
+- [x] **Step 5: Exercise it the way it will be used**
 
 Run the real binary against a real ledger — a proxy signal is not enough:
 
@@ -2138,13 +2138,13 @@ uv --project /home/apiad/Workspace/repos/aegis run aegis comms list
 
 Expected: one row naming `alice`, `handoff` and `agent:bob`.
 
-- [ ] **Step 6: Run the full hermetic suite**
+- [x] **Step 6: Run the full hermetic suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS. A red run is a regression to investigate, not noise to
 re-roll — the flakes that used to justify re-running were fixed in 0.25.0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/cli_comms.py src/aegis/cli.py tests/test_comms_cli.py
@@ -2165,7 +2165,7 @@ git commit -m "feat(cli): aegis comms reads the inter-agent ledger back"
 - Consumes: the shipped feature.
 - Produces: nothing code-facing.
 
-- [ ] **Step 1: Add the Layout entry**
+- [x] **Step 1: Add the Layout entry**
 
 In `AGENTS.md`, after the `src/aegis/locks/` bullet, add:
 
@@ -2191,7 +2191,7 @@ In `AGENTS.md`, after the `src/aegis/locks/` bullet, add:
   `docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`.
 ```
 
-- [ ] **Step 2: Flip the spec status header**
+- [x] **Step 2: Flip the spec status header**
 
 Change the spec's first status line to:
 
@@ -2200,7 +2200,7 @@ Change the spec's first status line to:
 `docs/superpowers/plans/2026-08-11-aegis-comms-format.md`
 ```
 
-- [ ] **Step 3: Add the CHANGELOG entry**
+- [x] **Step 3: Add the CHANGELOG entry**
 
 Under the unreleased heading, add:
 
@@ -2212,7 +2212,7 @@ Under the unreleased heading, add:
   under `.aegis/state/comms/`. Read it back with `aegis comms list`.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add AGENTS.md CHANGELOG.md \
