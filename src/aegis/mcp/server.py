@@ -587,6 +587,21 @@ def make_handoff(bridge):
 
 def build_server(bridge: AppBridge) -> FastMCP:
     server = FastMCP("aegis")
+
+    # One envelope per call into this surface, minted at the single choke
+    # point every tool passes through — including plugin @tools, which a
+    # per-tool wrapper would miss.
+    from pathlib import Path
+
+    from aegis.comms.middleware import CommsMiddleware
+    from aegis.comms.persistence import CommsLedger
+
+    _qm = getattr(bridge, "queue_manager", None)
+    _state_dir = getattr(_qm, "_state_dir", None) if _qm is not None else None
+    server.add_middleware(CommsMiddleware(CommsLedger(
+        Path(_state_dir) if _state_dir
+        else Path.cwd() / ".aegis" / "state")))
+
     server.tool(aegis_meta)
 
     config_write_lock = asyncio.Lock()
