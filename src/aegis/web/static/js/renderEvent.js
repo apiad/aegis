@@ -4,10 +4,9 @@
 // block. Wrapped by app.js's nodeFromHtml.
 import { renderMarkdown } from "./markdown.js";
 
-const KIND_ICON = {
-  read: "📖", edit: "✏️", execute: "⌬", search: "🔎", think: "✻",
-  fetch: "🌐", move: "➡️", delete: "🗑", switch_mode: "🔄", other: "⏺",
-};
+// The tool glyph is resolved server-side (aegis.render_shared.tool_glyph)
+// and arrives on the wire as ev.icon, so this module keeps no glyph table
+// of its own — the copy that lived here had already drifted from Python's.
 const PLAN_GLYPH = { completed: "●", in_progress: "◐", pending: "○" };
 
 function esc(s) {
@@ -186,10 +185,11 @@ export function renderEvent(rec) {
     return `<div class="thinking muted"><em>✻ ${esc(body)}${tok}</em></div>`;
   }
   if (t === "ToolUse") {
-    const icon = KIND_ICON[ev.kind || ""] || "⏺";
+    const icon = ev.icon || "⏺";
+    const cls = ev.comms ? "tool-use comms" : "tool-use";
     const desc = ev.desc || describeTool(ev);
     const ctl = rec.truncated ? " " + expandControl(rec, "⋯") : "";
-    const useHtml = `<div class="tool-use"><span class="icon">${icon}</span> `
+    const useHtml = `<div class="${cls}"><span class="icon">${icon}</span> `
       + `<span class="tool-desc">${esc(desc)}</span>${ctl}</div>`;
     // A Task with routed children renders as a collapsible subagent box:
     // header (the Task call) + body (the subagent's events).

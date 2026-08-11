@@ -233,6 +233,10 @@ html, body {
 
 .tool-use .icon { margin-right: 0.3rem; }
 .tool-use .tool-desc { color: var(--aegis-accent); }
+/* A call into the aegis layer wears the layer's own colour — the web
+   mirror of AegisColors.comms, which is the theme's primary. */
+.tool-use.comms .icon,
+.tool-use.comms .tool-desc { color: var(--aegis-primary); }
 
 .tool-result { color: var(--aegis-muted); }
 .tool-result.ok .status { color: var(--aegis-ok); }

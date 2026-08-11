@@ -3,7 +3,8 @@ wire. The result stays valid input to ``decode_event`` (extra keys ignored);
 the full event is fetched on demand via the ``get_event`` RPC."""
 from __future__ import annotations
 
-from aegis.render_shared import describe_tool
+from aegis.comms.descriptors import aegis_glyph
+from aegis.render_shared import describe_tool, tool_glyph
 from aegis.transcript_constants import TOOL_RESULT_HEAD_LINES
 
 
@@ -28,13 +29,19 @@ def compact_encoded(d: dict) -> tuple[dict, bool]:
     if t == "ToolUse":
         if d.get("raw_input") is None:
             return d, False
-        # Precompute the human description server-side (raw_input has the
-        # Bash `description` arg etc.), then drop raw_input from the wire —
-        # the full args are fetched on demand via get_event when expanded.
+        # Precompute the human description AND the glyph server-side
+        # (raw_input has the Bash `description` arg etc.), then drop
+        # raw_input from the wire — the full args are fetched on demand via
+        # get_event when expanded. The glyph goes over the wire rather than
+        # being resolved in the browser so there is exactly one glyph table,
+        # in Python, for the TUI, the HTML export and the web client.
         out = dict(d)
-        out["desc"] = describe_tool(d.get("name", ""), d.get("raw_input"),
-                                    d.get("summary", ""),
+        name = d.get("name", "")
+        raw = d.get("raw_input")
+        out["desc"] = describe_tool(name, raw, d.get("summary", ""),
                                     d.get("locations") or ())
+        out["icon"] = tool_glyph(name, d.get("kind"), raw)
+        out["comms"] = aegis_glyph(name, raw or {}) is not None
         out.pop("raw_input", None)
         return out, True
     if t == "AssistantThinking":
