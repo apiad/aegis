@@ -103,3 +103,85 @@ def test_fork_and_close_name_the_handle_they_act_on():
     assert aegis_glyph("aegis_close", close) == "✦"
     assert aegis_describe("aegis_close", close) == "calm-hopper · reaped"
     assert aegis_target("aegis_close", close) == Target("agent", "calm-hopper")
+
+
+def test_canvas_writes_name_the_section_and_count_the_lines():
+    write = {"name": "report", "section": "Findings",
+             "content": "a\nb\nc", "from_handle": "me"}
+    assert aegis_glyph("aegis_canvas_write_section", write) == "▤"
+    assert aegis_describe("aegis_canvas_write_section", write) == (
+        "report §Findings · 3 lines")
+    assert aegis_target("aegis_canvas_write_section", write) == Target(
+        "canvas", "report")
+
+    append = {"name": "report", "section": "Log", "text": "x\ny"}
+    assert aegis_describe("aegis_canvas_append_to_section", append) == (
+        "report §Log · +2 lines")
+
+
+def test_canvas_attach_and_detach_take_opposite_glyphs():
+    assert aegis_glyph("aegis_canvas_open", {"name": "report"}) == "▥"
+    assert aegis_glyph("aegis_canvas_subscribe", {"name": "report"}) == "▥"
+    assert aegis_glyph("aegis_canvas_unsubscribe", {"name": "report"}) == "▧"
+    assert aegis_describe("aegis_canvas_subscribe", {"name": "report"}) == (
+        "report · all sections")
+    assert aegis_describe(
+        "aegis_canvas_subscribe",
+        {"name": "report", "sections": ["Findings", "Log"]}) == (
+        "report · Findings, Log")
+
+
+def test_terminal_verbs_name_the_terminal():
+    run = {"name": "build", "cmd": "pytest -q", "from_handle": "me"}
+    assert aegis_glyph("aegis_term_run", run) == "■"
+    assert aegis_describe("aegis_term_run", run) == 'build · "pytest -q"'
+    assert aegis_target("aegis_term_run", run) == Target("term", "build")
+
+    assert aegis_glyph("aegis_term_spawn", {"name": "build"}) == "▥"
+    assert aegis_glyph("aegis_term_close", {"name": "build"}) == "▧"
+    assert aegis_describe("aegis_term_close", {"name": "build"}) == (
+        "build · closed")
+
+
+def test_term_keys_renders_control_bytes_readably():
+    assert aegis_describe("aegis_term_keys",
+                          {"name": "build", "keys": "\x03"}) == "build · ^C"
+    assert aegis_describe("aegis_term_keys",
+                          {"name": "build", "keys": "y\n"}) == 'build · "y⏎"'
+
+
+def test_group_broadcast_and_waits_point_at_the_group():
+    bc = {"from_handle": "me", "group": "reviewers",
+          "objective": "review your section"}
+    assert aegis_glyph("aegis_group_broadcast", bc) == "⁂"
+    assert aegis_describe("aegis_group_broadcast", bc) == (
+        'reviewers · "review your section"')
+    assert aegis_target("aegis_group_broadcast", bc) == Target(
+        "group", "reviewers")
+
+    assert aegis_glyph("aegis_group_wait_all", {"group": "reviewers"}) == "⁑"
+    assert aegis_describe("aegis_group_wait_all",
+                          {"group": "reviewers", "reducer": "concat"}) == (
+        "reviewers · all · concat")
+    assert aegis_describe("aegis_group_wait_any",
+                          {"group": "reviewers"}) == "reviewers · any"
+
+
+def test_group_membership_verbs_take_the_reshape_glyph():
+    assert aegis_glyph("aegis_group_spawn",
+                       {"profile": "main", "group": "reviewers"}) == "✧"
+    assert aegis_describe("aegis_group_spawn",
+                          {"profile": "main", "group": "reviewers"}) == (
+        "reviewers · main")
+    assert aegis_describe("aegis_group_spawn_mixed",
+                          {"group": "reviewers",
+                           "profiles": ["main", "fast"]}) == (
+        "reviewers · main, fast")
+    assert aegis_glyph("aegis_group_rename", {"old": "a", "new": "b"}) == "⌗"
+    assert aegis_describe("aegis_group_rename",
+                          {"old": "a", "new": "b"}) == "a · renamed to b"
+    assert aegis_describe("aegis_group_dissolve",
+                          {"group": "reviewers"}) == "reviewers · dissolved"
+    assert aegis_describe("aegis_group_move_member",
+                          {"handle": "calm-hopper", "from_group": "a",
+                           "to_group": "b"}) == "calm-hopper · a to b"

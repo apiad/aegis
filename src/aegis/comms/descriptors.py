@@ -129,6 +129,83 @@ def _d_cancel(a: dict) -> str:
     return _s(a, "task_id")
 
 
+def _lines(text: str) -> int:
+    return len(str(text or "").splitlines())
+
+
+def _d_canvas_write(a: dict) -> str:
+    n = _lines(_s(a, "content"))
+    return _join(f"{_s(a, 'name')} §{_s(a, 'section')}", f"{n} lines")
+
+
+def _d_canvas_append(a: dict) -> str:
+    n = _lines(_s(a, "text"))
+    return _join(f"{_s(a, 'name')} §{_s(a, 'section')}", f"+{n} lines")
+
+
+def _d_canvas_subscribe(a: dict) -> str:
+    sections = a.get("sections")
+    which = ", ".join(sections) if sections else "all sections"
+    return _join(_s(a, "name"), which)
+
+
+def _d_canvas_open(a: dict) -> str:
+    return _join(_s(a, "name"), _s(a, "file"))
+
+
+def _d_canvas_unsubscribe(a: dict) -> str:
+    return _join(_s(a, "name"), "unsubscribed")
+
+
+#: The control bytes worth naming. Anything else is quoted with newlines
+#: shown as ⏎ — a raw \n in a transcript line would break the row.
+_CONTROL = {"\x03": "^C", "\x04": "^D", "\x1a": "^Z", "\x1b": "ESC"}
+
+
+def _d_term_keys(a: dict) -> str:
+    keys = a.get("keys")
+    keys = keys if isinstance(keys, str) else ""
+    named = _CONTROL.get(keys)
+    if named:
+        return _join(_s(a, "name"), named)
+    return _join(_s(a, "name"), _quote(keys.replace("\n", "⏎"), 24))
+
+
+def _d_term_run(a: dict) -> str:
+    return _join(_s(a, "name"), _quote(_s(a, "cmd")))
+
+
+def _d_term_spawn(a: dict) -> str:
+    return _join(_s(a, "name"), _s(a, "cwd"))
+
+
+def _d_group_wait(mode: str) -> Callable[[dict], str]:
+    def describe(a: dict) -> str:
+        return _join(_s(a, "group"), mode,
+                     _s(a, "reducer") if mode == "all" else "")
+    return describe
+
+
+def _d_group_spawn(a: dict) -> str:
+    return _join(_s(a, "group"), _s(a, "profile"))
+
+
+def _d_group_spawn_mixed(a: dict) -> str:
+    profiles = a.get("profiles") or []
+    which = ", ".join(profiles) if profiles else _s(a, "preset")
+    return _join(_s(a, "group"), which)
+
+
+def _d_group_rename(a: dict) -> str:
+    return _join(_s(a, "old"),
+                 f"renamed to {_s(a, 'new')}" if _s(a, "new") else "")
+
+
+def _d_group_move(a: dict) -> str:
+    hop = f"{_s(a, 'from_group')} to {_s(a, 'to_group')}"
+    return _join(_s(a, "handle"), hop if _s(a, "to_group") else "")
+
+
 DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     "handoff": AegisToolDescriptor(
         "handoff", CONVERSATION, _g_handoff, _d_handoff,
@@ -148,6 +225,70 @@ DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     "cancel": AegisToolDescriptor(
         "cancel", CONVERSATION, "⇎", _d_cancel,
         _target_at("queue", "task_id")),
+    # --- shared surfaces ---
+    "canvas_open": AegisToolDescriptor(
+        "canvas_open", CONVERSATION, "▥", _d_canvas_open,
+        _target_at("canvas", "name")),
+    "canvas_write_section": AegisToolDescriptor(
+        "canvas_write_section", CONVERSATION, "▤", _d_canvas_write,
+        _target_at("canvas", "name")),
+    "canvas_append_to_section": AegisToolDescriptor(
+        "canvas_append_to_section", CONVERSATION, "▤", _d_canvas_append,
+        _target_at("canvas", "name")),
+    "canvas_subscribe": AegisToolDescriptor(
+        "canvas_subscribe", CONVERSATION, "▥", _d_canvas_subscribe,
+        _target_at("canvas", "name")),
+    "canvas_unsubscribe": AegisToolDescriptor(
+        "canvas_unsubscribe", CONVERSATION, "▧", _d_canvas_unsubscribe,
+        _target_at("canvas", "name")),
+    "term_spawn": AegisToolDescriptor(
+        "term_spawn", CONVERSATION, "▥", _d_term_spawn,
+        _target_at("term", "name")),
+    "term_run": AegisToolDescriptor(
+        "term_run", CONVERSATION, "■", _d_term_run,
+        _target_at("term", "name")),
+    "term_keys": AegisToolDescriptor(
+        "term_keys", CONVERSATION, "■", _d_term_keys,
+        _target_at("term", "name")),
+    "term_subscribe": AegisToolDescriptor(
+        "term_subscribe", CONVERSATION, "▥",
+        lambda a: _join(_s(a, "name"), "subscribed"),
+        _target_at("term", "name")),
+    "term_unsubscribe": AegisToolDescriptor(
+        "term_unsubscribe", CONVERSATION, "▧",
+        lambda a: _join(_s(a, "name"), "unsubscribed"),
+        _target_at("term", "name")),
+    "term_close": AegisToolDescriptor(
+        "term_close", CONVERSATION, "▧",
+        lambda a: _join(_s(a, "name"), "closed"),
+        _target_at("term", "name")),
+    # --- groups ---
+    "group_spawn": AegisToolDescriptor(
+        "group_spawn", CONVERSATION, "✧", _d_group_spawn,
+        _target_at("group", "group")),
+    "group_spawn_mixed": AegisToolDescriptor(
+        "group_spawn_mixed", CONVERSATION, "✧", _d_group_spawn_mixed,
+        _target_at("group", "group")),
+    "group_broadcast": AegisToolDescriptor(
+        "group_broadcast", CONVERSATION, "⁂",
+        lambda a: _join(_s(a, "group"), _quote(_s(a, "objective"))),
+        _target_at("group", "group")),
+    "group_wait_all": AegisToolDescriptor(
+        "group_wait_all", CONVERSATION, "⁑", _d_group_wait("all"),
+        _target_at("group", "group")),
+    "group_wait_any": AegisToolDescriptor(
+        "group_wait_any", CONVERSATION, "⁑", _d_group_wait("any"),
+        _target_at("group", "group")),
+    "group_rename": AegisToolDescriptor(
+        "group_rename", COORDINATION, "⌗", _d_group_rename,
+        _target_at("group", "old")),
+    "group_dissolve": AegisToolDescriptor(
+        "group_dissolve", COORDINATION, "⌗",
+        lambda a: _join(_s(a, "group"), "dissolved"),
+        _target_at("group", "group")),
+    "group_move_member": AegisToolDescriptor(
+        "group_move_member", COORDINATION, "⌗", _d_group_move,
+        _target_at("group", "to_group")),
 }
 
 
