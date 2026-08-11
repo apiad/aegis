@@ -14,6 +14,7 @@ from aegis.events import (
 )
 from aegis.render_shared import (
     KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
+    tool_glyph,
 )
 
 
@@ -39,7 +40,7 @@ def render_event_html(ev: Event) -> str | None:
                 f'{escape(body)}{tok}</em></div>')
 
     if isinstance(ev, ToolUse):
-        icon = KIND_ICON.get(ev.kind or "", "⏺")
+        icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
         desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
         return (f'<div class="tool-use">'
                 f'<span class="icon">{icon}</span> '

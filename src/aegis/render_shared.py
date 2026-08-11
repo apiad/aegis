@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from aegis.comms.descriptors import aegis_describe, aegis_glyph
+
 # Glyph per semantic kind (parity with ACP's tool_call kind enum; claude
 # paths derive kind from the tool name in events.py).
 KIND_ICON = {
@@ -49,6 +51,12 @@ def describe_tool(name: str, raw_input: dict | None,
     structured input when available, degrading to ``summary`` / location tail
     (the compact WS wire strips ``raw_input``, so callers precompute this
     server-side). Pure — no Rich, no HTML."""
+    # The aegis layer answers for itself: one registry knows what matters
+    # about each of its calls, and the comms ledger reads the same one.
+    aegis_line = aegis_describe(name, raw_input or {})
+    if aegis_line is not None:
+        return aegis_line
+
     inp = raw_input or {}
 
     if name == "Bash":
@@ -99,6 +107,20 @@ def describe_tool(name: str, raw_input: dict | None,
         if isinstance(v, str) and v.strip():
             return _trunc(v, 60)
     return summary or _loc_tail(locations) or name
+
+
+def tool_glyph(name: str, kind: str | None,
+               raw_input: dict | None = None) -> str:
+    """The leading glyph for a tool line: the aegis layer's own when the call
+    is one of ours, else the native per-kind emoji.
+
+    Resolved here rather than in each frontend so there is exactly one glyph
+    table for the TUI, the HTML export and the web client — the web used to
+    keep its own copy of ``KIND_ICON``, which is precisely the kind of
+    duplicate that drifts.
+    """
+    return aegis_glyph(name, raw_input or {}) or KIND_ICON.get(kind or "",
+                                                               "⏺")
 
 
 @dataclass(frozen=True)

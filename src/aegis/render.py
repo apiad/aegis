@@ -12,9 +12,10 @@ from aegis.events import (
     AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
     ToolResult, Result, SystemInit, Unknown, UserMessage, Event,
 )
+from aegis.comms.descriptors import aegis_glyph
 from aegis.render_shared import (
     KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window,
-    format_tool_args, result_parts,
+    format_tool_args, result_parts, tool_glyph,
 )
 
 # Per-tool-call spinner (mirrors the turn-level WorkingIndicator glyphs).
@@ -112,9 +113,13 @@ def render_tool_use(ev, colors, *, elapsed: float | None = None,
     per-tool spinner+timer (while running), a frozen duration (once done, if
     ≥1s), and the full args block (when expanded). The args stay collapsed by
     default — the pane expands them on click."""
-    icon = KIND_ICON.get(ev.kind or "", "⏺")
+    icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
     desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
-    line = Text.assemble((f"{icon} ", colors.accent), desc)
+    # A call into the aegis layer wears the layer's own colour, so a
+    # transcript shows at a glance where agents were talking to each other.
+    style = (colors.comms if aegis_glyph(ev.name, ev.raw_input or {})
+             else colors.accent)
+    line = Text.assemble((f"{icon} ", style), desc)
     if running and elapsed is not None:
         spin = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)]
         line.append(f"  {spin} {_fmt_dur(elapsed)}", style=colors.muted)
