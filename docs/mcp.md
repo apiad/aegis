@@ -27,6 +27,8 @@ surface is exactly what aegis declares.
 | `aegis_peer_plan(handle)` | A peer's full task list — every task with its status and accumulated **working time** (mid-turn seconds only, so an idle agent does not inflate). `aegis_list_sessions` already carries the `done/total` roll-up and what each peer is on; this is the drill-down. |
 | `aegis_read_peer(handle, turns=12)` | Read a window of a peer's transcript. It unlocks nothing (the logs are plain JSONL and every agent has Read); what it fixes is *addressing* — a log id carries the session's **birth** handle and is never renamed, so current-handle → file is not derivable. |
 | `aegis_run_workflow(name, kwargs, from_handle, callback=true)` | Invoke a registered Python workflow. Non-blocking; returns `{workflow_run_id, status:'running'}` immediately. See [Workflows](workflows.md). |
+| `aegis_monitor(from_handle, description, done, progress=…, fail=…)` | Watch a long-running process (tests, a build, a download) by bash condition instead of polling it. Returns `{monitor_id}` immediately — the agent ends its turn and is woken through its inbox when the condition trips, fails or times out. The result also carries `also_watching`: **the agent's other live monitors**, with elapsed time beside percent. A monitor outlives the process it watches, so one frozen at 60% for nineteen minutes is watching a corpse, and nothing else would ever tell the agent that. |
+| `aegis_monitors(from_handle=None)` / `aegis_monitor_cancel(monitor_id)` | List live monitors — pass a handle to see only your own, since unscoped it lists every peer's with nothing marking ownership — or stop one. A cancel names *what it killed* (ULIDs differ in a few characters) and hands back the remaining roster, counted: cancelling is when an agent is pruning, which makes it the best moment to show the rest of the pile. Neither wakes the agent: it just made that decision. |
 
 ## Inboxes
 
@@ -66,8 +68,17 @@ For each session aegis spawns, a fresh HTTP MCP endpoint is bound:
   name:"aegis", url:<url>, headers:[]}])` injects the server when the
   ACP session opens.
 
-The URL embeds the session's handle, so every tool call automatically
-carries `from_handle` even if the agent doesn't pass it explicitly.
+**The server cannot tell which agent is calling it.** `AegisMCP` is
+co-resident and shared — every session on this aegis reaches the same HTTP
+port — so there is no per-connection identity to read a handle off. That is
+why `from_handle` is a *parameter*: each agent is told its own handle in the
+primer system prompt and passes it back by convention. Consequences, all
+live today: an agent can pass a handle that is not its own and nothing
+checks it; tools that take no `from_handle` cannot be attributed at all; and
+the [comms ledger](usage.md#the-aegis-layer-in-the-transcript-aegis-comms)
+therefore records those calls unattributed rather than guessing. Making the
+handle a transport fact — a per-session token minted at spawn and resolved
+server-side — is on the roadmap.
 
 ## Building on the plane
 

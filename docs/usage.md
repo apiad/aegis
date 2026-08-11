@@ -196,10 +196,63 @@ The verb rotates every few seconds (Thinking → Pondering →
 Crystallizing → Synthesizing → …) so you can see the agent is still
 alive even when it's silent.
 
+## The aegis layer in the transcript (`aegis comms`)
+
+When an agent calls into the [MCP plane](mcp.md), the call reads as what it
+is — an act aimed at a counterpart, in the layer's own colour:
+
+```
+⇄ weary-turing · "the render is yours"
+⇉ general · task#01K2CA0F
+⊙ exclusive · src/aegis/mcp/ · 3 paths
+∘ claims
+```
+
+Nineteen glyphs name **semantic acts, not tools**, so `spawn`, `fork` and
+`group_spawn` share one mark: what matters when you scan a transcript is
+that a new agent appeared, not which verb produced it. Everything that
+merely reads the room — `list_sessions`, `claims`, every `config_*` — takes
+one pale `∘`, because polling is the single largest slice of aegis traffic
+and giving it the weight of a conversation was the thing worth fixing.
+
+Every one of those calls also leaves an **envelope** on disk: a daily JSONL
+under `.aegis/state/comms/`, one record per call, carrying who called, the
+typed counterpart, the family, the verb, a thread id, the outcome and the
+duration. Read it back with:
+
+```bash
+aegis comms list                          # every call, oldest first
+aegis comms list --handle weary-turing     # either end of the call
+aegis comms list --thread 01K2CA0F         # one conversation across agents
+aegis comms list --family conversation     # conversation | coordination
+                                           # | introspection | admin
+aegis comms list --since 2026-08-11T09:00Z
+```
+
+```
+2026-08-11T15:22:04.881Z aegis-release-cut  handoff   agent:weary-turing  01K2C9T1
+2026-08-11T15:22:41.019Z aegis-release-cut  enqueue   queue:general       01K2CA0F
+2026-08-11T15:31:12.402Z (unattributed)     claims    -                   01K2CB33
+```
+
+`thread` adopts the substrate's own ids (`task_id`, `monitor_id`,
+`claim_id`, `workflow_run_id`, …), so an `enqueue` and the callback that
+lands in another agent's inbox twenty minutes later share one — which is
+how you follow a delegation across two agents that never mention each
+other.
+
+**`from` is best effort, and the ledger says so.** The MCP server is
+co-resident and shared, so there is no transport identity: a handle is a
+parameter the agent passes by convention, and the tools that take none
+(`aegis_list_sessions`, `aegis_claims`, `aegis_meta`, every `config_*`)
+cannot be attributed at all. Those rows print `(unattributed)` rather than
+a guess, because a fabricated attribution in an audit record is worse than
+an honest gap.
+
 ## Status line & metrics
 
 ```
-handle ·profile· model · permission   state   ↑<input> (<n>% cached) ↓<output> · ⚒ <tools> · <turn> / <session>
+handle ·profile· model · permission   state   ctx <n> (<p>%) · ✂<n> · ↑<input> (<n>% cached) ↓<output> · ⚒ <tools> · <turn> / <session>
 ```
 
 - `↑` is the **true** input the model ingests — uncached input **plus**
@@ -209,6 +262,18 @@ handle ·profile· model · permission   state   ↑<input> (<n>% cached) ↓<ou
   re-billed at full rate).
 - `↓` is total output tokens this session.
 - `⚒` is the count of tool calls this session.
+- `ctx` is how full the model's context window is — the **largest single
+  sub-turn** of the most recent turn against the window for that model.
+  It turns yellow past 50% and red past 75%. Note what it is not: the
+  session's accumulated input. An agentic turn is many round trips, and
+  charging the gauge for all of them made a 30-sub-turn turn read
+  *1052%*.
+- `✂` counts **compactions** — how many times the harness has dropped
+  older context to keep going. It appears only once one has happened,
+  yellow at one and red at two or more, and each one re-baselines `ctx`
+  to the post-compaction size. Claude Code reports these exactly (a
+  `compact_boundary` event); ACP harnesses have no equivalent signal, so
+  there the counter simply stays absent rather than guessing.
 - `<turn>` is the wall-clock time of the most recent turn; `<session>`
   is the total wall-clock since this tab opened.
 
@@ -291,6 +356,33 @@ reads `—`, not `0:00`; the two mean different things.
 
 The plan survives a restart: a resumed session replays its own transcript
 and comes back with the tasks *and* their banked time intact.
+
+Above it sits **REPOS** — which git repos the live agents are actually
+writing to:
+
+```
+REPOS                              2
+● aegis        main ~6 ↑6  calm-hopper
+● Workspace    main ~2
+```
+
+`●` marks a repo this tab's agent is in, `·` one only its peers are in,
+and the count turns amber when more than one live agent is writing to the
+same tree — the collision you would otherwise find at `git diff`, hours
+later. `~n` is uncommitted files, `↑n` unpushed commits (the "a job clones
+`origin` and silently gets the old tree" failure, made visible), and a
+detached `HEAD` or a rebase in flight replaces the branch in the error
+colour.
+
+Membership is learned from **writes only** — `Write` / `Edit` /
+`NotebookEdit`, or their ACP equivalents by tool *kind*. Reads do not put
+a repo on the board, or every repo an agent merely grepped would show up
+and the section would stop meaning *work is happening here*. `Bash` is
+deliberately missed: guessing write targets out of a shell command is a
+heuristic, and one wrong row would make the whole section untrusted. A
+repo on a remote [execution host](hosts.md) is listed but never probed —
+the same path names a different tree there, so a local `git status` would
+answer confidently and wrongly.
 
 The panel's foot is a **SYSTEM** block: the CPU/RAM/disk meters, then the
 date, time and locale, the directory this aegis is rooted at, and the build
