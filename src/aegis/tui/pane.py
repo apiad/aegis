@@ -43,6 +43,7 @@ from aegis.tui.sidebar import Sidebar, SidebarModel
 from aegis.tui.strip import QueueStrip
 from aegis.tui.sysmeter import (
     current_locale, format_build, format_clock, format_cwd)
+from aegis.tui.voice_strip import VoiceStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
     N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
@@ -813,6 +814,11 @@ class ConversationPane(Widget):
     ConversationPane.recording GrowingInput:focus {
                              border-top: solid $warning;
                              border-bottom: solid $warning; }
+    /* Still locked, but the mic is shut and the clip is decoding. */
+    ConversationPane.transcribing GrowingInput,
+    ConversationPane.transcribing GrowingInput:focus {
+                             border-top: solid $primary;
+                             border-bottom: solid $primary; }
     """
 
     @property
@@ -839,6 +845,10 @@ class ConversationPane(Widget):
         self._palette = palette
         self._digest = digest
         self._monitor_manager = monitor_manager
+        # The voice binding, for the strip's "<key> to stop" hint. The app
+        # overwrites it per recording; the binding is configurable, so this
+        # default is only what a pane hosted outside AegisApp would show.
+        self._voice_key = "ctrl+g"
         # Set at mount from the app; a pane hosted outside AegisApp (tests,
         # the remote shell) keeps these and renders no REPOS section.
         self._repo_tracker = None
@@ -1034,6 +1044,7 @@ class ConversationPane(Widget):
                 yield StatusBar(_model, _eff, self._palette)
                 yield CommandPalette(self._palette)
                 yield PendingStrip(self._palette)
+                yield VoiceStrip(self._palette)
                 yield GrowingInput(placeholder="type a message…")
             yield Sidebar(self._palette, id="sidebar")
 
@@ -1789,8 +1800,24 @@ class ConversationPane(Widget):
             return True
         return False
 
-    def set_recording(self, on: bool) -> None:
-        self.set_class(on, "recording")
+    def set_voice_state(self, state: str) -> None:
+        """Drive every voice surface from one place — the CSS class, the
+        strip, and the input lock — so the three cannot drift apart.
+
+        ``state`` is "idle", "recording" or "transcribing". The "recording"
+        class name is kept from the old ``set_recording(bool)``: the
+        stylesheet and two existing tests key on it.
+        """
+        self.set_class(state == "recording", "recording")
+        self.set_class(state == "transcribing", "transcribing")
+        self.input_widget().locked = state != "idle"
+        strip = self.query_one(VoiceStrip)
+        if state == "recording":
+            strip.show_recording(self._voice_key)
+        elif state == "transcribing":
+            strip.show_transcribing()
+        else:
+            strip.hide()
 
     def on_text_area_changed(self, _event) -> None:
         # Flag special input prefixes with a distinct outline colour so they

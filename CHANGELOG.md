@@ -7,6 +7,22 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **The input locks while the mic is open, and says so.** A one-row strip
+  above the input shows `● Recording  0:04 — ctrl+g to stop` and then
+  `⠋ Transcribing  0:02`, with the key it is actually bound to rather than a
+  hardcoded one. Typing and submitting are refused for the whole span.
+
+  This was losing text. The input's contents were captured when recording
+  *started* and reassigned when the transcript landed, so anything typed in
+  between — during the recording *or* during the decode, which had no
+  indicator at all — was silently overwritten. The transcript now appends to
+  whatever is in the box at the moment it arrives, so a future hole in the
+  lock degrades to "both survive, in order" rather than "your text vanishes".
+
+  Pressing the voice key again during the decode is ignored. It used to start
+  a fresh recording, because the session handle is already cleared by then,
+  and the in-flight decode would have cleared the new recording's state.
+
 - **An agent is now told when you rename it.** It could not see the change
   before — no message announced it, and its system prompt still carried the
   handle it was born with — so it went on passing a dead name as

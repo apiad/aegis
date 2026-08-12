@@ -337,6 +337,10 @@ class AegisApp(App):
         self._voice_cfg = voice or VoiceConfig()
         self._voice: VoiceSession | None = None
         self._voice_pane: ConversationPane | None = None
+        # True from _stop_voice until the transcript lands. _voice is
+        # already None during that window, so without this the voice key
+        # would start a fresh recording mid-decode.
+        self._voice_decoding = False
         self._voice_session_factory = VoiceSession
         self._loop = None
         self._palette: AegisColors = aegis_colors(INK)
@@ -1463,6 +1467,8 @@ class AegisApp(App):
             active.interrupt()
 
     async def action_toggle_voice(self) -> None:
+        if self._voice_decoding:
+            return          # decode in flight; a new recording would race it
         if self._voice is not None:
             self._stop_voice()
             return
@@ -1472,13 +1478,12 @@ class AegisApp(App):
         pane = self._active
         if not isinstance(pane, ConversationPane):
             return
-        base = pane.input_widget().value
-
-        def on_final(text: str, pane=pane, base=base) -> None:
+        def on_final(text: str, pane=pane) -> None:
             # Fires from the decode worker thread -> marshal onto the UI loop.
-            # Target pane + base are captured per-recording so a late decode
-            # always lands on the input it started from.
-            self._marshal(self._apply_voice_text, pane, base, text)
+            # The pane is captured per-recording so a late decode always
+            # lands on the input it started from. The input's CONTENTS are
+            # deliberately not captured — see _apply_voice_text.
+            self._marshal(self._apply_voice_text, pane, text)
 
         try:
             self._voice = self._voice_session_factory(self._voice_cfg, on_final)
@@ -1488,7 +1493,8 @@ class AegisApp(App):
             self.notify(f"voice failed: {exc}", severity="error")
             return
         self._voice_pane = pane
-        pane.set_recording(True)
+        pane._voice_key = self._voice_cfg.key
+        pane.set_voice_state("recording")
 
     def _marshal(self, fn, *args) -> None:
         loop = self._loop
@@ -1497,21 +1503,35 @@ class AegisApp(App):
         else:
             loop.call_soon_threadsafe(fn, *args)
 
-    def _apply_voice_text(self, pane, base: str, text: str) -> None:
+    def _apply_voice_text(self, pane, text: str) -> None:
+        # Unlock FIRST and unconditionally. An empty transcript and a failed
+        # decode both reach here, and both return early below — which would
+        # otherwise strand the input locked and the strip spinning forever.
+        self._voice_decoding = False
+        pane.set_voice_state("idle")
         text = (text or "").strip()
         if not text:
             return
+        # Read the CURRENT value, not one captured when recording started.
+        # That capture is what discarded anything typed in between; reading
+        # it here means a hole in the lock degrades to "both survive, in
+        # order" rather than "your text vanishes".
+        base = pane.input_widget().value
         joiner = "" if (not base or base.endswith((" ", "\n"))) else " "
         pane.input_widget().value = base + joiner + text
 
     def _stop_voice(self) -> None:
         voice, pane = self._voice, self._voice_pane
         self._voice = None
-        self._voice_pane = None
-        if pane is not None:
-            pane.set_recording(False)
+        # Deliberately NOT clearing _voice_pane: _apply_voice_text still
+        # needs it, and the callback holds its own reference anyway.
         if voice is not None:
+            self._voice_decoding = True
+            if pane is not None:
+                pane.set_voice_state("transcribing")
             voice.stop()   # non-blocking; decode + insert happen off-thread
+        elif pane is not None:
+            pane.set_voice_state("idle")
 
     async def action_quit(self) -> None:
         if self._voice is not None:
