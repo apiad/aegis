@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-08-12
+
 ### Added
 
 - **The status bar shows every subscription's quota, not just Claude's.**
