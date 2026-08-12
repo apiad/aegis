@@ -61,6 +61,21 @@ class GrowingInput(TextArea):
         self.text = v
         self._resize_to_content()
 
+    @property
+    def locked(self) -> bool:
+        """True while the mic is open or the clip is decoding.
+
+        Rides Textual's ``read_only`` for text mutation and paste, which it
+        already handles; ``action_submit`` is gated separately because it is
+        an action, not a key handler, and ``read_only`` does not cover it.
+        """
+        return bool(getattr(self, "_locked", False))
+
+    @locked.setter
+    def locked(self, on: bool) -> None:
+        self._locked = bool(on)
+        self.read_only = bool(on)
+
     def on_mount(self) -> None:
         self._resize_to_content()
 
@@ -98,6 +113,10 @@ class GrowingInput(TextArea):
         self._resize_to_content()
 
     async def action_submit(self, kind: str = "enqueue") -> None:
+        # Submit clears the input, and a transcript landing afterwards would
+        # write the sent text straight back into the box.
+        if self.locked:
+            return
         self._record_history(self.text)
         self.post_message(self.Submitted(self, self.text, kind))
 
