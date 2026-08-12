@@ -526,6 +526,14 @@ class SessionManager:
         if self._inbox is not None:
             self._inbox.rename(old, new)
         self.locks.rename(old, new)
+        # Every plane keyed by the arming handle has to come along. A monitor
+        # or reminder left behind is not just invisible in a UI scoped by
+        # `for_handle` — its wake is delivered to a handle nobody answers to,
+        # so the session waits forever on a callback that was already sent
+        # somewhere else. Both are optional: only `serve`/`web` attach them.
+        for plane in (self.monitor_manager, self.reminder_service):
+            if plane is not None:
+                plane.rename(old, new)
         # The title rides on the session object, so it crosses the rename
         # untouched — this only handles the caller supplying a new one.
         if title is not None:

@@ -38,6 +38,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   on purpose: the fake in `test_core_session.py` drains its list and returns,
   so it cannot block, and could never have caught this.
 
+- **A rename no longer strands the session's monitors and reminders.**
+  `SessionManager.rename_handle` migrated the inbox and the lock claims and
+  stopped there, even though it owns the monitor and reminder planes too
+  (`attach_monitor_manager` / `attach_reminder_service`). `AegisApp` migrates
+  all of them, so the two rename paths disagreed and only one of them left
+  you stranded.
+
+  Both planes key their records by the handle that armed them, and that key
+  is what the wake is delivered to. A monitor left under the old name is not
+  merely invisible in a UI scoped by `for_handle` — it keeps watching, and
+  when its condition trips it delivers to a handle no session answers to, so
+  the agent waits forever on a callback that already went somewhere else.
+
+  Caught live: a session renamed mid-run kept its monitor under the old
+  handle, and `aegis_monitors(from_handle=<new>)` came back empty while the
+  monitor was still watching under `<old>`.
+
 ## [0.33.0] - 2026-08-11
 
 ### Added
