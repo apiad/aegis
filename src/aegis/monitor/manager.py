@@ -134,6 +134,24 @@ class MonitorManager:
             err = condition_error(cond)
             if err is not None:
                 raise ValueError(err)
+        # And refuse a wake that can never be delivered — the same defect one
+        # field over. `_fire` delivers to `from_handle`; point it at a handle
+        # no session answers to and the monitor polls for its whole timeout,
+        # trips, delivers into the void, and the agent waits forever.
+        #
+        # This is not an exotic mistake. An agent is never told when the
+        # operator renames it — no message announces it, and its system prompt
+        # still carries the handle it was born with — so it goes on passing
+        # the name it remembers. The substrate is the only layer that can see
+        # the mismatch, so it says so here rather than at the MCP surface,
+        # where a caller could route around it.
+        live = self._live_handles()
+        if live and from_handle not in live:
+            raise ValueError(
+                f"no live session {from_handle!r} to wake — the monitor "
+                f"would watch, trip, and deliver to nobody. Live handles: "
+                f"{', '.join(sorted(live))}. If you were renamed, "
+                f"aegis_list_sessions carries your current handle.")
         mid = new_ulid()
         self._monitors[mid] = Monitor(
             id=mid, from_handle=from_handle, description=description,
@@ -148,6 +166,22 @@ class MonitorManager:
         if autorun:
             self._tasks[mid] = asyncio.create_task(self._run(mid))
         return mid
+
+    def _live_handles(self) -> set[str]:
+        """The handles a wake could actually reach.
+
+        Empty means "cannot say" as much as it means "nothing alive" — a
+        manager reporting zero sessions is a stub or a boot-time race, and
+        in production the arming session is itself live. Callers treat an
+        empty set as no answer rather than as a veto.
+        """
+        if self._sm is None:
+            return set()
+        try:
+            return {h for s in self._sm.list_sessions()
+                    if (h := getattr(s, "handle", None)) is not None}
+        except Exception:  # noqa: BLE001 — a manager that cannot answer
+            return set()   # must not veto the monitor
 
     def _session_for(self, handle: str):
         get = getattr(self._sm, "get", None)

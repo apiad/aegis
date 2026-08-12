@@ -55,6 +55,26 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   handle, and `aegis_monitors(from_handle=<new>)` came back empty while the
   monitor was still watching under `<old>`.
 
+- **A monitor now refuses a handle it could never wake.** `start_monitor`
+  already refuses a *condition* that can never trip — "checked here, not only
+  at the MCP surface, so no caller can route around it". The handle is the
+  same defect one field over, and it was not checked at all: `_fire` delivers
+  to `from_handle`, so a stale one meant the monitor polled for its whole
+  timeout, tripped, delivered into the void, and the agent waited forever on
+  a callback that had already gone nowhere.
+
+  This is not an exotic mistake. **An agent is never told when the operator
+  renames it** — no message announces it, and its system prompt still carries
+  the handle it was born with — so it goes on passing the name it remembers.
+  Caught exactly that way on 2026-08-12: a session renamed at 13:22:14 armed
+  monitors at 13:27:31 and 13:31:54 under the handle it no longer had. Both
+  armed happily and watched for minutes in silence.
+
+  The refusal names the live handles and points at `aegis_list_sessions`, so
+  a renamed agent can find itself instead of guessing. Inert when the session
+  manager cannot answer (no manager, or an empty session list — a stub or a
+  boot-time race), so it bites in production without vetoing the suite.
+
 ## [0.33.0] - 2026-08-11
 
 ### Added
