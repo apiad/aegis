@@ -7,7 +7,10 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from aegis.config import Agent, Effort, Permission
-from aegis.events import AssistantText, Event, ParserState, Result, parse
+from aegis.events import (
+    AgentPlan, AssistantText, AssistantThinking, Event, ParserState, Result,
+    ToolResult, ToolUse, parse,
+)
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.hooks import SessionHandle
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
@@ -41,6 +44,32 @@ _ONESHOT_SYSTEM = (
     "rather than guessing."
 )
 
+# Events that only ever occur inside a turn, and so promise that a
+# terminal ``Result`` is coming. Anything else claude puts on the wire
+# between turns — ``system`` notices like ``commands_changed`` (skills
+# reloaded), ``init``, ``hook_started``, ``task_updated`` — is out-of-band
+# metadata that no ``Result`` ever follows. Promoting one of those to a
+# turn parks the session on a read that never returns; see
+# ``tests/test_claude_idle_promotion.py``.
+#
+# Telemetry that merely accompanies a turn (ThinkingTokens, CompactBoundary,
+# ContextUpdate) is deliberately absent: it cannot start a turn on its own,
+# and the real turn's events arrive right behind it.
+_TURN_BEARING = (
+    AssistantText, AssistantThinking, ToolUse, ToolResult, AgentPlan, Result,
+)
+
+
+def _promises_result(ev: Event | None) -> bool:
+    """Whether this queue entry means a turn is running (or the stream died).
+
+    ``None`` is the end-of-stream sentinel: a dead harness must still wake
+    the session so it can settle into ``error`` rather than idle quietly on
+    a subprocess that no longer exists.
+    """
+    return ev is None or isinstance(ev, _TURN_BEARING)
+
+
 _EFFORT = {
     Effort.low: "low",
     Effort.medium: "medium",
@@ -68,6 +97,9 @@ class ClaudeSession(HarnessSession):
         self._launcher = launcher
         self._proc: asyncio.subprocess.Process | None = None
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue()
+        # How many queued entries promise a Result. Maintained at both ends
+        # of the queue so ``has_pending_event`` can stay a pure predicate.
+        self._pending_turn = 0
         self._reader: asyncio.Task | None = None
         self._session_id: str | None = None
         self._control_seq: int = 0
@@ -76,7 +108,27 @@ class ClaudeSession(HarnessSession):
         self._parser_state = ParserState()
 
     def has_pending_event(self) -> bool:
-        return not self._queue.empty()
+        """Whether a *turn* is waiting to be drained.
+
+        Not the same question as "is the queue non-empty". Out-of-band
+        system notices sit in the queue too, and they never end in a
+        ``Result`` — waking a turn for one strands the session.
+        """
+        return self._pending_turn > 0
+
+    def _put(self, ev: Event | None) -> None:
+        # put_nowait, not await put: the queue is unbounded, so this cannot
+        # block, and staying synchronous keeps the counter and the queue in
+        # lockstep with no await point between them to be cancelled at.
+        if _promises_result(ev):
+            self._pending_turn += 1
+        self._queue.put_nowait(ev)
+
+    async def _take(self) -> Event | None:
+        ev = await self._queue.get()
+        if _promises_result(ev):
+            self._pending_turn -= 1
+        return ev
 
     @property
     def session_id(self) -> str | None:
@@ -142,7 +194,7 @@ class ClaudeSession(HarnessSession):
                 if line:
                     ev = parse(line, state=self._parser_state)
                     self._latch_session_id(ev)
-                    await self._queue.put(ev)
+                    self._put(ev)
         except Exception:
             # A stream/parse failure must not silently kill the turn: the
             # finally below still delivers the sentinel so events() ends
@@ -160,11 +212,10 @@ class ClaudeSession(HarnessSession):
             # tab turns red through the path that already exists.
             failure = getattr(self._launcher, "link_failure", lambda: None)()
             if failure is not None:
-                await self._queue.put(AssistantText(text=str(failure)))
-                await self._queue.put(
-                    Result(duration_ms=None, is_error=True,
-                           stop_reason="link_lost"))
-            await self._queue.put(None)  # always signal stream end
+                self._put(AssistantText(text=str(failure)))
+                self._put(Result(duration_ms=None, is_error=True,
+                                 stop_reason="link_lost"))
+            self._put(None)  # always signal stream end
 
     async def send(self, text: str) -> None:
         assert self._proc and self._proc.stdin
@@ -176,7 +227,7 @@ class ClaudeSession(HarnessSession):
     async def events(self) -> AsyncIterator[Event]:
         """Yield events until this turn's Result (or stream close)."""
         while True:
-            ev = await self._queue.get()
+            ev = await self._take()
             if ev is None:
                 return
             yield ev
@@ -209,7 +260,7 @@ class ClaudeSession(HarnessSession):
         # any [Request interrupted] echo) so the next turn starts clean.
         for _ in range(64):
             try:
-                ev = await asyncio.wait_for(self._queue.get(), timeout=5)
+                ev = await asyncio.wait_for(self._take(), timeout=5)
             except asyncio.TimeoutError:
                 return
             if ev is None or isinstance(ev, Result):

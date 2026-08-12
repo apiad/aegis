@@ -5,6 +5,39 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A session no longer thinks forever after its turn ends.** Claude puts
+  things on the wire between turns that belong to no turn: `commands_changed`
+  when skills reload, a bare re-`init`, `hook_started`, `task_updated`,
+  `task_notification`. aegis asked only whether the harness queue was
+  non-empty, so the idle watcher promoted one of those lone notices into an
+  unsolicited turn — and the drain then parked forever on a read waiting for
+  a `Result` that was never coming. The session sat in `working`, rendering
+  as an agent thinking with no event ever arriving, until someone noticed and
+  pressed `Esc`.
+
+  The predicate now asks the question it meant to ask: **is a turn waiting to
+  be drained**, not is the queue non-empty. Only events that can occur inside
+  a turn — assistant text and thinking, tool use and results, plan updates,
+  the `Result` itself — promise a `Result`, and only those promote. Telemetry
+  that merely rides along with a turn (`thinking_tokens`, `compact_boundary`)
+  is deliberately excluded: it cannot start a turn on its own, and the real
+  turn's events arrive right behind it. The end-of-stream sentinel still
+  promotes, so a dead harness surfaces as `error` rather than going quietly
+  idle on a subprocess that no longer exists.
+
+  Nothing is dropped. Out-of-band notices stay queued and drain with the next
+  turn, where they render as nothing — which is what they rendered as before.
+
+  Found in `plush-pearl`'s log: a turn ended cleanly at 13:06:55, a
+  `commands_changed` landed 67 seconds later, and the session never moved
+  again. Eleven sessions in the on-disk history end on exactly that shape —
+  a tail of pure system notices after the final `Result`. Regression tests in
+  `tests/test_claude_idle_promotion.py` drive the real `ClaudeSession` queue
+  on purpose: the fake in `test_core_session.py` drains its list and returns,
+  so it cannot block, and could never have caught this.
+
 ## [0.33.0] - 2026-08-11
 
 ### Added
