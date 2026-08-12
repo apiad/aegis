@@ -56,7 +56,7 @@ hook that delivers it. Self-contained and testable with no rename involved.
   - `AgentSession.note_rename(old: str, new: str, *, by: str) -> None`
   - `AgentSession._pending_notices: list[InboxMessage]`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_rename_notice.py`:
 
@@ -199,7 +199,7 @@ async def test_notice_is_visible_to_the_operator():
     assert "substrate" in seen
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_rename_notice.py -p no:randomly -q`
 Expected: FAIL — `AttributeError: 'AgentSession' object has no attribute 'note_rename'`
@@ -207,7 +207,7 @@ Expected: FAIL — `AttributeError: 'AgentSession' object has no attribute 'note
 (`add_dispatch_observer` is real — `core/session.py:204` — so the only
 missing name should be `note_rename`.)
 
-- [ ] **Step 3: Add the sender tag**
+- [x] **Step 3: Add the sender tag**
 
 In `src/aegis/queue/schema.py`, after `sender_reminder` (line 43):
 
@@ -224,7 +224,7 @@ In `src/aegis/queue/__init__.py`, add `sender_substrate` to both the import
 block (lines 23-27, alphabetical: after `sender_reminder`) and `__all__`
 (lines 53-57, same position).
 
-- [ ] **Step 4: Hold the notice on the session**
+- [x] **Step 4: Hold the notice on the session**
 
 In `src/aegis/core/session.py`, beside `self._reminders` (line 116):
 
@@ -265,7 +265,7 @@ Add the method next to `add_reminder` (line 382), importing
         ))
 ```
 
-- [ ] **Step 5: Deliver it at the top of `_run_turn`**
+- [x] **Step 5: Deliver it at the top of `_run_turn`**
 
 In `src/aegis/core/session.py`, immediately after the docstring of
 `_run_turn` (line 437) and before `self._unsolicited = False`:
@@ -284,23 +284,23 @@ In `src/aegis/core/session.py`, immediately after the docstring of
             text = f"{_render_batch(notices)}\n\n{text}"
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_rename_notice.py -p no:randomly -q`
 Expected: PASS (6 passed)
 
-- [ ] **Step 7: Prove the gate can fail**
+- [x] **Step 7: Prove the gate can fail**
 
 Temporarily change `if by != "operator":` to `if by != "nobody":` and re-run
 Step 6. Expected: `test_notice_rides_the_next_turn` FAILS. Revert the change
 and re-run to confirm green. A test that cannot fail is worth less than none.
 
-- [ ] **Step 8: Run the neighbouring suites**
+- [x] **Step 8: Run the neighbouring suites**
 
 Run: `uv run pytest tests/test_core_session.py tests/test_reminder.py tests/test_loop.py tests/test_monitor_manager.py -p no:randomly -q`
 Expected: PASS, no failures.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/queue/schema.py src/aegis/queue/__init__.py src/aegis/core/session.py tests/test_rename_notice.py
@@ -345,7 +345,7 @@ function. Verify that before trusting it:
 - Produces: `rename_handle(old, new, title=None, *, by: str = "agent")` on
   both `SessionManager` and `AegisApp`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_rename_notice.py`:
 
@@ -422,7 +422,7 @@ async def test_slash_rename_declares_the_operator():
     assert seen["by"] == "operator"
 ```
 
-- [ ] **Step 2: Write the failing test for the OTHER implementation**
+- [x] **Step 2: Write the failing test for the OTHER implementation**
 
 `AegisApp.rename_handle` is a second, independent implementation, and it
 needs the Textual pilot — so this one test goes in `tests/test_tui.py`,
@@ -457,14 +457,14 @@ async def test_app_rename_by_agent_is_silent():
         assert pane._core._pending_notices == []
 ```
 
-- [ ] **Step 3: Run both files to verify they fail**
+- [x] **Step 3: Run both files to verify they fail**
 
 Run: `uv run pytest tests/test_rename_notice.py tests/test_tui.py -p no:randomly -q`
 Expected: the four new tests in `test_rename_notice.py` and the two in
 `test_tui.py` FAIL — `rename_handle() got an unexpected keyword argument
 'by'`. Every other test in `test_tui.py` still passes.
 
-- [ ] **Step 4: Thread `by` through `SessionManager.rename_handle`**
+- [x] **Step 4: Thread `by` through `SessionManager.rename_handle`**
 
 In `src/aegis/core/manager.py`, change the signature at line 488:
 
@@ -491,7 +491,7 @@ Add one line to the docstring's `title` paragraph:
         docs/superpowers/specs/2026-08-12-rename-announcement-design.md.
 ```
 
-- [ ] **Step 5: Thread `by` through `AegisApp.rename_handle`**
+- [x] **Step 5: Thread `by` through `AegisApp.rename_handle`**
 
 In `src/aegis/tui/app.py`, change the signature at line 2012 to match
 exactly:
@@ -508,7 +508,7 @@ After `self.repo_tracker.rename(old, new)` (line 2056) add:
         pane._core.note_rename(old, new, by=by)
 ```
 
-- [ ] **Step 6: Declare the operator at both call sites**
+- [x] **Step 6: Declare the operator at both call sites**
 
 In `src/aegis/commands/builtins/session_ctl.py`, line 48:
 
@@ -524,7 +524,7 @@ In `src/aegis/web/wssession.py`, line 306:
                 by="operator")
 ```
 
-- [ ] **Step 7: Update the slash-command test's fake bridge**
+- [x] **Step 7: Update the slash-command test's fake bridge**
 
 `tests/test_slash_commands.py:76` defines a fake whose signature must now
 accept the keyword, or every slash-command test fails:
@@ -535,13 +535,13 @@ accept the keyword, or every slash-command test fails:
         return {"old": old, "new": new}
 ```
 
-- [ ] **Step 8: Run to verify they pass**
+- [x] **Step 8: Run to verify they pass**
 
 Run: `uv run pytest tests/test_rename_notice.py tests/test_tui.py -p no:randomly -q`
 Expected: PASS — 10 in `test_rename_notice.py` (6 from Task 1 + 4 here) and
 `test_tui.py` fully green including the 2 added in Step 2.
 
-- [ ] **Step 9: Prove no call site was missed**
+- [x] **Step 9: Prove no call site was missed**
 
 Run this and read it — every `rename_handle` definition must carry `by`, and
 every operator-initiated call must pass it:
@@ -556,12 +556,12 @@ Expected: `core/manager.py` and `tui/app.py` definitions both show `by`;
 an MCP rename stays silent); `tui/remote_manager.py` forwards over RPC and
 needs no change.
 
-- [ ] **Step 10: Run the affected suites**
+- [x] **Step 10: Run the affected suites**
 
 Run: `uv run pytest tests/test_rename_notice.py tests/test_rename_handle.py tests/test_rename_carries_planes.py tests/test_core_manager.py tests/test_slash_commands.py tests/test_mcp_bridge.py tests/test_wssession_handoff_rename.py tests/test_session_titles.py tests/test_tui.py tests/test_app_history_integration.py -p no:randomly -q`
 Expected: PASS, no failures.
 
-- [ ] **Step 11: Run the full suite as the real gate**
+- [x] **Step 11: Run the full suite as the real gate**
 
 This touches a signature four files depend on, so the subset is not enough.
 Run it as its own tool call, unpiped:
@@ -571,7 +571,7 @@ Run it as its own tool call, unpiped:
 Expected: `6 failed, N passed` — and the 6 are exactly the known `*_live.py`
 failures listed in Global Constraints. Any other failure is yours.
 
-- [ ] **Step 12: Update the changelog**
+- [x] **Step 12: Update the changelog**
 
 In `CHANGELOG.md`, under `## [Unreleased]`, add an `### Added` section above
 the existing `### Fixed`:
@@ -593,7 +593,7 @@ the existing `### Fixed`:
   attribution would be worse than the honest gap.
 ```
 
-- [ ] **Step 13: Commit**
+- [x] **Step 13: Commit**
 
 ```bash
 git add src/aegis/core/manager.py src/aegis/tui/app.py src/aegis/commands/builtins/session_ctl.py src/aegis/web/wssession.py tests/test_rename_notice.py tests/test_tui.py tests/test_slash_commands.py CHANGELOG.md
@@ -610,7 +610,7 @@ is the third and is easy to miss; fb262d7 shipped a rename defect today
 that lived in exactly one of two paths."
 ```
 
-- [ ] **Step 14: Mark the spec implemented**
+- [x] **Step 14: Mark the spec implemented**
 
 In `docs/superpowers/specs/2026-08-12-rename-announcement-design.md`, change
 the status line to:
@@ -622,7 +622,7 @@ the status line to:
 
 Commit: `git add docs/superpowers/specs/2026-08-12-rename-announcement-design.md && git commit -m "docs(spec): mark the rename announcement implemented"`
 
-- [ ] **Step 15: Push**
+- [x] **Step 15: Push**
 
 ```bash
 git push origin main

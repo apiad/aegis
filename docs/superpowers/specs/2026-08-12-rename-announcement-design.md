@@ -1,6 +1,8 @@
 # Telling an agent it was renamed
 
-**Status:** designed 2026-08-12; not yet implemented.
+**Status:** implemented 2026-08-12 (`439ad5f`, `531e3b2`); plan at
+`docs/superpowers/plans/2026-08-12-rename-announcement.md`.
+One deviation during implementation — see *Deviations*, at the end.
 **Scope:** `AgentSession` (one field, one method, one hook in `_run_turn`),
 the two `rename_handle` implementations, and one new sender tag. No new MCP
 tool, no new config, no change to any tool's signature except one keyword
@@ -196,3 +198,26 @@ would break, so it is written first:
 - **`aegis_enqueue` / `aegis_remind` / `aegis_handoff` handle validation** —
   the same backstop `3686083` added to monitors would fit all three, but it
   is a separate change with its own blast radius, and task C subsumes it.
+
+## Deviations
+
+**There is a fourth call site, and it crosses a machine boundary.** This
+spec named three, all local. `tui/remote_manager.py` is the `AppBridge`
+implementation when the TUI drives a *remote* aegis over `--remote`, and its
+`rename_handle` took no `by` — so once `/rename` began passing one, a remote
+TUI would have raised `TypeError: unexpected keyword argument 'by'` instead
+of renaming.
+
+The fix is a keyword and one line of payload, but the reasoning is worth
+keeping: **the far side owns the session, so the far side raises the
+notice.** `RemoteManager` forwards `by` over the wire rather than acting on
+it, and `web/wssession.py` reads `params.get("by", "operator")` instead of
+hardcoding the actor — defaulting to the operator because that RPC is how
+the operator's frontends rename, while still honouring a remote TUI that
+forwards an *agent's* rename, which must stay silent. `mcp/bridge.py`'s
+`AppBridge` protocol gained `by` as well, so the declaration matches its
+three implementations.
+
+Caught by the plan's own "prove no call site was missed" grep step, which
+existed because the claim that `remote_manager` needed no change was an
+assumption rather than something checked. It was wrong.
