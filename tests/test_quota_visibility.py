@@ -61,6 +61,7 @@ def _app(panes, *, claude=None, opencode=None, remote=False):
     app._palette = COLORS
     app._quota_states = {}
     app._quota_last = None
+    app._quota_pane = None
     app.quota_services = {
         "claude": FakeService(claude if claude is not None
                               else QuotaState(snapshot=_snapshot(64.0))),
@@ -172,3 +173,13 @@ def test_an_unchanged_segment_is_not_pushed_twice():
     pane.quota_tiers = "sentinel"
     app._quota_tick(pane)
     assert pane.quota_tiers == "sentinel"      # no repaint for a stable value
+
+
+def test_switching_panes_pushes_to_the_new_pane():
+    first, second = FakePane("claude-code"), FakePane("opencode")
+    app = _app([])
+    app._quota_tick(first)
+    app._quota_tick(second)
+    # Same numbers, different pane — the new one must still be painted.
+    assert second.quota_tiers == first.quota_tiers
+    assert second.quota_tiers is not None

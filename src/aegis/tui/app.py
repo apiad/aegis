@@ -255,6 +255,7 @@ class AegisApp(App):
     # avoid a Textual boot, so anything the tick path reads must exist
     # without __init__ having run.
     _quota_last = None
+    _quota_pane = None
     _last_bell: float = float("-inf")
     _snapshot_timer = None
 
@@ -327,6 +328,7 @@ class AegisApp(App):
         # Pane that already had the empty quota segment pushed to it, so the
         # 1 Hz tick doesn't re-push a value that cannot change.
         self._quota_last = None
+        self._quota_pane = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
         # Pending debounced roster write (see _schedule_snapshot).
@@ -967,9 +969,11 @@ class AegisApp(App):
             [(p, self.quota_services[p.name].current()) for p in PROVIDERS],
             self._palette)
         # Push only on change — re-delivering a value that has not moved is a
-        # repaint per tick for nothing.
-        if self._quota_last != (id(active), tiers):
-            self._quota_last = (id(active), tiers)
+        # repaint per tick for nothing. The pane is compared by identity and
+        # held, not keyed by id(): a freed pane's id can be reused, and the
+        # collision would silently skip the new pane's first paint.
+        if self._quota_pane is not active or self._quota_last != tiers:
+            self._quota_pane, self._quota_last = active, tiers
             active.set_quota(tiers)
 
     def _tick(self) -> None:

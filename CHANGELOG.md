@@ -31,9 +31,9 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   `weekly_all` or `monthly` exists.
 
   `/usage quota` reports every provider, and its headline summarises *all* of
-  their windows rather than the pair the bar has room for — Claude's
-  `weekly_opus` never reaches the status bar and can still be the binding
-  constraint.
+  their windows rather than the pair the bar has room for — Claude reports a
+  third window (`weekly_scoped` on this account) that never reaches the status
+  bar and can still be the binding constraint.
 
 - **The input locks while the mic is open, and says so.** A one-row strip
   above the input shows `● Recording  0:04 — ctrl+g to stop` and then
