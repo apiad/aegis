@@ -57,7 +57,7 @@ Pure widget: no app, no mic, no voice session. Testable on its own.
   - `VoiceStrip.is_active` property
   - `_fmt_clock(seconds: float) -> str` returning `"0:04"` / `"1:07"`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_voice_strip.py`:
 
@@ -177,7 +177,7 @@ async def test_set_animating_freezes_without_losing_state():
         assert strip._tick_timer is not None
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_strip.py -p no:randomly -q
@@ -185,7 +185,7 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_strip.py 
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.tui.voice_strip'`.
 
-- [ ] **Step 3: Write the widget**
+- [x] **Step 3: Write the widget**
 
 Create `src/aegis/tui/voice_strip.py`:
 
@@ -310,7 +310,7 @@ class VoiceStrip(Static):
         self.update(Text(body, style=f"italic {style}"), layout=False)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_strip.py -p no:randomly -q
@@ -318,7 +318,7 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_strip.py 
 
 Expected: PASS (12 passed — 6 parametrised `_fmt_clock` + 6 widget tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -349,7 +349,7 @@ Independently testable: a widget-level lock with no voice involved.
 - Produces: `GrowingInput.locked` property (`bool`, get/set). Setting it
   drives Textual's inherited `read_only` and gates `action_submit`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_growing_input_lock.py`:
 
@@ -432,7 +432,7 @@ async def test_submit_works_again_after_unlock():
         assert sent == ["a message"]
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_growing_input_lock.py -p no:randomly -q
@@ -440,7 +440,7 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_growing_input_l
 
 Expected: FAIL — `AttributeError: 'GrowingInput' object has no attribute 'locked'`.
 
-- [ ] **Step 3: Add the lock**
+- [x] **Step 3: Add the lock**
 
 In `src/aegis/tui/widgets.py`, add the property next to the existing `value`
 property (around line 55) :
@@ -473,7 +473,7 @@ And guard `action_submit` (line 100) by making its body start with:
         self._record_history(self.text)
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_growing_input_lock.py -p no:randomly -q
@@ -481,13 +481,13 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_growing_input_l
 
 Expected: PASS (5 passed).
 
-- [ ] **Step 5: Prove the gate can fail**
+- [x] **Step 5: Prove the gate can fail**
 
 Temporarily delete the `if self.locked: return` guard from `action_submit`
 and re-run Step 4. Expected: `test_submit_is_refused_while_locked` FAILS.
 Restore it and re-run to confirm green.
 
-- [ ] **Step 6: Run the input's own suite**
+- [x] **Step 6: Run the input's own suite**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_growing_input_lock.py tests/test_growing_input_history.py tests/test_growing_input_keys.py tests/test_pane_input_state_outline.py tests/test_tui.py -p no:randomly -q
@@ -497,7 +497,7 @@ Expected: PASS. `test_pane_input_state_outline.py` is in the list on purpose:
 it pins the input's outline classes, which the new `transcribing` class
 joins.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -531,7 +531,7 @@ The behaviour change. Everything before this was inert.
 - Produces: `ConversationPane.set_voice_state(state: str) -> None` over
   `"idle" | "recording" | "transcribing"`, replacing `set_recording(bool)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 The existing `_StubVoice` calls `on_final` **synchronously inside `stop()`**,
 so the transcribing window never exists for it. These tests need a stub that
@@ -673,7 +673,7 @@ calls `on_final("")`, and `test_empty_transcript_still_unlocks` above proves
 same stub as the empty-transcript case and assert the same thing — a
 duplicate wearing a different name.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_action.py -p no:randomly -q
@@ -685,7 +685,7 @@ missing `transcribing` class and the missing `VoiceStrip` in the pane). The
 three pre-existing tests still PASS — they use the synchronous `_StubVoice`
 and assert `has_class("recording")`, which is preserved.
 
-- [ ] **Step 3: Mount the strip in the pane**
+- [x] **Step 3: Mount the strip in the pane**
 
 In `src/aegis/tui/pane.py`, import it near the other strip imports:
 
@@ -701,7 +701,7 @@ and yield it in compose immediately before `GrowingInput` (line 1037):
                 yield GrowingInput(placeholder="type a message…")
 ```
 
-- [ ] **Step 4: Replace `set_recording` with `set_voice_state`**
+- [x] **Step 4: Replace `set_recording` with `set_voice_state`**
 
 In `src/aegis/tui/pane.py`, replace the method at line 1792:
 
@@ -746,7 +746,7 @@ and add the transcribing border rule beside the recording one at
                              border-bottom: solid $primary; }
 ```
 
-- [ ] **Step 5: Drive the three transitions from the app**
+- [x] **Step 5: Drive the three transitions from the app**
 
 In `src/aegis/tui/app.py`:
 
@@ -827,7 +827,7 @@ Replace the body of `_stop_voice` (line 1507):
             pane.set_voice_state("idle")
 ```
 
-- [ ] **Step 6: Run the voice suite**
+- [x] **Step 6: Run the voice suite**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_action.py tests/test_voice_strip.py tests/test_growing_input_lock.py -p no:randomly -q
@@ -836,14 +836,14 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/test_voice_action.py
 Expected: PASS — 9 in `test_voice_action.py` (3 pre-existing + 6 new), 12 in
 `test_voice_strip.py`, 5 in `test_growing_input_lock.py`.
 
-- [ ] **Step 7: Prove the strand guard can fail**
+- [x] **Step 7: Prove the strand guard can fail**
 
 Move `pane.set_voice_state("idle")` in `_apply_voice_text` to *after* the
 `if not text: return`, then re-run Step 6. Expected:
 `test_empty_transcript_still_unlocks` FAILS. Restore it and re-run to confirm
 green. This is the edge most likely to be "tidied" back later.
 
-- [ ] **Step 8: Check for other `set_recording` callers**
+- [x] **Step 8: Check for other `set_recording` callers**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis && grep -rn "set_recording" src/ tests/
@@ -852,7 +852,7 @@ cd /home/apiad/Workspace/repos/aegis && grep -rn "set_recording" src/ tests/
 Expected: no hits. Any remaining caller is a `TypeError` waiting to happen —
 fix it to `set_voice_state` before continuing.
 
-- [ ] **Step 9: Run the full suite as the real gate**
+- [x] **Step 9: Run the full suite as the real gate**
 
 This changes a widget every pane composes, so the subset is not enough. Run
 it as its own tool call, unpiped:
@@ -864,7 +864,7 @@ cd /home/apiad/Workspace/repos/aegis && uv run pytest -p no:randomly -q
 Expected: `6 failed, N passed`, and the 6 are exactly the known `*_live.py`
 failures from Global Constraints. Any other failure is yours.
 
-- [ ] **Step 10: Update the changelog**
+- [x] **Step 10: Update the changelog**
 
 In `CHANGELOG.md`, under `## [Unreleased]`, add to the existing `### Added`
 section:
@@ -887,7 +887,7 @@ section:
   state.
 ```
 
-- [ ] **Step 11: Commit and push**
+- [x] **Step 11: Commit and push**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -911,7 +911,7 @@ decode would then clear; it is now ignored."
 git push origin main
 ```
 
-- [ ] **Step 12: Mark the spec implemented**
+- [x] **Step 12: Mark the spec implemented**
 
 In `docs/superpowers/specs/2026-08-12-voice-input-lock-design.md`, change the
 status line to:

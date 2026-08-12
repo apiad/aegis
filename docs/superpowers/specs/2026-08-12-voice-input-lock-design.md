@@ -1,6 +1,8 @@
 # Locking the input while the mic is open
 
-**Status:** designed 2026-08-12; not yet implemented.
+**Status:** implemented 2026-08-12 (`7560b3e`, `0ffb8a0`, `8c3db55`); plan at
+`docs/superpowers/plans/2026-08-12-voice-input-lock.md`.
+Two deviations during implementation — see *Deviations*, at the end.
 **Scope:** the TUI voice path — one new widget, one renamed pane method, the
 three `AegisApp` voice transitions, and a correctness fix in
 `_apply_voice_text`. No change to `aegis/voice/` (the harp-facing session is
@@ -184,3 +186,28 @@ runs under the Textual pilot with no mic and no model.
   stop (`voice/session.py:66-78`); this changes none of that.
 - **A web-client equivalent.** `VoiceStrip` is a Textual widget and the web
   frontend has no voice path to lock.
+
+## Deviations
+
+**The palette has no `warning`.** This spec said the strip would be
+`$warning` while recording, which is true of the *CSS* — `$warning` is a
+Textual design token and the `.recording` border rule uses it. But the
+strip's Rich text takes a colour from `AegisColors`, and that dataclass has
+no such field. The right one is `working`, which `aegis_colors()` maps from
+`theme.warning` — the same colour, reached through the palette instead of
+the stylesheet. Caught by the plan's self-review, before any code.
+
+**One planned test asserted nothing.** The spec asked for "text typed before
+recording survives, and the transcript appends after it". Written that way,
+the test passes against the *unfixed* code: the old `base` capture handles
+text typed before the recording correctly. The defect is text changing
+*between* the capture and the delivery — and the lock now makes that
+unreachable through the UI, so pinning it requires writing the buffer
+directly and asserting at the seam. `test_transcript_appends_to_the_value_
+at_delivery_time` does that, and fails against the old code with
+`'at start spoken words'`. The weaker test was kept as well, since it guards
+the ordinary append path.
+
+The lesson generalises: a test whose name describes the *feature* rather
+than the *failure* can pass before the fix exists. Both were run against
+unfixed code, which is the only reason the difference showed up.
