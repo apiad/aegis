@@ -47,6 +47,14 @@ def sender_reminder() -> str:
     return "reminder"
 
 
+def sender_substrate() -> str:
+    """Sender tag for a notice the substrate itself raises about a session
+    — a change to the session's own identity or wiring that it could not
+    otherwise observe. Distinct from `reminder` (the agent left it for
+    itself) and from `agent:<handle>` (a peer sent it)."""
+    return "substrate"
+
+
 def sender_loop(iteration: int, total: int) -> str:
     """Sender tag for one iteration of an armed `/loop`.
 

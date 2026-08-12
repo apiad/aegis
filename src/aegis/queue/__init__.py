@@ -24,6 +24,7 @@ from aegis.queue.schema import (
     sender_loop,
     sender_queue,
     sender_reminder,
+    sender_substrate,
     sender_user,
 )
 
@@ -54,5 +55,6 @@ __all__ = [
     "sender_loop",
     "sender_queue",
     "sender_reminder",
+    "sender_substrate",
     "sender_user",
 ]

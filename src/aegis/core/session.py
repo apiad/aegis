@@ -22,6 +22,7 @@ from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
 from aegis.core.loop import DEFAULT_MAX_ITERATIONS, LoopState
 from aegis.queue.schema import (
     Delivery, InboxMessage, now_iso, render_inbox_header, sender_loop,
+    sender_substrate,
 )
 from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
@@ -114,6 +115,11 @@ class AgentSession:
         # after any unsolicited harness-event drain. This is the "last thing"
         # the session does before it would otherwise settle idle.
         self._reminders: list[InboxMessage] = []
+        # Notices the substrate raised about this session itself (a rename
+        # it could not otherwise observe). Unlike _reminders these never
+        # justify a turn of their own — they ride the next one. See
+        # docs/superpowers/specs/2026-08-12-rename-announcement-design.md.
+        self._pending_notices: list[InboxMessage] = []
         # The operator's `/loop` instruction, or None. Drained by
         # _chain_if_pending as the LOWEST tier of all — below reminders —
         # and re-armed rather than consumed. See aegis/core/loop.py.
@@ -379,6 +385,33 @@ class AgentSession:
         self._task = asyncio.create_task(self._run_turn(text))
         return Delivery(disposition="landed", depth=0)
 
+    def note_rename(self, old: str, new: str, *, by: str) -> None:
+        """Tell this session it was renamed by someone else.
+
+        Deliberately does NOT wake it — the contrast with ``add_reminder``
+        below is the whole design. An idle agent cannot act on a stale
+        handle, so the notice waits for the next turn, which is both free
+        and early enough.
+
+        ``by == "agent"`` is silent: an agent that renamed itself already
+        has the return value, and the shared MCP port cannot tell a
+        self-rename from a peer rename anyway (``TASKS.md:245``).
+        """
+        if by != "operator":
+            return
+        self._pending_notices.append(InboxMessage(
+            sender=sender_substrate(),
+            timestamp=now_iso(),
+            body=(
+                f"You were renamed by the operator: `{old}` → `{new}`.\n\n"
+                f"Use `{new}` as your handle from now on — as `from_handle` "
+                f"on aegis_monitor / aegis_enqueue / aegis_remind / "
+                f"aegis_handoff, and when you tell a peer where to reach "
+                f"you. The old handle no longer routes: anything addressed "
+                f"to it is delivered to nobody."
+            ),
+        ))
+
     def add_reminder(self, msg: InboxMessage) -> None:
         """Buffer a self-left note to be delivered as this session's own
         LAST turn. It fires at the next turn boundary, strictly behind any
@@ -435,6 +468,17 @@ class AgentSession:
 
     async def _run_turn(self, text: str) -> None:
         """Unified path. Runs hooks, then harness, then observers."""
+        # Substrate notices ride the turn rather than starting one. This is
+        # the unified path — a typed message, an inbox batch, a monitor
+        # callback, a loop tick and a reminder all arrive here — so the
+        # notice reaches the agent whatever woke it, and before it acts.
+        # (_drain_unsolicited_turn bypasses this on purpose: that drain is
+        # the harness talking to itself, not the agent acting on identity.)
+        if self._pending_notices:
+            notices = self._pending_notices
+            self._pending_notices = []
+            self._emit_dispatch(notices)
+            text = f"{_render_batch(notices)}\n\n{text}"
         self._unsolicited = False  # a real, prompted turn
         harness_name = getattr(self.agent, "harness", "unknown")
         handle = SessionHandle(
