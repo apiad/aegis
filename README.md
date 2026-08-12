@@ -600,7 +600,7 @@ ConfigPanel via `F2`.
 | `/fork [prompt]` | **Branch this conversation** into a new tab — a worker that already knows. Refused mid-turn; the parent is untouched. ~$1 |
 | `/btw <question>` | **A side note that doesn't cost a conversation** — answered from this pane's recent window, never written to the log. Legal mid-turn; `Esc` cancels |
 | `@handle <question>` | **Ask an idle peer**, from where you're standing. The answer is a real turn in *their* transcript and a transient block in yours; `--cc` also lands it in yours |
-| `/usage quota` | Live Claude subscription utilisation — every window, with reset countdowns. The status bar carries the short form (`⧗ 5h 64% · wk 7%`) whenever a Claude agent is open |
+| `/usage quota` | Live subscription utilisation for every provider you hold credentials for (Claude, OpenCode Go) — every window, with reset countdowns. The status bar carries the short form (`⧗ cc 5h 9% · wk 65% │ oc 5h 0% · wk 0% · mo 14%`) always, since quota is an account property and the point is to know which rail to launch on. `aegis usage quota` prints the same from a shell |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |
 | `Ctrl+E` | New terminal tab (`term:<name>`) |
 | `Ctrl+W` | Close tab (last → quit) |
