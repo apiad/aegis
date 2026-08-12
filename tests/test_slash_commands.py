@@ -73,7 +73,7 @@ class FakeBridge:
     async def close(self, handle):
         self.closed.append(handle)
 
-    async def rename_handle(self, old, new, title=None):
+    async def rename_handle(self, old, new, title=None, *, by="agent"):
         self.renamed.append((old, new))
         return {"old": old, "new": new}
 

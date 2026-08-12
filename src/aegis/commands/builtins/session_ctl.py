@@ -45,7 +45,7 @@ async def _tasks(ctx: CommandContext, args) -> CommandResult:
 
 async def _rename(ctx: CommandContext, args) -> CommandResult:
     new = args["new"]
-    res = await ctx.bridge.rename_handle(ctx.handle, new)
+    res = await ctx.bridge.rename_handle(ctx.handle, new, by="operator")
     if isinstance(res, dict) and res.get("error"):
         return CommandResult(False, "rename rejected", res["error"])
     return CommandResult(True, f"renamed {ctx.handle} → {new}")

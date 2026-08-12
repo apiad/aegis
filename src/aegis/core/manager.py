@@ -486,7 +486,8 @@ class SessionManager:
                 "source": session.title_source}
 
     async def rename_handle(self, old: str, new: str,
-                            title: str | None = None) -> dict:
+                            title: str | None = None, *,
+                            by: str = "agent") -> dict:
         """Swap a live session's handle. Used by the ``aegis_rename`` MCP
         tool so an agent can give itself a more meaningful name once the
         session's purpose has settled.
@@ -495,6 +496,10 @@ class SessionManager:
         what it is doing sets both at once. It is applied at ``agent``
         authority and separately from the rename, so a declined title
         (the operator already set one) never fails the rename itself.
+
+        ``by`` names who renamed it: ``"operator"`` announces the change to
+        the session, anything else is silent. See the spec at
+        docs/superpowers/specs/2026-08-12-rename-announcement-design.md.
 
         Returns ``{"ok": True, "old": old, "new": new}`` on success or
         ``{"error": "..."}`` on validation failure / unknown old / collision.
@@ -534,6 +539,9 @@ class SessionManager:
         for plane in (self.monitor_manager, self.reminder_service):
             if plane is not None:
                 plane.rename(old, new)
+        # Someone other than the session changed its identity. It cannot
+        # observe that on its own, so the substrate says so.
+        session.note_rename(old, new, by=by)
         # The title rides on the session object, so it crosses the rename
         # untouched — this only handles the caller supplying a new one.
         if title is not None:

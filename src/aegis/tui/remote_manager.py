@@ -284,9 +284,13 @@ class RemoteSessionManager:
         return r["result"]
 
     async def rename_handle(self, old: str, new: str,
-                            title: str | None = None) -> dict:
+                            title: str | None = None, *,
+                            by: str = "agent") -> dict:
+        # `by` rides the wire: the far side is what owns the session, so it
+        # is the far side that has to raise the rename notice.
         return await self._ws.rpc("rename_handle", {"old": old, "new": new,
-                                                    "title": title})
+                                                    "title": title,
+                                                    "by": by})
 
     async def set_title(self, handle: str, title: str, *,
                         source: str) -> dict:

@@ -303,8 +303,12 @@ class WSSession:
                 params["context"])
             return {"result": result}
         if method == "rename_handle":
+            # Defaults to "operator" because this RPC is how the operator's
+            # frontends rename; a remote TUI forwarding an agent's rename
+            # says so explicitly and is honoured.
             return await self._m.rename_handle(
-                params["old"], params["new"], params.get("title"))
+                params["old"], params["new"], params.get("title"),
+                by=params.get("by", "operator"))
         if method == "set_title":
             return await self._m.set_title(
                 params["handle"], params["title"],

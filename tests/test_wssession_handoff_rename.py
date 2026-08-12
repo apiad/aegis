@@ -80,6 +80,7 @@ class FakeManager:
         self.spawned: list = []
         self.handoff_calls: list = []
         self.rename_calls: list = []
+        self.rename_by: list = []
         self.title_calls: list = []
         self.handoff_result: str = ""
         self.rename_result: dict | None = None
@@ -110,8 +111,10 @@ class FakeManager:
         return self.handoff_result
 
     async def rename_handle(self, old: str, new: str,
-                            title: str | None = None) -> dict:
+                            title: str | None = None, *,
+                            by: str = "agent") -> dict:
         self.rename_calls.append((old, new, title))
+        self.rename_by.append(by)
         return self.rename_result or {"old": old, "new": new}
 
     async def set_title(self, handle: str, title: str, *,
@@ -172,5 +175,8 @@ async def test_rename_handle_rpc_calls_manager(tmp_path: Path):
     resp = [s for s in t.sent if s.get("type") == "rpc_response"][-1]
     assert resp["ok"] is True
     assert resp["result"] == {"old": "swift-bohr", "new": "quiet-turing"}
+    # This RPC is how the operator's frontends rename, so an unqualified
+    # call is the operator's — and the session gets told about it.
+    assert mgr.rename_by == ["operator"]
     t.disconnect()
     await task

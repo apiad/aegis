@@ -5,8 +5,10 @@ import asyncio
 
 import pytest
 
+from aegis.core.manager import SessionManager
 from aegis.core.session import AgentSession
 from aegis.events import Result
+from aegis.queue.inbox import InboxRouter
 from aegis.tui.state import AgentState
 
 
@@ -134,3 +136,71 @@ async def test_notice_is_visible_to_the_operator():
     await s._task
 
     assert "substrate" in seen
+
+
+class _Harness:
+    async def start(self): ...
+    async def send(self, t): ...
+    async def close(self): ...
+
+    async def events(self):
+        if False:
+            yield
+
+
+def _mgr() -> SessionManager:
+    return SessionManager(
+        {"default": object()}, "default",
+        make_session=lambda profile, url, handle: _Harness(),
+        mcp=None, inbox=InboxRouter(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_manager_rename_by_operator_notices():
+    m = _mgr()
+    s = m._sync_spawn("default", handle="old-name")
+    await m.rename_handle("old-name", "new-name", by="operator")
+    assert len(s._pending_notices) == 1
+    assert "new-name" in s._pending_notices[0].body
+
+
+@pytest.mark.asyncio
+async def test_manager_rename_by_agent_is_silent():
+    """A self-rename already returned {ok, old, new} to the caller, and a
+    peer rename is indistinguishable from it over the shared MCP port."""
+    m = _mgr()
+    s = m._sync_spawn("default", handle="old-name")
+    await m.rename_handle("old-name", "new-name")
+    assert s._pending_notices == []
+
+
+@pytest.mark.asyncio
+async def test_manager_rename_default_is_silent():
+    """Defaulting to `agent` means a call site that forgets `by=` produces
+    a missing notice, never a false one."""
+    m = _mgr()
+    s = m._sync_spawn("default", handle="old-name")
+    await m.rename_handle("old-name", "new-name", by="agent")
+    assert s._pending_notices == []
+
+
+@pytest.mark.asyncio
+async def test_slash_rename_declares_the_operator():
+    """The /rename command is the TUI's and the web client's shared path,
+    so this one assertion covers both frontends."""
+    from aegis.commands.builtins.session_ctl import _rename
+
+    seen = {}
+
+    class Bridge:
+        async def rename_handle(self, old, new, title=None, *, by="agent"):
+            seen["by"] = by
+            return {"ok": True, "old": old, "new": new}
+
+    class Ctx:
+        bridge = Bridge()
+        handle = "old-name"
+
+    await _rename(Ctx(), {"new": "new-name"})
+    assert seen["by"] == "operator"

@@ -5,6 +5,24 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **An agent is now told when you rename it.** It could not see the change
+  before — no message announced it, and its system prompt still carried the
+  handle it was born with — so it went on passing a dead name as
+  `from_handle`, addressing monitors and queue callbacks to a session that
+  did not exist. The notice rides the next turn rather than starting one, so
+  renaming an idle agent still costs nothing, and it lands before the agent
+  acts rather than after.
+
+  Operator renames only. An agent that renames itself already has the return
+  value, and a *peer* rename is indistinguishable from a self-rename until
+  `from_handle` becomes a transport fact (`TASKS.md:245`) — faking the
+  attribution would be worse than the honest gap.
+
+  The notice travels the wire too: `RemoteManager` forwards `by` over RPC,
+  because the far side owns the session and so the far side has to raise it.
+
 ### Fixed
 
 - **A session no longer thinks forever after its turn ends.** Claude puts

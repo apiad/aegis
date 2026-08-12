@@ -293,6 +293,33 @@ async def test_monitor_strip_follows_a_renamed_session():
 
 
 @pytest.mark.asyncio
+async def test_app_rename_by_operator_notices_the_session():
+    """The TUI's rename_handle is a second implementation of the same
+    contract as SessionManager's. Both must raise the notice, or the
+    frontends disagree — which is exactly how fb262d7 happened, where only
+    one of the two migrated the monitor and reminder planes."""
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        old = pane.handle
+        await app.rename_handle(old, "brand-new-name", by="operator")
+        await pilot.pause()
+        bodies = [m.body for m in pane._core._pending_notices]
+        assert len(bodies) == 1
+        assert "brand-new-name" in bodies[0]
+
+
+@pytest.mark.asyncio
+async def test_app_rename_by_agent_is_silent():
+    app = _app()
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        await app.rename_handle(pane.handle, "brand-new-name")
+        await pilot.pause()
+        assert pane._core._pending_notices == []
+
+
+@pytest.mark.asyncio
 async def test_monitor_strip_grows_a_row_per_monitor():
     """Monitors stack: three live ones make the strip three rows tall,
     rather than being crammed onto one line."""

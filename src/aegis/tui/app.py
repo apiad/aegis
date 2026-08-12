@@ -2010,7 +2010,8 @@ class AegisApp(App):
                 "source": pane._core.title_source}
 
     async def rename_handle(self, old: str, new: str,
-                            title: str | None = None) -> dict:
+                            title: str | None = None, *,
+                            by: str = "agent") -> dict:
         """AppBridge-shaped: rename a live pane's handle in-place.
 
         Swaps the pane's handle, the inbox-router binding, and the
@@ -2054,6 +2055,9 @@ class AegisApp(App):
         self.monitor_manager.rename(old, new)
         self.reminder_service.rename(old, new)
         self.repo_tracker.rename(old, new)
+        # Someone other than the session changed its identity. It cannot
+        # observe that on its own, so the substrate says so.
+        pane._core.note_rename(old, new, by=by)
         # The transcript keeps its id, so nothing moves on disk — but the
         # log has to learn the new name, or Ctrl+R would keep listing the
         # session under the handle it was born with.
