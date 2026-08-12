@@ -254,7 +254,7 @@ class AegisApp(App):
     # Class-level defaults: unit tests construct the app with __new__ to
     # avoid a Textual boot, so anything the tick path reads must exist
     # without __init__ having run.
-    _quota_cleared = None
+    _quota_last = None
     _last_bell: float = float("-inf")
     _snapshot_timer = None
 
@@ -326,7 +326,7 @@ class AegisApp(App):
         self._boot_done: bool = False
         # Pane that already had the empty quota segment pushed to it, so the
         # 1 Hz tick doesn't re-push a value that cannot change.
-        self._quota_cleared = None
+        self._quota_last = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
         # Pending debounced roster write (see _schedule_snapshot).
@@ -408,11 +408,13 @@ class AegisApp(App):
         from aegis.queue import ReminderService
         self.reminder_service = ReminderService(self.inbox_router, self)
         self.loop_service = LoopService(self)
-        # Quota plane — live Claude subscription utilisation for the status
-        # bar. Constructed always, started lazily: a session with no Claude
-        # agent must make no network calls at all.
-        from aegis.usage.quota import QuotaService
-        self.quota_service = QuotaService()
+        # Quota plane — live subscription utilisation for the status bar, one
+        # poller per provider. Quota is an account property, so all of them run
+        # regardless of which agents are open: the number is what tells you
+        # which rail is worth launching on. A provider you hold no credentials
+        # for never reaches the network and never reaches the bar.
+        from aegis.usage.quota_providers import build_services
+        self.quota_services = build_services()
         # handle -> last seen AgentState, for turn-end detection in _tick.
         self._quota_states: dict[str, object] = {}
         # Canvas plane — shared markdown blackboards. Notifier dispatches
@@ -923,42 +925,29 @@ class AegisApp(App):
                                  active_handle=active_handle,
                                  terminals=terms, files=files)
 
-    def _quota_enabled(self) -> bool:
-        """True when a Claude agent is open locally.
-
-        The quota is an account property, so any open Claude pane justifies the
-        segment — including a background worker burning the window while you
-        sit in a terminal tab, which is exactly when you want to see it. Remote
-        mode is excluded: the agent runs on the daemon host and spends that
-        host's quota, not this one's.
-        """
-        if hasattr(self, "_remote_manager"):
-            return False
-        return any(
-            getattr(getattr(p, "_agent", None), "harness", "") == "claude-code"
-            for p in self._panes)
-
     def _quota_tick(self, active) -> None:
-        """Push the quota segment and refresh on any turn that just ended."""
+        """Push the quota segment and refresh whichever provider just moved.
+
+        Every provider polls unconditionally — the segment answers "which rail
+        should I launch on", which has to be answerable before the agent that
+        would spend it exists. Remote sessions are included too: an agent on
+        the daemon host spends the same account, so the local reading is the
+        right one.
+        """
         from aegis.tui.state import AgentState
-        from aegis.usage.quota import format_quota_tiers
+        from aegis.usage.quota import format_quota_bar
+        from aegis.usage.quota_providers import PROVIDERS, for_harness
 
-        if not self._quota_enabled():
-            # Push the empty segment once, not every second — re-delivering a
-            # value that cannot change is a repaint per tick for nothing.
-            if (active is not None and hasattr(active, "set_quota")
-                    and self._quota_cleared is not active):
-                active.set_quota(())
-                self._quota_cleared = active
-            return
-        self._quota_cleared = None
-        self.quota_service.start()
+        for service in self.quota_services.values():
+            service.start()
 
-        # Turn-end detection: any Claude pane going working -> ready means the
-        # number just moved, so ask again ahead of the 60s cadence.
+        # Turn-end detection: a pane going working -> ready means *that*
+        # provider's number just moved, so ask it again ahead of the 60s
+        # cadence. Providers with no pane of their own ride the cadence.
         for pane in self._panes:
             agent = getattr(pane, "_agent", None)
-            if getattr(agent, "harness", "") != "claude-code":
+            provider = for_harness(getattr(agent, "harness", "") or "")
+            if provider is None:
                 continue
             handle = getattr(pane, "handle", None)
             state = getattr(getattr(pane, "_core", None), "state", None)
@@ -968,12 +957,20 @@ class AegisApp(App):
             self._quota_states[handle] = state
             if previous is AgentState.working and state is AgentState.ready:
                 self.run_worker(
-                    self.quota_service.refresh(min_interval=10.0),
+                    self.quota_services[provider.name].refresh(
+                        min_interval=10.0),
                     exclusive=False)
 
-        if active is not None and hasattr(active, "set_quota"):
-            active.set_quota(
-                format_quota_tiers(self.quota_service.current(), self._palette))
+        if active is None or not hasattr(active, "set_quota"):
+            return
+        tiers = format_quota_bar(
+            [(p, self.quota_services[p.name].current()) for p in PROVIDERS],
+            self._palette)
+        # Push only on change — re-delivering a value that has not moved is a
+        # repaint per tick for nothing.
+        if self._quota_last != (id(active), tiers):
+            self._quota_last = (id(active), tiers)
+            active.set_quota(tiers)
 
     def _tick(self) -> None:
         import contextlib
@@ -1554,7 +1551,8 @@ class AegisApp(App):
                 self._record_session_closed(pane.log_id, reason="user")
             await pane.close()
         self.queue_digest.stop()
-        await self.quota_service.stop()
+        for _service in self.quota_services.values():
+            await _service.stop()
         await self.queue_manager.stop()
         await self._mcp.stop()
         self._file_indexer.stop()

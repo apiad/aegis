@@ -1,25 +1,21 @@
-"""Live Claude subscription quota — the 5-hour and weekly windows.
+"""Subscription-quota core, shared by every provider.
 
-Claude Code stores an OAuth token locally; Anthropic exposes current window
-utilisation at an undocumented endpoint behind it. This module reads the token,
-asks the endpoint, and caches the answer.
+A provider module (``quota_claude``, ``quota_opencode``) knows one vendor's
+credentials, endpoint and payload shape, and produces a ``QuotaSnapshot``.
+Everything downstream of that snapshot — polling, staleness, severity, the
+status-bar segment, the ``/usage quota`` breakdown — lives here and knows
+nothing about any particular vendor.
 
-The endpoint is undocumented and may change or vanish. Every failure path here
-degrades to a message in the status bar; nothing raises into the render loop.
+``QuotaProvider`` is the seam: it carries the callables and the window list a
+provider declares, so adding a third vendor is a new module plus a registry
+entry, not a change to the service or the renderer.
 """
 from __future__ import annotations
 
-import json
-import os
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-
-URL = "https://api.anthropic.com/api/oauth/usage"
-BETA = "oauth-2025-04-20"
+from typing import Callable
 
 # Used only when the API omits its own `severity` for a window.
 WARNING_AT = 80.0
@@ -58,28 +54,22 @@ class QuotaSnapshot:
         return None
 
 
-def credentials_path() -> Path:
-    """Where Claude Code keeps its OAuth token. ``CLAUDE_CREDS`` overrides."""
-    default = Path.home() / ".claude" / ".credentials.json"
-    return Path(os.environ.get("CLAUDE_CREDS", str(default)))
+@dataclass(frozen=True)
+class QuotaProvider:
+    """One vendor's quota, as data the generic machinery can act on.
 
-
-def read_token(path: Path | None = None) -> str | None:
-    """The OAuth access token, or None if there isn't a usable one.
-
-    Never raises: a missing file, unreadable JSON and an absent field are all
-    the same answer — we cannot ask about quota.
+    ``harness`` names the aegis driver whose panes spend this quota — used to
+    route a turn-end refresh to the provider whose number just moved. It does
+    *not* gate visibility: quota is an account property, so every provider we
+    hold credentials for is shown whether or not one of its agents is open.
+    That is the point — it is what tells you which rail to launch on.
     """
-    p = path or credentials_path()
-    try:
-        with Path(p).open() as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    token = (data.get("claudeAiOauth") or {}).get("accessToken")
-    return token or None
+    name: str                                   # "claude" | "opencode-go"
+    label: str                                  # bar prefix when >1 is shown
+    harness: str                                # matches an Agent's harness
+    bar_windows: tuple[tuple[str, str], ...]    # (kind, label), display order
+    fetch: Callable[..., "QuotaSnapshot"]
+    read_token: Callable[..., str | None]
 
 
 def _severity(percent: float, given) -> str:
@@ -99,68 +89,6 @@ def _timestamp(raw) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return None
-
-
-def parse_quota(payload: dict, *, now: float) -> QuotaSnapshot:
-    """Build a snapshot from the response's ``limits`` array.
-
-    The array is preferred over the ``five_hour`` / ``seven_day`` headline
-    objects: it is the complete set of windows, and each entry carries the
-    API's own ``severity``. Entries that cannot be read are dropped rather than
-    failing the whole snapshot — the payload is null-heavy and its shape is not
-    contractual.
-    """
-    windows: list[QuotaWindow] = []
-    for raw in payload.get("limits") or ():
-        if not isinstance(raw, dict):
-            continue
-        kind = raw.get("kind")
-        percent = raw.get("percent")
-        if not isinstance(kind, str) or not kind:
-            continue
-        if not isinstance(percent, (int, float)) or isinstance(percent, bool):
-            continue
-        windows.append(QuotaWindow(
-            kind=kind,
-            percent=float(percent),
-            severity=_severity(float(percent), raw.get("severity")),
-            resets_at=_timestamp(raw.get("resets_at")),
-            is_active=bool(raw.get("is_active")),
-        ))
-    return QuotaSnapshot(windows=tuple(windows), fetched_at=now)
-
-
-def fetch_quota(token: str, *, timeout: float = 10.0,
-                opener=None, now: float | None = None) -> QuotaSnapshot:
-    """Ask the endpoint. Blocking — callers run it off the event loop.
-
-    ``opener`` is the injection seam for tests; it defaults to
-    ``urllib.request.urlopen``.
-    """
-    request = urllib.request.Request(URL, headers={
-        "Authorization": f"Bearer {token}",
-        "anthropic-beta": BETA,
-    })
-    open_url = opener or urllib.request.urlopen
-    try:
-        with open_url(request, timeout=timeout) as response:
-            payload = json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        if exc.code in (401, 403):
-            kind = "unauthorized"
-        elif exc.code == 429:
-            # The endpoint throttles. Distinct from unreachable because the
-            # right response is to back off, not to retry on the usual cadence.
-            kind = "rate_limited"
-        else:
-            kind = "unreachable"
-        raise QuotaError(kind) from exc
-    except Exception as exc:  # noqa: BLE001 — every other failure is the same
-        raise QuotaError("unreachable") from exc
-    if not isinstance(payload, dict):
-        raise QuotaError("unreachable")
-    return parse_quota(
-        payload, now=time.monotonic() if now is None else now)
 
 
 POLL_S = 60.0          # background cadence
@@ -190,11 +118,10 @@ class QuotaService:
     code and must not stall the event loop.
     """
 
-    def __init__(self, *, clock=time.monotonic, fetch=None,
-                 token_reader=None) -> None:
+    def __init__(self, *, fetch, token_reader, clock=time.monotonic) -> None:
         self._clock = clock
-        self._fetch = fetch or fetch_quota
-        self._read_token = token_reader or read_token
+        self._fetch = fetch
+        self._read_token = token_reader
         self._snapshot: QuotaSnapshot | None = None
         self._failure = ""
         self._failing_since = 0.0
@@ -289,9 +216,6 @@ class QuotaService:
             snapshot=self._snapshot, age_s=age, failure=self._failure)
 
 
-# Window kinds worth a place on a one-line status bar, in display order.
-_BAR_WINDOWS = (("session", "5h"), ("weekly_all", "wk"))
-
 _FAILURE_TEXT = {
     "no_credentials": "no credentials",
     "unauthorized": "auth expired",
@@ -320,48 +244,92 @@ def _age(seconds: float) -> str:
     return f"{int(seconds // 3600)}h"
 
 
-def format_quota_tiers(state: QuotaState, colors,
-                       *, now: datetime | None = None) -> tuple[str, ...]:
-    """Render the quota segment, widest form first.
+def _paint(text: str, severity: str, colors, stale: bool) -> str:
+    """Colour a percentage by severity. A stale reading is never coloured —
+    the number may have moved since, so an alarm would be asserting more than
+    we know."""
+    if stale or severity == "normal":
+        return text
+    tint = colors.working if severity == "warning" else colors.error
+    return f"[{tint}]{text}[/]"
 
-    An empty tuple means "say nothing" — there is no reading and no failure to
-    report, which is only true before the first poll completes.
+
+def _provider_tiers(provider: "QuotaProvider", state: QuotaState, colors,
+                    *, label: str, moment: datetime) -> tuple[str, str, str]:
+    """One provider's three forms, or ``()`` when it has nothing to say.
+
+    ``label`` is empty when this provider is the only one on the bar — there is
+    nothing to disambiguate it from, so today's unprefixed reading survives.
     """
+    prefix = f"{label} " if label else ""
     if state.snapshot is None:
-        if not state.failure:
+        # No credentials is not a failure: it means this is not your provider,
+        # and the bar should not nag you about an account you do not have.
+        if not state.failure or state.failure == "no_credentials":
             return ()
         text = _FAILURE_TEXT.get(state.failure, "unreachable")
-        return (f"[{colors.muted}]⧗ quota — {text}[/]",)
+        body = f"{prefix}{text}" if label else f"quota — {text}"
+        return (body, body, body)
 
-    moment = now or datetime.now(timezone.utc)
     stale = bool(state.failure)
     parts: list[str] = []
     shorts: list[str] = []
-    for kind, label in _BAR_WINDOWS:
+    worst: QuotaWindow | None = None
+    for kind, name in provider.bar_windows:
         window = state.snapshot.window(kind)
         if window is None:
             continue
-        value = f"{window.percent:.0f}%"
+        if worst is None or window.percent > worst.percent:
+            worst = window
+        value = _paint(f"{window.percent:.0f}%", window.severity, colors, stale)
         shorts.append(f"{window.percent:.0f}")
-        if not stale and window.severity == "warning":
-            value = f"[{colors.working}]{value}[/]"
-        elif not stale and window.severity == "critical":
-            value = f"[{colors.error}]{value}[/]"
-        chunk = f"{label} {value}"
+        chunk = f"{name} {value}"
         # The reset time is only a question once the number is high.
         if window.severity != "normal" and window.resets_at is not None:
             chunk += f" ⟶{_countdown(window.resets_at, moment)}"
         parts.append(chunk)
 
-    if not parts:
+    if not parts or worst is None:
         return ()
 
-    full = "⧗ " + " · ".join(parts)
-    short = "⧗ " + "/".join(shorts) + "%"
+    full = prefix + " · ".join(parts)
+    mid = prefix + "/".join(shorts) + "%"
+    least = _paint(
+        f"{label}{worst.percent:.0f}" if label else f"{worst.percent:.0f}%",
+        worst.severity, colors, stale)
     if stale:
         full = f"[{colors.muted}]{full} ({_age(state.age_s)} old)[/]"
-        short = f"[{colors.muted}]{short}[/]"
-    return (full, short)
+        mid = f"[{colors.muted}]{mid}[/]"
+        least = f"[{colors.muted}]{least}[/]"
+    return (full, mid, least)
+
+
+def format_quota_bar(readings, colors,
+                     *, now: datetime | None = None) -> tuple[str, ...]:
+    """Render every provider's quota as one segment, widest form first.
+
+    ``readings`` is a sequence of ``(QuotaProvider, QuotaState)``. Providers
+    with nothing to say — no credentials, or no reading yet — drop out before
+    labelling is decided, so holding one account renders exactly as it did
+    before a second provider existed.
+
+    An empty tuple means "say nothing".
+    """
+    moment = now or datetime.now(timezone.utc)
+    live = [(p, s) for p, s in readings
+            if _provider_tiers(p, s, colors, label="", moment=moment)]
+    if not live:
+        return ()
+
+    label_them = len(live) > 1
+    tiers = [_provider_tiers(p, s, colors,
+                             label=p.label if label_them else "", moment=moment)
+             for p, s in live]
+    return (
+        "⧗ " + " │ ".join(t[0] for t in tiers),
+        "⧗ " + " │ ".join(t[1] for t in tiers),
+        "⧗ " + " ".join(t[2] for t in tiers),
+    )
 
 
 def quota_lines(state: QuotaState, *,
@@ -389,4 +357,28 @@ def quota_lines(state: QuotaState, *,
         footer += f" — fetch failing ({state.failure})"
     lines.append("")
     lines.append(footer)
+    return lines
+
+
+def quota_report(readings, *, now: datetime | None = None) -> list[str]:
+    """``/usage quota`` across every provider.
+
+    Providers you hold no credentials for are left out entirely, on the same
+    reasoning as the status bar. One surviving provider reports exactly as it
+    did before a second existed; more than one gets a name heading each.
+    """
+    live = [(p, s) for p, s in readings
+            if s.snapshot is not None or (
+                s.failure and s.failure != "no_credentials")]
+    if not live:
+        return ["quota unavailable — no credentials"]
+    if len(live) == 1:
+        return quota_lines(live[0][1], now=now)
+
+    lines: list[str] = []
+    for provider, state in live:
+        if lines:
+            lines.append("")
+        lines.append(provider.name)
+        lines.extend(quota_lines(state, now=now))
     return lines

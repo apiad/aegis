@@ -4,9 +4,8 @@ from datetime import timezone
 
 import pytest
 
-from aegis.usage.quota import (
-    QuotaError, fetch_quota, parse_quota, read_token,
-)
+from aegis.usage.quota import QuotaError
+from aegis.usage.quota_claude import fetch_quota, parse_quota, read_token
 
 # Trimmed from a real response — note the null-heavy optional fields.
 LIVE = {

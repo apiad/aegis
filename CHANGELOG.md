@@ -7,6 +7,34 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **The status bar shows every subscription's quota, not just Claude's.**
+  OpenCode Go joins Claude, reading its rolling / weekly / monthly windows from
+  `opencode.ai/zen/go/v1/usage`. Both render at once —
+  `⧗ cc 5h 26% · wk 64% │ oc 5h 0% · wk 0% · mo 14%` — collapsing under width
+  pressure first to bare numbers and finally to one figure per provider: the
+  window closest to exhaustion, which is the number that decides whether a
+  launch is worth it.
+
+  The segment is no longer gated on having an agent of that kind open. Quota is
+  an account property, and the question it answers — *which rail should I start
+  this on?* — has to be answerable before the agent that would spend it exists.
+  Remote sessions count too: an agent on the daemon host spends the same
+  account, so the local reading is the right one rather than a wrong one. What
+  gates a provider now is credentials, and holding none is not treated as a
+  failure — a provider you have no account for drops out silently instead of
+  reporting "no credentials" at you forever. A token that is present and
+  *rejected* still reports, because that one is your problem to fix.
+
+  Adding a vendor is now a module and a registry entry. `QuotaProvider` carries
+  the credentials reader, the fetch, and the windows that vendor wants on the
+  bar, so nothing in the poller, the renderer or the app knows a window called
+  `weekly_all` or `monthly` exists.
+
+  `/usage quota` reports every provider, and its headline summarises *all* of
+  their windows rather than the pair the bar has room for — Claude's
+  `weekly_opus` never reaches the status bar and can still be the binding
+  constraint.
+
 - **The input locks while the mic is open, and says so.** A one-row strip
   above the input shows `● Recording  0:04 — ctrl+g to stop` and then
   `⠋ Transcribing  0:02`, with the key it is actually bound to rather than a
