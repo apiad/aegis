@@ -12,6 +12,8 @@ import typer
 
 from aegis.usage import build_report
 from aegis.usage.env import default_agent, state_dir
+from aegis.usage.quota import quota_report
+from aegis.usage.quota_providers import build_services, read_all
 from aegis.usage.render import (
     dashboard_lines, sessions_lines, temporal_lines, tools_lines,
 )
@@ -19,8 +21,17 @@ from aegis.usage.render import (
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 
+@app.command("quota")
+def quota() -> None:
+    """Live subscription quota for every provider you have credentials for."""
+    import asyncio
+    readings = asyncio.run(read_all(build_services()))
+    typer.echo("\n".join(quota_report(readings)))
+
+
 @app.callback(invoke_without_command=True)
 def usage(
+    ctx: typer.Context,
     by: str = typer.Option(None, "--by", help="month|dow|hour"),
     sessions: bool = typer.Option(False, "--sessions",
                                   help="cost distribution + top sessions"),
@@ -31,6 +42,11 @@ def usage(
     model: str = typer.Option(None, "--model", help="filter to one model"),
     tz: str = typer.Option(None, "--tz", help="IANA tz (default: system)"),
 ) -> None:
+    # invoke_without_command=True means this callback also fires for a
+    # subcommand — without this guard `aegis usage quota` would print the cost
+    # dashboard too.
+    if ctx.invoked_subcommand:
+        return
     zone = ZoneInfo(tz) if tz else None
     dmodel, dprovider = default_agent()
     report = build_report(state_dir(), default_model=dmodel,

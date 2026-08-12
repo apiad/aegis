@@ -15,7 +15,6 @@ from aegis.commands import (
 from aegis.commands.args import Arg, ArgSpec
 from aegis.usage import build_report
 from aegis.usage.env import default_agent, state_dir
-from aegis.usage.quota_providers import PROVIDERS
 from aegis.usage.render import (
     _money, dashboard_lines, sessions_lines, temporal_lines, tools_lines,
 )
@@ -60,14 +59,9 @@ async def _usage(ctx: CommandContext, args) -> CommandResult:
         return CommandResult(False, f"unknown view: {view}",
                              "views: " + ", ".join(_VIEWS[1:]))
     if view == "quota":
-        import asyncio
-
         from aegis.usage.quota import quota_report
-        services = _quota_services(ctx)
-        providers = [p for p in PROVIDERS if p.name in services]
-        await asyncio.gather(*(services[p.name].refresh(force=True)
-                               for p in providers))
-        readings = [(p, services[p.name].current()) for p in providers]
+        from aegis.usage.quota_providers import read_all
+        readings = await read_all(_quota_services(ctx))
         summary = [(p, _worst(s)) for p, s in readings]
         summary = [(p, w) for p, w in summary if w is not None]
         title = "usage · quota"

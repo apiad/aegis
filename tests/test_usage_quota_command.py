@@ -129,8 +129,6 @@ async def test_command_reports_every_provider(monkeypatch):
     services = {"claude": FakeService(_state()),
                 "opencode-go": FakeService(_oc_state())}
     monkeypatch.setattr(usage_cmd, "_quota_services", lambda ctx: services)
-    monkeypatch.setattr(
-        usage_cmd, "PROVIDERS", (_provider(), _oc_provider()))
 
     result = await dispatch("/usage quota", CommandContext(None, "h"))
     assert result.ok
@@ -147,7 +145,6 @@ async def test_command_title_drops_the_label_for_a_lone_provider(monkeypatch):
 
     services = {"claude": FakeService(_state())}
     monkeypatch.setattr(usage_cmd, "_quota_services", lambda ctx: services)
-    monkeypatch.setattr(usage_cmd, "PROVIDERS", (_provider(),))
 
     result = await dispatch("/usage quota", CommandContext(None, "h"))
     assert result.title == "usage · quota · 88%"
