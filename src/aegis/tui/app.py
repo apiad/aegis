@@ -1355,12 +1355,22 @@ class AegisApp(App):
         self._refresh_tabbar()
         panel.focus_input()
 
-    @work
     async def action_open_file_picker(self, prefill: str = "") -> None:
-        from aegis.tui.picker import FilePickerModal
-        path = await self.push_screen_wait(FilePickerModal(prefill=prefill))
-        if path is not None:
-            await self._open_file_tab(path)
+        from aegis.tui.file_browser_tab import FileBrowserTab
+        cwd = self._file_indexer._cwd or Path.cwd()
+        tab = FileBrowserTab(
+            cwd=cwd,
+            indexer=self._file_indexer,
+            prefill=prefill,
+            sidebar_open=self.sidebar_mode,
+        )
+        self._panes.append(tab)
+        cs = self.query_one(ContentSwitcher)
+        tab.display = False   # hidden until ContentSwitcher activates it
+        await cs.mount(tab)
+        cs.current = tab.id
+        self._refresh_tabbar()
+        tab.focus_input()
 
     async def _open_file_tab(self, path: Path, *, line: int | None = None,
                              foreground: bool = True) -> None:
