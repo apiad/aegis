@@ -64,6 +64,7 @@ class FileIndexer:
 
     def __init__(self) -> None:
         self._paths: list[str] = []
+        self._mtimes: dict[str, float] = {}   # rel_path -> mtime
         self._cwd: Path | None = None
         self._observer: Observer | None = None
         self._ready = threading.Event()
@@ -99,21 +100,34 @@ class FileIndexer:
             snapshot = self._paths
         return [p for p in snapshot if needle in p.lower()][:50]
 
+    def paths_by_mtime(self) -> list[str]:
+        """Files sorted by mtime descending (most recently touched first)."""
+        with self._lock:
+            # Files absent from _mtimes sort last (0.0 fallback).
+            return sorted(
+                self._paths,
+                key=lambda p: self._mtimes.get(p, 0.0),
+                reverse=True,
+            )
+
     # --- background walk --------------------------------------------
 
     #: files walked between publishes — the picker becomes usable on the
     #: first batch instead of waiting out the whole tree
     PUBLISH_EVERY = 2000
 
-    def _publish(self, paths: list[str]) -> None:
+    def _publish(self, paths: list[str], mtimes: dict[str, float] | None = None) -> None:
         """Make a snapshot of the walk visible to readers, sorted."""
         with self._lock:
             self._paths = sorted(paths)
+            if mtimes is not None:
+                self._mtimes.update(mtimes)
 
     def _walk(self) -> None:
         cwd = self._cwd
         assert cwd is not None
         paths: list[str] = []
+        mtimes: dict[str, float] = {}
         prefix = len(str(cwd)) + 1
         try:
             for root, dirs, files in os.walk(cwd):
@@ -125,16 +139,20 @@ class FileIndexer:
                     # file over tens of thousands of them, in a thread that
                     # holds the GIL while the UI is trying to paint.
                     full = os.path.join(root, fname)
-                    paths.append(full[prefix:] if full.startswith(str(cwd))
-                                 else full)
+                    rel = full[prefix:] if full.startswith(str(cwd)) else full
+                    paths.append(rel)
+                    try:
+                        mtimes[rel] = os.stat(full).st_mtime
+                    except OSError:
+                        pass
                     if len(paths) % self.PUBLISH_EVERY == 0:
-                        self._publish(paths)
+                        self._publish(paths, mtimes)
                         # Let the event loop breathe: this walk competes for
                         # the GIL with everything the TUI paints at boot.
                         time.sleep(0)
         except PermissionError:
             pass
-        self._publish(paths)
+        self._publish(paths, mtimes)
         self._start_observer()
         self._ready.set()  # signal after observer is watching
 
@@ -164,6 +182,10 @@ class FileIndexer:
         parts = Path(rel).parts
         if any(_ignore_dir(p) for p in parts[:-1]):
             return
+        try:
+            mtime = fp.stat().st_mtime
+        except OSError:
+            mtime = 0.0
         with self._lock:
             # insort, not append+sort: re-sorting the whole list per created
             # file cost 9.6ms at 60k paths, and a build or a git checkout
@@ -171,6 +193,7 @@ class FileIndexer:
             i = bisect.bisect_left(self._paths, rel)
             if i == len(self._paths) or self._paths[i] != rel:
                 self._paths.insert(i, rel)
+            self._mtimes[rel] = mtime
 
     def _remove(self, abs_path: str) -> None:
         cwd = self._cwd
@@ -185,6 +208,7 @@ class FileIndexer:
                 self._paths.remove(rel)
             except ValueError:
                 pass
+            self._mtimes.pop(rel, None)
 
 
 class _IndexHandler(FileSystemEventHandler):
