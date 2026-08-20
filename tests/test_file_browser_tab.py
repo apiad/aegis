@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import ContentSwitcher, Input, OptionList
+from textual.widgets import ContentSwitcher, DirectoryTree, Input, OptionList
 
 from aegis.tui.file_browser_tab import FileBrowserTab
 from aegis.tui.file_index import FileIndexer
@@ -181,4 +181,24 @@ async def test_prefill_nonexistent_populates_filter(tmp_path: Path):
         filt = tab.query_one("#fb-filter", Input)
         assert filt.value == "myfile"
         assert tab._current_file is None
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_tree_file_selected_opens_view(tmp_path: Path):
+    f = tmp_path / "treefile.py"
+    f.write_text("z = 3")
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx, sidebar_open=True)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Simulate a FileSelected message from the DirectoryTree
+        tab.post_message(DirectoryTree.FileSelected(
+            tab.query_one("#fb-tree", DirectoryTree),
+            f,
+        ))
+        await pilot.pause()
+        assert tab._current_file == f.resolve()
+        assert tab.query_one("#fb-view").display is True
     idx.stop()

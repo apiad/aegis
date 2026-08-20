@@ -166,6 +166,12 @@ class FileBrowserTab(Widget, can_focus=True):
         if path.is_file():
             await self._switch_to_view(path)
 
+    async def on_directory_tree_file_selected(
+            self, event: DirectoryTree.FileSelected) -> None:
+        event.stop()
+        if event.path.is_file():
+            await self._switch_to_view(event.path.resolve())
+
     # --- list management --------------------------------------------
 
     def _refresh_list(self) -> None:
