@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>aegis — programmable multi-agent meta-harness</title>
+<meta name="description" content="A meta-harness that orchestrates Claude Code, Gemini CLI, and OpenCode from a single terminal. Six primitives. Any workflow.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #0e0e0d;
+  --surface: #141412;
+  --panel:   #1a1a17;
+  --fg:      #DCD9CF;
+  --accent:  #E0A872;
+  --ready:   #9DB07E;
+  --error:   #C56B5C;
+  --muted:   #76736a;
+  --faint:   #4a4843;
+  --rule:    #26241f;
+  --userbg:  #24241f;
+}
+
+/* 1.25× scale via root font-size; all rem values scale automatically */
+html { height: 100%; font-size: 20px; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+body::-webkit-scrollbar { display: none; }
+
+/* ── grid bg ─────────────────────── */
+.grid-bg::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.6;
+  mask-image: radial-gradient(ellipse at 50% 50%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 20%, transparent 75%);
+}
+
+/* ── HERO ─────────────────────────── */
+.hero {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+}
+
+.hero-inner {
+  position: relative; z-index: 1;
+  display: flex; gap: 125px; align-items: center;
+  padding: 0 125px; width: 100%;
+}
+
+.hero-text { flex: 0 0 auto; max-width: 650px; }
+
+.hero-title {
+  font-size: 8.75rem; font-weight: 700;
+  letter-spacing: -6px; line-height: 0.85;
+  color: var(--fg); margin-bottom: 35px;
+}
+
+.hero-tagline {
+  font-size: 1.1rem; color: var(--muted);
+  line-height: 2; max-width: 550px; margin-bottom: 40px;
+}
+.hero-tagline strong { color: var(--fg); font-weight: 500; }
+.hero-tagline em { color: var(--accent); font-style: normal; }
+
+.cta-row { display: flex; gap: 17px; margin-bottom: 35px; }
+.btn {
+  padding: 12px 32px; font-family: inherit;
+  font-size: 0.875rem; letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer; border: 1px solid var(--faint);
+  background: transparent; color: var(--muted);
+  text-decoration: none; display: inline-block;
+}
+.btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
+.install-line { font-size: 0.875rem; color: var(--faint); }
+.install-line span { color: var(--muted); }
+
+.prims-row {
+  flex: 1; display: flex; flex-direction: column; gap: 0;
+  border-left: 1px solid var(--rule); padding-left: 75px;
+}
+.prim-preview {
+  display: flex; align-items: baseline; gap: 17px;
+  padding: 14px 0; border-bottom: 1px solid var(--rule);
+  opacity: 0.45; transition: opacity 0.2s;
+}
+.prim-preview:last-child { border-bottom: none; }
+.prim-preview:hover { opacity: 1; }
+.pg { font-size: 1.1rem; color: var(--accent); width: 24px; flex-shrink: 0; }
+.pn { font-size: 0.75rem; color: var(--fg); font-weight: 600; flex: 0 0 110px; }
+.pd { font-size: 0.68rem; color: var(--muted); }
+
+/* ── ARCHITECTURE ─────────────────── */
+.arch-section {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+}
+
+.arch-inner {
+  position: relative; z-index: 1;
+  display: flex; gap: 100px; align-items: center;
+  padding: 0 125px; width: 100%;
+}
+
+.arch-text { flex: 0 0 525px; display: flex; flex-direction: column; gap: 25px; }
+
+.arch-title {
+  font-size: 4rem; font-weight: 700;
+  letter-spacing: -2.5px; line-height: 1.0; color: var(--fg);
+}
+
+.arch-desc { font-size: 1.06rem; color: var(--muted); line-height: 1.95; }
+.arch-desc strong { color: var(--fg); font-weight: 500; }
+.arch-desc code { color: var(--accent); font-size: 1rem; }
+
+.arch-bullets { display: flex; flex-direction: column; gap: 10px; margin-top: 5px; }
+.arch-bullet { font-size: 0.975rem; color: var(--muted); display: flex; align-items: baseline; gap: 12px; }
+.arch-bullet span { color: var(--accent); flex-shrink: 0; }
+
+.arch-diagram { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+.arch-top-box {
+  background: rgba(224,168,114,0.1);
+  border: 1px solid var(--accent);
+  padding: 17px 70px;
+  font-size: 1.875rem; font-weight: 700; letter-spacing: 6px;
+  color: var(--accent); text-transform: lowercase;
+  width: 100%; text-align: center;
+}
+
+.arch-providers {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px; background: var(--rule); width: 100%;
+}
+
+.arch-provider {
+  background: var(--surface); padding: 20px 25px;
+  display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid var(--accent);
+}
+
+.ap-name  { font-size: 0.8rem; color: var(--fg); font-weight: 600; }
+.ap-proto { font-size: 0.68rem; color: var(--accent); letter-spacing: 1px; }
+.ap-desc  { font-size: 0.65rem; color: var(--muted); line-height: 1.5; }
+
+.arch-bottom-note {
+  width: 100%; padding: 12px 20px;
+  background: var(--panel); font-size: 12px; color: var(--faint);
+  letter-spacing: 2px; text-transform: uppercase; text-align: center;
+  border: 1px solid var(--rule); border-top: none;
+}
+
+/* ── PRIMITIVES WRAPPER ───────────── */
+.prim-wrapper { display: flex; position: relative; }
+.prim-left { flex: 0 0 40%; border-right: 1px solid var(--rule); }
+
+.prim-section {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 100px 90px; gap: 32px;
+  border-bottom: 1px solid var(--rule);
+  opacity: 0; transform: translateX(-40px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.prim-section.visible { opacity: 1; transform: translateX(0); }
+
+.prim-right {
+  flex: 1; position: sticky; top: 0; height: 100vh;
+  align-self: flex-start;
+  display: flex; align-items: center; justify-content: center;
+  padding: 50px 65px;
+  opacity: 0; transform: translateX(30px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.prim-right.visible { opacity: 1; transform: translateX(0); }
+
+/* ── PRIMITIVES TYPOGRAPHY ────────── */
+.eyebrow { font-size: 0.62rem; letter-spacing: 5px; text-transform: uppercase; color: var(--accent); }
+.section-title { font-size: 3.875rem; font-weight: 700; line-height: 1.02; color: var(--fg); }
+.glyph { color: var(--accent); margin-right: 10px; }
+.desc { font-size: 1.19rem; color: var(--muted); line-height: 1.95; max-width: 420px; }
+.desc strong { color: var(--fg); font-weight: 500; }
+.prim-idx { font-size: 0.62rem; color: var(--faint); letter-spacing: 3px; text-transform: uppercase; padding-top: 25px; margin-top: 10px; border-top: 1px solid var(--rule); }
+
+/* ── TUI FRAME ────────────────────── */
+.tui {
+  width: 100%; max-width: 875px;
+  background: var(--bg);
+  border: 1px solid var(--faint);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--rule), 0 0 100px rgba(224,168,114,0.09), 0 60px 150px rgba(0,0,0,0.9);
+}
+
+.tui-chrome {
+  background: var(--panel); padding: 12px 22px;
+  display: flex; align-items: center; gap: 11px;
+  border-bottom: 1px solid var(--rule);
+}
+.cdot { width: 15px; height: 15px; border-radius: 50%; }
+.cdot.cl { background: #C56B5C; }
+.cdot.mn { background: #E0A872; }
+.cdot.mx { background: #9DB07E; }
+.chrome-title { flex: 1; text-align: center; font-size: 14px; color: var(--muted); }
+
+.tui-tabs { background: var(--panel); display: flex; border-bottom: 1px solid var(--rule); overflow: hidden; }
+.tab {
+  padding: 6px 25px; font-size: 16px; color: var(--muted);
+  border-right: 1px solid var(--rule);
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+.tab.active { background: var(--bg); color: var(--fg); }
+.tab.dim { opacity: 0.4; }
+.td { font-size: 11px; }
+.td.r { color: var(--ready); }
+.td.w { color: var(--accent); animation: pdot 1.6s ease-in-out infinite; }
+.td.e { color: var(--error); }
+@keyframes pdot { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+.tui-morph { position: relative; overflow: hidden; }
+.mpanel {
+  position: absolute; inset: 0;
+  padding: 22px 32px; background: var(--bg);
+  opacity: 0; transform: translateY(17px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+.mpanel.active { opacity: 1; transform: translateY(0); pointer-events: auto; position: relative; }
+.tui-morph-spacer { height: 375px; display: block; }
+.tui-morph.has-active .tui-morph-spacer { display: none; }
+
+.tui-status {
+  background: var(--panel); padding: 5px 22px;
+  font-size: 15px; color: var(--muted);
+  display: flex; justify-content: space-between;
+  border-top: 1px solid var(--rule);
+}
+.sw { color: var(--accent); }
+.sok { color: var(--ready); }
+
+.tui-input-wrap {
+  background: var(--surface); border-top: 1px solid rgba(220,217,207,0.06);
+  padding: 14px 32px; font-size: 16px; color: var(--faint);
+}
+.cursor {
+  display: inline-block; width: 10px; height: 17px;
+  background: var(--fg); vertical-align: middle;
+  animation: blink 1.1s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+
+/* ── MSG STYLES ───────────────────── */
+.msg { margin-bottom: 17px; }
+.msg-meta { font-size: 12px; color: var(--faint); margin-bottom: 5px; letter-spacing: 1px; text-transform: uppercase; }
+.msg-user .msg-text { color: var(--accent); background: var(--userbg); border-left: 2px solid var(--accent); padding: 6px 17px; display: block; font-size: 16px; }
+.msg-agent .msg-text { color: var(--fg); font-size: 16px; line-height: 1.75; }
+.msg-sys .msg-text { color: var(--muted); font-size: 14px; font-style: italic; }
+.wline { font-size: 15px; color: var(--accent); padding: 2px 0 12px; }
+
+/* ── PANEL STYLES ─────────────────── */
+.inbox-agents { display: flex; align-items: stretch; }
+.inbox-box { flex:1; background: var(--surface); border: 1px solid var(--rule); padding: 17px 22px; font-size: 16px; }
+.inbox-box-title { font-size: 12px; color: var(--accent); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px; }
+.arrow-col { display:flex; align-items:center; padding:0 20px; font-size:35px; color:var(--accent); }
+.incoming-badge { border:1px solid var(--rule); background:var(--userbg); padding:10px 15px; font-size:14px; margin-top:12px; }
+
+.q-title { font-size:12px; color:var(--accent); letter-spacing:3px; text-transform:uppercase; padding:12px 0 9px; border-bottom:1px solid var(--rule); margin-bottom:5px; }
+.qrow { display:flex; align-items:center; padding:7px 0; font-size:16px; gap:12px; border-bottom:1px solid rgba(38,36,31,0.4); }
+.qrow:last-child { border-bottom:none; }
+.qr-n { flex:1; color:var(--fg); }
+.qr-m { color:var(--muted); font-size:14px; }
+.qr-t { font-size:14px; }
+.c-run { color:var(--accent); } .c-wait { color:var(--muted); } .c-ok { color:var(--ready); }
+.q-strip { display:flex; gap:20px; background:var(--panel); border-top:1px solid var(--rule); padding:11px 22px; font-size:14px; margin:12px -32px -22px; }
+
+.canvas-hdr { background:var(--panel); padding:7px 22px; font-size:14px; color:var(--muted); border-bottom:1px solid var(--rule); margin:-22px -32px 17px; display:flex; justify-content:space-between; }
+.canvas-doc { background:var(--userbg); border:1px solid var(--rule); padding:17px 20px; font-size:16px; line-height:1.9; }
+.c-h1 { color:var(--fg); font-weight:700; font-size:19px; margin-bottom:10px; }
+.c-h2 { color:var(--accent); font-size:16px; margin:15px 0 6px; font-weight:600; }
+.c-p  { color:var(--muted); font-size:16px; }
+ins { text-decoration:none; background:rgba(157,176,126,0.12); border-bottom:1px solid var(--ready); color:var(--ready); }
+del { text-decoration:line-through; color:var(--faint); }
+.ccur  { display:inline-block; width:2px; height:17px; background:var(--ready); vertical-align:middle; animation:blink 1.2s step-end infinite; }
+.ccur2 { display:inline-block; width:2px; height:17px; background:var(--accent); vertical-align:middle; animation:blink 1.2s step-end infinite 0.5s; }
+.tag { display:inline-block; font-size:12px; padding:1px 7px; border:1px solid; margin-right:6px; }
+.tag-a { border-color:var(--accent); color:var(--accent); }
+.tag-b { border-color:var(--ready); color:var(--ready); }
+
+.term-body { background:#090909; padding:17px 25px; font-size:16px; line-height:1.8; margin:-22px -32px; }
+.t-ps1{color:var(--ready);} .t-cmd{color:var(--fg);} .t-out{color:var(--muted);} .t-ag{color:var(--accent);}
+
+.group-grid { display:grid; grid-template-columns:1fr 1.3fr; gap:1px; background:var(--rule); margin:-22px -32px 0; }
+.gpane { background:var(--bg); padding:17px 22px; }
+.gpane-title { font-size:12px; color:var(--accent); letter-spacing:3px; text-transform:uppercase; margin-bottom:12px; }
+.mbr { display:flex; justify-content:space-between; padding:6px 0; font-size:16px; border-bottom:1px solid rgba(38,36,31,0.4); }
+.mbr:last-child { border-bottom:none; }
+.mbr-n{color:var(--fg);} .mbr-idle{color:var(--muted);font-size:14px;} .mbr-busy{color:var(--accent);font-size:14px;}
+.bc-label { font-size:12px; color:var(--faint); letter-spacing:1px; text-transform:uppercase; margin-top:12px; margin-bottom:2px; }
+.bc-val { font-size:16px; color:var(--fg); }
+.bc-val.w { color:var(--accent); }
+
+.wf-split { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--rule); margin:-22px -32px 0; }
+.wf-code { background:var(--bg); padding:20px 25px; font-size:15px; line-height:1.85; }
+.wf-run  { background:var(--surface); padding:20px 25px; }
+.kw{color:var(--error);} .fn{color:var(--accent);} .str{color:var(--ready);} .cm{color:var(--faint);font-style:italic;} .deco{color:var(--ready);}
+.wfs { display:flex; gap:17px; align-items:flex-start; padding:10px 0; position:relative; }
+.wfs::before { content:''; position:absolute; left:20px; top:45px; bottom:-10px; width:1px; background:var(--rule); }
+.wfs:last-child::before { display:none; }
+.snode { width:40px; height:40px; border:1px solid; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+.snode.done { border-color:var(--ready); color:var(--ready); }
+.snode.run  { border-color:var(--accent); color:var(--accent); animation:rpulse 2s ease-in-out infinite; }
+.snode.pend { border-color:var(--faint); color:var(--faint); }
+@keyframes rpulse { 0%,100%{box-shadow:0 0 0 0 rgba(224,168,114,0.4)}50%{box-shadow:0 0 0 7px rgba(224,168,114,0)} }
+.si-n{font-size:16px;color:var(--fg);} .si-d{font-size:14px;color:var(--muted);margin-top:2px;}
+
+/* ── PLATFORM ─────────────────────── */
+.platform-section {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+}
+
+.plat-inner {
+  position: relative; z-index: 1;
+  width: 100%; padding: 0 125px;
+  display: flex; flex-direction: column; gap: 60px;
+}
+
+.plat-header { display: flex; flex-direction: column; gap: 12px; }
+.plat-title { font-size: 3rem; font-weight: 700; letter-spacing: -1.5px; color: var(--fg); }
+.plat-sub { font-size: 1.025rem; color: var(--muted); max-width: 650px; line-height: 1.85; }
+
+.plat-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+}
+.plat-card { background:var(--surface); padding:30px 35px; display:flex; flex-direction:column; gap:10px; transition:background 0.2s; }
+.plat-card:hover { background:var(--panel); }
+.pc-glyph { font-size:1.3rem; color:var(--accent); line-height:1; }
+.pc-name  { font-size:0.82rem; color:var(--fg); font-weight:600; }
+.pc-desc  { font-size:0.7rem; color:var(--muted); line-height:1.7; }
+.pc-tag   { display:inline-block; font-size:0.6rem; color:var(--faint); letter-spacing:2px; text-transform:uppercase; border:1px solid var(--faint); padding:1px 7px; margin-top:5px; align-self:flex-start; }
+
+/* ── FINAL ────────────────────────── */
+.final {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+
+.final-inner {
+  position: relative; z-index: 1;
+  display: flex; gap: 100px; align-items: center;
+  padding: 0 125px; width: 100%;
+}
+
+.final-text { flex: 0 0 575px; }
+.final-title { font-size: 3.75rem; font-weight: 700; letter-spacing: -2px; line-height: 1.05; color: var(--fg); margin-bottom: 22px; }
+.final-sub { font-size: 1.025rem; color: var(--muted); line-height: 1.9; margin-bottom: 35px; }
+
+.install-box {
+  background:var(--surface); border:1px solid var(--rule);
+  padding:15px 25px; font-size:1.0625rem;
+  color:var(--fg); display:flex; align-items:center; gap:15px; margin-bottom:30px;
+}
+.install-box span { color:var(--ready); }
+
+.final-cta { display:flex; gap:15px; margin-bottom:35px; }
+
+.support-line { font-size:0.6rem; color:var(--faint); letter-spacing:2px; text-transform:uppercase; }
+.support-line span { color:var(--muted); margin:0 7px; }
+
+.prim-grid { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--rule); border:1px solid var(--rule); }
+.prim-card { background:var(--surface); padding:25px 27px; display:flex; flex-direction:column; gap:7px; transition:background 0.2s; }
+.prim-card:hover { background:var(--panel); }
+.pc2-glyph { font-size:1.3rem; color:var(--accent); }
+.pc2-name  { font-size:0.8rem; color:var(--fg); font-weight:600; }
+.pc2-desc  { font-size:0.68rem; color:var(--muted); line-height:1.6; }
+
+/* ── NAV DOTS ─────────────────────── */
+.nav-dots { position:fixed; right:35px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:15px; z-index:999; }
+.ndot { width:5px; height:5px; border-radius:50%; background:var(--faint); cursor:pointer; transition:background 0.25s, height 0.25s, border-radius 0.25s; }
+.ndot.active { background:var(--accent); height:17px; border-radius:2px; }
+
+/* grain */
+body::after {
+  content:''; position:fixed; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:9999; opacity:0.45;
+}
+</style>
+</head>
+<body>
+
+<!-- nav: 0=hero, 1=arch, 2-7=prims, 8=platform, 9=final -->
+<nav class="nav-dots" id="navdots">
+  <div class="ndot active" data-i="0" title="intro"></div>
+  <div class="ndot" data-i="1" title="architecture"></div>
+  <div class="ndot" data-i="2" title="inbox"></div>
+  <div class="ndot" data-i="3" title="queue"></div>
+  <div class="ndot" data-i="4" title="canvas"></div>
+  <div class="ndot" data-i="5" title="terminal"></div>
+  <div class="ndot" data-i="6" title="groups"></div>
+  <div class="ndot" data-i="7" title="workflow"></div>
+  <div class="ndot" data-i="8" title="platform"></div>
+  <div class="ndot" data-i="9" title="get started"></div>
+</nav>
+
+<!-- ═════════════ 0 · HERO ═════════════ -->
+<section class="hero grid-bg">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div style="font-size:0.62rem;letter-spacing:5px;text-transform:uppercase;color:var(--accent);margin-bottom:25px;">programmable multi-agent meta-harness</div>
+      <div class="hero-title">aegis</div>
+      <p class="hero-tagline">
+        Orchestrate <strong>Claude Code</strong>, <strong>Gemini CLI</strong>, and <strong>OpenCode</strong>
+        from a single terminal — driving each over its native protocol,
+        without replacing a single tool you already use.
+        <em>Six primitives. Any workflow.</em>
+      </p>
+      <div class="cta-row">
+        <a href="install/" class="btn btn-primary">Install</a>
+        <a href="usage/" class="btn">Read the docs →</a>
+      </div>
+      <div class="install-line">$ <span>pip install aegis-harness</span> &nbsp;·&nbsp; python 3.13+</div>
+    </div>
+    <div class="prims-row">
+      <div class="prim-preview"><span class="pg">→</span><span class="pn">Inbox</span><span class="pd">fire-and-forget context handoff</span></div>
+      <div class="prim-preview"><span class="pg">⏳</span><span class="pn">Queue</span><span class="pd">spawn worker agents on-demand</span></div>
+      <div class="prim-preview"><span class="pg">▦</span><span class="pn">Canvas</span><span class="pd">shared markdown blackboards</span></div>
+      <div class="prim-preview"><span class="pg">▮</span><span class="pn">Terminal</span><span class="pd">live PTY-backed co-authored shells</span></div>
+      <div class="prim-preview"><span class="pg">▣</span><span class="pn">Groups</span><span class="pd">broadcast-and-gather committees</span></div>
+      <div class="prim-preview"><span class="pg">⟳</span><span class="pn">Workflow</span><span class="pd">deterministic Python orchestration</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 1 · ARCHITECTURE ═════════════ -->
+<section class="arch-section grid-bg">
+  <div class="arch-inner">
+    <div class="arch-text">
+      <div class="eyebrow">meta-harness architecture</div>
+      <div class="arch-title">Sits above.<br>Not inside.</div>
+      <p class="arch-desc">
+        Most agent frameworks <strong>replace</strong> your tools.
+        Aegis drives them. It wraps Claude Code, Gemini CLI, and OpenCode
+        over their native structured protocols — <code>stream-json</code> and <code>ACP</code> —
+        exposing a unified canonical event surface across all three.
+      </p>
+      <p class="arch-desc">
+        Each spawned agent owns its own tool use, permissions, sandboxing.
+        Aegis owns the coordination, routing, persistence, and automation layer.
+      </p>
+      <div class="arch-bullets">
+        <div class="arch-bullet"><span>→</span>Unified tool events: read, edit, execute, search, think, fetch</div>
+        <div class="arch-bullet"><span>→</span>Real-time cost, token counts, and context-window meters per turn</div>
+        <div class="arch-bullet"><span>→</span>Clean driver seam — new providers plug in without rewriting workflows</div>
+        <div class="arch-bullet"><span>→</span>Every agent gets the aegis MCP server injected automatically</div>
+      </div>
+    </div>
+
+    <div class="arch-diagram">
+      <div class="arch-top-box">aegis</div>
+      <div style="display:flex;align-items:center;height:40px;position:relative;width:100%;">
+        <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--accent);transform:translateX(-50%);"></div>
+        <div style="position:absolute;bottom:0;left:16.66%;right:16.66%;height:1px;background:var(--accent);"></div>
+      </div>
+      <div class="arch-providers">
+        <div class="arch-provider">
+          <div class="ap-name">claude code</div>
+          <div class="ap-proto">stream-json</div>
+          <div class="ap-desc">bidirectional JSON protocol, native tool-use events, permission modes</div>
+        </div>
+        <div class="arch-provider">
+          <div class="ap-name">gemini cli</div>
+          <div class="ap-proto">ACP</div>
+          <div class="ap-desc">agent client protocol, session load/resume, streaming event codec</div>
+        </div>
+        <div class="arch-provider">
+          <div class="ap-name">opencode</div>
+          <div class="ap-proto">ACP</div>
+          <div class="ap-desc">multi-model routing (anthropic, google, moonshot), thought coalescing</div>
+        </div>
+      </div>
+      <div class="arch-bottom-note">provider-agnostic · protocol-native · extensible</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 2–7 · PRIMITIVES ═════════════ -->
+<div class="prim-wrapper" id="primwrapper">
+  <div class="prim-left" id="primleft">
+
+    <div class="prim-section" data-i="2">
+      <div class="eyebrow">primitive one</div>
+      <div class="section-title"><span class="glyph">→</span>Inbox</div>
+      <p class="desc"><strong>Fire-and-forget context handoff.</strong> Send a task, summary, or rich context block to any agent without waiting. The recipient picks it up at their own pace.</p>
+      <p class="desc">Compose agents into pipelines: one produces, another refines, a third reviews — each running at full speed.</p>
+      <div class="prim-idx">01 / 06</div>
+    </div>
+
+    <div class="prim-section" data-i="3">
+      <div class="eyebrow">primitive two</div>
+      <div class="section-title"><span class="glyph">⏳</span>Queue</div>
+      <p class="desc"><strong>Spawn worker agents on-demand.</strong> A queue holds tasks; aegis starts fresh agent instances to process them, up to your parallelism ceiling. Callbacks fire on completion.</p>
+      <p class="desc">Chain queues together to build deep processing pipelines without writing a scheduler.</p>
+      <div class="prim-idx">02 / 06</div>
+    </div>
+
+    <div class="prim-section" data-i="4">
+      <div class="eyebrow">primitive three</div>
+      <div class="section-title"><span class="glyph">▦</span>Canvas</div>
+      <p class="desc"><strong>A shared markdown blackboard.</strong> Multiple agents read and write the same live document — building knowledge together, section by section.</p>
+      <p class="desc">Use canvases for research briefs, design docs, and collaborative drafting across agents with different expertise.</p>
+      <div class="prim-idx">03 / 06</div>
+    </div>
+
+    <div class="prim-section" data-i="5">
+      <div class="eyebrow">primitive four</div>
+      <div class="section-title"><span class="glyph">▮</span>Terminal</div>
+      <p class="desc"><strong>A live PTY-backed shell</strong> that agents co-author. One agent runs commands; another watches output and reacts — all in the same persistent shell session.</p>
+      <p class="desc">OSC 133 shell integration tracks command boundaries, exit codes, and output blocks with precision.</p>
+      <div class="prim-idx">04 / 06</div>
+    </div>
+
+    <div class="prim-section" data-i="6">
+      <div class="eyebrow">primitive five</div>
+      <div class="section-title"><span class="glyph">▣</span>Groups</div>
+      <p class="desc"><strong>Broadcast to agent committees.</strong> Send one prompt to many agents simultaneously. Collect all responses, or fire and move on.</p>
+      <p class="desc">Use groups for adversarial review, parallel ideation, expert panels, or redundant verification.</p>
+      <div class="prim-idx">05 / 06</div>
+    </div>
+
+    <div class="prim-section" data-i="7">
+      <div class="eyebrow">primitive six</div>
+      <div class="section-title"><span class="glyph">⟳</span>Workflow</div>
+      <p class="desc"><strong>Deterministic Python orchestration</strong> with cron scheduling. Define multi-step pipelines in plain Python — loops, branches, retries, parallelism — with full type safety.</p>
+      <p class="desc">Workflows compose all six primitives into repeatable, production-grade automations that run while you sleep.</p>
+      <div class="prim-idx">06 / 06</div>
+    </div>
+
+  </div><!-- /prim-left -->
+
+  <div class="prim-right" id="primright">
+    <div class="tui">
+      <div class="tui-chrome">
+        <div class="cdot cl"></div><div class="cdot mn"></div><div class="cdot mx"></div>
+        <div class="chrome-title" id="tui-title">aegis — terminal</div>
+      </div>
+      <div class="tui-tabs" id="tui-tabbar"></div>
+      <div class="tui-morph" id="morph">
+        <div class="tui-morph-spacer"></div>
+
+        <!-- P2: INBOX -->
+        <div class="mpanel active" id="p2">
+          <div style="font-size:12px;color:var(--faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;">Context handoff in progress</div>
+          <div class="inbox-agents">
+            <div class="inbox-box">
+              <div class="inbox-box-title">swift-lynx · claude</div>
+              <div class="msg msg-agent" style="margin-bottom:10px;"><div class="msg-text">✓ Refactor complete. JWT extracted to <span style="color:var(--accent)">auth/jwt.py</span>. Tests: 24 pass.</div></div>
+              <div style="font-size:12px;color:var(--faint);">→ sending to inbox…</div>
+            </div>
+            <div class="arrow-col">→</div>
+            <div class="inbox-box">
+              <div class="inbox-box-title">keen-fox · gemini</div>
+              <div class="incoming-badge"><span style="color:var(--accent)">→ from swift-lynx</span>&nbsp;&nbsp;<span style="color:var(--faint)">just now</span><br><span style="color:var(--muted)">Review jwt.py for edge cases. Tests attached.</span></div>
+              <div class="wline" style="padding-top:12px;">⠸ reading context…</div>
+            </div>
+          </div>
+          <div style="margin-top:17px;font-size:14px;color:var(--faint);">non-blocking · sender continues immediately</div>
+        </div>
+
+        <!-- P3: QUEUE -->
+        <div class="mpanel" id="p3">
+          <div class="q-title">QUEUES</div>
+          <div class="qrow"><span class="c-run">●</span><span class="qr-n">research-queue</span><span class="qr-m">claude · ×3</span><span class="qr-t c-run">3 running</span></div>
+          <div class="qrow"><span class="c-ok">●</span><span class="qr-n">review-queue</span><span class="qr-m">gemini · ×1</span><span class="qr-t" style="color:var(--muted)">idle</span></div>
+          <div class="q-title" style="margin-top:12px;">IN FLIGHT</div>
+          <div class="qrow"><span class="c-run">▶</span><span class="qr-n">summarise-paper-001</span><span class="qr-m">swift-lynx</span><span class="qr-t c-run">12s</span></div>
+          <div class="qrow"><span class="c-run">●</span><span class="qr-n">summarise-paper-002</span><span class="qr-m">muted-crow</span><span class="qr-t c-run">8s</span></div>
+          <div class="qrow"><span class="c-run">●</span><span class="qr-n">summarise-paper-003</span><span class="qr-m">calm-deer</span><span class="qr-t c-run">3s</span></div>
+          <div class="q-title" style="margin-top:12px;">QUEUED <span style="color:var(--muted)">(4)</span></div>
+          <div class="qrow"><span class="c-wait">○</span><span class="qr-n">summarise-paper-004</span><span class="qr-m c-wait">waiting</span></div>
+          <div class="qrow"><span class="c-wait">○</span><span class="qr-n">summarise-paper-005</span><span class="qr-m c-wait">waiting</span></div>
+          <div class="q-strip"><span class="c-run">● 3 running</span><span style="color:var(--muted)">○ 4 queued</span><span class="c-ok">✓ 1 done</span><span style="color:var(--error)">✗ 0 err</span></div>
+        </div>
+
+        <!-- P4: CANVAS -->
+        <div class="mpanel" id="p4">
+          <div class="canvas-hdr"><span>▦ research-brief.md</span><span><span class="tag tag-a">swift-lynx</span><span class="tag tag-b">keen-fox</span></span></div>
+          <div class="canvas-doc">
+            <div class="c-h1"># Competitive Analysis — Q2 2025</div>
+            <div class="c-h2">## Market Overview</div>
+            <div class="c-p">Three categories: <ins>framework-level harnesses</ins>, <del>monolithic chat interfaces</del> protocol routers, and workflow engines.<span class="ccur"></span></div>
+            <div class="c-h2">## Key Competitors</div>
+            <div class="c-p"><span class="tag tag-b" style="font-size:12px;">keen-fox</span>Langchain, CrewAI, AutoGen represent the incumbent layer. None operate at the harness level.<span class="ccur2"></span></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:12px;"><span style="color:var(--accent)">swift-lynx</span> editing §1 &nbsp;·&nbsp; <span style="color:var(--ready)">keen-fox</span> editing §2</div>
+        </div>
+
+        <!-- P5: TERMINAL -->
+        <div class="mpanel" id="p5">
+          <div class="term-body">
+            <div><span class="t-ps1">user@zion:~/project $</span> <span class="t-cmd">pytest tests/auth/ -v</span></div>
+            <div class="t-out">collecting … 24 items</div>
+            <div class="t-out">test_jwt.py::test_valid_token &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--ready)">PASSED</span></div>
+            <div class="t-out">test_jwt.py::test_expired_token &nbsp;<span style="color:var(--ready)">PASSED</span></div>
+            <div class="t-out">test_jwt.py::test_tampered_sig &nbsp;&nbsp;<span style="color:var(--ready)">PASSED</span></div>
+            <div class="t-out">…</div>
+            <div class="t-out"><span style="color:var(--ready)">24 passed</span> in 1.83s</div>
+            <div style="margin-top:12px;"><span style="color:var(--faint);font-size:14px;">↳ swift-lynx</span> <span class="t-ag"> All 24 pass. Handing report to keen-fox →</span></div>
+            <div style="margin-top:10px;"><span class="t-ps1">user@zion:~/project $</span> <span class="cursor"></span></div>
+          </div>
+        </div>
+
+        <!-- P6: GROUPS -->
+        <div class="mpanel" id="p6">
+          <div class="group-grid">
+            <div class="gpane">
+              <div class="gpane-title">MEMBERS (5)</div>
+              <div class="mbr"><span class="mbr-n">swift-lynx</span><span class="mbr-busy">⏳ responding</span></div>
+              <div class="mbr"><span class="mbr-n">keen-fox</span><span class="mbr-busy">⏳ responding</span></div>
+              <div class="mbr"><span class="mbr-n">bold-kite</span><span class="mbr-idle">✓ done</span></div>
+              <div class="mbr"><span class="mbr-n">calm-deer</span><span class="mbr-busy">⏳ responding</span></div>
+              <div class="mbr"><span class="mbr-n">muted-crow</span><span class="mbr-idle">✓ done</span></div>
+            </div>
+            <div class="gpane">
+              <div class="gpane-title">BROADCAST #7</div>
+              <div class="bc-label">prompt</div>
+              <div class="bc-val" style="font-size:15px;line-height:1.6;">"Review refactored auth module for security issues. Focus on JWT edge cases."</div>
+              <div class="bc-label">mode</div><div class="bc-val w">gather-all</div>
+              <div class="bc-label">progress</div><div class="bc-val">2 / 5 &nbsp;<span class="w" style="font-size:15px;">waiting…</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- P7: WORKFLOW -->
+        <div class="mpanel" id="p7">
+          <div class="wf-split">
+            <div class="wf-code"><span class="deco">@workflow</span>(<span class="str">"nightly"</span>,
+           cron=<span class="str">"0 2 * * *"</span>)
+<span class="kw">async def</span> <span class="fn">nightly</span>(ctx):
+  <span class="cm"># 1. fetch open PRs</span>
+  prs = <span class="kw">await</span> <span class="fn">ctx.queue</span>(
+    <span class="str">"fetch-queue"</span>,
+    task=<span class="str">"list open PRs"</span>
+  )
+  <span class="cm"># 2. parallel review</span>
+  reviews = <span class="kw">await</span> <span class="fn">ctx.group</span>(
+    <span class="str">"review-panel"</span>,
+    prompt=prs
+  )
+  <span class="cm"># 3. write to canvas</span>
+  <span class="kw">await</span> <span class="fn">ctx.canvas</span>(
+    <span class="str">"weekly-brief"</span>,
+    append=reviews
+  )</div>
+            <div class="wf-run">
+              <div style="font-size:12px;color:var(--faint);letter-spacing:2px;margin-bottom:14px;">RUN #42 · 02:00:01</div>
+              <div class="wfs"><div class="snode done">✓</div><div><div class="si-n">fetch open PRs</div><div class="si-d">fetch-queue · 3 tasks · 8s</div></div></div>
+              <div class="wfs"><div class="snode run">⠹</div><div><div class="si-n">parallel review</div><div class="si-d">review-panel · 5 agents · 34s…</div></div></div>
+              <div class="wfs"><div class="snode pend">○</div><div><div class="si-n" style="color:var(--faint)">write to canvas</div><div class="si-d">pending</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /morph -->
+
+      <div class="tui-status">
+        <span id="st-l">swift-lynx · claude-3-5-sonnet · auto</span>
+        <span id="st-m" class="sw">✻ working…</span>
+        <span id="st-r">18.3k · $0.04</span>
+      </div>
+      <div class="tui-input-wrap">type a message… &nbsp;<span class="cursor"></span></div>
+    </div>
+  </div>
+</div><!-- /prim-wrapper -->
+
+<!-- ═════════════ 8 · PLATFORM ═════════════ -->
+<section class="platform-section grid-bg">
+  <div class="plat-inner">
+    <div class="plat-header">
+      <div class="eyebrow">beyond primitives</div>
+      <div class="plat-title">Everything the platform needs.</div>
+      <p class="plat-sub">Budgets, headless operation, session persistence, plugins, remote delegation — aegis ships with the complete infrastructure so your workflows don't need to rebuild it.</p>
+    </div>
+    <div class="plat-grid">
+      <div class="plat-card">
+        <div class="pc-glyph">¢</div>
+        <div class="pc-name">Budget control</div>
+        <div class="pc-desc">USD or token ceilings per queue with rolling windows. Tasks are admitted only if every budget is under its limit. Structured rejection with unblock_at estimates.</div>
+        <div class="pc-tag">per-queue</div>
+      </div>
+      <div class="plat-card">
+        <div class="pc-glyph">⌁</div>
+        <div class="pc-name">Headless + Telegram</div>
+        <div class="pc-desc">Run as a systemd service with no TUI. Control every session from Telegram — send tasks, spawn agents, query queues and budgets, manage schedules. Full HTML renderer.</div>
+        <div class="pc-tag">aegis serve</div>
+      </div>
+      <div class="plat-card">
+        <div class="pc-glyph">↺</div>
+        <div class="pc-name">Session persistence</div>
+        <div class="pc-desc">Auto-resume on launch. Genuine session resumption — Claude via --resume, Gemini and OpenCode via ACP loadSession. No lost context across restarts or crashes.</div>
+        <div class="pc-tag">auto-resume</div>
+      </div>
+      <div class="plat-card">
+        <div class="pc-glyph">⊕</div>
+        <div class="pc-name">Plugin system</div>
+        <div class="pc-desc">Extend aegis with @hook and @tool decorators. Pre-turn, post-turn, session hooks. Install from GitHub (gh:owner/repo) or local paths — with lockfile and rollback.</div>
+        <div class="pc-tag">v1 substrate</div>
+      </div>
+      <div class="plat-card">
+        <div class="pc-glyph">↗</div>
+        <div class="pc-name">Remote plane</div>
+        <div class="pc-desc">Delegate tasks and schedules to remote aegis instances over HTTP. Wire callbacks back across machines. Designed for Tailscale and private overlay networks.</div>
+        <div class="pc-tag">cross-machine</div>
+      </div>
+      <div class="plat-card">
+        <div class="pc-glyph">◎</div>
+        <div class="pc-name">Full observability</div>
+        <div class="pc-desc">Real-time cost, input/output tokens, cache-hit rate, context-window meters, and per-turn timing — all first-class event fields. No log scraping required.</div>
+        <div class="pc-tag">per-turn metrics</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 9 · FINAL ═════════════ -->
+<section class="final grid-bg">
+  <div class="final-inner">
+    <div class="final-text">
+      <div style="font-size:0.62rem;letter-spacing:5px;text-transform:uppercase;color:var(--accent);margin-bottom:25px;">get started</div>
+      <div class="final-title">Ship your first<br>workflow tonight.</div>
+      <p class="final-sub">Install, configure your agents, and run a real multi-agent pipeline in under ten minutes. No new frameworks — just Python and six primitives.</p>
+      <div class="install-box"><span>$</span><span style="color:var(--fg)">pip install aegis-harness</span></div>
+      <div class="final-cta">
+        <a href="install/" class="btn btn-primary">Install</a>
+        <a href="usage/" class="btn">Documentation →</a>
+        <a href="https://github.com/apiad/aegis" class="btn">GitHub ↗</a>
+      </div>
+      <div class="support-line">works with<span>claude code</span>·<span>gemini cli</span>·<span>opencode</span></div>
+    </div>
+    <div class="prim-grid">
+      <div class="prim-card"><div class="pc2-glyph">→</div><div class="pc2-name">Inbox</div><div class="pc2-desc">Fire-and-forget handoff between agents</div></div>
+      <div class="prim-card"><div class="pc2-glyph">⏳</div><div class="pc2-name">Queue</div><div class="pc2-desc">Spawn workers on-demand with callbacks</div></div>
+      <div class="prim-card"><div class="pc2-glyph">▦</div><div class="pc2-name">Canvas</div><div class="pc2-desc">Shared markdown blackboards</div></div>
+      <div class="prim-card"><div class="pc2-glyph">▮</div><div class="pc2-name">Terminal</div><div class="pc2-desc">Live PTY shells agents co-author</div></div>
+      <div class="prim-card"><div class="pc2-glyph">▣</div><div class="pc2-name">Groups</div><div class="pc2-desc">Broadcast-and-gather committees</div></div>
+      <div class="prim-card"><div class="pc2-glyph">⟳</div><div class="pc2-name">Workflow</div><div class="pc2-desc">Deterministic Python + cron</div></div>
+    </div>
+  </div>
+</section>
+
+<script>
+const tuiCfg = {
+  2:{title:'aegis — inbox',tabs:[{dot:'r',l:'1  swift-lynx',s:'·claude·',a:false},{dot:'w',l:'2  keen-fox',s:'·gemini·',a:true}],stL:'keen-fox · gemini-1.5-pro · auto',stM:'→ inbox · 1 new',stMc:'sw',stR:'5.1k · $0.01'},
+  3:{title:'aegis — queue dashboard',tabs:[{dot:'w',l:'⏳ research-queue',s:'',a:true},{dot:'r',l:'review-queue',s:'',a:false}],stL:'research-queue · claude · ×3',stM:'● 3 running',stMc:'sw',stR:'4 queued'},
+  4:{title:'aegis — canvas',tabs:[{dot:'w',l:'▦ research-brief.md',s:'',a:true}],stL:'swift-lynx  keen-fox',stM:'▦ 2 editors',stMc:'sok',stR:'line 8'},
+  5:{title:'aegis — shared terminal',tabs:[{dot:'r',l:'1  swift-lynx',s:'·claude·',a:false},{dot:'w',l:'▮ shell',s:'',a:true}],stL:'shell · bash 5.2 · pid 4421',stM:'● live',stMc:'sok',stR:''},
+  6:{title:'aegis — group dashboard',tabs:[{dot:'w',l:'▣ review-panel',s:'·group·',a:true}],stL:'review-panel · 5 members',stM:'✻ gathering…',stMc:'sw',stR:'2/5 replied'},
+  7:{title:'aegis — workflow',tabs:[{dot:'w',l:'⟳ nightly',s:'·workflow·',a:true}],stL:'nightly · run #42 · 02:00:01',stM:'⠹ step 2/3',stMc:'sw',stR:'34s elapsed'},
+};
+
+function renderTabs(tabs){
+  return tabs.map(t=>`<div class="tab${t.a?' active':''}">${t.dot?`<span class="td ${t.dot}">●</span>`:''} ${t.l} <span style="color:var(--faint)">${t.s}</span></div>`).join('');
+}
+
+function applyTuiCfg(i){
+  const c=tuiCfg[i]; if(!c) return;
+  document.getElementById('tui-title').textContent=c.title;
+  document.getElementById('tui-tabbar').innerHTML=renderTabs(c.tabs);
+  document.getElementById('st-l').textContent=c.stL;
+  document.getElementById('st-m').textContent=c.stM;
+  document.getElementById('st-m').className=c.stMc;
+  document.getElementById('st-r').textContent=c.stR;
+}
+
+const morph=document.getElementById('morph');
+let activePi=2;
+
+function activatePanel(i){
+  if(i===activePi) return;
+  const prev=document.getElementById('p'+activePi);
+  if(prev){prev.classList.remove('active');prev.style.position='absolute';}
+  const next=document.getElementById('p'+i);
+  if(next){next.style.position='relative';next.classList.add('active');}
+  applyTuiCfg(i);
+  morph.classList.add('has-active');
+  activePi=i;
+}
+
+applyTuiCfg(2);
+morph.classList.add('has-active');
+
+const hero=document.querySelector('.hero');
+const archSec=document.querySelector('.arch-section');
+const primSecs=document.querySelectorAll('.prim-section');
+const platSec=document.querySelector('.platform-section');
+const finalSec=document.querySelector('.final');
+const allTargets=[hero,archSec,...primSecs,platSec,finalSec];
+const primRight=document.getElementById('primright');
+const primWrapper=document.getElementById('primwrapper');
+const dots=document.querySelectorAll('.ndot');
+
+function setDot(i){dots.forEach((d,idx)=>d.classList.toggle('active',idx===i));}
+
+const primIO=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    const i=+e.target.dataset.i;
+    if(e.isIntersecting&&e.intersectionRatio>=0.5){activatePanel(i);setDot(i);}
+    if(e.isIntersecting) e.target.classList.add('visible');
+  });
+},{threshold:0.5});
+primSecs.forEach(s=>primIO.observe(s));
+
+const wrapIO=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>primRight.classList.toggle('visible',e.isIntersecting));
+},{threshold:0.01});
+wrapIO.observe(primWrapper);
+
+const makeIO=(idx)=>new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{if(e.isIntersecting&&e.intersectionRatio>0.5)setDot(idx);});
+},{threshold:0.5});
+makeIO(0).observe(hero);
+makeIO(1).observe(archSec);
+makeIO(8).observe(platSec);
+makeIO(9).observe(finalSec);
+
+dots.forEach(d=>{
+  d.addEventListener('click',()=>allTargets[+d.dataset.i]?.scrollIntoView({behavior:'smooth',block:'start'}));
+});
+
+document.addEventListener('keydown',e=>{
+  const cur=[...dots].findIndex(d=>d.classList.contains('active'));
+  if((e.key==='ArrowDown'||e.key==='j')&&cur<allTargets.length-1)
+    allTargets[cur+1]?.scrollIntoView({behavior:'smooth',block:'start'});
+  if((e.key==='ArrowUp'||e.key==='k')&&cur>0)
+    allTargets[cur-1]?.scrollIntoView({behavior:'smooth',block:'start'});
+});
+</script>
+</body>
+</html>
