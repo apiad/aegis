@@ -12,7 +12,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
-from textual.widgets import DirectoryTree, Input, Label, OptionList, Static
+from textual.widgets import DirectoryTree, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from aegis.tui.file_index import FileIndexer
