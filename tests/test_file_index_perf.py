@@ -43,9 +43,9 @@ def test_paths_are_published_during_the_walk_not_only_at_the_end(tmp_path):
     publishes: list[int] = []
 
     class Counting(FileIndexer):
-        def _publish(self, paths):
+        def _publish(self, paths, mtimes=None):
             publishes.append(len(paths))
-            super()._publish(paths)
+            super()._publish(paths, mtimes)
 
     idx = Counting()
     idx.start(tmp_path)
