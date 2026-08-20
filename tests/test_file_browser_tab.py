@@ -129,3 +129,56 @@ async def test_selecting_file_switches_to_view(tmp_path: Path):
         assert "hidden" in browse.classes
         assert tab._current_file is not None
     idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_b_key_returns_to_browse(tmp_path: Path):
+    f = tmp_path / "back.py"
+    f.write_text("x = 1")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Switch to view first
+        await tab._switch_to_view(f)
+        await pilot.pause()
+        assert tab.query_one("#fb-view").display is True
+        # Press b
+        await pilot.press("b")
+        await pilot.pause()
+        assert tab.query_one("#fb-browse").display is True
+        assert tab.query_one("#fb-view").display is False
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_prefill_existing_file_opens_view(tmp_path: Path):
+    f = tmp_path / "preopen.py"
+    f.write_text("y = 2")
+    idx = FileIndexer()
+    # Don't start indexer — prefill by path, not from index
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx, prefill=str(f))
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.pause()   # second pause for mount + open
+        assert tab._current_file == f.resolve()
+        assert tab.query_one("#fb-view").display is True
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_prefill_nonexistent_populates_filter(tmp_path: Path):
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx, prefill="myfile")
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        filt = tab.query_one("#fb-filter", Input)
+        assert filt.value == "myfile"
+        assert tab._current_file is None
+    idx.stop()

@@ -119,18 +119,25 @@ class FileBrowserTab(Widget, can_focus=True):
         self.set_task_dock(self._sidebar_open)
         self._refresh_list()
         self.set_interval(_POLL_S, self._refresh_list)
+        # If prefill is an existing file path, open it directly in view mode.
+        if self._prefill:
+            candidate = Path(self._prefill)
+            if not candidate.is_absolute():
+                candidate = self._cwd / self._prefill
+            if candidate.is_file():
+                await self._switch_to_view(candidate.resolve())
 
     # --- tab contract -----------------------------------------------
 
     def focus_input(self) -> None:
-        from textual.widgets import TextArea
         import contextlib
+        from textual.widgets import TextArea
         if self._current_file is not None:
             with contextlib.suppress(Exception):
                 self.query_one(TextArea).focus()
-        else:
-            with contextlib.suppress(Exception):
-                self.query_one("#fb-filter", Input).focus()
+                return
+        with contextlib.suppress(Exception):
+            self.query_one("#fb-filter", Input).focus()
 
     def set_task_dock(self, opened: bool) -> bool:
         import contextlib
@@ -208,3 +215,9 @@ class FileBrowserTab(Widget, can_focus=True):
             self.query_one("#fb-view").remove_class("active")
             self.query_one("#fb-browse").remove_class("hidden")
             self.query_one("#fb-filter", Input).focus()
+
+    def key_b(self) -> None:
+        """Return to browse mode from view mode."""
+        if self._current_file is not None:
+            self._current_file = None
+            self._show_browse()
