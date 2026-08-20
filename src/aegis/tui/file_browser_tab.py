@@ -143,6 +143,22 @@ class FileBrowserTab(Widget, can_focus=True):
     async def close(self) -> None:
         pass
 
+    # --- event handlers --------------------------------------------
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "fb-filter":
+            self._filter_text = event.value
+            self._refresh_list()
+
+    async def on_option_list_option_selected(
+            self, event: OptionList.OptionSelected) -> None:
+        rel = event.option.id
+        if rel is None:
+            return
+        path = self._cwd / rel
+        if path.is_file():
+            await self._switch_to_view(path)
+
     # --- list management --------------------------------------------
 
     def _refresh_list(self) -> None:
@@ -164,3 +180,31 @@ class FileBrowserTab(Widget, can_focus=True):
             ol.clear_options()
             for opt in options:
                 ol.add_option(opt)
+
+    async def _switch_to_view(self, path: Path) -> None:
+        import contextlib
+        from aegis.tui.file_tab import FileTab
+        self._current_file = path
+        # Remove previously mounted FileTab if any
+        with contextlib.suppress(Exception):
+            old = self.query_one(FileTab)
+            await old.remove()
+        ft = FileTab(path)
+        view_container = self.query_one("#fb-view")
+        with contextlib.suppress(Exception):
+            self.query_one("#fb-view-placeholder", Static).display = False
+        await view_container.mount(ft)
+        self._show_view()
+
+    def _show_view(self) -> None:
+        import contextlib
+        with contextlib.suppress(Exception):
+            self.query_one("#fb-view").add_class("active")
+            self.query_one("#fb-browse").add_class("hidden")
+
+    def _show_browse(self) -> None:
+        import contextlib
+        with contextlib.suppress(Exception):
+            self.query_one("#fb-view").remove_class("active")
+            self.query_one("#fb-browse").remove_class("hidden")
+            self.query_one("#fb-filter", Input).focus()

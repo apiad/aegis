@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import ContentSwitcher
+from textual.widgets import ContentSwitcher, Input, OptionList
 
 from aegis.tui.file_browser_tab import FileBrowserTab
 from aegis.tui.file_index import FileIndexer
@@ -73,3 +73,59 @@ async def test_set_task_dock_shows_sidebar(tmp_path: Path):
         tab.set_task_dock(True)
         await pilot.pause()
         assert sidebar.display is True
+
+
+import time as _time
+
+
+@pytest.mark.asyncio
+async def test_filter_narrows_list(tmp_path: Path):
+    (tmp_path / "alpha.py").write_text("x")
+    (tmp_path / "beta.py").write_text("y")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+
+    def _wait_ready():
+        import threading
+        assert idx._ready.wait(5.0)
+    _wait_ready()
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        filt = tab.query_one("#fb-filter", Input)
+        filt.value = "alpha"
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        labels = [ol.get_option_at_index(i).prompt for i in range(ol.option_count)]
+        assert any("alpha.py" in lbl for lbl in labels)
+        assert not any("beta.py" in lbl for lbl in labels)
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_selecting_file_switches_to_view(tmp_path: Path):
+    f = tmp_path / "target.py"
+    f.write_text("print('hi')")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        # Get the first option and manually post the select event
+        if ol.option_count > 0:
+            opt = ol.get_option_at_index(0)
+            ol.post_message(OptionList.OptionSelected(ol, opt, 0))
+        await pilot.pause()
+        view = tab.query_one("#fb-view")
+        browse = tab.query_one("#fb-browse")
+        # Check that classes are set correctly
+        assert "active" in view.classes
+        assert "hidden" in browse.classes
+        assert tab._current_file is not None
+    idx.stop()
