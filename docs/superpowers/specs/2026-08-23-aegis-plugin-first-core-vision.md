@@ -39,15 +39,35 @@ pipeline, a Jupyter notebook doing ad-hoc orchestration, an embedded
 agent inside somebody else's product) should be able to `import aegis`
 and use everything aegis can do — spawn agents, register plugins, run
 workflows, dispatch queues, hot-load a plugin authored inside the
-calling process — without ever running `aegis serve`, without opening a
-socket, without dealing with the FastMCP HTTP surface, without a wire
-format. Zero network. Zero subprocess of the aegis server itself
-(agent subprocesses still exist, obviously — that's the harness model).
+calling process — without ever running a separate `aegis serve` binary
+they didn't start, without dealing with a public HTTP surface they
+didn't ask for, without a wire format they have to code against.
 
-The server is a *frontend* to the library, one of several. So is the
-TUI. So is the PWA. So is the HTTP remote plane. Each frontend
-translates its own interaction model into library calls; nothing lives
-only in the frontend.
+**But this does not mean "no aegis process ever runs".** The MCP plane
+that aegis injects into every attached harness *must* exist — it's how
+state is shared across all the harness subprocesses connected to it. So
+the calling library user, at some point, does the equivalent of
+`aegis.start()` — and the library takes care of standing up whatever it
+needs (a FastMCP server, a background thread, an in-process asyncio
+task; the exact shape is a design decision inside the library, not a
+concern for the caller).
+
+The commitment is not "zero processes". The commitment is: **the
+library owns the process(es) it needs**. There is no separate long-lived
+daemon that the caller must arrange to be running; there is no
+standalone binary the caller must depend on; the library user calls
+`aegis.start()` in their own program and everything comes up in a shape
+they control (same process, subprocess of theirs, thread of theirs —
+the library picks the mechanism, the caller picks the lifetime).
+
+`aegis serve` becomes one *specific* way to boot that library-owned
+process — the one that also attaches the TUI or the web frontend and
+runs it forever. Other bootings exist: a headless embedded caller runs
+`aegis.start()` and never attaches a frontend at all.
+
+The server, the TUI, the PWA, the HTTP remote plane are all
+*frontends* to the library. Each translates its own interaction model
+into library calls; nothing lives only in the frontend.
 
 Consequences that shape everything below:
 
@@ -73,6 +93,13 @@ Consequences that shape everything below:
   library user) pointing at the same `.aegis/` directory should not
   corrupt each other — file locking / SQLite / append-only JSONL, but
   the answer is at the library level.
+- **The MCP plane is a library-owned service, not an external
+  dependency.** Whether it runs as a FastAPI process, a background
+  thread, or an in-process asyncio task is a library design decision;
+  the caller does not care and does not have to arrange it. What
+  matters is that agent subprocesses can attach to it, and that the
+  same MCP tools available to those agents are also directly callable
+  as Python functions from the library user's code.
 
 This principle is not new — aegis today already ships as a Python
 package — but it needs to be made *load-bearing*. Today several
