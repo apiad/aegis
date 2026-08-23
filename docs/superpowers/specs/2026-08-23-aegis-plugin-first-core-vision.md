@@ -239,6 +239,58 @@ Things DSH does that we should *not* adopt:
 - **Snapshot browser tests.** Great for a public product; disproportionate
   cost for an operator tool with a small user base.
 
+## Test targets — five forks that measure the architecture
+
+The plugin-first thesis is falsifiable: if the core is really thin and
+the plugin vocabulary really rich, it should be *easy* to reshape aegis
+into products that look nothing like a coding harness. Five concrete
+targets to measure difficulty against — added 2026-08-23 as follow-up.
+
+Each is a hypothetical bundle: a specific plugin set + config that
+produces a working product on top of the aegis core. The measurement is
+not "is it built" — it's "how much code does the plugin set need, and
+how much of it belongs in aegis core vs. in the plugin".
+
+1. **The default: coding harness.** Baseline. Bundled plugins for
+   queues, workflows, canvases, terminals, groups, scheduler, Claude
+   and ACP drivers, memory system, skill system. This is what ships as
+   `aegis` today, just repackaged.
+
+2. **Research harness.** A plugin set for literature review and
+   synthesis: source-puller plugin (wrapping `bin/pull-source` +
+   Firecrawl), corpus-index plugin (semantic search over pulled
+   sources), citation-graph panel, note-linking UI, distill workflow.
+   No terminals, no PTYs. The MCP surface is source-shaped, not
+   file-shaped.
+
+3. **Creative writing / storytelling harness.** A plugin set for
+   long-form narrative: chapter/scene structure panel, character-sheet
+   canvas, timeline panel, prose-linter workflow, POV-switch skill. The
+   default agent persona is a collaborator, not an implementer. No
+   bash, no tests, no git integration.
+
+4. **LaTeX paper harness.** A plugin set for academic paper drafting:
+   LaTeX source panel, live PDF viewer panel, auto-compile-on-save
+   workflow (LaTeX → PDF → refresh), citation manager against BibTeX,
+   equation editor. The main loop is edit-compile-view rather than
+   edit-run-test. A CI-like plugin that keeps the PDF fresh in the
+   background.
+
+5. **Dark factory.** A plugin set for autonomous multi-agent code
+   production, meant to run without a human in the seat: agent-to-agent
+   handoff-heavy workflows, PR-open / PR-review / PR-merge automation,
+   scheduled cycles (spawn N workers, dispatch tickets, harvest PRs,
+   deliver diffs), Telegram/webhook notifications on blockers. No TUI
+   required — headless `aegis serve` with the web surface for
+   inspection. Different key bindings, different status bar (queue
+   throughput instead of context gauge), different default profile.
+
+The architecture is well-shaped if each of these bundles is on the
+order of hundreds of lines of plugin code, not thousands, and if none
+of them require touching aegis core. The architecture is *not*
+well-shaped if any of them exposes a missing extension point that
+forces a core change.
+
 ## Sequencing (rough)
 
 Not a plan — a hint. Roughly in order of dependency:
