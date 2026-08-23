@@ -26,6 +26,63 @@ Five ideas, ordered roughly by leverage.
 
 ---
 
+## Foundational principle — the core is a Python library, everything else sits on top
+
+Before the five ideas, one architectural commitment that colors all of
+them: **aegis's core is a Python library, not a server**. The server,
+the TUI, the PWA, the wire format, the HTTP remote plane — all of these
+sit *on top of* the library and are themselves consumers of it, not
+peers to it.
+
+The test: another Python application (a dark factory, a research
+pipeline, a Jupyter notebook doing ad-hoc orchestration, an embedded
+agent inside somebody else's product) should be able to `import aegis`
+and use everything aegis can do — spawn agents, register plugins, run
+workflows, dispatch queues, hot-load a plugin authored inside the
+calling process — without ever running `aegis serve`, without opening a
+socket, without dealing with the FastMCP HTTP surface, without a wire
+format. Zero network. Zero subprocess of the aegis server itself
+(agent subprocesses still exist, obviously — that's the harness model).
+
+The server is a *frontend* to the library, one of several. So is the
+TUI. So is the PWA. So is the HTTP remote plane. Each frontend
+translates its own interaction model into library calls; nothing lives
+only in the frontend.
+
+Consequences that shape everything below:
+
+- **Plugin registration is a Python API call.** `aegis.plugins.install(path)`,
+  `aegis.plugins.enable(name)`, `aegis.plugins.attach(module)` must all
+  be callable from library code, not only through a CLI or a server
+  request. The CLI is a thin argparse over these; the server is a thin
+  HTTP wrapper.
+- **UI declaration is Python-native.** A plugin declaring a panel does
+  so with library calls, and if no frontend is attached those panels
+  simply don't render — the plugin still works headless. (Idea 5's UI
+  abstraction fits here: the abstraction is a library-level object
+  graph; the frontends are its interpreters.)
+- **The MCP surface is a projection of the library, not a source of
+  truth.** Whatever is registered as an MCP tool must also be callable
+  as a library function; MCP is the shape aegis presents *to agents*,
+  not aegis's only public surface.
+- **Config is a Python object.** YAML is a serialization of it, not the
+  canonical form. A library user can build a config in code and skip
+  YAML entirely.
+- **State lives on disk in the library's format.** The server does not
+  own persistence; the library does. Two processes (server + embedded
+  library user) pointing at the same `.aegis/` directory should not
+  corrupt each other — file locking / SQLite / append-only JSONL, but
+  the answer is at the library level.
+
+This principle is not new — aegis today already ships as a Python
+package — but it needs to be made *load-bearing*. Today several
+capabilities are wired at the CLI or server layer (some argparse
+subcommands do work that belongs in the library; some MCP tools have
+logic that isn't reachable except through MCP). Making the library the
+sole owner of every capability is a refactor, and it precedes most of
+the ideas below because those ideas all assume library-level
+extensibility.
+
 ## Idea 1 — Vertical plugin extension: turn native subsystems into plugins
 
 Today the plugin API is horizontal — it *adds* hooks, tools, workflows on
