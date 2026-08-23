@@ -1145,6 +1145,41 @@ it's arguable rather than silent.
 
 ## Backlog
 
+### Plugin-first core — multi-quarter direction
+
+Full vision at
+`docs/superpowers/specs/2026-08-23-aegis-plugin-first-core-vision.md`.
+Captured from a voice note on 2026-08-23 after comparing aegis to the
+freshly-released DeepSeek Harness (DSH), which ships an
+"everything-is-a-plugin" architecture on top of Cordis.
+
+The destination: aegis shrinks to a minimal core (harness driver
+abstraction, MCP wiring, UI abstraction, session lifecycle, plugin
+runtime), and most of what today are native subsystems — workflows,
+queues, scheduler jobs, canvases, terminals, groups, even the concrete
+harness drivers — become bundled-but-swappable plugins. Two builds
+become trivially possible: the coding-harness default, and a clean base
+someone else can build a non-coding harness on top of.
+
+Five ideas, in dependency order:
+
+1. **Vertical plugin extension** — plugins can define subsystems, UI
+   panels, MCP entries, event types, persistence backends, not just
+   hooks/tools/workflows.
+2. **Runtime lifecycle** — install / uninstall / enable / disable a
+   plugin in a live `aegis serve`, without restart.
+3. **Agent-authored plugins in-session** — the agent writes a plugin
+   during a turn, attaches it, the next turn has the new capability. A
+   meta-skill + MCP introspection surface tell the agent what's loaded.
+4. **Plugin registry (aegis-hub)** — a canonical store + registrable
+   additional stores + publish flow.
+5. **UI abstraction** — atomic composable widgets in ~5 lines of Python
+   that automatically bind to both TUI and web.
+
+Non-goals: Cordis port, web-first UX, multi-provider LLM at aegis level,
+cross-machine sync. Each idea is weeks-to-months; this is a
+multi-quarter direction, not a sprint.
+
 ### Subscription-backed models (Antigravity / gateway) — DEFERRED INDEFINITELY
 
 Gemini CLI subscription access died 2026-06-18; the `gemini --acp` driver is
