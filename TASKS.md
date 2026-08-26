@@ -320,9 +320,41 @@ each currently trusts the caller for it.
 
 Touches: `src/aegis/mcp/{runtime,server}.py`, `mcp_config_json`, the primer
 in `PRIMING`, `src/aegis/comms/middleware.py` (drop the `args.get`
-best-effort read). Spec:
-`docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`
-(*`from` is best-effort, and says so*).
+best-effort read).
+
+**Specced + planned 2026-08-26.** The carrier is an HTTP header, probed rather
+than assumed on all three surfaces: Claude Code documents `--header` for http
+transport (CLI 2.1.226), ACP's `mcp_servers` entries already ship an empty
+`headers` list (`drivers/acp.py:490`), and FastMCP 3.2.0 exposes
+`get_http_headers()` at the `CommsMiddleware` choke point that is already
+mounted. Three traps are written into the plan, each of which fails silently
+rather than loudly:
+
+- **the header must not be `Authorization`** — `get_http_headers()` strips it
+  by default, and the result looks exactly like the unattributed state this
+  feature exists to remove;
+- **`hosts/launcher.py:_substitute_mcp_url` matches the placeholder by
+  equality**, so a token baked into the argv but missing from the launcher's
+  placeholder means no substitution and **no MCP plane at all on SSH hosts**;
+- **ACP headers are `List[HttpHeader]`** (`{name, value}`), not a mapping.
+
+v1 resolves and records; it never refuses a call. Rejecting untokened callers
+would also close the unauthenticated reverse-tunnelled plane (see *SSH
+execution hosts* above), but that is a later slice gated on the mismatch log
+showing every real caller carries a token.
+
+- Spec: `docs/superpowers/specs/2026-08-26-aegis-per-session-mcp-identity-design.md`
+- Plan: `docs/superpowers/plans/2026-08-26-aegis-per-session-mcp-identity.md`
+  — 8 TDD tasks. Task 2 proves the header survives a real request and Task 8
+  proves it survives a real `claude`; everything between them is worthless if
+  those two do not hold.
+- Prior art for the `from` gap: `docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`
+  (*`from` is best-effort, and says so*).
+
+**This is slice 0 of mandatory file claims**, not a neighbour of it. Advisory
+claims tolerate a spoofable caller; `aegis_claim` / `aegis_release` /
+`aegis_close` / `aegis_loop_stop` all gate on `from_handle`, and under
+enforcement a wrong handle is a wall in the wrong place.
 
 ### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
 
