@@ -38,6 +38,46 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Recently shipped
 
+### Per-session MCP identity *(shipped 2026-08-26)*
+
+`from_handle` is a transport fact rather than a convention. `SessionTokens`
+(`src/aegis/mcp/identity.py`, owned by `AegisMCP`) mints an opaque token per
+**harness spawn**; it rides the MCP config aegis already writes — a `headers`
+map for claude, a `List[HttpHeader]` for ACP — and `resolve_caller` reads it
+back off FastMCP's `get_http_headers()`. Two consumers: the comms ledger's
+`from`, which closes the attribution hole for every tool taking no
+`from_handle`; and `verified_handle` on `aegis_claim` / `aegis_release` /
+`aegis_close` / `aegis_loop_stop`, which is what mandatory file claims will
+stand on. v1 resolves and records — it never refuses a call.
+
+Four contracts worth knowing, each already paid for:
+
+- **The header must not be `Authorization`.** `get_http_headers()` strips it
+  by default, so the obvious bearer spelling attributes nothing — and
+  "nothing" is exactly what this looked like before the feature. Verified by
+  mutation: renaming the constant turns `test_identity_http.py` red.
+- **Mint before the factory runs.** The token is baked into the argv the
+  factory builds, so one minted afterwards is one the subprocess never sees.
+  A rename *re-points* the token (the process did not restart); close revokes;
+  a reconnect mints afresh.
+- **`_substitute_mcp_url` matches the config's shape, not string equality.**
+  The planned fix threaded the token down to keep two rebuilt placeholders
+  equal; matching the `mcpServers.aegis` entry with an empty `url` instead
+  removes the trap by construction, so the blob can grow fields without
+  silently costing every SSH-hosted session its MCP plane.
+- **FastMCP 3.2.0's `Client` takes no `headers`** — they belong to
+  `StreamableHttpTransport`. The in-memory transport therefore cannot test
+  this at all; `test_identity_http.py` runs a real server on a free port.
+
+Deferred by design: rejecting untokened callers (a config flag, once the
+mismatch log shows every real caller carries one), removing the `from_handle`
+parameter (breaking, one release later), and any mismatch surface in the UI.
+
+- Spec: `docs/superpowers/specs/2026-08-26-aegis-per-session-mcp-identity-design.md`
+- Plan: `docs/superpowers/plans/2026-08-26-aegis-per-session-mcp-identity.md`
+  — 8 TDD tasks, all landed; see its "Where the implementation departed from
+  this plan" for the three deviations.
+
 ### File browser tab *(shipped 2026-08-20)*
 
 `Ctrl+O` opens a persistent **FileBrowserTab** instead of the fullscreen
@@ -282,79 +322,6 @@ plan through a real pane and both fixed with mutation-checked tests:
 - Plan: `docs/superpowers/plans/2026-08-05-aegis-live-task-list.md`
 
 ## Active
-
-### Per-session MCP identity — make `from_handle` a transport fact
-
-*Surfaced 2026-08-11 while shipping the comms format. Not a regression: the
-gap predates it, the ledger only made it visible.*
-
-**The MCP server cannot tell which agent is calling it.** `AegisMCP` is
-co-resident and shared — every session on this aegis reaches the same HTTP
-port — so there is no per-connection identity to read a handle from. That is
-why `from_handle` is a *parameter* in the first place, baked into each
-agent's primer system prompt and passed back by convention.
-
-Three consequences, all live today:
-
-- An agent can pass a handle that is not its own, by mistake or otherwise.
-  Nothing checks it.
-- Tools that do not take `from_handle` (`aegis_list_sessions`,
-  `aegis_claims`, `aegis_canvas_list`, `aegis_meta`, every `config_*`)
-  cannot be attributed at all.
-- The comms ledger therefore records `from: ""` for those, and
-  `aegis comms list` prints `(unattributed)`. `CommsMiddleware` deliberately
-  does not guess — a fabricated attribution in an audit record is worse than
-  an honest gap — but a ledger whose whole point is *who talked to whom* has
-  a hole in the *who*.
-
-**Shape of the fix:** mint a per-session token at spawn and inject it
-alongside the primer (`mcp_config_json` already writes per-invocation MCP
-config via `--mcp-config`, and ACP carries `mcp_servers` in `new_session`),
-then resolve `from_handle` server-side from the token rather than trusting
-the argument. The parameter can stay for one release as a fallback so
-nothing breaks, then become advisory.
-
-**Payoff beyond attribution:** `aegis_claim` / `aegis_release` /
-`aegis_close` / `aegis_loop_stop` all gate on `from_handle` matching, and
-each currently trusts the caller for it.
-
-Touches: `src/aegis/mcp/{runtime,server}.py`, `mcp_config_json`, the primer
-in `PRIMING`, `src/aegis/comms/middleware.py` (drop the `args.get`
-best-effort read).
-
-**Specced + planned 2026-08-26.** The carrier is an HTTP header, probed rather
-than assumed on all three surfaces: Claude Code documents `--header` for http
-transport (CLI 2.1.226), ACP's `mcp_servers` entries already ship an empty
-`headers` list (`drivers/acp.py:490`), and FastMCP 3.2.0 exposes
-`get_http_headers()` at the `CommsMiddleware` choke point that is already
-mounted. Three traps are written into the plan, each of which fails silently
-rather than loudly:
-
-- **the header must not be `Authorization`** — `get_http_headers()` strips it
-  by default, and the result looks exactly like the unattributed state this
-  feature exists to remove;
-- **`hosts/launcher.py:_substitute_mcp_url` matches the placeholder by
-  equality**, so a token baked into the argv but missing from the launcher's
-  placeholder means no substitution and **no MCP plane at all on SSH hosts**;
-- **ACP headers are `List[HttpHeader]`** (`{name, value}`), not a mapping.
-
-v1 resolves and records; it never refuses a call. Rejecting untokened callers
-would also close the unauthenticated reverse-tunnelled plane (see *SSH
-execution hosts* above), but that is a later slice gated on the mismatch log
-showing every real caller carries a token.
-
-- Spec: `docs/superpowers/specs/2026-08-26-aegis-per-session-mcp-identity-design.md`
-- Plan: `docs/superpowers/plans/2026-08-26-aegis-per-session-mcp-identity.md`
-  — 8 TDD tasks. Task 2 proves the header survives a real request and Task 8
-  proves it survives a real `claude`; everything between them is worthless if
-  those two do not hold.
-- Prior art for the `from` gap: `docs/superpowers/specs/2026-08-11-aegis-comms-format-design.md`
-  (*`from` is best-effort, and says so*).
-
-**This is slice 0 of mandatory file claims**, not a neighbour of it. Advisory
-claims tolerate a spoofable caller; `aegis_claim` / `aegis_release` /
-`aegis_close` / `aegis_loop_stop` all gate on `from_handle`, and under
-enforcement a wrong handle is a wall in the wrong place.
 
 ### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
 

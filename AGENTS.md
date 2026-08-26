@@ -204,6 +204,24 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `aegis_handoff` / `aegis_enqueue`. aegis sessions run
   `--strict-mcp-config`: the user's other MCP servers are not present
   inside aegis; built-in claude tools (Read/Edit/Bash/…) are unchanged.
+  **`identity.py` makes `from_handle` a transport fact rather than a
+  convention.** One co-resident server on one port means no per-connection
+  identity, so aegis manufactures one: `SessionTokens` mints an opaque token
+  per *harness spawn* (`manager` mints before the factory builds the argv —
+  a token minted after is one the subprocess never receives), it rides the
+  MCP config aegis already writes (a `headers` map for claude, a
+  `List[HttpHeader]` — `{name, value}`, never a mapping — for ACP), and
+  `resolve_caller` reads it back off `get_http_headers()`. Two consumers:
+  the comms ledger's `from` (which closes the attribution hole for every
+  tool taking no `from_handle`) and `verified_handle` on `aegis_claim` /
+  `aegis_release` / `aegis_close` / `aegis_loop_stop`. Three rules already
+  paid for: **the header must not be `Authorization`** — FastMCP strips it
+  by default, and the result is indistinguishable from the unattributed
+  state the feature exists to remove; **a rename re-points the token rather
+  than reissuing it** (the process did not restart), while close revokes and
+  a reconnect mints afresh; and **v1 resolves and records, never refuses** —
+  an out-of-band caller with no token keeps exactly today's behaviour. Spec:
+  `docs/superpowers/specs/2026-08-26-aegis-per-session-mcp-identity-design.md`.
 - `src/aegis/queue/` - inter-agent task queues + agent inboxes.
   **A turn boundary is not completion.** Ending a turn is how an agent
   *waits* — the monitor briefing says "returns {monitor_id} immediately;
@@ -464,6 +482,14 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   **only one reader per pipe** — `SshLauncher.watch_stderr()` is opt-in
   and called only by `ClaudeSession`, since `AcpSession` drains its own
   stderr.
+  A third: **`_substitute_mcp_url` matches the MCP config's *shape*, not an
+  equality with a rebuilt `mcp_config_json("")`.** It fills the
+  `mcpServers.aegis` entry whose `url` is still empty, because a remote
+  session's URL isn't known until sshd allocates the tunnel port. It used to
+  compare strings, which meant the moment `build_argv` baked anything extra
+  into the blob (a session token's header, say) nothing matched, nothing was
+  substituted, and **every SSH-hosted session came up with an empty MCP URL —
+  no aegis plane at all, and no error.** Do not "simplify" it back to `==`.
   Paths are host-scoped: `Claim.host` gates overlap, and `file_target`
   returns `None` off-host so ctrl+click cannot silently open the
   identically-named local file. NOT the same as `--remote` (TUI attached

@@ -1,6 +1,38 @@
 # Per-session MCP Identity Implementation Plan
 
+**Status:** implemented 2026-08-26 (commits `9ff6efe`…`b72d064`). All 8 tasks
+landed; full hermetic suite green (3415 passed), live round-trip green against
+the real `claude` CLI.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+## Where the implementation departed from this plan
+
+Three places, all found by running the thing rather than reading it:
+
+1. **`_substitute_mcp_url` matches the config's *shape*, not an equality with a
+   rebuilt placeholder — and takes no `token`** (Task 4). The plan threaded a
+   token down to it so the two reconstructed strings would still match. But the
+   exact-equality comparison is *what creates* trap #2; keeping it means the
+   next field added to the blob re-breaks every SSH session silently. Reading
+   the `mcpServers.aegis` entry and filling its empty `url` cannot drift that
+   way, needs no token at the launcher, and preserves whatever else the blob
+   carries. Mutation-verified: restoring equality matching fails exactly the
+   tokenful test — while the 36 pre-existing launcher tests stay green, i.e.
+   the old suite would not have caught this.
+
+2. **FastMCP 3.2.0's `Client` takes no `headers` parameter at all** (Task 2).
+   Not the in-memory transport being header-blind, as the plan's fallback
+   anticipated — the kwarg does not exist on `Client.__init__` in either
+   transport. Headers belong to `StreamableHttpTransport(url, headers=...)`,
+   so the test runs a real HTTP server on a free port and passes them there.
+
+3. **`CommsLedger.read(day)` is day-scoped**; the plan's `_rows` helper called
+   it with no argument. Tests use `read_all()`.
+
+Additionally, the live test binds a **free port** rather than a fixed `8765`:
+a collision on a dev box fails as a timeout, which reads exactly like the
+header being dropped — the one failure this test exists to distinguish.
 
 **Goal:** Resolve the calling agent's handle from a per-spawn token carried in an HTTP header, so `from_handle` stops being a parameter any agent can get wrong.
 
@@ -61,7 +93,7 @@ Everything downstream calls this. No FastMCP server, no subprocess, no registry 
   - `resolve_caller(tokens: SessionTokens | None) -> str | None`
   - `verified_handle(tokens: SessionTokens | None, claimed: str | None) -> tuple[str, bool]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_tokens.py`:
 
@@ -164,12 +196,12 @@ def test_verified_handle_tolerates_a_missing_claim():
     assert verified is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_identity_tokens.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.mcp.identity'`
 
-- [ ] **Step 3: Write `identity.py`**
+- [x] **Step 3: Write `identity.py`**
 
 Create `src/aegis/mcp/identity.py`:
 
@@ -280,12 +312,12 @@ def verified_handle(tokens: SessionTokens | None,
     return (claimed or ""), False
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_tokens.py -q`
 Expected: PASS (13 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/mcp/identity.py tests/test_identity_tokens.py
@@ -305,7 +337,7 @@ Task 1 tested the store with no request context. This one proves the header actu
 - Consumes: `HEADER`, `SessionTokens`, `resolve_caller` (Task 1).
 - Produces: nothing — this task is a proof, not an API.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_http.py`:
 
@@ -371,14 +403,14 @@ async def test_a_stale_token_resolves_to_nothing():
     assert out.data == ""
 ```
 
-- [ ] **Step 2: Run tests to verify the header path is real**
+- [x] **Step 2: Run tests to verify the header path is real**
 
 Run: `uv run python -m pytest tests/test_identity_http.py -q`
 Expected: PASS if FastMCP's in-memory client propagates headers; **FAIL on the first two if it does not**.
 
 If the first two fail with an empty result, the in-memory transport does not carry headers. That is a transport limitation, not a design failure — switch `_server` to an HTTP transport by running the server on a free port and connecting with `Client(f"http://127.0.0.1:{port}/mcp/", headers=...)`, reusing the readiness-wait loop from `AegisMCP.start` (`mcp/runtime.py:60-68`). Do not delete the assertions; the point of this task is that the header survives a real request.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_identity_http.py
@@ -404,7 +436,7 @@ Wires the store to the one object that already owns the plane, and closes the at
   - `build_server(bridge, tokens: SessionTokens | None = None) -> FastMCP`
   - `CommsMiddleware(ledger, tokens: SessionTokens | None = None)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_ledger.py`:
 
@@ -466,12 +498,12 @@ def test_the_runtime_owns_a_token_store():
     assert AegisMCP().tokens.resolve("nope") is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_identity_ledger.py -q`
 Expected: FAIL — `TypeError: CommsMiddleware.__init__() got an unexpected keyword argument 'tokens'`
 
-- [ ] **Step 3: Give `AegisMCP` the store**
+- [x] **Step 3: Give `AegisMCP` the store**
 
 In `src/aegis/mcp/runtime.py`, add to `AegisMCP.__init__` after `self._bridge`:
 
@@ -491,7 +523,7 @@ And pass it through in `start()`:
         self._server = build_server(bridge, tokens=self.tokens)
 ```
 
-- [ ] **Step 4: Thread it into `build_server`**
+- [x] **Step 4: Thread it into `build_server`**
 
 In `src/aegis/mcp/server.py`, change the signature at `:588`:
 
@@ -507,7 +539,7 @@ and the middleware construction at `:601`:
         else Path.cwd() / ".aegis" / "state"), tokens=tokens))
 ```
 
-- [ ] **Step 5: Resolve in the middleware**
+- [x] **Step 5: Resolve in the middleware**
 
 In `src/aegis/comms/middleware.py`, replace `__init__`:
 
@@ -539,17 +571,17 @@ adding the helper beside `_record`:
                 or str(args.get("from_handle") or ""))
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_ledger.py -q`
 Expected: PASS (5 tests)
 
-- [ ] **Step 7: Run the comms and MCP suites for regressions**
+- [x] **Step 7: Run the comms and MCP suites for regressions**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "comms or mcp"`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/mcp/runtime.py src/aegis/mcp/server.py \
@@ -576,7 +608,7 @@ The token has to reach the subprocess. This task also carries the trap that woul
   - `ClaudeDriver.build_argv(agent, cwd, mcp_url, handle, launcher=LOCAL, token="")`
   - `_substitute_mcp_url(argv: list[str], url: str, token: str = "") -> list[str]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_injection.py`:
 
@@ -643,12 +675,12 @@ def test_build_argv_bakes_the_token_into_the_config():
     assert _headers(blob) == {"X-Aegis-Session": "tok123"}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_identity_injection.py -q`
 Expected: FAIL — `TypeError: mcp_config_json() takes 1 positional argument but 2 were given`
 
-- [ ] **Step 3: Extend `mcp_config_json`**
+- [x] **Step 3: Extend `mcp_config_json`**
 
 In `src/aegis/mcp/server.py`, replace the function at `:2322`:
 
@@ -668,7 +700,7 @@ def mcp_config_json(url: str, token: str = "") -> str:
     return json.dumps({"mcpServers": {"aegis": entry}})
 ```
 
-- [ ] **Step 4: Thread the token through `build_argv`**
+- [x] **Step 4: Thread the token through `build_argv`**
 
 In `src/aegis/drivers/claude.py`, change the signature at `:285` and the one argv line:
 
@@ -683,7 +715,7 @@ In `src/aegis/drivers/claude.py`, change the signature at `:285` and the one arg
             "--mcp-config", mcp_config_json(mcp_url, token),
 ```
 
-- [ ] **Step 5: Fix the launcher placeholder**
+- [x] **Step 5: Fix the launcher placeholder**
 
 In `src/aegis/hosts/launcher.py`, replace `_substitute_mcp_url`:
 
@@ -711,22 +743,22 @@ def _substitute_mcp_url(argv: list[str], url: str,
     return [real if a == placeholder else a for a in argv]
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_injection.py -q`
 Expected: PASS (7 tests)
 
-- [ ] **Step 7: Find every caller of the two changed signatures**
+- [x] **Step 7: Find every caller of the two changed signatures**
 
 Run: `grep -rn "_substitute_mcp_url\|build_argv(" src/ tests/`
 Update each call site to pass the token where one is available; both parameters default to `""`, so a caller that has no token keeps working unchanged. The `SshLauncher.spawn` path is the one that must pass it.
 
-- [ ] **Step 8: Run the hosts and driver suites for regressions**
+- [x] **Step 8: Run the hosts and driver suites for regressions**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "hosts or launcher or driver or claude"`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/mcp/server.py src/aegis/drivers/claude.py \
@@ -748,7 +780,7 @@ The other harness family. Its headers field already exists and is empty.
 - Consumes: `HEADER` (Task 1).
 - Produces: `AcpSession(..., token: str = "")`, stored as `self._token`, and an `mcp_servers` entry whose `headers` is `[{"name": "X-Aegis-Session", "value": token}]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_acp.py`:
 
@@ -790,12 +822,12 @@ def test_no_url_means_no_servers():
     assert sess._mcp_servers() == []
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_identity_acp.py -q`
 Expected: FAIL — `AttributeError: 'AcpSession' object has no attribute '_mcp_servers'`
 
-- [ ] **Step 3: Extract the entry builder and fill the headers**
+- [x] **Step 3: Extract the entry builder and fill the headers**
 
 In `src/aegis/drivers/acp.py`, add the method to `AcpSession`:
 
@@ -823,7 +855,7 @@ Replace the inline construction at `:490-494` with:
             mcp_servers = self._mcp_servers()
 ```
 
-- [ ] **Step 4: Store the token at construction**
+- [x] **Step 4: Store the token at construction**
 
 In `AcpSession.__init__` (`:314`), add `token: str = ""` as a keyword parameter and store it beside the handle at `:324`:
 
@@ -831,17 +863,17 @@ In `AcpSession.__init__` (`:314`), add `token: str = ""` as a keyword parameter 
         self._token = token
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_acp.py -q`
 Expected: PASS (4 tests)
 
-- [ ] **Step 6: Run the ACP and lovelaice suites for regressions**
+- [x] **Step 6: Run the ACP and lovelaice suites for regressions**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "acp or lovelaice or opencode or gemini"`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/drivers/acp.py tests/test_identity_acp.py
@@ -875,7 +907,7 @@ Without this the store is always empty and every other task is inert.
 > dict beside `fork_from` and `place` — a positional argument would break every
 > existing factory and every driver stub in the test suite.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_lifecycle.py`:
 
@@ -969,14 +1001,14 @@ class _FakeSession:
     async def close(self): return None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_identity_lifecycle.py -q`
 Expected: the first three PASS (they exercise Task 1's store directly and are here to pin the lifecycle contract); `test_spawn_hands_the_factory_a_token_that_resolves_to_the_handle` FAILS on `assert seen["token"]`, because nothing mints yet.
 
 If `_FakeSession` needs more of the session surface, add the missing no-op methods — `spawn` attaches observers and a session log to whatever the factory returns.
 
-- [ ] **Step 3: Thread `token` down the driver seam**
+- [x] **Step 3: Thread `token` down the driver seam**
 
 In `src/aegis/drivers/base.py`, add `token: str = ""` as the last keyword parameter of `session` (`:84`), `resume` (`:88`) and `fork` (`:98`). Mirror it on the concrete implementations — `claude.py:368,376,389` and `acp.py:696,709` — forwarding to `build_argv(..., token=token)` on the Claude side and `AcpSession(..., token=token)` on the ACP side. A driver that has no use for it accepts and drops it; the default keeps every existing call site working.
 
@@ -1001,7 +1033,7 @@ In `src/aegis/cli.py:61`, add `token=""` to `make_session` and forward it on all
                            token=token)
 ```
 
-- [ ] **Step 4: Mint at both spawn sites**
+- [x] **Step 4: Mint at both spawn sites**
 
 In `src/aegis/core/manager.py`, at the cold-spawn site (`:191`), mint alongside the URL:
 
@@ -1019,7 +1051,7 @@ and add it to the same conditional `extra` dict that already carries `fork_from`
 
 Do the same at the reconnect site (`:319-320`), minting for `handle` and passing `token=token` into that `self._make_session(...)` call. Mint **before** the factory runs — a token minted afterwards is one the subprocess never receives.
 
-- [ ] **Step 5: Follow renames and revoke on close**
+- [x] **Step 5: Follow renames and revoke on close**
 
 In `rename_handle` (`:488`), after the existing rename bookkeeping:
 
@@ -1035,17 +1067,17 @@ In `close` (`:404`), after the session is torn down:
             self._mcp.tokens.revoke(handle)
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_lifecycle.py -q`
 Expected: PASS (4 tests)
 
-- [ ] **Step 7: Run the manager and session suites for regressions**
+- [x] **Step 7: Run the manager and session suites for regressions**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -k "manager or session or spawn or rename"`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/core/manager.py tests/test_identity_lifecycle.py
@@ -1066,7 +1098,7 @@ The payoff. Four tools currently trust the caller for the handle they gate on; t
 - Consumes: `verified_handle` (Task 1), `tokens` in the `build_server` closure (Task 3).
 - Produces: no new API — the four tools resolve `from_handle` through `verified_handle` before using it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_identity_gating.py`:
 
@@ -1142,12 +1174,12 @@ If `build_server` needs more of the `AppBridge` surface than the locks bridge
 provides, reuse whichever fake `tests/test_mcp_bridge.py` supplies and attach
 the locks bridge to it.
 
-- [ ] **Step 2: Run tests to confirm the contract holds**
+- [x] **Step 2: Run tests to confirm the contract holds**
 
 Run: `uv run python -m pytest tests/test_identity_gating.py -q`
 Expected: PASS (4 tests). These exercise Task 1's helper directly, so they are green before the tools adopt it — they pin the contract the adoption depends on. **If any fails, Task 1 is wrong; fix it before touching the tools.** The failing-first signal for this task is the mutation check in Step 5, which is what actually proves the four tools call the helper.
 
-- [ ] **Step 3: Adopt it in the four tools**
+- [x] **Step 3: Adopt it in the four tools**
 
 In `src/aegis/mcp/server.py`, locate each of `aegis_claim`, `aegis_release`, `aegis_close`, `aegis_loop_stop` (`grep -n "def aegis_claim\|def aegis_release\|def aegis_close\|def aegis_loop_stop" src/aegis/mcp/server.py`). In each, immediately after the signature, replace the direct use of the parameter:
 
@@ -1158,12 +1190,12 @@ In `src/aegis/mcp/server.py`, locate each of `aegis_claim`, `aegis_release`, `ae
 
 `tokens` is in scope from the `build_server` closure. Every later use of `from_handle` in that function is now the resolved value.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_identity_gating.py -q`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Mutation-check the override, twice**
+- [x] **Step 5: Mutation-check the override, twice**
 
 Two separate mutations, because they catch different failures:
 
@@ -1187,12 +1219,12 @@ three tools are unverified too — write the equivalent assertion for at least o
 more tool before proceeding. A helper that is correct and uncalled is the
 failure mode this step exists to catch.
 
-- [ ] **Step 6: Run the full hermetic suite**
+- [x] **Step 6: Run the full hermetic suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: PASS. A red run is a regression, not noise to re-roll.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/mcp/server.py tests/test_identity_gating.py
@@ -1212,7 +1244,7 @@ The one test that proves the chain end to end: a real `claude` subprocess, a rea
 - Consumes: everything above.
 - Produces: nothing.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `tests/test_identity_live.py`:
 
@@ -1279,12 +1311,12 @@ async def test_a_real_claude_carries_the_token_to_a_real_server(tmp_path):
     assert seen[0] == "alice", f"header did not survive: got {seen[0]!r}"
 ```
 
-- [ ] **Step 2: Run it against the real CLI**
+- [x] **Step 2: Run it against the real CLI**
 
 Run: `uv run python -m pytest tests/test_identity_live.py -q -m live`
 Expected: PASS. If `seen` is empty the MCP attach failed (check the config shape); if `seen[0]` is `None` the header was dropped in transit, which is the finding this task exists to produce.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_identity_live.py

@@ -1,7 +1,11 @@
 # Per-session MCP identity — design
 
 **Date:** 2026-08-26
-**Status:** approved
+**Status:** implemented 2026-08-26 — see the plan's "Where the implementation
+departed from this plan" for the three deviations. Trap 2 was removed by
+construction rather than defused: `_substitute_mcp_url` now matches the MCP
+config's shape instead of comparing against a rebuilt placeholder, so the
+launcher never needs the token.
 
 ## Summary
 
