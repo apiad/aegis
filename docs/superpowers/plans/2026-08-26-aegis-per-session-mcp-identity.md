@@ -34,6 +34,22 @@ Additionally, the live test binds a **free port** rather than a fixed `8765`:
 a collision on a dev box fails as a timeout, which reads exactly like the
 header being dropped — the one failure this test exists to distinguish.
 
+## Two tests added beyond the plan
+
+Both close a seam the plan left covered only by a mock:
+
+- `tests/test_identity_ledger_http.py` — the ledger's attribution with
+  **nothing mocked**: a real header on a real request reaching the middleware
+  `build_server` mounted, landing in the ledger as the `from` a human reads in
+  `aegis comms list`. The plan's ledger tests monkeypatch `caller_token`, so
+  none of them exercise that path.
+- `tests/test_identity_acp_live.py` — the **ACP half of Task 8**. The plan's
+  live test covers `claude` only, and ACP carries the token in a different
+  field of a different shape, which is precisely trap #3. Verified against a
+  real `lovelaice-acp` agent on a real model. Note `lovelaice-acp` ships in
+  aegis's own venv but is not necessarily on the outer PATH — run with
+  `PATH="$PWD/.venv/bin:$PATH"` or it silently skips.
+
 **Goal:** Resolve the calling agent's handle from a per-spawn token carried in an HTTP header, so `from_handle` stops being a parameter any agent can get wrong.
 
 **Architecture:** `AegisMCP` owns a `SessionTokens` registry. The token is minted at spawn, injected into the MCP config aegis already writes (a `headers` map for Claude, a `List[HttpHeader]` for ACP), and read back server-side via FastMCP's `get_http_headers()`. Two consumers: the comms ledger's `from` field, and a `verified_handle()` helper on the tools that gate on identity. `from_handle` remains a fallback for one release.
