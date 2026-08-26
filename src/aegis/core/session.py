@@ -14,6 +14,7 @@ from aegis.events import (
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.digest.collect import DigestCollector
 from aegis.digest.models import TurnFacts
+from aegis.core.loop_judge import judge_for
 from aegis.recap import recap_for
 from aegis.recap.gate import should_recap
 from aegis.repos.writes import write_target
@@ -121,6 +122,7 @@ class AgentSession:
         # one-shot costs ~7s wall REGARDLESS of prefix size, and a 7s
         # stall after every productive turn is not payable.
         self.recap_enabled = True
+        self.loop_judge_enabled = True
         self.on_recap = None
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
@@ -463,11 +465,24 @@ class AgentSession:
         if self.state is not AgentState.working:
             self._chain_if_pending()
 
-    def stop_loop(self, reason: str = "stopped") -> bool:
-        """Reap the loop. Returns False when nothing was armed, so a double
+    def stop_loop(self, reason: str = "stopped", *,
+                  advisory: bool = False) -> bool:
+        """Reap the loop, or record a request to.
+
+        ``advisory=True`` is what ``aegis_loop_stop`` now does: the agent
+        states a claim and the judge decides. Leaving the tool
+        authoritative would leave the 2026-07-30 burn exactly where it is
+        — a loop reaped at iteration 1 of 20 with the user-visible half
+        unbuilt.
+
+        Returns False when nothing was armed, so a double
         stop is harmless."""
         if self._loop is None:
             return False
+        if advisory:
+            self._loop.advisory = reason
+            self._emit_loop("stop requested")
+            return True
         self._loop = None
         self._emit_loop(reason)
         return True
@@ -879,23 +894,60 @@ class AgentSession:
             if self._loop.exhausted():
                 self.stop_loop(
                     f"capped at {self._loop.max_iterations} iterations "
-                    f"— the agent did not stop it")
+                    f"— the judge did not stop it")
             else:
-                self._loop.iteration += 1
-                msg = InboxMessage(
-                    sender=sender_loop(self._loop.iteration,
-                                       self._loop.max_iterations),
-                    timestamp=now_iso(),
-                    body=self._loop.render(self.handle))
-                self._emit_dispatch([msg])
-                self._emit_loop("fired")
+                # `working` is emitted HERE, before the judge's ~7s call,
+                # so the session does not flicker idle while it thinks.
                 self._emit_state(AgentState.working, finished=False)
                 self.metrics.start_turn(self._now())
-                self._task = asyncio.create_task(
-                    self._run_turn(_render_batch([msg])))
+                self._task = asyncio.create_task(self._judged_loop_turn())
                 return
         self._unsolicited = False  # settling idle — no turn in flight
         self._arm_idle_watcher()
+
+    async def _judged_loop_turn(self) -> None:
+        """Ask the judge, then deliver — or stop.
+
+        The FIRST delivery is never judged: ``arm_loop`` chains
+        immediately when the session is idle, so no turn has yet run under
+        the instruction and there is nothing to judge. An exhausted loop
+        is not judged either — the caller already stopped it, and paying
+        for a verdict on a loop that is ending anyway is waste.
+        """
+        loop = self._loop
+        if loop is None:
+            self._emit_state(AgentState.ready, finished=True)
+            return
+        addendum = ""
+        if loop.iteration > 0 and self.loop_judge_enabled \
+                and self._agents is not None:
+            loop.note(self.last_facts)
+            verdict = await judge_for(
+                state_dir=self.state_dir, log_id=self.log_id,
+                instruction=loop.text, iteration=loop.iteration,
+                max_iterations=loop.max_iterations,
+                facts=self.last_facts or TurnFacts(),
+                still_streak=loop.still_streak, advisory=loop.advisory,
+                agent=self.agent, agents=self._agents,
+                cwd=str(self.project_root))
+            # Consumed either way: the judge has now seen the claim, and
+            # re-presenting a rejected one every iteration would bias
+            # every later verdict.
+            loop.advisory = ""
+            if verdict.verdict in ("done", "stuck"):
+                self.stop_loop(f"{verdict.verdict}: {verdict.reason}")
+                self._emit_state(AgentState.ready, finished=True)
+                self._chain_if_pending()
+                return
+            addendum = verdict.addendum
+        loop.iteration += 1
+        msg = InboxMessage(
+            sender=sender_loop(loop.iteration, loop.max_iterations),
+            timestamp=now_iso(),
+            body=loop.render(addendum))
+        self._emit_dispatch([msg])
+        self._emit_loop("fired")
+        await self._run_turn(_render_batch([msg]))
 
     async def _drain_unsolicited_turn(self) -> None:
         """Consume one turn's worth of events the harness emitted

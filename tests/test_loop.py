@@ -123,12 +123,20 @@ def test_sender_loop_renders_iteration():
     assert sender_loop(3, 20) == "loop · iteration 3/20"
 
 
-def test_loop_state_render_includes_text_and_stop_tool():
+def test_loop_state_render_is_verbatim_with_no_stop_coda():
+    """The coda is gone: the agent no longer decides whether it is done.
+
+    Verbatim still matters — the previous turn may have ended somewhere
+    unhelpful, so the instruction has to be present in the turn that acts
+    on it. See aegis.core.loop_judge.
+    """
     ls = LoopState(text="fix the tests")
-    body = ls.render("witty-wirth")
-    assert "fix the tests" in body
-    assert "aegis_loop_stop" in body
-    assert "witty-wirth" in body
+    assert ls.render() == "fix the tests"
+    assert "aegis_loop_stop" not in ls.render()
+    # The judge's addendum is appended, never substituted.
+    withadd = ls.render(addendum="the UI is still missing")
+    assert withadd.startswith("fix the tests")
+    assert "the UI is still missing" in withadd
 
 
 @pytest.mark.asyncio
@@ -336,6 +344,7 @@ async def test_service_stop_and_status():
     svc = LoopService(FakeSM([s]))
     svc.arm(from_handle="h", text="keep going", max_iterations=9)
     assert svc.status(from_handle="h")["loop"]["max_iterations"] == 9
+    # The operator's path is authoritative and reaps outright.
     assert svc.stop(from_handle="h", reason="done")["stopped"] is True
     assert svc.status(from_handle="h")["loop"] is None
     assert svc.stop(from_handle="h")["stopped"] is False
@@ -416,15 +425,21 @@ async def test_loop_stop_tool_registered():
 
 
 @pytest.mark.asyncio
-async def test_mcp_loop_stop_reaps():
+async def test_mcp_loop_stop_records_rather_than_reaps():
+    """The inversion: the agent states a claim, the judge decides.
+
+    Leaving this authoritative would leave the 2026-07-30 burn in place —
+    a loop reaped at iteration 1 of 20 with the user-visible half unbuilt.
+    """
     s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
     svc = LoopService(FakeSM([s]))
     svc.arm(from_handle="h", text="keep going")
     server = build_server(StubBridge(svc))
     res = await _call(server, "aegis_loop_stop", from_handle="h",
                       reason="green")
-    assert res["stopped"] is True
-    assert s.loop_status() is None
+    assert res["noted"] is True
+    assert s.loop_status() is not None       # still armed
+    assert s._loop.advisory == "green"
 
 
 @pytest.mark.asyncio
@@ -432,7 +447,7 @@ async def test_mcp_loop_stop_without_a_loop_is_harmless():
     s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
     server = build_server(StubBridge(LoopService(FakeSM([s]))))
     res = await _call(server, "aegis_loop_stop", from_handle="h")
-    assert res["stopped"] is False
+    assert res["noted"] is False
 
 
 def test_briefing_mentions_loop_stop():
@@ -489,7 +504,8 @@ async def test_slash_loop_stop_is_exact_match_only():
     # More than the bare word -> an instruction, not the verb.
     await dispatch("/loop stop the dev server and restart it", _ctx(svc))
     assert s.loop_status()["text"] == "stop the dev server and restart it"
-    # The bare word -> the verb.
+    # The bare word -> the verb. The OPERATOR's stop is authoritative and
+    # reaps outright; only the agent's aegis_loop_stop is advisory.
     res = await dispatch("/loop stop", _ctx(svc))
     assert res.ok
     assert s.loop_status() is None

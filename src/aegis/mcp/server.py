@@ -249,12 +249,15 @@ BRIEFING = (
     "reminder that lands in your inbox at that time. "
     "aegis_reminders(from_handle?) / aegis_reminder_cancel(reminder_id) "
     "list / cancel pending future-time reminders.\n"
-    "  - aegis_loop_stop(from_handle, reason?) : reap the `/loop` the "
-    "operator armed on your session. A loop re-delivers its instruction "
-    "every time you would otherwise go idle; you are the only thing that "
-    "ends one cleanly. Call it as soon as the instruction is satisfied — "
-    "otherwise the loop runs to its iteration cap and reports as capped, "
-    "not completed.\n"
+    "  - aegis_loop_stop(from_handle, reason?) : tell the loop judge you "
+    "believe the `/loop` is finished. A loop re-delivers its instruction "
+    "every time you would otherwise go idle. This call is ADVISORY: an "
+    "external judge weighs your claim against what the turn actually "
+    "landed — commits, files written, plan movement — and decides whether "
+    "the loop ends, so it can reject you. Read the instruction at its "
+    "widest sensible reading before calling: if the operator could not yet "
+    "sit down and USE the result, it is not finished. Make `reason` a real "
+    "argument, because the judge reads it.\n"
     "  - aegis_canvas_open(name, file?, from_handle) : open or create a "
     "shared canvas — a markdown file multiple agents collaboratively "
     "write to. First open of a name requires ``file`` (the on-disk "
@@ -1467,18 +1470,24 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_loop_stop(from_handle: str, reason: str = "") -> dict:
-        """Reap the `/loop` the operator armed on your session.
+        """Tell the loop judge you believe the `/loop` is finished.
 
         A loop re-delivers its instruction at every turn boundary where you
-        would otherwise settle idle. Call this the moment you judge that
-        instruction fully satisfied — you are the only thing that ends a loop
-        cleanly. If you don't, it runs until its iteration cap and reports
-        that it was capped rather than completed.
+        would otherwise settle idle. Call this when you judge that
+        instruction fully satisfied — but note that it is **advisory**: an
+        external judge weighs your claim against what the turn actually
+        landed (commits, files written, plan movement) and decides whether
+        the loop ends. It can and does reject the claim.
+
+        That is deliberate. You are inside the task and consistently
+        underestimate what remains; read the instruction at its widest
+        sensible reading before calling this. If the operator could not yet
+        sit down and *use* the result, the loop is not finished.
 
         ``from_handle`` is your own aegis handle (from your system prompt).
-        ``reason`` is a short note on why you consider it done; it is shown to
-        the operator. Calling this with no loop armed is harmless and returns
-        ``{"stopped": false}``.
+        ``reason`` is your justification — the judge reads it, so make it a
+        real argument rather than "done". Calling this with no loop armed
+        is harmless and returns ``{"noted": false}``.
         """
         from aegis.mcp.identity import verified_handle
 
@@ -1486,8 +1495,12 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         svc = getattr(bridge, "loop_service", None)
         if svc is None:
             return {"error": "loops not available on this bridge"}
+        # advisory=True: this is the AGENT asking. The operator's
+        # `/loop stop` goes through the same service without it and
+        # reaps outright.
         return svc.stop(from_handle=from_handle,
-                        reason=reason or "stopped by the agent")
+                        reason=reason or "the agent believes it is done",
+                        advisory=True)
 
     @server.tool
     async def aegis_reminders(from_handle: str | None = None) -> list[dict]:

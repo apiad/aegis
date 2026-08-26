@@ -37,11 +37,30 @@ class LoopService:
         return {"armed": True, "text": text.strip(),
                 "max_iterations": max_iterations}
 
-    def stop(self, *, from_handle: str, reason: str = "stopped") -> dict:
+    def stop(self, *, from_handle: str, reason: str = "stopped",
+             advisory: bool = False) -> dict:
+        """End the loop, or record a request to end it.
+
+        **The default is authoritative, and that is the operator's path.**
+        ``/loop stop`` means stop; the operator is not second-guessed.
+
+        ``advisory=True`` is the *agent's* path (``aegis_loop_stop``): the
+        agent states a claim and the loop judge weighs it against what the
+        turn actually landed. An agent grading its own homework from
+        inside a task it has been in for N turns is the 2026-07-30 burn,
+        and leaving that authoritative would leave the burn in place. See
+        ``aegis.core.loop_judge``.
+        """
         session = self._session_for(from_handle)
         if session is None:
             return {"error": f"no live session for handle {from_handle!r}"}
-        return {"stopped": session.stop_loop(reason), "reason": reason}
+        ok = session.stop_loop(reason, advisory=advisory)
+        if not advisory:
+            return {"stopped": ok, "reason": reason}
+        return {"noted": ok, "reason": reason,
+                "note": "recorded — the loop judge weighs this against "
+                        "what the turn actually landed and decides "
+                        "whether the loop ends"}
 
     def status(self, *, from_handle: str) -> dict:
         session = self._session_for(from_handle)
