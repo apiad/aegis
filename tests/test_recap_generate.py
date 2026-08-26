@@ -97,3 +97,28 @@ def test_footer_carries_the_price():
     r = Recap(line="x", model="haiku", duration_ms=1200, cost_usd=0.02,
               ok=True)
     assert "haiku" in r.footer and "1.2s" in r.footer
+
+
+def test_the_session_block_renders_as_separate_lines():
+    """It goes through rich Markdown, which collapses single newlines.
+
+    A plain newline join drew as one run-on paragraph — "building: x
+    done: y remaining: z" — while every substring assertion still passed.
+    Assert on the RENDERED output, not on `text`.
+    """
+    from rich.console import Console
+
+    from aegis.render import render_recap
+    from aegis.themes import aegis_colors
+    from aegis.tui.themes import THEMES
+
+    r = Recap(building="the judge", done="the spec",
+              remaining="the wiring", ok=True)
+    console = Console(width=76, no_color=True)
+    with console.capture() as cap:
+        console.print(render_recap(r, aegis_colors(THEMES["ink"])))
+    body = [ln.strip() for ln in cap.get().splitlines() if ln.strip()]
+    # One line each for building / done / remaining, not one paragraph.
+    assert sum("the judge" in ln for ln in body) == 1
+    joined = [ln for ln in body if "the judge" in ln][0]
+    assert "the spec" not in joined and "the wiring" not in joined

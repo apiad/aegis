@@ -363,6 +363,32 @@ def render_side_note(note, colors) -> Panel:
     return _aside(parts, colors)
 
 
+def render_recap(recap, colors) -> Panel:
+    """Visible block for a recap.
+
+    Transient by design, exactly as a side note is: this block lands in
+    the pane's ``_history`` and is **never appended to the session log**.
+    That is the mechanism behind "the recap never enters the agent's
+    context" — and it is also what stops recaps compounding, since a
+    logged recap would enter the window the *next* recap assembles and
+    every summary after it would be summarizing its own summaries.
+
+    Markdown on the ok path only, for the reason ``render_side_note``
+    gives: the text is model prose, but an error is aegis speaking a fixed
+    sentence and keeps its ``colors.error`` tint.
+    """
+    tint = colors.error if not recap.ok else colors.accent
+    parts: list[RenderableType] = [
+        Text("recap", style=f"bold italic {tint}")]
+    if recap.ok:
+        parts.append(Markdown(recap.text))
+    else:
+        parts.append(Text(recap.error or "no answer", style=tint))
+    if recap.footer:
+        parts.append(Text(recap.footer, style=colors.muted))
+    return _aside(parts, colors)
+
+
 def render_peer_answer(answer, colors) -> Panel:
     """Visible block for an `@peer` answer.
 

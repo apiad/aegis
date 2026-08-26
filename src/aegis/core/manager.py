@@ -332,6 +332,23 @@ class SessionManager:
         s.adopt(raw)
         return f"reconnected {handle} on {s.place.host}"
 
+    async def recap(self, handle: str, *, session_scope: bool = True):
+        """AppBridge-shaped: where this session stands."""
+        from aegis.digest.models import TurnFacts
+        from aegis.recap import Recap, recap_for
+        s = self.get(handle)
+        if s is None:
+            return Recap(error=f"unknown session: {handle}")
+        state_dir = self._persist_dir or self.state_root
+        if state_dir is None:
+            return Recap(
+                error="this session has no persisted transcript to read")
+        return await recap_for(
+            state_dir=state_dir, log_id=s.log_id,
+            facts=s.last_facts or TurnFacts(), agent=s.agent,
+            agents=self._agents, cwd=str(s.project_root),
+            session_scope=session_scope)
+
     async def side_note(self, handle: str, prompt: str):
         """AppBridge-shaped: a side note off this session's transcript."""
         from aegis.btw import SideNote, side_note_for

@@ -52,14 +52,23 @@ class Recap:
 
     @property
     def text(self) -> str:
+        """The rendered body.
+
+        The session form is a **markdown list**, not newline-joined lines.
+        It is rendered through ``rich.markdown.Markdown``, which collapses
+        single newlines into spaces — so the plain-join version drew as one
+        run-on paragraph ("building: x done: y remaining: z") while every
+        substring assertion about it still passed. Caught by looking at the
+        rendered block rather than at ``text``.
+        """
         if self.line:
             return self.line
         if not (self.building or self.done or self.remaining):
             return ""
         return "\n".join(x for x in (
-            f"building: {self.building}" if self.building else "",
-            f"done: {self.done}" if self.done else "",
-            f"remaining: {self.remaining}" if self.remaining else "",
+            f"- **building:** {self.building}" if self.building else "",
+            f"- **done:** {self.done}" if self.done else "",
+            f"- **remaining:** {self.remaining}" if self.remaining else "",
         ) if x)
 
     @property

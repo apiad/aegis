@@ -876,6 +876,11 @@ class ConversationPane(Widget):
         # Single primary slot (no add_loop_observer — one frontend owns the
         # chip). Harmless on a RemotePaneCore, which has no loop of its own.
         self._core.on_loop = self._on_loop_change
+        # Same single-slot shape: the automatic end-of-turn recap renders
+        # through the very block /recap uses, so there is one surface
+        # rather than two that can drift. Harmless on a RemotePaneCore,
+        # which never fires it.
+        self._core.on_recap = self._on_recap
         # RemotePaneCore has no log of its own; fall back to the handle so
         # the attribute always answers.
         self.log_id: str = getattr(self._core, "log_id", None) or handle
@@ -1493,6 +1498,22 @@ class ConversationPane(Widget):
             self._flush_streaming()
             self._put_block(render_side_note(note, self._palette),
                             f"btw: {note.answer}\n{note.footer}".strip(),
+                            at_idx=at_idx)
+            return None
+        if kind == "recap":
+            # Same treatment as a side note, and for the same reason: it
+            # lands in _history and is never appended to the session log,
+            # so it never enters the window a later recap assembles.
+            # Summaries that compound would summarize themselves.
+            from aegis.recap import Recap
+            from aegis.render import render_recap
+            recap = Recap(**eff["recap"])
+            self._flush_streaming()
+            # at_idx matters here and only here: a deferred /recap mounted
+            # a placeholder when you asked, and the answer has to land
+            # *there* rather than at the tail.
+            self._put_block(render_recap(recap, self._palette),
+                            f"recap: {recap.text}\n{recap.footer}".strip(),
                             at_idx=at_idx)
             return None
         if kind == "peer_answer":
@@ -2118,6 +2139,32 @@ class ConversationPane(Widget):
                 self._mount_block(
                     render_user_line(msg.body, self._palette, width),
                     msg.body)
+
+    def _put_recap(self, recap) -> None:
+        """Mount a recap block. The one place a recap reaches the screen.
+
+        Shared by the ``/recap`` effect branch and the automatic
+        end-of-turn line, so the two cannot drift apart in transience:
+        both land in ``_history`` and neither is ever appended to the
+        session log.
+        """
+        from aegis.render import render_recap
+        self._flush_streaming()
+        self._put_block(render_recap(recap, self._palette),
+                        f"recap: {recap.text}\n{recap.footer}".strip())
+
+    def _on_recap(self, _core, recap) -> None:
+        """Observer slot for the automatic end-of-turn recap.
+
+        Fired from a detached task on the event loop, so it must never
+        raise back into it — a summary cannot be allowed to disturb the
+        conversation it summarises.
+        """
+        try:
+            self._put_recap(recap)
+        except Exception:                       # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("failed to render recap")
 
     def _on_loop_change(self, _core, state, reason: str) -> None:
         """Drive the StatusBar loop segment, and toast on termination.

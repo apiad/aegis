@@ -312,6 +312,26 @@ async def _btw(ctx: CommandContext, args) -> CommandResult:
                          effect={"kind": "side_note", "note": asdict(note)})
 
 
+async def _recap(ctx: CommandContext, args) -> CommandResult:
+    """Where this session stands — building / done / remaining.
+
+    More verbose than the automatic one-liner on purpose: the automatic
+    one re-orients you after a turn, this one audits a two-hour session
+    before you open a PR. An explicit ask also outranks the movement gate
+    — you asked, so it fires whether or not the last turn moved anything.
+    """
+    recap = await ctx.bridge.recap(ctx.handle, session_scope=True)
+    if not recap.ok:
+        return CommandResult(False, "recap failed",
+                             recap.error or "no answer")
+    from dataclasses import asdict
+    # asdict, not the dataclass: the web seam ships `effect` straight out
+    # as JSON, and a dataclass there would break /recap on the web client
+    # only — the same trap /btw already documented.
+    return CommandResult(True, recap.text, recap.footer,
+                         effect={"kind": "recap", "recap": asdict(recap)})
+
+
 def _peer_targets(bridge) -> list:
     """Palette completer for a peer handle.
 
@@ -476,6 +496,14 @@ for _cmd in (
                  # The default cancel_note is right here: cancelling a
                  # /btw really is clean, because it never touched a
                  # harness session, so nothing happened anywhere.
+                 deferred=True),
+    SlashCommand("recap", "where this session stands",
+                 "/recap", _recap,
+                 spec=ArgSpec(),
+                 # Deferred for the same reason /btw is: measured ~7s, and
+                 # awaiting that in a frontend's input handler holds the
+                 # pane's message pump for all of it. Cancelling is clean
+                 # — no harness session was ever touched.
                  deferred=True),
     SlashCommand("peer", "ask an idle peer, from where you're standing",
                  "/peer <handle> [--cc] <question>", _peer,

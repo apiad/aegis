@@ -109,6 +109,10 @@ class AppBridge(Protocol):
         session id yet, driver cannot fork, or the target is mid-turn.
         """
         ...
+    async def recap(self, handle: str, *, session_scope: bool = True):
+        """Where this session stands, in one call. See ``aegis.recap``."""
+        ...
+
     async def side_note(self, handle: str, prompt: str):
         """Answer a side question from ``handle``'s own transcript tail.
 

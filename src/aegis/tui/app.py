@@ -1713,6 +1713,22 @@ class AegisApp(App):
         sess.spawned_by = forked_by
         return sess.handle
 
+    async def recap(self, handle: str, *, session_scope: bool = True):
+        """AppBridge-shaped: where this pane's session stands."""
+        from aegis.digest.models import TurnFacts
+        from aegis.recap import Recap, recap_for
+        pane = next((p for p in self._panes
+                     if isinstance(p, ConversationPane)
+                     and p.handle == handle), None)
+        if pane is None:
+            return Recap(error=f"unknown session: {handle}")
+        return await recap_for(
+            state_dir=self._state_dir, log_id=pane.log_id,
+            facts=pane._core.last_facts or TurnFacts(),
+            agent=pane._agent, agents=self._agents,
+            cwd=str(pane._core.project_root),
+            session_scope=session_scope)
+
     async def side_note(self, handle: str, prompt: str):
         """AppBridge-shaped: a side note off this pane's transcript.
 
