@@ -325,6 +325,22 @@ class ClaudeDriver(HarnessDriver):
         urge to use them; ``--system-prompt`` replaces claude's agentic
         default rather than appending to it, which
         ``--append-system-prompt`` cannot do.
+
+        **Re-measured 2026-08-26, and the $0.0044 above is a WARM price.**
+        A cold call costs 21,445 input tokens / ~7s / $0.0448, because the
+        run still loads the cwd's CLAUDE.md, skills and plugins. The prompt
+        cache warms only on an *identical* prompt — five recap-shaped calls
+        with differing tails showed ``cache_read: 0`` every time — and no
+        real caller repeats one, so the cold number is the steady state
+        rather than the exception. ``--setting-sources ""`` sheds exactly
+        those three sources: **21,445 -> 7,749 input tokens, a 64% cut**,
+        with no behavioural change, because a generation call is handed its
+        window explicitly and has no business reading the project's
+        instructions.
+
+        ``--exclude-dynamic-system-prompt-sections`` was measured too and
+        is deliberately absent: it relocates the per-machine sections
+        without removing them (21,445 either way).
         """
         return [
             "claude", "-p", "\n\n".join(instructions),
@@ -333,6 +349,7 @@ class ClaudeDriver(HarnessDriver):
             "--json-schema", json.dumps(schema.model_json_schema()),
             "--system-prompt", system or _ONESHOT_SYSTEM,
             "--tools", "",
+            "--setting-sources", "",
             "--mcp-config", json.dumps({"mcpServers": {}}),
             "--strict-mcp-config",
         ]
