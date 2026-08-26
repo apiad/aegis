@@ -38,6 +38,27 @@ Auth goes through `gh auth login` (no separate token management).
 
 ## Recently shipped
 
+### File browser tab *(shipped 2026-08-20)*
+
+`Ctrl+O` opens a persistent **FileBrowserTab** instead of the fullscreen
+`FilePickerModal`. Browse mode is a recency-sorted list (new
+`FileIndexer.paths_by_mtime()`) with a fuzzy filter; selecting a file switches
+the same tab into view mode — a full `FileTab` editor with `b` to go back — and
+a toggleable `DirectoryTree` sidebar on the right selects files straight into
+view mode. Multiple browser tabs coexist.
+
+One contract worth knowing: `AegisApp.set_sidebar_mode` fans out through
+`getattr(pane, "set_task_dock", None)`, so a composite tab must expose
+`set_task_dock` — not `set_sidebar_mode` — or `F3` silently skips it.
+
+- Spec: `docs/superpowers/specs/2026-08-20-aegis-file-browser-tab-design.md`
+- Plan: `docs/superpowers/plans/2026-08-20-aegis-file-browser-tab.md` (6 tasks, TDD)
+- Commits: `240c415`…`0b010a4`. `src/aegis/tui/file_browser_tab.py`,
+  `tests/test_file_browser_tab.py`.
+- **Outstanding: the web client has no file browser.** Joins the standing
+  TUI-first debt (sidebar, REPOS, live task list, session title) — one web
+  slice, not five.
+
 ### Context gauge accuracy + compaction detection *(shipped 2026-08-10)*
 
 The ctx% gauge reads >100% on most agentic turns because

@@ -1,7 +1,7 @@
 # File Browser Tab — Design
 
 **Date:** 2026-08-20  
-**Status:** approved
+**Status:** implemented (`240c415`…`0b010a4`, 2026-08-20)
 
 ## Summary
 

@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: `FileIndexer.paths_by_mtime() -> list[str]` — files sorted by mtime descending (most recently modified first); thread-safe snapshot
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_file_index.py`:
 
@@ -79,7 +79,7 @@ def test_paths_by_mtime_add_inserts_with_mtime(tmp_path: Path):
     idx.stop()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd repos/aegis && uv run pytest tests/test_file_index.py::test_paths_by_mtime_most_recent_first tests/test_file_index.py::test_paths_by_mtime_remove_clears_mtime tests/test_file_index.py::test_paths_by_mtime_add_inserts_with_mtime -v
@@ -87,7 +87,7 @@ cd repos/aegis && uv run pytest tests/test_file_index.py::test_paths_by_mtime_mo
 
 Expected: FAIL with `AttributeError: 'FileIndexer' object has no attribute 'paths_by_mtime'`
 
-- [ ] **Step 3: Implement mtime layer in FileIndexer**
+- [x] **Step 3: Implement mtime layer in FileIndexer**
 
 In `src/aegis/tui/file_index.py`:
 
@@ -192,7 +192,7 @@ def _remove(self, abs_path: str) -> None:
         self._mtimes.pop(rel, None)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_file_index.py -v
@@ -200,7 +200,7 @@ uv run pytest tests/test_file_index.py -v
 
 Expected: all pass (including pre-existing tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/file_index.py tests/test_file_index.py
@@ -227,7 +227,7 @@ git commit -m "feat(file-browser): mtime layer on FileIndexer — paths_by_mtime
   - `tab.focus_input() -> None`
   - `tab.close() -> None` (no-op)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_file_browser_tab.py`:
 
@@ -309,7 +309,7 @@ async def test_set_task_dock_shows_sidebar(tmp_path: Path):
         assert sidebar.display is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py -v
@@ -317,7 +317,7 @@ uv run pytest tests/test_file_browser_tab.py -v
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.tui.file_browser_tab'`
 
-- [ ] **Step 3: Implement the skeleton**
+- [x] **Step 3: Implement the skeleton**
 
 Create `src/aegis/tui/file_browser_tab.py`:
 
@@ -490,7 +490,7 @@ class FileBrowserTab(Widget, can_focus=True):
                 ol.add_option(opt)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py -v
@@ -498,7 +498,7 @@ uv run pytest tests/test_file_browser_tab.py -v
 
 Expected: all 4 tests pass
 
-- [ ] **Step 5: Run full suite**
+- [x] **Step 5: Run full suite**
 
 ```bash
 uv run pytest -q -m "not live"
@@ -506,7 +506,7 @@ uv run pytest -q -m "not live"
 
 Expected: all green
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/file_browser_tab.py tests/test_file_browser_tab.py
@@ -529,7 +529,7 @@ git commit -m "feat(file-browser): FileBrowserTab skeleton — tab contract + br
   - Internal `_switch_to_view(path: Path)` — mounts FileTab in `#fb-view`, shows view, hides browse
   - Internal `_switch_to_browse()` — shows browse, hides view, restores filter focus
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_file_browser_tab.py`:
 
@@ -588,7 +588,7 @@ async def test_selecting_file_switches_to_view(tmp_path: Path):
     idx.stop()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py::test_filter_narrows_list tests/test_file_browser_tab.py::test_selecting_file_switches_to_view -v
@@ -596,7 +596,7 @@ uv run pytest tests/test_file_browser_tab.py::test_filter_narrows_list tests/tes
 
 Expected: `test_filter_narrows_list` FAIL (filter not wired), `test_selecting_file_switches_to_view` FAIL (no switch logic)
 
-- [ ] **Step 3: Implement filter wiring and view switch**
+- [x] **Step 3: Implement filter wiring and view switch**
 
 In `src/aegis/tui/file_browser_tab.py`, add these methods to `FileBrowserTab`:
 
@@ -672,7 +672,7 @@ async def _switch_to_view(self, path: Path) -> None:
     self._show_view()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py -v
@@ -680,13 +680,13 @@ uv run pytest tests/test_file_browser_tab.py -v
 
 Expected: all pass
 
-- [ ] **Step 5: Run full suite**
+- [x] **Step 5: Run full suite**
 
 ```bash
 uv run pytest -q -m "not live"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/file_browser_tab.py tests/test_file_browser_tab.py
@@ -709,7 +709,7 @@ git commit -m "feat(file-browser): browse mode — filter, age labels, file sele
   - `prefill` pointing at an existing file → opens directly in view mode on mount
   - `focus_input()` — focuses TextArea when in view, Input when in browse
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_file_browser_tab.py`:
 
@@ -767,7 +767,7 @@ async def test_prefill_nonexistent_populates_filter(tmp_path: Path):
     idx.stop()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py::test_b_key_returns_to_browse tests/test_file_browser_tab.py::test_prefill_existing_file_opens_view tests/test_file_browser_tab.py::test_prefill_nonexistent_populates_filter -v
@@ -775,7 +775,7 @@ uv run pytest tests/test_file_browser_tab.py::test_b_key_returns_to_browse tests
 
 Expected: FAIL (no `b` key handler, no prefill-to-view logic)
 
-- [ ] **Step 3: Implement back-to-browse and prefill**
+- [x] **Step 3: Implement back-to-browse and prefill**
 
 Add to `FileBrowserTab` in `file_browser_tab.py`:
 
@@ -819,7 +819,7 @@ def focus_input(self) -> None:
         self.query_one("#fb-filter", Input).focus()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py -v
@@ -827,13 +827,13 @@ uv run pytest tests/test_file_browser_tab.py -v
 
 Expected: all pass
 
-- [ ] **Step 5: Run full suite**
+- [x] **Step 5: Run full suite**
 
 ```bash
 uv run pytest -q -m "not live"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/file_browser_tab.py tests/test_file_browser_tab.py
@@ -853,7 +853,7 @@ git commit -m "feat(file-browser): view mode — back-to-browse (b key) + prefil
 - Produces:
   - `on_directory_tree_file_selected` → calls `_switch_to_view(path)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_file_browser_tab.py`:
 
@@ -881,7 +881,7 @@ async def test_tree_file_selected_opens_view(tmp_path: Path):
     idx.stop()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py::test_tree_file_selected_opens_view -v
@@ -889,7 +889,7 @@ uv run pytest tests/test_file_browser_tab.py::test_tree_file_selected_opens_view
 
 Expected: FAIL (no `on_directory_tree_file_selected` handler)
 
-- [ ] **Step 3: Implement the handler**
+- [x] **Step 3: Implement the handler**
 
 Add to `FileBrowserTab`:
 
@@ -908,7 +908,7 @@ The existing import should already be:
 from textual.widgets import DirectoryTree, Input, Label, OptionList, Static
 ```
 
-- [ ] **Step 4: Run all tests to verify they pass**
+- [x] **Step 4: Run all tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_file_browser_tab.py -v
@@ -916,13 +916,13 @@ uv run pytest tests/test_file_browser_tab.py -v
 
 Expected: all pass
 
-- [ ] **Step 5: Run full suite**
+- [x] **Step 5: Run full suite**
 
 ```bash
 uv run pytest -q -m "not live"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/file_browser_tab.py tests/test_file_browser_tab.py
@@ -945,7 +945,7 @@ git commit -m "feat(file-browser): tree sidebar — DirectoryTree.FileSelected o
 
 **Note on testing:** `action_open_file_picker` drives `AegisApp` directly, which requires spinning up the full app with a real (or mocked) `_file_indexer`. This is an integration test in the same class as `test_integration_live.py`. Rather than write a slow live test here, the deliverable is verified by running `aegis` interactively and pressing Ctrl+O. The existing `test_file_browser_tab.py` tests cover all the tab behaviour.
 
-- [ ] **Step 1: Locate the current implementation**
+- [x] **Step 1: Locate the current implementation**
 
 In `src/aegis/tui/app.py`, find `action_open_file_picker` at line ~1358:
 
@@ -958,7 +958,7 @@ async def action_open_file_picker(self, prefill: str = "") -> None:
         await self._open_file_tab(path)
 ```
 
-- [ ] **Step 2: Replace with FileBrowserTab creation**
+- [x] **Step 2: Replace with FileBrowserTab creation**
 
 Replace the method body:
 
@@ -985,7 +985,7 @@ Remove the `@work` decorator — the new implementation is a plain `async def` t
 
 Also verify that `Path` is already imported at the top of `app.py` (it is, as `from pathlib import Path`).
 
-- [ ] **Step 3: Run full suite**
+- [x] **Step 3: Run full suite**
 
 ```bash
 uv run pytest -q -m "not live"
@@ -993,7 +993,7 @@ uv run pytest -q -m "not live"
 
 Expected: all green (the wiring change has no unit test coverage, but nothing that had tests should break)
 
-- [ ] **Step 4: Smoke test interactively**
+- [x] **Step 4: Smoke test interactively**
 
 ```bash
 cd /path/to/your/project && aegis
@@ -1007,14 +1007,14 @@ cd /path/to/your/project && aegis
 - Press `F3` — the tree panel should appear on the right
 - Press `Ctrl+O` again — a second browser tab (`browser:2`) should open
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/app.py
 git commit -m "feat(file-browser): wire Ctrl+O to FileBrowserTab — replaces modal picker"
 ```
 
-- [ ] **Step 6: Push**
+- [x] **Step 6: Push**
 
 ```bash
 git push origin main
