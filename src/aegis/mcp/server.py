@@ -8,6 +8,7 @@ from dataclasses import asdict
 from fastmcp import FastMCP
 
 from aegis.mcp.bridge import AppBridge
+from aegis.mcp.identity import HEADER_NAME
 from aegis.remote.client import (
     remote_schedule_list, remote_schedule_logs, remote_schedule_push,
     remote_schedule_remove, remote_schedule_show,
@@ -2328,6 +2329,16 @@ def _register_user_tool(server: "FastMCP", entry) -> None:
     server.tool(_wrapper)
 
 
-def mcp_config_json(url: str) -> str:
-    return json.dumps(
-        {"mcpServers": {"aegis": {"type": "http", "url": url}}})
+def mcp_config_json(url: str, token: str = "") -> str:
+    """The `--mcp-config` blob for one spawn.
+
+    ``token`` is that spawn's identity. It rides as a header because that
+    is the one per-session channel both harness families already carry —
+    Claude Code documents `--header` for http transport, and ACP's
+    `mcp_servers` entries have a headers list. The canonical spelling is
+    capitalised here for readability; the server matches case-insensitively.
+    """
+    entry: dict = {"type": "http", "url": url}
+    if token:
+        entry["headers"] = {HEADER_NAME: token}
+    return json.dumps({"mcpServers": {"aegis": entry}})

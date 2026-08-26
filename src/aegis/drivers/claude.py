@@ -284,7 +284,8 @@ class ClaudeDriver(HarnessDriver):
 
     def build_argv(self, agent: Agent, cwd: str,
                    mcp_url: str, handle: str,
-                   launcher: Launcher = LOCAL) -> list[str]:
+                   launcher: Launcher = LOCAL,
+                   token: str = "") -> list[str]:
         argv = [
             "claude", "-p",
             "--input-format", "stream-json",
@@ -294,7 +295,7 @@ class ClaudeDriver(HarnessDriver):
             "--model", agent.model,
             "--effort", _EFFORT[agent.effort],
             "--permission-mode", _PERMISSION_MODE[agent.permission],
-            "--mcp-config", mcp_config_json(mcp_url),
+            "--mcp-config", mcp_config_json(mcp_url, token),
             "--strict-mcp-config",
             "--append-system-prompt", PRIMING.format(handle=handle),
         ]

@@ -7,6 +7,7 @@ interface, so remoteness lives in one place instead of once per driver.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shlex
 from collections.abc import Mapping
@@ -126,21 +127,48 @@ def ssh_argv(spec: HostSpec, control_path: str,
     ]
 
 
+def _filled_mcp_config(arg: str, url: str) -> str | None:
+    """``arg`` with the aegis MCP url filled in, or None if it isn't one.
+
+    Matches on the config's *shape* — a JSON blob carrying an
+    ``mcpServers.aegis`` entry whose ``url`` is still empty — rather than
+    on equality with a reconstructed placeholder. That distinction is the
+    whole point: this used to compare against ``mcp_config_json("")``, so
+    the moment ``build_argv`` baked anything extra into the blob (a
+    session token's header, say) the two strings stopped matching,
+    nothing was substituted, and **every SSH-hosted session came up with
+    an empty MCP URL — no aegis plane at all, and no error**. Reading the
+    entry instead of rebuilding it cannot drift that way, and it
+    preserves whatever else the blob carries.
+
+    Still narrow: a non-JSON argument, someone else's MCP config, or an
+    entry that already has a url are all left alone.
+    """
+    if "mcpServers" not in arg:          # cheap reject before json.loads
+        return None
+    try:
+        blob = json.loads(arg)
+    except ValueError:
+        return None
+    if not isinstance(blob, dict):
+        return None
+    entry = blob.get("mcpServers", {}).get("aegis")
+    if not isinstance(entry, dict) or entry.get("url"):
+        return None
+    entry["url"] = url
+    return json.dumps(blob)
+
+
 def _substitute_mcp_url(argv: list[str], url: str) -> list[str]:
     """Fill in the MCP URL that wasn't known when argv was built.
 
-    ``build_argv`` bakes ``mcp_config_json(mcp_url)`` into the argv at
+    ``build_argv`` bakes the MCP config into the argv at
     session-construction time, but a remote session's URL depends on the
     port sshd allocates when the tunnel opens — which is later. The
     registry hands drivers an empty URL as a placeholder; this rewrites
-    exactly that one element just before exec. Matching on anything
-    looser (an empty string, a substring) would rewrite unrelated
-    arguments.
+    exactly that one element just before exec.
     """
-    from aegis.mcp import mcp_config_json
-    placeholder = mcp_config_json("")
-    real = mcp_config_json(url)
-    return [real if a == placeholder else a for a in argv]
+    return [_filled_mcp_config(a, url) or a for a in argv]
 
 
 class SshLauncher:
