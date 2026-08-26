@@ -1,7 +1,8 @@
 # File Browser Tab — Design
 
 **Date:** 2026-08-20  
-**Status:** implemented (`240c415`…`0b010a4`, 2026-08-20)
+**Status:** implemented (`240c415`…`0b010a4`, 2026-08-20; spec gaps closed in
+`a044635`, 2026-08-26)
 
 ## Summary
 
@@ -124,9 +125,16 @@ On mount and on every file-system change (driven by a 2-second poll of
 Age is a human-readable relative time derived from `time.time() - mtime`:
 `<N>s`, `<N>m`, `<N>h`, `<N>d`. Capped at `>30d` for very old files.
 
-Typing in the filter runs `indexer.filter(text)` (existing fuzzy match, case-
-insensitive substring) over the mtime-sorted snapshot and re-renders the list
-in the same mtime order (filter narrows, does not re-sort alphabetically).
+Typing in the filter narrows the mtime-sorted snapshot by case-insensitive
+substring and re-renders the list in the same mtime order (filter narrows,
+does not re-sort alphabetically).
+
+> **Not `indexer.filter(text)`**, which this spec originally called for: that
+> method sorts alphabetically and caps at 50, which would undo the recency
+> order the whole tab exists for. The match is inlined instead.
+
+The list is capped at 200 rows for widget speed, and a trailing disabled row
+reports how many were dropped — a silent cap reads as a complete listing.
 
 `Enter` or click on an entry → switch to view mode for that file.
 
@@ -151,6 +159,17 @@ content-switcher child. This keeps the two in sync as `FileTab` evolves.
 `b` (or `Esc` when in VIEW/PREVIEW mode, not EDIT mode) switches back to
 browse mode. The filter input is restored to its previous value and the list
 re-focuses on the file that was open.
+
+> **Escape does not arrive as a key event.** `AegisApp` binds
+> `Binding("escape", "interrupt", priority=True)`, and a priority app binding
+> is checked *before* the focused widget — so a `key_escape` method on this
+> tab (or on `FileTab`) never runs inside the real app. Probed against
+> Textual 8.2.6: the app action fires, the widget method does not. Escape
+> therefore reaches a tab through a duck-typed `escape_handled() -> bool`
+> rung that `action_interrupt` calls above the pane ladder; returning `False`
+> passes the key on to the rungs below (cancel a note, clear the input,
+> interrupt the turn). `b` is unaffected — a read-only `TextArea` does not
+> swallow printable keys, so it still bubbles normally.
 
 ### Sidebar — file tree
 

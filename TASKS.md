@@ -47,9 +47,29 @@ the same tab into view mode — a full `FileTab` editor with `b` to go back — 
 a toggleable `DirectoryTree` sidebar on the right selects files straight into
 view mode. Multiple browser tabs coexist.
 
-One contract worth knowing: `AegisApp.set_sidebar_mode` fans out through
-`getattr(pane, "set_task_dock", None)`, so a composite tab must expose
-`set_task_dock` — not `set_sidebar_mode` — or `F3` silently skips it.
+Two contracts worth knowing, both already paid for:
+
+- **`AegisApp.set_sidebar_mode` fans out through
+  `getattr(pane, "set_task_dock", None)`**, so a composite tab must expose
+  `set_task_dock` — not `set_sidebar_mode` — or `F3` silently skips it.
+- **Escape does not arrive as a key event.** The app binds
+  `Binding("escape", "interrupt", priority=True)`, and a priority app binding
+  is checked before the focused widget, so a `key_escape` method on a tab
+  never runs inside the real app (probed on Textual 8.2.6: the app action
+  fires, the widget method does not). A tab that owns escape implements the
+  duck-typed `escape_handled() -> bool` rung `action_interrupt` calls above
+  the pane ladder, and returns `False` when it wants nothing, so the rungs
+  below still run. Printable keys are unaffected — `b` bubbles normally even
+  with a read-only `TextArea` focused.
+
+**Spec gaps closed 2026-08-26 (`a044635`).** Four things the spec asked for
+and the first pass did not ship: `Esc` back to browse, cursor restored to the
+file that was open (and held there across the 2s poll rather than walking to
+the top), the 200-row cap reporting how many rows it dropped, and the poll
+returning early in view mode instead of rebuilding a hidden list. The escape
+work also revived `FileTab`'s own escape — exit edit mode, exit preview,
+answer the discard prompt — which the priority binding had made dead inside
+`AegisApp` since long before this tab existed. 12 tests, each mutation-checked.
 
 - Spec: `docs/superpowers/specs/2026-08-20-aegis-file-browser-tab-design.md`
 - Plan: `docs/superpowers/plans/2026-08-20-aegis-file-browser-tab.md` (6 tasks, TDD)
