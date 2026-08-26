@@ -1745,7 +1745,8 @@ class AegisApp(App):
         return await side_note_for(
             prompt, state_dir=self._state_dir, log_id=pane.log_id,
             agent=pane._agent, agents=self._agents,
-            cwd=str(pane._core.project_root))
+            cwd=str(pane._core.project_root),
+            facts=getattr(pane._core, "last_facts", None))
 
     async def peer_ask(self, from_handle: str, target: str, prompt: str,
                        *, cc: bool = False):

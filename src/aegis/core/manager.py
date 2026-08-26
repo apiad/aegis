@@ -361,7 +361,8 @@ class SessionManager:
                 error="this session has no persisted transcript to read")
         return await side_note_for(
             prompt, state_dir=state_dir, log_id=s.log_id, agent=s.agent,
-            agents=self._agents, cwd=str(s.project_root))
+            agents=self._agents, cwd=str(s.project_root),
+            facts=s.last_facts)
 
     async def session_send_and_await(self, *, handle: str, prompt: str,
                                      workflow_id: str = "",

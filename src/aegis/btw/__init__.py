@@ -96,21 +96,34 @@ _PREAMBLE = (
 
 
 async def side_note(prompt: str, *, replay, driver, agent, cwd: str,
-                    **window_opts) -> SideNote:
+                    facts=None, **window_opts) -> SideNote:
     """Answer ``prompt`` from ``replay``'s tail, in one call.
+
+    ``facts`` is the turn's ``TurnFacts`` when the caller has them. The
+    window carries what was *said*; the facts carry what was *done*, and
+    "did that commit land?" is only answerable from the second — the
+    window's 500-char item clip eats most of a ``git`` call. Costs ~120
+    tokens against a ~6,900-token prefix, which is inside the noise.
 
     Best-effort by contract. Every failure — a driver that raises, a
     payload that will not parse — comes back as a ``SideNote`` with
     ``ok=False`` and a reason, because a side question must never be able
     to disturb the conversation it sits beside.
     """
+    from aegis.digest.render import render_facts
+
     window = assemble(replay, **window_opts)
+    parts = [
+        _PREAMBLE.format(header=window.header or "no turns yet"),
+        f"--- conversation ---\n{window.text}\n--- end ---",
+    ]
+    if facts is not None:
+        parts.append(render_facts(facts))
+    # The question goes LAST, after all context. Burying it mid-prompt is
+    # how a side note starts answering something adjacent to the ask.
+    parts.append(f"The operator's side question: {prompt}")
     try:
-        gen = await driver.generate_detailed(
-            agent, cwd, BtwAnswer,
-            _PREAMBLE.format(header=window.header or "no turns yet"),
-            f"--- conversation ---\n{window.text}\n--- end ---",
-            f"The operator's side question: {prompt}")
+        gen = await driver.generate_detailed(agent, cwd, BtwAnswer, *parts)
     except Exception as e:                                    # noqa: BLE001
         return SideNote(header=window.header,
                         error=f"{type(e).__name__}: {e}")
@@ -125,7 +138,7 @@ async def side_note(prompt: str, *, replay, driver, agent, cwd: str,
 
 
 async def side_note_for(prompt: str, *, state_dir, log_id: str, agent,
-                        agents: dict, cwd: str) -> SideNote:
+                        agents: dict, cwd: str, facts=None) -> SideNote:
     """Resolve a live session's transcript into an answered side note.
 
     The half both AppBridge implementations share: pick the billing
@@ -152,5 +165,5 @@ async def side_note_for(prompt: str, *, state_dir, log_id: str, agent,
     except Exception as e:                                    # noqa: BLE001
         return SideNote(error=f"could not read the transcript: {e}")
     note = await side_note(prompt, replay=replay, driver=driver,
-                           agent=gen_agent, cwd=cwd)
+                           agent=gen_agent, cwd=cwd, facts=facts)
     return replace(note, billed_to_session_profile=unset)
