@@ -5,6 +5,49 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-08-26
+
+### Added
+
+- **`Ctrl+O` opens a file browser, not a modal picker.** The old picker was
+  filename-first: it wanted you to know what you were looking for, dismissed
+  itself the moment you did, and left nothing behind. The most common reason
+  to open a file here is *see whatever the agent just touched*, which is a
+  question about recency, not about names.
+
+  So `Ctrl+O` now opens a **FileBrowserTab** — an ordinary tab, so several
+  coexist and none of them steal the screen. It lists files newest-first
+  (`FileIndexer` grew an mtime layer and a `paths_by_mtime()` accessor) with a
+  relative age against each row, and a filter that narrows *without* re-sorting,
+  because alphabetical order is the thing the tab exists to avoid. A
+  `DirectoryTree` sidebar rides on `F3` alongside every other sidebar in the
+  app, and selecting from it opens straight into the file.
+
+  Picking a file turns the same tab into the editor rather than spawning
+  another one — it mounts a real `FileTab`, so it is the editor you already
+  know (`e` edit, `Ctrl+S` save, `p` Markdown preview, `Ctrl+X` external) and
+  stays that editor as `FileTab` evolves. `b` or `Escape` goes back to the
+  list, with the cursor on the file you were just reading; the 2-second
+  refresh holds it there rather than walking it back to the top under you.
+  The list is capped at 200 rows and says how many it dropped, since a silent
+  cap reads as a complete listing.
+
+  The old `FilePickerModal` is untouched and still serves the `Ctrl+click`
+  backtick-token path, which is genuinely filename-first.
+
+### Fixed
+
+- **Escape reaches file tabs at all.** `AegisApp` binds `escape` at
+  `priority=True`, and a priority app binding is checked *before* the focused
+  widget — so `FileTab.key_escape` never ran inside the app. Leaving edit
+  mode, leaving Markdown preview, and answering the discard prompt were all
+  documented, all unit-tested, and all dead in the product; the only escape
+  anyone got was the app's own interrupt. Tabs that own escape now implement
+  an `escape_handled()` rung that `action_interrupt` calls above the pane
+  ladder, and return `False` when they want nothing so the rungs below still
+  run. An editing editor claims the key before the browser does, so leaving
+  edit mode no longer risks abandoning the file being edited.
+
 ## [0.34.0] - 2026-08-12
 
 ### Added

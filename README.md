@@ -249,16 +249,21 @@ plan → dispatch implementer per task with durable resume),
   shows live per-queue depth and the most recent in-flight worker.
   `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
   QUEUED / RECENT` bands and a live assistant-text tail.
-- **File viewer + picker.** `Ctrl+O` opens a fuzzy file picker
-  (typeahead, keyboard nav, top-match preselected) over a background
-  watchdog index; pick a file and it lands in a `FileTab` —
+- **File browser + viewer.** `Ctrl+O` opens a **FileBrowserTab** — a
+  persistent tab, not a modal, so several can coexist. It lists files
+  newest-first over a background watchdog index (the common case is
+  *open whatever the agent just touched*, which no filename-first
+  picker serves), with a typeahead filter that narrows without
+  disturbing that order and a `DirectoryTree` sidebar on the right
+  under `F3`. Pick a file and the same tab becomes a full editor —
   syntax-highlighted read-only view by default, `e` toggles edit mode,
-  `Ctrl+S` saves, Escape with unsaved edits prompts to discard. Agents
-  can drop you into the same view via the `aegis_view_file` MCP tool,
-  and `Ctrl+click` on a backtick-wrapped filename in any agent
-  response opens it directly. `Ctrl+click` on a `Read` / `Write` /
-  `Edit` block opens the file that call touched — an `Edit` lands on
-  the line the edit began.
+  `Ctrl+S` saves, `p` previews Markdown, Escape with unsaved edits
+  prompts to discard; `b` or Escape returns to the list, on the file
+  you were just reading. Agents can drop you into the view via the
+  `aegis_view_file` MCP tool, and `Ctrl+click` on a backtick-wrapped
+  filename in any agent response opens it directly. `Ctrl+click` on a
+  `Read` / `Write` / `Edit` block opens the file that call touched —
+  an `Edit` lands on the line the edit began.
 - **Config panel.** `F2` opens the live `.aegis.yaml` editor inside
   the TUI — see agents/queues at a glance, add an agent
   through a validated modal. Same edit helpers back the scriptable
@@ -609,7 +614,7 @@ ConfigPanel via `F2`.
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `Ctrl+D` | Open / close the queue dashboard |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
-| `Ctrl+O` | Fuzzy file picker |
+| `Ctrl+O` | New file browser tab — recency list, filter, tree sidebar, editor |
 | `F2` | Open the **ConfigPanel** — edit agents/queues/etc. live |
 | `Escape` | Interrupt the active turn (or dismiss a modal) |
 | `Click on a block` | Copy that message / tool result to clipboard |

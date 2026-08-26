@@ -18,7 +18,7 @@
 | `Ctrl+D` | Open / close the queue dashboard |
 | `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
-| `Ctrl+O` | Fuzzy file picker |
+| `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
