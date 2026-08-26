@@ -12,6 +12,8 @@ from aegis.events import (
     ContextUpdate, Event, Result, ThinkingTokens, ToolResult, ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
+from aegis.digest.collect import DigestCollector
+from aegis.digest.models import TurnFacts
 from aegis.repos.writes import write_target
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
@@ -101,6 +103,12 @@ class AgentSession:
         # sidebar say "a peer is in this repo too". Optional: headless
         # callers and every test that predates it pass nothing.
         self.repo_tracker = repo_tracker
+        # What this turn actually did — commits, writes, plan movement.
+        # Shared by the loop judge, the recap and /btw. Reset per turn.
+        self.digest = DigestCollector()
+        self.last_facts: TurnFacts | None = None
+        # Fired once per completed turn with that turn's facts.
+        self.on_facts = None
         # Subagent plans, keyed by the dispatching Task tool_use id. Kept
         # apart from the top-level plan because a subagent's short list
         # would otherwise overwrite its parent's — the strip would read
@@ -480,6 +488,9 @@ class AgentSession:
             self._emit_dispatch(notices)
             text = f"{_render_batch(notices)}\n\n{text}"
         self._unsolicited = False  # a real, prompted turn
+        self.digest.reset()
+        turn_started = self._now()
+        plan_done_at_start = self.plan_state().done
         harness_name = getattr(self.agent, "harness", "unknown")
         handle = SessionHandle(
             handle=self.handle,
@@ -541,6 +552,10 @@ class AgentSession:
         # 3. Execution
         saw_result = False
         assistant_text_parts: list[str] = []
+        # The digest's tail, excluding subagent narration. Kept apart from
+        # assistant_text_parts, which PostTurnEvent consumes with its own
+        # (deliberately inclusive) contract.
+        own_text_parts: list[str] = []
         try:
             if not self._started:
                 await self._session.start()
@@ -553,6 +568,14 @@ class AgentSession:
 
                 if isinstance(ev, AssistantText):
                     assistant_text_parts.append(ev.text)
+                    # A subagent's narration is not this turn's answer.
+                    # `capture_next_reply` has said so since @peer shipped,
+                    # and the queue's result capture had to learn it the
+                    # hard way. Parented events are skipped, not treated as
+                    # ending the run — the latter truncates the agent's own
+                    # message whenever a subagent speaks mid-stream.
+                    if getattr(ev, "parent_tool_use_id", None) is None:
+                        own_text_parts.append(ev.text)
                 elif isinstance(ev, ToolUse):
                     self.metrics.record_tool()
                 elif isinstance(ev, ToolResult) and ev.is_error:
@@ -603,7 +626,25 @@ class AgentSession:
             self.metrics.commit(None, self._now())
             self._emit_state(AgentState.error, finished=True)
 
-        # 4. Post-turn hooks (fire-and-forget)
+        # 4. Turn facts — best-effort, never raises into the turn.
+        try:
+            plan_now = self.plan_state()
+            facts = await self.digest.build(
+                plan_done=plan_now.done,
+                plan_total=plan_now.total,
+                plan_done_at_start=plan_done_at_start,
+                assistant_tail="".join(own_text_parts),
+                duration_s=max(0.0, self._now() - turn_started))
+        except Exception as e:                                # noqa: BLE001
+            facts = TurnFacts(error=f"{type(e).__name__}: {e}")
+        self.last_facts = facts
+        if self.on_facts is not None:
+            try:
+                self.on_facts(self, facts)
+            except Exception:                                 # noqa: BLE001
+                log.exception("on_facts observer raised")
+
+        # 5. Post-turn hooks (fire-and-forget)
         post_ev = PostTurnEvent(
             session=ctx.session,
             user_message=text,
@@ -633,18 +674,28 @@ class AgentSession:
     def _record_repo(self, ev: ToolUse) -> None:
         """Note the repo behind a write tool call.
 
+        Feeds two consumers: the sidebar's repo tracker and the turn
+        digest. The digest is deliberately NOT gated on the tracker being
+        present — headless callers and most tests pass no tracker, and the
+        recap and loop judge must still see what the turn wrote.
+
         Only reached from ``_fire_event``, which the replay path does not
         call — so a resumed session starts with an empty board rather than
-        resurrecting every repo its transcript ever mentioned.
+        resurrecting every repo its transcript ever mentioned, and does not
+        re-collect its whole history as one turn's worth of work.
 
         A subagent's write is recorded under this session's handle: the
         subagent has no handle of its own, and the repo is this session's
         responsibility either way.
         """
-        if self.repo_tracker is None:
-            return
         path = write_target(ev.name, ev.raw_input, ev.locations, ev.kind)
         if not path:
+            return
+        try:
+            self.digest.note_write(path, host=self.place.host)
+        except Exception:  # noqa: BLE001 — a summary must never take a turn
+            log.exception("digest raised on note_write; continuing")
+        if self.repo_tracker is None:
             return
         try:
             self.repo_tracker.record(self.handle, path,

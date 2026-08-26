@@ -88,9 +88,17 @@ class DigestCollector:
     async def build(self, *, plan_done: int, plan_total: int,
                     plan_done_at_start: int, assistant_tail: str,
                     duration_s: float) -> TurnFacts:
-        """Diff every tracked repo. Git runs off the event loop."""
+        """Diff every tracked repo. Git runs off the event loop.
+
+        **The no-write fast path is not an optimization detail.** Most
+        turns touch no repo, and an executor round-trip for an empty diff
+        would make every turn boundary asynchronous where it was
+        synchronous before — which is observable: it changes when
+        ``_chain_if_pending`` runs relative to the caller.
+        """
         try:
-            deltas = await asyncio.to_thread(self._diff_all)
+            deltas = (await asyncio.to_thread(self._diff_all)
+                      if self._tracked else ())
         except Exception as e:                                # noqa: BLE001
             return TurnFacts(assistant_tail=assistant_tail,
                              duration_s=duration_s,
