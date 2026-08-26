@@ -5,6 +5,7 @@ import contextlib
 import socket
 
 from aegis.mcp.bridge import AppBridge, SessionInfo
+from aegis.mcp.identity import SessionTokens
 from aegis.mcp.server import build_server
 
 
@@ -37,6 +38,9 @@ class AegisMCP:
 
     def __init__(self) -> None:
         self._bridge: AppBridge | None = None
+        #: Per-spawn identity for every session on this plane. In memory:
+        #: a token identifies a subprocess, and no subprocess outlives us.
+        self.tokens = SessionTokens()
         self._server = None
         self.host = "127.0.0.1"
         self.port = _free_port()
@@ -53,7 +57,7 @@ class AegisMCP:
         if self._task is not None:
             return
         bridge = self._bridge if self._bridge is not None else _NullBridge()
-        self._server = build_server(bridge)
+        self._server = build_server(bridge, tokens=self.tokens)
         self._task = asyncio.create_task(
             self._server.run_http_async(
                 host=self.host, port=self.port, show_banner=False))

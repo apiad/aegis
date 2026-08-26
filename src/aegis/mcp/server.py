@@ -585,7 +585,16 @@ def make_handoff(bridge):
     return aegis_handoff
 
 
-def build_server(bridge: AppBridge) -> FastMCP:
+def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
+    """The aegis MCP surface.
+
+    ``tokens`` is the plane's :class:`~aegis.mcp.identity.SessionTokens`
+    registry, threaded in so the ledger and the identity-gating tools can
+    resolve a caller from its request header rather than trusting the
+    ``from_handle`` it passed. ``None`` (every test that does not care,
+    and any out-of-band construction) degrades to today's behaviour:
+    the argument stands, unverified.
+    """
     server = FastMCP("aegis")
 
     # One envelope per call into this surface, minted at the single choke
@@ -600,7 +609,7 @@ def build_server(bridge: AppBridge) -> FastMCP:
     _state_dir = getattr(_qm, "_state_dir", None) if _qm is not None else None
     server.add_middleware(CommsMiddleware(CommsLedger(
         Path(_state_dir) if _state_dir
-        else Path.cwd() / ".aegis" / "state")))
+        else Path.cwd() / ".aegis" / "state"), tokens=tokens))
 
     server.tool(aegis_meta)
 

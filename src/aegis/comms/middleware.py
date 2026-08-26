@@ -37,8 +37,9 @@ def _thread(result_data: object, args: dict, call_id: str) -> str:
 
 
 class CommsMiddleware(Middleware):
-    def __init__(self, ledger: CommsLedger) -> None:
+    def __init__(self, ledger: CommsLedger, tokens=None) -> None:
         self._ledger = ledger
+        self._tokens = tokens
 
     async def on_call_tool(self, context, call_next):  # noqa: ANN001
         # ``context.message.name`` is the bare registered name
@@ -64,13 +65,25 @@ class CommsMiddleware(Middleware):
         finally:
             self._record(name, args, call_id, ts, started, outcome, payload)
 
+    def _from(self, args: dict) -> str:
+        """Who called. The token wins when it resolves; the argument is
+        the fallback for one release; unattributed stays honest.
+
+        Resolution is inside the ledger's try/except by construction —
+        `_record` already swallows-and-logs — so a broken identity path
+        cannot fail a tool call.
+        """
+        from aegis.mcp.identity import resolve_caller
+        return (resolve_caller(self._tokens)
+                or str(args.get("from_handle") or ""))
+
     def _record(self, name: str, args: dict, call_id: str, ts: str,
                 started: float, outcome: str, payload: object) -> None:
         try:
             self._ledger.write(Envelope(
                 call_id=call_id,
                 ts=ts,
-                from_handle=str(args.get("from_handle") or ""),
+                from_handle=self._from(args),
                 to=aegis_target(name, args),
                 family=aegis_family(name) or "",
                 verb=name.removeprefix("aegis_"),
