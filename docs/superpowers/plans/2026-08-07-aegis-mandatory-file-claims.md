@@ -10,6 +10,30 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-07-aegis-mandatory-file-claims-design.md`
 
+> **Re-grounded against `main` on 2026-08-26** (plan written 2026-08-07; three
+> releases have landed since). Two references had gone stale and are corrected
+> in the tasks below — read these before starting, because both would have been
+> discovered mid-task:
+>
+> - **The `aegis_close` claims count is no longer in `mcp/server.py`.** It moved
+>   into `core/close_guard.py:151-157` (`gather_facts`), which is now the single
+>   source of those facts — `aegis_close` and the queue finalizer both read it.
+>   Task 3 Step 6 is corrected accordingly. There is no claims count anywhere in
+>   `mcp/server.py` today.
+> - **`write_text_file` is a method of `_AegisAcpClient` (`drivers/acp.py:133`),
+>   not of `AcpSession` (`:309`).** The client is the ACP-side object that
+>   performs the write; the session drives the connection. Task 5 put the gate
+>   and its five attributes on the wrong class, and its tests construct the
+>   wrong one. Corrected in Task 5.
+>
+> Everything else verified present as written: the whole `locks/` surface
+> (`Claim`, `_file_under_prefix`, `ClaimRegistry.{claim,release,reap,active,
+> start,_prune_dead}`, `PersistedClaimLog.{claimed,released,reaped,renamed,
+> replay}`, `_LocksBridge`, `make_locks_bridge`), `CloseFacts.claims`
+> (`close_guard.py:27`), `AegisConfig` (no `locks:` field yet, as assumed), and
+> `build_argv` (`drivers/claude.py:285` — shifted from the cited 234, and it
+> passes no `--settings` today, so Task 7 adds that flag rather than editing it).
+
 ## Global Constraints
 
 - Python 3.13+. Use `uv run python -m pytest`, never bare `pytest`.
@@ -464,8 +488,9 @@ Wires policy + liveness into the registry, adds auto-claim, and fixes the close 
 - Modify: `src/aegis/locks/registry.py`
 - Modify: `src/aegis/locks/persistence.py`
 - Modify: `src/aegis/locks/bridge.py`
-- Modify: `src/aegis/core/close_guard.py:57-59`
-- Modify: `src/aegis/mcp/server.py:1155-1158`
+- Modify: `src/aegis/core/close_guard.py` — the `claims` comment (`:27`), and
+  the count inside `gather_facts` (`:151-157`). **Not `mcp/server.py`** — the
+  count moved into `close_guard` and is now shared with the queue finalizer.
 - Test: `tests/test_locks_check.py`
 - Test: `tests/test_locks_close_guard.py`
 
@@ -753,16 +778,22 @@ In `src/aegis/core/close_guard.py`, update the comment on the `claims` field (li
     claims: int                    # EXPLICIT file claims it holds
 ```
 
-In `src/aegis/mcp/server.py`, replace the count at lines 1155-1161:
+Then replace the count inside `gather_facts` (`close_guard.py:151-157`) — this
+is the corrected location; the plan originally pointed at `mcp/server.py`, where
+the count no longer lives:
 
 ```python
-        claims = 0
-        if locks is not None:
-            try:
-                claims = locks.explicit_count(handle)
-            except Exception:  # noqa: BLE001
-                claims = 0
+    claims = 0
+    if locks is not None:
+        try:
+            claims = locks.explicit_count(handle)
+        except Exception:  # noqa: BLE001
+            claims = 0
 ```
+
+Note this is the *shared* fact-gatherer — `aegis_close` and the queue finalizer
+both read it, so the fix lands in both consumers at once, which is the point of
+there being one copy.
 
 - [ ] **Step 7: Run tests to verify they pass**
 
@@ -965,12 +996,22 @@ git commit -m "feat(locks): enforcement domain resolver and locks config section
 First real enforcement, end to end. aegis owns `write_text_file` outright, so this is the cheapest place to prove the whole chain.
 
 **Files:**
-- Modify: `src/aegis/drivers/acp.py:276-290`
+- Modify: `src/aegis/drivers/acp.py` — `_AegisAcpClient.write_text_file`
+  (`:293`) and `_AegisAcpClient.__init__` (`:139`).
 - Test: `tests/test_locks_acp_pep.py`
+
+> **Corrected 2026-08-26.** This task was written against `AcpSession`. The
+> write is performed by **`_AegisAcpClient`** (`drivers/acp.py:133`) — the
+> ACP-side client object whose `write_text_file` is three lines of
+> `Path(path).write_text(...)`. `AcpSession` (`:309`) drives the connection and
+> never touches the file. So the gate, the five attributes, and the tests below
+> all target `_AegisAcpClient`. `AcpSession` builds the client and is where the
+> attributes are threaded *from* (it already holds `_mcp_url` and the cwd), but
+> the enforcement point is the client.
 
 **Interfaces:**
 - Consumes: `check`/`auto_claim` (Task 3), `in_domain` (Task 4).
-- Produces: `AcpSession.gate(abs_path: str, op: str) -> Decision | None` — `None` means out of domain or enforcement disabled.
+- Produces: `_AegisAcpClient.gate(abs_path: str, op: str) -> Decision | None` — `None` means out of domain or enforcement disabled.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -999,13 +1040,13 @@ def registry():
 
 
 def test_acp_write_into_foreign_exclusive_raises(tmp_path, registry):
-    from aegis.drivers.acp import AcpSession
+    from aegis.drivers.acp import _AegisAcpClient
     registry.claim("bob", ["src/"], [], intent="exclusive")
     (tmp_path / "src").mkdir()
     target = tmp_path / "src" / "x.py"
     target.write_text("original")
 
-    sess = AcpSession.__new__(AcpSession)
+    sess = _AegisAcpClient.__new__(_AegisAcpClient)
     sess._handle = "alice"
     sess._locks = registry
     sess._root = tmp_path
@@ -1026,10 +1067,10 @@ def test_acp_write_to_unclaimed_path_succeeds_and_auto_claims(tmp_path,
                                                               registry):
     import asyncio
 
-    from aegis.drivers.acp import AcpSession
+    from aegis.drivers.acp import _AegisAcpClient
     target = tmp_path / "new.py"
 
-    sess = AcpSession.__new__(AcpSession)
+    sess = _AegisAcpClient.__new__(_AegisAcpClient)
     sess._handle = "alice"
     sess._locks = registry
     sess._root = tmp_path
@@ -1046,11 +1087,11 @@ def test_acp_write_to_unclaimed_path_succeeds_and_auto_claims(tmp_path,
 def test_acp_write_outside_root_is_never_gated(tmp_path, registry):
     import asyncio
 
-    from aegis.drivers.acp import AcpSession
+    from aegis.drivers.acp import _AegisAcpClient
     registry.claim("bob", ["/"], [], intent="exclusive")
     outside = tmp_path.parent / "scratch.txt"
 
-    sess = AcpSession.__new__(AcpSession)
+    sess = _AegisAcpClient.__new__(_AegisAcpClient)
     sess._handle = "alice"
     sess._locks = registry
     sess._root = tmp_path
@@ -1065,13 +1106,13 @@ def test_acp_write_outside_root_is_never_gated(tmp_path, registry):
 def test_enforce_false_allows_but_still_auto_claims(tmp_path, registry):
     import asyncio
 
-    from aegis.drivers.acp import AcpSession
+    from aegis.drivers.acp import _AegisAcpClient
     registry.claim("bob", ["src/"], [], intent="exclusive")
     (tmp_path / "src").mkdir()
     target = tmp_path / "src" / "x.py"
     target.write_text("original")
 
-    sess = AcpSession.__new__(AcpSession)
+    sess = _AegisAcpClient.__new__(_AegisAcpClient)
     sess._handle = "alice"
     sess._locks = registry
     sess._root = tmp_path
@@ -1086,11 +1127,11 @@ def test_enforce_false_allows_but_still_auto_claims(tmp_path, registry):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_locks_acp_pep.py -q`
-Expected: FAIL — `AttributeError: 'AcpSession' object has no attribute 'gate'` (or the write succeeds where a denial was expected)
+Expected: FAIL — `AttributeError: '_AegisAcpClient' object has no attribute 'gate'` (or the write succeeds where a denial was expected)
 
-- [ ] **Step 3: Add the gate to `AcpSession`**
+- [ ] **Step 3: Add the gate to `_AegisAcpClient`**
 
-In `src/aegis/drivers/acp.py`, add the gate method and enforce it in `write_text_file`:
+In `src/aegis/drivers/acp.py`, add the gate method to **`_AegisAcpClient`** and enforce it in its `write_text_file`:
 
 ```python
     def gate(self, abs_path: str, op: str):
@@ -1135,7 +1176,7 @@ from aegis.locks.models import OP_CREATE, OP_OVERWRITE
 
 - [ ] **Step 4: Wire the attributes at session construction**
 
-In `AcpSession.__init__`, initialise the five attributes the gate reads so a session built the normal way is gated:
+In `_AegisAcpClient.__init__` (`:139`, which today takes only `event_queue`), initialise the five attributes the gate reads so a client built the normal way is gated:
 
 ```python
         self._locks = locks
@@ -1144,7 +1185,7 @@ In `AcpSession.__init__`, initialise the five attributes the gate reads so a ses
         self._host = host
 ```
 
-Add `locks=None, root=None, enforce=True, host="local"` as keyword parameters with those defaults, and pass them from `AcpDriver` where the session is constructed.
+Add `locks=None, root=None, enforce=True, host="local"` as keyword parameters with those defaults, and pass them down from `AcpSession` where it constructs the client.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -1329,7 +1370,7 @@ and add:
             pass
 ```
 
-Add `state_dir=None, inbox=None` to the `AcpSession.__init__` keyword parameters introduced in Task 5 and store them as `self._state_dir` / `self._inbox`.
+Add `state_dir=None, inbox=None` to the `_AegisAcpClient.__init__` keyword parameters introduced in Task 5 and store them as `self._state_dir` / `self._inbox`.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
