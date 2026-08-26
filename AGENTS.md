@@ -321,6 +321,70 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   caller swallows exceptions, so a signature that drifted on one bridge
   would drop the preamble in that frontend and nowhere else. Spec:
   `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`.
+- `src/aegis/digest/` - what a turn actually **did**, as opposed to what it
+  said. `models.py` (`CommitLine` / `RepoDelta` / `TurnFacts` + `moved`);
+  `collect.py` (`read_head`, `commits_since`, `DigestCollector`);
+  `render.py` (the block a prompt embeds). Shared by three consumers —
+  the loop judge, the recap, and `/btw` — which is why it is a component
+  rather than two private helpers.
+  Four rules a contributor will otherwise break, each already paid for:
+  **the base HEAD is captured lazily at the first recorded write**, not at
+  turn start, because at turn start we do not know which repos a turn will
+  touch and `git log --since=<turn start>` misattributes a peer's commit in
+  a shared checkout — which this workspace is; **`moved` is False on an
+  errored digest**, because we failed to look rather than observed
+  stillness, and firing on that makes every broken collection produce a
+  recap; **`build` has a no-write fast path**, and it is not a
+  micro-optimization — an executor hop for an empty diff makes every turn
+  boundary asynchronous where it was synchronous, which four loop tests
+  caught by settling before the loop had re-fired; and **the recording hook
+  is `AgentSession._record_repo`, off `_fire_event`**, which the replay walk
+  does not call, so a resumed session does not re-collect its whole history
+  as one turn's work. Off-host repos are listed and never probed.
+  Known limitation, stated rather than hidden: a turn that commits without
+  using a write tool (pure Bash) contributes no commits, because
+  `repos/writes.py:write_target` deliberately excludes Bash.
+- `src/aegis/recap/` - the end-of-turn one-liner and `/recap`.
+  `__init__.py` (`TurnRecap` / `SessionRecap` schemas, `Recap`,
+  `recap_turn` / `recap_session` / `recap_for`); `gate.py` (`should_recap`).
+  Two schemas rather than one with optional fields: one line about a turn
+  and a block about a session are different asks, and a schema serving two
+  masters degrades both.
+  Three rules already paid for: **it gates on substrate movement, not turn
+  count** — turn-count gating is exactly what makes
+  `anthropics/claude-code#56346` accumulate ten identical recaps, and the
+  gate carries a mutation test because a gate that cannot fail is worth
+  less than none; **the automatic recap is detached and cancellable**,
+  because the measured one-shot latency is ~7s *flat in prefix size*, so no
+  amount of token shedding makes a blocking recap payable, and a late one
+  describes a transcript that has moved on; and **`Recap.text`'s session
+  form is a markdown list, not newline-joined lines** — it renders through
+  `rich.markdown.Markdown`, which collapses single newlines, so the plain
+  join drew as one run-on paragraph while every substring assertion about
+  it still passed. Like a side note, a recap lands in the pane's
+  `_history` and is **never** appended to the session log: that is what
+  keeps it out of the agent's context *and* stops recaps compounding into
+  summaries of their own summaries.
+- `src/aegis/core/loop_judge.py` - whether an armed `/loop` continues.
+  `LoopVerdict` (`continue` | `done` | `stuck`), `Judgement`, `judge`,
+  `judge_for`. Replaces the per-iteration stop coda that used to ride in
+  `LoopState.render`.
+  Five rules a contributor will otherwise break: **the failure mode is
+  `continue`** — every error path, including an unknown harness and an
+  invented fourth verdict, returns a continuing `Judgement`, because the
+  iteration cap bounds runaway and a failed API call must never silently
+  end a night of work; **`aegis_loop_stop` is advisory, but `/loop stop` is
+  not** — only the *agent* is second-guessed, and collapsing the two either
+  restores the 2026-07-30 burn or leaves the operator unable to stop their
+  own loop (pinned by a test); **a rejected advisory is consumed**, since
+  re-presenting a stale claim every iteration would bias every later
+  verdict; **the first delivery and an exhausted loop are never judged** —
+  `arm_loop` chains immediately when idle, so there is no turn to judge,
+  and a capped loop is ending anyway; and **the instruction stays verbatim**
+  with the addendum appended, never substituted. The still-streak is
+  *stated* to the judge rather than left to inference, because the count is
+  a fact and inference is what the judge exists to remove. Spec:
+  `docs/superpowers/specs/2026-08-26-aegis-turn-boundary-generation-design.md`.
 - `src/aegis/plan/` - agent plan state as first-class session state, in two
   layers. The **parser** (`events.py`) folds the `TaskCreate`/`TaskUpdate`
   delta family and `TodoWrite` into the one cumulative `AgentPlan` event, so

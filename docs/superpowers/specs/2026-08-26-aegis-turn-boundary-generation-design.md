@@ -1,8 +1,11 @@
 # Turn-boundary generation: the loop judge and the recap
 
-> **Status:** design approved 2026-08-26, cost/latency measured the same
-> day (see "Measured cost and latency"), not yet implemented. Next step is
-> an implementation plan under `docs/superpowers/plans/`.
+> **Status:** implemented 2026-08-26. Plan:
+> `docs/superpowers/plans/2026-08-26-turn-boundary-generation.md`.
+> Cost/latency were measured before implementing (see "Measured cost and
+> latency"); the `--setting-sources ""` cut landed first and was verified
+> against the real CLI at 6,926 input tokens, slightly better than the
+> 7,749 projected here.
 
 Two features that are siblings rather than neighbours: both fire **one
 structured-generation call at a turn boundary**, both read the same facts,

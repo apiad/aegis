@@ -1,5 +1,9 @@
 # Turn-Boundary Generation Implementation Plan
 
+> **Status:** fully implemented 2026-08-26 (commits 2793c19..906aa38). All
+> 11 tasks landed; full suite green at 3,494 tests; 4 live round-trips pass
+> against the real CLI.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fire one structured-generation call at the turn boundary to (a) decide whether an armed `/loop` continues, from facts rather than the agent's self-report, and (b) leave a one-line recap of what the turn did.
@@ -34,7 +38,7 @@ The one-shot loads the cwd's `CLAUDE.md` and skills — measured ~15k tokens it 
 - Consumes: nothing.
 - Produces: no signature change. `ClaudeDriver._oneshot_argv(agent, schema, instructions, *, system="") -> list[str]` gains two argv entries.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The one-shot must not load the project's instructions.
@@ -84,12 +88,12 @@ def test_oneshot_does_not_use_exclude_dynamic():
     assert "--exclude-dynamic-system-prompt-sections" not in argv
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_oneshot_argv.py -v`
 Expected: `test_oneshot_loads_no_setting_sources` FAILS with `assert '--setting-sources' in argv`. The other two PASS.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/drivers/claude.py`, replace the `_oneshot_argv` docstring's stale measurement and add the flag:
 
@@ -140,12 +144,12 @@ In `src/aegis/drivers/claude.py`, replace the `_oneshot_argv` docstring's stale 
         ]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_oneshot_argv.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Verify against the real CLI (this is the point of the task)**
+- [x] **Step 5: Verify against the real CLI (this is the point of the task)**
 
 Run:
 
@@ -179,7 +183,7 @@ PY
 
 Expected: `total_in` around **7,700**, not ~21,000. If it still reads ~21,000 the flag is not taking effect — check `claude --help | grep -A2 setting-sources` for a signature change before proceeding, because every later cost claim in this plan rests on this number.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_oneshot_argv.py src/aegis/drivers/claude.py
@@ -214,7 +218,7 @@ the cold number is the steady state."
   - `TurnFacts.moved -> bool`
   - `render_facts(facts: TurnFacts) -> str`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The digest's pure half: what a turn did, and how it reads in a prompt."""
@@ -291,12 +295,12 @@ def test_render_surfaces_the_error():
     assert "git not found" in out
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_digest_render.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.digest'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/aegis/digest/__init__.py`:
 
@@ -421,12 +425,12 @@ def render_facts(facts: TurnFacts) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_digest_render.py -v`
 Expected: 9 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/digest/__init__.py src/aegis/digest/models.py \
@@ -459,7 +463,7 @@ rather than observed stillness."
 
 **Why a lazy base:** at turn start we do not know which repos a turn will touch, and `git log --since=<time>` would attribute a peer's commit in a shared checkout to us. Capturing `HEAD` at the first *recorded write* is precise and cheap. Known limitation, documented in the module: a turn that commits without using a write tool (pure Bash) contributes no commits, because `write_target` deliberately excludes Bash.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Digest collection against a real git repo. Not mocks — the thing under
@@ -584,12 +588,12 @@ async def test_reset_forgets_the_previous_turn(repo):
     assert facts.moved is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_digest_collect.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.digest.collect'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/aegis/digest/collect.py`:
 
@@ -712,19 +716,19 @@ class DigestCollector:
         return tuple(out)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_digest_collect.py -v`
 Expected: 10 passed.
 
-- [ ] **Step 5: Mutation-check the off-host rule**
+- [x] **Step 5: Mutation-check the off-host rule**
 
 The off-host guard is the one rule here that fails silently if broken. Prove the test can fail: temporarily change `_Tracked.__init__` to `self.base = read_head(root)` unconditionally and `_diff_all` to always pass `commits_since(...)`, then run:
 
 Run: `uv run python -m pytest tests/test_digest_collect.py::test_collector_never_probes_an_off_host_repo -v`
 Expected: **FAIL**. Revert the mutation and confirm it passes again. A guard whose test cannot fail is worth less than none.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/digest/collect.py tests/test_digest_collect.py
@@ -748,7 +752,7 @@ listed but never probed."
 - Consumes: `DigestCollector` from Task 3.
 - Produces: `AgentSession.digest: DigestCollector`, `AgentSession.last_facts: TurnFacts | None`, and an `on_facts: Callable[[AgentSession, TurnFacts], None] | None` observer fired once per completed turn.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The digest must ride the real turn path — and the recording hook must
@@ -844,14 +848,14 @@ async def test_a_broken_collector_does_not_break_the_turn(make_session,
     assert s.last_facts.error
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_digest_session.py -v`
 Expected: FAIL with `AttributeError: 'AgentSession' object has no attribute 'digest'`
 
 If `make_session` does not exist in `tests/conftest.py`, read the fixtures the existing `tests/test_session*.py` files use and follow that pattern instead — do not invent a new harness.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/core/session.py`:
 
@@ -947,17 +951,17 @@ And build the facts in section 4, replacing the existing post-turn hook block so
         self._chain_if_pending()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_digest_session.py -v`
 Expected: 5 passed.
 
-- [ ] **Step 5: Run the blast-radius suite**
+- [x] **Step 5: Run the blast-radius suite**
 
 Run: `uv run python -m pytest tests/ -q -m "not live" -x`
 Expected: all pass. `_run_turn` is the hottest path in the codebase; a red run here is a regression to fix, not noise to re-roll.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/core/session.py tests/test_digest_session.py
@@ -988,7 +992,7 @@ re-collect its whole history as one turn's work."
 
 **Window budgets** (from the spec's table): turn recap = `max_turns=1, budget_tokens=2_000, item_chars=200`; session recap = `assemble()` defaults.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The recap's generation half, against a fake driver."""
@@ -1091,12 +1095,12 @@ def test_footer_carries_the_price():
     assert "haiku" in r.footer and "1.2s" in r.footer
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_recap_generate.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.recap'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/aegis/recap/__init__.py`:
 
@@ -1260,12 +1264,12 @@ async def recap_for(*, state_dir, log_id: str, facts: TurnFacts, agent,
                     agent=gen_agent, cwd=cwd)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_recap_generate.py -v`
 Expected: 7 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/recap/__init__.py tests/test_recap_generate.py
@@ -1293,7 +1297,7 @@ The measured 7s latency floor is why this is detached: a 7-second stall after ev
 - Consumes: `TurnFacts.moved` (Task 2), `AgentSession.on_facts` (Task 4), `recap_for` (Task 5).
 - Produces: `should_recap(facts: TurnFacts, *, last_line: str, enabled: bool) -> bool`; `AgentSession.on_recap: Callable[[AgentSession, Recap], None] | None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The gate is the cost control and the noise control at once.
@@ -1408,12 +1412,12 @@ async def test_the_recap_never_reaches_the_agent(make_session,
 
 If the fake harness used by `make_session` does not record what it was sent, add that recording to the fake rather than weakening the assertion — the whole point is to check the substrate.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_recap_gate.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.recap.gate'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/aegis/recap/gate.py`:
 
@@ -1513,19 +1517,19 @@ Call `self._maybe_recap(facts)` in `_run_turn` immediately after the `on_facts` 
 
 In `src/aegis/config/yaml_loader.py`, beside `text_generation` (line 75), add `recap: bool = True` to the config dataclass and `recap=raw.get("recap", True)` to the constructor call around line 262.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_recap_gate.py -v`
 Expected: 6 passed.
 
-- [ ] **Step 5: Mutation-check the gate**
+- [x] **Step 5: Mutation-check the gate**
 
 Per the spec: a gate that cannot fail is worth less than none. Temporarily change `should_recap`'s last line to `return True`, then run:
 
 Run: `uv run python -m pytest tests/test_recap_gate.py::test_a_read_only_turn_does_not -v`
 Expected: **FAIL**. Revert and confirm it passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/recap/gate.py src/aegis/core/session.py \
@@ -1558,7 +1562,7 @@ token shedding makes a blocking recap payable."
 - Consumes: `recap_for` (Task 5), `Recap` (Task 5).
 - Produces: `AppBridge.recap(handle: str, *, session_scope: bool = True) -> Recap` on all four surfaces; command `/recap`; `render_recap(recap, colors) -> Panel`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """/recap, and the four-surface rule."""
@@ -1612,12 +1616,12 @@ def test_every_bridge_takes_the_same_recap_signature():
         assert inspect.signature(impl.recap) == want, impl.__name__
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_recap_command.py -v`
 Expected: FAIL — `/recap` is not a registered command.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add to `src/aegis/mcp/bridge.py`, beside `side_note`:
 
@@ -1692,18 +1696,18 @@ def render_recap(recap, colors) -> Panel:
 
 In `src/aegis/tui/pane.py:1484`, beside the `side_note` branch, add a `recap` branch calling `render_recap` and `self._put_block(...)`. Wire `on_recap` on the session to the same `_put_block` path so the automatic recap renders through one surface, not two.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_recap_command.py -v`
 Expected: 3 passed.
 
-- [ ] **Step 5: Verify in the real TUI**
+- [x] **Step 5: Verify in the real TUI**
 
 Per `CLAUDE.md` §5, exercise the surface the way a user reaches it — a passing test is not the same artifact as a rendered block.
 
 Run `uv run aegis` in a real terminal, let one agent take a turn that writes a file, and confirm: (a) a recap line appears after that turn, (b) `/recap` prints the three-field block, (c) a turn that only answers a question prints nothing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/mcp/bridge.py src/aegis/core/manager.py \
@@ -1735,7 +1739,7 @@ that frontend and no other, which is why read_peer already carries one."
 
 **Window budget:** `max_turns=2, budget_tokens=4_000, item_chars=300`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The judge. Its failure mode must be CONTINUE — a failed API call must
@@ -1844,12 +1848,12 @@ async def test_the_agents_stop_request_is_presented_as_a_claim():
     assert "claim" in joined.lower() or "asked to stop" in joined.lower()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_loop_judge.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.core.loop_judge'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/aegis/core/loop_judge.py`:
 
@@ -1996,12 +2000,12 @@ async def judge_for(*, state_dir, log_id: str, instruction: str,
 
 Add `loop_judge: bool = True` to the config dataclass in `src/aegis/config/yaml_loader.py` beside `recap` from Task 6, and `loop_judge=raw.get("loop_judge", True)` to the constructor call.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_loop_judge.py -v`
 Expected: 8 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/core/loop_judge.py src/aegis/config/yaml_loader.py \
@@ -2028,7 +2032,7 @@ fourth verdict is also treated as continue."
 - Consumes: `judge_for`, `Judgement` (Task 8); `AgentSession.last_facts` (Task 4).
 - Produces: `LoopState.render(addendum: str = "") -> str`; `LoopState.note(facts) -> None`; `LoopState.still_streak: int`; `LoopState.advisory: str`; `AgentSession.stop_loop(reason, *, advisory=False) -> bool`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The judge replaces the coda as the thing that ends a loop."""
@@ -2161,12 +2165,12 @@ async def test_the_operator_can_still_stop_a_loop_outright(make_session):
 
 The `settle` / `settle_one_turn` helpers may not exist. Read how the existing loop tests in `tests/` drive `_chain_if_pending` to a quiescent point and reuse that mechanism rather than inventing one.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_loop_judge_wiring.py -v`
 Expected: FAIL — `LoopState.render()` requires a `handle` argument.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Rewrite `src/aegis/core/loop.py`'s `_CODA` and `LoopState`:
 
@@ -2324,18 +2328,18 @@ In `src/aegis/queue/loop.py`, make `LoopService.stop` advisory:
 
 Update `aegis_loop_stop`'s docstring in `src/aegis/mcp/server.py:1469` to say the call is advisory, and update `mcp/server.py`'s BRIEFING text where it describes `aegis_loop_stop` as the thing that reaps a loop.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_loop_judge_wiring.py -v`
 Expected: 10 passed.
 
-- [ ] **Step 5: Fix the tests the coda's removal breaks**
+- [x] **Step 5: Fix the tests the coda's removal breaks**
 
 Run: `uv run python -m pytest tests/ -q -m "not live"`
 
 Expected: failures in existing loop tests asserting the coda's text or `render(handle)`'s signature. **Update them to the new contract; do not delete them.** Each one is a paid-for assertion about loop behaviour.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/core/loop.py src/aegis/core/session.py \
@@ -2365,7 +2369,7 @@ The first delivery and an exhausted loop are never judged."
 - Consumes: `TurnFacts`, `render_facts` (Task 2).
 - Produces: `side_note(prompt, *, replay, driver, agent, cwd, facts=None, **window_opts)`; `side_note_for(..., facts=None)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """/btw sees what the session DID, not only what it said."""
@@ -2474,12 +2478,12 @@ async def test_a_real_judge_returns_a_known_verdict(driver_and_agent):
     assert got.verdict in ("continue", "done", "stuck")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_btw_facts.py -v`
 Expected: FAIL — `side_note() got an unexpected keyword argument 'facts'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/aegis/btw/__init__.py`, add the parameter and the third instruction part:
 
@@ -2513,7 +2517,7 @@ async def side_note(prompt: str, *, replay, driver, agent, cwd: str,
 
 Thread `facts=` through `side_note_for` (defaulting to `None`) and pass `session.last_facts` from `core/manager.py:335` and `tui/app.py:1716`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_btw_facts.py -v`
 Expected: 2 passed.
@@ -2521,12 +2525,12 @@ Expected: 2 passed.
 Run: `uv run python -m pytest tests/test_turn_generation_live.py -v`
 Expected: 2 passed (or skipped if `claude` is off PATH). A live failure here is a real failure — these hit the real CLI.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `uv run python -m pytest tests/ -q -m "not live"`
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/btw/__init__.py src/aegis/core/manager.py \
@@ -2549,7 +2553,7 @@ whatever git calls survived the 500-char item clip."
 - Modify: `docs/superpowers/specs/2026-08-26-aegis-turn-boundary-generation-design.md` (status header)
 - Modify: `docs/superpowers/plans/2026-08-26-turn-boundary-generation.md` (check off tasks)
 
-- [ ] **Step 1: Update AGENTS.md**
+- [x] **Step 1: Update AGENTS.md**
 
 Add entries in the `## Layout` list, following the house style there (what it is, plus the rules a contributor would otherwise break):
 
@@ -2559,7 +2563,7 @@ Add entries in the `## Layout` list, following the house style there (what it is
 
 Also correct the one-shot cost note if AGENTS.md carries one: the `$0.0044` figure is a warm price.
 
-- [ ] **Step 2: Update CHANGELOG.md**
+- [x] **Step 2: Update CHANGELOG.md**
 
 Add under the unreleased version, following the file's existing format:
 
@@ -2583,7 +2587,7 @@ Add under the unreleased version, following the file's existing format:
   `titlegen` and the new generators alike.
 ```
 
-- [ ] **Step 3: Flip the spec's status header**
+- [x] **Step 3: Flip the spec's status header**
 
 Change it to:
 
@@ -2592,11 +2596,11 @@ Change it to:
 > `docs/superpowers/plans/2026-08-26-turn-boundary-generation.md`.
 ```
 
-- [ ] **Step 4: Check off every completed task in this plan**
+- [x] **Step 4: Check off every completed task in this plan**
 
 Stale status headers mislead the next `/workon`. Flip them in the same commit batch as the work.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add AGENTS.md CHANGELOG.md docs/superpowers/specs/2026-08-26-aegis-turn-boundary-generation-design.md docs/superpowers/plans/2026-08-26-turn-boundary-generation.md
@@ -2609,9 +2613,9 @@ git commit -m "docs: record the loop judge, the recap, and the one-shot cut"
 
 Before calling this done, confirm each — and note which artifact each check actually touches:
 
-- [ ] `uv run python -m pytest -q -m "not live"` is green (not a subset).
-- [ ] `uv run python -m pytest tests/test_turn_generation_live.py -v` passes against the real CLI.
-- [ ] The real TUI shows a recap line after a writing turn, nothing after a read-only turn, and a block on `/recap`. **Exercised in a terminal, not inferred from a test.**
-- [ ] A real `/loop` on a trivial instruction stops on a `done` verdict, and the transcript states the reason.
-- [ ] A one-shot at `cwd=/home/apiad/Workspace` reports ~7,700 input tokens, not ~21,000 (Task 1, Step 5).
-- [ ] Both mutation checks were performed and both failed as expected before reverting (Task 3 Step 5, Task 6 Step 5).
+- [x] `uv run python -m pytest -q -m "not live"` is green (not a subset).
+- [x] `uv run python -m pytest tests/test_turn_generation_live.py -v` passes against the real CLI.
+- [x] The real TUI shows a recap line after a writing turn, nothing after a read-only turn, and a block on `/recap`. **Exercised in a terminal, not inferred from a test.**
+- [x] A real `/loop` on a trivial instruction stops on a `done` verdict, and the transcript states the reason.
+- [x] A one-shot at `cwd=/home/apiad/Workspace` reports ~7,700 input tokens, not ~21,000 (Task 1, Step 5).
+- [x] Both mutation checks were performed and both failed as expected before reverting (Task 3 Step 5, Task 6 Step 5).

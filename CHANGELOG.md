@@ -5,6 +5,86 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **The loop judge decides whether a `/loop` continues — from facts, not
+  the agent's self-report.** A loop used to carry a coda on every
+  iteration asking the agent to call `aegis_loop_stop` when satisfied.
+  That is the agent grading its own homework from inside the tunnel it
+  has been in for N turns, and on 2026-07-30 it cost a whole night of
+  autonomy: a loop reaped at iteration 1 of 20 with the model-manager UI,
+  the download/load API and the docs unbuilt.
+
+  Now an external judge reads what the turn actually *did* — commits,
+  files written, plan movement — plus a window of the conversation, and
+  returns `continue`, `done` or `stuck`. `aegis_loop_stop` keeps its
+  identity gating but becomes **advisory**: the agent states a claim and
+  the judge is free to reject it. The operator's `/loop stop` stays
+  authoritative; only the agent is second-guessed.
+
+  Two properties worth knowing. The failure mode is **continue** — the
+  iteration cap bounds runaway, and a failed API call must never silently
+  end a night of work. And the instruction is still delivered **verbatim**,
+  with the judge's addendum appended rather than substituted: a
+  judge-authored replacement is the ideal vector for reading a looping
+  instruction more narrowly each iteration, which is the failure the burn
+  is an instance of.
+
+  `stuck` is the new verdict the facts made possible. A loop that spins —
+  turns that read as productive while nothing lands — used to burn to its
+  cap; nothing in a transcript distinguishes that from progress.
+
+  Replayed against a real model, the burn scenario now answers:
+  *"Backend wiring is done, but the UI for loading/unloading models has
+  not been built or connected; operator cannot yet use the feature as
+  specified."*
+
+- **A one-line recap after any turn that moved the substrate**, plus
+  `/recap` for a building / done / remaining block about the whole
+  session. The automatic line is detached and cancellable — a measured
+  ~7s one-shot cannot be allowed to stall every turn boundary — and a new
+  turn drops an in-flight recap rather than rendering it late against a
+  transcript that has moved on.
+
+  It gates on **substrate movement, not turn count**. Claude Code gates
+  on turn count and `anthropics/claude-code#56346` reports the
+  predictable result: in a conversation of questions and reads, 10+
+  identical recaps accumulate. Ten identical recaps here would require
+  ten turns that each changed something and each changed it the same way.
+
+  The recap never enters the agent's context: like a `/btw` side note it
+  lands in the pane's history and is never appended to the session log —
+  which also stops recaps compounding into summaries of their own
+  summaries.
+
+- **`/btw` sees what the session did, not only what it said.** Side notes
+  now carry the same turn-facts block, so "did that commit land?" is
+  answerable. Previously it was answerable only from whatever `git` calls
+  survived the window's 500-char item clip.
+
+- Config: `recap:` and `loop_judge:`, both defaulting on. Both bill to
+  `text_generation:`, which is worth setting — an unset knob bills one-shots
+  at the session's own model (measured $0.32–$0.46 per call on Opus against
+  $0.045 on haiku).
+
+### Performance
+
+- **One-shot generation no longer loads the project's `CLAUDE.md`, skills
+  and plugins** — ~15k tokens a generation call cannot use, since it is
+  handed its window explicitly. `--setting-sources ""` cuts the prefix
+  **21,445 → 6,926 input tokens**, verified against the real CLI, and the
+  cut applies to `/btw` and generated session titles as much as to the new
+  generators.
+
+  Two measurements behind it worth recording. The window is *not* the
+  cost — cutting it 4.5× saved 26%, while varying only the working
+  directory moved the total from 6,319 to 20,611 tokens. And the prompt
+  cache warms only on an **identical** prompt: five recap-shaped calls
+  with differing tails showed `cache_read: 0` every time, so a per-turn
+  feature never amortizes and the cold price is the steady state. The
+  `$0.0044` figure previously recorded in `_oneshot_argv`'s docstring was
+  a warm price; it is now corrected.
+
 ## [0.35.0] - 2026-08-26
 
 ### Added
