@@ -83,11 +83,13 @@ class HarnessDriver(abc.ABC):
     @abc.abstractmethod
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL) -> HarnessSession: ...
+                launcher: Launcher = LOCAL,
+                token: str = "") -> HarnessSession: ...
 
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str, session_id: str,
-               launcher: Launcher = LOCAL) -> HarnessSession:
+               launcher: Launcher = LOCAL,
+               token: str = "") -> HarnessSession:
         """Build a session bound to an existing driver-side conversation.
 
         Default raises — only resume-capable drivers override.
@@ -97,7 +99,8 @@ class HarnessDriver(abc.ABC):
 
     def fork(self, agent: Agent, cwd: str, mcp_url: str,
              handle: str, session_id: str,
-             launcher: Launcher = LOCAL) -> HarnessSession:
+             launcher: Launcher = LOCAL,
+             token: str = "") -> HarnessSession:
         """Build a session branching from an existing conversation.
 
         Sibling of ``resume``: same signature, same default-raises

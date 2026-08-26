@@ -59,7 +59,7 @@ def _session_factory(cwd: str, hosts=None):
     from aegis.hosts.models import Place
 
     def make_session(profile, mcp_url, handle, fork_from=None, place=None,
-                     resume_from=None):
+                     resume_from=None, token=""):
         place = place or Place("local", cwd)
         if hosts is not None:
             launcher, url = hosts.launcher_for(place, mcp_url)
@@ -68,11 +68,12 @@ def _session_factory(cwd: str, hosts=None):
         drv = get_driver(profile.harness)
         if fork_from is not None:
             return drv.fork(profile, place.cwd, url, handle, fork_from,
-                            launcher)
+                            launcher, token=token)
         if resume_from is not None:
             return drv.resume(profile, place.cwd, url, handle, resume_from,
-                              launcher)
-        return drv.session(profile, place.cwd, url, handle, launcher)
+                              launcher, token=token)
+        return drv.session(profile, place.cwd, url, handle, launcher,
+                           token=token)
     return make_session
 
 

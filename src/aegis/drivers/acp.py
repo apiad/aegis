@@ -712,12 +712,14 @@ class AcpDriver(HarnessDriver):
 
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL) -> AcpSession:
+                launcher: Launcher = LOCAL,
+                token: str = "") -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
                              extra_env=self.extra_env(agent),
                              persona=read_persona(
                                  agent, launcher.persona_root(cwd)),
-                             launcher=launcher)
+                             launcher=launcher,
+                             token=token)
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
@@ -726,12 +728,14 @@ class AcpDriver(HarnessDriver):
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str,
                session_id: str,
-               launcher: Launcher = LOCAL) -> AcpSession:
+               launcher: Launcher = LOCAL,
+               token: str = "") -> AcpSession:
         s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
                              resume_session_id=session_id,
                              extra_env=self.extra_env(agent),
                              persona=read_persona(
                                  agent, launcher.persona_root(cwd)),
-                             launcher=launcher)
+                             launcher=launcher,
+                             token=token)
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s

@@ -199,6 +199,11 @@ class SessionManager:
             extra["fork_from"] = fork_from
         if place != Place("local", self._local_root):
             extra["place"] = place
+        # Mint BEFORE the factory runs: the factory builds the argv, and the
+        # token is baked into it. A token minted afterwards is one the
+        # subprocess never receives.
+        if self._mcp is not None:
+            extra["token"] = self._mcp.tokens.mint(h)
         raw = self._make_session(agent, url, h, **extra)
         s = AgentSession(raw, agent, slug, h,
                          inbox=self._inbox,
@@ -317,8 +322,13 @@ class SessionManager:
         with contextlib.suppress(Exception):
             await s._session.close()
         url = self._mcp.url if self._mcp is not None else ""
+        extra: dict = {}
+        # A reconnect is a NEW subprocess, so it needs a new token — minted
+        # before the factory builds the argv it goes into.
+        if self._mcp is not None:
+            extra["token"] = self._mcp.tokens.mint(handle)
         raw = self._make_session(s.agent, url, handle,
-                                 place=s.place, resume_from=sid)
+                                 place=s.place, resume_from=sid, **extra)
         s.adopt(raw)
         return f"reconnected {handle} on {s.place.host}"
 
@@ -411,6 +421,10 @@ class SessionManager:
             self._inbox.unbind_session(handle)
         if handle in self._mru:
             self._mru.remove(handle)
+        # A dead session's token must stop resolving, or its identity
+        # outlives it and a later caller could still present it.
+        if self._mcp is not None:
+            self._mcp.tokens.revoke(handle)
 
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         s = self.get(handle)
@@ -531,6 +545,12 @@ class SessionManager:
         if self._inbox is not None:
             self._inbox.rename(old, new)
         self.locks.rename(old, new)
+        # The token identifies the process, and the process did not
+        # restart — so it follows the handle rather than being reissued.
+        # Without this, every call the session makes after a rename
+        # resolves to nothing.
+        if self._mcp is not None:
+            self._mcp.tokens.rename(old, new)
         # Every plane keyed by the arming handle has to come along. A monitor
         # or reminder left behind is not just invisible in a UI scoped by
         # `for_handle` — its wake is delivered to a handle nobody answers to,

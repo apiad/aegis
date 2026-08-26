@@ -368,18 +368,21 @@ class ClaudeDriver(HarnessDriver):
 
     def session(self, agent: Agent, cwd: str,
                 mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL) -> ClaudeSession:
+                launcher: Launcher = LOCAL,
+                token: str = "") -> ClaudeSession:
         return ClaudeSession(
-            self.build_argv(agent, cwd, mcp_url, handle, launcher), cwd,
+            self.build_argv(agent, cwd, mcp_url, handle, launcher, token),
+            cwd,
             handle=handle, harness=agent.harness or "claude-code",
             launcher=launcher)
 
     def resume(self, agent: Agent, cwd: str,
                mcp_url: str, handle: str,
                session_id: str,
-               launcher: Launcher = LOCAL) -> ClaudeSession:
+               launcher: Launcher = LOCAL,
+               token: str = "") -> ClaudeSession:
         """Build a ClaudeSession that resumes an existing conversation."""
-        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher)
+        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher, token)
         # Insert --resume <session_id> right after the "claude -p" prefix
         resumed_argv = argv[:2] + ["--resume", session_id] + argv[2:]
         return ClaudeSession(resumed_argv, cwd,
@@ -390,14 +393,15 @@ class ClaudeDriver(HarnessDriver):
     def fork(self, agent: Agent, cwd: str,
              mcp_url: str, handle: str,
              session_id: str,
-             launcher: Launcher = LOCAL) -> ClaudeSession:
+             launcher: Launcher = LOCAL,
+             token: str = "") -> ClaudeSession:
         """Build a ClaudeSession branching from an existing conversation.
 
         `--fork-session` is what keeps this from being a plain resume:
         "when resuming, create a new session ID". The parent's own id
         stays where it was, so the two conversations never share a log.
         """
-        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher)
+        argv = self.build_argv(agent, cwd, mcp_url, handle, launcher, token)
         forked_argv = (argv[:2] + ["--fork-session", "--resume", session_id]
                        + argv[2:])
         return ClaudeSession(forked_argv, cwd,
