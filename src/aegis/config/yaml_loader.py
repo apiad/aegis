@@ -73,6 +73,11 @@ class AegisConfig:
     # "fall back to the session's own profile", which is the expensive
     # default — the surfaces that use it say so once per session.
     text_generation: str | None = None
+    # One-line recap after any turn that moved the substrate, and the
+    # loop judge that decides whether an armed /loop continues. Both are
+    # one-shot generation calls billed to `text_generation:`.
+    recap: bool = True
+    loop_judge: bool = True
     inline_schedule_names: set[str] = field(default_factory=set)
     dynamic_workflow_autoapprove_agents: int = 5
 
@@ -260,6 +265,8 @@ def load_config(root: Path) -> AegisConfig:
     return AegisConfig(
         default_agent=default_agent,
         text_generation=text_generation,
+        recap=bool(raw.get("recap", True)),
+        loop_judge=bool(raw.get("loop_judge", True)),
         agents=agents,
         harnesses=harnesses,
         queues=queues,

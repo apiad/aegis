@@ -14,6 +14,8 @@ from aegis.events import (
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.digest.collect import DigestCollector
 from aegis.digest.models import TurnFacts
+from aegis.recap import recap_for
+from aegis.recap.gate import should_recap
 from aegis.repos.writes import write_target
 from aegis.hooks import (
     PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
@@ -64,7 +66,8 @@ class AgentSession:
                  project_root: Path | None = None,
                  log_id: str | None = None,
                  place=None,
-                 repo_tracker=None) -> None:
+                 repo_tracker=None,
+                 agents=None) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
@@ -109,6 +112,18 @@ class AgentSession:
         self.last_facts: TurnFacts | None = None
         # Fired once per completed turn with that turn's facts.
         self.on_facts = None
+        # The configured agent profiles, needed to resolve the
+        # `text_generation:` billing profile. Both AppBridge
+        # implementations pass their own; headless callers and older tests
+        # pass nothing, and the recap simply does not fire for those.
+        self._agents = agents
+        # The auto recap. Detached on purpose: measured 2026-08-26, a
+        # one-shot costs ~7s wall REGARDLESS of prefix size, and a 7s
+        # stall after every productive turn is not payable.
+        self.recap_enabled = True
+        self.on_recap = None
+        self._recap_task: asyncio.Task | None = None
+        self._last_recap_line = ""
         # Subagent plans, keyed by the dispatching Task tool_use id. Kept
         # apart from the top-level plan because a subagent's short list
         # would otherwise overwrite its parent's — the strip would read
@@ -489,6 +504,7 @@ class AgentSession:
             text = f"{_render_batch(notices)}\n\n{text}"
         self._unsolicited = False  # a real, prompted turn
         self.digest.reset()
+        self._cancel_recap()
         turn_started = self._now()
         plan_done_at_start = self.plan_state().done
         harness_name = getattr(self.agent, "harness", "unknown")
@@ -643,6 +659,7 @@ class AgentSession:
                 self.on_facts(self, facts)
             except Exception:                                 # noqa: BLE001
                 log.exception("on_facts observer raised")
+        self._maybe_recap(facts)
 
         # 5. Post-turn hooks (fire-and-forget)
         post_ev = PostTurnEvent(
@@ -670,6 +687,47 @@ class AgentSession:
             self.on_event(self, ev)
         for cb in self._extra_event_observers:
             cb(self, ev)
+
+    def _maybe_recap(self, facts) -> None:
+        """Fire a recap without making the turn wait for it."""
+        if self._agents is None:
+            return          # no billing profile to resolve; stay quiet
+        if not should_recap(facts, last_line=self._last_recap_line,
+                            enabled=self.recap_enabled):
+            return
+        self._cancel_recap()
+        self._recap_task = asyncio.create_task(self._run_recap(facts))
+
+    def _cancel_recap(self) -> None:
+        """Drop an in-flight recap. A late one describes a transcript that
+        has already moved on, which is worse than none."""
+        if self._recap_task is not None and not self._recap_task.done():
+            self._recap_task.cancel()
+        self._recap_task = None
+
+    async def _run_recap(self, facts) -> None:
+        try:
+            recap = await recap_for(
+                state_dir=self.state_dir, log_id=self.log_id, facts=facts,
+                agent=self.agent, agents=self._agents,
+                cwd=str(self.project_root), session_scope=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception:                                     # noqa: BLE001
+            log.exception("recap failed")
+            return
+        if not recap.ok or not recap.line:
+            return
+        # The identity guard: a line identical to the last one is noise,
+        # which is the #56346 failure arriving by another road.
+        if recap.line.strip() == self._last_recap_line.strip():
+            return
+        self._last_recap_line = recap.line
+        if self.on_recap is not None:
+            try:
+                self.on_recap(self, recap)
+            except Exception:                                 # noqa: BLE001
+                log.exception("on_recap observer raised")
 
     def _record_repo(self, ev: ToolUse) -> None:
         """Note the repo behind a write tool call.
