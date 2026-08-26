@@ -1,6 +1,7 @@
 # Turn-boundary generation: the loop judge and the recap
 
-> **Status:** design approved 2026-08-26, not yet implemented. Next step is
+> **Status:** design approved 2026-08-26, cost/latency measured the same
+> day (see "Measured cost and latency"), not yet implemented. Next step is
 > an implementation plan under `docs/superpowers/plans/`.
 
 Two features that are siblings rather than neighbours: both fire **one
@@ -277,21 +278,150 @@ test asserting both bridges take the same window knobs precisely because a
 signature that drifts on one bridge breaks that frontend *and no other*,
 which is the hardest kind of bug to see.
 
+## Component 4 — `/btw` joins the same machinery
+
+`/btw` today answers from `assemble()` alone — what was *said*. It has the
+same blind spot the judge and the recap were built to close: it cannot see
+what was *done*, so "did that commit land?" is answered from whatever
+`git commit` calls survived the 500-char item clip.
+
+So `side_note` takes the same rendered `TurnFacts` block as a third
+instruction part. This is not scope creep; it is the reason the collector
+is a shared component rather than two private helpers, and it costs ~120
+tokens against a 7,749-token prefix — inside the noise.
+
+One consequence worth stating: `BtwAnswer.needs_more` gets *more*
+meaningful, not less. The window's honest header already tells the model
+what was dropped; the facts block tells it what happened outside the
+window entirely. A model that still cannot answer has a better reason to
+say so.
+
+The three consumers then differ only in window budget, schema and prompt,
+which is what makes one seam the right shape:
+
+| consumer | window | schema | blocking |
+|---|---|---|---|
+| `/btw` | 32k (unchanged) | `BtwAnswer` | yes — the operator is waiting |
+| `/recap` | full session | `SessionRecap` | yes — the operator asked |
+| recap (auto) | 1 turn / 2k | `TurnRecap` | **no** — detached, cancellable |
+| judge | 2 turns / 4k | `LoopVerdict` | yes — it gates the next iteration |
+
+## Measured cost and latency
+
+The requirement is that neither feature costs more than a `/btw` does
+today. Measured on zion, 2026-08-26, claude CLI as installed, haiku,
+against a real 216-event transcript. Scripts in
+`.playground/aegis-turn-generation/`.
+
+### The window is not the cost. The prefix is.
+
+| shape | window | wall | cost |
+|---|---|---|---|
+| btw (32k budget) | 9,330 tok | 13.1s | $0.0717 |
+| recap (2k budget + facts) | 2,064 tok | 17.5s | $0.0532 |
+| judge (4k budget + facts) | 4,097 tok | 39.0s | $0.0682 |
+
+Cutting the window 4.5× saved 26% of cost. Varying `cwd` explains why:
+
+| cwd | total input for a 16-char prompt |
+|---|---|
+| empty dir | 6,319 |
+| `repos/aegis` | ~14,700 |
+| `Workspace` | 20,611 |
+
+**The one-shot loads the project's `CLAUDE.md`, skills and dynamic env
+sections** — ~15k tokens the call cannot use, since it is handed its
+window explicitly. `--tools ""` sheds the tool schemas; nothing was
+shedding this.
+
+### Two flags, measured one at a time
+
+Same prompt, same cwd, run twice each:
+
+| variant | total input | cost (cold) | cost (warm) |
+|---|---|---|---|
+| as shipped | 21,445 | $0.0448 | $0.0042 |
+| `--setting-sources ""` | **7,749** | **$0.0201** | $0.0042 |
+| `--exclude-dynamic-system-prompt-sections` | 21,445 | — | $0.0044 |
+| both | 7,749 | — | $0.0040 |
+
+`--setting-sources ""` cuts the prefix **64%**.
+`--exclude-dynamic-system-prompt-sections` moves tokens without removing
+any, and is rejected.
+
+### The cache warms only on an identical prompt
+
+The cold/warm split above is not amortization. Five recap-shaped calls
+with *differing tails* — the realistic case, since every turn is different
+— showed `cache_read: 0` and `cache_creation: 21,515` on **every** call, a
+flat $0.0455. A repeated *identical* prompt caches; a real one never
+repeats. **Steady state for a per-turn feature is the cold number.**
+
+This also corrects the repo: `ClaudeDriver._oneshot_argv`'s docstring
+records `8.5s $0.0044 2,361 in` from 2026-07-31. Today the same shape is
+`~7s $0.0448 21,445 in`. $0.0044 is today's *warm* price, so the original
+figure was almost certainly a repeat call. The docstring is stale and
+should be corrected with the measurement, not silently.
+
+### Latency is flat, and it is the binding constraint
+
+Wall time sat at 6.4–11.9s across every variant — shedding 64% of the
+prefix did not move it. It is CLI startup plus model round-trip, not
+tokens. **Cost is fixable; latency is not.** That drives one hard
+requirement below.
+
+## Consequences for the design
+
+Three changes fall out of the measurements:
+
+1. **`--setting-sources ""` goes into `_oneshot_argv`** as prerequisite
+   work, before either feature. It cuts every existing one-shot — `/btw`
+   and `titlegen` included — by 64% at no behavioural cost, since a
+   generation call has no business reading the project's instructions.
+   This lands as its own commit with its own before/after measurement.
+2. **The recap must never block the turn boundary.** A 7-second stall
+   after every productive turn is not payable, and no amount of token
+   shedding removes it. The recap fires as a detached task; the session
+   settles idle immediately and the line renders when it arrives, one or
+   two seconds later. If a new turn starts first, the in-flight recap is
+   cancelled rather than rendered late against a transcript that has
+   moved on.
+3. **The judge may block, and should.** It fires once per loop iteration,
+   where the turn it gates runs for minutes; 7s against that is noise, and
+   the whole point is to decide *before* the next iteration starts.
+
+### The budget, stated plainly
+
+With `--setting-sources ""`, a recap is ~7,749 input tokens and ~$0.020
+cold. At 100 productive turns that is ~$2 and no added wall-clock. The
+movement gate is what keeps "productive" from meaning "every turn" — it is
+a cost requirement, not a nicety.
+
+Alex is on a subscription, so `total_cost_usd` is notional and the real
+currency is the weekly pool; the token counts above are the honest number
+either way.
+
+**If ~7.7k tokens per recap proves too expensive in practice, the next
+lever is a direct API call** rather than a `claude -p` subprocess: a 2k
+window plus a short system prompt is ~2.5k tokens and roughly a second,
+since it skips both the CLI startup and the built-in system prompt. That
+buys ~3× on cost and ~5× on latency, and costs an API key — real money
+instead of subscription quota. Not in this slice; recorded because the
+measurements point at it and the `Lovelaice` provider already carries
+`base_url` / `api_key_file` for exactly this shape.
+
 ## Configuration
 
 Both features reuse `text_generation:` (`config/yaml_loader.py:75`), which
-already fails loud when it names an agent that does not exist. Measured
-2026-07-31 on zion: the same one-shot costs $0.0044 on haiku. Both decline
-quietly when the resolved driver lacks `supports_oneshot` — a real path
-for gemini, opencode and lovelaice today, not a theoretical one.
+already fails loud when it names an agent that does not exist. Note that
+it is **unset** in Alex's own `.aegis.yaml` today, so every `/btw` he has
+run was billed at Opus — measured at $0.32–$0.46 per call against haiku's
+$0.045. Setting the knob is a larger win than either feature.
+
+Both decline quietly when the resolved driver lacks `supports_oneshot` — a
+real path for gemini, opencode and lovelaice today, not a theoretical one.
 
 Two boolean knobs, both defaulting on: `recap:` and `loop_judge:`.
-
-**On cost.** The recap fires roughly once per *productive* turn — an order
-of magnitude more traffic than `/btw`, which is a handful of calls a
-session. The movement gate is what keeps that honest, and it is the reason
-the gate is a correctness requirement rather than a nicety. The judge fires
-once per loop iteration, which is bounded by the cap.
 
 ## Testing
 
