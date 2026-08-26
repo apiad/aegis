@@ -12,6 +12,7 @@ deterministic state rather than a timing race.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -438,3 +439,41 @@ async def test_every_spelling_reaches_the_deferred_path(typed, expected_verb):
         assert seen, f"{typed!r} never reached the deferred path"
         assert seen[0][1] == expected_verb
         assert sess.sent == [], f"{typed!r} was delivered to the agent"
+
+
+@pytest.mark.asyncio
+async def test_esc_offers_the_key_to_the_active_tab_before_the_pane_rungs():
+    """A file browser / file tab has no input and no turn, but it does own
+    escape (leave edit mode, go back to browse). It claims the key through
+    `escape_handled`, which sits above the whole pane ladder — and when it
+    declines, the rungs below still run."""
+    sess = GatedSession()
+    app = _app(sess)
+    async with app.run_test() as pilot:
+        pane = app._panes[0]
+        pane.query_one(GrowingInput).value = "half typed"
+
+        target = Path.cwd() / "escape_target.py"
+        target.write_text("x = 1")
+        await app.action_open_file_picker()
+        await pilot.pause()
+        tab = app._panes[-1]
+        assert app._active is tab
+        await tab._switch_to_view(target)
+        await pilot.pause()
+        assert tab.query_one("#fb-view").display is True
+
+        app.action_interrupt()
+        await pilot.pause()
+        assert tab.query_one("#fb-browse").display is True, \
+            "escape never reached the browser tab"
+        assert pane.query_one(GrowingInput).value == "half typed", \
+            "the tab claimed escape but a lower rung ran anyway"
+
+        # Browse mode has nothing to go back to and declines, leaving the
+        # key to the rungs below (which do nothing here — the ladder acts
+        # on `_active`, and `_active` is the browser tab, not the pane).
+        assert tab.escape_handled() is False
+        app.action_interrupt()
+        await pilot.pause()
+        assert tab.query_one("#fb-browse").display is True

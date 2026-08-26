@@ -4,10 +4,13 @@ from pathlib import Path
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import ContentSwitcher, DirectoryTree, Input, OptionList
+from textual.widgets import (ContentSwitcher, DirectoryTree, Input, OptionList,
+                             TextArea)
+from textual.widgets.option_list import Option
 
-from aegis.tui.file_browser_tab import FileBrowserTab
+from aegis.tui.file_browser_tab import _LIST_CAP, FileBrowserTab
 from aegis.tui.file_index import FileIndexer
+from aegis.tui.file_tab import FileTab
 from aegis.tui.state import AgentState
 
 
@@ -181,6 +184,198 @@ async def test_prefill_nonexistent_populates_filter(tmp_path: Path):
         filt = tab.query_one("#fb-filter", Input)
         assert filt.value == "myfile"
         assert tab._current_file is None
+    idx.stop()
+
+
+# ---------- escape --------------------------------------------------------
+#
+# The app binds escape at priority, so a focused widget's ``key_escape``
+# never runs inside AegisApp (probed: the binding fires, the widget does
+# not). Escape therefore arrives through ``action_interrupt``'s duck-typed
+# ladder, and the tab's rung is ``escape_handled``.
+
+
+@pytest.mark.asyncio
+async def test_escape_returns_to_browse_from_view(tmp_path: Path):
+    f = tmp_path / "esc.py"
+    f.write_text("x = 1")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab._switch_to_view(f)
+        await pilot.pause()
+        # The editor holds focus, exactly as focus_input() leaves it.
+        tab.query_one(TextArea).focus()
+        await pilot.pause()
+        assert tab.escape_handled() is True
+        await pilot.pause()
+        assert tab.query_one("#fb-browse").display is True
+        assert tab.query_one("#fb-view").display is False
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_escape_is_declined_in_browse_mode(tmp_path: Path):
+    """Browse mode has nothing to go back to, so the rung must pass the
+    key down the ladder rather than swallowing it."""
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert tab.escape_handled() is False
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_escape_reaches_the_editor_before_it_reaches_browse(tmp_path: Path):
+    """An editing FileTab owns escape — leaving edit mode must not also
+    throw away the file you were editing."""
+    f = tmp_path / "editing.py"
+    f.write_text("x = 1")
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab._switch_to_view(f)
+        await pilot.pause()
+        ft = tab.query_one(FileTab)
+        ft.key_e()                       # enter edit mode
+        await pilot.pause()
+        assert ft._edit_mode is True
+
+        assert tab.escape_handled() is True
+        await pilot.pause()
+        assert ft._edit_mode is False, "escape did not leave edit mode"
+        assert tab.query_one("#fb-view").display is True, \
+            "escape fell through to browse and abandoned the open file"
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_b_reaches_the_tab_with_the_editor_focused(tmp_path: Path):
+    """A read-only TextArea does not swallow printable keys, so `b` still
+    works after focus_input() parks focus on the editor. Pinned because
+    the original `b` test pressed the key with focus elsewhere."""
+    f = tmp_path / "focused.py"
+    f.write_text("x = 1")
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab._switch_to_view(f)
+        await pilot.pause()
+        tab.focus_input()
+        await pilot.pause()
+        await pilot.press("b")
+        await pilot.pause()
+        assert tab.query_one("#fb-browse").display is True
+    idx.stop()
+
+
+# ---------- the list ------------------------------------------------------
+
+
+def _labels(ol: OptionList) -> list[str]:
+    return [str(ol.get_option_at_index(i).prompt) for i in range(ol.option_count)]
+
+
+@pytest.mark.asyncio
+async def test_returning_to_browse_highlights_the_file_that_was_open(tmp_path: Path):
+    for name in ("one.py", "two.py", "three.py"):
+        (tmp_path / name).write_text("x")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab._switch_to_view(tmp_path / "two.py")
+        await pilot.pause()
+        tab.escape_handled()
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        assert ol.highlighted is not None
+        assert ol.get_option_at_index(ol.highlighted).id == "two.py"
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_the_highlight_on_the_same_file(tmp_path: Path):
+    """The 2s poll rebuilds the list; it must not walk the cursor back to
+    the top under someone who is arrowing through it."""
+    for name in ("aaa.py", "bbb.py", "ccc.py"):
+        (tmp_path / name).write_text("x")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        assert ol.option_count >= 3
+        target = ol.get_option_at_index(2).id
+        ol.highlighted = 2
+        tab._refresh_list()
+        await pilot.pause()
+        assert ol.get_option_at_index(ol.highlighted).id == target
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_list_says_how_many_files_it_dropped(tmp_path: Path):
+    """The list is capped. A silent cap reads as a complete listing."""
+    for i in range(_LIST_CAP + 5):
+        (tmp_path / f"f{i:04d}.py").write_text("x")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(10.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        assert ol.option_count == _LIST_CAP + 1, "cap plus one marker row"
+        marker = ol.get_option_at_index(ol.option_count - 1)
+        assert marker.disabled is True
+        assert "5 more" in str(marker.prompt)
+    idx.stop()
+
+
+@pytest.mark.asyncio
+async def test_refresh_is_paused_in_view_mode(tmp_path: Path):
+    """The poll keeps firing while the list is hidden; rebuilding it there
+    is wasted work and destroys the highlight we just restored."""
+    f = tmp_path / "paused.py"
+    f.write_text("x = 1")
+    idx = FileIndexer()
+    idx.start(tmp_path)
+    assert idx._ready.wait(5.0)
+
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab._switch_to_view(f)
+        await pilot.pause()
+        ol = tab.query_one("#fb-list", OptionList)
+        ol.clear_options()
+        ol.add_option(Option("sentinel", id="sentinel"))
+        tab._refresh_list()
+        await pilot.pause()
+        assert _labels(ol) == ["sentinel"], "the hidden list was rebuilt"
     idx.stop()
 
 

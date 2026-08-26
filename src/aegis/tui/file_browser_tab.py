@@ -21,6 +21,7 @@ from aegis.tui.state import AgentState
 _COUNTER = itertools.count(1)
 _SIDEBAR_WIDTH = 28
 _POLL_S = 2.0
+_LIST_CAP = 200
 
 
 def _fmt_age(seconds: float) -> str:
@@ -101,6 +102,7 @@ class FileBrowserTab(Widget, can_focus=True):
         self._sidebar_open = sidebar_open
         self._filter_text: str = prefill
         self._current_file: Path | None = None
+        self._pending_highlight: str | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -177,6 +179,15 @@ class FileBrowserTab(Widget, can_focus=True):
     def _refresh_list(self) -> None:
         import contextlib
         import time
+        # The poll keeps firing in view mode, where the list is hidden.
+        # Rebuilding it there is wasted work and throws away the highlight
+        # that returning to browse is about to restore.
+        if self._current_file is not None:
+            return
+        # Note: this filter is a substring match over the mtime-sorted
+        # snapshot, deliberately not `indexer.filter()` — that one re-sorts
+        # alphabetically and caps at 50, which would undo the recency order
+        # the whole tab exists for.
         paths = self._indexer.paths_by_mtime()
         if self._filter_text:
             needle = self._filter_text.lower()
@@ -184,15 +195,34 @@ class FileBrowserTab(Widget, can_focus=True):
         now = time.time()
         mtimes = self._indexer._mtimes
         options = []
-        for p in paths[:200]:   # cap to keep the widget fast
+        for p in paths[:_LIST_CAP]:
             mtime = mtimes.get(p, 0.0)
             age = _fmt_age(now - mtime) if mtime else "?"
             options.append(Option(f"{age:>5}  {p}", id=p))
+        dropped = len(paths) - len(options)
+        if dropped > 0:
+            # A silent cap reads as a complete listing.
+            options.append(Option(
+                f"       … {dropped} more — narrow the filter", disabled=True))
         with contextlib.suppress(Exception):
             ol = self.query_one("#fb-list", OptionList)
+            want = self._pending_highlight or self._highlighted_id(ol)
+            self._pending_highlight = None
             ol.clear_options()
             for opt in options:
                 ol.add_option(opt)
+            if want is not None:
+                for i, opt in enumerate(options):
+                    if opt.id == want:
+                        ol.highlighted = i
+                        break
+
+    @staticmethod
+    def _highlighted_id(ol: OptionList) -> str | None:
+        i = ol.highlighted
+        if i is None or i >= ol.option_count:
+            return None
+        return ol.get_option_at_index(i).id
 
     async def _switch_to_view(self, path: Path) -> None:
         import contextlib
@@ -224,6 +254,36 @@ class FileBrowserTab(Widget, can_focus=True):
 
     def key_b(self) -> None:
         """Return to browse mode from view mode."""
-        if self._current_file is not None:
-            self._current_file = None
-            self._show_browse()
+        self._back_to_browse()
+
+    def escape_handled(self) -> bool:
+        """The escape rung ``AegisApp.action_interrupt`` calls.
+
+        The app binds escape at priority, so a focused widget's
+        ``key_escape`` never runs inside the real app — the binding wins
+        and the widget is skipped. Escape reaches a tab through this
+        duck-typed hook instead. Answering ``False`` leaves the key to the
+        rungs below (cancel a note, clear the input, interrupt the turn).
+        """
+        import contextlib
+        from aegis.tui.file_tab import FileTab
+        if self._current_file is None:
+            return False
+        # An editing or previewing editor owns escape first — leaving edit
+        # mode must not also abandon the file you were editing.
+        with contextlib.suppress(Exception):
+            if self.query_one(FileTab).escape_handled():
+                return True
+        self._back_to_browse()
+        return True
+
+    def _back_to_browse(self) -> None:
+        import contextlib
+        path = self._current_file
+        if path is None:
+            return
+        self._current_file = None
+        with contextlib.suppress(ValueError):
+            self._pending_highlight = str(path.resolve().relative_to(self._cwd))
+        self._show_browse()
+        self._refresh_list()

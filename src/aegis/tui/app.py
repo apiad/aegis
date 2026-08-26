@@ -1461,6 +1461,14 @@ class AegisApp(App):
             self.screen.dismiss()
             return
         active = self._active
+        # A file tab or a file browser owns escape before any pane rung
+        # does — there it means "leave edit mode" or "back to the file
+        # list", and neither tab has an input or a turn for the rungs
+        # below to act on. Because the binding is priority=True, this hook
+        # is the only way escape reaches those tabs at all.
+        if active is not None and hasattr(active, "escape_handled"):
+            if active.escape_handled():
+                return
         # Esc cancels a running /btw or @peer before it clears a half-typed
         # line. The spinning block is the live thing on screen demanding
         # attention and it is billing by the second; clearing the input is

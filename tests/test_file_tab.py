@@ -321,3 +321,54 @@ async def test_ctrl_x_noop_in_edit_mode(tmp_path: Path, monkeypatch):
         await pilot.press("ctrl+x")
         await pilot.pause()
     assert calls == []
+
+
+# ---------- escape reaches the tab through the app's ladder ---------------
+#
+# AegisApp binds escape at priority, so `key_escape` never fires while the
+# tab is inside the real app — the binding wins and the widget is skipped.
+# `escape_handled` is the rung `action_interrupt` calls instead, and it
+# answers False when the tab has nothing to do so the ladder continues.
+
+
+@pytest.mark.asyncio
+async def test_escape_handled_leaves_edit_mode(tmp_path: Path):
+    f = tmp_path / "edit.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert tab._edit_mode is True
+        assert tab.escape_handled() is True
+        await pilot.pause()
+        assert tab._edit_mode is False
+
+
+@pytest.mark.asyncio
+async def test_escape_handled_is_declined_when_idle(tmp_path: Path):
+    f = tmp_path / "idle.py"
+    f.write_text("x = 1")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert tab.escape_handled() is False
+
+
+@pytest.mark.asyncio
+async def test_escape_handled_leaves_preview(tmp_path: Path):
+    f = tmp_path / "doc.md"
+    f.write_text("# title\n\nbody\n")
+    tab = FileTab(f)
+    app = _Host(tab)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await tab.action_preview()
+        await pilot.pause()
+        assert tab._preview_mode is True
+        assert tab.escape_handled() is True
+        await pilot.pause()
+        assert tab._preview_mode is False

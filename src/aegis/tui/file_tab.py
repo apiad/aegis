@@ -248,22 +248,35 @@ class FileTab(Widget, can_focus=True):
         if self._cancel_pending:
             self._discard_and_exit_edit()
 
-    def key_escape(self) -> None:
+    def key_escape(self) -> bool:
+        # Textual treats a key method returning False as unhandled, so the
+        # key keeps bubbling when this tab has nothing to do with it.
+        return self.escape_handled()
+
+    def escape_handled(self) -> bool:
+        """Do whatever escape means here; say whether it meant anything.
+
+        ``AegisApp`` binds escape at priority, so ``key_escape`` above never
+        fires inside the real app — the binding wins and the focused widget
+        is skipped. ``action_interrupt`` calls this instead, and a ``False``
+        lets the rungs below it run.
+        """
         if self._preview_mode and not self._edit_mode:
             self._exit_preview()
             self._refresh_status()
-            return
+            return True
         if not self._edit_mode:
-            return
+            return False
         if self._cancel_pending:
             self._hide_cancel_prompt()
-            return
+            return True
         if self._modified:
             self._show_cancel_prompt()
-            return
+            return True
         self._edit_mode = False
         self.query_one("#ft-editor", TextArea).read_only = True
         self._refresh_status()
+        return True
 
     def _show_cancel_prompt(self) -> None:
         self._cancel_pending = True
