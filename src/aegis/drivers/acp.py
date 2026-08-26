@@ -93,6 +93,7 @@ from aegis.config import Agent
 from aegis.config.persona import read_persona
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.hosts.launcher import LOCAL, Launcher
+from aegis.mcp.identity import HEADER_NAME
 from aegis.events import (
     AgentPlan,
     AssistantText,
@@ -316,12 +317,17 @@ class AcpSession(HarnessSession):
                  *, resume_session_id: str | None = None,
                  extra_env: dict[str, str] | None = None,
                  persona: str | None = None,
-                 launcher: Launcher = LOCAL) -> None:
+                 launcher: Launcher = LOCAL,
+                 token: str = "") -> None:
         self._launcher = launcher
         self._agent = agent
         self._cwd = cwd
         self._mcp_url = mcp_url
         self._handle = handle
+        # This spawn's identity on the aegis MCP plane, sent as a header on
+        # the mcp_servers entry below. Empty means unattributed, which is
+        # the pre-feature behaviour and still legal in v1.
+        self._token = token
         # Persona system prompt. ACP has no system-prompt field, so it is
         # prepended as a leading text block on the FIRST turn only.
         self._persona = persona
@@ -344,6 +350,22 @@ class AcpSession(HarnessSession):
         # Default: just the BASE_CMD. Subclasses override to inject
         # provider-specific flags like model selection.
         return list(self.BASE_CMD)
+
+    def _mcp_servers(self) -> list[dict]:
+        """The `mcp_servers` argument for new_session / load_session.
+
+        `headers` is a LIST of {name, value} — `acp.schema.HttpHeader` —
+        not a mapping. A dict here is accepted by our own dict-shaped code
+        and then ignored downstream, which reads as "identity silently
+        stopped working" rather than as an error.
+        """
+        if not self._mcp_url:
+            return []
+        token = getattr(self, "_token", "")
+        headers = ([{"name": HEADER_NAME, "value": token}]
+                   if token else [])
+        return [{"type": "http", "name": "aegis",
+                 "url": self._mcp_url, "headers": headers}]
 
     async def _apply_pre_spawn_hooks(
         self,
@@ -487,12 +509,7 @@ class AcpSession(HarnessSession):
                 },
                 client_info={"name": "aegis", "version": _AEGIS_VERSION},
             )
-            mcp_servers = ([{
-                "type": "http",
-                "name": "aegis",
-                "url": self._mcp_url,
-                "headers": [],
-            }] if self._mcp_url else [])
+            mcp_servers = self._mcp_servers()
             if self._resume_session_id:
                 sess = await self._conn.load_session(
                     cwd=self._cwd,
