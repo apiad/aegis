@@ -1159,7 +1159,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             from_handle: your own aegis handle.
         """
         from aegis.core.close_guard import gather_facts, refuse_reasons
+        from aegis.mcp.identity import verified_handle
 
+        from_handle, _verified = verified_handle(tokens, from_handle)
         facts = gather_facts(bridge, handle)
         reasons = refuse_reasons(facts, requester=from_handle, target=handle)
         if reasons:
@@ -1200,6 +1202,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             intent: "shared" (default) or "exclusive".
             desc: short note on what you're doing (shown to others).
         """
+        from aegis.mcp.identity import verified_handle
+
+        from_handle, _verified = verified_handle(tokens, from_handle)
         # Claims are host-scoped: the same path names a different file on a
         # different machine, so a claim carries the host of the session that
         # made it and only overlaps claims on that same host.
@@ -1224,6 +1229,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         """Release a file claim you hold (idempotent; releasing a claim you
         don't own is a no-op). Claims also auto-release when your session ends.
         """
+        from aegis.mcp.identity import verified_handle
+
+        from_handle, _verified = verified_handle(tokens, from_handle)
         return {"released": bridge.locks.release(claim_id, from_handle)}
 
     @server.tool
@@ -1472,6 +1480,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         the operator. Calling this with no loop armed is harmless and returns
         ``{"stopped": false}``.
         """
+        from aegis.mcp.identity import verified_handle
+
+        from_handle, _verified = verified_handle(tokens, from_handle)
         svc = getattr(bridge, "loop_service", None)
         if svc is None:
             return {"error": "loops not available on this bridge"}
