@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -396,4 +397,37 @@ async def test_tree_file_selected_opens_view(tmp_path: Path):
         await pilot.pause()
         assert tab._current_file == f.resolve()
         assert tab.query_one("#fb-view").display is True
+    idx.stop()
+
+
+class _VisibleHost(App):
+    """Host that actually lays the tab out, so regions are measurable."""
+
+    def __init__(self, tab: FileBrowserTab) -> None:
+        super().__init__()
+        self._tab = tab
+
+    def compose(self) -> ComposeResult:
+        yield self._tab
+
+
+@pytest.mark.asyncio
+async def test_filter_input_renders_its_text(tmp_path: Path):
+    """The filter input must have room to draw: a `height: 1` Input that keeps
+    Textual's default `border: tall` collapses its content region to 0 rows —
+    typing still filters, but the typed text is invisible."""
+    idx = FileIndexer()
+    tab = FileBrowserTab(cwd=tmp_path, indexer=idx)
+    app = _VisibleHost(tab)
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        inp = app.query_one("#fb-filter", Input)
+        inp.focus()
+        await pilot.pause()
+        await pilot.press("a", "b", "c")
+        await pilot.pause()
+        assert inp.value == "abc"
+        assert inp.content_region.height >= 1, "no room to draw the text"
+        rendered = "".join(re.findall(r">([^<]*)<", app.export_screenshot()))
+        assert "abc" in rendered
     idx.stop()

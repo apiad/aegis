@@ -76,6 +76,8 @@ class FileBrowserTab(Widget, can_focus=True):
     FileBrowserTab #fb-filter {{
         height: 1;
         dock: top;
+        border: none;
+        padding: 0 1;
     }}
     FileBrowserTab #fb-list {{
         height: 1fr;
