@@ -9,6 +9,9 @@
                                   # remote (and local) dev; ensures a token,
                                   # opens the browser, serves the web client
     aegis serve                   # headless: MCP plane + web frontend
+    aegis logs [-c] [-f]          # the aegis process log — what the harness
+                                  # itself did, and the crashes it recorded
+                                  # on its way down (-c = crashes only)
     aegis config ...              # scriptable .aegis.yaml authoring
                                   # (agent / harness / queue / default-agent
                                   #  / plugin-dir / show)
@@ -133,14 +136,21 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (turn loop, metrics, state, observer callbacks — `session.py`) and
   `SessionManager` (AppBridge impl: spawn/close/interrupt/handoff over
   many AgentSessions — `manager.py`). The TUI's ConversationPane and the
-  web frontend both delegate to these.
+  web frontend both delegate to these. `handles.py` is the **one authority
+  for handle names**: a handle bound anywhere in this process is never
+  handed to a different session, because `ConversationPane`'s DOM id is
+  `pane-<birth handle>` and Textual ids are immutable — so a renamed pane
+  keeps occupying its birth name and reusing it is `DuplicateIds` and the
+  whole app. Mint through `SessionManager.handles` / `AegisApp._mint_handle`,
+  never `generate_name` directly.
 - `src/aegis/state/` - conversation persistence. `session_log.py` owns the
   transcripts at `.aegis/state/sessions/<log_id>.jsonl`. **The log id is
   `<YYYYMMDDTHHMMSSuuuuuuZ>-<birth handle>`, minted once at spawn
   (`new_log_id`) and never changed** — do not key a log on a handle:
-  handles come from a finite pool, `generate_name` only avoids *live*
-  ones, and reusing one merges unrelated conversations into one file (100
-  of 223 logs on a real state dir, 160 conversations buried). A rename
+  handles come from a finite pool and are retired only for the life of a
+  process (`aegis.core.handles`), so a name is reused across restarts, and
+  keying on it merges unrelated conversations into one file (100 of 223
+  logs on a real state dir, 160 conversations buried). A rename
   therefore moves nothing; it appends a `SessionMeta` carrying the new
   name. A bare handle stays a valid (legacy) id, so pre-id files keep
   resolving. Writes are one `os.write` on an `O_APPEND` fd + `fsync` on
@@ -150,7 +160,13 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   alone the app, down. `history.py` folds logs into Ctrl+R rows (headers
   found anywhere, rows rebuilt for header-less legacy logs and flagged
   `inferred`); `workspace.py` is the atomic tab roster; `repair.py` backs
-  `aegis doctor [--repair] [--split]`.
+  `aegis doctor [--repair] [--split]`. `aegis_log.py` is the **process**
+  log — a different artifact from the transcripts, at
+  `.aegis/state/aegis.log`, carrying what aegis itself did and every crash
+  it caught on four hooks (`sys.excepthook`, `threading.excepthook`, the
+  asyncio loop handler, `AegisApp._handle_exception`). Crash writes flush
+  before returning: the record must be on disk *before* the process exits,
+  which is the whole reason the file exists. `aegis logs` reads it.
 - `src/aegis/tui/` - Textual app shell (app.py) + per-tab ConversationPane
   (pane.py), TabBar/StatusBar (widgets.py), AgentState (state.py),
   SessionMetrics (metrics.py), generated handles (names.py), AgentPicker

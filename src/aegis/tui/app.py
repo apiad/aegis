@@ -17,6 +17,7 @@ from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.monitor import MonitorManager
 from aegis.queue import InboxRouter, LoopService, QueueDigest, QueueManager
+from aegis.state import aegis_log
 from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
@@ -485,7 +486,41 @@ class AegisApp(App):
     def session_manager(self):
         return _SessionFocusAdapter(self)
 
+    def _crash_context(self) -> str:
+        """What the crash log needs beyond a traceback.
+
+        A DuplicateIds out of mount says which id collided and nothing about
+        how aegis got there. The roster does: which tabs were up, what each
+        answers to, and which names are retired but still holding a DOM id.
+        """
+        panes = [p for p in self._panes if isinstance(p, ConversationPane)]
+        live = ", ".join(f"{p.handle}[{p.id}]" for p in panes) or "none"
+        retired = sorted(self._handles.known
+                         - {p.handle for p in panes})
+        return (f"{len(self._panes)} tabs; live: {live}; "
+                f"retired handles: {', '.join(retired) or 'none'}")
+
+    def _handle_exception(self, error: Exception) -> None:
+        """Textual's crash door — the one that matters for the TUI.
+
+        It fires while the app is still up, before the terminal is restored
+        and the Rich traceback is printed to a screen that is about to go
+        away. Writing (and flushing) here is what puts the crash on disk
+        rather than on a scrollback nobody can recover.
+        """
+        try:
+            aegis_log.crash("tui", error)
+        except Exception:                                     # noqa: BLE001
+            pass  # never let logging the crash replace the crash
+        super()._handle_exception(error)
+
     async def on_mount(self) -> None:
+        aegis_log.configure(self._state_dir, context=self._crash_context)
+        try:
+            import asyncio as _asyncio
+            aegis_log.install_asyncio_hook(_asyncio.get_running_loop())
+        except Exception:                                     # noqa: BLE001
+            pass  # a loop we cannot reach is not worth failing boot over
         for theme in THEMES.values():
             self.register_theme(theme)
         self.theme = DEFAULT_THEME

@@ -5,6 +5,57 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/spawn` could mint a handle another pane was still holding, and the app
+  died with `DuplicateIds`.** `ConversationPane` keys its Textual DOM id on
+  the handle it was *born* with, and Textual ids are immutable — so a
+  renamed pane goes on occupying its birth name in the DOM for its whole
+  life, while all five mint sites scored candidates against "the handles
+  sessions carry right now", a set that name had just left. `generate_name`
+  prefers unused adjectives and laureates, which is why it only bit on a
+  long-lived aegis with several renamed tabs: *sometimes*.
+
+  The same shape bit the headless planes more quietly. Monitors, reminders,
+  claims, MCP tokens and history rows are keyed by handle, so a recycled
+  name silently inherited a dead session's wakes.
+
+  `HandleRegistry` is now the single authority: every handle bound in this
+  process is remembered, and never handed to a different session. Ownership
+  is tracked by birth handle, so a session that renamed away can still
+  rename *back* into one of its own former names while everyone else is
+  refused. Wired through `AegisApp._spawn`, `_SessionManagerAdapter.spawn`
+  and `.fork`, `SessionManager._sync_spawn` and the queue's worker factory,
+  plus the three paths that bind an externally-chosen handle — workspace
+  restore, `Ctrl+R` reopen and remote pane hydration — which now skip or
+  refuse a collision instead of mounting a second pane on one DOM id.
+
+### Added
+
+- **An aegis log, separate from the session transcripts.** Per-session
+  JSONL records what each *agent* said; nothing recorded what aegis itself
+  did. So when the TUI died, the only account was a Rich traceback printed
+  as Textual tore the terminal down — on the alternate screen, after the app
+  had stopped. A crash that leaves no artifact can only be re-witnessed.
+
+  `.aegis/state/aegis.log` now carries it: plain text, rotated at 5 MB,
+  flushed on every crash write so the record is on disk *before* the process
+  gets to exit. Four doors are wired — `sys.excepthook`, `threading.
+  excepthook`, the asyncio loop handler, and `AegisApp._handle_exception`,
+  which fires while the app is still up. Stdlib `aegis.*` loggers (the
+  scheduler's `logger.exception` calls among them) land there too instead of
+  going nowhere.
+
+  Each crash carries the pane roster beside the traceback — which tabs were
+  up, what each answers to, and which handles are retired but still holding
+  a DOM id — because that is what a bare `DuplicateIds` does not tell you.
+  Exceptions carried as a *payload* rather than a cause are unwrapped, since
+  every pane mount runs in a worker and `WorkerFailed`'s own traceback names
+  nothing.
+
+  Read it with `aegis logs` (`--crashes` for banners and their tracebacks,
+  `-f` to follow, `--path` for the file).
+
 ## [0.36.0] - 2026-08-27
 
 ### Added

@@ -644,6 +644,54 @@ def token() -> None:
     typer.echo(_ensure_web_token(root))
 
 
+@app.command()
+def logs(
+    lines: int = typer.Option(200, "--lines", "-n",
+                              help="How many lines to show."),
+    crashes: bool = typer.Option(False, "--crashes", "-c",
+                                 help="Only crash banners and their "
+                                      "tracebacks."),
+    follow: bool = typer.Option(False, "--follow", "-f",
+                                help="Stream new lines as they arrive."),
+    path_only: bool = typer.Option(False, "--path",
+                                   help="Print the log's path and exit."),
+    cwd: str = typer.Option(".", "--cwd"),
+) -> None:
+    """Read the aegis process log — what the harness itself did, including
+    the crashes it recorded on its way down."""
+    import time
+
+    from aegis.state import aegis_log
+    # Same rule as `serve`: an explicit --cwd wins, otherwise walk up to the
+    # project root. A --cwd that silently resolved somewhere else would send
+    # you to read the wrong machine's crash.
+    root = Path(cwd) if cwd != "." else (find_project_root() or Path.cwd())
+    target = aegis_log.default_path(root / ".aegis" / "state")
+    if path_only:
+        typer.echo(str(target))
+        return
+    if not target.exists():
+        _console.print(
+            f"[yellow]No aegis log yet at {target}[/yellow]\n"
+            "It is created when `aegis` or `aegis serve` starts.")
+        raise typer.Exit(1)
+    for ln in aegis_log.tail(lines, crashes_only=crashes, log_path=target):
+        typer.echo(ln)
+    if not follow:
+        return
+    with target.open("r", encoding="utf-8", errors="replace") as fh:
+        fh.seek(0, 2)
+        try:
+            while True:
+                chunk = fh.readline()
+                if not chunk:
+                    time.sleep(0.4)
+                    continue
+                typer.echo(chunk.rstrip("\n"))
+        except KeyboardInterrupt:
+            return
+
+
 def _ensure_web_token(root: Path) -> str:
     """Return the configured web token, generating + persisting a fresh one
     into .aegis.yaml when none is set. Idempotent."""
@@ -700,9 +748,16 @@ def _run_serve(cwd: str) -> None:
                                  local_root=effective)
     make_session = _session_factory(effective, host_registry)
 
+    # Headless has no terminal to lose, but it is also the path nobody is
+    # watching — a traceback on a detached stdout is as good as unwritten.
+    from aegis.state import aegis_log
+    aegis_log.configure(root / ".aegis" / "state")
+    aegis_log.write(f"serve starting (cwd {effective})")
+
     async def main_async():
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
+        aegis_log.install_asyncio_hook(loop)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
         await _serve(agents=agents, default_agent=default_agent,
