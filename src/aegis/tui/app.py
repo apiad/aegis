@@ -12,12 +12,12 @@ from textual.binding import Binding
 from textual.widgets import ContentSwitcher
 
 from aegis.config import Agent, VoiceConfig
+from aegis.core.handles import HandleRegistry
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.monitor import MonitorManager
 from aegis.queue import InboxRouter, LoopService, QueueDigest, QueueManager
 from aegis.state.workspace import WorkspaceTab, state_dir
-from aegis.tui.names import generate_name
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
 from aegis.voice import (
@@ -347,6 +347,11 @@ class AegisApp(App):
         # Pending debounced roster write (see _schedule_snapshot).
         self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
+        # Every handle bound in this process, live or retired. A pane's DOM
+        # id is `pane-<birth handle>` and Textual ids are immutable, so a
+        # name freed by a rename or a close is NOT free to mint again — see
+        # aegis.core.handles.
+        self._handles = HandleRegistry()
         # F3 dashboard mode — app-wide, not per-pane (see set_sidebar_mode).
         self._sidebar_mode = False
         self._voice_cfg = voice or VoiceConfig()
@@ -591,6 +596,13 @@ class AegisApp(App):
         failures: list[tuple[str, str]] = []
         for tp in plan.resumable:
             tab = tp.tab
+            # A snapshot naming one handle twice (hand-edited, or written by
+            # a build with the collision bug) would mount two panes with one
+            # DOM id and take the boot down. Drop the second, loudly.
+            if self._handles.owner(tab.handle) is not None:
+                failures.append((tab.handle, "duplicate handle in workspace"))
+                continue
+            self._handles.reserve(tab.handle)
             drv = self._drivers[tab.provider]
             agent = self._agents[tab.profile]
             try:
@@ -747,6 +759,22 @@ class AegisApp(App):
         from aegis.hosts.models import Place
         return {} if place == Place("local", self._cwd) else {"place": place}
 
+    def _mint_handle(self, handle: str | None) -> str:
+        """The one door every new pane's name comes through.
+
+        Five sites used to score candidates against the handles panes carry
+        *right now*; a renamed pane's birth name is not in that set but its
+        DOM id `pane-<birth>` still is, so the next mint could collide and
+        Textual would raise DuplicateIds out of mount. The registry retires
+        names instead of freeing them.
+        """
+        if handle is not None:
+            self._handles.reserve(handle)
+            return handle
+        return self._handles.mint(
+            {p.handle for p in self._panes
+             if isinstance(p, ConversationPane)})
+
     async def _spawn(self, slug: str, *,
                      handle: str | None = None,
                      opening_prompt: str | None = None,
@@ -760,9 +788,7 @@ class AegisApp(App):
         agent = agent_override if agent_override is not None \
             else self._agents[slug]
         place = self._resolve_place(agent, host, cwd)
-        h = handle or generate_name(
-            {p.handle for p in self._panes
-             if isinstance(p, ConversationPane)})
+        h = self._mint_handle(handle)
 
         # Mint the transcript's identity before anything can write to it.
         # It is fixed for the session's life: handles come out of a finite
@@ -1111,6 +1137,17 @@ class AegisApp(App):
                         severity="warning")
             return
         tab = plan.resumable[0].tab
+        # Handle retirement is per-process, so a session logged under this
+        # name in an EARLIER run can collide with a pane minted in this one.
+        # Mounting it anyway is DuplicateIds and the whole app; refusing
+        # costs the operator one reopen.
+        if self._handles.owner(tab.handle) is not None:
+            self.notify(
+                f"cannot reopen {tab.handle}: a live tab already holds "
+                f"that handle — rename it first",
+                severity="warning")
+            return
+        self._handles.reserve(tab.handle)
         drv = self._drivers[tab.provider]
         agent = self._agents[tab.profile]
         try:
@@ -1876,6 +1913,11 @@ class AegisApp(App):
         core = self._remote_manager.make_pane_core(info.handle)
         if core is None:
             return None
+        # The remote plane names its own sessions; a name already bound here
+        # would mount a second `pane-<handle>`. Skip rather than crash.
+        if self._handles.owner(info.handle) is not None:
+            return None
+        self._handles.reserve(info.handle)
         pane = ConversationPane(
             session=None,
             agent=None,
@@ -2132,12 +2174,14 @@ class AegisApp(App):
         if pane is None:
             return {"error":
                     f"no session {old!r} (use aegis_list_sessions)"}
-        collision = next((p for p in self._panes
-                          if isinstance(p, ConversationPane)
-                          and p.handle == new), None)
-        if collision is not None:
+        # Not just "is a pane answering to it" — `new` may be another pane's
+        # birth name, which its DOM id `pane-<new>` still holds even though
+        # that pane now answers to something else. Minting or renaming into
+        # it is the DuplicateIds crash.
+        if not self._handles.claimable_by(new, old):
             return {"error":
                     f"handle {new!r} already in use by another session"}
+        self._handles.rename(old, new)
         pane.handle = new
         pane._core.handle = new
         self.inbox_router.rename(old, new)
@@ -2256,6 +2300,12 @@ class _SessionManagerAdapter:
         # QueueManager reads this for handle uniqueness (existing helper).
         return [p._core for p in self._app._panes]
 
+    @property
+    def handles(self):
+        # QueueManager mints worker names through this. Same registry the
+        # app's own panes use, so a worker can never land on a retired name.
+        return self._app._handles
+
     def spawn(self, slug: str, *,
               opening_prompt: str | None = None,
               handle: str | None = None,
@@ -2268,7 +2318,7 @@ class _SessionManagerAdapter:
         from aegis.core.manager import _overlay_agent
         agent = _overlay_agent(self._app._agents[slug], model=model,
                                effort=effort, prompt=prompt)
-        h = handle or generate_name({p.handle for p in self._app._panes})
+        h = self._app._mint_handle(handle)
         place = self._app._resolve_place(agent, host, cwd)
         pane = ConversationPane(
             self._app._make_session(agent, self._app._mcp.url, h,
@@ -2316,7 +2366,7 @@ class _SessionManagerAdapter:
         slug = parent._core.agent_slug
         agent = _overlay_agent(self._app._agents[slug], model=model,
                                effort=effort, prompt=None)
-        h = handle or generate_name({p.handle for p in self._app._panes})
+        h = self._app._mint_handle(handle)
         # Snapshot the parent's session id now, not when the fork is first
         # typed into: a no-prompt fork must branch from where it forked.
         sid = core.session_id

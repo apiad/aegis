@@ -109,7 +109,15 @@ class QueueManager:
         self._inbox = inbox_router
         self._state_dir = state_dir
         self._now = now
-        self._handle_factory = handle_factory or generate_name
+        # Worker names must come out of the same registry as every other
+        # handle: a queue worker minted onto a retired name is the same
+        # DuplicateIds crash, arriving from the substrate instead of the
+        # keyboard. Fall back to the bare generator only for the handful of
+        # test doubles that stand in for a session manager.
+        registry = getattr(session_manager, "handles", None)
+        self._handle_factory = (handle_factory
+                                or (registry.mint if registry is not None
+                                    else generate_name))
         # in-memory state
         self._pending: dict[str, list[Task]] = {q: [] for q in self._queues}
         self._inflight: dict[str, list[Task]] = {q: [] for q in self._queues}

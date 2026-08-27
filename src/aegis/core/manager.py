@@ -6,13 +6,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from aegis.config import Agent
+from aegis.core.handles import HandleRegistry
 from aegis.core.session import AgentSession
 from aegis.hosts.models import HostSpec, Place
 from aegis.hosts.resolve import resolve_place
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue import LoopService
 from aegis.state.titles import outranks, sanitize_title
-from aegis.tui.names import generate_name
 from aegis.tui.state import AgentState
 
 SessionFactory = Callable[[object, str, str], object]
@@ -84,6 +84,10 @@ class SessionManager:
         self._inline_schedule_names: set[str] = set()
         self._sessions: list[AgentSession] = []
         self._mru: list[str] = []  # most-recently-active first
+        # Every handle this process has bound, live or retired. See
+        # aegis.core.handles — a name freed by a rename or a close is NOT
+        # available again.
+        self.handles = HandleRegistry()
         from aegis.groups.bridge import make_groups_bridge
         self.groups = make_groups_bridge(
             session_manager=self, inbox_router=inbox)
@@ -187,7 +191,11 @@ class SessionManager:
             host=host, cwd=cwd,
             agent_host=getattr(agent, "host", None),
             hosts=self._hosts, local_root=self._local_root)
-        h = handle or generate_name({s.handle for s in self._sessions})
+        if handle is None:
+            h = self.handles.mint({s.handle for s in self._sessions})
+        else:
+            h = handle
+            self.handles.reserve(h)
         url = self._mcp.url if self._mcp is not None else ""
         # Only pass fork_from / place when they are actually needed: the
         # factory signature predates both and plain (profile, url, handle)
@@ -553,9 +561,13 @@ class SessionManager:
         if session is None:
             return {"error":
                     f"no session {old!r} (use aegis_list_sessions)"}
-        if self.get(new) is not None:
+        # Not just "is anyone answering to it" — a name another session was
+        # born with stays that session's for the life of the process, because
+        # its pane's DOM id and its planes are still keyed on it.
+        if not self.handles.claimable_by(new, old):
             return {"error":
                     f"handle {new!r} already in use by another session"}
+        self.handles.rename(old, new)
         session.handle = new
         if old in self._mru:
             idx = self._mru.index(old)
