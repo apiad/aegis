@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-08-27
+
 ### Fixed
 
 - **`/spawn` could mint a handle another pane was still holding, and the app
