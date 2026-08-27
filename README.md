@@ -683,6 +683,22 @@ web client, and (eventually) a remote TUI all speak the same WebSocket
 protocol over one backend, so sessions are shared across them. A systemd
 unit template lives at `scripts/aegis-serve.service`.
 
+## When something goes wrong: `aegis logs`
+
+Session transcripts record what each *agent* said. `.aegis/state/aegis.log`
+records what **aegis itself** did — and the crashes it caught on its way
+down, which would otherwise be a traceback printed onto a screen that is
+already being torn down.
+
+```bash
+aegis logs --crashes    # crash banners and their tracebacks
+aegis logs -f           # follow
+```
+
+Crash entries carry the tab roster alongside the traceback, and unwrap
+exceptions that arrive inside a Textual `WorkerFailed`. Details in
+[Usage](https://apiad.github.io/aegis/usage/#the-aegis-log-aegis-logs).
+
 ## Troubleshooting: flicker / tearing in the TUI
 
 If the cursor, the working spinner, and scrolling all **flicker or stutter as

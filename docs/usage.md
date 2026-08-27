@@ -462,8 +462,11 @@ What's persisted, under `.aegis/state/` next to your `.aegis.yaml`:
 
 - **`workspace.json`** — the tabs that were open: handle, profile,
   display order, which tab was active.
-- **`sessions/<handle>.jsonl`** — per-tab append-only event log used by
-  the TUI to rebuild each pane's transcript.
+- **`sessions/<log id>.jsonl`** — per-tab append-only event log used by
+  the TUI to rebuild each pane's transcript. The id is minted once at
+  spawn and never changes, so renaming a session moves nothing.
+- **`aegis.log`** — the process log. A different artifact from the
+  transcripts: see below.
 
 Limitations:
 
@@ -479,6 +482,52 @@ Limitations:
   whether or not any agent tabs resumed.
 - **Workers not resumed.** Queue workers and workflow runs are not part
   of the workspace snapshot; only interactive tabs are restored.
+
+## The aegis log (`aegis logs`)
+
+The session transcripts record what each **agent** said. `aegis.log`
+records what **aegis itself** did — and, above all, the crashes it caught
+on the way down.
+
+That last part is the reason it exists. When the TUI dies, Textual prints
+its traceback as it restores the terminal: on the alternate screen, after
+the app has already stopped. It scrolls away, and a crash that leaves no
+artifact can only be re-witnessed, never debugged.
+
+```bash
+aegis logs              # the last 200 lines
+aegis logs --crashes    # only crash banners and their tracebacks
+aegis logs -f           # follow
+aegis logs --path       # print the file's path and exit
+```
+
+The file lives at `.aegis/state/aegis.log`, is plain text, and rotates at
+5 MB (3 backups). Both `aegis` and `aegis serve` write to it.
+
+Four ways an exception can escape are wired to it — an uncaught error on
+the main thread, one on a worker thread, an orphaned asyncio task, and
+Textual's own handler, which fires while the app is still up. Every crash
+write is flushed before it returns, so the record is on disk *before* the
+process gets to exit. Ordinary log lines (the scheduler firing, a plugin
+failing to load) go to the same file.
+
+A crash entry carries more than a traceback:
+
+```
+!! CRASH [tui] WorkerFailed: Worker raised exception: DuplicateIds(...)
+  context: 3 tabs; live: rift-prose-checks[pane-hale-hamming], …;
+           retired handles: hale-hamming, bold-backus
+  -- carried by WorkerFailed --
+  Traceback (most recent call last):
+    …
+```
+
+`[tui]` names which of the four hooks caught it. `context:` is the tab
+roster at the moment it happened — which is usually what a bare traceback
+cannot tell you. And when the failure arrives wrapped (every pane mount
+runs in a worker, so it comes as `WorkerFailed`, whose own traceback names
+nothing), the exception it carries is unwrapped and printed with its real
+frames.
 
 ## Headless mode
 
