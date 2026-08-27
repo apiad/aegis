@@ -112,6 +112,38 @@ your question and answer in place, so nothing freezes while they run, and
 `Esc` cancels the note before it clears a half-typed line or interrupts the
 turn.
 
+## Recaps and the loop judge
+
+Two surfaces read what a turn actually **did** — commits, files written,
+plan movement — rather than what it said about itself.
+
+- **A one-line recap** lands after any turn that moved the substrate.
+  `/recap` asks for the bigger version on demand: a building / done /
+  remaining block about the whole session.
+- **The loop judge** decides whether an armed `/loop` continues, returning
+  `continue`, `done` or `stuck`. `aegis_loop_stop` is the *agent's* claim
+  that it is finished, and the judge is free to reject it; your own
+  `/loop stop` stays authoritative.
+
+Both are off the same facts, and both matter for the same reason: an agent
+grading its own homework from inside the tunnel it has been in for N turns
+is how a loop gets reaped with the user-visible half unbuilt.
+
+The automatic recap gates on **substrate movement, not turn count** — turn
+count is what makes recaps pile up identically in a conversation of
+questions and reads. It is also detached and cancellable: a measured ~7s
+one-shot cannot be allowed to stall every turn boundary, and a new turn
+drops an in-flight recap rather than rendering it late against a transcript
+that has moved on. Like a `/btw` side note it lands in the pane's scrollback
+and is never appended to the session log, so recaps never compound into
+summaries of their own summaries.
+
+Both are one-shot generation calls, so set
+[`text_generation:`](configuration.md#text_generation-optional) to something
+cheap. Turn either off with
+[`recap:` / `loop_judge:`](configuration.md#recap-and-loop_judge-optional);
+`recap: false` silences the automatic line but leaves `/recap` available.
+
 ## Tabs
 
 Each tab is an independent agent session with:

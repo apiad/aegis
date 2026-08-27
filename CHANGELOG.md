@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-08-27
+
 ### Added
 
 - **Keyboard navigation of the transcript.** Reading back over a turn was a
@@ -76,6 +78,37 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   answerable. Previously it was answerable only from whatever `git` calls
   survived the window's 500-char item clip.
 
+- **Per-session MCP identity — `from_handle` becomes a transport fact.** The
+  aegis MCP server is co-resident and shared, so it had no way to tell which
+  agent was calling: each agent is told its handle in the primer and passes it
+  back *by convention*, and nothing checked it. Tolerable while every consumer
+  was observational; not tolerable once `aegis_claim` and `aegis_close` gate
+  on it.
+
+  aegis now mints an opaque **session token per harness spawn**, rides it on
+  the MCP config it already writes for both driver families, and resolves it
+  server-side at the middleware choke point. Two consumers: the comms ledger's
+  `from` — which closes the attribution hole for every tool that takes no
+  `from_handle` at all (`aegis_list_sessions`, `aegis_claims`,
+  `aegis_canvas_list`, `aegis_meta`, the `aegis_config_*` family), recorded
+  unattributed since the ledger shipped — and a `verified_handle` on
+  `aegis_claim` / `aegis_release` / `aegis_close` / `aegis_loop_stop`.
+
+  **v1 resolves and records, and never refuses**: a caller with no token
+  keeps exactly today's behaviour. A rename re-points the token rather than
+  reissuing it (the process did not restart); close revokes, and a reconnect
+  mints afresh.
+
+  Three traps, each silent rather than loud, are pinned by tests. The header
+  must not be `Authorization` — FastMCP strips it, and the result is
+  indistinguishable from the unattributed state the feature exists to remove.
+  ACP headers are a list of `{name, value}`, not a mapping. And the SSH
+  launcher's MCP-config placeholder is now matched by **shape** rather than
+  by equality with a rebuilt config string: under the old comparison, baking
+  anything extra into the blob meant no substitution and **no MCP plane at
+  all on remote hosts, with no error** — mutation-verified, and the 36
+  pre-existing launcher tests stay green under the broken version.
+
 - Config: `recap:` and `loop_judge:`, both defaulting on. Both bill to
   `text_generation:`, which is worth setting — an unset knob bills one-shots
   at the session's own model (measured $0.32–$0.46 per call on Opus against
@@ -98,6 +131,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   feature never amortizes and the cold price is the steady state. The
   `$0.0044` figure previously recorded in `_oneshot_argv`'s docstring was
   a warm price; it is now corrected.
+
+### Fixed
+
+- **The file browser's filter box drew nothing you typed.** `#fb-filter`
+  forced `height: 1` while keeping Textual's default `border: tall`, which
+  collapsed the `Input`'s content region to zero rows. Filtering *worked* —
+  the value was there and the list narrowed — but the text was invisible, so
+  the box read as broken. Drops the border for horizontal padding, matching
+  the house style already used in the agent picker and session history.
 
 ## [0.35.0] - 2026-08-26
 

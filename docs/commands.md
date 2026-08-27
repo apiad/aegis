@@ -216,6 +216,7 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/fork [prompt] [--slug S] [--model M] [--effort E]` | Branch this conversation into a new tab — a worker that already knows. Refused mid-turn; the parent is left untouched. ~$1 a fork. |
 | `/btw <question>` | Answer a side question from this pane's recent window and disappear. Legal mid-turn; never appended to the session log. Deferred — `Esc` cancels. |
 | `/peer <handle> [--cc] <question>` | Ask an **idle** peer, from where you're standing. `@handle …` is sugar for it. `--cc` also lands the answer in your own conversation. Deferred. |
+| `/recap` | Where this session stands — a building / done / remaining block read from what the turns actually *did* (commits, files written, plan movement), not only what they said. Never appended to the session log. Deferred — `Esc` cancels. See [Recaps](usage.md#recaps-and-the-loop-judge). |
 | `/queues [new <name> [agent] [--ephemeral]]` | List / create queues (persisted, or ephemeral in the live manager only). |
 | `/enqueue <queue> <payload>` | Drop a task on a queue. |
 | `/groups [status \| dissolve <name>]` | List / inspect / dissolve agent groups. |

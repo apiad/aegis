@@ -604,6 +604,7 @@ ConfigPanel via `F2`.
 | `/loop <instruction>` | Repeat an instruction every turn until the agent calls `aegis_loop_stop` or the cap (default 20) is hit; `/loop stop` or `Esc` cancels |
 | `/fork [prompt]` | **Branch this conversation** into a new tab — a worker that already knows. Refused mid-turn; the parent is untouched. ~$1 |
 | `/btw <question>` | **A side note that doesn't cost a conversation** — answered from this pane's recent window, never written to the log. Legal mid-turn; `Esc` cancels |
+| `/recap` | **Where this session stands** — building / done / remaining, read from what the turns *did* (commits, files written, plan movement), not what they said. A one-line version fires automatically after any turn that moved the substrate. Never written to the session log |
 | `@handle <question>` | **Ask an idle peer**, from where you're standing. The answer is a real turn in *their* transcript and a transient block in yours; `--cc` also lands it in yours |
 | `/usage quota` | Live subscription utilisation for every provider you hold credentials for (Claude, OpenCode Go) — every window, with reset countdowns. The status bar carries the short form (`⧗ cc 5h 9% · wk 65% │ oc 5h 0% · wk 0% · mo 14%`) always, since quota is an account property and the point is to know which rail to launch on. `aegis usage quota` prints the same from a shell |
 | `Ctrl+T` / `Ctrl+N` | New tab (default agent) / new tab (pick agent) |

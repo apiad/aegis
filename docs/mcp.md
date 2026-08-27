@@ -65,20 +65,35 @@ For each session aegis spawns, a fresh HTTP MCP endpoint is bound:
 - **Claude Code**: `--mcp-config` passes a JSON config containing one
   server (the aegis URL) per invocation.
 - **Gemini / OpenCode**: `session/new(mcpServers=[{type:"http",
-  name:"aegis", url:<url>, headers:[]}])` injects the server when the
+  name:"aegis", url:<url>, headers:[<token>]}])` injects the server when the
   ACP session opens.
 
-**The server cannot tell which agent is calling it.** `AegisMCP` is
-co-resident and shared — every session on this aegis reaches the same HTTP
-port — so there is no per-connection identity to read a handle off. That is
-why `from_handle` is a *parameter*: each agent is told its own handle in the
-primer system prompt and passes it back by convention. Consequences, all
-live today: an agent can pass a handle that is not its own and nothing
-checks it; tools that take no `from_handle` cannot be attributed at all; and
-the [comms ledger](usage.md#the-aegis-layer-in-the-transcript-aegis-comms)
-therefore records those calls unattributed rather than guessing. Making the
-handle a transport fact — a per-session token minted at spawn and resolved
-server-side — is on the roadmap.
+### Who is calling — per-session identity
+
+`AegisMCP` is co-resident and shared: every session on this aegis reaches the
+same HTTP port, so there is no per-connection identity to read a handle off.
+`from_handle` is therefore a *parameter* — each agent is told its own handle
+in the primer system prompt and passes it back by convention, which means an
+agent can pass a handle that is not its own.
+
+aegis manufactures the missing identity. A **session token** is minted per
+harness spawn, rides the MCP config aegis already writes (a header, never
+`Authorization` — FastMCP strips that one), and is resolved server-side off
+the request. Two things use it:
+
+- **The [comms ledger](usage.md#the-aegis-layer-in-the-transcript-aegis-comms)
+  attributes every call**, including the tools that take no `from_handle` at
+  all (`aegis_list_sessions`, `aegis_claims`, `aegis_canvas_list`,
+  `aegis_meta`, the `aegis_config_*` family) — those were recorded
+  unattributed since the ledger shipped.
+- **`aegis_claim` / `aegis_release` / `aegis_close` / `aegis_loop_stop` act
+  on the resolved handle**, not the one the caller typed.
+
+A rename re-points the token rather than reissuing it (the process did not
+restart); a close revokes it, and a reconnect mints a fresh one. A caller
+with no token — an out-of-band client, say — is recorded and rendered
+unattributed exactly as before: this **resolves and records, it never
+refuses**.
 
 ## Building on the plane
 

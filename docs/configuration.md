@@ -89,6 +89,22 @@ boot. Unset, a one-shot call bills at the *session's* own model, and aegis
 says so once per session rather than quietly charging Opus rates for a side
 question.
 
+### `recap` and `loop_judge` (optional)
+
+Top-level booleans, **both default `true`**. They are the two automatic
+consumers of the `generate()` seam, so both bill to `text_generation:` —
+which is the reason to set it: measured, one call is $0.045 on haiku against
+$0.32–$0.46 on Opus.
+
+```yaml
+recap: true          # one-line recap after a turn that moved the substrate
+loop_judge: true     # decide whether an armed /loop continues
+```
+
+`recap:` also gates the automatic line, not `/recap` — the command stays
+available either way. Turning `loop_judge:` off returns `/loop` to running
+to its iteration cap unless the operator stops it.
+
 ## Drop-in overlays
 
 Each top-level section also accepts overlay files under
