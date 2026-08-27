@@ -281,6 +281,19 @@ class AegisApp(App):
         Binding("ctrl+tab", "next_tab", "Next", priority=True),
         Binding("ctrl+right", "next_tab", "Next", priority=True),
         Binding("ctrl+left", "prev_tab", "Prev", priority=True),
+        # Reading back over the transcript from the keyboard. Alt+arrows and
+        # Ctrl+arrows are free in Textual's TextArea (Up/Down there are the
+        # input's sent-message recall), and these are priority bindings so
+        # the focused input never sees them.
+        Binding("alt+up", "scroll_transcript(-1)", "Scroll up",
+                priority=True),
+        Binding("alt+down", "scroll_transcript(1)", "Scroll down",
+                priority=True),
+        Binding("ctrl+up", "scroll_message(-1)", "Prev message",
+                priority=True),
+        Binding("ctrl+down", "scroll_message(1)", "Next message",
+                priority=True),
+        Binding("alt+end", "jump_to_tail", "Live tail", priority=True),
         Binding("ctrl+shift+right", "move_tab(1)", "Move tab →",
                 priority=True),
         Binding("ctrl+shift+left", "move_tab(-1)", "Move tab ←",
@@ -1310,6 +1323,26 @@ class AegisApp(App):
     def action_toggle_tasks(self) -> None:
         """Show or hide the dashboard sidebar (also `/tasks`)."""
         self.toggle_sidebar_mode()
+
+    def action_scroll_transcript(self, delta: int) -> None:
+        """Scroll the active transcript by ``delta`` rows."""
+        # getattr, not isinstance: terminal and file tabs share the tab list
+        # and have no transcript to move, so the key is inert there.
+        fn = getattr(self._active, "scroll_transcript", None)
+        if fn is not None:
+            fn(delta)
+
+    def action_scroll_message(self, direction: int) -> None:
+        """Park the previous (-1) / next (+1) message on the first row."""
+        fn = getattr(self._active, "scroll_to_adjacent_block", None)
+        if fn is not None:
+            fn(direction)
+
+    def action_jump_to_tail(self) -> None:
+        """Back to the newest content, following the live turn again."""
+        fn = getattr(self._active, "jump_to_end", None)
+        if fn is not None:
+            fn()
 
     @property
     def sidebar_mode(self) -> bool:

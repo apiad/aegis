@@ -617,6 +617,7 @@ ConfigPanel via `F2`.
 | `Ctrl+O` | New file browser tab — recency list, filter, tree sidebar, editor |
 | `F2` | Open the **ConfigPanel** — edit agents/queues/etc. live |
 | `Escape` | Interrupt the active turn (or dismiss a modal) |
+| `Alt+↑↓` / `Ctrl+↑↓` / `Alt+End` | Read back over the transcript: one line, one message, or straight to the live tail |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 

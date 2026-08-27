@@ -1332,6 +1332,65 @@ class ConversationPane(Widget):
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
 
+    # --- keyboard navigation ---------------------------------------------
+    # The transcript is not focusable — focus lives in the input, where Up
+    # and Down are sent-message recall — so reading back over a turn had no
+    # keyboard route at all. These are driven by app-level bindings.
+
+    def scroll_transcript(self, delta: int) -> None:
+        """Scroll the transcript by ``delta`` rows (negative is up)."""
+        t = self._transcript()
+        t.scroll_to(y=t.scroll_offset.y + delta, animate=False)
+
+    def _laid_out_blocks(self) -> "tuple[list[CopyableBlock], list[int]]":
+        """The mounted blocks and the content-space y of each one's top row.
+
+        ``Widget.region`` is screen-space and returns NULL_REGION rather than
+        raising when a widget is not in the compositor's map, so a zero-height
+        region is dropped: jumping to a widget that was never laid out parks
+        the viewport somewhere nobody asked for.
+        """
+        t = self._transcript()
+        base = t.content_region.y - t.scroll_offset.y
+        blocks = [b for b in self._mounted_blocks
+                  if b.is_attached and b.region.height > 0]
+        return blocks, [b.region.y - base for b in blocks]
+
+    def scroll_to_adjacent_block(self, direction: int) -> None:
+        """Put the top of the previous (-1) or next (+1) block on the first
+        visible row.
+
+        Off the top of the mounted window it scrolls to row 0 instead, which
+        is the trigger mouse scroll-up already uses to page older blocks in;
+        off the bottom it hands over to ``jump_to_end``, so walking back down
+        re-sticks the pane to the live tail rather than parking one block
+        short of it.
+
+        The position is re-derived from the layout on every press rather than
+        held as a cursor, so a mouse scroll or a window shift in between is
+        just the new starting point. That is only sound because upward hops
+        never clamp: every candidate top is at or above the current row, so
+        the scroll position strictly decreases and repeated presses walk
+        instead of re-picking the block they are already on.
+        """
+        t = self._transcript()
+        blocks, tops = self._laid_out_blocks()
+        if not blocks:
+            return
+        cur = t.scroll_offset.y
+        above = [i for i, y in enumerate(tops) if y <= cur]
+        idx = above[-1] if above else 0
+        # Reading upward from mid-block, the first stop is the top of the
+        # block you are already inside — not the one before it.
+        target = (idx if direction < 0 and cur > tops[idx]
+                  else idx + direction)
+        if target < 0:
+            t.scroll_to(y=0, animate=False)
+        elif target >= len(blocks):
+            self.jump_to_end()
+        else:
+            t.scroll_to(y=tops[target], animate=False)
+
     def _on_scroll_y(self, _value: float) -> None:
         t = self._transcript()
         self._stick_to_bottom = (

@@ -7,6 +7,20 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **Keyboard navigation of the transcript.** Reading back over a turn was a
+  mouse-only gesture: the transcript is not focusable, and `Up`/`Down` in the
+  input are sent-message recall. `Alt+↑` / `Alt+↓` now scroll one line, and
+  `Ctrl+↑` / `Ctrl+↓` hop to the start of the previous / next message — one
+  press from the tail parks the beginning of the last agent message on the
+  first visible row, which is the case the keys exist for. `Alt+End` returns
+  to the live tail and re-sticks the pane so a running turn is followed again.
+
+  App-level and `priority=True`, so the focused input never sees them; both
+  modifier families are unbound in Textual's `TextArea`. Walking off the top
+  of the mounted window scrolls to row 0, the same trigger mouse scroll-up
+  uses to page older blocks in; walking off the bottom hands over to
+  `jump_to_end`.
+
 - **The loop judge decides whether a `/loop` continues — from facts, not
   the agent's self-report.** A loop used to carry a coda on every
   iteration asking the agent to call `aegis_loop_stop` when satisfied.

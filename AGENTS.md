@@ -665,6 +665,14 @@ To force the local cache to refresh immediately:
   draft-preserving). The input outline echoes the state dot: vivid `$success`
   when idle, subdued `$foreground 30%` while working (`.working` class toggled
   in `_on_core_state`), amber `$warning` while voice-recording.
+- Transcript gestures: the `#transcript` `VerticalScroll` is not focusable, so
+  its keys are **app-level `priority=True` bindings** (`AegisApp`) that call
+  through to the active tab by duck-typing — `Alt+↑↓` →
+  `ConversationPane.scroll_transcript`, `Ctrl+↑↓` →
+  `scroll_to_adjacent_block`, `Alt+End` → `jump_to_end`. Non-conversation tabs
+  simply lack the methods, and the key is inert there. Keep both modifier
+  families off `TextArea`'s own map (it binds bare/shift arrows, `home`/`end`,
+  `pageup`/`pagedown`) — `Up`/`Down` in the input are sent-message recall.
 - `aegis_handoff(from_handle, target_handle, context, interrupt=False)`:
   `interrupt=True` cuts a busy peer's current turn before delivering (via
   `AppBridge.interrupt(handle)`) so the handoff lands as the peer's next turn.

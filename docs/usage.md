@@ -20,6 +20,9 @@
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
+| `Alt+↑` / `Alt+↓` | Scroll the transcript one line |
+| `Ctrl+↑` / `Ctrl+↓` | Jump to the start of the previous / next message — one press from the tail parks the last agent message on the first row |
+| `Alt+End` | Back to the live tail (and follow the running turn again) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
 
