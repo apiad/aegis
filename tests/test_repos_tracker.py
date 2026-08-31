@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from aegis.repos.models import RepoState
+from aegis.repos.probe import Baseline
 from aegis.repos.tracker import RepoTracker
 
 
@@ -35,9 +36,11 @@ def repos(tmp_path):
     return made
 
 
-def _tracker(clock=None, probe=None):
-    return RepoTracker(clock=clock or FakeClock(),
-                       probe=probe or (lambda root: RepoState(root=root)))
+def _tracker(clock=None, probe=None, capture=None):
+    return RepoTracker(
+        clock=clock or FakeClock(),
+        probe=probe or (lambda root, base: RepoState(root=root)),
+        capture=capture or (lambda root: Baseline(sha="base")))
 
 
 # --- membership -------------------------------------------------------
@@ -183,7 +186,7 @@ def test_a_new_repo_shows_its_branch_before_any_probe(repos):
 def test_refresh_probes_and_fills_in_the_counts(repos):
     calls = []
 
-    def probe(root):
+    def probe(root, base):
         calls.append(root)
         return RepoState(root=root, branch="main", dirty=7, ahead=2)
 
@@ -198,7 +201,7 @@ def test_refresh_probes_and_fills_in_the_counts(repos):
 def test_refresh_respects_the_ttl(repos):
     calls = []
 
-    def probe(root):
+    def probe(root, base):
         calls.append(root)
         return RepoState(root=root, branch="main")
 
@@ -215,7 +218,7 @@ def test_refresh_respects_the_ttl(repos):
 
 
 def test_a_probe_that_raises_leaves_the_row_standing(repos):
-    def probe(root):
+    def probe(root, base):
         raise RuntimeError("git exploded")
 
     t = _tracker(probe=probe)
@@ -227,8 +230,8 @@ def test_a_probe_that_raises_leaves_the_row_standing(repos):
 
 
 def test_refresh_notifies_subscribers_once_the_state_changed(repos):
-    t = _tracker(probe=lambda root: RepoState(root=root, branch="main",
-                                              dirty=3))
+    t = _tracker(probe=lambda root, base: RepoState(
+        root=root, branch="main", dirty=3))
     t.record("alice", repos["aegis"] / "a.py")
     hits = []
     t.subscribe(lambda: hits.append(1))
@@ -238,11 +241,61 @@ def test_refresh_notifies_subscribers_once_the_state_changed(repos):
     assert hits == [1]
 
 
+# --- the session baseline ---------------------------------------------
+
+def test_the_baseline_is_captured_at_the_first_write(repos):
+    seen = []
+    t = _tracker(capture=lambda root: seen.append(root) or Baseline(sha="s"))
+    t.record("alice", repos["aegis"] / "a.py")
+    assert seen == [repos["aegis"]]
+
+
+def test_the_baseline_is_captured_once_per_repo(repos):
+    """Re-capturing on a later write would move the anchor forward and
+    discard everything the session had already done there."""
+    seen = []
+    t = _tracker(capture=lambda root: seen.append(root) or Baseline(sha="s"))
+    t.record("alice", repos["aegis"] / "a.py")
+    t.record("alice", repos["aegis"] / "b.py")
+    t.record("bob", repos["aegis"] / "c.py")     # a second writer arrives
+    assert len(seen) == 1
+
+
+def test_the_baseline_reaches_the_probe(repos):
+    seen = []
+    t = _tracker(probe=lambda root, base: seen.append(base) or RepoState(
+        root=root), capture=lambda root: Baseline(sha="deadbeef"))
+    t.record("alice", repos["aegis"] / "a.py")
+    asyncio.run(t.refresh())
+    assert [b.sha for b in seen] == ["deadbeef"]
+
+
+def test_a_capture_that_raises_leaves_the_repo_on_the_list(repos):
+    """A dashboard must never take a write event down with it."""
+    def capture(root):
+        raise RuntimeError("git exploded")
+
+    t = _tracker(capture=capture)
+    t.record("alice", repos["aegis"] / "a.py")
+    assert [v.state.name for v in t.snapshot()] == ["aegis"]
+
+
+def test_the_baseline_is_forgotten_with_the_repo(repos):
+    seen = []
+    t = _tracker(capture=lambda root: seen.append(root) or Baseline(sha="s"))
+    t.record("alice", repos["aegis"] / "a.py")
+    t.drop("alice")
+    t.record("alice", repos["aegis"] / "a.py")
+    assert len(seen) == 2
+
+
 # --- remote hosts -----------------------------------------------------
 
 def test_an_off_host_repo_is_listed_but_never_probed(repos):
-    calls = []
-    t = _tracker(probe=lambda root: calls.append(root) or RepoState(root=root))
+    calls, captured = [], []
+    t = _tracker(
+        probe=lambda root, base: calls.append(root) or RepoState(root=root),
+        capture=lambda root: captured.append(root) or Baseline())
     t.record("alice", "/srv/warden/main.py", host="vps")
     asyncio.run(t.refresh())
     view = t.snapshot()[0]
@@ -250,6 +303,9 @@ def test_an_off_host_repo_is_listed_but_never_probed(repos):
     assert view.label == "warden@vps"
     assert view.state.branch == ""
     assert calls == []
+    # The same path names a different tree here; capturing a baseline off
+    # the local disk would anchor the churn to the wrong repo entirely.
+    assert captured == []
 
 
 def test_the_host_is_part_of_a_repos_identity(repos):
@@ -282,15 +338,23 @@ def test_end_to_end_against_a_real_repo(tmp_path):
                    capture_output=True)
     subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True,
                    capture_output=True)
-    (root / "b.txt").write_text("dirty")
-
     t = RepoTracker(clock=FakeClock())
-    t.record("alice", root / "a.txt")
+    t.record("alice", root / "a.txt")        # baseline captured here
+
+    # What the session then does: one commit, one uncommitted new file.
+    (root / "b.txt").write_text("one\ntwo\n")
+    subprocess.run(["git", "add", "b.txt"], cwd=root, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "b"], cwd=root, check=True,
+                   capture_output=True)
+    (root / "c.txt").write_text("three\n")
+
     asyncio.run(t.refresh())
     state = t.snapshot()[0].state
     assert state.branch == "main"
     assert state.dirty == 1
     assert state.stale is False
+    assert (state.added, state.deleted) == (3, 0)
 
 
 def test_paths_are_accepted_as_strings(repos):

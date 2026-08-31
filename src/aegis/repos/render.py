@@ -1,7 +1,8 @@
 """The REPOS section's rows. Pure — no Textual import.
 
 One row per repo: a mark saying whether you are in there, the repo, its
-branch, what is uncommitted, and who else is writing. Degradation is by
+branch, what is uncommitted, how many lines the session has written, and who
+else is writing. Degradation is by
 tier, the same mechanism the rest of the sidebar uses, with one rule of its
 own: **the narrowest tier truncates rather than being dropped.** ``fit_rows``
 answers "no tier fits" by omitting the segment, and a repo that vanished
@@ -70,6 +71,18 @@ def _counts(v: RepoView) -> str:
     return " ".join(parts)
 
 
+def _churn(v: RepoView) -> tuple[str, str]:
+    """``(+added, -deleted)``, either half empty when it did not happen.
+
+    A session of pure additions must not print `-0`, for the same reason a
+    clean repo prints no `~0`.
+    """
+    if v.host != "local":
+        return "", ""
+    return (f"+{v.state.added}" if v.state.added else "",
+            f"-{v.state.deleted}" if v.state.deleted else "")
+
+
 def _peers(v: RepoView) -> tuple[str, ...]:
     """Writers worth naming. On your own row the mark already says "you"."""
     return v.writers[1:] if v.mine else v.writers
@@ -94,15 +107,24 @@ def row_tiers(v: RepoView, palette, namew: int, width: int) -> tuple[str, ...]:
     counts_part = f" [{dim if v.state.stale else palette.accent}]{counts}[/]" \
         if counts else ""
 
+    added, deleted = _churn(v)
+    a_style, d_style = (dim, dim) if v.state.stale else (palette.ok,
+                                                         palette.err)
+    churn_part = (f" [{a_style}]{added}[/]" if added else "") + \
+        (f" [{d_style}]{deleted}[/]" if deleted else "")
+
     peers = _peers(v)
     peers_part = f"  [{dim}]{' '.join(peers)}[/]" if peers else ""
     plus_part = f"  [{dim}]+{len(peers)}[/]" if peers else ""
 
     base = f"{mark} {named}"
     tiers = [
-        f"{base}{branch_part}{counts_part}{peers_part}",
-        f"{base}{branch_part}{counts_part}{plus_part}",
-        f"{base}{branch_part}{counts_part}",
+        f"{base}{branch_part}{counts_part}{churn_part}{peers_part}",
+        f"{base}{branch_part}{counts_part}{churn_part}{plus_part}",
+        f"{base}{branch_part}{counts_part}{churn_part}",
+        # The session total outlives `~n ↑n`: those describe a moment, this
+        # describes the whole session, and it is the one worth the cells.
+        f"{base}{branch_part}{churn_part}",
         f"{base}{branch_part}",
         base,
     ]

@@ -11,7 +11,13 @@ import subprocess
 
 import pytest
 
-from aegis.repos.probe import find_repo_root, probe_repo, read_head_branch
+from aegis.repos.probe import (
+    Baseline,
+    capture_baseline,
+    find_repo_root,
+    probe_repo,
+    read_head_branch,
+)
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None, reason="git not on PATH")
@@ -170,3 +176,107 @@ def test_probe_survives_a_missing_git_binary(repo, monkeypatch):
     assert st.branch == "main"
     assert st.dirty == 0
     assert st.stale is True
+
+
+# --- the session baseline ---------------------------------------------
+
+def test_baseline_records_the_sha_the_session_arrived_at(repo):
+    base = capture_baseline(repo)
+    assert base.sha == _git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_baseline_records_the_dirt_that_was_already_there(repo):
+    (repo / "a.txt").write_text("hello\nsecond\nthird\n")
+    (repo / "loose.txt").write_text("not mine\n")
+    base = capture_baseline(repo)
+    assert (base.added, base.deleted) == (3, 1)   # a.txt rewritten
+    assert base.untracked == frozenset({"loose.txt"})
+
+
+def test_baseline_of_a_repo_with_no_commits_degrades(tmp_path):
+    root = _init(tmp_path / "empty")
+    base = capture_baseline(root)
+    assert base.sha == ""
+    assert (base.added, base.deleted) == (0, 0)
+
+
+# --- churn since the baseline -----------------------------------------
+
+def test_churn_without_a_baseline_is_zero(repo):
+    (repo / "a.txt").write_text("one\ntwo\nthree\n")
+    st = probe_repo(repo)
+    assert (st.added, st.deleted) == (0, 0)
+
+
+def test_churn_counts_uncommitted_work(repo):
+    base = capture_baseline(repo)
+    (repo / "a.txt").write_text("one\ntwo\nthree\n")
+    st = probe_repo(repo, base)
+    assert (st.added, st.deleted) == (3, 1)
+
+
+def test_churn_spans_a_commit(repo):
+    """The point of the baseline. ``~n`` goes to zero on every commit; the
+    session total must not."""
+    base = capture_baseline(repo)
+    _commit(repo, "b.txt", "one\ntwo\n")
+    (repo / "c.txt").write_text("three\n")
+    _git(repo, "add", "c.txt")
+    st = probe_repo(repo, base)
+    assert st.added == 3          # two committed, one staged
+    assert st.dirty == 1          # what the old counter would have shown
+
+
+def test_churn_discounts_dirt_that_predates_the_session(repo):
+    (repo / "a.txt").write_text("theirs\n")      # not the session's doing
+    base = capture_baseline(repo)
+    (repo / "b.txt").write_text("mine\nalso mine\n")
+    _git(repo, "add", "b.txt")
+    st = probe_repo(repo, base)
+    assert (st.added, st.deleted) == (2, 0)
+
+
+def test_churn_counts_an_untracked_new_file(repo):
+    """``git diff`` cannot see it, and a session of brand-new files is the
+    exact case the section exists for."""
+    base = capture_baseline(repo)
+    (repo / "new.py").write_text("a\nb\nc\nd\n")
+    assert probe_repo(repo, base).added == 4
+
+
+def test_churn_ignores_an_untracked_file_that_predates_the_session(repo):
+    (repo / "theirs.txt").write_text("a\nb\nc\n")
+    base = capture_baseline(repo)
+    assert probe_repo(repo, base).added == 0
+
+
+def test_churn_ignores_an_ignored_file(repo):
+    (repo / ".gitignore").write_text("*.log\n")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-qm", "ignore logs")
+    base = capture_baseline(repo)
+    (repo / "big.log").write_text("noise\n" * 100)
+    assert probe_repo(repo, base).added == 0
+
+
+def test_churn_ignores_a_binary_untracked_file(repo):
+    base = capture_baseline(repo)
+    (repo / "blob.bin").write_bytes(b"\x00\x01\x02\n" * 10)
+    assert probe_repo(repo, base).added == 0
+
+
+def test_churn_never_goes_negative(repo):
+    """An agent that reverts work someone else left uncommitted would drive
+    the subtraction below zero, and `-3` lines added is not a fact."""
+    (repo / "a.txt").write_text("theirs\nand theirs\n")
+    base = capture_baseline(repo)
+    (repo / "a.txt").write_text("hello")            # back to the committed
+    st = probe_repo(repo, base)
+    assert (st.added, st.deleted) == (0, 0)
+
+
+def test_churn_survives_a_baseline_sha_that_no_longer_exists(repo):
+    base = Baseline(sha="0" * 40)
+    st = probe_repo(repo, base)
+    assert (st.added, st.deleted) == (0, 0)
+    assert st.branch == "main"       # the rest of the row still lands

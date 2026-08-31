@@ -2,7 +2,8 @@
 
 **Status:** implemented 2026-08-10; plan at
 `docs/superpowers/plans/2026-08-10-aegis-sidebar-repos-section.md`
-(one change during implementation — see *The mark*, below)
+(one change during implementation — see *The mark*, below).
+Extended 2026-08-31 with session line churn — see *Session churn*.
 **Scope:** TUI only. The web client is explicitly out of scope, same call
 the F3 sidebar itself made.
 **Extends** `docs/superpowers/specs/2026-08-07-aegis-f3-side-dashboard-design.md`.
@@ -35,9 +36,9 @@ One more section in the `F3` column, between `MONITORS` and `SYSTEM`:
 
 ```
 REPOS                              2
-● aegis        main ~6 ↑6  calm-hopper
-● Workspace    main ~2
-· warden       feat/kv ~3  +1
+● aegis        main ~6 ↑6 +412 -88  calm-hopper
+● Workspace    main ~2 +31 -4
+· warden       feat/kv ~3 +7  +1
 · enciclopedia (detached) ~1
 ```
 
@@ -48,6 +49,7 @@ REPOS                              2
 | `·` | only peers have written here |
 | `●` in amber | more than one live writer — the collision |
 | `~n` | dirty files |
+| `+n` / `-n` | lines added / deleted by this session, across commits |
 | `↑n` / `↓n` | commits ahead of / behind upstream |
 | `(detached)` / `(rebase)` | in the branch cell, in the error colour |
 
@@ -87,11 +89,16 @@ and far more than a version string that never changes.
 
 `fit_rows` picks, per row, the widest tier that fits the column:
 
-1. `● aegis  main  ~7 ↑2  · calm-hopper`
-2. `● aegis  main  ~7 ↑2  +1`
-3. `● aegis  main  ~7`
-4. `● aegis  main`
-5. `● aegis` — repo name truncated to fit
+1. `● aegis  main  ~7 ↑2  +412 -88  · calm-hopper`
+2. `● aegis  main  ~7 ↑2  +412 -88  +1`
+3. `● aegis  main  ~7 ↑2  +412 -88`
+4. `● aegis  main  +412 -88`
+5. `● aegis  main`
+6. `● aegis` — repo name truncated to fit
+
+Churn outlives `~n ↑n` on the way down (tier 4). Those describe a moment;
+the churn describes the whole session, and when the column can only afford
+one of them it is the one worth the cells.
 
 **Tier 5 must always fit**, which is why it truncates rather than relying on
 the budget. `fit_rows` answers "no tier fits" by omitting the segment
@@ -100,6 +107,64 @@ the frame's padding made a whole *section* disappear at 80 columns. Here the
 same mechanism would make a repo silently vanish because its name was long,
 which is worse: a missing section reads as "nothing to report", and so does
 a missing row.
+
+## Session churn
+
+`~n` answers *how much is uncommitted right now*, and goes to zero every
+time an agent commits. On a session that commits as it goes — the normal
+case here — the row therefore reads as though nothing happened. `+n -n`
+answers the other question: **how much has this session written in this
+repo**, commits included.
+
+### The baseline
+
+Churn is measured from a **baseline** captured once, at the session's first
+write to that repo, and never re-captured — a moving anchor would silently
+discard work already done. The baseline is three things:
+
+- the `HEAD` sha, which is what `git diff <sha>` measures against and is why
+  the number spans commits rather than resetting on each one;
+- the tracked line counts already dirty at that moment;
+- the set of untracked paths already present.
+
+The last two are **subtracted back out**, so a checkout that was dirty
+before the session started does not read as the session's doing. Without
+them the number would inherit whatever another agent left behind.
+
+Capture happens on the write *event*, which the harness emits before the
+tool runs — so the first file's changes land on the session's side of the
+line rather than inside the baseline. It is synchronous (three git calls,
+measured at 43 ms on `Workspace` and 25 ms on `repos/aegis`) and runs once
+per repo per session.
+
+### Untracked files are counted by hand
+
+`git diff` cannot see an untracked file, and a session of brand-new
+uncommitted files is exactly the case the section was built for. So the
+probe lists them with `git ls-files --others --exclude-standard` — not the
+`?` lines of the status it already ran, which collapse an untracked
+*directory* into one entry and would score a whole new package as zero
+lines — and counts the newlines of the ones the baseline did not have.
+Anything binary (a NUL byte) or over 1 MB counts zero: nothing an agent
+wrote by hand is that big, and reading a dataset to count its newlines
+would hang the probe for the file the number should ignore.
+
+### What it costs, and where it lies
+
+Two more subprocesses per repo per probe tick (`git diff --numstat <sha>`,
+`git ls-files --others`) on top of the one `git status`, both inside the
+same off-thread refresh and both degrading to zero on any failure. Measured
+end to end: 76 ms for `Workspace`, 26 ms for `repos/aegis`.
+
+The number is a summary, not an audit. Three things it does not model:
+
+- **Reverting someone else's uncommitted work** drives the subtraction
+  negative; it clamps at zero rather than printing `-3 lines added`.
+- **A `Bash` heredoc** is invisible for membership (see below) but *is*
+  counted once the repo is on the list some other way — churn reads the
+  tree, not the tool calls.
+- **A rewritten line** counts as one added and one deleted, the way `git
+  diff` counts it.
 
 ## Membership: what enters the list, and what leaves
 
@@ -143,8 +208,8 @@ New package `src/aegis/repos/`, in the shape `src/aegis/plan/` already uses
 
 ### `models.py`
 
-`RepoState` — root path, branch, ahead, behind, dirty count, in-progress
-flag, `stale: bool`. `RepoView` — the render row: a `RepoState` plus the set
+`RepoState` — root path, branch, ahead, behind, dirty count, session
+`added`/`deleted` lines, in-progress flag, `stale: bool`. `RepoView` — the render row: a `RepoState` plus the set
 of live writer handles.
 
 ### `tracker.py` — `RepoTracker`
@@ -152,7 +217,8 @@ of live writer handles.
 App-owned, one instance, `subscribe(cb)` in the shape `MonitorManager`
 already uses so the pane's `on_mount` has somewhere familiar to hang.
 
-- `record(handle, path)` — resolve to repo root, add the handle, bump recency.
+- `record(handle, path)` — resolve to repo root, capture the baseline on
+  first sight, add the handle, bump recency.
 - `drop(handle)` — on session close; removes the row when it was the last writer.
 - `snapshot(for_handle)` — `RepoView`s with the mark resolved for that pane.
 
@@ -161,6 +227,10 @@ already uses so the pane's `on_mount` has somewhere familiar to hang.
 One `git status --porcelain=v2 --branch` per repo returns branch, upstream,
 ahead/behind, and the dirty list in a **single** subprocess, so the design
 question is never "which fields" but "do we shell out at all."
+
+Two more calls follow when the repo has a baseline — `git diff --numstat
+<sha>` and `git ls-files --others` — for the session churn. See *Session
+churn* for why they are worth a second and third subprocess.
 
 Off the UI thread, into a cache with a ~5s TTL. `git status` over the
 workspace tree (vault plus thousands of files) can take a couple of hundred
@@ -209,6 +279,8 @@ Every case below degrades rather than lies:
 |---|---|
 | no `.git` ancestor | no row |
 | `git` not on `PATH` | branch only, read from `.git/HEAD`; no counts, no flag |
+| baseline uncapturable (no commits, `git` absent, capture raised) | row stands, churn reads zero |
+| baseline sha no longer reachable (reset, rewritten history) | churn reads zero; the rest of the row still lands |
 | probe times out (3s) or exits non-zero | keep last known values, render dim, `stale: true` |
 | first paint after a repo enters | branch from `.git/HEAD` (free); counts fill in next tick |
 | remote-host session | row reads `warden@vps`; no branch, no counts, never probed |

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.repos.models import RepoState
@@ -20,6 +21,11 @@ from aegis.repos.models import RepoState
 log = logging.getLogger(__name__)
 
 PROBE_TIMEOUT = 3.0
+
+# An untracked file larger than this is not counted. Nothing an agent wrote
+# by hand is this big, and reading a 400 MB dataset to count its newlines
+# would hang the probe for exactly the file the number should ignore.
+MAX_UNTRACKED_BYTES = 1_000_000
 
 # Marker → the operation it means, checked in the repo's git dir. porcelain=v2
 # does not report an in-progress operation, so this is read off disk.
@@ -30,6 +36,27 @@ _OPS = (
     ("CHERRY_PICK_HEAD", "cherry-pick"),
     ("BISECT_LOG", "bisect"),
 )
+
+
+@dataclass(frozen=True)
+class Baseline:
+    """Where this session found a repo — what its churn is measured from.
+
+    Captured once, at the first write, and never re-captured: moving the
+    anchor forward would silently discard everything the session had already
+    done there.
+
+    ``added``/``deleted``/``untracked`` are the work that was *already*
+    there when we arrived. They are subtracted back out so a checkout that
+    was dirty before the session started does not read as the session's
+    doing — the failure ``~n`` has always had, and the reason this is a
+    baseline rather than a bare sha.
+    """
+
+    sha: str = ""
+    added: int = 0
+    deleted: int = 0
+    untracked: frozenset[str] = frozenset()
 
 
 def find_repo_root(path: str | Path) -> Path | None:
@@ -123,11 +150,111 @@ def _parse_status_v2(out: str) -> tuple[str, int, int, int, bool]:
     return branch, ahead, behind, dirty, detached
 
 
-def probe_repo(root: Path) -> RepoState:
+def _git(root: Path, *args: str) -> str | None:
+    """One git call's stdout, or ``None`` on any failure.
+
+    Same contract as the rest of this module: a missing binary, a hung
+    ``git``, or a non-zero exit degrades the number, never the section.
+    """
+    if shutil.which("git") is None:
+        return None
+    try:
+        proc = subprocess.run(["git", "-C", str(root), *args],
+                              capture_output=True, text=True,
+                              timeout=PROBE_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.debug("git %s failed for %s: %s", args[0], root, exc)
+        return None
+    if proc.returncode != 0:
+        log.debug("git %s rc=%s for %s: %s", args[0], proc.returncode, root,
+                  proc.stderr.strip()[:200])
+        return None
+    return proc.stdout
+
+
+def _numstat(root: Path, *args: str) -> tuple[int, int]:
+    """``(added, deleted)`` from ``git diff --numstat``.
+
+    A binary file reports ``-`` for both counts and contributes nothing,
+    which is the right answer: "lines" is not a fact about a PNG.
+    """
+    added = deleted = 0
+    for line in (_git(root, "diff", "--numstat", *args) or "").splitlines():
+        a, _, rest = line.partition("\t")
+        d, _, _ = rest.partition("\t")
+        if a.isdigit() and d.isdigit():
+            added += int(a)
+            deleted += int(d)
+    return added, deleted
+
+
+def _untracked(root: Path) -> frozenset[str]:
+    """Untracked, non-ignored paths, relative to ``root``.
+
+    ``ls-files --others`` rather than the ``?`` lines of the status we
+    already ran: status collapses an untracked *directory* into a single
+    entry, so a brand-new package would count as one file with no lines.
+    """
+    out = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    return frozenset(p for p in (out or "").split("\0") if p)
+
+
+def _count_lines(path: Path) -> int:
+    """Lines in an untracked file, counted the way ``git diff`` counts.
+
+    Zero for anything binary or oversized: nothing an agent wrote by hand
+    is a megabyte, and reading a large dataset to count its newlines would
+    hang the probe for exactly the file the number should ignore.
+    """
+    try:
+        with path.open("rb") as fh:
+            blob = fh.read(MAX_UNTRACKED_BYTES + 1)
+    except OSError:
+        return 0
+    if len(blob) > MAX_UNTRACKED_BYTES or b"\0" in blob:
+        return 0
+    return blob.count(b"\n") + (0 if not blob or blob.endswith(b"\n") else 1)
+
+
+def capture_baseline(root: Path) -> Baseline:
+    """Read where the session is starting from. Blocking; never raises.
+
+    Called once per repo, on the write *event* — which the harness emits
+    before the tool runs — so the first file's changes land on the
+    session's side of the line rather than inside the baseline.
+    """
+    sha = (_git(root, "rev-parse", "HEAD") or "").strip()
+    added, deleted = _numstat(root, "HEAD") if sha else (0, 0)
+    return Baseline(sha=sha, added=added, deleted=deleted,
+                    untracked=_untracked(root))
+
+
+def _churn(root: Path, baseline: Baseline | None) -> tuple[int, int]:
+    """Lines written since ``baseline`` — committed and uncommitted alike.
+
+    ``git diff <sha>`` covers everything tracked: the commits the session
+    made and the working tree on top of them. Untracked files are invisible
+    to it and get counted by hand, because a session of brand-new files is
+    precisely the case this number exists for.
+    """
+    if baseline is None:
+        return 0, 0
+    added, deleted = _numstat(root, baseline.sha) if baseline.sha else (0, 0)
+    for rel in _untracked(root) - baseline.untracked:
+        added += _count_lines(root / rel)
+    # Clamped: an agent that reverts work someone else left uncommitted
+    # drives the subtraction below zero, and "-3 lines added" is not a fact.
+    return max(added - baseline.added, 0), max(deleted - baseline.deleted, 0)
+
+
+def probe_repo(root: Path, baseline: Baseline | None = None) -> RepoState:
     """One ``git status --porcelain=v2 --branch``, folded into a ``RepoState``.
 
     Blocking — call it off the UI thread. Never raises: any failure comes
     back as a ``stale`` state carrying whatever the free path could read.
+
+    ``baseline`` adds the session's line churn, at the cost of two more git
+    calls; without one the state carries the branch and counts alone.
     """
     fallback = RepoState(root=root, branch=read_head_branch(root),
                          op=_in_progress_op(root), stale=True)
@@ -146,6 +273,8 @@ def probe_repo(root: Path) -> RepoState:
         return fallback
 
     branch, ahead, behind, dirty, detached = _parse_status_v2(proc.stdout)
+    added, deleted = _churn(root, baseline)
     return RepoState(root=root, branch=branch, ahead=ahead, behind=behind,
-                     dirty=dirty, detached=detached,
+                     dirty=dirty, added=added, deleted=deleted,
+                     detached=detached,
                      op=_in_progress_op(root), stale=False)

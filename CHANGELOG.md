@@ -5,6 +5,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **The `REPOS` section now says how many lines the session wrote, not just
+  how many files are dirty.** `~n` answers *how much is uncommitted right
+  now* and goes to zero on every commit — so a session that commits as it
+  goes has always read as though nothing happened there. Rows now carry
+  `+412 -88` alongside it: lines added and deleted since this session first
+  touched the repo, **spanning commits**.
+
+  The anchor is a baseline captured once, on the first write, and never
+  re-captured — the `HEAD` sha plus the dirt that was already there, which
+  is subtracted back out so a checkout someone else left dirty does not read
+  as this session's doing. Untracked files are counted by hand, because
+  `git diff` cannot see them and a session of brand-new files is exactly the
+  case the section exists for; anything binary or over 1 MB counts zero.
+
+  Costs two more git calls per repo per 5s tick, in the same off-thread
+  refresh (76 ms for `Workspace`, 26 ms for `repos/aegis`), each degrading
+  to zero rather than taking the row down. On a narrow column the churn
+  outlives `~n ↑n`: those describe a moment, this describes the session.
+
 ## [0.37.0] - 2026-08-27
 
 ### Fixed

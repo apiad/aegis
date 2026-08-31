@@ -18,7 +18,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from aegis.repos.models import RepoState, RepoView, _Membership
-from aegis.repos.probe import find_repo_root, probe_repo, read_head_branch
+from aegis.repos.probe import (
+    Baseline,
+    capture_baseline,
+    find_repo_root,
+    probe_repo,
+    read_head_branch,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,13 +42,17 @@ class RepoTracker:
 
     def __init__(self, *,
                  clock: Callable[[], float] = time.monotonic,
-                 probe: Callable[[Path], RepoState] = probe_repo,
+                 probe: Callable[[Path, Baseline | None], RepoState]
+                 = probe_repo,
+                 capture: Callable[[Path], Baseline] = capture_baseline,
                  ttl: float = TTL) -> None:
         self._clock = clock
         self._probe = probe
+        self._capture = capture
         self.ttl = ttl
         self._repos: dict[tuple[str, Path], _Membership] = {}
         self._states: dict[tuple[str, Path], RepoState] = {}
+        self._baselines: dict[tuple[str, Path], Baseline] = {}
         self._probed_at: dict[tuple[str, Path], float] = {}
         self._subs: list[Callable[[], None]] = []
 
@@ -85,6 +95,11 @@ class RepoTracker:
         key = self._key(path, host)
         if key is None:
             return
+        if host == "local" and key not in self._baselines:
+            # Before the tool runs, and once per repo: this is the anchor the
+            # session's line counts are measured from, and re-capturing it on
+            # a later write would discard everything already done here.
+            self._baselines[key] = self._safe_capture(key[1])
         fresh = key not in self._repos
         mem = self._repos.setdefault(key, _Membership(root=key[1], host=host))
         if handle not in mem.writers:
@@ -115,6 +130,7 @@ class RepoTracker:
             if not mem.writers:
                 del self._repos[key]
                 self._states.pop(key, None)
+                self._baselines.pop(key, None)
                 self._probed_at.pop(key, None)
         if changed:
             self._notify()
@@ -134,6 +150,16 @@ class RepoTracker:
                 changed = True
         if changed:
             self._notify()
+
+    def _safe_capture(self, root: Path) -> Baseline:
+        """A baseline, or an empty one. ``record`` runs on the write event
+        itself, and a dashboard must never take a write down with it — an
+        empty baseline costs the churn number, not the row."""
+        try:
+            return self._capture(root)
+        except Exception:  # noqa: BLE001
+            log.exception("baseline capture raised for %s; continuing", root)
+            return Baseline()
 
     def _key(self, path: str | Path,
              host: str) -> tuple[str, Path] | None:
@@ -187,7 +213,9 @@ class RepoTracker:
 
         loop = asyncio.get_running_loop()
         results = await asyncio.gather(
-            *(loop.run_in_executor(None, self._probe, key[1]) for key in due),
+            *(loop.run_in_executor(None, self._probe, key[1],
+                                   self._baselines.get(key))
+              for key in due),
             return_exceptions=True)
 
         changed = False

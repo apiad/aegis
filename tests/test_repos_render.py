@@ -20,11 +20,12 @@ NARROW = 26
 
 def view(name="aegis", *, branch="main", dirty=0, ahead=0, behind=0,
          detached=False, op="", stale=False, writers=("alice",),
-         mine=True, host="local"):
+         mine=True, host="local", added=0, deleted=0):
     return RepoView(
         state=RepoState(root=Path("/w/repos") / name, branch=branch,
                         dirty=dirty, ahead=ahead, behind=behind,
-                        detached=detached, op=op, stale=stale),
+                        detached=detached, op=op, stale=stale,
+                        added=added, deleted=deleted),
         writers=writers, mine=mine, host=host)
 
 
@@ -72,6 +73,59 @@ def test_rows_keep_the_order_they_are_given():
     got = lines([view("warden", writers=("bob",), mine=False),
                  view("aegis")])
     assert [ln.split()[1] for ln in got] == ["warden", "aegis"]
+
+
+# --- session churn ----------------------------------------------------
+
+def test_a_row_carries_the_lines_added_and_deleted_this_session():
+    row = lines([view(dirty=2, added=412, deleted=88)])[0]
+    assert "+412" in row
+    assert "-88" in row
+
+
+def test_a_session_that_wrote_nothing_shows_no_churn():
+    row = lines([view(dirty=2)])[0]
+    assert "+" not in row and "-" not in row
+
+
+def test_only_the_half_that_happened_is_shown():
+    """A session of pure additions must not print `-0`, for the same reason
+    a clean repo prints no `~0`."""
+    row = lines([view(added=9)])[0]
+    assert "+9" in row and "-" not in row
+
+
+def test_churn_is_coloured_added_against_deleted():
+    # A peer's row, so the mark is muted and the two colours can only have
+    # come from the churn itself.
+    peers = {"writers": ("bob",), "mine": False}
+    out = render_repos([view(added=5, deleted=3, **peers)],
+                       PALETTE, WIDE).markup
+    quiet = render_repos([view(**peers)], PALETTE, WIDE).markup
+    assert "green" in out and "green" not in quiet      # palette.ok
+    assert "red" in out and "red" not in quiet          # palette.err
+
+
+def test_a_stale_rows_churn_is_dimmed_not_coloured():
+    out = render_repos([view(added=5, deleted=3, stale=True)],
+                       PALETTE, WIDE).markup
+    assert "grey50" in out               # palette.muted
+    assert "red" not in out
+
+
+def test_churn_outlives_the_dirty_and_upstream_counts_when_space_runs_out():
+    """The session total is the summary; `~n ↑n` is the transient state.
+    On a narrow column the total is the one worth keeping."""
+    v = view("workspace-repo", dirty=7, ahead=2, added=412, deleted=88)
+    row = lines([v], 30)[0]
+    assert "+412" in row
+    assert "~7" not in row
+
+
+def test_an_off_host_row_carries_no_churn():
+    row = lines([view("warden", branch="", host="vps", added=5, deleted=2,
+                      writers=("bob",), mine=False)])[0]
+    assert "+5" not in row
 
 
 # --- the mark ---------------------------------------------------------

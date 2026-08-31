@@ -20,6 +20,12 @@ class RepoState:
     ahead: int = 0
     behind: int = 0
     dirty: int = 0
+    # Lines this aegis session has written here, measured from the baseline
+    # captured at its first write. Unlike ``dirty`` these span commits: the
+    # question the row answers is how much work happened, and `~n` goes to
+    # zero every time an agent commits.
+    added: int = 0
+    deleted: int = 0
     detached: bool = False
     op: str = ""            # "" | "merge" | "rebase" | "cherry-pick" | "bisect"
     stale: bool = False
