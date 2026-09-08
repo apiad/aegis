@@ -244,9 +244,9 @@ stops the brain; `aegis ls` lists daemons across roots.
 
 ### `aegis attach` is a dumb pipe, not `--remote` returning
 
-The attach client holds no aegis state. It connects to the socket, sets raw
-mode, pipes both directions, and sends `resize` on `SIGWINCH`. Perhaps 80
-lines, and it never grows.
+The attach client holds no aegis state. It connects, sets raw mode, pipes both
+directions, and sends `resize` on `SIGWINCH`. Perhaps 80 lines, and it never
+grows.
 
 | | `--remote` (dying) | `aegis attach` (new) |
 |---|---|---|
@@ -255,12 +255,34 @@ lines, and it never grows.
 | Client needs a `SessionManager` | yes | no |
 | Protocol grows with each feature | **yes — the rot** | **no** |
 
+**Required: attach must work across machines.** Both transports carry the
+identical `b"D" + length + ANSI` frames, so the client takes a target rather
+than assuming a local socket:
+
+```bash
+aegis attach                              # this root's daemon, unix socket
+aegis attach --view review                # a named view on it
+aegis attach wss://dev.apiad.net --token …   # a daemon on another machine
+```
+
+The remote form is a first-class requirement, not a nicety: it is how a
+terminal on zion drives the VPS daemon while keeping **local** geometry,
+tmux and scrollback — none of which survive an `ssh vps -t aegis attach`
+session, where the far side owns the terminal.
+
+The cost is a URL scheme and a token. Raw mode, the pipe loop and `SIGWINCH`
+are unchanged, because the frames are the same on both transports. What must
+*not* creep in is any awareness of sessions, agents or queues — the moment the
+client parses aegis concepts it has become `RemoteSessionManager` again, and
+this table stops being true.
+
 ### Command surface
 
 | Command | Before | After |
 |---|---|---|
 | `aegis` | TUI, own boot path, no scheduler/peer plane | ensure daemon, attach a terminal view |
-| `aegis attach [--view N]` | — | explicit attach |
+| `aegis attach [--view N]` | — | explicit attach to this root's daemon |
+| `aegis attach wss://host --token …` | — | **attach a local terminal to a remote daemon** |
 | `aegis serve` | headless MCP + queues + schedules + plane + web frontend | **run the daemon** in the foreground |
 | `aegis web` | ensure token, open browser, `_run_serve` | **open a browser at the daemon's URL** — no longer a server |
 | `aegis kill` / `aegis ls` | — | stop / list daemons |
@@ -274,8 +296,22 @@ transport as it does today.
 
 Unchanged: the existing `web.token` on the WS handshake, the existing Caddy
 `basicauth` in front, the existing `aegis token`. The unix socket is protected
-by filesystem permissions — it is reachable only by someone who already has a
-shell on the box.
+by filesystem permissions — reachable only by someone who already has a shell
+on the box.
+
+**Remote attach uses the same two layers, with one wrinkle.** `aegis attach
+wss://…` presents `web.token` on the handshake exactly as the browser does, so
+no new secret and no new surface. But Caddy's `basicauth` sits in front, and a
+terminal client has no login prompt — so the client must send the basic-auth
+header itself, from `--user` or `~/.netrc`. Specify that during planning rather
+than discovering it against a 401; it is the one place the terminal client
+can't simply mirror the browser.
+
+**`wss://` only for remote targets.** The `ws://` path in the retired
+`--remote` was never TLS-capable (`know-how/remote-tui.md` lists it as a known
+limitation). A client that carries a full-access token across a network must
+not repeat that: plain `ws://` is accepted for `localhost` and refused
+otherwise.
 
 ### Explicitly out of scope
 
@@ -454,6 +490,14 @@ The bar is: **exercise the real artifact, not an adjacent one.**
 - **Pending versus draft**: submit a message from view A mid-turn, assert it
   appears in view B's pending strip, and that cancelling it in B cancels it
   in A.
+- **Transport equivalence**: attach one view over the unix socket and one over
+  WS, and assert the emitted frames are byte-identical for the same view state.
+  This is the assertion that keeps `aegis attach` a dumb pipe — the moment the
+  remote client needs its own encoding, the two transports have diverged and
+  the second implementation is back.
+- **Remote attach refuses plaintext**: `aegis attach ws://` to a non-loopback
+  host is rejected before the token is sent. Assert on the token never leaving
+  the process, not merely on the error message.
 - At least one mutation check: break the repaint path deliberately and confirm
   the reconnect test goes red.
 
@@ -469,7 +513,9 @@ The bar is: **exercise the real artifact, not an adjacent one.**
    without waiting on anything below.
 4. **The view seam.** Driver subclass, N views over one brain, brain/view state
    split, persistence. Exercised with `--foreground` and the unix socket only.
-5. **Transports and clients.** WS + `aegis attach`, autostart, idle timeout,
+5. **Transports and clients.** WS + `aegis attach` (both the local unix-socket
+   form and the remote `wss://` form, which is a requirement of this stage, not
+   a follow-up), autostart, idle timeout,
    `ls`/`kill`. Both UIs still exist here — **`web=` stays wired through this
    stage** so dev.apiad.net keeps serving while the daemon is exercised beside
    it on a second port.
