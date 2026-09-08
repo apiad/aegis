@@ -294,18 +294,38 @@ transport as it does today.
 
 ### Auth
 
-Unchanged: the existing `web.token` on the WS handshake, the existing Caddy
-`basicauth` in front, the existing `aegis token`. The unix socket is protected
-by filesystem permissions — reachable only by someone who already has a shell
-on the box.
+**One secret, presented in the handshake. Caddy's `basicauth` is dropped.**
 
-**Remote attach uses the same two layers, with one wrinkle.** `aegis attach
-wss://…` presents `web.token` on the handshake exactly as the browser does, so
-no new secret and no new surface. But Caddy's `basicauth` sits in front, and a
-terminal client has no login prompt — so the client must send the basic-auth
-header itself, from `--user` or `~/.netrc`. Specify that during planning rather
-than discovering it against a 401; it is the one place the terminal client
-can't simply mirror the browser.
+The WS path already works this way and is the model for everything else:
+`ws.js:50` sends `{"type":"auth","token":…}` as its **first frame**, and
+`wssession.py:137` validates it there. The query string was never the
+credential for the socket — `?t=` exists only so the page can *learn* the token
+to put in that frame, and `server.py:103` uses it to guard `/download`.
+
+| Client | How it presents `web.token` |
+|---|---|
+| Browser | `?t=` **once**, exchanged immediately for an `HttpOnly; Secure; SameSite` cookie; the page reads nothing thereafter and the WS handshake authenticates from the cookie |
+| `aegis attach wss://…` | the same auth frame, token from `~/.aegis/tokens/<host>` (so it is not in shell history either); `--token` overrides |
+| `aegis attach` (local) | nothing — the unix socket is guarded by filesystem permissions |
+
+**Why not `?token=` everywhere.** It reads simpler, but it moves the
+credential from a handshake into URLs, and URLs land in Caddy's access log,
+browser history and any `Referer`. This token *is* a shell — the daemon runs
+`permission: full` on the VPS Workspace — so it should appear in exactly one
+place, once.
+
+**What dropping `basicauth` buys**, beyond one secret instead of two: the
+terminal client no longer needs to synthesise a basic-auth header from
+`--user`/`~/.netrc` (a terminal has no login prompt), and two documented traps
+in `know-how/deploying-web.md` disappear — the service-worker install-time 401,
+and URL-embedded credentials polluting the SW scope.
+
+**What it costs, stated plainly.** Today Caddy rejects unauthenticated traffic
+*before* it reaches aegis, so scanners never touch our code. Afterwards,
+aegis's own handshake is the only thing between the open internet and full code
+execution on the VPS. `secrets.token_urlsafe(32)` is strong enough that this is
+an acceptable trade, but it makes the handshake path security-critical: it gets
+adversarial tests (see Testing), not happy-path ones.
 
 **`wss://` only for remote targets.** The `ws://` path in the retired
 `--remote` was never TLS-capable (`know-how/remote-tui.md` lists it as a known
@@ -464,8 +484,17 @@ which is where the previous draft's larger estimate went.
 
 Docs to follow: `AGENTS.md` (the "two co-equal first-class UIs" paragraph and
 the `know-how/remote-tui.md` index entry), `know-how/remote-tui.md` (delete),
-`know-how/deploying-web.md` (daemon topology, PWA section removed),
 `docs/remote.md`, `README.md`.
+
+`know-how/deploying-web.md` needs the most work, and it is operational rather
+than cosmetic — the Caddy site block loses its `basicauth` directive, the
+"Secrets" section drops `~/.aegis-web-basicpw` and keeps only the aegis token,
+the login URL stops being `?t=` -forever and becomes a one-time exchange, the
+whole "SW + basic auth" and PWA-installability discussion goes, and the
+topology diagram loses a layer. Removing `basicauth` from a live public
+hostname is the single most dangerous edit in this plan: **it must land in the
+same change as the cookie exchange, never before it**, or `dev.apiad.net`
+stands briefly open with `permission: full`.
 
 ## Testing
 
@@ -498,6 +527,17 @@ The bar is: **exercise the real artifact, not an adjacent one.**
 - **Remote attach refuses plaintext**: `aegis attach ws://` to a non-loopback
   host is rejected before the token is sent. Assert on the token never leaving
   the process, not merely on the error message.
+- **The handshake is now the only gate, so it gets adversarial tests**, not
+  happy-path ones: no token, empty token, wrong token, well-formed token for a
+  *different* daemon, auth frame sent second instead of first, and a
+  non-auth frame sent before authenticating. Each asserts the connection is
+  refused **before any brain state is touched** — not merely that an error
+  frame comes back.
+- **The token never appears in a URL or a log.** After a full browser session
+  (load, cookie exchange, WS connect, reconnect), assert `web.token` appears in
+  no access-log line and in no request path. This is the assertion that keeps
+  the cookie exchange honest; without it, a future `?token=` shortcut passes
+  every other test here.
 - At least one mutation check: break the repaint path deliberately and confirm
   the reconnect test goes red.
 
