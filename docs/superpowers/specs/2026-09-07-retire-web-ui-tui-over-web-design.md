@@ -1,6 +1,10 @@
 # One boot path: retiring the web UI, and aegis as a library
 
-*Design — 2026-09-07. Status: approved, not yet planned.*
+*Design — 2026-09-07, revised 2026-09-08 after peer review
+(`docs/superpowers/reviews/2026-09-08-one-boot-path-spec-review.md`).*
+
+*Status: **not ready to plan** — the repaint-on-reattach mechanism must be
+spiked first. See Open questions.*
 
 Two goals that turn out to be the same refactor: collapse aegis's front ends
 to a single TUI (rendered locally, or over the web), and make aegis bootable
@@ -133,7 +137,7 @@ phone viewport.
 
 ```
 browser ──HTTPS──► Caddy ──basicauth──► supervisor (aegis web)
-                                             │  spawns, owns, buffers
+                                             │  spawns, owns, repaints
                                              ▼
                                     aegis  (the ordinary TUI)
                                     TEXTUAL_DRIVER=web_driver
@@ -148,8 +152,9 @@ machine**. It owns a real `SessionManager` and a real MCP plane. It is not a
 client of anything. There is no second code path to keep at parity because
 there is no second code path.
 
-The supervisor owns no aegis state at all — only the subprocess, an output
-buffer, the WebSocket(s), and auth. Its coupling to aegis is close to zero.
+The supervisor owns no aegis *session* state — only the subprocess, the
+WebSocket(s), auth, and whatever screen state the repaint mechanism turns out
+to require (see below; this is the open question that sizes the component).
 
 ### Detached lifecycle — the one genuinely new thing
 
@@ -157,18 +162,55 @@ buffer, the WebSocket(s), and auth. Its coupling to aegis is close to zero.
 get `Session ended. [Restart]`. The spike hit this. For a phone on a flaky
 link that is exactly backwards.
 
-The supervisor must therefore:
+Detaching the *process* from the socket is easy: spawn it independently, keep
+it alive across disconnects. **Repainting a reconnecting client is not**, and
+the first draft of this spec got it wrong.
 
-- **spawn the subprocess independently of any connection**, and keep it alive
-  across disconnects;
-- **maintain a bounded ring buffer** of recent output packets;
-- **on (re)connect, replay the buffer** so the client repaints, then stream
-  live.
+**Why replay-a-ring-buffer cannot work.** Textual's web driver emits
+*incremental* frames. The compositor tracks `_dirty_regions` and
+`render_update` returns `render_partial_update()` unless the whole screen
+region is dirty (`_compositor.py:1099-1121`). A bounded buffer therefore holds
+a suffix of a diff stream; replaying it into a fresh xterm.js yields a screen
+with holes. tmux gets away with reattach because it runs a terminal emulator
+and holds authoritative screen state — which this design explicitly declines
+to do. Promising tmux semantics without tmux's screen model was the error.
 
-This is the tmux-shaped part, and it is the real reason to write our own ~300
-line bridge rather than depend on `textual-serve`: process lifecycle is the
-piece we most need to control, and the piece that library gets wrong for this
-use case.
+**The obvious repair is a no-op.** Sending the current geometry on reconnect
+does nothing: `App._on_resize` returns early when the size is unchanged
+(`app.py:4352-4353`). And the driver's meta dispatch accepts only `resize`,
+`focus`, `blur`, `quit`, `exit` and `deliver_chunk_request`
+(`web_driver.py:238-250`) — **there is no repaint message**.
+
+**Candidate mechanisms, measured 2026-09-08.** Because we own `AegisApp` (as
+`textual-serve` does not — it serves arbitrary apps), an in-app action can
+force a full frame. Probed in-process with `run_test()`:
+
+| Mechanism | Result |
+|---|---|
+| `app.refresh(repaint=True, layout=True)` | no update emitted |
+| `app.refresh(…, recompose=True)` | no update emitted |
+| `screen.refresh(repaint=True, layout=True)` | no update emitted |
+| `compositor.render_update(full=True)` | **`LayoutUpdate` — full frame** |
+| `compositor._dirty_regions.add(size.region)` | **`LayoutUpdate` — full frame** |
+
+So the shape is: a hidden binding on `AegisApp` whose action dirties the
+screen region, which the supervisor triggers on reattach. Roughly five lines,
+no emulator, no visible reflow — but it reaches one private attribute, and
+**it is not yet proven end-to-end through the driver to a browser.**
+
+**This must be spiked before planning.** Running the app under
+`TEXTUAL_DRIVER=…web_driver` outside `textual-serve` needs the framed-stdin
+handshake the library performs; a first attempt exited with no output. The
+spike must assert, against a real subprocess and a real socket: reconnect →
+trigger → a full-screen frame arrives → the client's rendering matches a
+freshly-connected client's. If it fails, the fallbacks are a size-toggle
+(correct but flickers on every reconnect) or a server-side screen model such
+as `pyte` (correct, and consumes the entire line budget — at which point
+re-examine whether the socket-detach is worth its cost).
+
+Note that this is precisely the piece the 2026-09-07 spike did **not** cover.
+That spike verified rendering, `Ctrl+T` round-trip and phone reflow — not
+reattach.
 
 ### Shared screen
 
@@ -240,9 +282,10 @@ de que hay un proceso corriendo."*
 That guess is correct, and the coupling is specific. Three things bind aegis
 to a process today:
 
-**1. State is rooted at the process cwd, not at a parameter.** `_serve` accepts
-`local_root` and uses it in exactly one place (`cli.py:386`), while calling
-`Path.cwd()` **eight times** for everything that matters:
+**1. State is rooted at the process cwd, not at a parameter.** The coupling is
+**66 `Path.cwd()`/`os.getcwd()` sites across 21 files**, plus **61 call sites
+of `find_project_root`** — which is itself cwd-rooted
+(`config/__init__.py:141`). Inside `_serve` alone it is eight:
 
 ```
 cli.py:401  attach_persistence(_state_dir(Path.cwd()))
@@ -255,14 +298,51 @@ cli.py:463  root = Path.cwd()
 cli.py:481  WebFrontend(…, state_dir=_state_dir(Path.cwd()), …)
 ```
 
+…and the rest is worse, because it is *late-bound*:
+
+- **`mcp/server.py` calls `find_project_root` 26 times** — the config tools
+  (`aegis_config_add_agent`, `add_queue`, `config_show`, `schedule_*`).
+  These resolve the root **at call time from the process cwd**, so under
+  sindri an agent working in worktree B that edits config hits whichever
+  `.aegis.yaml` the process happens to walk up to. This is the sharpest
+  failure: silent cross-instance writes.
+- **`core/manager.py:97,117,167`** — `root_fn=lambda: self.state_root or
+  Path.cwd()`, lazy closures resolved per call.
+- **`core/session.py:85,91`** — `project_root or Path.cwd()`, the harness
+  subprocess's actual working directory.
+- Also `terminal/manager.py:156`, `workflow/engine.py:199`,
+  `usage/env.py:14`, and nine sites in `tui/app.py`.
+
 This is the blocker, and it is fatal rather than merely untidy: sindri runs
 **one aegis per repo worktree, many in one process**. `Path.cwd()` is a
-process global — you cannot have two. The root must become an explicit
-parameter threaded through every state constructor.
+process global — you cannot have two.
+
+**It is therefore not a pure refactor.** Replacing `x or Path.cwd()` defaults
+and lazy closures with a threaded root converts late-bound process-global
+resolution into early-bound per-instance resolution. That is a semantic
+change, and it is the highest-risk work in this document.
+
+**Name the roots first.** There is no single "root" today, and the ambiguity
+is half the problem — `_serve` has `local_root`; `SessionManager` has
+`state_root` *and* `local_root`; `HostRegistry` has `state_dir` + `local_root`;
+`find_project_root` is a fourth notion; and `cli.py:196` already distinguishes
+`root` from `effective_cwd`. Planning must name three and say which is
+threaded where:
+
+| Role | What it anchors |
+|---|---|
+| **config root** | `.aegis.yaml`, overlays, plugin dirs, persona files |
+| **state root** | `.aegis/state/` — persistence, locks, canvas, terminals, scheduler |
+| **harness cwd** | the directory the agent subprocess actually runs in |
+
+They coincide in the CLI case, which is exactly why the conflation has
+survived. Under sindri they do not.
 
 **2. The boot path exits the process on bad input.** `cli.py` carries 20
-`typer.Exit` calls, several on the config-loading path a library would use.
-A library raises `ConfigError`; only the CLI turns that into an exit code and
+`typer.Exit` calls file-wide; the library-relevant subset is the config-load
+guards in the boot path — `cli.py:166-175` (unknown agent, bad `.aegis.yaml`),
+`cli.py:184-187` (queue load), and `cli.py:713-740` in `_run_serve`. Those
+must raise `ConfigError`; only the CLI wrapper turns it into an exit code and
 a red console line.
 
 **3. The boot path owns the event loop and the signal handlers.**
@@ -341,9 +421,23 @@ for the first time, along with terminals, canvas, monitors, voice and plans.
 
 Named here so it is a decision, not a discovery.
 
-- **The PWA.** Installability, the offline shell and the service worker are
-  properties of the DOM app. A browser tab pointed at a canvas is not
-  installable in the same way. Accepted knowingly.
+- **Independent per-client views.** `web/subscriptions.py` is per-sink, so
+  today a phone can watch agent A while the laptop watches agent B. One
+  mirrored screen ends that: every client sees the same tab, the same scroll,
+  the same geometry. On a fleet machine running many agents that is the
+  *normal* case, not an edge case. Also lost with it: deep links to a session,
+  browser back/forward, and any use for a second tab.
+- **Terminal access to the remote brain.** After this, `ssh vps && aegis`
+  boots a **second** aegis — it does not attach to the one serving
+  dev.apiad.net. The only way in is a browser, behind Caddy and the token.
+  *Mitigation worth specifying now:* have the supervisor also listen on a
+  local unix socket so `ssh vps -t aegis attach` works. It is the same
+  attach/repaint machinery the reattach problem forces us to build anyway, so
+  the marginal cost is a socket and an argument parser.
+- **The PWA.** Installability and the offline shell are properties of the DOM
+  app; a browser tab pointed at a canvas is not installable the same way.
+  (Note the service worker carries no push code, so notifications are not
+  among the losses.) Accepted knowingly.
 - **DOM semantics.** The served TUI is four stacked canvases; its entire ARIA
   tree is one `textbox "Terminal input"`. No text selection, no `Ctrl+F`, no
   share sheet, no screen-reader support. Copying a code block out of a
@@ -370,9 +464,28 @@ Named here so it is a decision, not a discovery.
 | `src/aegis/web/frontend.py` | 53 | keep port resolution, drop the rest |
 | ~20 `tests/test_web_*.py`, `tests/cli/test_remote_flag.py`, `tests/tui/test_ws_client_reconnect.py` | — | delete |
 
-**≈ 3,570 lines deleted**, against roughly 300 added for the supervisor plus a
-vendored xterm.js. The WS protocol version (`PROTOCOL_MAJOR = 2`) and its
-handshake go with it.
+**≈ 3,592 lines deleted** (static/ is 2,094 counting `manifest.webmanifest`
+at 17 and `icon.svg` at 6 — and those two *are* the PWA listed above as a
+loss). The WS protocol version (`PROTOCOL_MAJOR = 2`) and its handshake go
+with it.
+
+**The supervisor is not ~300 lines.** That figure contradicts this document's
+own framing: `textual-serve` is 1,224 lines and, by the argument above, does
+*less* — no auth, no detached lifecycle, no repaint-on-reattach. Unbudgeted in
+the first draft: the repaint mechanism (above), a soft-keyboard shim (the
+thing that actually makes a phone TUI usable, and untestable in headless
+Chrome), the `deliver_chunk_request` download path (`web_driver.py:250` —
+today a real route with a real test), resize negotiation across shared
+clients, reconnect/backoff, and the unix-socket attach. Realistic: **600–900
+lines plus a vendored xterm.js (~250 KB)**.
+
+The case does not need the smaller number — 3,592 deleted against ~800 added
+is still overwhelming — but the number has to be right, because it is the
+number carrying the argument.
+
+`web/frontend.py` does not survive: `_resolve_port` is imported by the `web`
+command at `cli.py:624`, which this design rewrites, so the port-resolution
+helper moves into the supervisor and the module goes.
 
 The boot unification is mostly *movement* rather than new code — hoisting the
 `AegisApp(...)` construction at `cli.py:224` behind `_serve`'s `ui=`
@@ -405,11 +518,15 @@ so the bar is: **exercise the real artifact, not an adjacent one.**
 - **The boot unification needs its own regression**: assert that a `_serve`
   booted with `ui=local` starts a scheduler when `schedules:` is configured.
   That test fails against `main` today, which is the point of writing it.
-- **Multi-instance is the test that proves the library seam.** Boot two
-  `aegis.embed()` instances at two different roots in one process, spawn in
-  each, and assert their state dirs, locks and canvases are disjoint. This
-  cannot pass while `Path.cwd()` roots the state, so it is the honest gate on
-  stage 1 rather than a proxy for it.
+- **Multi-instance is the test that proves the library seam — and it must
+  assert on a write, not on a path.** Boot two `aegis.embed()` instances at
+  two different roots in one process, spawn an agent in each, have agent A
+  call `aegis_config_add_agent`, then **assert instance B's `.aegis.yaml` is
+  byte-identical to before**. Comparing state-dir paths for disjointness is
+  one step from a proxy — it passes as soon as the paths differ, while the 26
+  late-bound `find_project_root` calls in `mcp/server.py` still resolve
+  through the process cwd. The config-write assertion catches those; path
+  disjointness does not. It fails today for that second reason too.
 
 ## Sequencing
 
@@ -429,21 +546,48 @@ The order is forced, and stage 1 is the risky one:
    Falls out of 1 and 2; mostly a public surface and its docs. Unblocks
    sindri without waiting on the rest.
 4. **Build the supervisor.** `aegis web` spawns `_serve(ui=web_driver)`,
-   buffers, reattaches, authenticates. Both UIs still exist at this point, so
-   it can be exercised against the VPS before anything is deleted.
+   attaches, repaints, authenticates. **`web=` stays wired into `_serve`
+   through this stage** so the old client keeps serving dev.apiad.net while
+   the supervisor is exercised beside it on a second port. Without that, the
+   command table below lands a VPS with no UI at all.
 5. **Delete.** The web client, the WS plane, `RemoteSessionManager`,
    `ws_client`, `--remote`, and their tests and docs. Flip
-   `aegis-web.service`'s `ExecStart`.
+   `aegis-web.service`'s `ExecStart`, and only now remove `web=` from
+   `_serve`. The command table describes the world *after this stage*, not
+   after stage 2.
 
 Stages 1–3 are the ones sindri is waiting on and carry no deletion; they can
 ship while the web UI is still standing.
 
-Deleting last means every step is independently revertible, and the
-irreversible one happens only after its replacement has been used in anger.
+**On revertibility, precisely:** stages 4 and 5 are cleanly revertible. Stage 1
+is not, once 2–4 build on it — it is a wide semantic change to the state
+layer, and the honest mitigation is the multi-instance test below plus landing
+it alone, not a promise that it can be backed out later.
+
+Deleting last means the irreversible step happens only after its replacement
+has been used in anger.
 
 ## Open questions
 
-None blocking. Two to settle during planning:
+**Blocking — must be resolved before a plan is written:**
+
+1. **The repaint-on-reattach mechanism.** Spike the hidden-binding approach
+   end-to-end through the driver. If it fails, choose between the size-toggle
+   (flickers) and a server-side screen model (consumes the budget). This
+   decides whether the supervisor is ~800 lines or considerably more.
+2. **Geometry with zero clients attached.** The subprocess outlives every
+   socket, so what size is it? A detached app still renders on a timer;
+   picking "last known" versus a fixed default changes what the first
+   reconnecting client sees before its own resize lands.
+3. **Subprocess-exit policy.** If the TUI exits or crashes with clients
+   attached — respawn, or show a terminal state? Related, and unaddressed in
+   the "Detached lifecycle" section: `systemctl restart aegis-web` restarts
+   the supervisor *and* the brain. That is acceptable and matches today's
+   behaviour, but it means the detachment is **socket-scoped, not
+   supervisor-scoped** — so either say so plainly in the docs or specify
+   orphan re-adoption. Do not call it tmux while the unit restart kills it.
+
+**Non-blocking, settle during planning:**
 
 1. **Buffer size.** How many packets/bytes to retain for replay. Wants a
    measurement against a real transcript, not a guess.
