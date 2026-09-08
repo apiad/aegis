@@ -1,6 +1,12 @@
-# Retiring the web UI: one TUI, rendered over the web
+# One boot path: retiring the web UI, and aegis as a library
 
 *Design — 2026-09-07. Status: approved, not yet planned.*
+
+Two goals that turn out to be the same refactor: collapse aegis's front ends
+to a single TUI (rendered locally, or over the web), and make aegis bootable
+in-process as a library so sindri can drive it. Both reduce to **one boot
+sequence with four attachments** — headless, local TUI, web-driver TUI, and
+embedded.
 
 ## The problem
 
@@ -70,6 +76,11 @@ This matters directly: naively spawning the TUI under a web supervisor would
 silently drop schedules and the peer plane on the VPS, which is precisely
 where both are used. Unifying the boot path is therefore **in scope**, not a
 follow-up.
+
+It is also the seam **sindri** needs. The forge wants aegis as a library —
+booted in-process, at an arbitrary root, several instances at once — and the
+same boot path that serves three UIs serves that as a fourth attachment with
+no UI at all. One sequence, four entry points, is the whole design.
 
 **Both non-TUI paths are also broken right now**, which is how this was found:
 
@@ -217,6 +228,82 @@ not firing schedules) as a side effect rather than as separate work.
 supervisor, or the supervisor ships a VPS that silently stops running
 schedules.
 
+### The fourth attachment: aegis as a library
+
+**sindri** — the agentic forge, `repos/sindri` — needs aegis
+**programmatically, not as a process**. From its vision transcript
+(`vault/+/Inbox/2026-09-01-sindri-vision.md`): *"tenemos que actualizar la
+arquitectura de aegis para que sea usable de manera programática cien por
+ciento… es posible que todavía haya cosas ahí que estén encadenadas al hecho
+de que hay un proceso corriendo."*
+
+That guess is correct, and the coupling is specific. Three things bind aegis
+to a process today:
+
+**1. State is rooted at the process cwd, not at a parameter.** `_serve` accepts
+`local_root` and uses it in exactly one place (`cli.py:386`), while calling
+`Path.cwd()` **eight times** for everything that matters:
+
+```
+cli.py:401  attach_persistence(_state_dir(Path.cwd()))
+cli.py:404  attach_locks_state(_state_dir(Path.cwd()))
+cli.py:405  CanvasManager(state_dir=_state_dir(Path.cwd()), …)
+cli.py:410  TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals")
+cli.py:450  Scheduler(state_dir=_state_dir(Path.cwd()), …)
+cli.py:455  attach_scheduler_context(state_root=Path.cwd(), …)
+cli.py:463  root = Path.cwd()
+cli.py:481  WebFrontend(…, state_dir=_state_dir(Path.cwd()), …)
+```
+
+This is the blocker, and it is fatal rather than merely untidy: sindri runs
+**one aegis per repo worktree, many in one process**. `Path.cwd()` is a
+process global — you cannot have two. The root must become an explicit
+parameter threaded through every state constructor.
+
+**2. The boot path exits the process on bad input.** `cli.py` carries 20
+`typer.Exit` calls, several on the config-loading path a library would use.
+A library raises `ConfigError`; only the CLI turns that into an exit code and
+a red console line.
+
+**3. The boot path owns the event loop and the signal handlers.**
+`_run_serve` calls `asyncio.run(main_async())` and installs SIGINT/SIGTERM
+handlers (`cli.py:760-772`). An embedded aegis runs inside sindri's loop and
+must never touch its signals.
+
+The fix falls out of the same refactor, as a fourth attachment:
+
+| Entry point | Owns loop? | Owns signals? | `ui=` |
+|---|---|---|---|
+| `aegis serve` | yes | yes | `None` |
+| `aegis` | yes | yes | local Textual |
+| supervisor subprocess | yes | yes | Textual + web driver |
+| **`aegis.embed()`** | **no — caller's** | **no** | `None` |
+
+```python
+async with aegis.embed(root=Path("/srv/repos/foo")) as ae:
+    handle = await ae.manager.spawn("implementer", opening_prompt=plan_text)
+    await ae.queues.enqueue("verify", payload, from_handle=handle)
+```
+
+`_serve` becomes loop-agnostic — it does the wiring and returns a handle;
+`asyncio.run` and signal installation move up into the CLI wrappers where they
+belong. `embed()` is then the same wiring with no UI and no process ownership.
+
+**Already done, contrary to the vision doc.** The transcript says per-agent
+system prompts *"no lo tenemos en aegis hoy, vamos a tener que añadirlo"*.
+They landed since: `Agent.prompt` (`config/__init__.py:99`) points at a
+Markdown persona file, resolved by `config/persona.py::read_persona`, and
+composes with rather than replaces the primer. Sindri's "un agente es una
+tupla que define un harness, un modelo, un effort level y un prompt" is
+expressible in `.aegis.yaml` today.
+
+**Deliberately not in this spec:** sindri's own primitives — file-pattern
+triggers, worktree/branch determinism, bash preconditions, final checks with
+retry loops, auto-merge. Those are forge concerns built *on* this API, and
+they need their own design. What lands here is only the seam that makes them
+possible: boot aegis in-process, at an arbitrary root, N times, with every
+subsystem wired.
+
 ### Command surface afterwards
 
 | Command | Before | After |
@@ -318,21 +405,38 @@ so the bar is: **exercise the real artifact, not an adjacent one.**
 - **The boot unification needs its own regression**: assert that a `_serve`
   booted with `ui=local` starts a scheduler when `schedules:` is configured.
   That test fails against `main` today, which is the point of writing it.
+- **Multi-instance is the test that proves the library seam.** Boot two
+  `aegis.embed()` instances at two different roots in one process, spawn in
+  each, and assert their state dirs, locks and canvases are disjoint. This
+  cannot pass while `Path.cwd()` roots the state, so it is the honest gate on
+  stage 1 rather than a proxy for it.
 
 ## Sequencing
 
 The order is forced, and stage 1 is the risky one:
 
-1. **Unify the boot path.** `_serve(ui=…)` becomes the single entry sequence;
-   `aegis` gains the scheduler and peer plane it lacks today. Ships on its own,
-   with the scheduler regression test above. Nothing user-visible changes
-   except that schedules start working under `aegis`.
-2. **Build the supervisor.** `aegis web` spawns `_serve(ui=web_driver)`,
+1. **Root the state explicitly.** Replace the eight `Path.cwd()` calls with a
+   threaded `root`. Pure refactor, no behaviour change, immediately testable
+   by booting two aegis instances at different roots in one process and
+   asserting their state dirs don't collide. This is the prerequisite for both
+   stage 2 and sindri.
+2. **Unify the boot path.** `_serve(ui=…)` becomes the single entry sequence;
+   `aegis` gains the scheduler and peer plane it lacks today. Loop and signal
+   ownership move up into the CLI wrappers. Ships with the scheduler
+   regression test above. Nothing user-visible changes except that schedules
+   start working under `aegis`.
+3. **Expose `aegis.embed()`.** The fourth attachment — no UI, caller's loop.
+   Falls out of 1 and 2; mostly a public surface and its docs. Unblocks
+   sindri without waiting on the rest.
+4. **Build the supervisor.** `aegis web` spawns `_serve(ui=web_driver)`,
    buffers, reattaches, authenticates. Both UIs still exist at this point, so
    it can be exercised against the VPS before anything is deleted.
-3. **Delete.** The web client, the WS plane, `RemoteSessionManager`,
+5. **Delete.** The web client, the WS plane, `RemoteSessionManager`,
    `ws_client`, `--remote`, and their tests and docs. Flip
    `aegis-web.service`'s `ExecStart`.
+
+Stages 1–3 are the ones sindri is waiting on and carry no deletion; they can
+ship while the web UI is still standing.
 
 Deleting last means every step is independently revertible, and the
 irreversible one happens only after its replacement has been used in anger.
