@@ -281,11 +281,18 @@ Line 97 and line 117 — replace `root_fn=lambda: self.state_root or Path.cwd(),
             root_fn=lambda: self.state_root,
 ```
 
-Line 167 — replace `root = self.state_root or Path.cwd()` with:
+Line 167 is inside `reload_plugins`, which feeds
+`yaml_loader.load_config(root)` — that is a **config** root, not a state
+root. It only read `state_root` because the two were conflated. Replace
+`root = self.state_root or Path.cwd()` with:
 
 ```python
-        root = self.state_root
+        root = self.roots.config_root
 ```
+
+This is the one site in this task where the three roots actually diverge;
+copying the `state_root` pattern here would carry the conflation forward
+into the new API.
 
 - [ ] **Step 5: Stop `attach_scheduler_context` reassigning `state_root`**
 
@@ -428,8 +435,6 @@ them. Asserts on file contents, not on resolved paths — a path assertion
 passes while the 26 late-bound lookups still read the process cwd."""
 from pathlib import Path
 
-import pytest
-
 CONFIG = """\
 agents:
   opus:
@@ -446,42 +451,62 @@ def _project(tmp_path: Path, name: str) -> Path:
     return root
 
 
-@pytest.mark.asyncio
 async def test_config_write_lands_only_in_its_own_instance(tmp_path, monkeypatch):
+    """Reuses the existing harness in tests/test_mcp_config_tools.py rather
+    than a new one: `_StubBridge` already implements register_agent, and
+    `_call` already unwraps FastMCP's ToolResult."""
     from aegis.config.roots import AegisRoots
-    from aegis.mcp.server import build_config_tools
+    from aegis.mcp.server import build_server
+
+    from tests.test_mcp_config_tools import _StubBridge, _call
 
     a, b = _project(tmp_path, "a"), _project(tmp_path, "b")
     before_b = (b / ".aegis.yaml").read_text(encoding="utf-8")
 
-    tools_a = build_config_tools(AegisRoots.for_project(a))
+    bridge = _StubBridge()
+    bridge.roots = AegisRoots.for_project(a)   # what Task 2 threads in
+    server = build_server(bridge)
 
     # Stand in the *other* project. A cwd-resolving implementation writes
     # to b; a roots-resolving one writes to a.
     monkeypatch.chdir(b)
-    await tools_a["aegis_config_add_agent"](
-        slug="sonnet", harness="claude-code", model="sonnet")
+    result = await _call(server, "aegis_config_add_agent",
+                         slug="sonnet", harness="claude-code",
+                         model="sonnet")
 
     assert (b / ".aegis.yaml").read_text(encoding="utf-8") == before_b, (
         "instance A's config write leaked into instance B")
     assert "sonnet" in (a / ".aegis.yaml").read_text(encoding="utf-8")
+    assert result == {"ok": True, "live": True, "restart_required_for": []}
+    assert bridge.registered_agents and bridge.registered_agents[0][0] == "sonnet", (
+        "the hot-register (bridge.register_agent) was dropped; the tool's "
+        "docstring promises it and the next spawn depends on it")
 
 
-@pytest.mark.asyncio
-async def test_no_find_project_root_calls_remain_in_mcp_server():
-    """Structural guard: the fix is to stop calling it here at all, so
-    assert on the source. A behavioural test alone passes if one of the 26
-    sites is missed on a code path the test doesn't hit."""
+def test_no_find_project_root_calls_remain_in_mcp_server():
+    """Structural guard, by AST rather than substring — a substring check is
+    fooled by a line break or a mention in a comment. The fix is to stop
+    calling it in this module at all, so assert on calls, not on text."""
+    import ast
+
     import aegis.mcp.server as srv
-    source = Path(srv.__file__).read_text(encoding="utf-8")
-    assert "find_project_root(" not in source, (
-        "mcp/server.py must resolve roots from the bound manager")
+
+    tree = ast.parse(Path(srv.__file__).read_text(encoding="utf-8"))
+    calls = [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "find_project_root"
+    ]
+    assert not calls, (
+        f"mcp/server.py must resolve roots from bridge.roots; "
+        f"find_project_root still called at lines {calls}")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_mcp_root_isolation.py -v`
-Expected: FAIL — `build_config_tools` does not exist, and the source guard fails (26 occurrences).
+Expected: FAIL — `_StubBridge` has no `roots` attribute (Task 2 adds it to the real manager; the test sets it explicitly), and the AST guard reports 26 `find_project_root` call sites.
 
 - [ ] **Step 3: Enumerate the sites before editing**
 
@@ -494,56 +519,52 @@ for i, line in enumerate(src.splitlines(), 1):
 "`
 Expected: 26 lines. Work through them all; the source guard in Step 1 fails until every one is gone.
 
-- [ ] **Step 4: Extract the config tools behind an explicit root**
+- [ ] **Step 4: Take the root from the bridge — do not extract anything**
 
-Introduce a factory that closes over `AegisRoots` and returns the tool
-callables, replacing every `find_project_root()` inside them with
-`roots.config_root`:
+All 26 sites already live inside `build_server(bridge: AppBridge, tokens=None)`
+(`mcp/server.py:592`), which holds `bridge`. After Task 2, `bridge.roots`
+exists. So this task is one binding plus 26 mechanical edits — **no factory,
+no extraction, no re-registration**.
+
+Near the top of `build_server`, beside `config_write_lock` (`server.py:620`):
 
 ```python
-def build_config_tools(roots: "AegisRoots") -> dict[str, object]:
-    """Config/schedule MCP tools bound to one instance's root.
-
-    Previously each tool called find_project_root() at invocation time,
-    resolving from the process cwd — which is wrong the moment one process
-    holds two instances.
-    """
-    from aegis.config import edit as _edit
-    from aegis.config.yaml_loader import load_config
-
-    async def aegis_config_add_agent(slug: str, harness: str,
-                                     model: str, effort: str | None = None,
-                                     permission: str | None = None) -> dict:
-        _edit.add_agent(roots.config_root, slug, harness=harness,
-                        model=model, effort=effort, permission=permission)
-        return {"ok": True, "live": True, "restart_required_for": []}
-
-    async def aegis_config_show() -> dict:
-        """Body is unchanged from the current implementation
-        (`mcp/server.py:625-660`) — including its `{"error": ...}` returns
-        and the redaction — except that the first three lines:
-
-            root = find_project_root()
-            if root is None:
-                return {"error": "no .aegis.yaml found"}
-
-        become:
-
-            root = roots.config_root
-
-        Keep the return shape byte-identical; agents parse it."""
-        ...
-
-    # …one entry per tool that previously called find_project_root().
-    # The transformation is the same in every case: delete the
-    # find_project_root() lookup and its None guard, use roots.config_root.
-    return {
-        "aegis_config_add_agent": aegis_config_add_agent,
-        "aegis_config_show": aegis_config_show,
-    }
+    roots = bridge.roots
 ```
 
-Wire the registration site to call `build_config_tools(manager.roots)`.
+Then, at each of the 26 sites, delete the lookup and its guard:
+
+```python
+        root = find_project_root()            # delete
+        if root is None:                       # delete
+            return {"error": "no .aegis.yaml found"}   # delete
+```
+
+replacing them with:
+
+```python
+        root = roots.config_root
+```
+
+**Three things not to break while doing it:**
+
+- **Keep `config_write_lock` and `bridge.register_agent`.** The real
+  `aegis_config_add_agent` (`server.py:725-755`) holds the lock across the
+  write and hot-registers the new `Agent` on the live map — that is the
+  "Hot-registers" its docstring promises. Dropping either ships a tool that
+  persists but stops hot-registering, and races the other twelve writers.
+- **Two of the 26 are not config tools.** Lines 1625 and 1639 are inside
+  `aegis_run_dynamic_workflow`. Same edit, but do not expect them under a
+  config-tool heading.
+- **Thirteen tools have a now-dead branch.** `roots.config_root` is never
+  `None`, so every `return {"error": "no .aegis.yaml found"}` becomes
+  unreachable. Delete them rather than leaving dead code that implies a
+  contract the type no longer allows.
+
+The previous draft of this task proposed a `build_config_tools(roots)`
+factory. It was wrong twice over: unnecessary, because `bridge` is already in
+scope; and lossy, because the extracted snippet dropped the lock and the
+hot-register. It is recorded here so nobody reinvents it.
 
 - [ ] **Step 5: Run the tests**
 
@@ -572,7 +593,13 @@ another instance's .aegis.yaml."
 
 **Files:**
 - Modify: `src/aegis/terminal/manager.py:156`, `src/aegis/workflow/engine.py:199`, `src/aegis/usage/env.py:14`
+- Modify: `src/aegis/mcp/server.py:616` (CommsLedger state-dir fallback), `:2344` (`_register_user_tool`)
 - Test: `tests/test_no_cwd_regression.py`
+
+**Note:** those last two are *not* `find_project_root` calls, so Task 4 does
+not touch them — but they are `Path.cwd()` sites in a module the guard below
+covers, so the guard cannot go green until they are gone too. Both take
+`roots.state_dir`.
 
 **Interfaces:**
 - Consumes: `AegisRoots`.
@@ -611,7 +638,10 @@ def test_cleaned_modules_do_not_resolve_from_the_process_cwd():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_no_cwd_regression.py -v`
-Expected: FAIL, listing the sites in `terminal/manager.py`, `workflow/engine.py`, `usage/env.py`
+Expected: FAIL, listing five sites — `terminal/manager.py:156`,
+`workflow/engine.py:199`, `usage/env.py:14`, **and `mcp/server.py:616` and
+`:2344`**. If the failure lists only three, the guard is reading a stale
+module list and will go green while two cwd sites remain.
 
 - [ ] **Step 3: Thread the root into each**
 
@@ -648,7 +678,14 @@ git commit -m "fix(state): thread roots through terminals, workflows and usage"
 
 **Interfaces:**
 - Consumes: `AegisRoots`; `SessionManager(roots=…)` from Task 2.
-- Produces: `_serve(*, roots: AegisRoots, agents, default_agent, make_session, mcp, stop, queues=None, schedules=None, remotes=None, remote_plane=None, hosts=None, host_registry=None, inline_schedule_names=None)`. The `local_root: str | None` parameter is **removed** — `roots.harness_cwd` replaces it.
+- Produces: `_serve(*, roots: AegisRoots, agents, default_agent, make_session, mcp, stop, queues=None, schedules=None, remotes=None, remote_plane=None, web=None, hosts=None, host_registry=None, inline_schedule_names=None)`. The `local_root: str | None` parameter is **removed** — `roots.harness_cwd` replaces it.
+
+**Also drop `local_root` from `SessionManager`.** It survives at
+`manager.py:58`/`:67` (`self._local_root = local_root or "."`) and `_serve`
+passes it at `cli.py:385`. Leaving both means two names for one concept — the
+ambiguity this stage exists to remove. Delete the parameter and replace its
+two internal uses (`manager.py:193` and `:208`, the `Place("local", …)`
+comparison) with `str(self.roots.harness_cwd)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -738,15 +775,146 @@ git commit -m "refactor(cli): thread AegisRoots through _serve, drop local_root"
 
 ---
 
-### Task 7: One boot path — `_serve(ui=…)`
+### Task 7a: A real local injection seam — `AegisApp(bridge=…)`
+
+**Files:**
+- Modify: `src/aegis/tui/app.py:378-385` (the `manager=` branch), and the 9 `hasattr(self, "_remote_manager")` guards at `:539,889,918,967,1215,1318,1335,1362,1664`
+- Test: `tests/tui/test_local_bridge_injection.py`
+
+**Interfaces:**
+- Consumes: `SessionManager` from Task 2.
+- Produces: `AegisApp(..., bridge: SessionManager | None = None)` — a **local** injection path, distinct from `manager=`. When `bridge=` is given, the app uses it as its `SessionManager` and **keeps every local-plane feature on**. `manager=` keeps its exact current `--remote` meaning and is untouched.
+
+**Why this is its own task.** The previous draft of this plan claimed
+`AegisApp(manager=…)` was a general injection seam. It is not. At
+`app.py:378` the branch reads *"Skip all local plane construction"*, sets
+`self._remote_manager`, and 9 `hasattr(self, "_remote_manager")` guards then
+turn local features **off** — `:918` nulls `queue_manager`, `:1318` disables
+the hosts axis. Worse, that path calls three methods that exist **only** on
+`RemoteSessionManager` and not on `SessionManager`: `make_pane_core`
+(`app.py:1948`), `_add_session` (`app.py:1241`), `shutdown` (`app.py:1665`) —
+verified `local=0 remote=1` for all three.
+
+A `LocalTuiAttachment` built on `manager=` would therefore paint fine and
+then `AttributeError` on opening a pane and on quit. **A launch-and-look
+check does not catch this** — mount succeeds; the failures are on
+interaction and teardown. Hence the test below spawns a pane and quits.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/tui/test_local_bridge_injection.py
+"""bridge= must inject a local SessionManager WITHOUT degrading to the
+--remote plane. The three assertions map to the three ways the manager=
+path fails: features nulled, hosts axis disabled, and RemoteSessionManager-
+only methods called on a local manager."""
+from aegis.config.roots import AegisRoots
+from aegis.core.manager import SessionManager
+from aegis.tui.app import AegisApp
+
+
+def _manager(tmp_path):
+    return SessionManager(
+        agents={}, default_agent="", make_session=lambda *a, **k: None,
+        mcp=None, roots=AegisRoots.for_project(tmp_path))
+
+
+async def test_bridge_does_not_set_the_remote_sentinel(tmp_path):
+    app = AegisApp(agents={}, default_agent="", make_session=None, mcp=None,
+                   queues={}, clean=True, drivers={}, cwd=str(tmp_path),
+                   voice=None, bridge=_manager(tmp_path))
+    async with app.run_test(size=(100, 30)):
+        assert not hasattr(app, "_remote_manager"), (
+            "bridge= must not take the --remote path; 9 hasattr guards "
+            "switch local features off when that sentinel is present")
+
+
+async def test_bridge_keeps_the_local_plane_on(tmp_path):
+    mgr = _manager(tmp_path)
+    app = AegisApp(agents={}, default_agent="", make_session=None, mcp=None,
+                   queues={}, clean=True, drivers={}, cwd=str(tmp_path),
+                   voice=None, bridge=mgr)
+    async with app.run_test(size=(100, 30)):
+        # app.py:918 nulls this on the remote path
+        assert app.queue_manager is not None
+        assert app.manager is mgr
+
+
+async def test_bridge_survives_a_pane_and_a_clean_quit(tmp_path):
+    """The failure mode a launch-and-look check misses: mount succeeds,
+    then make_pane_core / _add_session / shutdown blow up, because those
+    three exist only on RemoteSessionManager."""
+    app = AegisApp(agents={}, default_agent="", make_session=None, mcp=None,
+                   queues={}, clean=True, drivers={}, cwd=str(tmp_path),
+                   voice=None, bridge=_manager(tmp_path))
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.press("ctrl+e")      # a terminal tab: local-plane only
+        await pilot.pause()
+        await pilot.press("ctrl+q")      # quit path calls shutdown()
+        await pilot.pause()
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/tui/test_local_bridge_injection.py -v`
+Expected: FAIL — `AegisApp.__init__() got an unexpected keyword argument 'bridge'`
+
+- [ ] **Step 3: Add the parameter**
+
+Add `bridge=None` to `AegisApp.__init__` (`app.py:310`). Where the
+constructor currently builds a `SessionManager`, use `bridge` when given:
+
+```python
+        if manager is not None:
+            # --remote path: unchanged. Skips local plane construction.
+            self._remote_manager = manager
+            self._ws = getattr(manager, "_ws", None)
+            ...
+        else:
+            # Local plane. `bridge` supplies an already-built manager (the
+            # daemon case); otherwise construct one as before. Either way
+            # NO _remote_manager sentinel is set, so every hasattr guard
+            # below stays on its local branch.
+            self.manager = bridge if bridge is not None else SessionManager(...)
+            # ...the rest of local plane construction, unchanged
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `uv run pytest tests/tui/test_local_bridge_injection.py -v`
+Expected: PASS (3 tests)
+
+- [ ] **Step 5: Confirm `--remote` is untouched**
+
+This plan deletes nothing, so the `--remote` path must behave exactly as before.
+
+Run: `uv run pytest tests/ -k "remote or tui" -q`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/aegis/tui/app.py tests/tui/test_local_bridge_injection.py
+git commit -m "feat(tui): AegisApp(bridge=) — inject a local manager without degrading
+
+manager= is the --remote path: it sets _remote_manager, skips local plane
+construction, and 9 hasattr guards then disable queues and the hosts axis.
+It also calls make_pane_core/_add_session/shutdown, which exist only on
+RemoteSessionManager. bridge= injects a local SessionManager with the whole
+local plane intact."
+```
+
+---
+
+### Task 7b: One boot path — `_serve(ui=…)`
 
 **Files:**
 - Modify: `src/aegis/cli.py:110-230` (the TUI branch), `:373` (`_serve`)
 - Test: `tests/cli/test_boot_unification.py`
 
 **Interfaces:**
-- Consumes: `_serve(roots=…)` from Task 6.
-- Produces: `_serve(..., ui: UIAttachment | None = None)` where `UIAttachment` is a Protocol with `async def run(self, manager) -> None`. `LocalTuiAttachment(clean: bool, agent: str | None)` implements it by constructing and running `AegisApp`. `aegis` (no subcommand) routes through `_serve(ui=LocalTuiAttachment(...))`.
+- Consumes: `_serve(roots=…)` from Task 6; `AegisApp(bridge=…)` from Task 7a.
+- Produces: `_serve(..., ui: UIAttachment | None = None)`, where `UIAttachment` is a Protocol with `async def run(self, manager) -> None`. `LocalTuiAttachment` implements it.
 
 **The bug this fixes:** `tui/app.py:466` — *"The TUI does not run a scheduler."* After this task it does.
 
@@ -754,21 +922,28 @@ git commit -m "refactor(cli): thread AegisRoots through _serve, drop local_root"
 
 ```python
 # tests/cli/test_boot_unification.py
-"""This test fails against main: the TUI path constructs AegisApp directly
+"""Fails against main: the TUI path constructs AegisApp directly
 (cli.py:224) and never wires a scheduler, so `aegis` silently does not fire
 schedules while `aegis serve` does."""
 import asyncio
 
-import pytest
+
+class _StubMCP:
+    """_serve calls mcp.bind/start/stop and reads mcp.port (cli.py:415-418,
+    :497). mcp=None crashes before reaching anything under test — which
+    would fail identically against a correct and a broken implementation."""
+
+    def __init__(self): self.port = 0; self.bound = None
+    def bind(self, mgr): self.bound = mgr
+    async def start(self): self.port = 12345
+    async def stop(self): return None
 
 
 class _RecordingUI:
     def __init__(self): self.manager = None
-    async def run(self, manager):
-        self.manager = manager
+    async def run(self, manager): self.manager = manager
 
 
-@pytest.mark.asyncio
 async def test_local_ui_boot_starts_a_scheduler(tmp_path):
     from aegis.cli import _serve
     from aegis.config.roots import AegisRoots
@@ -780,7 +955,7 @@ async def test_local_ui_boot_starts_a_scheduler(tmp_path):
     await _serve(
         roots=AegisRoots.for_project(tmp_path),
         agents={}, default_agent="", make_session=lambda *a, **k: None,
-        mcp=None, stop=stop,
+        mcp=_StubMCP(), stop=stop,
         schedules={"nightly": {"cron": "0 3 * * *", "workflow": "noop"}},
         ui=ui)
 
@@ -790,7 +965,6 @@ async def test_local_ui_boot_starts_a_scheduler(tmp_path):
         "documented at tui/app.py:466")
 
 
-@pytest.mark.asyncio
 async def test_headless_boot_still_works(tmp_path):
     from aegis.cli import _serve
     from aegis.config.roots import AegisRoots
@@ -798,7 +972,7 @@ async def test_headless_boot_still_works(tmp_path):
     stop.set()
     await _serve(roots=AegisRoots.for_project(tmp_path), agents={},
                  default_agent="", make_session=lambda *a, **k: None,
-                 mcp=None, stop=stop, ui=None)
+                 mcp=_StubMCP(), stop=stop, ui=None)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -806,9 +980,7 @@ async def test_headless_boot_still_works(tmp_path):
 Run: `uv run pytest tests/cli/test_boot_unification.py -v`
 Expected: FAIL — `_serve() got an unexpected keyword argument 'ui'`
 
-- [ ] **Step 3: Define the attachment protocol**
-
-Add to `src/aegis/cli.py` (or `src/aegis/ui.py` if it grows):
+- [ ] **Step 3: Define the attachment**
 
 ```python
 from typing import Protocol
@@ -824,31 +996,46 @@ class UIAttachment(Protocol):
 class LocalTuiAttachment:
     """The Textual TUI on this process's terminal.
 
-    `AegisApp` already accepts an externally-built `manager=` — the seam
-    `_run_tui_with_manager` (cli.py:295) uses for `--remote`. Reuse it
-    rather than adding a second constructor; note this one must use
-    `run_async()`, because it runs inside `_serve`'s loop, where
-    `_run_tui_with_manager`'s blocking `.run()` would deadlock.
+    Uses `bridge=` (Task 7a), NOT `manager=` — the latter is the --remote
+    path and would disable the local plane. Uses `run_async()`, because
+    this runs inside _serve's loop where a blocking `.run()` deadlocks.
     """
 
     def __init__(self, *, clean: bool, agent: str | None, queues: dict,
-                 voice, drivers: dict, cwd: str) -> None:
+                 voice, hosts: dict, host_registry, drivers: dict,
+                 cwd: str, agents: dict, roots) -> None:
         self._kw = dict(clean=clean, queues=queues, voice=voice,
-                        drivers=drivers, cwd=cwd)
+                        hosts=hosts, host_registry=host_registry,
+                        drivers=drivers, cwd=cwd, agents=agents)
         self._agent = agent
+        self._roots = roots
 
     async def run(self, manager) -> None:
-        agents = {slug: None for slug in manager.list_agents()}
-        app = AegisApp(agents=agents, default_agent=self._agent or "",
-                       make_session=None, mcp=None,
-                       manager=manager, **self._kw)
+        # Workspace resume is a VIEW concern and a cwd site; it belongs
+        # here, rooted, not in the shared boot path.
+        from aegis.tui.app import pick_workspace_to_resume
+        from aegis.state.workspace import CorruptWorkspace
+        try:
+            pick_workspace_to_resume(self._roots.state_dir,
+                                     clean=self._kw["clean"])
+        except CorruptWorkspace as e:
+            raise typer.Exit(code=2) from e
+
+        app = AegisApp(default_agent=self._agent or "", make_session=None,
+                       mcp=None, bridge=manager, **self._kw)
         await app.run_async()
 ```
 
+**Pass the real `agents` dict.** `_run_tui_with_manager:302` uses
+`{slug: None}` because a `--remote` client has no local `Agent` objects.
+Locally those objects are used at `app.py:642` (`drv.resume`), `:824`
+(`_resolve_place`), `:1120`, and `:2354`/`:2402` (`_overlay_agent`, the
+per-session model override). `None` breaks all four. Likewise pass `hosts`
+and `host_registry`, which `cli.py:226-227` passes today.
+
 - [ ] **Step 4: Accept and run the attachment in `_serve`**
 
-At the end of `_serve`, after every subsystem is wired and before awaiting
-`stop`:
+After every subsystem is wired, and before awaiting `stop`:
 
 ```python
     if ui is not None:
@@ -858,24 +1045,58 @@ At the end of `_serve`, after every subsystem is wired and before awaiting
         await stop.wait()
 ```
 
-- [ ] **Step 5: Route the `aegis` command through `_serve`**
+- [ ] **Step 5: Route `aegis` through `_serve`, keeping bootstrap mode**
 
-Replace the direct `AegisApp(...)` construction at `cli.py:224` with a
-`_run_serve`-style call passing `ui=LocalTuiAttachment(...)`. Delete the
-duplicated config loading in the TUI branch (`cli.py:163-214`) in favour of
-the loading `_run_serve` already does.
+Replace the direct `AegisApp(...)` at `cli.py:224` with a `_run_serve`-style
+call passing `ui=LocalTuiAttachment(...)`.
+
+**Preserve bootstrap mode.** `cli.py:163-168` currently drops into the TUI
+`ConfigPanel` when there is **no** `.aegis.yaml`. `load_boot_config` raises
+`ConfigError`, so routing naively would make `aegis` in a fresh directory
+exit 1 — a behaviour change the Global Constraints forbid. Keep the
+pre-check:
+
+```python
+    root = find_project_root() or Path.cwd()
+    if not (root / ".aegis.yaml").is_file():
+        # Bootstrap: no config anywhere → straight to the ConfigPanel,
+        # exactly as before. No brain to boot yet.
+        _run_bootstrap_tui(root, clean=clean)
+        return
+```
+
+Delete only the duplicated **config loading** at `cli.py:169-197`. Do not
+delete `pick_workspace_to_resume` (`:198-205`) — it moves into
+`LocalTuiAttachment.run` above, with its `CorruptWorkspace` → `Exit(2)`
+contract intact.
 
 - [ ] **Step 6: Run the tests**
 
 Run: `uv run pytest tests/cli/test_boot_unification.py -v`
 Expected: PASS (2 tests)
 
-- [ ] **Step 7: Verify the TUI still starts for real**
+- [ ] **Step 7: Exercise the three live paths**
 
-A passing unit test is not the artifact. Launch it:
+Unit tests do not cover the boot path every user runs. All three, reading
+the rc directly:
 
-Run: `cd /tmp && mkdir -p boot-check && cd boot-check && printf 'agents:\n  a:\n    provider: claude-code\n    model: opus\ndefault_agent: a\n' > .aegis.yaml && timeout 10 uv run --project /home/apiad/Workspace/repos/aegis aegis --clean`
-Expected: the TUI paints and exits on timeout with no traceback. A traceback here means the boot refactor broke the path every user runs.
+```bash
+# 1. normal boot
+cd /tmp && rm -rf bootchk && mkdir bootchk && cd bootchk
+printf 'agents:\n  a:\n    provider: claude-code\n    model: opus\ndefault_agent: a\n' > .aegis.yaml
+timeout 10 uv run --project /home/apiad/Workspace/repos/aegis aegis --clean; echo "normal rc=$?"
+
+# 2. bootstrap mode: NO .aegis.yaml must still open the ConfigPanel, not exit 1
+cd /tmp && rm -rf bootstrapchk && mkdir bootstrapchk && cd bootstrapchk
+timeout 10 uv run --project /home/apiad/Workspace/repos/aegis aegis --clean; echo "bootstrap rc=$?"
+
+# 3. corrupt workspace must still exit 2
+cd /tmp/bootchk && mkdir -p .aegis/state && echo 'not json' > .aegis/state/workspace.json
+uv run --project /home/apiad/Workspace/repos/aegis aegis; echo "corrupt rc=$?"
+```
+
+Expected: `normal rc=124` (timeout, i.e. it ran), `bootstrap rc=124` (**not**
+1), `corrupt rc=2`.
 
 - [ ] **Step 8: Run the full suite**
 
@@ -885,12 +1106,13 @@ Expected: PASS except the 1–2 known inotify flakes.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/aegis/cli.py src/aegis/tui/app.py tests/cli/test_boot_unification.py
+git add src/aegis/cli.py tests/cli/test_boot_unification.py
 git commit -m "refactor(cli): one boot path, with the UI as an attachment
 
 aegis and aegis serve had separate boot sequences; the TUI never wired a
 scheduler or the peer remote plane. Both now boot through _serve, which
-takes an optional UIAttachment. Fixes schedules not firing under aegis."
+takes an optional UIAttachment. Bootstrap mode and workspace resume move
+into the attachment rather than being deleted."
 ```
 
 ---
@@ -951,22 +1173,28 @@ class BootConfig:
     remote_plane: object | None
     hosts: dict
     voice: object | None
+    web: object | None            # cli.py:737 — _serve starts WebFrontend
     inline_schedule_names: set[str]
 
 
 def load_boot_config(roots: AegisRoots) -> BootConfig:
     """Every entry point's config load. Raises ConfigError; only the CLI
     wrappers turn that into an exit code."""
+    from aegis.commands.prompt_loader import load_prompt_commands
     from aegis.config.yaml_loader import import_plugins, load_config as _load
     agents, default_agent = load_config(roots.config_root)
     yaml_cfg = _load(roots.config_root)
     import_plugins(yaml_cfg)
+    load_prompt_commands(roots.config_root)      # cli.py:732
     return BootConfig(
         agents=agents, default_agent=default_agent,
         queues=load_queues(roots.config_root),
         schedules=yaml_cfg.schedules, remotes=yaml_cfg.remotes,
         remote_plane=yaml_cfg.remote_plane, hosts=yaml_cfg.hosts,
         voice=yaml_cfg.voice,
+        # cli.py:737 — only a token-bearing block counts, or serve starts a
+        # web frontend with no auth.
+        web=(yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None),
         inline_schedule_names=yaml_cfg.inline_schedule_names)
 ```
 
@@ -974,9 +1202,31 @@ Replace the three guard blocks with calls to it, wrapping in
 `try/except ConfigError` → `_console.print` + `typer.Exit(1)` **only** in the
 typer command bodies.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 4: Verify, including that the web UI still boots**
 
-Run: `uv run pytest tests/cli/test_config_errors_raise.py tests/ -k "config or cli" -q`
+`BootConfig` must carry `web`, or this task silently kills the web frontend
+in a plan whose contract is "the web client is untouched".
+
+```python
+# append to tests/cli/test_config_errors_raise.py
+def test_boot_config_carries_web_and_is_token_gated(tmp_path):
+    from aegis.cli import load_boot_config
+    from aegis.config.roots import AegisRoots
+
+    base = ("agents:\n  a:\n    provider: claude-code\n    model: opus\n"
+            "default_agent: a\n")
+    (tmp_path / ".aegis.yaml").write_text(
+        base + "web:\n  bind: 127.0.0.1\n  port: 8899\n  token: secret\n",
+        encoding="utf-8")
+    assert load_boot_config(AegisRoots.for_project(tmp_path)).web is not None
+
+    # A token-less block must stay None, or serve exposes an unauthed UI.
+    (tmp_path / ".aegis.yaml").write_text(
+        base + "web:\n  bind: 127.0.0.1\n  port: 8899\n", encoding="utf-8")
+    assert load_boot_config(AegisRoots.for_project(tmp_path)).web is None
+```
+
+Run: `uv run pytest tests/cli/test_config_errors_raise.py tests/ -k "config or cli or web" -q`
 Expected: PASS
 
 - [ ] **Step 5: Confirm the CLI still exits nonzero on bad config**
@@ -1015,8 +1265,6 @@ disjointness: paths differ as soon as roots are threaded, while the
 late-bound MCP lookups can still resolve through the process cwd."""
 from pathlib import Path
 
-import pytest
-
 CONFIG = """\
 agents:
   opus:
@@ -1033,7 +1281,6 @@ def _project(tmp_path: Path, name: str) -> Path:
     return root
 
 
-@pytest.mark.asyncio
 async def test_two_instances_do_not_share_state(tmp_path):
     import aegis
 
@@ -1045,25 +1292,24 @@ async def test_two_instances_do_not_share_state(tmp_path):
         assert ae_b.roots.state_dir.is_relative_to(b)
 
 
-@pytest.mark.asyncio
 async def test_a_config_write_in_one_instance_does_not_touch_the_other(tmp_path):
+    """End-to-end version of the Task 4 gate: the tool is reached through
+    a real embedded instance's own MCP server, not a stub bridge."""
     import aegis
-    from aegis.config.roots import AegisRoots
-    from aegis.mcp.server import build_config_tools
+
+    from tests.test_mcp_config_tools import _call
 
     a, b = _project(tmp_path, "a"), _project(tmp_path, "b")
     before_b = (b / ".aegis.yaml").read_text(encoding="utf-8")
 
-    async with aegis.embed(a), aegis.embed(b):
-        tools_a = build_config_tools(AegisRoots.for_project(a))
-        await tools_a["aegis_config_add_agent"](
-            slug="sonnet", harness="claude-code", model="sonnet")
+    async with aegis.embed(a) as ae_a, aegis.embed(b):
+        await _call(ae_a.mcp.server, "aegis_config_add_agent",
+                    slug="sonnet", harness="claude-code", model="sonnet")
 
     assert (b / ".aegis.yaml").read_text(encoding="utf-8") == before_b
     assert "sonnet" in (a / ".aegis.yaml").read_text(encoding="utf-8")
 
 
-@pytest.mark.asyncio
 async def test_embed_installs_no_signal_handlers(tmp_path):
     """An embedded aegis runs in the host's loop and must not touch its
     signals — sindri owns SIGINT/SIGTERM."""
@@ -1105,6 +1351,7 @@ class EmbeddedAegis:
     manager: object
     queues: object
     roots: AegisRoots
+    mcp: object             # the instance's AegisMCP; .server is its FastMCP
 
 
 @asynccontextmanager
@@ -1120,6 +1367,7 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
                                  local_root=str(roots.harness_cwd))
     stop = asyncio.Event()
     holder: dict = {}
+    mcp = AegisMCP()
 
     class _Capture:
         async def run(self, manager) -> None:
@@ -1129,7 +1377,7 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
     task = asyncio.create_task(_serve(
         roots=roots, agents=cfg.agents, default_agent=cfg.default_agent,
         make_session=_session_factory(str(roots.harness_cwd), host_registry),
-        mcp=AegisMCP(), stop=stop, queues=cfg.queues,
+        mcp=mcp, stop=stop, queues=cfg.queues,
         schedules=cfg.schedules, remotes=cfg.remotes,
         remote_plane=cfg.remote_plane, hosts=cfg.hosts,
         host_registry=host_registry,
@@ -1141,28 +1389,44 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
         if task.done():
             task.result()          # re-raise a boot failure
         mgr = holder["manager"]
-        yield EmbeddedAegis(manager=mgr, queues=mgr.queue_manager, roots=roots)
+        yield EmbeddedAegis(manager=mgr, queues=mgr.queue_manager,
+                            roots=roots, mcp=mcp)
     finally:
         stop.set()
         await asyncio.wait_for(task, timeout=10)
 ```
 
-- [ ] **Step 4: Export it**
+- [ ] **Step 4: Expose the FastMCP handle publicly**
+
+`AegisMCP` builds its `FastMCP` in `bind()` and keeps it private
+(`mcp/runtime.py:44,60`). Embedded callers — and the gate test — need it, and
+reaching into `_server` from a test would pin a private. Add the accessor:
+
+```python
+    # src/aegis/mcp/runtime.py, on AegisMCP
+    @property
+    def server(self):
+        """The bound FastMCP. None until bind() has run."""
+        return self._server
+```
+
+- [ ] **Step 5: Export it**
 
 ```python
 # src/aegis/__init__.py — add
 from aegis.embed import EmbeddedAegis, embed  # noqa: F401
 ```
 
-- [ ] **Step 5: Run the gate**
+- [ ] **Step 6: Run the gate**
 
 Run: `uv run pytest tests/test_multi_instance.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 6: Mutation-check the gate**
+- [ ] **Step 7: Mutation-check the gate**
 
 A gate that cannot fail is worth less than none. Temporarily revert one
-`build_config_tools` lookup to `find_project_root()`, re-run, and confirm
+`roots.config_root` lookup in `mcp/server.py` back to `find_project_root()`,
+re-run, and confirm
 `test_a_config_write_in_one_instance_does_not_touch_the_other` goes **red**.
 Then restore.
 
@@ -1170,12 +1434,12 @@ Run: `uv run pytest tests/test_multi_instance.py -v`
 Expected: RED while mutated, PASS after restoring. If it stays green while
 mutated, the test is a proxy — fix the test before continuing.
 
-- [ ] **Step 7: Run the full suite**
+- [ ] **Step 8: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: PASS except the known inotify flakes.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/aegis/embed.py src/aegis/__init__.py tests/test_multi_instance.py
