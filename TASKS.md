@@ -19,11 +19,17 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 |---|---|---|
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | planned, reviewed, **ready to execute** |
 | 2 | **Daemon stages 4–6** — view seam, transports + `aegis attach`, deletion | specced, needs a plan |
-| 3 | **Terminals redesign** — `Ctrl+Q` hangs with a live terminal | defect, needs re-verification (not in CHANGELOG) |
-| 4 | **Mandatory file claims** — locks are advisory; peers clobber each other | specced + planned 2026-08-07, no code |
+| 3 | **Terminals — `Ctrl+Q` hang** | **verified unfixed 2026-09-09**; mechanism found |
+| 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
+| 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
+| 6 | **Doc truth** — this file, `AGENTS.md`, `know-how/remote-tui.md` | drift confirmed across all three |
 
-Rationale for each, and what is deliberately *not* in v1.0, under
-**v1.0 scope** below.
+Rationale, and what is deliberately *not* in v1.0, under **v1.0 scope** below.
+
+> **Audited 2026-09-09** by four read-only subagents (git log, CHANGELOG,
+> journals, file presence — no code executed). Findings folded in below.
+> **Do not trust this file's headings or plan checkboxes** — both were caught
+> lying. See *Audit findings* at the end of the v1.0 scope section.
 
 ## Resolved — the June 2026 billing scare
 
@@ -302,7 +308,16 @@ web slice above.
 - Spec: `docs/superpowers/specs/2026-08-10-aegis-sidebar-repos-section-design.md`
 - Plan: `docs/superpowers/plans/2026-08-10-aegis-sidebar-repos-section.md`
 
-### Live task list *(TUI complete 2026-08-06; web outstanding)*
+### Live task list *(TUI complete 2026-08-06; **remainder is NOT web-only** — corrected 2026-09-09)*
+
+> **Read the body, not this heading.** The old heading said "web outstanding",
+> which invites closing this entry when the web client is deleted. Two of its
+> three debts are TUI/core and survive the deletion: the group-dashboard
+> roll-up (`member_detail` exists nowhere in `src/`) and `TaskList`-triggered
+> rehydration still losing banked time. Only the web strip/slide-over dies.
+> Note also that this item's plan has five *unticked* boxes for work that is
+> demonstrably on `main` (`tui/app.py:35` `_plan_roll_up`, `:45`
+> `_tab_suffix`) — the plan is stale, the body is right.
 
 Plan state is first-class session state — parsed from every harness, timed
 in working seconds, and rendered on the strip, the `F3` dock, the tab bar
@@ -1163,6 +1178,17 @@ fallback) is S10. Each slice is an honest stop point.
 
 ## Ideas — things the `generate()` seam unlocks
 
+> **Stale heading, corrected 2026-09-09.** Three of the entries below have
+> **shipped** and are kept only for their design notes: `/btw` (v0.29.0),
+> **Session recap** (v0.36.0) and **Loop auto-evaluate** (v0.36.0, which
+> shipped *beyond* the idea — it has a third `stuck` verdict). Only
+> **Session summary** is genuinely unbuilt in this section.
+>
+> Note the recap that shipped is **not** the recap specced here: this section
+> proposes an idle-watcher (~5 min); what landed gates on substrate movement
+> at turn boundaries plus an on-demand `/recap`. The idea was superseded, not
+> implemented — do not "finish" it off the text below.
+
 Unspecced, roughly ordered by how distinctively aegis-shaped they are. All
 ride the one-shot structured-generation seam from
 `2026-07-30-aegis-session-titles-design.md` — cheap, no session, no MCP, no
@@ -1254,58 +1280,128 @@ it's arguable rather than silent.
 
 ## v1.0 scope
 
-*Drawn 2026-09-09.* The test for v1.0 is not "has every feature" — it is
-**"is the architecture settled, and is it honest to hand this to someone
-else."** By that test aegis fails today on four counts, and only four.
+*Drawn 2026-09-09, after a four-way read-only audit of every entry in this
+file.* The test for v1.0 is not "has every feature" — it is **"is the
+architecture settled, and is it honest to hand this to someone else."**
 
-### In v1.0
+### In v1.0 — six items
 
-**1. The daemon (stages 1–6).** Three front ends, two of them broken, and two
-boot paths that disagree about whether schedules run. No 1.0 ships three
-implementations of its own UI. This also deletes ~3,592 lines, so the
-codebase a new contributor meets is the one we actually maintain.
+**1. The daemon (stages 1–6).** Three front-end implementations, two of them
+broken, and two boot paths that disagree about whether schedules run. No 1.0
+ships three implementations of its own UI. Deletes ~3,592 lines — **and
+closes four other entries outright** (see *Closed by deletion* below).
 
-**2. Terminals — the `Ctrl+Q` hang.** Quit hanging forever is disqualifying
-on its own. *Re-verify first:* the defect was logged 2026-08-10 and nothing
-in `CHANGELOG.md` claims a fix, but nothing confirms it still reproduces
-either. Ten minutes with a live terminal settles it.
+**2. Terminals — the `Ctrl+Q` hang.** *Verified unfixed 2026-09-09, with the
+mechanism found:* `action_quit` (`tui/app.py:1660-1686`) closes panes, queue
+digest, quota services, queue manager, `_mcp` and the file indexer — and
+never closes `self.terminal_manager` (built at `app.py:451`). Last commit
+under `src/aegis/terminal/` is `4a8dbd2`, *predating* the defect report.
 
-**3. Mandatory file claims.** `src/aegis/locks/` is advisory — `claim()`
-returns `granted: false` and nothing stops the write, so peers clobber each
-other and you find out at `git diff`. For a harness whose entire premise is
-*many agents at once*, the central safety promise is unimplemented. Specced
-and planned since 2026-08-07 with no code.
+⚠️ **Do not read CHANGELOG 0.34.0 as a fix.** It says *"Every `Ctrl+Q`
+printed a `LookupError` … `Ctrl+Q` → rc=0"* — that is `9b616b5`, a different
+bug (Textual `Timer` context in MCP handler tasks), and its manual check
+exercised `aegis_title` then quit **with no live terminal**. The journal
+records the two defects separately on the same day.
 
-**4. Doc truth.** `AGENTS.md` still claims "two co-equal first-class UIs …
-the same fidelity", which is false and was false before this work started.
-This file claimed v0.32.0 at v0.37.0. `know-how/remote-tui.md` documents a
-`--remote` invocation that 403s. A 1.0 whose docs lie is worse than a 0.x
-whose docs are thin — and `rift` can assert most of it mechanically.
+The entry is titled "redesign from scratch" but the audit found one missing
+teardown call. Decide which this is before scoping it — the difference is an
+afternoon versus a rewrite.
+
+**3. Mandatory file claims.** Verified not started: `locks/policy.py` and
+`liveness.py` (the plan's Task 1/2 deliverables) do not exist, and
+`registry.py:37-44` still computes `granted` and merely skips recording. For
+a harness whose premise is *many agents at once*, the central safety promise
+is unimplemented. **The plan needs re-grounding** — last done 2026-08-26,
+against a tree that has since taken `close_guard.py` and identity changes.
+
+**4. Live-exercise the unverified paths.** This file itself admits fork was
+*"not yet driven through a live pane"* and that *"nobody has typed `/title`
+into a running aegis"* — no auto-title has ever run against a real model.
+Unit tests exist; live behaviour is unknown. A 1.0 should not ship features
+whose only evidence is a green unit test. One session with a real terminal
+covers fork, `/title` generation, and quit-with-a-live-terminal (item 2).
+
+**5. Session titles slice 4 — the same work as one driver-parity item.** Two
+auditors converged here independently: `supports_oneshot`/`generate_detailed`
+are implemented only in `claude.py` (`base.py:77` defaults `False`); gemini,
+opencode and lovelaice have neither. TASKS.md files this under *both* session
+titles (`:713`) and driver visibility parity — it is one job, not two.
+
+**6. Doc truth.** `AGENTS.md` still claims "two co-equal first-class UIs …
+the same fidelity" — false before this work started. `know-how/remote-tui.md`
+documents a `--remote` invocation that 403s. This file claimed v0.32.0 at
+v0.37.0, cited two SHAs that no longer resolve (`f141b51`, `de1fd68` — the
+code is real, landed as `ccd719d`), and mis-filed shipped work under "Ideas".
+Most of this is `rift`-assertable; a 1.0 whose docs lie is worse than a 0.x
+whose docs are thin.
+
+### Closed by deletion — no work required
+
+The daemon retires the web client, which closes these outright. They are
+outstanding today only because the web never reached TUI parity:
+
+| Entry | Sole remaining bullet |
+|---|---|
+| File browser tab | "the web client has no file browser" |
+| F3 side dashboard | "the web client renders no sidebar" |
+| REPOS in the sidebar | "the web client renders no REPOS" (plan 28/28 ticked) |
+| Web client + TUI WS-client migration | wholly web; already SUPERSEDED |
+
+**Three entries shrink but do not close** — do not close these by deletion:
+*Live task list* (group-dashboard roll-up + rehydration banked-time are
+TUI/core), *Session titles* (slice 4 survives), *`@peer`* (multicast,
+clickable `@handle`, closed-session reads survive). And *Slash commands
+Phase 2* mentions web parity but its only open slice (2B.1) is untouched
+by deletion.
 
 ### Explicitly NOT in v1.0 → 1.x
 
-Deferred on purpose, so nobody smuggles them in:
+Verified genuinely unstarted, and deliberately left so:
 
-- **More harnesses** — Codex JSON-RPC, Copilot ACP, Claude Agent SDK driver.
-  Breadth is a 1.x axis; four drivers already prove the seam.
-- **Agent sandbox** — designed, no plan, and `bubblewrap` makes it
-  Linux-only. Real work, wrong release.
-- **Aegis filesystem tool surface** — six tools plus a permission router.
-  A large new surface right after deleting one is how 1.0 slips.
-- **The conversational corpus** — paused at 2 of 7 tasks. Cleanly paused,
-  nothing half-built; leave it there.
-- **Plugin-first core** — self-described multi-quarter direction.
-- **Sequential handoff re-scope**, **subscription-backed models** (deferred
-  indefinitely), **shrink the MCP surface**, and the `generate()` Ideas
-  section.
+- **More harnesses** — Claude Agent SDK (spec only; `claude-agent-sdk`
+  appears 0× in `pyproject.toml` and `uv.lock`), Codex JSON-RPC (no code),
+  Copilot ACP ("copilot" appears 0× in `src/`). The registry holds exactly
+  four drivers and that is enough to prove the seam.
+- **Agent sandbox** — spec is `Status: Draft` and says outright it "is not
+  planned"; 0 hits for `bubblewrap`.
+- **Aegis filesystem tool surface** — 0 of the six tools among the 72
+  `aegis_*` handlers. Its 2,599-line plan is 3.5 months untouched; NOT
+  STARTED is solid but its *readiness* is unknown.
+- **The conversational corpus** — 2 of 7 tasks, and the audit confirms the
+  boundary is clean: nothing half-finished.
+- **Session summary** — the one genuinely unbuilt "Ideas" entry.
+- **Sequential handoff re-scope**, **conversation fork VS2** (`forked_from`
+  has 0 hits in `src/aegis/state/`, so provenance stays in-memory),
+  **slash 2B.1** (`/model`, `/effort`), **shrink the MCP surface** (the
+  premise got *worse*: 71 tools now, not the 65 measured), **plugin-first
+  core**, **subscription-backed models**.
 
 ### The order
 
-1–3 of the daemon plan first: no deletion, unblocks sindri, and stage 1 is
-the risky one that should land alone. Then re-verify the terminal defect
-(cheap, and it may already be fixed). Then daemon 4–6. File claims can run in
-parallel with any of it — it touches `locks/`, which the daemon work does
-not. Doc truth lands last, when the claims it makes are finally true.
+Daemon 1–3 first: no deletion, unblocks sindri, and stage 1 is the risky one
+that should land alone. Then the live-exercise session (item 4), which also
+settles how big item 2 really is. Then daemon 4–6. File claims can run in
+parallel throughout — it touches `locks/`, which the daemon work does not.
+Doc truth lands last, when the claims it makes are finally true.
+
+### Audit findings — read before trusting this file
+
+1. **Plan checkboxes are not a completion oracle here.** The five lovelaice
+   VS plans carry **129 unticked boxes and zero ticked** for work that shipped
+   to PyPI. The live-task-list plan has five unticked boxes for code on
+   `main`. The corpus plan, by contrast, is exactly accurate. Verify against
+   code and commits, never boxes.
+2. **Headings lie more than bodies.** *Live task list* said "web outstanding"
+   while its body listed two non-web debts; *Session titles* said "only slice
+   4" while its body added a web gap and an unverified live path; the *Ideas*
+   heading held three shipped features.
+3. **Line-number citations have drifted wholesale.** The `@peer` entry cites
+   `app.py:1652`, actual `1856`. Symbols are present so verdicts hold, but
+   every `path:line` in this file is suspect.
+4. **"DONE" from this audit means the code, tests, commits and CHANGELOG
+   entries cohere — not that the suite is green today.** No worker executed
+   anything.
+
 
 ## Backlog
 
