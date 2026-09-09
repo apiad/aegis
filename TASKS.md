@@ -4,7 +4,26 @@ Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
 the public roadmap is `docs/roadmap.md`. This file is the scratch /
 priority list — keep it terse and current.
 
-Current release: **v0.32.0** (2026-08-07).
+Current release: **v0.37.0**. (This header read v0.32.0 until 2026-09-09 —
+if you are editing this file, check it still matches `pyproject.toml`.)
+
+## → v1.0
+
+**The one change that defines v1.0 is the daemon.** Everything else is
+either a hard defect that blocks calling anything 1.0, or deferred to 1.x.
+
+Spec: `docs/superpowers/specs/2026-09-07-retire-web-ui-tui-over-web-design.md`
+Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md`
+
+| # | Item | State |
+|---|---|---|
+| 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | planned, reviewed, **ready to execute** |
+| 2 | **Daemon stages 4–6** — view seam, transports + `aegis attach`, deletion | specced, needs a plan |
+| 3 | **Terminals redesign** — `Ctrl+Q` hangs with a live terminal | defect, needs re-verification (not in CHANGELOG) |
+| 4 | **Mandatory file claims** — locks are advisory; peers clobber each other | specced + planned 2026-08-07, no code |
+
+Rationale for each, and what is deliberately *not* in v1.0, under
+**v1.0 scope** below.
 
 ## Resolved — the June 2026 billing scare
 
@@ -322,6 +341,40 @@ plan through a real pane and both fixed with mutation-checked tests:
 - Plan: `docs/superpowers/plans/2026-08-05-aegis-live-task-list.md`
 
 ## Active
+
+### The daemon — one brain, many views *(specced 2026-09-07; stages 1–3 planned + reviewed 2026-09-09)*
+
+**The v1.0 change.** aegis currently ships **three** front-end
+implementations and **two** boot paths, and two of the three are broken:
+
+- `--remote` builds every WS URL without `/ws` (`ws_client.py:28` uses it
+  verbatim), so all three modes get HTTP 403 — verified live:
+  `"WebSocket /" 403` versus `"WebSocket /ws" [accepted]`.
+- Once connected it crashes mounting the first pane —
+  `SimpleNamespace object has no attribute 'render_tiers'`
+  (`remote_manager.py:97` versus `pane.py:1289`). Reproduced under a real pty.
+- The suite is green through both because the tests assert the broken URL
+  against bare `websockets.serve` handlers that accept any path.
+- `aegis` and `aegis serve` boot differently: **the TUI never wires a
+  scheduler** (`tui/app.py:466`), so schedules only fire under `serve`.
+
+**The design.** One daemon holds the brain; each client gets its own
+`AegisApp` view at its own geometry, holding the manager by direct Python
+reference. Measured, not assumed: Textual's app state is all `ContextVar`
+(`_context.py:17-27`), `WebDriver._write` is an instance attribute, and the
+frames carry raw ANSI — so browsers and terminals are one protocol with two
+renderers. `aegis attach [wss://host]` is an ~80-line dumb pipe; `aegis web`
+shrinks to a browser-opener. ~3,592 lines deleted.
+
+Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
+
+- Spec: `docs/superpowers/specs/2026-09-07-retire-web-ui-tui-over-web-design.md`
+- Review: `docs/superpowers/reviews/2026-09-08-one-boot-path-spec-review.md`
+- Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md`
+- Plan review: `docs/superpowers/reviews/2026-09-09-roots-and-embed-plan-review.md`
+
+**Next action:** execute the stages 1–3 plan, Task 1. Stages 1–3 carry no
+deletion and unblock sindri on their own; stages 4–6 need their own plan.
 
 ### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
 
@@ -1009,7 +1062,14 @@ TTFT for ACP) remain candidate work but aren't on the critical path.
 - Spec: `docs/superpowers/specs/2026-05-28-aegis-driver-visibility-parity-design.md`
 - Slice-1 plan: `docs/superpowers/plans/2026-05-28-aegis-driver-visibility-slice1.md` *(status: shipped)*
 
-### Session history (`Ctrl+R`)
+### ✅ Session history (`Ctrl+R`) — **SHIPPED** (found stale 2026-09-09)
+
+`src/aegis/tui/history.py` exists and `Binding("ctrl+r", "open_history")` is
+live at `tui/app.py:276`. This entry sat under open work; it is done. Left
+here rather than deleted so the next reader knows it was verified, not
+overlooked.
+
+Original description follows.
 
 Modal listing every user-initiated agent session (open or closed, current
 process or previous); reopens via jump-to-tab, `drv.resume()`, or fresh spawn
@@ -1073,7 +1133,16 @@ Different from ACP but documented and stable. Needs a custom `CodexDriver`
 implementing `HarnessSession` over JSON-RPC. Auth: `OPENAI_API_KEY` env var.
 No deadline pressure.
 
-### Web client + TUI WS-client migration *(designed, no plan yet)*
+### ~~Web client + TUI WS-client migration~~ — **SUPERSEDED 2026-09-07**
+
+Superseded by *The daemon — one brain, many views* (top of Active). That
+design retires the web client rather than bringing it to parity: the parity
+this entry chased is what produced three front ends and the two broken
+paths. Kept only so nobody re-arms it off the old design.
+
+Original entry follows, for the record.
+
+### Web client + TUI WS-client migration *(designed — DO NOT EXECUTE, see above)*
 
 First-class web frontend (desktop), feature parity with the TUI. Hybrid
 visual idiom (TUI-faithful transcript via `render_event_html`, native-web
@@ -1182,6 +1251,61 @@ the loop with the gap named.
 The failure mode to design against is the inverse — a judge that never
 lets go. Needs a cap, and the judge's verdict surfaced in the loop strip so
 it's arguable rather than silent.
+
+## v1.0 scope
+
+*Drawn 2026-09-09.* The test for v1.0 is not "has every feature" — it is
+**"is the architecture settled, and is it honest to hand this to someone
+else."** By that test aegis fails today on four counts, and only four.
+
+### In v1.0
+
+**1. The daemon (stages 1–6).** Three front ends, two of them broken, and two
+boot paths that disagree about whether schedules run. No 1.0 ships three
+implementations of its own UI. This also deletes ~3,592 lines, so the
+codebase a new contributor meets is the one we actually maintain.
+
+**2. Terminals — the `Ctrl+Q` hang.** Quit hanging forever is disqualifying
+on its own. *Re-verify first:* the defect was logged 2026-08-10 and nothing
+in `CHANGELOG.md` claims a fix, but nothing confirms it still reproduces
+either. Ten minutes with a live terminal settles it.
+
+**3. Mandatory file claims.** `src/aegis/locks/` is advisory — `claim()`
+returns `granted: false` and nothing stops the write, so peers clobber each
+other and you find out at `git diff`. For a harness whose entire premise is
+*many agents at once*, the central safety promise is unimplemented. Specced
+and planned since 2026-08-07 with no code.
+
+**4. Doc truth.** `AGENTS.md` still claims "two co-equal first-class UIs …
+the same fidelity", which is false and was false before this work started.
+This file claimed v0.32.0 at v0.37.0. `know-how/remote-tui.md` documents a
+`--remote` invocation that 403s. A 1.0 whose docs lie is worse than a 0.x
+whose docs are thin — and `rift` can assert most of it mechanically.
+
+### Explicitly NOT in v1.0 → 1.x
+
+Deferred on purpose, so nobody smuggles them in:
+
+- **More harnesses** — Codex JSON-RPC, Copilot ACP, Claude Agent SDK driver.
+  Breadth is a 1.x axis; four drivers already prove the seam.
+- **Agent sandbox** — designed, no plan, and `bubblewrap` makes it
+  Linux-only. Real work, wrong release.
+- **Aegis filesystem tool surface** — six tools plus a permission router.
+  A large new surface right after deleting one is how 1.0 slips.
+- **The conversational corpus** — paused at 2 of 7 tasks. Cleanly paused,
+  nothing half-built; leave it there.
+- **Plugin-first core** — self-described multi-quarter direction.
+- **Sequential handoff re-scope**, **subscription-backed models** (deferred
+  indefinitely), **shrink the MCP surface**, and the `generate()` Ideas
+  section.
+
+### The order
+
+1–3 of the daemon plan first: no deletion, unblocks sindri, and stage 1 is
+the risky one that should land alone. Then re-verify the terminal defect
+(cheap, and it may already be fixed). Then daemon 4–6. File claims can run in
+parallel with any of it — it touches `locks/`, which the daemon work does
+not. Doc truth lands last, when the claims it makes are finally true.
 
 ## Backlog
 
