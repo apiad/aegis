@@ -24,7 +24,7 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stages 4–6** — view seam, transports + `aegis attach`, deletion | specced, needs a plan |
-| 3 | **Terminals — `Ctrl+Q` hang** | **verified unfixed 2026-09-09**; mechanism found |
+| 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
 | 6 | **Doc truth** — this file, `AGENTS.md`, `know-how/remote-tui.md` | drift confirmed across all three |
@@ -396,7 +396,21 @@ Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
 **Next action:** execute the stages 1–3 plan, Task 1. Stages 1–3 carry no
 deletion and unblock sindri on their own; stages 4–6 need their own plan.
 
-### Terminals — redesign from scratch *(defect found 2026-08-10; deliberately not patched)*
+### Terminals — redesign from scratch *(defect found 2026-08-10; no longer reproduces 2026-09-11)*
+
+> **2026-09-11, after daemon stages 1–3: Alex ran `aegis` in a console and
+> `Ctrl+Q` exits cleanly.** Taken as fact — it is an observation on the
+> machine, not an inference. Stage 7b is the plausible cause: `aegis` now
+> boots through `_serve`, whose `finally` cancels every subsystem task,
+> where the old path went straight to `AegisApp.action_quit`.
+>
+> **One thing to check before deleting this entry**, because the identical
+> mistake was made once already and is recorded below: the hang needed a
+> **live terminal** (`/terminals new t1`, *then* `Ctrl+Q`). A quit with no
+> terminal open never hung — that is exactly how CHANGELOG 0.34.0 came to
+> claim a fix for a different bug. If Alex's run had a terminal open, this
+> entry is closed outright; if not, the terminal-specific case is still
+> unproven and is a 30-second check during the live-exercise session.
 
 **A live shared terminal makes `Ctrl+Q` hang forever.** Reproduced on a clean
 instance: boot, `/terminals new t1` (or `aegis_term_spawn`), `Ctrl+Q` — the
