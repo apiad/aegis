@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 import pytest
@@ -39,7 +41,7 @@ async def test_lazy_start_and_observers_and_commit():
     evs = [AssistantText(text="hi"),
            Result(duration_ms=10, is_error=False, usage=None)]
     s = AgentSession(FakeSession(evs), agent=None, agent_slug="default",
-                     handle="h1")
+                     handle="h1", project_root=Path.cwd())
     seen: list[str] = []
     states: list[tuple[AgentState, bool]] = []
     s.on_event = lambda se, e: seen.append(type(e).__name__)
@@ -55,7 +57,7 @@ async def test_lazy_start_and_observers_and_commit():
 @pytest.mark.asyncio
 async def test_exit_without_result_is_error():
     s = AgentSession(FakeSession([AssistantText(text="partial")]),
-                     None, "default", "h1")
+                     None, "default", "h1", project_root=Path.cwd())
     st: list[tuple[AgentState, bool]] = []
     s.on_state = lambda se, x, f: st.append((x, f))
     await s.send("x")
@@ -71,7 +73,7 @@ async def test_interrupt_cancels_and_resets():
                 await asyncio.sleep(0.01)
                 yield  # never reached
 
-    s = AgentSession(Hang([]), None, "default", "h1")
+    s = AgentSession(Hang([]), None, "default", "h1", project_root=Path.cwd())
     st: list[tuple[AgentState, bool]] = []
     s.on_state = lambda se, x, f: st.append((x, f))
     await s.send("x")
@@ -99,7 +101,7 @@ async def test_interrupt_signals_the_harness():
             self.interrupted = True
 
     sess = Hang([])
-    s = AgentSession(sess, None, "default", "h1")
+    s = AgentSession(sess, None, "default", "h1", project_root=Path.cwd())
     await s.send("x")
     await asyncio.sleep(0.02)
     await s.interrupt()
@@ -158,7 +160,7 @@ async def test_unsolicited_events_drained_at_turn_end():
             AssistantText(text="first"),
             Result(duration_ms=1, is_error=False, usage=None),
         ]),
-        agent=None, agent_slug="default", handle="h1")
+        agent=None, agent_slug="default", handle="h1", project_root=Path.cwd())
     seen: list[str] = []
     s.on_event = lambda se, e: seen.append(
         getattr(e, "text", type(e).__name__))
@@ -191,7 +193,7 @@ async def test_unsolicited_events_after_idle_trigger_turn():
             AssistantText(text="first"),
             Result(duration_ms=1, is_error=False, usage=None),
         ]),
-        agent=None, agent_slug="default", handle="h1")
+        agent=None, agent_slug="default", handle="h1", project_root=Path.cwd())
     seen: list[str] = []
     s.on_event = lambda se, e: seen.append(
         getattr(e, "text", type(e).__name__))
@@ -227,7 +229,7 @@ async def test_monitor_hold_suppresses_unsolicited_promotion():
             AssistantText(text="first"),
             Result(duration_ms=1, is_error=False, usage=None),
         ]),
-        agent=None, agent_slug="default", handle="h1")
+        agent=None, agent_slug="default", handle="h1", project_root=Path.cwd())
     seen: list[str] = []
     s.on_event = lambda se, e: seen.append(getattr(e, "text", type(e).__name__))
     await s.send("hello")
@@ -266,7 +268,7 @@ async def test_unsolicited_turn_flag_tracks_drain():
             AssistantText(text="first"),
             Result(duration_ms=1, is_error=False, usage=None),
         ]),
-        agent=None, agent_slug="default", handle="h1")
+        agent=None, agent_slug="default", handle="h1", project_root=Path.cwd())
     # Snapshot the flag at the moment the wake event is observed — i.e.
     # mid-drain — plus a marker to confirm a real turn is never flagged.
     flag_during_drain: list[bool] = []
@@ -325,7 +327,7 @@ async def test_compact_boundary_advances_the_session_counter():
                                 cache_read=0, output=15)),
     ]
     s = AgentSession(FakeSession(evs), agent=None, agent_slug="default",
-                     handle="h1")
+                     handle="h1", project_root=Path.cwd())
     await s.send("go")
     await s._task
 
@@ -348,7 +350,7 @@ async def test_compact_boundary_without_tokens_still_counts():
                usage=TokenUsage(input=50_000, cache_creation=0,
                                 cache_read=0, output=1)),
     ]
-    s = AgentSession(FakeSession(evs), None, "default", "h1")
+    s = AgentSession(FakeSession(evs), None, "default", "h1", project_root=Path.cwd())
     await s.send("go")
     await s._task
     assert s.metrics.compaction_count == 1
@@ -367,7 +369,7 @@ async def test_context_update_feeds_the_gauge_and_window():
                usage=TokenUsage(input=42_000, cache_creation=0,
                                 cache_read=0, output=10)),
     ]
-    s = AgentSession(FakeSession(evs), None, "default", "h1")
+    s = AgentSession(FakeSession(evs), None, "default", "h1", project_root=Path.cwd())
     await s.send("go")
     await s._task
 
@@ -390,7 +392,7 @@ async def test_context_update_without_cost_leaves_the_window_alone():
     s = AgentSession(
         FakeSession([ContextUpdate(cost=None, mode="build"),
                      Result(duration_ms=1, is_error=False, usage=None)]),
-        None, "default", "h1")
+        None, "default", "h1", project_root=Path.cwd())
     s.on_state = lambda se, x, f: st.append((x, f))
     s.metrics.context_window = 200_000
     await s.send("go")

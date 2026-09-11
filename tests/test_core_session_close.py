@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from aegis.core.session import AgentSession
@@ -26,7 +28,7 @@ class FakeSession:
 
 def _make() -> AgentSession:
     return AgentSession(FakeSession(), agent=None, agent_slug="default",
-                        handle="h1")
+                        handle="h1", project_root=Path.cwd())
 
 
 def test_on_close_fires_on_primary_and_extras():

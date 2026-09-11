@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 from aegis.core.session import AgentSession, _render_batch
@@ -47,7 +49,7 @@ async def test_idle_delivery_wakes_into_new_turn():
          Result(duration_ms=1, is_error=False, usage=None)],
     ]
     h = FakeHarness(evs)
-    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
     await s.deliver(_msg("hello"))
     # let the scheduled task run
     assert s._task is not None
@@ -68,7 +70,7 @@ async def test_mid_turn_delivery_buffers_and_chains():
          Result(duration_ms=1, is_error=False, usage=None)],
     ]
     h = FakeHarness(evs)
-    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
     await s.send("work")
     # state is now working; deliver mid-turn
     await s.deliver(_msg("interrupt"))
@@ -91,7 +93,7 @@ async def test_extra_observers_fire_alongside_primary():
          Result(duration_ms=1, is_error=False, usage=None)],
     ]
     h = FakeHarness(evs)
-    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
 
     primary_events: list = []
     extra_events: list = []
@@ -120,7 +122,7 @@ async def test_multiple_arrivals_batch_into_one_chain_turn():
          Result(duration_ms=1, is_error=False, usage=None)],
     ]
     h = FakeHarness(evs)
-    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
     await s.send("work")
     await s.deliver(_msg("a"))
     await s.deliver(_msg("b"))
@@ -135,7 +137,7 @@ async def test_multiple_arrivals_batch_into_one_chain_turn():
 
 async def test_deliver_returns_landed_when_idle():
     evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     receipt = await s.deliver(_msg("hello"))
     assert receipt.disposition == "landed" and receipt.depth == 0
     await s._task
@@ -147,7 +149,7 @@ async def test_deliver_returns_queued_with_depth_when_working():
          Result(duration_ms=1, is_error=False, usage=None)],
         [Result(duration_ms=1, is_error=False, usage=None)],
     ]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     await s.send("work")
     r1 = await s.deliver(_msg("a"))
     r2 = await s.deliver(_msg("b"))
@@ -163,7 +165,7 @@ async def test_on_dispatch_fires_with_batch_on_idle_and_chain():
          Result(duration_ms=1, is_error=False, usage=None)],
         [Result(duration_ms=1, is_error=False, usage=None)],
     ]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     batches: list[list[InboxMessage]] = []
     s.add_dispatch_observer(lambda _s, batch: batches.append(batch))
 
@@ -183,7 +185,7 @@ async def test_on_dispatch_fires_with_batch_on_idle_and_chain():
 
 async def test_on_dispatch_does_not_fire_for_send():
     evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     fired: list = []
     s.add_dispatch_observer(lambda _s, batch: fired.append(batch))
     await s.send("plain")
@@ -197,7 +199,7 @@ async def test_cancel_pending_removes_by_identity():
          Result(duration_ms=1, is_error=False, usage=None)],
         [Result(duration_ms=1, is_error=False, usage=None)],
     ]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     await s.send("work")
     a, b = _user("a"), _user("b")
     await s.deliver(a)
@@ -211,7 +213,7 @@ async def test_cancel_pending_removes_by_identity():
 
 async def test_cannot_cancel_dispatched_message():
     evs = [[Result(duration_ms=1, is_error=False, usage=None)]]
-    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h")
+    s = AgentSession(FakeHarness(evs), agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     m = _user("gone")
     await s.deliver(m)     # idle → dispatched immediately
     await s._task
@@ -242,7 +244,7 @@ async def test_deliver_fires_on_inbox_observer():
          Result(duration_ms=1, is_error=False, usage=None)],
     ]
     h = FakeHarness(evs)
-    s = AgentSession(h, agent=None, agent_slug="default", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
     s.on_inbox = lambda _s, msg: seen.append(msg)
 
     # idle delivery — fires immediately

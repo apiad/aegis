@@ -8,6 +8,7 @@ minute of work. Elapsed accrues only while the session is mid-turn.
 Every method takes an explicit ts. The tracker never reads a clock — that
 is what makes a replayed log reproduce the live numbers exactly.
 """
+from pathlib import Path
 import asyncio
 
 import pytest
@@ -243,7 +244,7 @@ class _FakeSession:
 @pytest.fixture
 def session():
     return AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="h-plan")
+                        handle="h-plan", project_root=Path.cwd())
 
 
 def _entries(*pairs):

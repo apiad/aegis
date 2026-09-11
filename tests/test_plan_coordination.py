@@ -5,6 +5,7 @@ busy but how far along it is and what it is on. aegis_list_sessions is
 dataclasses.asdict over SessionInfo, so a field added there reaches every
 peer with no change to the tool body; aegis_peer_plan is the drill-down.
 """
+from pathlib import Path
 import dataclasses
 
 import pytest
@@ -41,7 +42,7 @@ def test_manager_populates_the_roll_up_from_the_live_tracker():
     from aegis.core.manager import SessionManager
 
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="worker")
+                        handle="worker", project_root=Path.cwd())
     sess._fire_event(AgentPlan(entries=(
         PlanEntry(content="read", status="completed"),
         PlanEntry(content="write", status="in_progress"),
@@ -63,7 +64,7 @@ def test_a_session_with_no_plan_reports_none_not_zero_of_zero():
     from aegis.core.manager import SessionManager
 
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="idle")
+                        handle="idle", project_root=Path.cwd())
     mgr = SessionManager.__new__(SessionManager)
     mgr._sessions = [sess]
     mgr._mru = []
@@ -78,7 +79,7 @@ def test_plan_state_reaches_the_bridge_for_the_drill_down():
     from aegis.core.manager import SessionManager
 
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="worker")
+                        handle="worker", project_root=Path.cwd())
     sess._fire_event(AgentPlan(entries=(
         PlanEntry(content="read", status="completed"),)))
     mgr = SessionManager.__new__(SessionManager)
@@ -163,7 +164,7 @@ def test_tab_suffix_carries_plan_progress():
     from aegis.tui.app import _tab_suffix
 
     core = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="w")
+                        handle="w", project_root=Path.cwd())
     core._fire_event(AgentPlan(entries=(
         PlanEntry(content="a", status="completed"),
         PlanEntry(content="b", status="in_progress"),
@@ -184,7 +185,7 @@ def test_tab_suffix_is_unchanged_for_a_session_without_a_plan():
     class _Pane:
         handle = "w"
         _core = AgentSession(_FakeSession(), agent=None,
-                             agent_slug="default", handle="w")
+                             agent_slug="default", handle="w", project_root=Path.cwd())
 
     assert _tab_suffix(_Pane(), None) is None
 
@@ -223,7 +224,7 @@ def test_rehydrate_restores_the_plan_after_a_restart():
         PlanEntry(content="ship", status="pending")))
 
     fresh = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                         handle="reborn")
+                         handle="reborn", project_root=Path.cwd())
     assert fresh.plan_state().total == 0, "precondition: a new session is blank"
     fresh.rehydrate_plan([plan], [1000.0])
     st = fresh.plan_state()
@@ -242,7 +243,7 @@ def test_rehydrate_replays_working_time_from_the_persisted_stamps():
     plan = AgentPlan(entries=(
         PlanEntry(content="write", status="in_progress"),))
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="reborn")
+                        handle="reborn", project_root=Path.cwd())
     # plan lands at t=100 mid-turn; the turn ends (Result) at t=160.
     sess.rehydrate_plan([plan, Result(duration_ms=1, is_error=False)],
                         [100.0, 160.0])
@@ -256,7 +257,7 @@ def test_rehydrate_leaves_a_transcript_with_no_plan_alone():
     from tests.test_plan_tracker import _FakeSession
 
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="reborn")
+                        handle="reborn", project_root=Path.cwd())
     sess.rehydrate_plan([AssistantText(text="hello")], [1.0])
     assert sess.plan_roll_up() is None or sess.plan_state().total == 0
 
@@ -271,7 +272,7 @@ def test_rehydrate_routes_a_subagent_plan_to_its_own_tracker():
     sub = AgentPlan(entries=(PlanEntry(content="grind", status="pending"),),
                     parent_tool_use_id="tool_1")
     sess = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                        handle="reborn")
+                        handle="reborn", project_root=Path.cwd())
     sess.rehydrate_plan([top, sub], [1.0, 2.0])
     assert sess.plan_state().total == 1
     assert "tool_1" in sess.subplans
@@ -303,13 +304,13 @@ def test_a_resumed_pane_paints_the_restored_plan_on_its_strip(tmp_path):
     replay = replay_events(tmp_path, "log-resume")
 
     session = AgentSession(_FakeSession(), agent=None, agent_slug="default",
-                           handle="reborn")
+                           handle="reborn", project_root=tmp_path)
 
     class _A(App):
         def compose(self) -> ComposeResult:
             yield ConversationPane(
                 session, None, "default", "reborn", aegis_colors(INK),
-                replay=replay, log_id="log-resume")
+                replay=replay, log_id="log-resume", project_root=Path.cwd())
 
     async def _run():
         async with _A().run_test(size=(100, 24)) as pilot:

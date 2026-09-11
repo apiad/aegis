@@ -454,7 +454,7 @@ async def test_a_resumed_pane_recovers_its_title(tmp_path: Path,
     replay = _safe_replay(sd, log_id)
     pane = ConversationPane(
         FakeSession(), _agent(), "sonnet", handle, app._palette,
-        state_dir_path=sd, log_id=log_id, replay=replay)
+        state_dir_path=sd, log_id=log_id, replay=replay, project_root=tmp_path)
 
     assert pane._core.title == "eviction race"
     assert pane._core.title_source == "human"

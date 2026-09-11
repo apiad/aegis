@@ -142,7 +142,7 @@ class _StubSM:
                 for e in s._e:
                     await asyncio.sleep(0)
                     yield e
-        sess = AgentSession(_H(evs), None, slug, handle)
+        sess = AgentSession(_H(evs), None, slug, handle, project_root=Path.cwd())
         self._sessions.append(sess)
         if opening_prompt is not None:
             import asyncio
@@ -315,7 +315,7 @@ class _LiveFakeHarness:
 async def test_drain_returns_when_target_idle(tmp_path):
     inbox = InboxRouter()
     h = "lucid-knuth"
-    sess = AgentSession(_LiveFakeHarness(), None, "default", h, inbox=inbox)
+    sess = AgentSession(_LiveFakeHarness(), None, "default", h, inbox=inbox, project_root=tmp_path)
     inbox.bind_session(h, sess)
     e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
                        bridge=_StubBridge(), queue_manager=None,
@@ -346,7 +346,7 @@ async def test_drain_timeout_logs_warning_and_returns(tmp_path, capfd):
             import asyncio as _a
             await _a.Event().wait()
             if False: yield  # pragma: no cover
-    sess = AgentSession(_NeverFinishes(), None, "default", h, inbox=inbox)
+    sess = AgentSession(_NeverFinishes(), None, "default", h, inbox=inbox, project_root=tmp_path)
     inbox.bind_session(h, sess)
     e = WorkflowEngine(workflow_name="t", workflow_run_id="01",
                        bridge=_StubBridge(), queue_manager=None,

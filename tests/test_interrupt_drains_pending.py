@@ -9,6 +9,8 @@ their own delivery drains the buffer one line later, as a single turn.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 from aegis.core.session import AgentSession
@@ -53,7 +55,7 @@ def _msg(body: str) -> InboxMessage:
 
 
 def _session(h: GatedHarness) -> AgentSession:
-    return AgentSession(h, agent=None, agent_slug="default", handle="h")
+    return AgentSession(h, agent=None, agent_slug="default", handle="h", project_root=Path.cwd())
 
 
 async def test_interrupt_drains_buffered_inbox_into_a_new_turn():

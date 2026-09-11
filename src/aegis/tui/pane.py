@@ -837,7 +837,8 @@ class ConversationPane(Widget):
                  on_first_user_message: Callable[[str], None] | None = None,
                  on_first_result: Callable[[str], None] | None = None,
                  core=None, log_id: str | None = None,
-                 place=None) -> None:
+                 place=None,
+                 project_root: Path) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -862,7 +863,8 @@ class ConversationPane(Widget):
             self._core = core
         else:
             self._core = AgentSession(session, agent, agent_slug, handle,
-                                      log_id=log_id, place=place)
+                                      log_id=log_id, place=place,
+                                      project_root=project_root)
         self._core.add_event_observer(self._on_core_event)
         # RemotePaneCore has no place of its own — a --remote session's
         # harness lives in the serve it is attached to, not here.

@@ -33,7 +33,7 @@ class FakeHarness:
 
 def _session() -> tuple[AgentSession, FakeHarness]:
     h = FakeHarness()
-    return AgentSession(h, None, "default", "old-name"), h
+    return AgentSession(h, None, "default", "old-name", project_root=Path.cwd()), h
 
 
 @pytest.mark.asyncio
@@ -105,7 +105,7 @@ async def test_rename_mid_turn_lands_on_the_next_turn():
             await released.wait()
 
     h = BlockingHarness()
-    s = AgentSession(h, None, "default", "old-name")
+    s = AgentSession(h, None, "default", "old-name", project_root=Path.cwd())
 
     await s.send("first")
     for _ in range(1000):          # let the turn reach the harness

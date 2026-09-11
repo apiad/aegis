@@ -10,6 +10,8 @@ loaded box.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from rich.text import Text
 
@@ -240,6 +242,6 @@ async def test_metrics_refresh_is_a_noop_before_the_bar_mounts():
     pane = ConversationPane(
         FakeSession(), _agent(), "default", "unmounted-pane",
         __import__("aegis.tui.themes", fromlist=["aegis_colors"]).aegis_colors(
-            __import__("aegis.tui.themes", fromlist=["INK"]).INK))
+            __import__("aegis.tui.themes", fromlist=["INK"]).INK), project_root=Path.cwd())
     pane.refresh_metrics()          # must not raise
     assert pane._bar() is None

@@ -10,6 +10,8 @@ Plus MCP surface registration.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 import pytest
@@ -84,7 +86,7 @@ def _inbox(body):
 # --------------------------------------------------------------------------
 async def test_reminder_fires_as_last_turn():
     h = FakeHarness([_turn("work"), _turn("reminded")])
-    s = AgentSession(h, agent=None, agent_slug="d", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     await s.send("work")
     s.add_reminder(_remind("circle back"))    # left mid-turn
     await s._task                              # work turn → chain fires reminder
@@ -98,7 +100,7 @@ async def test_reminder_fires_as_last_turn():
 
 async def test_reminder_fires_after_buffered_inbox():
     h = FakeHarness([_turn("work"), _turn("inbox-reply"), _turn("reminded")])
-    s = AgentSession(h, agent=None, agent_slug="d", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     await s.send("work")
     s.add_reminder(_remind("last thing"))
     await s.deliver(_inbox("callback"))        # buffers (working)
@@ -116,7 +118,7 @@ async def test_reminder_fires_after_unsolicited_drain():
     seen: list[str] = []
     h = PendingHarness([_turn("work"), _turn("spontaneous"), _turn("reminded")],
                        pending_after=1)
-    s = AgentSession(h, agent=None, agent_slug="d", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     s.on_event = lambda _s, ev: (
         seen.append(ev.text) if isinstance(ev, AssistantText) else None)
     await s.send("work")
@@ -131,7 +133,7 @@ async def test_reminder_fires_after_unsolicited_drain():
 
 async def test_multiple_reminders_batch_into_one_turn():
     h = FakeHarness([_turn("work"), _turn("reminded")])
-    s = AgentSession(h, agent=None, agent_slug="d", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     await s.send("work")
     s.add_reminder(_remind("first"))
     s.add_reminder(_remind("second"))
@@ -145,7 +147,7 @@ async def test_multiple_reminders_batch_into_one_turn():
 
 async def test_reminder_left_while_idle_promotes_immediately():
     h = FakeHarness([_turn("reminded")])
-    s = AgentSession(h, agent=None, agent_slug="d", handle="h")
+    s = AgentSession(h, agent=None, agent_slug="d", handle="h", project_root=Path.cwd())
     assert s.state is AgentState.ready
     s.add_reminder(_remind("wake up"))         # idle → promote now
     assert s._task is not None

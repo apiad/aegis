@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 from aegis.mcp.server import build_server
@@ -34,7 +36,7 @@ class NopSM:
                 if False:
                     yield
 
-        return AgentSession(_H(), None, slug, handle or "w1")
+        return AgentSession(_H(), None, slug, handle or "w1", project_root=Path.cwd())
 
     async def close(self, h): ...
 

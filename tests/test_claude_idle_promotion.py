@@ -22,6 +22,8 @@ it structurally cannot reproduce this hang.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 import types
 
@@ -126,7 +128,7 @@ async def test_session_settles_idle_after_out_of_band_notice():
     ``working`` forever — thinking with no event ever coming back.
     """
     sess, reader, pump = _wired()
-    s = AgentSession(sess, agent=None, agent_slug="default", handle="h1")
+    s = AgentSession(sess, agent=None, agent_slug="default", handle="h1", project_root=Path.cwd())
     s._idle_poll_seconds = 0.01
     try:
         turn = asyncio.create_task(s.send("hello"))

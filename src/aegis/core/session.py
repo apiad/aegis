@@ -64,7 +64,7 @@ class AgentSession:
                  now: Callable[[], float] = time.monotonic,
                  inbox=None,
                  opening_prompt: str | None = None,
-                 project_root: Path | None = None,
+                 project_root: Path,
                  log_id: str | None = None,
                  place=None,
                  repo_tracker=None,
@@ -82,13 +82,13 @@ class AgentSession:
         # Local import: core.session is imported early and aegis.hosts
         # pulls in aegis.mcp transitively.
         from aegis.hosts.models import Place
-        self.place = place or Place("local", str(project_root or Path.cwd()))
+        self.place = place or Place("local", str(project_root))
         # Identity of this session's transcript on disk. Minted once and
         # never changed — unlike `handle`, which is recycled out of a finite
         # pool and can be renamed mid-session. Resume passes the stored id.
         from aegis.state.session_log import new_log_id
         self.log_id = log_id or new_log_id(handle)
-        self.project_root = project_root or Path.cwd()
+        self.project_root = Path(project_root)
         # hooks log into .aegis/state relative to the project root
         self.state_dir = self.project_root / ".aegis" / "state"
 

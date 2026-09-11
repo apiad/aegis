@@ -656,7 +656,7 @@ class AegisApp(App):
                 digest=self.queue_digest, monitor_manager=self.monitor_manager,
                 state_dir_path=self._state_dir,
                 log_id=tab.log_id or tab.handle,
-                replay=replay)
+                replay=replay, project_root=Path(self._cwd))
             self._panes.append(pane)
             self.inbox_router.bind_session(tab.handle, pane._core)
             # Mount hidden. ContentSwitcher only hides children at its own
@@ -863,7 +863,7 @@ class AegisApp(App):
             on_first_user_message=_write_meta,
             on_first_result=(
                 lambda opening, _h=h: self._autotitle(_h, opening)),
-            place=place)
+            place=place, project_root=Path(self._cwd))
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
@@ -1200,7 +1200,7 @@ class AegisApp(App):
             session, agent, tab.profile, tab.handle, self._palette,
             digest=self.queue_digest, monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir, replay=replay,
-            log_id=tab.log_id or tab.handle)
+            log_id=tab.log_id or tab.handle, project_root=Path(self._cwd))
         self._panes.append(pane)
         self.inbox_router.bind_session(tab.handle, pane._core)
         cs = self.query_one(ContentSwitcher)
@@ -1961,6 +1961,7 @@ class AegisApp(App):
             palette=self._palette,
             digest=None,
             core=core,
+            project_root=Path(self._cwd),
         )
         self._panes.append(pane)
         cs = self.query_one(ContentSwitcher)
@@ -2361,7 +2362,8 @@ class _SessionManagerAdapter:
             agent,
             slug, h, self._app._palette, digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir, place=place)
+            state_dir_path=self._app._state_dir, place=place,
+            project_root=Path(self._app._cwd))
         pane._core.spawned_by = spawned_by
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
@@ -2415,7 +2417,8 @@ class _SessionManagerAdapter:
             agent, slug, h, self._app._palette,
             digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir, place=place)
+            state_dir_path=self._app._state_dir, place=place,
+            project_root=Path(self._app._cwd))
         pane._core.forked_from = {"handle": target, "log_id": core.log_id,
                                   "session_id": sid}
         self._app._panes.append(pane)

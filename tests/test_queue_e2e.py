@@ -14,6 +14,8 @@ the same state_dir.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 from aegis.core.session import AgentSession
@@ -80,7 +82,7 @@ class StubSM:
              Result(duration_ms=1, is_error=False, usage=None)],
         )
         harness = HangingHarness() if script is HANG else FakeHarness(script)
-        s = AgentSession(harness, None, slug, handle)
+        s = AgentSession(harness, None, slug, handle, project_root=Path.cwd())
         self._sessions.append(s)
         if opening_prompt is not None:
             asyncio.create_task(s.send(opening_prompt))
@@ -101,7 +103,7 @@ async def test_e2e_enqueue_to_callback_wakes_producer():
             [AssistantText(text="thanks, will do"),
              Result(duration_ms=1, is_error=False, usage=None)],
         ),
-        None, "producer", "lucid-knuth", inbox=inbox)
+        None, "producer", "lucid-knuth", inbox=inbox, project_root=Path.cwd())
     inbox.bind_session("lucid-knuth", producer)
 
     # Worker script: "DONE" is the last assistant text → becomes result.

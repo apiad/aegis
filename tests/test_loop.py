@@ -8,6 +8,8 @@ Layers, mirroring tests/test_reminder.py:
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 import pytest
@@ -142,7 +144,7 @@ def test_loop_state_render_is_verbatim_with_no_stop_coda():
 @pytest.mark.asyncio
 async def test_loop_refires_at_turn_end_and_counts():
     harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=3)
     await _settle(s)
     # Armed while idle -> promoted immediately, then re-fires to the cap.
@@ -154,7 +156,7 @@ async def test_loop_refires_at_turn_end_and_counts():
 @pytest.mark.asyncio
 async def test_loop_header_carries_iteration():
     harness = FakeHarness([_turn("a")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=1)
     await _settle(s)
     assert "> from loop · iteration 1/1" in harness.sent[0]
@@ -164,7 +166,7 @@ async def test_loop_header_carries_iteration():
 async def test_inbox_message_preempts_the_loop():
     """Tier order: a buffered inbox message dispatches before the loop."""
     harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("LOOPTEXT", max_iterations=2)
     await asyncio.sleep(0)          # first loop turn is in flight
     await s.deliver(_inbox("INBOXTEXT"))
@@ -178,7 +180,7 @@ async def test_inbox_message_preempts_the_loop():
 @pytest.mark.asyncio
 async def test_reminder_preempts_the_loop():
     harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("LOOPTEXT", max_iterations=2)
     await asyncio.sleep(0)
     s.add_reminder(_remind("REMINDTEXT"))
@@ -189,7 +191,7 @@ async def test_reminder_preempts_the_loop():
 @pytest.mark.asyncio
 async def test_stop_loop_prevents_the_next_iteration():
     harness = FakeHarness([_turn("a"), _turn("b")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=10)
     await asyncio.sleep(0)
     assert s.stop_loop("agent says done") is True
@@ -202,7 +204,7 @@ async def test_stop_loop_prevents_the_next_iteration():
 @pytest.mark.asyncio
 async def test_loop_status_reports_progress():
     harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=5)
     await asyncio.sleep(0)
     st = s.loop_status()
@@ -215,7 +217,7 @@ async def test_loop_status_reports_progress():
 @pytest.mark.asyncio
 async def test_arming_twice_replaces():
     harness = FakeHarness([_turn("a"), _turn("b")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("first", max_iterations=10)
     await asyncio.sleep(0)
     s.arm_loop("second", max_iterations=10)
@@ -229,7 +231,7 @@ async def test_arming_twice_replaces():
 async def test_cap_fires_the_observer_with_a_capped_reason():
     seen = []
     harness = FakeHarness([_turn("a")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.on_loop = lambda sess, state, reason: seen.append((state, reason))
     s.arm_loop("keep going", max_iterations=1)
     await _settle(s)
@@ -251,7 +253,7 @@ async def test_loop_yields_to_an_armed_monitor():
     the agent would burn whole turns asking 'done yet?' while the monitor sits
     there waiting to wake it."""
     harness = HoldHarness([_turn("a"), _turn("b")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s._unsolicited_hold = 1
     s.arm_loop("keep going", max_iterations=5)
     await _settle(s)
@@ -272,7 +274,7 @@ async def test_interrupt_clears_the_loop():
     """Without this Esc is useless — the loop re-fires the instant the
     interrupted turn ends."""
     harness = FakeHarness([_turn("a"), _turn("b"), _turn("c")])
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=10)
     await asyncio.sleep(0)
     await s.interrupt()
@@ -298,7 +300,7 @@ async def test_harness_error_stops_the_loop():
     cleared loop here means the error stopped it — not the cap.
     """
     harness = BoomHarness()
-    s = AgentSession(harness, _agent(), "default", "h")
+    s = AgentSession(harness, _agent(), "default", "h", project_root=Path.cwd())
     s.arm_loop("keep going", max_iterations=1000)
     await _settle(s)
     assert s.loop_status() is None
@@ -322,7 +324,7 @@ class FakeSM:
 
 @pytest.mark.asyncio
 async def test_service_arm_routes_to_session():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     res = svc.arm(from_handle="h", text="keep going", max_iterations=4)
     assert res["armed"] is True
@@ -340,7 +342,7 @@ def test_service_unknown_handle_errors():
 
 @pytest.mark.asyncio
 async def test_service_stop_and_status():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     svc.arm(from_handle="h", text="keep going", max_iterations=9)
     assert svc.status(from_handle="h")["loop"]["max_iterations"] == 9
@@ -418,7 +420,7 @@ async def _call(server, tool_name: str, **kwargs):
 
 @pytest.mark.asyncio
 async def test_loop_stop_tool_registered():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     server = build_server(StubBridge(LoopService(FakeSM([s]))))
     names = {t.name for t in await server.list_tools()}
     assert "aegis_loop_stop" in names
@@ -431,7 +433,7 @@ async def test_mcp_loop_stop_records_rather_than_reaps():
     Leaving this authoritative would leave the 2026-07-30 burn in place —
     a loop reaped at iteration 1 of 20 with the user-visible half unbuilt.
     """
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     svc.arm(from_handle="h", text="keep going")
     server = build_server(StubBridge(svc))
@@ -444,7 +446,7 @@ async def test_mcp_loop_stop_records_rather_than_reaps():
 
 @pytest.mark.asyncio
 async def test_mcp_loop_stop_without_a_loop_is_harmless():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     server = build_server(StubBridge(LoopService(FakeSM([s]))))
     res = await _call(server, "aegis_loop_stop", from_handle="h")
     assert res["noted"] is False
@@ -466,7 +468,7 @@ def _ctx(svc, handle="h"):
 
 @pytest.mark.asyncio
 async def test_slash_loop_arms():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     res = await dispatch("/loop fix the failing tests", _ctx(svc))
     assert res.ok
@@ -477,7 +479,7 @@ async def test_slash_loop_arms():
 
 @pytest.mark.asyncio
 async def test_slash_loop_max_flag():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     res = await dispatch("/loop --max 3 fix the failing tests", _ctx(svc))
     assert res.ok
@@ -490,7 +492,7 @@ async def test_slash_loop_max_flag():
 async def test_slash_loop_max_inside_text_survives():
     """The greedy positional stops flag parsing, so --max in the instruction
     is part of the instruction."""
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     await dispatch("/loop run bench --max 5 until it clears", _ctx(svc))
     assert "--max 5" in s.loop_status()["text"]
@@ -499,7 +501,7 @@ async def test_slash_loop_max_inside_text_survives():
 
 @pytest.mark.asyncio
 async def test_slash_loop_stop_is_exact_match_only():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     # More than the bare word -> an instruction, not the verb.
     await dispatch("/loop stop the dev server and restart it", _ctx(svc))
@@ -513,7 +515,7 @@ async def test_slash_loop_stop_is_exact_match_only():
 
 @pytest.mark.asyncio
 async def test_slash_loop_status_and_empty_cases():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     res = await dispatch("/loop", _ctx(svc))
     assert res.ok and "no loop" in res.title.lower()
@@ -527,7 +529,7 @@ async def test_slash_loop_status_and_empty_cases():
 
 @pytest.mark.asyncio
 async def test_slash_loop_rejects_bad_max():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     res = await dispatch("/loop --max 0 keep going", _ctx(svc))
     assert res.ok is False
@@ -536,7 +538,7 @@ async def test_slash_loop_rejects_bad_max():
 
 @pytest.mark.asyncio
 async def test_slash_loop_arming_twice_replaces():
-    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h")
+    s = AgentSession(FakeHarness([_turn("a")]), _agent(), "default", "h", project_root=Path.cwd())
     svc = LoopService(FakeSM([s]))
     await dispatch("/loop first", _ctx(svc))
     res = await dispatch("/loop second", _ctx(svc))

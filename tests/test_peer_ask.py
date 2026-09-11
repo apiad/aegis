@@ -51,7 +51,7 @@ class FakeAgent:
 
 def _session(turns, handle="beta") -> AgentSession:
     return AgentSession(FakeSession(turns), agent=FakeAgent(),
-                        agent_slug="default", handle=handle)
+                        agent_slug="default", handle=handle, project_root=Path.cwd())
 
 
 # ---------- PeerAnswer ---------------------------------------------------

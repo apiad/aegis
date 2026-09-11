@@ -19,6 +19,8 @@ message that failed to render.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 import pytest
@@ -65,7 +67,7 @@ class SM(StubSessionManager):
     def spawn(self, slug, *, opening_prompt=None, handle=None):
         from aegis.core.session import AgentSession
         s = AgentSession(self._harness, agent=None, agent_slug=slug,
-                         handle=handle)
+                         handle=handle, project_root=Path.cwd())
         self._sessions.append(s)
         self.spawns.append((slug, handle, opening_prompt, s))
         if opening_prompt is not None:

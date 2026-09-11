@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 
 import pytest
@@ -73,7 +75,7 @@ class StubSessionManager:
              Result(duration_ms=1, is_error=False, usage=None)],
         )
         harness = HangingHarness() if script is HANG else FakeHarness(script)
-        s = AgentSession(harness, agent=None, agent_slug=slug, handle=handle)
+        s = AgentSession(harness, agent=None, agent_slug=slug, handle=handle, project_root=Path.cwd())
         self._sessions.append(s)
         self.spawns.append((slug, handle, opening_prompt, s))
         if opening_prompt is not None:
