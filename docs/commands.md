@@ -217,12 +217,14 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/btw <question>` | Answer a side question from this pane's recent window and disappear. Legal mid-turn; never appended to the session log. Deferred — `Esc` cancels. |
 | `/peer <handle> [--cc] <question>` | Ask an **idle** peer, from where you're standing. `@handle …` is sugar for it. `--cc` also lands the answer in your own conversation. Deferred. |
 | `/recap` | Where this session stands — a building / done / remaining block read from what the turns actually *did* (commits, files written, plan movement), not only what they said. Never appended to the session log. Deferred — `Esc` cancels. See [Recaps](usage.md#recaps-and-the-loop-judge). |
+| `/loop [--max N] <instruction>` \| `/loop` \| `/loop stop` | Re-deliver an instruction at every turn boundary where the session would otherwise settle idle — until the agent reaps it with `aegis_loop_stop`, the iteration cap runs out, or you stop it. Bare `/loop` reports the armed instruction and its `iteration/max`; arming over a live loop replaces it. `stop` is matched **exactly**, so `/loop stop the dev server` still arms a loop rather than reaping one. |
 | `/queues [new <name> [agent] [--ephemeral]]` | List / create queues (persisted, or ephemeral in the live manager only). |
 | `/enqueue <queue> <payload>` | Drop a task on a queue. |
 | `/groups [status \| dissolve <name>]` | List / inspect / dissolve agent groups. |
 | `/schedules [show \| enable \| disable \| remove \| logs <name>]` | List / inspect scheduled workflows. |
 | `/terminals [new \| run \| close <name> [cmd]]` | List / spawn / run / close shared terminals. |
 | `/tasks` | Open / close the task dock — the agent's plan, one row per task with its working time. App-wide: every tab follows. `F3` does the same. See [The task list](usage.md#the-task-list). |
+| `/usage [dashboard \| tools \| sessions \| month \| dow \| hour \| quota]` | Cost and token analytics as a transcript block, read-only. Same engine and renderer as the `aegis usage` CLI, so the TUI and the web client show identical numbers. The default `dashboard` and the other log-derived views aggregate the session logs under *this instance's* config root; `quota` instead reads each provider's remaining windows live, and falls back to its own services so it still answers headlessly under `aegis serve`. |
 | `/rename <new>` | Rename the current session. |
 | `/title [text] [--clear]` | Set the session's **title** — a readable label beside the handle, not instead of it. Bare `/title` regenerates one from where the conversation is now; `--clear` drops it. See [Session titles](usage.md#session-titles). |
 | `/reconnect [handle]` | Rebuild a dropped [remote session's](hosts.md#when-the-link-drops) harness in place, resuming its conversation in the same tab. Refused for a local session, or one with no session id to resume from. |

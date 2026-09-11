@@ -99,11 +99,11 @@ rules:
   # writing. Two extractor shapes because the builtins register both
   # positionally and by keyword; the unmatched branch's None is skipped.
   #
-  # RED ON LANDING (2 of 22): `/loop` and `/usage` are not in the command table.
-  # Both passed under `as: mention` — "turn loop" and "usage error" are all over
-  # a design doc — which is why this asks for the slash form.
+  # Landed red with `/loop` and `/usage` missing, both of which had passed under
+  # `as: mention` — "turn loop" and "usage error" are all over a design doc —
+  # which is why this asks for the slash form. Table rows written, promoted to
+  # error 2026-09-11.
   - name: "every slash command is documented"
-    severity: warning
     extract:
       file: "src/aegis/commands/builtins/*.py"
       regex: '(?:SlashCommand\(\s*"([a-z-]+)"|name="([a-z-]+)",)'
@@ -111,14 +111,14 @@ rules:
       in: "docs/commands.md"
       wrap: '/${entity}\b'
 
-  # RED ON LANDING (1 of 4): `lovelaice` shipped as the fourth driver — it has
-  # its own know-how doc and a long AGENTS.md entry — while docs/drivers.md
-  # still opens "Three drivers ship today" and its protocol table has three
-  # rows. That is exactly the drift a roster rule exists to catch, and it is
-  # left at `warning` and unfixed rather than quietly patched: writing the
-  # driver's user-facing docs is an editorial job, not part of adding a linter.
+  # Landed red: `lovelaice` had shipped as the fourth driver — its own know-how
+  # doc, a long AGENTS.md entry — while docs/drivers.md still opened "Three
+  # drivers ship today" over a three-row protocol table. Documented and promoted
+  # to error 2026-09-11. Writing that section also found the seam description
+  # stale in the same file (`start(...)` had been `session(...)` for some time),
+  # which no rule here can see: this one checks that the roster is named, not
+  # that the prose around it is true.
   - name: "every driver is documented"
-    severity: warning
     extract:
       file: "src/aegis/drivers/__init__.py"
       regex: '^    "([a-z-]+)": +\w+Driver,'
@@ -126,21 +126,35 @@ rules:
       in: "docs/drivers.md"
       wrap: '`${entity}`'
 
-  # RED ON LANDING (7 of 26). `${entity}:` asks for the key as a doc would write
-  # it, which is what separates a documented section from a passing mention:
-  # under `as: mention` this reported 4, and `schedules:` was green off the bare
-  # word in an unrelated sentence.
+  # `${entity}:` asks for the key as a doc would write it, which is what
+  # separates a documented section from a passing mention: under `as: mention`
+  # this reported 4, and `schedules:` was green off the bare word in an
+  # unrelated sentence.
   #
-  # Five are top-level sections documented nowhere — `harnesses`, `web`,
-  # `scheduler`, `schedules`, `dynamic_workflow_autoapprove_agents`. Two are
-  # sub-keys: `preview` (the voice block documents `enabled`/`model`/`key`/
-  # `language` and not this one) and `port` (under the undocumented `web:`).
+  # Landed at 7 red. Five were plain doc gaps and are now written up —
+  # `harnesses`, `web`, `port`, `schedules`, `dynamic_workflow_autoapprove_agents`.
+  #
+  # STILL RED (2), and deliberately so: `scheduler` and `preview` are not
+  # documentation debt, they are **dead config**, and writing them up would make
+  # this rule green by publishing a knob that does nothing.
+  #
+  # - `scheduler:` parses into `AegisConfig.scheduler` and `tests/test_yaml_loader.py`
+  #   asserts it round-trips, but `cli.py` builds `Scheduler(...)` without `cfg=`,
+  #   so `SchedulerConfig()` defaults always win and a user's `tick_seconds` /
+  #   `default_timezone` are silently ignored. The wiring downstream is real
+  #   (`scheduler/scheduler.py` reads both); it is the last inch that is missing.
+  # - `preview:` parses into `VoiceConfig.preview` and is asserted in
+  #   `tests/test_voice_config.py`, and nothing anywhere reads it. Its four
+  #   siblings (`enabled` / `model` / `key` / `language`) all have consumers.
+  #
+  # Fix the code and the rows clear themselves. Do NOT clear them by writing
+  # docs. Then promote this rule to error.
   #
   # Known imprecision, stated rather than hidden: the loader's sub-parsers
   # rebind `raw`, so this extracts nested keys alongside top-level sections and
   # cannot tell them apart — `_SECTIONS` covers only the six overlay-capable
   # ones, and the `AegisConfig(...)` call site is shaped like every other
-  # constructor in the file. The seven rows above are real either way.
+  # constructor in the file.
   - name: "every config section is documented"
     severity: warning
     extract:

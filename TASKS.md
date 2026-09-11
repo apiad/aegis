@@ -1354,22 +1354,39 @@ code is real, landed as `ccd719d`), and mis-filed shipped work under "Ideas".
 Most of this is `rift`-assertable; a 1.0 whose docs lie is worse than a 0.x
 whose docs are thin.
 
-*Update 2026-09-11:* `.rift.yaml` now carries eight rules and runs from
+*Update 2026-09-11:* `.rift.yaml` carries eight rules and runs from
 `make lint-docs` — see the **Doc lint** section of `AGENTS.md` for what is
-linted and what still needs a reader. Five are green and at `error`. Three are
-at `warning` because they are red, and each row is one doc edit somebody owes:
+linted and what still needs a reader. It landed with ten red rows; eight were
+doc gaps and are now written up, so **seven of eight rules are green and at
+`error`**. What the pass produced:
 
-| Rule | Owed |
+- `docs/commands.md` — `/loop` and `/usage` gained table rows.
+- `docs/drivers.md` — `lovelaice` documented as the fourth driver (it opened
+  "Three drivers ship today"). Writing it surfaced that the *Adding a new
+  driver* seam was also stale — `start(...)` has been `session(...)`, and
+  `build_argv` takes four parameters, not two. Corrected, plus `extra_env` and
+  the three capability flags.
+- `docs/configuration.md` — new `harnesses:`, `Schedules` and `Web UI`
+  sections, `dynamic_workflow_autoapprove_agents:` under Workflows, and the
+  `lovelaice` row the provider table was also missing.
+
+**Two rows are left, and they are code defects rather than doc debt.** Writing
+them up would make the linter green by publishing a knob that does nothing:
+
+| Key | Defect |
 |---|---|
-| `every slash command is documented` | `/loop` and `/usage` have no row in `docs/commands.md` |
-| `every driver is documented` | `docs/drivers.md` still opens "Three drivers ship today"; `lovelaice` is the fourth |
-| `every config section is documented` | `harnesses:`, `web:`, `scheduler:`, `schedules:`, `dynamic_workflow_autoapprove_agents:` documented nowhere; `preview:` and `port:` are undocumented sub-keys |
+| `scheduler:` | parses into `AegisConfig.scheduler`, asserted in `tests/test_yaml_loader.py`, but `cli.py` builds `Scheduler(...)` with no `cfg=` — so `SchedulerConfig()` defaults always win and a user's `tick_seconds` / `default_timezone` are **silently ignored**. Downstream wiring is real; the last inch is missing. |
+| `preview:` | parses into `VoiceConfig.preview`, asserted in `tests/test_voice_config.py`, and **read by nothing**. Its four siblings all have consumers. Wire it or delete it. |
 
-Clear a rule's rows, promote it to `error`, done. Two things rift deliberately
-does **not** cover and this item still owes a reader: the "two co-equal
-first-class UIs" claim (a sentence's meaning, not a noun that resolves), and
-the `--remote` invocation in `know-how/remote-tui.md` that 403s (the path
-exists; it is the *behaviour* that is stale).
+Fix those and the rows clear themselves; then promote the rule to `error`.
+
+Three things rift deliberately does **not** cover, still owed to a reader: the
+"two co-equal first-class UIs" claim (a sentence's meaning, not a noun that
+resolves); the `--remote` invocation in `know-how/remote-tui.md` that 403s (the
+path exists, the *behaviour* is stale); and the `telegram.md` link in
+`docs/configuration.md` pointing at a page that was never written — mkdocs
+warns about that one on every build, and `mkdocs build --strict` is the gate
+for it if we want one.
 
 ### Closed by deletion — no work required
 

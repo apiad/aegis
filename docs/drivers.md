@@ -6,9 +6,16 @@ yields typed events (`AssistantText`, `ToolUse`, `ToolResult`,
 `Result`, etc.) to the surrounding session. Above the driver, aegis
 treats every provider identically.
 
-Three drivers ship today: `claude-code`, `gemini`, `opencode`. All
-three give the same UX surface — multi-turn, streaming, cancellation,
-per-session MCP injection.
+Four drivers ship today: `claude-code`, `gemini`, `opencode` and
+`lovelaice`. All four give the same UX surface — multi-turn, streaming,
+cancellation, per-session MCP injection.
+
+The first three wrap a coding-agent CLI you installed yourself.
+`lovelaice` is the odd one out and the reason the sentence above says
+"driver" rather than "CLI wrapper": it is the **native, harness-free**
+agent. `lovelaice` is a PyPI dependency of aegis, so a fresh install has
+a working agent with no external CLI in the loop — point it at a local
+endpoint for local models, or give it a key for a direct API.
 
 ## How drivers talk to each CLI
 
@@ -17,11 +24,12 @@ per-session MCP injection.
 | Claude Code | stream-json (bidirectional) | `claude -p` with `--input-format/--output-format stream-json` | `--mcp-config` per invocation | Native |
 | Gemini CLI  | [ACP](https://github.com/zed-industries/agent-client-protocol) | `gemini --acp` | `session/new(mcpServers=[…])` | Pass-through |
 | OpenCode    | ACP | `opencode acp` | `session/new(mcpServers=[…])` | Pass-through |
+| Lovelaice   | ACP | `lovelaice-acp` (a dependency, not a CLI you install) | `session/new(mcpServers=[…])` | None — key file, or none for a local endpoint |
 
 ACP (Agent Client Protocol) is Zed's JSON-RPC-over-stdio specification
 for editor↔agent communication. Aegis uses the official Python SDK
 [`agent-client-protocol`](https://pypi.org/project/agent-client-protocol/)
-to drive Gemini and OpenCode through it.
+to drive Gemini, OpenCode and Lovelaice through it.
 
 ## What "feature parity" means
 
@@ -73,31 +81,52 @@ Each provider's `model` string is whatever its native CLI accepts:
 | `ClaudeCode` | `opus`, `sonnet`, `haiku` |
 | `GeminiCLI`  | `gemini-3-flash-preview`, `gemini-3.1-pro-preview` |
 | `OpenCode`   | `opencode/kimi-k2.6`, `opencode/glm-5.1`, `opencode/minimax-m2.7`, `opencode/qwen3.6-plus` |
+| `Lovelaice`  | whatever the endpoint accepts — an OpenRouter id like `anthropic/claude-haiku-4-5`, or a local model id served by Ollama |
 
 For OpenCode, run `opencode models` to see what's installed on your
-machine. For Gemini, see Google's model docs.
+machine. For Gemini, see Google's model docs. For Lovelaice the answer
+depends entirely on `base_url`, since the model string is handed to that
+endpoint unchanged.
 
 ## Authentication
 
-Drivers don't manage credentials. They inherit whatever the underlying
-CLI sees — your Claude Code login, your `gcloud auth` for Gemini, your
-OpenCode provider config. Run the CLI directly first to confirm it
-works, then aegis will see the same auth.
+The three CLI drivers don't manage credentials. They inherit whatever
+the underlying CLI sees — your Claude Code login, your `gcloud auth` for
+Gemini, your OpenCode provider config. Run the CLI directly first to
+confirm it works, then aegis will see the same auth.
+
+`lovelaice` is the exception, because there is no CLI underneath it to
+have logged in. It reads a key from the path in `api_key_file` **at
+spawn** and injects it into the subprocess environment. Give it a scoped
+file path; never inline a key in `.aegis.yaml`. Against a local endpoint
+there is nothing to authenticate and `api_key_file` can be omitted
+entirely. See [Agents](configuration.md#agents).
 
 ## Adding a new driver
 
 The driver seam is one abstract class — `HarnessDriver` in
-`aegis.drivers.base` — with two methods:
+`aegis.drivers.base` — with two abstract methods:
 
-- `build_argv(agent, mcp_url) -> list[str]` — argv for the subprocess.
-- `start(agent, cwd, mcp_url, app_bridge) -> HarnessSession` — spawn
-  and return a session object whose `send()` / `events()` /
+- `build_argv(agent, cwd, mcp_url, handle) -> list[str]` — argv for the
+  subprocess.
+- `session(agent, cwd, mcp_url, handle, launcher, token) -> HarnessSession`
+  — spawn and return a session object whose `send()` / `events()` /
   `cancel()` / `close()` methods speak the CLI's protocol.
+
+Three optional capability flags default to `False` and gate features that
+are not universal: `supports_resume`, `supports_fork` and
+`supports_oneshot` (the last one is [one-shot
+generation](#one-shot-generation) above). Override `resume()` / `fork()`
+/ `generate()` alongside the flag you set.
 
 If the target CLI speaks ACP, subclassing `AcpDriver` (in
 `aegis.drivers.acp`) gives you all of the above for free; you only
 write a 5-line shim setting `BASE_CMD`. See `gemini.py` and
-`opencode.py` for examples.
+`opencode.py` for examples. `lovelaice.py` is the same shim plus one
+more seam worth knowing about: `extra_env(agent) -> dict[str, str]`, for
+a CLI configured by environment rather than by flags. It is how the
+model, endpoint and key reach `lovelaice-acp`, and it is also how
+OpenCode's model gets set, since `opencode acp` has no `-m` flag.
 
 ## Robustness notes
 

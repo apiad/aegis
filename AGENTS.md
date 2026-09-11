@@ -705,21 +705,26 @@ rule added to the config and not documented here fails the build.
 | `every config section is documented` | the loader's keys ↔ `docs/configuration.md` |
 | `every lint rule is documented in AGENTS.md` | this table |
 
-Three rules are at `severity: warning` because they are **red today**, and in
-each case the red is the finding rather than a bug in the rule. Ten rows, each
-naming one doc edit:
+Seven of the eight are green and at `error`. The eighth,
+`every config section is documented`, is at `warning` with **two rows left**,
+and those two are deliberately not clearable by writing documentation:
 
-- `every slash command is documented` — `/loop` and `/usage` have no row in the
-  command table.
-- `every driver is documented` — `lovelaice` is the fourth driver and
-  `docs/drivers.md` still opens "Three drivers ship today".
-- `every config section is documented` — `harnesses`, `web`, `scheduler`,
-  `schedules` and `dynamic_workflow_autoapprove_agents` are read by the loader
-  and documented nowhere; `preview` and `port` are undocumented sub-keys.
+- **`scheduler:`** parses into `AegisConfig.scheduler` and
+  `tests/test_yaml_loader.py` asserts it round-trips — but `cli.py` builds
+  `Scheduler(...)` without `cfg=`, so `SchedulerConfig()` defaults always win
+  and a user's `tick_seconds` / `default_timezone` are **silently ignored**.
+  The downstream wiring is real; the last inch is missing.
+- **`preview:`** parses into `VoiceConfig.preview` and is asserted in
+  `tests/test_voice_config.py`, and **nothing reads it**. Its four siblings
+  (`enabled` / `model` / `key` / `language`) all have consumers.
 
-Promote each to `error` when `make lint-detail` is empty for it. A mostly-red
-rule trains everyone to skim past red; the reasoning is in
-`repos/rift/know-how/writing-rules.md`.
+Both are dead config, not doc debt. Fix the code and the rows clear themselves;
+writing them up instead would make the rule green by publishing a knob that
+does nothing. Promote the rule to `error` once they're gone.
+
+That is the general bar: promote a rule to `error` when `make lint-detail` is
+empty for it. A mostly-red rule trains everyone to skim past red; the reasoning
+is in `repos/rift/know-how/writing-rules.md`.
 
 **Prefer `wrap:` to `as: mention` when adding a rule here.** `mention` is a
 plain substring, and it lied green three times while this config was being

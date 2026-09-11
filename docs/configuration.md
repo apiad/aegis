@@ -53,9 +53,51 @@ Each agent's `provider:` selects which CLI aegis drives.
 | `claude-code` | Claude Code  | `model`, `effort`, `permission` | The only provider with an `effort` knob. |
 | `gemini`      | Gemini CLI   | `model`, `permission` | Permission maps to `--approval-mode`. |
 | `opencode`    | OpenCode     | `model`, `permission` | Model strings use `provider/model` form. |
+| `lovelaice`   | Lovelaice    | `model`, `permission`, `base_url`, `api_key_file` | The native agent — a dependency, not a CLI you install. `permission` defaults to `full`. |
 
 See [Drivers](drivers.md) for what each provider's `model` strings
 look like and how permission maps to the underlying CLI's flag.
+
+### `harnesses` (optional)
+
+A `provider:` block names a driver and carries that agent's credentials
+inline. `harnesses:` lifts the same fields into a **named, top-level
+entry** so several agents can share one endpoint, and so the same driver
+can be registered twice against different endpoints:
+
+```yaml
+harnesses:
+  openrouter:
+    driver: lovelaice
+    base_url: https://openrouter.ai/api/v1
+    api_key_file: ~/.config/aegis/openrouter.token
+    default_model: anthropic/claude-haiku-4-5
+  ollama:
+    driver: lovelaice
+    base_url: http://localhost:11434/v1
+
+agents:
+  cheap:
+    harness: openrouter        # inherits base_url + key + default_model
+  local:
+    harness: ollama
+    model: qwen3:8b            # an agent's own model wins
+```
+
+| Field | Required | Means |
+|---|---|---|
+| `driver` | yes | one of `claude-code`, `gemini`, `opencode`, `lovelaice`. An unknown driver fails loud at boot. |
+| `base_url` | no | endpoint the driver talks to |
+| `api_key_file` | no | path to a file holding the key, read at spawn. Never inline a key. |
+| `default_model` | no | model for agents that don't set their own |
+| `permission_default` | no | [permission](#permission) for agents that don't set their own |
+
+The four driver names **auto-register as implicit harnesses**, so
+`harness: claude-code` works with no `harnesses:` block at all and every
+existing `provider:` config keeps loading unchanged. An explicit entry
+wins over the implicit one of the same name. Resolution rewrites an
+agent's `harness` to the underlying driver string, so an agent ends up
+with exactly the same shape either way.
 
 ### Permission
 
@@ -268,6 +310,80 @@ To enable one of aegis's built-in workflow modules (under
 workflows:
   - my_builtin
 ```
+
+A **dynamic** workflow — one an agent composes at call time rather than
+one you wrote — is gated on how many agents its plan projects:
+
+```yaml
+dynamic_workflow_autoapprove_agents: 5     # the default
+```
+
+At or under the threshold the plan runs; above it, the call returns
+`status: gated` with the rendered plan and its projected agent count, for
+a human to approve. Set it to `0` to review every dynamic workflow. The
+gate applies to **agents** only: a workflow you invoke yourself from the
+operator input is always auto-approved, whatever the number.
+
+## Schedules
+
+Optional. Fires a registered workflow on a cron expression or at a single
+future instant.
+
+```yaml
+schedules:
+  nightly-digest:
+    workflow: prompt              # must be a registered workflow name
+    cron: "0 3 * * *"             # standard 5-field cron
+    timezone: America/Havana      # IANA name; defaults to UTC
+    lifecycle: forever
+    args:
+      prompt: summarise what landed today
+```
+
+| Field | Required | Means |
+|---|---|---|
+| `workflow` | yes | a registered workflow. An unknown name fails loud. |
+| `cron` | one of | 5-field cron expression |
+| `fire_at` | one of | a single ISO-8601 instant, instead of `cron` |
+| `timezone` | no | IANA name the `cron` is interpreted in; defaults to UTC |
+| `args` | no | mapping passed to the workflow |
+| `lifecycle` | no | `forever` (default), `once`, `{fires: N}`, or `{until: <ISO>}` |
+| `enabled` | no | `false` parks an entry without deleting it; defaults to `true` |
+| `on_overlap` | no | what to do when a fire lands while the last one is still running: `skip` (default), `queue`, or `kill` |
+
+A schedule must carry exactly one of `cron` or `fire_at`; neither is a
+config error. Like agents and queues, schedules also accept [drop-in
+overlays](#drop-in-overlays) at `.aegis/schedules/<name>.yaml`, and
+agents can push new ones at runtime — see `/schedules` in
+[Slash commands](commands.md).
+
+One rule worth knowing before you write one: a scheduled `enqueue`
+workflow may not set `callback: true`. The scheduler has no inbox for the
+reply to land in, so aegis refuses the spec rather than dropping the
+result silently.
+
+## Web UI
+
+Optional. `aegis web` and `aegis serve` both serve the installable PWA;
+this block configures it.
+
+```yaml
+web:
+  token: "..."          # or set AEGIS_WEB_TOKEN (env wins)
+  bind: 127.0.0.1       # the default; 0.0.0.0 to expose on the LAN
+  port: 8900            # omit to reuse the last port, else pick a free one
+```
+
+| Field | Means |
+|---|---|
+| `token` | shared secret every client must present. `AEGIS_WEB_TOKEN` overrides the file. |
+| `bind` | interface to listen on. Defaults to `127.0.0.1` — loopback only. |
+| `port` | fixed port. Omitted, aegis reuses the port recorded in `.aegis/state/web.port`, and failing that asks the OS for a free one and records it. |
+
+**`aegis serve` starts the web frontend only when a token is set.** A
+`web:` block without `token` is treated as absent, because binding an
+unauthenticated agent-control surface is never what someone meant. The
+same token is what `--remote ws://…` needs — see [Remote plane](remote.md).
 
 ## Execution hosts
 
