@@ -35,7 +35,10 @@ class _FakeQM:
         return ("local-tid", 0)
 
 
-class _FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class _FakeBridge(StubRoots):
     def __init__(self, qm, remotes):
         from aegis.queue import InboxRouter
         self.queue_manager = qm

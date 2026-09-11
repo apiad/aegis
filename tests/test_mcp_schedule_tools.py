@@ -46,7 +46,10 @@ def _build_scheduler(state_root, schedules):
         run_workflow=_noop_run)
 
 
-class _FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class _FakeBridge(StubRoots):
     def __init__(self, *, state_root, scheduler=None,
                  inline_names: set[str] | None = None,
                  known_workflows: set[str] = frozenset({"enqueue"}),

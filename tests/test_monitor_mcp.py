@@ -6,7 +6,10 @@ from aegis.monitor.manager import MonitorManager
 from aegis.queue.inbox import InboxRouter
 
 
-class _Bridge:
+from tests.stub_roots import StubRoots
+
+
+class _Bridge(StubRoots):
     def __init__(self, mm: MonitorManager) -> None:
         self.monitor_manager = mm
         self.state_root = "/tmp"

@@ -5,6 +5,7 @@ import pytest
 
 from aegis.tools import tool
 from aegis.tools.decorator import _reset_registry_for_tests
+from tests.stub_roots import StubRoots
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +16,7 @@ def _clean():
 
 
 def _fake_bridge():
-    class B:
+    class B(StubRoots):
         remotes = {}
         groups = None
     return B()

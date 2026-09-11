@@ -23,6 +23,7 @@ def test_appbridge_is_runtime_checkable_protocol():
         remotes = {}
         scheduler = None
         state_root = object()
+        roots = object()
         workflow_registry = object()
         def inline_schedule_names(self): return set()
         def list_sessions(self): return []
@@ -65,6 +66,7 @@ def test_appbridge_requires_full_surface():
         remotes = {}
         scheduler = None
         state_root = object()
+        roots = object()
         workflow_registry = object()
         def inline_schedule_names(self): return set()
         def list_sessions(self): return []

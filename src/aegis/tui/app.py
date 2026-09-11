@@ -12,6 +12,7 @@ from textual.binding import Binding
 from textual.widgets import ContentSwitcher
 
 from aegis.config import Agent, VoiceConfig
+from aegis.config.roots import AegisRoots
 from aegis.core.handles import HandleRegistry
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
@@ -468,6 +469,10 @@ class AegisApp(App):
         # return errors when scheduler is None.
         self.scheduler = None
         self.state_root: Path = Path.cwd()
+        # The config MCP tools resolve .aegis.yaml from bridge.roots, so the
+        # TUI owes build_server one. Derived from the cwd this app already
+        # holds; Task 7b replaces it with the roots threaded through _serve.
+        self.roots = AegisRoots.for_project(Path(self._cwd))
         self.workflow_registry = _SN(get=lambda _: None)
         self._mcp.bind(self)
 

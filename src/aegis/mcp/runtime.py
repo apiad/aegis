@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import socket
+from pathlib import Path
 
+from aegis.config.roots import AegisRoots
 from aegis.mcp.bridge import AppBridge, SessionInfo
 from aegis.mcp.identity import SessionTokens
 from aegis.mcp.server import build_server
@@ -20,6 +22,12 @@ def _free_port() -> int:
 class _NullBridge:
     """Defensive fallback if AegisMCP.start() runs without bind().
     Tools return empty/unavailable rather than crashing."""
+
+    def __init__(self) -> None:
+        # build_server binds bridge.roots, so the fallback owes it one too:
+        # without it the config tools raise AttributeError at construction,
+        # which is exactly the crash this class exists to avoid.
+        self.roots = AegisRoots.for_project(Path.cwd())
 
     def list_sessions(self) -> list[SessionInfo]:
         return []

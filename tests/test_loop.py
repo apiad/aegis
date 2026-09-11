@@ -402,7 +402,10 @@ async def test_armed_loop_survives_a_rename(tmp_path, monkeypatch):
 from aegis.mcp.server import BRIEFING, build_server      # noqa: E402
 
 
-class StubBridge:
+from tests.stub_roots import StubRoots
+
+
+class StubBridge(StubRoots):
     def __init__(self, svc):
         self.loop_service = svc
 

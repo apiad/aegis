@@ -12,7 +12,10 @@ from aegis.remote.config import RemoteSpec
 from tests.test_queue_manager import StubSessionManager
 
 
-class _Bridge:
+from tests.stub_roots import StubRoots
+
+
+class _Bridge(StubRoots):
     def __init__(self, qm, remotes=None):
         self.queue_manager = qm
         self.inbox_router = qm._inbox

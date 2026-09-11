@@ -619,17 +619,20 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     config_write_lock = asyncio.Lock()
 
+    # Where this instance resolves .aegis.yaml. Bound once, from the
+    # bridge — never re-derived from the process cwd at call time, which
+    # in an embedded process is some other instance's project.
+    roots = bridge.roots
+
     # --- config-edit read tools ----------------------------------------
 
     @server.tool
     async def aegis_config_show() -> dict:
         """Full parsed .aegis.yaml view. Secrets redacted."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.yaml_loader import load_config as _load_yaml
 
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         try:
             cfg = _load_yaml(root)
         except ConfigError as e:
@@ -661,12 +664,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_list_agents() -> list[dict]:
         """[{slug, harness, model, effort, permission}, …] from .aegis.yaml."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.yaml_loader import load_config as _load_yaml
 
-        root = find_project_root()
-        if root is None:
-            return []
+        root = roots.config_root
         try:
             cfg = _load_yaml(root)
         except ConfigError:
@@ -681,12 +682,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_list_queues() -> list[dict]:
         """[{name, agent, max_parallel, budgets}, …] from .aegis.yaml."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.yaml_loader import load_config as _load_yaml
 
-        root = find_project_root()
-        if root is None:
-            return []
+        root = roots.config_root
         try:
             cfg = _load_yaml(root)
         except ConfigError:
@@ -701,12 +700,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_list_schedules() -> list[dict]:
         """[{name, cron, enabled, workflow}, …] from .aegis.yaml."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.yaml_loader import load_config as _load_yaml
 
-        root = find_project_root()
-        if root is None:
-            return []
+        root = roots.config_root
         try:
             cfg = _load_yaml(root)
         except ConfigError:
@@ -728,12 +725,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     ) -> dict:
         """Add an agent profile to .aegis.yaml. Hot-registers on the live
         agent map so the next spawn can use the new slug."""
-        from aegis.config import Agent, ConfigError, find_project_root
+        from aegis.config import Agent, ConfigError
         from aegis.config.edit import add_agent as _add
 
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _add(root, slug, provider=harness, model=model,
@@ -757,11 +752,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_remove_agent(slug: str) -> dict:
         """Drop an agent profile from .aegis.yaml. Restart required."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.edit import remove_agent as _rm
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, slug)
@@ -777,12 +770,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     ) -> dict:
         """Add a queue to .aegis.yaml. Hot-registers on the live
         QueueManager so subsequent aegis_enqueue calls can target it."""
-        from aegis.config import ConfigError, find_project_root, load_queues
+        from aegis.config import ConfigError, load_queues
         from aegis.config.edit import add_queue as _add
 
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _add(root, name, agent=agent, max_parallel=max_parallel,
@@ -802,11 +793,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_remove_queue(name: str) -> dict:
         """Drop a queue from .aegis.yaml. Restart required."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.edit import remove_queue as _rm
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, name)
@@ -819,11 +808,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     async def aegis_config_add_plugin_dir(path: str) -> dict:
         """Register a plugin directory; reloads plugins so any new
         @workflow functions register immediately."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.edit import add_plugin_dir as _add
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _add(root, path)
@@ -841,11 +828,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     async def aegis_config_remove_plugin_dir(path: str) -> dict:
         """Drop a plugin_dirs entry. Restart required to fully
         deregister @workflow functions imported from that dir."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.edit import remove_plugin_dir as _rm
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, path)
@@ -860,11 +845,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     ) -> dict:
         """Set the enabled flag on a schedule. ReloadWatcher picks the
         change up automatically — no bridge call needed."""
-        from aegis.config import find_project_root
         from aegis.config.edit import set_schedule_enabled as _set
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 new_state = _set(root, name, enabled)
@@ -876,11 +858,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_config_toggle_schedule_enabled(name: str) -> dict:
         """Flip the enabled flag on a schedule. Returns new state."""
-        from aegis.config import find_project_root
         from aegis.config.edit import toggle_schedule_enabled as _tog
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found"}
+        root = roots.config_root
         async with config_write_lock:
             try:
                 new_state = _tog(root, name)
@@ -1622,7 +1601,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         of launching. Operator-invoked (empty ``from_handle``) always
         launches. Under threshold or operator-invoked → non-blocking
         launch, same wiring as ``aegis_run_workflow``."""
-        from aegis.config import ConfigError, find_project_root
+        from aegis.config import ConfigError
         from aegis.config.yaml_loader import load_config as _load_yaml
         from aegis.dsl import DslValidationError, PlanPreview, Spec, validate
         from aegis.dsl.gate import gate_decision
@@ -1636,9 +1615,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         except _PydanticValidationError as e:
             return {"error": str(e)}
 
-        root = find_project_root()
-        if root is None:
-            return {"error": "no .aegis.yaml found (project root not detected)"}
+        root = roots.config_root
         try:
             cfg = _load_yaml(root)
         except ConfigError as e:

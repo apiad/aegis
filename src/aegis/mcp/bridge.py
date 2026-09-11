@@ -79,6 +79,11 @@ class AppBridge(Protocol):
     remotes: object              # dict[str, RemoteSpec]; empty when none configured
     scheduler: object            # Scheduler | None
     state_root: object           # Path — workspace root
+    # AegisRoots — where this instance resolves .aegis.yaml, state and the
+    # harness cwd. The config MCP tools bind it once in build_server rather
+    # than walking up from the process cwd at call time, so an implementor
+    # without it breaks every config tool on that bridge.
+    roots: object                # AegisRoots
     workflow_registry: object    # has .get(name) -> WorkflowFn | None
 
     def inline_schedule_names(self) -> set[str]: ...

@@ -12,7 +12,10 @@ import pytest
 from aegis.mcp.server import build_server
 
 
-class _StubBridge:
+from tests.stub_roots import StubRoots
+
+
+class _StubBridge(StubRoots):
     """Minimal AppBridge stub for config-tool tests. Records register
     calls so the live-registration tests can assert against them."""
 
@@ -93,11 +96,18 @@ async def test_config_show_returns_parsed_yaml(root_with_yaml):
     assert data["agents"]["researcher"]["harness"] == "claude-code"
 
 
-async def test_config_show_no_root_returns_error(tmp_path, monkeypatch):
+async def test_config_show_on_a_root_without_yaml_is_an_empty_view(
+        tmp_path, monkeypatch):
+    """The tool used to answer ``{"error": "no .aegis.yaml found"}`` when
+    ``find_project_root()`` walked to the top of the tree and found nothing.
+    It no longer walks: the root comes from ``bridge.roots``, so there is no
+    "no root" state to report. A root that simply has no config file parses
+    as an empty one."""
     monkeypatch.chdir(tmp_path)
     server = build_server(_StubBridge())
     data = await _call(server, "aegis_config_show")
-    assert "error" in data
+    assert "error" not in data
+    assert data["agents"] == {} and data["default_agent"] is None
 
 
 # --- aegis_config_list_agents ------------------------------------------

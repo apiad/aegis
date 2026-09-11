@@ -289,7 +289,10 @@ def test_parse_after_rejects_bad():
 # --------------------------------------------------------------------------
 # MCP surface
 # --------------------------------------------------------------------------
-class _Bridge:
+from tests.stub_roots import StubRoots
+
+
+class _Bridge(StubRoots):
     def __init__(self, svc: ReminderService) -> None:
         self.reminder_service = svc
 

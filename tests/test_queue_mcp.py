@@ -8,7 +8,10 @@ from aegis.mcp.server import build_server
 from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
 
 
-class FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class FakeBridge(StubRoots):
     def __init__(self, qm, inbox):
         self.queue_manager = qm
         self.inbox_router = inbox

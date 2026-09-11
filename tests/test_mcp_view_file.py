@@ -21,7 +21,10 @@ async def _call(server, name, **kwargs):
     return result.content[0].text
 
 
-class _FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class _FakeBridge(StubRoots):
     canvas_manager = MagicMock()
     terminal_manager = MagicMock()
     groups = MagicMock()

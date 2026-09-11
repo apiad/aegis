@@ -7,7 +7,10 @@ from aegis.terminal.manager import TerminalManager
 from aegis.terminal.notify import make_terminal_notifier
 
 
-class FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class FakeBridge(StubRoots):
     queue_manager = None
 
     def __init__(self, tm):

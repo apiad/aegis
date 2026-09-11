@@ -13,7 +13,10 @@ from aegis.mcp.server import (
 )
 
 
-class FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class FakeBridge(StubRoots):
     # AppBridge surface. queue_manager stays None for the handoff tests
     # (none of them exercise queue tools). inbox_router is the real one —
     # aegis_handoff now delivers through it (T4.2), and the tests assert

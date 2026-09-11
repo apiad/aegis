@@ -14,7 +14,10 @@ from aegis.mcp.server import build_server
 from aegis.queue.inbox import InboxRouter
 
 
-class _StubBridge:
+from tests.stub_roots import StubRoots
+
+
+class _StubBridge(StubRoots):
     def __init__(self, canvas_manager, inbox_router):
         self.canvas_manager = canvas_manager
         self.inbox_router = inbox_router

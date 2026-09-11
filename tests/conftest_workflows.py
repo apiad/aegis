@@ -19,7 +19,10 @@ from typing import Any
 import pytest
 
 
-class FakeBridge:
+from tests.stub_roots import StubRoots
+
+
+class FakeBridge(StubRoots):
     """A bridge + workflow_runner all in one. Tests reach for the
     methods they need; absent methods raise AttributeError, surfacing
     coverage gaps."""
