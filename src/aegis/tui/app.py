@@ -317,7 +317,8 @@ class AegisApp(App):
                  voice: "VoiceConfig | None" = None,
                  hosts: "dict | None" = None,
                  host_registry: "object | None" = None,
-                 manager: "object | None" = None) -> None:
+                 manager: "object | None" = None,
+                 bridge: "object | None" = None) -> None:
         super().__init__()
         self._agents = agents
         self._default_agent = default_agent
@@ -411,6 +412,15 @@ class AegisApp(App):
                                               _SN(get=lambda _: None))
             # MCP is not used in remote mode; skip binding.
             return
+
+        # Local plane. `bridge` supplies an already-built SessionManager (the
+        # embedded / daemon case) for callers that need to hold the manager
+        # themselves; without one the app is its own AppBridge, as before.
+        # Either way NO _remote_manager sentinel is set, so every hasattr
+        # guard below stays on its local branch and the whole local plane —
+        # queues, terminals, the hosts axis — is constructed unchanged.
+        # `manager=` is a different thing entirely: it is --remote.
+        self.manager = bridge
 
         # AppBridge surface. AegisApp is the bridge in the interactive
         # (TUI) path. QueueManager spawns workers through an adapter that
