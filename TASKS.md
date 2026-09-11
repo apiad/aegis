@@ -17,7 +17,12 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | # | Item | State |
 |---|---|---|
-| 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | planned, reviewed, **ready to execute** |
+> **The numbering below is the table's own and does NOT match the prose in
+> *In v1.0 — six items*, which *The order* paragraph refers to.** There,
+> 2 = terminals, 4 = live-exercise, and 5 = session-titles slice 4 (which has
+> no row here at all). Read *The order* against the prose numbers, not these.
+
+| 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stages 4–6** — view seam, transports + `aegis attach`, deletion | specced, needs a plan |
 | 3 | **Terminals — `Ctrl+Q` hang** | **verified unfixed 2026-09-09**; mechanism found |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
