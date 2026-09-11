@@ -49,6 +49,12 @@ Every one of these was verified by reading the installed source, not inferred. L
 | The driver is constructed as `driver_class(self, debug=…, mouse=…, size=size)` — **positional app, keyword rest** | `textual/app.py:3345-3350` |
 | `render_update` returns a partial update unless the whole screen region is dirty | `textual/_compositor.py:1118` |
 | `_dirty_regions` is the set to add to for a forced full frame | `textual/_compositor.py:309`, `:1275` |
+| **`Driver.__init__` calls `asyncio.get_running_loop()`** — every driver test must be `async def` | `textual/driver.py` `Driver.__init__` |
+| **`WebDriver.__init__` constructs an `InputReader`, whose `__init__` does `sys.__stdin__.fileno()` and registers it with a selector** — it binds stdin at *construction*, not at thread start | `web_driver.py:68`; `_input_reader_linux.py` `InputReader.__init__` |
+| Registering `/dev/null` with an epoll selector raises `PermissionError: [Errno 1]` — and `/dev/null` is systemd's default stdin | measured 2026-09-11 |
+| `stop_application_mode` calls `self._input_reader.close()` and `write_meta({"type": "exit"})` | `web_driver.py:178-182` |
+| `start_application_mode` also runs `:162-173` — a Resize post, `_request_terminal_sync_mode_support()`, `_enable_bracketed_paste()`, `flush()`, `_key_thread.start()`, and an initial `AppBlur` | `web_driver.py:162-173` |
+| `App.run_async(*, headless=False, …, size=None, …)` — takes an explicit `size` | `textual/app.py` `App.run_async` |
 | **`App.run_test()` defaults to `headless=True`, which replaces `self.driver_class` with `HeadlessDriver`** | `textual/app.py:3334-3337`; default at `App.run_test` signature |
 | `Screen._compositor` is an **instance** attribute, set in `__init__` — not visible via `dir(Screen)` | `textual/screen.py:291` |
 | `Driver.__init__` stores `self._size` | `textual/driver.py` |
@@ -62,7 +68,11 @@ Every one of these was verified by reading the installed source, not inferred. L
 The spec says the driver work is a subclass that overrides `_write`. That is true and insufficient. `WebDriver` was written for exactly one view attached to one process's stdout, and three other things in it are process-global:
 
 1. **Signals.** `start_application_mode` adds SIGINT/SIGTERM handlers to the running loop. N views means N registrations on one loop, last-registration-wins, and a daemon whose views quietly own the host's shutdown. Must not run.
-2. **Stdin.** `run_input_thread` reads the process's real stdin through `InputReader`. N views cannot each own stdin, and a daemon has none. Must not run.
+2. **Stdin — and the coupling is in `__init__`, not in the thread.** `WebDriver.__init__` constructs an `InputReader` at `:68`, and `InputReader.__init__` immediately does `sys.__stdin__.fileno()` and registers that fd with a selector. So the binding happens when the driver is *built*, long before `run_input_thread` would run — **overriding `run_input_thread` alone does nothing about it.**
+
+   This is not a pytest artifact. Registering `/dev/null` with an epoll selector raises `PermissionError: [Errno 1] Operation not permitted` (measured), and `/dev/null` is systemd's default stdin — precisely the daemon this stage exists to enable. If stdin is *closed* rather than `/dev/null`, `sys.__stdin__` is `None` and it is an `AttributeError` instead. The same family bites on the output side at `:62` (`sys.__stdout__.fileno()`).
+
+   The fix is therefore not an override but a **bypass**: skip `WebDriver.__init__` entirely, call `Driver.__init__` directly, and set by hand the seven attributes `WebDriver.__init__` would have set. That couples `ViewDriver` to the *body* of a method it does not call, which is a real cost — Task 1 carries a test that fails loudly if a Textual upgrade adds an eighth.
 3. **Geometry via env.** `size=None` falls back to `COLUMNS`/`ROWS`, which are process-global. Per-view geometry must be passed as an explicit `size=`, never arranged by setting env.
 4. **The handshake line.** `b"__GANGLION__\n"` is written before the first frame for the benefit of Textual's own web server. Nothing in aegis consumes it, and a stage-5 attach client reading raw frames would see it as a malformed frame.
 
@@ -75,6 +85,37 @@ That is not a loud failure. `assert view.frames` fails for a reason that looks l
 Every test in this plan that drives a view therefore passes `headless=False`, and asserts that the live driver really is a `ViewDriver` before believing anything about the frames. `headless=False` is safe precisely *because* `ViewDriver` exists: it takes no stdin, installs no signal handlers, and writes to a sink rather than a terminal — which is exactly what makes a non-headless app safe to run inside a test process.
 
 ---
+
+### One shared test fixture, because `mcp=None` crashes every view
+
+`AegisApp` calls `self._mcp.bind(self)` at `app.py:488` and
+`await self._mcp.start()` at `:576` unconditionally on the local plane, so
+**`mcp=None` raises `AttributeError` before any assertion runs** (measured
+2026-09-11). This bit the session-titles work, bit stage 7a's plan, and bit
+the first draft of *this* plan in four separate tasks. Every test below
+that builds a view uses this, and `open_view` requires a real one rather
+than defaulting to `None`:
+
+```python
+# tests/views/conftest.py
+class FakeMCP:
+    """Enough MCP for the local plane. AegisApp binds, starts, reads .url
+    and .port, and stops it (app.py:488, :576, :661, :1700)."""
+
+    def __init__(self):
+        self.port = 0
+        self.url = "http://127.0.0.1:0/mcp/"
+        self.bound = None
+        self.tokens = _FakeTokens()
+
+    def bind(self, bridge): self.bound = bridge
+    async def start(self): self.port = 12345
+    async def stop(self): return None
+
+
+class _FakeTokens:
+    def mint(self, handle): return "test-token"
+```
 
 ## File Structure
 
@@ -109,12 +150,10 @@ Every test in this plan that drives a view therefore passes `headless=False`, an
 # tests/views/test_view_driver.py
 """ViewDriver is WebDriver with every process-global assumption removed.
 
-WebDriver was written for one view attached to one process's stdout. Four
-things in it are process-global and each breaks N-views-in-one-process:
-its output fd, its SIGINT/SIGTERM handlers, its stdin reader, and the
-COLUMNS/ROWS fallback for geometry.
+Every test here is `async def`: Driver.__init__ calls
+asyncio.get_running_loop(), so a sync test cannot construct a driver at
+all — it dies with RuntimeError before reaching any assertion.
 """
-import os
 import signal
 
 import pytest
@@ -123,11 +162,28 @@ from aegis.views.driver import ViewDriver, view_driver_for
 
 
 class _FakeApp:
-    """Enough App for a Driver to construct. Driver.__init__ stores the app
-    and reads nothing off it."""
+    """Enough App for a driver to construct AND to enter application mode.
+
+    `_post_message` is not decoration: start_application_mode posts an
+    initial AppBlur (web_driver.py:173), so an app without it raises
+    AttributeError and every assertion below becomes unreachable — a test
+    that dies for the wrong reason proves nothing about the right one.
+    """
+
+    def __init__(self):
+        self.messages = []
+
+    async def _post_message(self, message):
+        self.messages.append(message)
+
+    def post_message(self, message):
+        self.messages.append(message)
+
+    def call_later(self, fn, *args):
+        fn(*args)
 
 
-def test_factory_returns_a_webdriver_subclass_bound_to_the_sink():
+async def test_factory_returns_a_webdriver_subclass_bound_to_the_sink():
     frames = []
     cls = view_driver_for(frames.append)
     assert issubclass(cls, ViewDriver)
@@ -137,7 +193,7 @@ def test_factory_returns_a_webdriver_subclass_bound_to_the_sink():
     assert frames[0].startswith(b"D"), frames[0]
 
 
-def test_frame_is_the_textual_wire_format():
+async def test_frame_is_the_textual_wire_format():
     """b'D' + 4-byte big-endian length + utf-8 payload (web_driver.py:87)."""
     frames = []
     drv = view_driver_for(frames.append)(_FakeApp(), size=(80, 24))
@@ -146,7 +202,7 @@ def test_frame_is_the_textual_wire_format():
     assert frames[0] == b"D" + len(body).to_bytes(4, "big") + body
 
 
-def test_two_drivers_have_independent_sinks_and_sizes():
+async def test_two_drivers_have_independent_sinks_and_sizes():
     """The whole point. COLUMNS/ROWS is process-global (web_driver.py:52-59),
     so geometry must ride on the explicit size= argument."""
     a, b = [], []
@@ -158,7 +214,31 @@ def test_two_drivers_have_independent_sinks_and_sizes():
     assert db._size == (140, 50)
 
 
-def test_nothing_reaches_the_real_stdout(capfdbinary):
+async def test_constructs_with_no_usable_stdin(monkeypatch):
+    """The daemon case, and the reason ViewDriver bypasses
+    WebDriver.__init__ rather than overriding run_input_thread.
+
+    InputReader.__init__ registers sys.__stdin__ with a selector at
+    CONSTRUCTION (web_driver.py:68). Under systemd stdin is /dev/null, and
+    registering /dev/null with epoll raises PermissionError [Errno 1]
+    (measured). A driver that cannot be built under systemd cannot run in
+    the daemon this whole stage exists to enable.
+    """
+    import os
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    try:
+        class _DevNullStdin:
+            def fileno(self): return devnull
+        monkeypatch.setattr("sys.__stdin__", _DevNullStdin())
+        frames = []
+        drv = view_driver_for(frames.append)(_FakeApp(), size=(80, 24))
+        drv.write("built anyway")
+        assert frames, "driver could not be built without a real stdin"
+    finally:
+        os.close(devnull)
+
+
+async def test_nothing_reaches_the_real_stdout(capfdbinary):
     drv = view_driver_for(lambda _b: None)(_FakeApp(), size=(80, 24))
     drv.write("should not appear")
     drv.flush()
@@ -167,18 +247,17 @@ def test_nothing_reaches_the_real_stdout(capfdbinary):
     assert b"should not appear" not in err
 
 
-def test_start_application_mode_installs_no_signal_handlers():
+async def test_start_application_mode_installs_no_signal_handlers():
     """web_driver.py:150-152 adds SIGINT/SIGTERM handlers to the running
     loop. N views on one loop means last-registration-wins, and a daemon
     whose views own the host's shutdown."""
     before = signal.getsignal(signal.SIGINT)
-    frames = []
-    drv = view_driver_for(frames.append)(_FakeApp(), size=(80, 24))
+    drv = view_driver_for(lambda _b: None)(_FakeApp(), size=(80, 24))
     drv.start_application_mode()
     assert signal.getsignal(signal.SIGINT) is before
 
 
-def test_start_application_mode_writes_no_ganglion_handshake():
+async def test_start_application_mode_writes_no_ganglion_handshake():
     """web_driver.py:154. Nothing in aegis consumes it and a stage-5 attach
     client reading raw frames would see it as a malformed frame."""
     frames = []
@@ -187,12 +266,31 @@ def test_start_application_mode_writes_no_ganglion_handshake():
     assert not any(b"__GANGLION__" in f for f in frames)
 
 
-def test_input_thread_is_never_started():
-    """run_input_thread reads the process's real stdin (web_driver.py:184).
-    N views cannot each own stdin, and a daemon has none."""
-    drv = view_driver_for(lambda _b: None)(_FakeApp(), size=(80, 24))
+async def test_bracketed_paste_is_still_enabled():
+    """Kept deliberately. web_driver.py:170 enables bracketed paste, and
+    dropping it makes a multi-line paste arrive as individual keystrokes —
+    a silent degradation, since nothing in aegis/tui handles Paste today
+    and so nothing would report it.
+    """
+    frames = []
+    drv = view_driver_for(frames.append)(_FakeApp(), size=(80, 24))
     drv.start_application_mode()
-    assert not drv._key_thread.is_alive()
+    blob = b"".join(frames)
+    assert b"?2004h" in blob, "bracketed paste was not enabled"
+
+
+async def test_every_attribute_webdriver_expects_is_present():
+    """ViewDriver bypasses WebDriver.__init__, so it owes that method's
+    attributes by hand. This test is the tripwire for a Textual upgrade
+    adding an eighth: it fails loudly here rather than as an AttributeError
+    deep in a running view.
+    """
+    drv = view_driver_for(lambda _b: None)(_FakeApp(), size=(80, 24))
+    for attr in ("stdout", "fileno", "exit_event", "_key_thread",
+                 "_input_reader", "_deliveries", "_write"):
+        assert hasattr(drv, attr), f"WebDriver expects {attr!r}"
+    # stop_application_mode calls _input_reader.close() (web_driver.py:181)
+    drv._input_reader.close()
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -222,9 +320,23 @@ consumes.
 """
 from __future__ import annotations
 
+from threading import Event, Thread
 from typing import Callable
 
+from textual import events
+from textual.driver import Driver
 from textual.drivers.web_driver import WebDriver
+
+
+class _NullInputReader:
+    """Stands in for ``InputReader``, which binds stdin in its constructor.
+
+    Only ``close()`` is ever called on it — by ``stop_application_mode``
+    (`web_driver.py:181`).
+    """
+
+    def close(self) -> None:
+        return
 
 
 class ViewDriver(WebDriver):
@@ -243,8 +355,26 @@ class ViewDriver(WebDriver):
 
     def __init__(self, app, *, debug: bool = False, mouse: bool = True,
                  size: tuple[int, int] | None = None) -> None:
-        super().__init__(app, debug=debug, mouse=mouse, size=size)
-        # AFTER super(), which binds _write to sys.__stdout__ (`:61-63`).
+        # NOT super(). WebDriver.__init__ binds this process's stdin and
+        # stdout: it reads sys.__stdout__.fileno() (`:62`) and builds an
+        # InputReader (`:68`) that registers sys.__stdin__ with a selector
+        # in ITS constructor. Under systemd stdin is /dev/null, and
+        # registering /dev/null with epoll raises PermissionError [Errno 1]
+        # — so calling super() here makes the driver unbuildable in exactly
+        # the daemon this stage exists to enable.
+        #
+        # So: Driver.__init__ for the real base state, then by hand the
+        # seven attributes WebDriver.__init__ would have set. That couples
+        # this to the BODY of a method we do not call;
+        # test_every_attribute_webdriver_expects_is_present is the tripwire
+        # for a Textual upgrade adding an eighth.
+        Driver.__init__(self, app, debug=debug, mouse=mouse, size=size)
+        self.stdout = None
+        self.fileno = -1
+        self.exit_event = Event()
+        self._key_thread = Thread(target=lambda: None, name="view-noop")
+        self._input_reader = _NullInputReader()
+        self._deliveries: dict = {}
         self._write = self._emit
 
     def _emit(self, data: bytes) -> None:
@@ -253,18 +383,39 @@ class ViewDriver(WebDriver):
     def start_application_mode(self) -> None:
         """Enter application mode without owning the process.
 
-        Deliberately does NOT call ``super()``: that installs signal
-        handlers and writes the ganglion handshake. The escape sequences
-        below are the rest of what it does (`web_driver.py:156-160`), and
-        they are per-view state that belongs in the frame stream.
+        Deliberately does NOT call ``super()``. Of what it does
+        (`web_driver.py:150-173`) we keep the escape sequences and drop
+        exactly four things, each for a stated reason:
+
+        - the SIGINT/SIGTERM handlers (`:150-152`) — process-global, and N
+          views on one loop means last-registration-wins;
+        - the ``__GANGLION__`` handshake (`:154`) — nothing in aegis reads
+          it, and a stage-5 attach client would see a malformed frame;
+        - the Resize post (`:162-167`) — redundant, ``App`` dispatches its
+          own from ``self.size`` (`app.py:3434`);
+        - ``_key_thread.start()`` (`:172`) — there is no stdin to read.
+
+        Everything else at `:169-173` is kept. ``_enable_bracketed_paste``
+        in particular: without it a multi-line paste arrives as individual
+        keystrokes, and since nothing in aegis/tui handles ``Paste`` today
+        that degradation would be silent.
         """
         self.write("\x1b[?1049h")   # alt screen
         self._enable_mouse_support()
         self.write("\x1b[?25l")     # hide cursor
         self.write("\033[?1003h")   # mouse movement reporting
+        self._request_terminal_sync_mode_support()
+        self._enable_bracketed_paste()
+        self.flush()
+        self._app.call_later(self._app.post_message, events.AppBlur())
 
     def run_input_thread(self) -> None:
-        """No stdin. Input arrives through the transport, not the tty."""
+        """No stdin. Input arrives through the transport, not the tty.
+
+        Note this override is belt-and-braces, not the fix: the thread is
+        only ever started by ``start_application_mode``, which we already
+        replace. The real stdin fix is in ``__init__`` above.
+        """
         return
 
     def disable_input(self) -> None:
@@ -287,23 +438,37 @@ __all__ = ["ViewDriver", "view_driver_for"]
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/views/test_view_driver.py -v -m "not live"`
-Expected: PASS (7 tests)
+Expected: PASS (9 tests)
 
-- [ ] **Step 5: Mutation-check the three overrides**
+- [ ] **Step 5: Mutation-check the bypass and the overrides**
 
-Each override exists because of a specific process-global. A test that
-cannot see the override removed is not testing it. For each of the three,
-delete the override, confirm the named test goes RED, restore:
+Each departure from `WebDriver` exists because of a specific
+process-global, and a test that cannot see it removed is not testing it.
+Apply each mutation, confirm the named test goes RED **for its stated
+reason** — read the failure text, do not accept any red — then restore:
 
 ```bash
-# 1. delete start_application_mode  -> signal + ganglion tests go red
-# 2. delete run_input_thread        -> input-thread test goes red
-# 3. move `self._write = self._emit` above super().__init__()
-#    -> sink tests go red (super() rebinds _write to stdout)
+# 1. Replace the Driver.__init__ bypass with super().__init__(...).
+#    -> test_constructs_with_no_usable_stdin goes red with
+#       PermissionError [Errno 1] from the selector. This is the one that
+#       matters: it is the daemon case.
+# 2. Delete start_application_mode.
+#    -> signal + ganglion tests go red. Check the reason: with a too-thin
+#       fake app this dies with AttributeError on _post_message instead,
+#       which is why _FakeApp implements it. If you see AttributeError,
+#       the test is not reaching its assertion and proves nothing.
+# 3. Drop `self._enable_bracketed_paste()` from start_application_mode.
+#    -> test_bracketed_paste_is_still_enabled goes red.
+# 4. Delete one attribute from the __init__ block (say `_deliveries`).
+#    -> test_every_attribute_webdriver_expects_is_present names it.
 ```
 
-Expected: three reds, each naming its own test. Record which test caught which.
-The third is the subtle one: ordering, not presence.
+**Deliberately not mutation-checked: `run_input_thread`.** Deleting that
+override leaves every test green, because the thread is started only by
+`start_application_mode` (`web_driver.py:172`), which we already replace.
+The override is belt-and-braces and the plan says so rather than pretending
+a test pins it — an earlier draft of this plan claimed a red here that does
+not occur.
 
 - [ ] **Step 6: Commit**
 
@@ -342,8 +507,12 @@ from aegis.views.driver import view_driver_for
 
 
 def _app(**kw):
+    # NOT mcp=None: the local plane calls self._mcp.bind(self) at
+    # app.py:488, so None raises AttributeError before any assertion here
+    # can run — and the failure is indistinguishable from the step-2
+    # "driver_class is not a parameter" failure this task is watching for.
     return AegisApp(agents={}, default_agent="", make_session=None,
-                    mcp=None, **kw)
+                    mcp=FakeMCP(), **kw)
 
 
 def test_driver_class_reaches_textual():
@@ -506,6 +675,20 @@ def _path(state_dir: Path, view_id: str) -> Path:
     return state_dir / "views" / f"{view_id}.json"
 
 
+def _safe_path(state_dir: Path, view_id: str) -> Path | None:
+    """``_path``, but None instead of a raise — the read-side contract.
+
+    ``load_view`` answers "missing or damaged" with ``None`` everywhere
+    else, and stage 5 feeds it client-supplied ids. A reader that raises on
+    one kind of bad input and returns None on the others makes every caller
+    handle two failure shapes for one question.
+    """
+    try:
+        return _path(state_dir, view_id)
+    except ValueError:
+        return None
+
+
 def save_view(state_dir: Path, vs: ViewState) -> None:
     p = _path(state_dir, vs.view_id)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -522,8 +705,8 @@ def save_view(state_dir: Path, vs: ViewState) -> None:
 
 
 def load_view(state_dir: Path, view_id: str) -> ViewState | None:
-    p = _path(state_dir, view_id)
-    if not p.is_file():
+    p = _safe_path(state_dir, view_id)
+    if p is None or not p.is_file():
         return None
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
@@ -562,9 +745,25 @@ git commit -m "feat(views): ViewState — focus, scroll, drafts and geometry per
 
 **Interfaces:**
 - Consumes: `ViewState` from Task 3.
-- Produces: `Workspace` without `active_handle`. Callers that need it read `ViewState.active_handle`.
+- Produces: `Workspace` without `active_handle`; `AegisApp(..., view_state: ViewState | None = None)`; `LocalTuiAttachment` builds a `ViewState` so the existing single-view path keeps its focus restore.
 
 **Why this is its own task:** `Workspace` is the one place the spec names as conflating the two halves — it stores `active_handle` (pure view state) beside tab identity and `order` (brain state). Leaving it means two sources of truth for focus the moment a second view exists.
+
+> **This task must land the replacement in the same commit as the removal.**
+> `app.py:705` restores the focused tab on resume by matching
+> `p.handle == ws.active_handle`. Deleting the field and parking focus on a
+> fresh instance attribute — with nothing writing a `ViewState` yet and no
+> existing user having a `views/*.json` — means **resume silently stops
+> restoring the focused tab**. That is a user-visible regression, and this
+> plan's Global Constraints call the single-view path's behaviour absolute
+> with no sanctioned exception. An earlier draft of this task shipped
+> exactly that regression and did not notice.
+>
+> So the field does not simply go: it **moves**, and both ends move
+> together. `AegisApp` gains a `view_state`, the resume path reads focus
+> from it, and `LocalTuiAttachment` (the existing TUI boot, stage 3) builds
+> and persists one keyed per-tty. Step 5 proves resume still works through
+> the new path before the task is allowed to commit.
 
 - [ ] **Step 1: Enumerate the call sites before editing**
 
@@ -614,17 +813,63 @@ Delete `active_handle` from the `Workspace` dataclass (`:61`), from the dict
 (`:150`). `load` must tolerate an **old** file that still has the key —
 it is simply ignored, so an existing state dir keeps working.
 
-Redirect each reader found in Step 1. In `AegisApp`, the active tab is now
-the view's concern; until Task 5 gives the app a view, read and write it on
-an instance attribute initialised to `None`.
+Then move the focus read, in this same change:
 
-- [ ] **Step 5: Run the tests and the blast radius**
+1. `AegisApp.__init__` gains `view_state: "ViewState | None" = None`, stored
+   as `self._view_state`.
+2. At `app.py:705`, replace `p.handle == ws.active_handle` with a read off
+   the view state, falling back to the first pane exactly as today:
 
-Run: `uv run python -m pytest tests/views/test_workspace_is_brain_only.py -v -m "not live"`
-Expected: PASS (2 tests)
+```python
+        focused = self._view_state.active_handle if self._view_state else None
+        active = next(
+            (p for p in self._panes
+             if isinstance(p, ConversationPane) and p.handle == focused),
+            self._panes[0])
+```
 
-Run: `uv run python -m pytest tests/ -k "workspace or resume or app or history or doctor" -q -m "not live"`
-Expected: PASS.
+3. `LocalTuiAttachment.run` (`cli.py`, stage 3) builds a `ViewState` for the
+   local terminal, passes it as `view_state=`, and persists it on exit so
+   the next `aegis` restores focus. Key it per-tty, defaulting to `"tty"`.
+
+Every other reader found in Step 1 is redirected the same way.
+
+- [ ] **Step 5: Prove resume still restores focus**
+
+The regression this task would otherwise ship is invisible to the unit
+tests above, so assert it directly:
+
+```python
+# append to tests/views/test_workspace_is_brain_only.py
+async def test_resume_still_restores_the_focused_tab(tmp_path):
+    """The field moved; the behaviour must not. Before this change focus
+    came off Workspace.active_handle (app.py:705); it now comes off the
+    view's ViewState, and a user resuming `aegis` must not be able to tell."""
+    from aegis.views.state import ViewState
+    vs = ViewState(view_id="tty", geometry=(80, 24), active_handle="second")
+    assert vs.active_handle == "second"
+    # The app must consult the view state, not the workspace.
+    import inspect
+    from aegis.tui.app import AegisApp
+    assert "view_state" in inspect.signature(AegisApp.__init__).parameters
+    src = inspect.getsource(AegisApp)
+    assert "ws.active_handle" not in src, (
+        "resume still reads focus off the workspace")
+```
+
+- [ ] **Step 6: Run the FULL suite, not a blast radius**
+
+This is the only breaking refactor in the plan: it removes a dataclass
+field that construction sites pass by keyword, so the failures are
+`TypeError`s scattered wherever `Workspace(...)` is built. A `-k` selector
+will miss some — `tests/test_state_repair.py:104` constructs
+`Workspace(active_handle="live", …)` and matches none of the obvious
+keywords. Letting the next three tasks commit on top of a red suite is how
+a mid-plan regression reaches the end.
+
+Run: `uv run python -m pytest -q -m "not live"`
+Expected: green, no regression against the 3592 baseline. Read the rc
+directly; never through a pipe.
 
 - [ ] **Step 6: Verify an old state file still loads**
 
@@ -666,7 +911,7 @@ files still load; the key is ignored."
 - Consumes: `view_driver_for` (Task 1), `AegisApp(driver_class=…)` (Task 2), `ViewState` (Task 3).
 - Produces:
   - `View(view_id: str, app: AegisApp, state: ViewState)` with `frames: list[bytes]` (the sink's buffer), `async def run() -> None`, `async def stop() -> None`, `def repaint() -> None`.
-  - `async def open_view(view_id, *, manager, geometry, roots, **app_kw) -> View` — builds the app on a bound driver, restores persisted view state if any.
+  - `async def open_view(view_id, *, manager, geometry, roots, mcp, **app_kw) -> View` — builds the app on a bound driver, restores persisted view state if any.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -702,7 +947,8 @@ def _mgr(roots):
 async def test_view_holds_the_manager_by_reference(tmp_path):
     roots = AegisRoots.for_project(tmp_path)
     mgr = _mgr(roots)
-    v = await open_view("tty-1", manager=mgr, geometry=(80, 24), roots=roots)
+    v = await open_view("tty-1", manager=mgr, geometry=(80, 24),
+                        roots=roots, mcp=FakeMCP())
     assert v.app.manager is mgr
     await v.stop()
 
@@ -713,7 +959,7 @@ async def test_view_restores_persisted_state(tmp_path):
                                          {"lucid-knuth": 12},
                                          {"lucid-knuth": "half typed"}))
     v = await open_view("tty-1", manager=_mgr(roots), geometry=(140, 50),
-                        roots=roots)
+                        roots=roots, mcp=FakeMCP())
     assert v.state.drafts == {"lucid-knuth": "half typed"}
     assert v.state.active_handle == "lucid-knuth"
     await v.stop()
@@ -722,7 +968,7 @@ async def test_view_restores_persisted_state(tmp_path):
 async def test_a_first_attach_has_no_prior_state(tmp_path):
     roots = AegisRoots.for_project(tmp_path)
     v = await open_view("brand-new", manager=_mgr(roots), geometry=(80, 24),
-                        roots=roots)
+                        roots=roots, mcp=FakeMCP())
     assert v.state.drafts == {}
     assert v.state.geometry == (80, 24)
     await v.stop()
@@ -736,7 +982,7 @@ async def test_geometry_is_the_drivers_and_not_the_environments(tmp_path,
     monkeypatch.setenv("ROWS", "999")
     roots = AegisRoots.for_project(tmp_path)
     v = await open_view("tty-1", manager=_mgr(roots), geometry=(80, 24),
-                        roots=roots)
+                        roots=roots, mcp=FakeMCP())
     assert v.state.geometry == (80, 24)
     await v.stop()
 ```
@@ -778,8 +1024,17 @@ class View:
     _task: asyncio.Task | None = None
 
     async def run(self) -> None:
-        """Run the app until it exits. The caller owns the task."""
-        self._task = asyncio.create_task(self.app.run_async())
+        """Run the app until it exits. The caller owns the task.
+
+        ``size=`` is not optional. ``run_async`` defaults it to ``None``,
+        which reaches the driver as ``size=None`` and sends it to the
+        ``COLUMNS``/``ROWS`` fallback (`web_driver.py:52-59`) — the
+        process-global this whole stage is about. A view whose geometry
+        lives only in its ``ViewState`` and never reaches its driver has a
+        write-only field and N views that all render at one size.
+        """
+        self._task = asyncio.create_task(
+            self.app.run_async(size=self.state.geometry))
 
     async def stop(self) -> None:
         if self._task is not None and not self._task.done():
@@ -803,7 +1058,12 @@ class View:
         """
         screen = self.app.screen
         compositor = screen._compositor
-        compositor._dirty_regions.add(screen.size.region)
+        # compositor.size.region, not screen.size.region: the test at
+        # _compositor.py:1118 is `screen_region in self._dirty_regions`
+        # where self is the Compositor. The two are normally equal, so
+        # using the screen's happens to work and couples the call to the
+        # wrong object — it would drift silently the first time they differ.
+        compositor._dirty_regions.add(compositor.size.region)
         screen.refresh()
 
     def persist(self, state_dir: Path) -> None:
@@ -811,8 +1071,14 @@ class View:
 
 
 async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
-                    roots: AegisRoots, **app_kw) -> View:
-    """Build a view, restoring its persisted state if it has any."""
+                    roots: AegisRoots, mcp, **app_kw) -> View:
+    """Build a view, restoring its persisted state if it has any.
+
+    ``mcp`` is required, not defaulted. The local plane binds and starts it
+    unconditionally (`app.py:488`, `:576`), so a ``None`` default turns
+    every caller that forgets it into an ``AttributeError`` at mount — and
+    in a daemon that is a view that silently never appears.
+    """
     frames: list[bytes] = []
     restored = load_view(roots.state_dir, view_id)
     state = restored or ViewState(view_id=view_id, geometry=geometry)
@@ -824,7 +1090,7 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
         agents=app_kw.pop("agents", {}),
         default_agent=app_kw.pop("default_agent", ""),
         make_session=app_kw.pop("make_session", None),
-        mcp=app_kw.pop("mcp", None),
+        mcp=mcp,
         bridge=manager,
         driver_class=view_driver_for(frames.append),
         **app_kw)
@@ -854,7 +1120,7 @@ git commit -m "feat(views): View — one AegisApp bound to one sink and geometry
 
 **Interfaces:**
 - Consumes: `View`, `open_view` (Task 5).
-- Produces: `ViewRegistry(manager, roots, **app_kw)` with `async def open(view_id, geometry) -> View`, `async def close(view_id) -> None`, `def get(view_id) -> View | None`, `def list() -> list[str]`, `async def close_all() -> None`. Re-opening a live `view_id` returns the existing view rather than a second one.
+- Produces: `ViewRegistry(manager, roots, mcp, **app_kw)` with `async def open(view_id, geometry) -> View`, `async def close(view_id) -> None`, `def get(view_id) -> View | None`, `def list() -> list[str]`, `async def close_all() -> None`. Re-opening a live `view_id` returns the existing view rather than a second one.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -880,7 +1146,7 @@ def _reg(tmp_path):
     mgr = SessionManager({"default": object()}, "default",
                          make_session=lambda p, u, h: _FakeHarness(),
                          mcp=None, roots=roots)
-    return ViewRegistry(manager=mgr, roots=roots), mgr
+    return ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP()), mgr
 
 
 async def test_two_views_are_two_apps_over_one_manager(tmp_path):
@@ -946,7 +1212,12 @@ from aegis.views.view import View, open_view
 
 
 class ViewRegistry:
-    def __init__(self, *, manager, roots: AegisRoots, **app_kw) -> None:
+    def __init__(self, *, manager, roots: AegisRoots, mcp, **app_kw) -> None:
+        # mcp is explicit rather than riding in **app_kw: it is required by
+        # every view (app.py:488 binds it, :576 starts it), and burying a
+        # required argument in kwargs turns a forgotten one into an
+        # AttributeError at mount instead of a TypeError at the call.
+        self._mcp = mcp
         self._manager = manager
         self._roots = roots
         self._app_kw = app_kw
@@ -958,7 +1229,7 @@ class ViewRegistry:
             return existing
         v = await open_view(view_id, manager=self._manager,
                             geometry=geometry, roots=self._roots,
-                            **self._app_kw)
+                            mcp=self._mcp, **self._app_kw)
         self._views[view_id] = v
         return v
 
@@ -1005,76 +1276,32 @@ git commit -m "feat(views): ViewRegistry — N views over one brain, persisted o
 
 ---
 
-### Task 7: Pending messages are brain state — verify, then fix if not
+### Task 7 — removed. The question it asked is already answered.
 
-**Files:**
-- Read: `src/aegis/tui/pending.py`, `src/aegis/core/session.py` (`cancel_pending`, the buffered-message path)
-- Test: `tests/views/test_pending_is_brain_state.py`
+An earlier draft had a task here to "verify, then fix if not" that pending
+messages are brain state. It is deleted rather than kept, because **its
+test could not fail and could not have answered the question anyway**:
 
-**Interfaces:**
-- Consumes: `ViewRegistry` (Task 6).
-- Produces: no new API if the code is already correct. **This task may legitimately produce only a test.**
+- It asserted `hasattr(sess, "cancel_pending")`. That method already exists
+  at `core/session.py:509`, so the task's own "if it FAILS, stop and
+  report" branch was unreachable.
+- A method *name* says nothing about where state lives. `cancel_pending` is
+  also defined on `RemoteSessionManager` (`tui/remote_manager.py:151`),
+  which is view-side — so the assertion is satisfied by both answers to the
+  question it was posing.
 
-**Why this task exists.** The spec calls this out as the one line that is easy to get wrong: a *draft* is per-view, a *pending message* is not. Pending messages are submitted and awaiting a turn boundary; per-view they would show different queues for one agent, and cancelling in one view would not cancel in the other. The buffer lives on `AgentSession` (brain) while `PendingStrip` is a widget (view), so this is **probably already right** — but "probably" is what this task removes.
+**The answer, settled by reading the code rather than tasking it out:**
+pending messages are already brain state. The buffer is
+`AgentSession._inbox_buffer` (`core/session.py:149`); `cancel_pending`
+(`:509`) removes from it by object identity, and `PendingStrip`
+(`tui/pending.py`, mounted in `tui/pane.py:1053`) is a widget that renders
+it. Session objects are shared across views by construction, so two views
+see one queue and a chip cancelled in either cancels it in both.
 
-- [ ] **Step 1: Establish which it is, before writing an assertion**
+Nothing to build. The property the spec cares about — *text still in the
+box is yours; text you have sent is everyone's* — holds today, and the
+draft half is covered by `test_focus_and_drafts_do_not_cross` in Task 8.
 
-Run:
-```bash
-grep -rn "pending\|cancel_pending" src/aegis/core/session.py src/aegis/tui/pending.py src/aegis/tui/pane.py | head -30
-```
-Decide from the code whether the pending buffer is owned by the session (brain) or the pane (view). **Write the answer into your final report**, with the file and line that settles it.
-
-- [ ] **Step 2: Write the test that pins it**
-
-```python
-# tests/views/test_pending_is_brain_state.py
-"""Text still in the box is yours; text you have sent is everyone's.
-
-A pending message is submitted and awaiting a turn boundary. Per-view it
-would show different queues for one agent, and cancelling a chip in one
-view would not cancel it in the other.
-"""
-from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
-
-
-class _FakeHarness:
-    async def start(self): ...
-    async def send(self, t): ...
-    async def close(self): ...
-
-    async def events(self):
-        if False:
-            yield
-
-
-async def test_a_pending_message_is_owned_by_the_session_not_a_pane(tmp_path):
-    roots = AegisRoots.for_project(tmp_path)
-    mgr = SessionManager({"default": object()}, "default",
-                         make_session=lambda p, u, h: _FakeHarness(),
-                         mcp=None, roots=roots)
-    sess = mgr._sync_spawn("default")
-    # The buffer must hang off the session object every view shares, not
-    # off any widget. Assert on the substrate, not on a rendered strip.
-    assert hasattr(sess, "cancel_pending"), (
-        "pending messages must be cancellable on the session — if this "
-        "lives on the pane, two views disagree about one agent's queue")
-```
-
-- [ ] **Step 3: Run it**
-
-Run: `uv run python -m pytest tests/views/test_pending_is_brain_state.py -v -m "not live"`
-Expected: PASS if the buffer is already brain-owned. **If it FAILS, stop and report** — moving the buffer is a larger change than this task budgets, and the coordinator decides whether to widen scope or file it.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add tests/views/test_pending_is_brain_state.py
-git commit -m "test(views): pin pending messages as brain state, not view state"
-```
-
----
 
 ### Task 8: The stage gate — two views, two geometries, one brain
 
@@ -1119,7 +1346,7 @@ def _reg(tmp_path):
     mgr = SessionManager({"default": object()}, "default",
                          make_session=lambda p, u, h: _FakeHarness(),
                          mcp=None, roots=roots)
-    return ViewRegistry(manager=mgr, roots=roots), mgr
+    return ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP()), mgr
 
 
 def _assert_live_driver_is_ours(app):
@@ -1149,28 +1376,55 @@ async def test_both_views_hold_their_own_geometry(tmp_path):
     await reg.close_all()
 
 
-async def test_a_session_opened_in_one_view_exists_for_the_other(tmp_path):
-    """Tab identity is brain state: opening a tab opens it for everyone."""
+async def test_a_session_opened_in_one_view_appears_in_the_other(tmp_path):
+    """Tab identity is brain state: opening a tab opens it for everyone.
+
+    Asserts the tab reaches the OTHER view's pane set. `a.app.manager is
+    b.app.manager` — which an earlier draft asserted — is reference
+    identity between two attributes and says nothing about whether either
+    view ever rendered the tab.
+    """
     reg, mgr = _reg(tmp_path)
     a = await reg.open("narrow", (80, 24))
     b = await reg.open("wide", (140, 50))
-    handle = mgr._sync_spawn("default").handle
-    handles = {si.handle for si in mgr.list_sessions()}
-    assert handle in handles
-    assert a.app.manager is b.app.manager
+    async with a.app.run_test(headless=False, size=(80, 24)):
+        async with b.app.run_test(headless=False, size=(140, 50)):
+            _assert_live_driver_is_ours(a.app)
+            _assert_live_driver_is_ours(b.app)
+            handle = (await a.app.spawn_session("default"))
+            await b.app.workers.wait_for_complete()
+            b_handles = {p.handle for p in b.app._panes
+                         if hasattr(p, "handle")}
+            assert handle in b_handles, (
+                f"tab {handle} opened in view A never reached view B: "
+                f"{sorted(b_handles)}")
     await reg.close_all()
 
 
 async def test_focus_and_drafts_do_not_cross(tmp_path):
+    """Typing into one view must not appear in another.
+
+    Drives the real input widget rather than assigning to two ViewState
+    dataclasses. An earlier draft did the latter and asserted the other's
+    `field(default_factory=dict)` defaults — which would have passed even
+    if both views shared a single AegisApp, i.e. it tested dataclasses and
+    not the seam at all.
+    """
     reg, _ = _reg(tmp_path)
     a = await reg.open("narrow", (80, 24))
     b = await reg.open("wide", (140, 50))
-    a.state.active_handle = "lucid-knuth"
-    a.state.drafts["lucid-knuth"] = "typed in A"
-    a.state.scroll["lucid-knuth"] = 42
-    assert b.state.active_handle is None
-    assert b.state.drafts == {}
-    assert b.state.scroll == {}
+    async with a.app.run_test(headless=False, size=(80, 24)) as pa:
+        async with b.app.run_test(headless=False, size=(140, 50)):
+            _assert_live_driver_is_ours(a.app)
+            _assert_live_driver_is_ours(b.app)
+            await pa.press(*"typed in A")
+            await pa.pause()
+            a_input = a.app.query_one("GrowingInput")
+            b_input = b.app.query_one("GrowingInput")
+            assert "typed in A" in a_input.text
+            assert b_input.text == "", (
+                f"view B sees view A's draft: {b_input.text!r}")
+            assert a_input is not b_input
     await reg.close_all()
 
 
@@ -1199,6 +1453,16 @@ async def test_a_reattached_view_gets_a_full_frame(tmp_path):
         v.repaint()
         await pilot.pause()
     assert v.frames, "repaint() emitted no frame"
+    # A partial update is also "a frame". What distinguishes a full repaint
+    # is that it redraws the whole screen region, so the payload must carry
+    # as many rows as the view is tall. An earlier draft asserted only
+    # non-emptiness and would have passed on any incremental delta.
+    payload = b"".join(f[5:] for f in v.frames)   # strip b"D" + 4-byte len
+    rows = payload.count(b"\x1b[")
+    assert rows >= v.state.geometry[1] // 2, (
+        f"repaint emitted {rows} escape sequences for a "
+        f"{v.state.geometry[1]}-row view — that is a partial update, "
+        f"not a full frame")
     await reg.close_all()
 ```
 
