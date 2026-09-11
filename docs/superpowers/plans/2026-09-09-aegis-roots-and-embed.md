@@ -630,7 +630,7 @@ covers, so the guard cannot go green until they are gone too. Both take
 - Consumes: `AegisRoots`.
 - Produces: no new public API; a structural guard that stops the fallbacks coming back.
 
-- [ ] **Step 1: Write the failing guard test**
+- [x] **Step 1: Write the failing guard test**
 
 ```python
 # tests/test_no_cwd_regression.py
@@ -660,7 +660,7 @@ def test_cleaned_modules_do_not_resolve_from_the_process_cwd():
     assert not offenders, "cwd resolution reintroduced:\n" + "\n".join(offenders)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_no_cwd_regression.py -v`
 Expected: FAIL, listing five sites — `terminal/manager.py:156`,
@@ -668,7 +668,7 @@ Expected: FAIL, listing five sites — `terminal/manager.py:156`,
 `:2344`**. If the failure lists only three, the guard is reading a stale
 module list and will go green while two cwd sites remain.
 
-- [ ] **Step 3: Thread the root into each**
+- [x] **Step 3: Thread the root into each**
 
 For each module, add a required root parameter to the constructor or
 function that currently falls back, and pass `roots.state_dir` (terminals),
@@ -680,12 +680,12 @@ from the caller. Example, `terminal/manager.py`:
         self._state_dir = Path(state_dir)   # was: state_dir or Path.cwd()/...
 ```
 
-- [ ] **Step 4: Run the guard and the blast radius**
+- [x] **Step 4: Run the guard and the blast radius**
 
 Run: `uv run pytest tests/test_no_cwd_regression.py tests/ -k "terminal or workflow or usage" -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/terminal/manager.py src/aegis/workflow/engine.py \
