@@ -318,8 +318,12 @@ class AegisApp(App):
                  hosts: "dict | None" = None,
                  host_registry: "object | None" = None,
                  manager: "object | None" = None,
-                 bridge: "object | None" = None) -> None:
-        super().__init__()
+                 bridge: "object | None" = None,
+                 driver_class: "type | None" = None) -> None:
+        # A view supplies its own driver so its frames go to that view's
+        # sink instead of this process's stdout. None keeps Textual's
+        # auto-detection, which is every existing caller.
+        super().__init__(driver_class=driver_class)
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
