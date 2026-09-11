@@ -15,10 +15,14 @@ from pathlib import Path
 class AegisRoots:
     """Where this aegis instance resolves things.
 
-    config_root: holds .aegis.yaml, its overlays, plugin dirs, persona files.
+    config_root: holds .aegis.yaml, its overlays and plugin dirs.
     state_root:  parent of .aegis/state — persistence, locks, canvas,
-                 terminals, views.
-    harness_cwd: the directory an agent subprocess actually runs in.
+                 terminals, views, and per-session hook/digest/recap state.
+    harness_cwd: the directory an agent subprocess actually runs in. A
+                 relative ``prompt:`` persona resolves here too, not under
+                 config_root — the launcher reads it against its local root
+                 (config/persona.py, hosts/launcher.py). Identical on a CLI,
+                 divergent when embedded.
     """
 
     config_root: Path

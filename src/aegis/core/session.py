@@ -65,6 +65,7 @@ class AgentSession:
                  inbox=None,
                  opening_prompt: str | None = None,
                  project_root: Path,
+                 state_dir: Path | None = None,
                  log_id: str | None = None,
                  place=None,
                  repo_tracker=None,
@@ -89,8 +90,19 @@ class AgentSession:
         from aegis.state.session_log import new_log_id
         self.log_id = log_id or new_log_id(handle)
         self.project_root = Path(project_root)
-        # hooks log into .aegis/state relative to the project root
-        self.state_dir = self.project_root / ".aegis" / "state"
+        # Where this session's hooks, digest, recap and plan write. It is
+        # the STATE root's state dir, not the project root's: project_root
+        # is `roots.harness_cwd` — the tree the harness runs in — and the
+        # two diverge the moment aegis is embedded with an explicit
+        # harness_cwd. Deriving it from project_root there put per-session
+        # state under the worktree while every other subsystem wrote under
+        # roots.state_dir, which is the "state silently splits in two"
+        # that AegisRoots exists to prevent.
+        # Defaults to the old derivation so a caller that knows only a
+        # project root (tests, and any site not yet holding roots) keeps
+        # today's behaviour; SessionManager.spawn passes roots.state_dir.
+        self.state_dir = (Path(state_dir) if state_dir is not None
+                          else self.project_root / ".aegis" / "state")
 
         self.state = AgentState.ready
         _harness = getattr(agent, "harness", "")

@@ -59,8 +59,6 @@ def test_register_queue_without_queue_manager_raises():
 
 def test_reload_plugins_invokes_import_plugins(monkeypatch):
     sm = _sm()
-    from pathlib import Path
-    sm.state_root = Path("/tmp")
     calls = []
     monkeypatch.setattr(
         "aegis.config.yaml_loader.load_config",

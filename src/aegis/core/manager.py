@@ -240,6 +240,7 @@ class SessionManager:
                          inbox=self._inbox,
                          opening_prompt=opening_prompt,
                          project_root=self.roots.harness_cwd,
+                         state_dir=self.roots.state_dir,
                          place=place)
         s.spawned_by = spawned_by
         s.forked_from = forked_from
