@@ -58,6 +58,13 @@ class AegisMCP:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/mcp/"
 
+    @property
+    def server(self):
+        """The FastMCP this plane serves. ``None`` until ``start()`` has
+        run — ``bind()`` only records the bridge, and ``build_server``
+        captures it later, inside ``start()``."""
+        return self._server
+
     def bind(self, bridge: AppBridge) -> None:
         self._bridge = bridge
 
