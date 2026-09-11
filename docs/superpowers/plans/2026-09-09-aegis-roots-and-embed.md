@@ -825,7 +825,7 @@ then `AttributeError` on opening a pane and on quit. **A launch-and-look
 check does not catch this** — mount succeeds; the failures are on
 interaction and teardown. Hence the test below spawns a pane and quits.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/tui/test_local_bridge_injection.py
@@ -879,12 +879,12 @@ async def test_bridge_survives_a_pane_and_a_clean_quit(tmp_path):
         await pilot.pause()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/tui/test_local_bridge_injection.py -v`
 Expected: FAIL — `AegisApp.__init__() got an unexpected keyword argument 'bridge'`
 
-- [ ] **Step 3: Add the parameter**
+- [x] **Step 3: Add the parameter**
 
 Add `bridge=None` to `AegisApp.__init__` (`app.py:310`). Where the
 constructor currently builds a `SessionManager`, use `bridge` when given:
@@ -904,19 +904,19 @@ constructor currently builds a `SessionManager`, use `bridge` when given:
             # ...the rest of local plane construction, unchanged
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/tui/test_local_bridge_injection.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Confirm `--remote` is untouched**
+- [x] **Step 5: Confirm `--remote` is untouched**
 
 This plan deletes nothing, so the `--remote` path must behave exactly as before.
 
 Run: `uv run pytest tests/ -k "remote or tui" -q`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/tui/app.py tests/tui/test_local_bridge_injection.py
