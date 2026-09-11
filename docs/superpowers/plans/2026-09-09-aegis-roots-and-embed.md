@@ -451,7 +451,7 @@ git commit -m "fix(core): require an explicit project_root on AgentSession"
 > already holds. Task 7b can replace `AegisApp`'s derivation with the threaded
 > roots once the TUI boots through `_serve`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_mcp_root_isolation.py
@@ -528,12 +528,12 @@ def test_no_find_project_root_calls_remain_in_mcp_server():
         f"find_project_root still called at lines {calls}")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_mcp_root_isolation.py -v`
 Expected: FAIL — `_StubBridge` has no `roots` attribute (Task 2 adds it to the real manager; the test sets it explicitly), and the AST guard reports 26 `find_project_root` call sites.
 
-- [ ] **Step 3: Enumerate the sites before editing**
+- [x] **Step 3: Enumerate the sites before editing**
 
 Run: `uv run python -c "
 import re, pathlib
@@ -544,7 +544,7 @@ for i, line in enumerate(src.splitlines(), 1):
 "`
 Expected: 26 lines. Work through them all; the source guard in Step 1 fails until every one is gone.
 
-- [ ] **Step 4: Take the root from the bridge — do not extract anything**
+- [x] **Step 4: Take the root from the bridge — do not extract anything**
 
 All 26 sites already live inside `build_server(bridge: AppBridge, tokens=None)`
 (`mcp/server.py:592`), which holds `bridge`. After Task 2, `bridge.roots`
@@ -591,17 +591,17 @@ factory. It was wrong twice over: unnecessary, because `bridge` is already in
 scope; and lossy, because the extracted snippet dropped the lock and the
 hot-register. It is recorded here so nobody reinvents it.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_mcp_root_isolation.py -v`
 Expected: PASS (2 tests)
 
-- [ ] **Step 6: Run the blast radius**
+- [x] **Step 6: Run the blast radius**
 
 Run: `uv run pytest tests/ -k "mcp or config" -q`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/mcp/server.py tests/test_mcp_root_isolation.py
