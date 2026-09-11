@@ -1281,7 +1281,7 @@ git commit -m "refactor(cli): raise ConfigError from the boot loader, exit only 
 - Consumes: everything above.
 - Produces: `aegis.embed(root, *, harness_cwd=None) -> AsyncContextManager[EmbeddedAegis]`, where `EmbeddedAegis` exposes `.manager`, `.queues`, `.roots`. Does **not** call `asyncio.run` and installs **no** signal handlers.
 
-- [ ] **Step 1: Write the failing test — the spec's gate**
+- [x] **Step 1: Write the failing test — the spec's gate**
 
 ```python
 # tests/test_multi_instance.py
@@ -1347,12 +1347,12 @@ async def test_embed_installs_no_signal_handlers(tmp_path):
     assert signal.getsignal(signal.SIGINT) is before
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_multi_instance.py -v`
 Expected: FAIL — `module 'aegis' has no attribute 'embed'`
 
-- [ ] **Step 3: Implement `embed`**
+- [x] **Step 3: Implement `embed`**
 
 ```python
 # src/aegis/embed.py
@@ -1421,7 +1421,7 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
         await asyncio.wait_for(task, timeout=10)
 ```
 
-- [ ] **Step 4: Expose the FastMCP handle publicly**
+- [x] **Step 4: Expose the FastMCP handle publicly**
 
 `AegisMCP` builds its `FastMCP` in `bind()` and keeps it private
 (`mcp/runtime.py:44,60`). Embedded callers — and the gate test — need it, and
@@ -1435,19 +1435,19 @@ reaching into `_server` from a test would pin a private. Add the accessor:
         return self._server
 ```
 
-- [ ] **Step 5: Export it**
+- [x] **Step 5: Export it**
 
 ```python
 # src/aegis/__init__.py — add
 from aegis.embed import EmbeddedAegis, embed  # noqa: F401
 ```
 
-- [ ] **Step 6: Run the gate**
+- [x] **Step 6: Run the gate**
 
 Run: `uv run pytest tests/test_multi_instance.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 7: Mutation-check the gate**
+- [x] **Step 7: Mutation-check the gate**
 
 A gate that cannot fail is worth less than none. Temporarily revert one
 `roots.config_root` lookup in `mcp/server.py` back to `find_project_root()`,
@@ -1459,12 +1459,12 @@ Run: `uv run pytest tests/test_multi_instance.py -v`
 Expected: RED while mutated, PASS after restoring. If it stays green while
 mutated, the test is a proxy — fix the test before continuing.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: PASS except the known inotify flakes.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/embed.py src/aegis/__init__.py tests/test_multi_instance.py
