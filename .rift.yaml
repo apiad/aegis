@@ -1,0 +1,164 @@
+# Lint rules for aegis. Run with `make lint-docs` (or `rift check`).
+#
+# Everything here is mechanical: rift extracts strings from the code and config
+# and asks whether they appear in the docs, or the reverse. It never reads prose
+# for meaning. The split between what is linted here and what still needs a
+# reader is written down in AGENTS.md, and the last rule in this file enforces
+# that that table stays complete.
+#
+# aegis is a code repo, not a book, so none of the prose/voice rule shapes from
+# `repos/books-tsoc/.rift.yaml` are used. Every rule below is doc-truth: a
+# roster that must be documented, or a claim in a doc that must still be true.
+#
+# On matchers: `as: mention` is a plain substring and lied green three times
+# while this file was being written — `/loop` looked documented because
+# docs/commands.md says "turn loop", and `schedules:` looked documented because
+# configuration.md mentions the word in a sentence. Every roster rule below
+# therefore uses `wrap:` to demand the entity in the shape a doc would actually
+# write it (`/cmd`, `` `driver` ``, `key:`). Reach for `wrap:` by default here;
+# the entities are short and the docs are long.
+#
+# Scope: rift is a private repo and not on PyPI, so CI cannot install it. These
+# rules run from the Makefile on a dev machine only. See AGENTS.md.
+
+rules:
+
+  # ------------------------------------------------------------ doc truth ----
+
+  # The sharpest rule in the file, and the one this config was written for: a
+  # doc that names a file nobody wrote, or that was renamed months ago. The
+  # 2026-09-11 roots-and-embed session found two of these by hand (AGENTS.md
+  # claimed `src/aegis/workflows/{prompt,enqueue}.py`; the files are under
+  # `builtins/`), which is what prompted writing this config.
+  #
+  # Anchored on a real top-level directory on purpose. AGENTS.md also refers to
+  # modules `src/aegis/`-relatively — `tui/pane.py`, `drivers/acp.py` — and
+  # those are shorthand a reader resolves from the surrounding section, not
+  # paths. rift resolves `exists:` against the project root and has one root, so
+  # claiming to check them would be a lie. THIS RULE'S BLIND SPOT: a src-relative
+  # shorthand is never checked. Write a path repo-root-relative if you want the
+  # linter to stand behind it.
+  #
+  # The optional `:suffix` lets `src/aegis/repos/writes.py:write_target` and
+  # `src/aegis/core/manager.py:86` be checked on the path half.
+  #
+  # Consequence for writers: do not put a root-anchored path in backticks unless
+  # it should exist. To discuss a file that is gone, name it in plain prose.
+  - name: "every file path named in the docs exists"
+    extract:
+      file: &docs
+        - "AGENTS.md"
+        - "README.md"
+        - "know-how/*.md"
+        - "docs/*.md"
+      regex: '`((?:src|docs|tests|know-how|plugins|examples|scripts|overrides|legacy)/[A-Za-z0-9_./-]+\.(?:md|py|yaml|yml|js|css|json|toml|jsonl|txt|sh))(?::[A-Za-z0-9_,-]+)?`'
+    require:
+      exists: true
+
+  # The same inverse shape aimed at the MCP plane: a doc naming a tool that was
+  # renamed or never shipped. `docs/roadmap.md` is a legal home on purpose — a
+  # roadmap's whole job is to name things that do not exist yet, and six tools
+  # there (`aegis_bash`, `aegis_read`, `aegis_write`, `aegis_edit`, `aegis_grep`,
+  # `aegis_listdir`) are proposals. Everything else must be a real tool.
+  #
+  # The `[`(]` after the capture keeps this to tool *references* — a backticked
+  # name, or a call — rather than the `aegis_ts` JSON key and the `aegis_log`
+  # module, which are not tools and are named inside longer spans.
+  - name: "every aegis_ tool named in a doc is a real tool"
+    extract:
+      file: *docs
+      regex: '`(aegis_[a-z_]+)[`(]'
+    require:
+      in: ["src/aegis/mcp/server.py", "docs/roadmap.md"]
+      as: mention
+
+  # ------------------------------------------------------------- rosters ----
+  # Check the roster, not the wiring (repos/rift/know-how/writing-rules.md).
+  # Each of these extracts a set that IS the roster — a registry dict, a
+  # directory of procedure docs — and asks whether the docs kept up.
+
+  - name: "every know-how doc is indexed in AGENTS.md"
+    extract:
+      paths: "know-how/*.md"
+    require:
+      in: "AGENTS.md"
+      as: mention
+
+  # `files:` yields bare stems, which is what mkdocs writes in `nav:`. The stems
+  # under `docs/` are unique, so the usual `files:`-is-lossy trap does not bite
+  # here; `wrap:` puts the `.md` back so the entity `api` has to appear as
+  # `api.md` rather than inside the word "rapid".
+  - name: "every docs page is in the mkdocs nav"
+    extract:
+      files: "docs/*.md"
+    require:
+      in: "mkdocs.yml"
+      wrap: '${entity}\.md'
+
+  # 22 entities, matching `len(aegis.commands.REGISTRY)` exactly at the time of
+  # writing. Two extractor shapes because the builtins register both
+  # positionally and by keyword; the unmatched branch's None is skipped.
+  #
+  # RED ON LANDING (2 of 22): `/loop` and `/usage` are not in the command table.
+  # Both passed under `as: mention` — "turn loop" and "usage error" are all over
+  # a design doc — which is why this asks for the slash form.
+  - name: "every slash command is documented"
+    severity: warning
+    extract:
+      file: "src/aegis/commands/builtins/*.py"
+      regex: '(?:SlashCommand\(\s*"([a-z-]+)"|name="([a-z-]+)",)'
+    require:
+      in: "docs/commands.md"
+      wrap: '/${entity}\b'
+
+  # RED ON LANDING (1 of 4): `lovelaice` shipped as the fourth driver — it has
+  # its own know-how doc and a long AGENTS.md entry — while docs/drivers.md
+  # still opens "Three drivers ship today" and its protocol table has three
+  # rows. That is exactly the drift a roster rule exists to catch, and it is
+  # left at `warning` and unfixed rather than quietly patched: writing the
+  # driver's user-facing docs is an editorial job, not part of adding a linter.
+  - name: "every driver is documented"
+    severity: warning
+    extract:
+      file: "src/aegis/drivers/__init__.py"
+      regex: '^    "([a-z-]+)": +\w+Driver,'
+    require:
+      in: "docs/drivers.md"
+      wrap: '`${entity}`'
+
+  # RED ON LANDING (7 of 26). `${entity}:` asks for the key as a doc would write
+  # it, which is what separates a documented section from a passing mention:
+  # under `as: mention` this reported 4, and `schedules:` was green off the bare
+  # word in an unrelated sentence.
+  #
+  # Five are top-level sections documented nowhere — `harnesses`, `web`,
+  # `scheduler`, `schedules`, `dynamic_workflow_autoapprove_agents`. Two are
+  # sub-keys: `preview` (the voice block documents `enabled`/`model`/`key`/
+  # `language` and not this one) and `port` (under the undocumented `web:`).
+  #
+  # Known imprecision, stated rather than hidden: the loader's sub-parsers
+  # rebind `raw`, so this extracts nested keys alongside top-level sections and
+  # cannot tell them apart — `_SECTIONS` covers only the six overlay-capable
+  # ones, and the `AegisConfig(...)` call site is shaped like every other
+  # constructor in the file. The seven rows above are real either way.
+  - name: "every config section is documented"
+    severity: warning
+    extract:
+      file: "src/aegis/config/yaml_loader.py"
+      regex: 'raw\.get\("([a-z_]+)"'
+    require:
+      in: "docs/configuration.md"
+      wrap: '${entity}:'
+
+  # --------------------------------------------------------- self-check ----
+
+  # This file and AGENTS.md must not drift apart: AGENTS.md is where the
+  # linted-vs-semantic contract is written down, and a rule nobody documented is
+  # a rule nobody knows is being enforced.
+  - name: "every lint rule is documented in AGENTS.md"
+    extract:
+      file: ".rift.yaml"
+      regex: '^  - name: "([^"]+)"'
+    require:
+      in: "AGENTS.md"
+      as: mention

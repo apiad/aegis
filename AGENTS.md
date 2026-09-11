@@ -675,6 +675,79 @@ To force the local cache to refresh immediately:
     aegis models clear         # delete cache, fall back to bundled
     aegis models list [prov]   # show what aegis currently sees
 
+## Doc lint
+
+`.rift.yaml` holds the mechanical half of "are these docs still true". It runs
+from the Makefile; **CI does not run it**, because rift is a private repo and
+not on PyPI, so a GitHub runner cannot install it without a credential. On a
+dev machine:
+
+    make lint-docs     # every rule; non-zero on an error-severity failure
+    make lint-detail   # per-entity ✓/✗ — which path, which tool, which command
+
+rift extracts strings from the code and asks whether they appear in the docs,
+or the reverse. It never reads prose for meaning.
+
+### Linted — do not re-check these by hand
+
+Rule names below are **verbatim** from `.rift.yaml`, so a red line maps
+straight to a row. The last rule enforces that this table stays complete: a
+rule added to the config and not documented here fails the build.
+
+| Rule | Encodes |
+|---|---|
+| `every file path named in the docs exists` | a doc never names a file nobody wrote |
+| `every aegis_ tool named in a doc is a real tool` | the MCP roster, inverse direction |
+| `every know-how doc is indexed in AGENTS.md` | the Know-how index above stays complete |
+| `every docs page is in the mkdocs nav` | no page ships unreachable |
+| `every slash command is documented` | `commands/builtins/*` ↔ `docs/commands.md` |
+| `every driver is documented` | `DRIVERS` ↔ `docs/drivers.md` |
+| `every config section is documented` | the loader's keys ↔ `docs/configuration.md` |
+| `every lint rule is documented in AGENTS.md` | this table |
+
+Three rules are at `severity: warning` because they are **red today**, and in
+each case the red is the finding rather than a bug in the rule. Ten rows, each
+naming one doc edit:
+
+- `every slash command is documented` — `/loop` and `/usage` have no row in the
+  command table.
+- `every driver is documented` — `lovelaice` is the fourth driver and
+  `docs/drivers.md` still opens "Three drivers ship today".
+- `every config section is documented` — `harnesses`, `web`, `scheduler`,
+  `schedules` and `dynamic_workflow_autoapprove_agents` are read by the loader
+  and documented nowhere; `preview` and `port` are undocumented sub-keys.
+
+Promote each to `error` when `make lint-detail` is empty for it. A mostly-red
+rule trains everyone to skim past red; the reasoning is in
+`repos/rift/know-how/writing-rules.md`.
+
+**Prefer `wrap:` to `as: mention` when adding a rule here.** `mention` is a
+plain substring, and it lied green three times while this config was being
+written: `/loop` looked documented because `docs/commands.md` says "turn loop",
+`/usage` because it says "usage error", and `schedules:` because
+`docs/configuration.md` uses the word in a sentence about something else. The
+entities in this repo are short and the docs are long, so ask for the entity in
+the shape a doc would really write it.
+
+### Not linted — a reader still has to judge these
+
+- Whether a doc's *explanation* is correct, not merely that its nouns resolve.
+- Whether `src/aegis/`-relative shorthands (`tui/pane.py`, `drivers/acp.py`)
+  still point at real modules. rift resolves `exists:` against one project
+  root, so only root-anchored paths are checked. Write a path repo-root-
+  relative if you want the linter to stand behind it.
+- Whether every MCP tool is documented *at all*. `docs/mcp.md` is an
+  architecture doc, not a 70-entry tool reference, so the forward direction of
+  that roster is deliberately not a rule — it would be permanently red against
+  a document that was never trying to be that.
+- Anything about `Path.cwd()` discipline: that guard is AST-based in
+  `tests/test_no_cwd_regression.py`, and a substring rule here would be a
+  weaker duplicate of it.
+
+Note that `make lint-docs` surfaces a failure as exit **2**, not 1 —
+`rift check` exits 1 and GNU make reports its own error code on top. Gate on
+non-zero.
+
 ## Conventions
 
 - TDD: failing test first, then minimal implementation, commit per logical unit.

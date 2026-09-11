@@ -1,6 +1,14 @@
-.PHONY: check lint format typecheck test coverage
+.PHONY: check lint lint-docs lint-detail format typecheck test coverage
 
-check: format lint typecheck test
+check: format lint lint-docs typecheck test
+
+# Doc drift (.rift.yaml). Not in CI — rift is private and not on PyPI, so a
+# runner cannot install it. See the "Doc lint" section of AGENTS.md.
+lint-docs:
+	rift check
+
+lint-detail:
+	rift list
 
 lint:
 	uv run ruff check --fix src/

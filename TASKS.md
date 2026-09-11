@@ -1335,6 +1335,23 @@ code is real, landed as `ccd719d`), and mis-filed shipped work under "Ideas".
 Most of this is `rift`-assertable; a 1.0 whose docs lie is worse than a 0.x
 whose docs are thin.
 
+*Update 2026-09-11:* `.rift.yaml` now carries eight rules and runs from
+`make lint-docs` — see the **Doc lint** section of `AGENTS.md` for what is
+linted and what still needs a reader. Five are green and at `error`. Three are
+at `warning` because they are red, and each row is one doc edit somebody owes:
+
+| Rule | Owed |
+|---|---|
+| `every slash command is documented` | `/loop` and `/usage` have no row in `docs/commands.md` |
+| `every driver is documented` | `docs/drivers.md` still opens "Three drivers ship today"; `lovelaice` is the fourth |
+| `every config section is documented` | `harnesses:`, `web:`, `scheduler:`, `schedules:`, `dynamic_workflow_autoapprove_agents:` documented nowhere; `preview:` and `port:` are undocumented sub-keys |
+
+Clear a rule's rows, promote it to `error`, done. Two things rift deliberately
+does **not** cover and this item still owes a reader: the "two co-equal
+first-class UIs" claim (a sentence's meaning, not a noun that resolves), and
+the `--remote` invocation in `know-how/remote-tui.md` that 403s (the path
+exists; it is the *behaviour* that is stale).
+
 ### Closed by deletion — no work required
 
 The daemon retires the web client, which closes these outright. They are
