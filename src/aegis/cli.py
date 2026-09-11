@@ -20,6 +20,7 @@ from aegis.mcp import AegisMCP
 from aegis.state.workspace import CorruptWorkspace, state_dir
 from aegis.tui import AegisApp
 from aegis.tui.app import pick_workspace_to_resume
+from aegis.views.state import ViewState, load_view, save_view
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
@@ -316,6 +317,22 @@ class UIAttachment(Protocol):
     async def run(self, manager) -> None: ...
 
 
+def _tty_view_id() -> str:
+    """A stable id for this terminal, usable as a single filename component.
+
+    ``/dev/pts/3`` becomes ``tty-dev-pts-3``. Falls back to ``"tty"`` when
+    stdin is not a terminal (a pipe, or systemd's /dev/null), which is also
+    the id every such attach shares -- they have no terminal to tell apart.
+    """
+    import os
+    import sys
+    try:
+        name = os.ttyname(sys.stdin.fileno())
+    except (OSError, ValueError, AttributeError):
+        return "tty"
+    return "tty-" + name.strip("/").replace("/", "-")
+
+
 class LocalTuiAttachment:
     """The Textual TUI on this process's terminal.
 
@@ -357,10 +374,21 @@ class LocalTuiAttachment:
                 err=True)
             raise typer.Exit(code=2) from e
 
+        # Focus, scroll and drafts are this terminal's, not the brain's.
+        # Keyed per-tty so two terminals attached to one project each keep
+        # their own focused tab; "tty" when stdin is not a terminal.
+        view_id = _tty_view_id()
+        state = (load_view(self._roots.state_dir, view_id)
+                 or ViewState(view_id=view_id, geometry=(80, 24)))
+
         app = AegisApp(default_agent=self._agent or "",
                        make_session=manager.make_session,
-                       mcp=manager.mcp, bridge=manager, **self._kw)
-        await app.run_async()
+                       mcp=manager.mcp, bridge=manager,
+                       view_state=state, **self._kw)
+        try:
+            await app.run_async()
+        finally:
+            save_view(self._roots.state_dir, state)
 
 
 async def _build_remote_manager(*, url: str, token: str | None,

@@ -17,6 +17,7 @@ from aegis.state.workspace import (
     Workspace, WorkspaceTab, load, save, state_dir,
 )
 from aegis.tui.app import AegisApp
+from aegis.views.state import ViewState
 
 
 def _agent():
@@ -91,7 +92,7 @@ async def test_resumes_tabs_from_workspace_on_boot(tmp_path, monkeypatch):
     the default-agent spawn."""
     monkeypatch.chdir(tmp_path)
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="beta", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="alpha", profile="default", order=0,
                      provider="claude-code", session_id="sid-A",
                      created_at="2026-05-27T00:00:00Z"),
@@ -106,8 +107,12 @@ async def test_resumes_tabs_from_workspace_on_boot(tmp_path, monkeypatch):
                             FakeSession(session_id="sid-B")])
     # Default-agent factory should NOT be consumed when resume succeeds.
     fact = _factory(FakeSession())
+    # Focus is view state, not brain state: which tab this view had active
+    # rides in its ViewState, not in workspace.json.
     app = AegisApp({"default": _agent()}, "default", fact, FakeMCP(),
-                   drivers={"claude-code": drv}, cwd=str(tmp_path))
+                   drivers={"claude-code": drv}, cwd=str(tmp_path),
+                   view_state=ViewState(view_id="tty", geometry=(80, 24),
+                                        active_handle="beta"))
     async with app.run_test() as pilot:
         await pilot.pause()
         handles = [p.handle for p in app._panes]
@@ -128,7 +133,7 @@ async def test_only_active_pane_visible_after_resume(tmp_path, monkeypatch):
     one pane (the active) must be visible after boot."""
     monkeypatch.chdir(tmp_path)
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="beta", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="alpha", profile="default", order=0,
                      provider="claude-code", session_id="sid-A",
                      created_at="2026-05-27T00:00:00Z"),
@@ -143,7 +148,9 @@ async def test_only_active_pane_visible_after_resume(tmp_path, monkeypatch):
                             FakeSession(session_id="sid-B")])
     from aegis.tui.pane import ConversationPane
     app = AegisApp({"default": _agent()}, "default", _factory(FakeSession()),
-                   FakeMCP(), drivers={"claude-code": drv}, cwd=str(tmp_path))
+                   FakeMCP(), drivers={"claude-code": drv}, cwd=str(tmp_path),
+                   view_state=ViewState(view_id="tty", geometry=(80, 24),
+                                        active_handle="beta"))
     async with app.run_test() as pilot:
         await pilot.pause()
         visible = [p for p in app._panes
@@ -157,7 +164,7 @@ async def test_no_resume_when_clean_flag_set(tmp_path, monkeypatch):
     is intact."""
     monkeypatch.chdir(tmp_path)
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="alpha", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="alpha", profile="default", order=0,
                      provider="claude-code", session_id="sid-A",
                      created_at="2026-05-27T00:00:00Z"),
@@ -182,7 +189,7 @@ async def test_fallthrough_to_default_spawn_when_nothing_resumable(
     blank tab instead of an empty app."""
     monkeypatch.chdir(tmp_path)
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="alpha", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="alpha", profile="default", order=0,
                      provider="claude-code", session_id=None,
                      created_at="2026-05-27T00:00:00Z"),
@@ -208,7 +215,7 @@ async def test_files_resume_on_boot(tmp_path, monkeypatch):
     b = tmp_path / "beta.md"
     a.write_text("alpha\n"); b.write_text("beta\n")
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle=None, tabs=[], files=[
+    save(sd, Workspace(tabs=[], files=[
         WorkspaceFile(path=str(a), order=0,
                       created_at="2026-05-27T00:00:00Z"),
         WorkspaceFile(path=str(b), order=1,
@@ -234,7 +241,7 @@ async def test_terminals_resume_even_with_default_spawn(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle=None, tabs=[], terminals=[
+    save(sd, Workspace(tabs=[], terminals=[
         WorkspaceTerminal(name="t1", shell="/bin/sh", cwd=str(tmp_path),
                           created_at="2026-05-27T00:00:00Z"),
     ]))

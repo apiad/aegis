@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace as _SN
+from typing import TYPE_CHECKING
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -29,6 +30,9 @@ from aegis.tui.themes import (
     THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
 )
 from aegis.tui.widgets import TabBar
+
+if TYPE_CHECKING:      # aegis.views imports this module; keep it type-only
+    from aegis.views.state import ViewState
 
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
@@ -217,14 +221,31 @@ def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | 
     return load(state_dir_path)
 
 
-def write_workspace_snapshot(state_dir_path: Path, tabs, active_handle,
+def write_workspace_snapshot(state_dir_path: Path, tabs,
                              *, terminals=None, files=None) -> None:
-    """Persist the current tab roster to workspace.json."""
+    """Persist the current tab roster to workspace.json.
+
+    Takes no focus argument: which tab is active is per-view state and is
+    persisted separately by :func:`write_view_snapshot`.
+    """
     from aegis.state.workspace import Workspace, save
     save(state_dir_path,
-         Workspace(active_handle=active_handle, tabs=list(tabs),
+         Workspace(tabs=list(tabs),
                    terminals=list(terminals or []),
                    files=list(files or [])))
+
+
+def write_view_snapshot(state_dir_path: Path, view_state,
+                        active_handle) -> None:
+    """Record which tab this view has focused, and persist it.
+
+    Focus used to ride in workspace.json and was therefore durable across a
+    kill, not merely across a clean exit. Writing it here on every tab
+    change keeps that property after the move.
+    """
+    from aegis.views.state import save_view
+    view_state.active_handle = active_handle
+    save_view(state_dir_path, view_state)
 
 
 def _provider_slug(pane: ConversationPane) -> str:
@@ -319,7 +340,8 @@ class AegisApp(App):
                  host_registry: "object | None" = None,
                  manager: "object | None" = None,
                  bridge: "object | None" = None,
-                 driver_class: "type | None" = None) -> None:
+                 driver_class: "type | None" = None,
+                 view_state: "ViewState | None" = None) -> None:
         # A view supplies its own driver so its frames go to that view's
         # sink instead of this process's stdout. None keeps Textual's
         # auto-detection, which is every existing caller.
@@ -328,6 +350,11 @@ class AegisApp(App):
         self._default_agent = default_agent
         self._make_session = make_session
         self._mcp = mcp
+        # Which tab this view has focused, and its scroll and drafts. None
+        # for a caller that does not track view state; focus then falls back
+        # to the first restored tab, exactly as it did for a workspace with
+        # no active_handle.
+        self._view_state = view_state
         # Execution hosts — the third orthogonal spawn axis. Empty means
         # every pane runs local, which is the pre-hosts behaviour.
         self._hosts: dict = hosts or {}
@@ -702,11 +729,13 @@ class AegisApp(App):
             return False
 
         # Activate the previously-active tab if it came back; otherwise
-        # the first restored tab.
+        # the first restored tab. Focus is this view's, not the brain's --
+        # two views focus different tabs -- so it is read off the ViewState.
+        focused = self._view_state.active_handle if self._view_state else None
         active = next(
             (p for p in self._panes
              if isinstance(p, ConversationPane)
-             and p.handle == ws.active_handle),
+             and p.handle == focused),
             self._panes[0])
         cs.current = active.id
         active.focus_input()
@@ -1029,8 +1058,10 @@ class AegisApp(App):
             if isinstance(p, FileTab)
         ]
         write_workspace_snapshot(self._state_dir, tabs=tabs,
-                                 active_handle=active_handle,
                                  terminals=terms, files=files)
+        if self._view_state is not None:
+            write_view_snapshot(self._state_dir, self._view_state,
+                                active_handle)
 
     def _quota_tick(self, active) -> None:
         """Push the quota segment and refresh whichever provider just moved.
@@ -1195,7 +1226,7 @@ class AegisApp(App):
             handle=row.handle, profile=row.profile, order=0,
             provider=row.provider, session_id=row.session_id,
             created_at=row.created_at, log_id=row.log_id)
-        ws = Workspace(active_handle=row.handle, tabs=[tab])
+        ws = Workspace(tabs=[tab])
         plan = plan_resume(ws, self._agents, self._drivers)
         if not plan.resumable:
             reason = plan.skipped[0].reason.value if plan.skipped else "unknown"

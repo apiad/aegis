@@ -19,7 +19,6 @@ def test_load_missing_returns_none(tmp_path):
 def test_save_then_load_roundtrip(tmp_path):
     sd = state_dir(tmp_path)
     ws = Workspace(
-        active_handle="lucid-knuth",
         tabs=[
             WorkspaceTab(handle="lucid-knuth", profile="default",
                          order=0, provider="claude-code",
@@ -39,7 +38,7 @@ def test_save_then_load_roundtrip(tmp_path):
 def test_save_creates_parent_dirs(tmp_path):
     sd = state_dir(tmp_path)
     assert not sd.exists()
-    ws = Workspace(active_handle=None, tabs=[])
+    ws = Workspace(tabs=[])
     save(sd, ws)
     assert (sd / "workspace.json").exists()
 
@@ -57,7 +56,7 @@ def test_save_is_atomic_no_partial_file_on_crash(tmp_path, monkeypatch):
     def boom(src, dst):
         raise OSError("disk full")
     monkeypatch.setattr(os, "replace", boom)
-    ws = Workspace(active_handle="x", tabs=[])
+    ws = Workspace(tabs=[])
     with pytest.raises(OSError):
         save(sd, ws)
     monkeypatch.setattr(os, "replace", orig)

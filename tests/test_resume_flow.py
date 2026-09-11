@@ -30,7 +30,7 @@ class StubNoResumeDriver:
 
 def test_bootstrap_resume_opens_resumable_and_skips_others(tmp_path):
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="ok", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="ok", profile="default", order=0,
                      provider="claude-code", session_id="sid-1",
                      created_at="2026-05-21T00:00:00Z"),
@@ -61,7 +61,7 @@ def test_bootstrap_resume_opens_resumable_and_skips_others(tmp_path):
 
 def test_bootstrap_resume_zero_resumable_returns_signal(tmp_path):
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="gem", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="gem", profile="default", order=0,
                      provider="gemini", session_id="sid-2",
                      created_at="2026-05-21T00:00:00Z"),

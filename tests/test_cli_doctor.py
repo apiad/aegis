@@ -55,7 +55,7 @@ def test_doctor_repair_skips_a_log_with_a_live_session(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     sd = _project(tmp_path)
     _damaged_log(sd, "open-tab")
-    save(sd, Workspace(active_handle="open-tab", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="open-tab", profile="default", order=0,
                      provider="claude-code", session_id="s",
                      created_at="2026-07-29T00:00:00Z")]))
@@ -106,7 +106,7 @@ def test_doctor_split_skips_a_live_session(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     sd = _project(tmp_path)
     _two_sessions(sd, "open-tab")
-    save(sd, Workspace(active_handle="open-tab", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="open-tab", profile="default", order=0,
                      provider="claude-code", session_id="s",
                      created_at="2026-07-29T00:00:00Z")]))

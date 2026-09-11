@@ -19,17 +19,17 @@ def _tab(handle, profile, order, provider, sid="sid-" + "x"):
 def test_snapshot_reflects_single_tab(tmp_path):
     sd = state_dir(tmp_path)
     tabs = [_tab("lucid-knuth", "default", 0, "claude-code")]
-    write_workspace_snapshot(sd, tabs=tabs, active_handle="lucid-knuth")
+    write_workspace_snapshot(sd, tabs=tabs)
     ws = load(sd)
-    assert ws == Workspace(active_handle="lucid-knuth", tabs=tabs)
+    assert ws == Workspace(tabs=tabs)
 
 
 def test_snapshot_after_close_drops_tab(tmp_path):
     sd = state_dir(tmp_path)
     tabs = [_tab("a", "p", 0, "claude-code"),
             _tab("b", "p", 1, "claude-code")]
-    write_workspace_snapshot(sd, tabs=tabs, active_handle="b")
-    write_workspace_snapshot(sd, tabs=[tabs[1]], active_handle="b")
+    write_workspace_snapshot(sd, tabs=tabs)
+    write_workspace_snapshot(sd, tabs=[tabs[1]])
     assert load(sd).tabs == [tabs[1]]
 
 
@@ -37,10 +37,10 @@ def test_snapshot_after_reorder(tmp_path):
     sd = state_dir(tmp_path)
     tabs = [_tab("a", "p", 0, "claude-code"),
             _tab("b", "p", 1, "claude-code")]
-    write_workspace_snapshot(sd, tabs=tabs, active_handle="a")
+    write_workspace_snapshot(sd, tabs=tabs)
     reordered = [_tab("b", "p", 0, "claude-code"),
                  _tab("a", "p", 1, "claude-code")]
-    write_workspace_snapshot(sd, tabs=reordered, active_handle="a")
+    write_workspace_snapshot(sd, tabs=reordered)
     assert load(sd).tabs == reordered
 
 

@@ -12,7 +12,6 @@ from aegis.terminal.manager import CommandRecord, TerminalManager
 
 def test_workspace_roundtrips_terminals(tmp_path: Path):
     ws = Workspace(
-        active_handle="alice",
         tabs=[WorkspaceTab(handle="alice", profile="default", order=0,
                            provider="claude-code", session_id=None,
                            created_at="2026-05-22T00:00:00Z")],

@@ -58,7 +58,9 @@ class WorkspaceFile:
 
 @dataclass(frozen=True)
 class Workspace:
-    active_handle: str | None
+    # Brain state only: what EXISTS and in what order. Which tab is focused
+    # is per-view -- two views look at different tabs -- and lives in
+    # aegis.views.state.ViewState.
     tabs: list[WorkspaceTab] = field(default_factory=list)
     terminals: list[WorkspaceTerminal] = field(default_factory=list)
     files: list[WorkspaceFile] = field(default_factory=list)
@@ -77,7 +79,6 @@ def save(state_dir_path: Path, ws: Workspace) -> None:
     payload = {
         "version": WORKSPACE_VERSION,
         "saved_at": _now_iso(),
-        "active_handle": ws.active_handle,
         "tabs": [asdict(t) for t in ws.tabs],
         "terminals": [asdict(t) for t in ws.terminals],
         "files": [asdict(f) for f in ws.files],
@@ -147,5 +148,6 @@ def load(state_dir_path: Path) -> Workspace | None:
         ]
     except (KeyError, TypeError) as e:
         raise CorruptWorkspace(f"malformed file record: {e}") from e
-    return Workspace(active_handle=raw.get("active_handle"),
-                     tabs=tabs, terminals=terminals, files=files)
+    # An older file still carries "active_handle"; it is simply ignored, so
+    # an existing state dir keeps loading.
+    return Workspace(tabs=tabs, terminals=terminals, files=files)

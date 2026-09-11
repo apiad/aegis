@@ -27,16 +27,19 @@ def test_clean_flag_shows_in_help():
 
 def test_pick_workspace_returns_none_when_clean(tmp_path):
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="x", tabs=[]))
+    save(sd, Workspace(tabs=[]))
     assert pick_workspace_to_resume(sd, clean=True) is None
 
 
 def test_pick_workspace_returns_workspace_when_not_clean(tmp_path):
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="x", tabs=[]))
+    tab = WorkspaceTab(handle="x", profile="default", order=0,
+                       provider="claude-code", session_id="sid-1",
+                       created_at="2026-05-21T00:00:00Z")
+    save(sd, Workspace(tabs=[tab]))
     out = pick_workspace_to_resume(sd, clean=False)
     assert out is not None
-    assert out.active_handle == "x"
+    assert out.tabs == [tab]
 
 
 def test_pick_workspace_returns_none_when_missing(tmp_path):

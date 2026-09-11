@@ -21,7 +21,7 @@ class FlakyDriver:
 
 def test_one_tab_fails_others_open(tmp_path):
     sd = state_dir(tmp_path)
-    save(sd, Workspace(active_handle="a", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="a", profile="default", order=0,
                      provider="claude-code", session_id="sid-a",
                      created_at="2026-05-21T00:00:00Z"),
@@ -58,7 +58,7 @@ class OkDriver:
 
 
 def _two_tab_workspace(sd):
-    save(sd, Workspace(active_handle="a", tabs=[
+    save(sd, Workspace(tabs=[
         WorkspaceTab(handle="a", profile="default", order=0,
                      provider="claude-code", session_id="sid-a",
                      created_at="2026-05-21T00:00:00Z"),

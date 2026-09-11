@@ -101,7 +101,7 @@ def test_survey_flags_logs_belonging_to_live_tabs(tmp_path):
     _damage(tmp_path, "live", "\x00" * 20)
     append_event(tmp_path, "dead", AssistantText(text="b", usage=None))
     _damage(tmp_path, "dead", "\x00" * 20)
-    save(tmp_path, Workspace(active_handle="live", tabs=[
+    save(tmp_path, Workspace(tabs=[
         WorkspaceTab(handle="live", profile="p", order=0,
                      provider="claude-code", session_id="s",
                      created_at="2026-07-29T00:00:00Z")]))

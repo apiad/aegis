@@ -10,7 +10,7 @@ def test_session_id_propagates_into_snapshot(tmp_path):
         handle="lucid-knuth", profile="default", order=0,
         provider="claude-code", session_id="abc-123",
         created_at="2026-05-21T00:00:00Z")]
-    write_workspace_snapshot(sd, tabs=tabs, active_handle="lucid-knuth")
+    write_workspace_snapshot(sd, tabs=tabs)
     ws = load(sd)
     assert ws.tabs[0].session_id == "abc-123"
 
