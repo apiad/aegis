@@ -46,7 +46,6 @@ def _manager(tmp_path):
         mcp=None,
         hosts={"vps": HostSpec(name="vps", ssh="vps.apiad.net",
                                cwd="/home/apiad/Workspace")},
-        local_root=str(tmp_path),
         roots=AegisRoots.for_project(tmp_path))
     return mgr, seen
 

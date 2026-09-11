@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from aegis.cli import _serve
+from aegis.config.roots import AegisRoots
 from aegis.mcp.bridge import AppBridge
 
 
@@ -27,11 +28,12 @@ class FakeMCP:
 
 
 @pytest.mark.asyncio
-async def test_serve_headless_binds_and_stops():
+async def test_serve_headless_binds_and_stops(tmp_path):
     mcp = FakeMCP()
     stop = asyncio.Event()
     asyncio.get_event_loop().call_soon(stop.set)
-    await _serve(agents={"default": 1}, default_agent="default",
+    await _serve(roots=AegisRoots.for_project(tmp_path),
+                 agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
                  stop=stop)
     assert mcp.started and mcp.stopped
@@ -39,13 +41,14 @@ async def test_serve_headless_binds_and_stops():
 
 
 @pytest.mark.asyncio
-async def test_serve_wires_inbox_and_queue_manager():
+async def test_serve_wires_inbox_and_queue_manager(tmp_path):
     from aegis.queue import InboxRouter, QueueManager
 
     mcp = FakeMCP()
     stop = asyncio.Event()
     asyncio.get_event_loop().call_soon(stop.set)
-    await _serve(agents={"default": 1}, default_agent="default",
+    await _serve(roots=AegisRoots.for_project(tmp_path),
+                 agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
                  stop=stop)
     bridge = mcp.bound
@@ -54,7 +57,7 @@ async def test_serve_wires_inbox_and_queue_manager():
 
 
 @pytest.mark.asyncio
-async def test_serve_passes_queues_into_queue_manager():
+async def test_serve_passes_queues_into_queue_manager(tmp_path):
     from aegis.queue import InboxRouter, Queue
 
     mcp = FakeMCP()
@@ -62,7 +65,8 @@ async def test_serve_passes_queues_into_queue_manager():
     asyncio.get_event_loop().call_soon(stop.set)
     queues = {"impl": Queue(name="impl", agent_profile="claude-impl",
                             max_parallel=2)}
-    await _serve(agents={"default": 1}, default_agent="default",
+    await _serve(roots=AegisRoots.for_project(tmp_path),
+                 agents={"default": 1}, default_agent="default",
                  make_session=lambda p, u, h: None, mcp=mcp,
                  stop=stop, queues=queues)
     bridge = mcp.bound

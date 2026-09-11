@@ -50,7 +50,6 @@ def _manager(tmp_path, session_id="sid-1"):
         make_session=make_session,
         mcp=None,
         hosts={"vps": HostSpec(name="vps", ssh="vps.apiad.net", cwd="/w")},
-        local_root=str(tmp_path),
         roots=AegisRoots.for_project(tmp_path))
     return mgr, built
 

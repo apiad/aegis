@@ -56,7 +56,6 @@ class SessionManager:
     def __init__(self, agents: dict, default_agent: str,
                  make_session: SessionFactory, mcp,
                  *, inbox=None, hosts: dict | None = None,
-                 local_root: str | None = None,
                  roots: "AegisRoots") -> None:
         self._agents = agents
         self._default_agent = default_agent
@@ -66,7 +65,6 @@ class SessionManager:
         # Execution hosts: the third orthogonal spawn axis. Empty means
         # every session runs local, which is the pre-hosts behaviour.
         self._hosts: dict[str, HostSpec] = dict(hosts or {})
-        self._local_root = local_root or "."
         # AppBridge surface attrs. inbox_router is bound at construction;
         # queue_manager is attached after construction so cli._serve can
         # pass `self` to the QueueManager (avoids the chicken/egg).
@@ -197,7 +195,7 @@ class SessionManager:
         place = place or resolve_place(
             host=host, cwd=cwd,
             agent_host=getattr(agent, "host", None),
-            hosts=self._hosts, local_root=self._local_root)
+            hosts=self._hosts, local_root=str(self.roots.harness_cwd))
         if handle is None:
             h = self.handles.mint({s.handle for s in self._sessions})
         else:
@@ -212,7 +210,7 @@ class SessionManager:
         extra: dict = {}
         if fork_from is not None:
             extra["fork_from"] = fork_from
-        if place != Place("local", self._local_root):
+        if place != Place("local", str(self.roots.harness_cwd)):
             extra["place"] = place
         # Mint BEFORE the factory runs: the factory builds the argv, and the
         # token is baked into it. A token minted afterwards is one the

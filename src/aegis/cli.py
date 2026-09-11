@@ -12,6 +12,7 @@ from rich.console import Console
 from aegis.config import (
     ConfigError, find_project_root, load_config, load_queues,
 )
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.drivers import DRIVERS, get_driver
 from aegis.mcp import AegisMCP
@@ -370,23 +371,19 @@ def _aegis_version() -> str:
         return "0"
 
 
-async def _serve(*, agents, default_agent, make_session, mcp,
+async def _serve(*, roots: AegisRoots,
+                 agents, default_agent, make_session, mcp,
                  stop: asyncio.Event, queues: dict | None = None,
                  schedules: dict | None = None,
                  remotes: dict | None = None,
                  remote_plane=None, web=None,
                  hosts: dict | None = None, host_registry=None,
-                 local_root: str | None = None,
                  inline_schedule_names: set[str] | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
-    from aegis.config.roots import AegisRoots
-    roots = AegisRoots.for_project(Path(local_root or "."))
-
     inbox = InboxRouter()
     mgr = SessionManager(agents, default_agent, make_session, mcp,
-                         inbox=inbox, hosts=hosts or {},
-                         local_root=local_root, roots=roots)
+                         inbox=inbox, hosts=hosts or {}, roots=roots)
     qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
@@ -396,19 +393,18 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     # Canvas plane — shared markdown blackboards reachable via MCP.
     from aegis.canvas.manager import CanvasManager
     from aegis.canvas.notify import make_canvas_notifier
-    from aegis.state.workspace import state_dir as _state_dir
     # Persist every serve-spawned session to JSONL (same state_dir the
     # WebFrontend reads from), so seq is a real disk line index in web mode.
     mgr.attach_persistence(roots.state_dir)
     # Persist the claims registry to the same state_dir the TUI uses, so
     # aegis_claim survives a serve restart and both frontends share one store.
     mgr.attach_locks_state(roots.state_dir)
-    cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
+    cm = CanvasManager(state_dir=roots.state_dir,
                        notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)
     from aegis.terminal.manager import TerminalManager
     from aegis.terminal.notify import make_terminal_notifier
-    tm = TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals",
+    tm = TerminalManager(state_dir=roots.state_dir / "terminals",
                          default_cwd=roots.harness_cwd)
     tm.set_notifier(make_terminal_notifier(inbox))
     mgr.attach_terminal_manager(tm)
@@ -449,12 +445,12 @@ async def _serve(*, agents, default_agent, make_session, mcp,
             raise RuntimeError(result.get("error", "workflow failed"))
 
         scheduler = Scheduler(
-            schedules=schedules, state_dir=_state_dir(Path.cwd()),
+            schedules=schedules, state_dir=roots.state_dir,
             run_workflow=_scheduler_run_workflow)
         if plane_bridge is not None:
             plane_bridge.scheduler = scheduler
         mgr.attach_scheduler_context(
-            scheduler=scheduler, state_root=Path.cwd(),
+            scheduler=scheduler, state_root=roots.state_root,
             workflow_registry=_SN(get=_get_wf),
             inline_schedule_names=set(inline_schedule_names or set()))
         await scheduler.start()
@@ -462,7 +458,7 @@ async def _serve(*, agents, default_agent, make_session, mcp,
         # Hot reload: re-read .aegis.yaml on filesystem change and
         # atomic-swap into the running scheduler. Parse errors keep
         # the old config intact.
-        root = Path.cwd()
+        root = roots.config_root
 
         def _on_reload() -> None:
             from aegis.config.yaml_loader import (
@@ -472,7 +468,7 @@ async def _serve(*, agents, default_agent, make_session, mcp,
             import_plugins(cfg)
             scheduler.replace_schedules(cfg.schedules)
 
-        events_log = _state_dir(root) / "aegis_events.jsonl"
+        events_log = roots.state_dir / "aegis_events.jsonl"
         reload_watcher = ReloadWatcher(
             root, on_reload=_on_reload, events_log=events_log)
         await reload_watcher.start()
@@ -480,7 +476,7 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     tasks = []
     if web is not None:
         from aegis.web.frontend import WebFrontend
-        web_fe = WebFrontend(mgr, web, state_dir=_state_dir(Path.cwd()),
+        web_fe = WebFrontend(mgr, web, state_dir=roots.state_dir,
                              server_version=_aegis_version())
         tasks.append(asyncio.create_task(web_fe.run()))
         _console.print(f"[green]web UI on {web_fe.url}[/green]")
@@ -717,6 +713,7 @@ def _run_serve(cwd: str) -> None:
         raise typer.Exit(1)
     root = find_project_root() or Path.cwd()
     effective = str(root) if cwd == "." else cwd
+    roots = AegisRoots.for_project(root, harness_cwd=Path(effective))
 
     try:
         queues = load_queues(root)
@@ -762,13 +759,12 @@ def _run_serve(cwd: str) -> None:
         aegis_log.install_asyncio_hook(loop)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
-        await _serve(agents=agents, default_agent=default_agent,
+        await _serve(roots=roots, agents=agents, default_agent=default_agent,
                      make_session=make_session, mcp=AegisMCP(),
                      stop=stop, queues=queues,
                      schedules=schedules,
                      remotes=remotes, remote_plane=remote_plane, web=web,
                      hosts=hosts, host_registry=host_registry,
-                     local_root=effective,
                      inline_schedule_names=inline_schedule_names)
 
     asyncio.run(main_async())
@@ -858,10 +854,8 @@ def workflow_run_cmd(
     async def main_async():
         from aegis.queue import InboxRouter, QueueManager
         inbox = InboxRouter(state_dir=root / ".aegis" / "state")
-        from aegis.config.roots import AegisRoots
         mgr = SessionManager(agents, default_agent, make_session,
                              AegisMCP(), inbox=inbox, hosts=_hosts,
-                             local_root=str(root),
                              roots=AegisRoots.for_project(root))
         qm = QueueManager(queues, mgr, inbox,
                           state_dir=root / ".aegis" / "state")
