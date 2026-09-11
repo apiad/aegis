@@ -1487,7 +1487,7 @@ disjoint state and no config cross-talk."
 - Consumes: `aegis.embed()`.
 - Produces: no code.
 
-- [ ] **Step 1: Write the know-how doc**
+- [x] **Step 1: Write the know-how doc**
 
 Create `know-how/embedding-aegis.md` covering: the three roots and which
 anchors what; that `embed()` owns neither the loop nor signals; the
@@ -1495,7 +1495,7 @@ multi-instance contract; and the one trap — resolving anything from
 `Path.cwd()` inside an embedded instance is a bug, because the process cwd
 belongs to the host.
 
-- [ ] **Step 2: Add its index entry to `AGENTS.md`**
+- [x] **Step 2: Add its index entry to `AGENTS.md`**
 
 ```markdown
 - `know-how/embedding-aegis.md` — *reach for it when driving aegis as a
@@ -1503,13 +1503,13 @@ belongs to the host.
   — the three roots replaced `Path.cwd()` and must stay threaded.*
 ```
 
-- [ ] **Step 3: Update the layout section of `AGENTS.md`**
+- [x] **Step 3: Update the layout section of `AGENTS.md`**
 
 Add `src/aegis/config/roots.py` and `src/aegis/embed.py`, and correct the
 `cli.py` description to say `_serve` is the single boot path with an optional
 UI attachment.
 
-- [ ] **Step 4: Verify every path named in the docs exists**
+- [x] **Step 4: Verify every path named in the docs exists**
 
 Run: `uv run python -c "
 import re, pathlib
@@ -1520,7 +1520,7 @@ for doc in ['AGENTS.md', 'know-how/embedding-aegis.md']:
 " | grep MISS || echo "all documented paths exist"`
 Expected: `all documented paths exist`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add AGENTS.md docs/api.md README.md know-how/embedding-aegis.md
