@@ -27,6 +27,9 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
 
 - `know-how/deploying-web.md` — *reach for it when deploying / redeploying /
   debugging the public aegis web UI (`dev.apiad.net`) on the VPS.*
+- `know-how/embedding-aegis.md` — *reach for it when driving aegis as a
+  library (`aegis.embed()`), or when touching anything that resolves a path
+  — the three roots replaced `Path.cwd()` and must stay threaded.*
 - `know-how/native-lovelaice-agent.md` — *reach for it when working on the
   native (harness-free) `lovelaice` agent / driver: config, MCP injection,
   streaming, resume, cancel, and the real-model-probe discipline.*
@@ -60,7 +63,30 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
 
 - `src/aegis/cli.py` - typer entrypoint (`aegis`, `aegis serve`,
   `aegis web`, `aegis workflow`, `aegis budget`, `aegis schedule`,
-  `aegis models`, `aegis usage`, `aegis plugin`)
+  `aegis models`, `aegis usage`, `aegis plugin`) **plus `_serve`, the single
+  boot path**: it takes an `AegisRoots` and an optional `ui:` attachment
+  (`UIAttachment` — one `async def run(self, manager)`), wires every
+  subsystem, and `mcp.bind(mgr)`s the one plane. With no attachment it
+  starts that plane itself; with one it defers `start()`, because
+  `build_server` captures the bridge *at* `start()` and a front end rebinds
+  the plane to itself first. `load_boot_config(roots)` is the config load
+  every entry point shares — it raises `ConfigError` rather than exiting,
+  so an embedding host sees the exception.
+- `src/aegis/config/roots.py` - `AegisRoots`, the three roots aegis
+  resolves paths against: `config_root` (`.aegis.yaml`, overlays, plugin
+  dirs), `state_root` (parent of `.aegis/state`; `roots.state_dir` derives
+  it) and `harness_cwd` (where an agent subprocess actually runs).
+  `for_project()` sets all three from one directory — the CLI case, and
+  why they were conflated as `Path.cwd()` for so long. They do not coincide
+  when embedded. See `know-how/embedding-aegis.md`.
+- `src/aegis/embed.py` - `aegis.embed(root)`, the public library seam: an
+  async context manager yielding an `EmbeddedAegis` (manager / queues /
+  roots / mcp). It runs in the **host's** loop — never `asyncio.run` — and
+  installs no signal handlers; `_keep_host_signals` only saves and restores
+  SIGINT/SIGTERM around `mcp.start()`, because uvicorn's `Server.serve()`
+  captures them unconditionally. Several instances coexist in one process
+  with disjoint state and no config cross-talk
+  (`tests/test_multi_instance.py`).
 - `src/aegis/cli_config.py` - the `aegis config ...` subapp; all writing
   verbs route through `aegis.config.edit` helpers.
 - `src/aegis/tui/config_panel.py` - the TUI ConfigPanel tab + AddAgentModal;
@@ -472,7 +498,7 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   `notify.py` (`Notifier` + `maybe_notify` hook); `reload.py`
   (`ReloadWatcher` — watchdog Observer + async debounced reload,
   exceptions swallowed and logged). Built-in workflows in
-  `src/aegis/workflows/{prompt,enqueue}.py` register on import.
+  `src/aegis/workflows/builtins/{prompt,enqueue}.py` register on import.
   `src/aegis/cli_schedule.py` mounts the `aegis schedule` subapp;
   `src/aegis/config/edit.py` does comment-preserving YAML edits via
   ruamel + atomic tempfile rename.

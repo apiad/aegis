@@ -53,6 +53,38 @@ not exposed.
       show_root_heading: true
       show_source: false
 
+## Embedding
+
+`aegis.embed()` boots aegis in-process at an explicit root. It runs in the
+host's event loop — it never calls `asyncio.run` — and installs no signal
+handlers. Several instances coexist in one process, each rooted at a
+different project.
+
+```python
+import aegis
+
+async with aegis.embed("/path/to/project") as ae:
+    ae.manager        # the SessionManager (the AppBridge)
+    ae.queues         # its QueueManager
+    ae.roots          # the AegisRoots it booted against
+    ae.mcp.server     # its FastMCP instance
+```
+
+::: aegis.embed.embed
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: aegis.embed.EmbeddedAegis
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: aegis.config.roots.AegisRoots
+    options:
+      show_root_heading: true
+      show_source: false
+
 ## Queues
 
 ::: aegis.queue.Queue

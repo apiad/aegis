@@ -683,6 +683,31 @@ web client, and (eventually) a remote TUI all speak the same WebSocket
 protocol over one backend, so sessions are shared across them. A systemd
 unit template lives at `scripts/aegis-serve.service`.
 
+## Embed aegis in your own program
+
+`aegis.embed()` boots the whole brain — SessionManager, queues, inboxes,
+canvas, terminals, schedules and the MCP plane — in your process, at a root
+you name:
+
+```python
+import aegis
+
+async with aegis.embed("/path/to/project") as ae:
+    handle = await ae.manager.spawn("impl", opening_prompt="ship the thing")
+    ...          # ae.queues, ae.roots, ae.mcp.server
+```
+
+It runs in **your** event loop (it never calls `asyncio.run`) and installs
+no signal handlers, so the host keeps its own shutdown. Several instances
+coexist in one process, each rooted at a different project, with disjoint
+state and no config cross-talk — which works because aegis resolves paths
+against three explicit roots (`config_root`, `state_root`, `harness_cwd`)
+rather than against the process working directory. That directory belongs
+to the host.
+
+See [`know-how/embedding-aegis.md`](know-how/embedding-aegis.md) and the
+[API reference](https://apiad.github.io/aegis/api/#embedding).
+
 ## When something goes wrong: `aegis logs`
 
 Session transcripts record what each *agent* said. `.aegis/state/aegis.log`
