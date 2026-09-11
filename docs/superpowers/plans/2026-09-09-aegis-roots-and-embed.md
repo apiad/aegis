@@ -63,7 +63,7 @@ The autouse fixture `isolated_project_dir` (`tests/conftest.py:126`) exists sole
 - Consumes: nothing.
 - Produces: `AegisRoots(config_root: Path, state_root: Path, harness_cwd: Path)`, frozen dataclass; classmethod `AegisRoots.for_project(root: Path, harness_cwd: Path | None = None) -> AegisRoots`; property `state_dir -> Path` returning `state_root / ".aegis" / "state"`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_roots.py
@@ -106,12 +106,12 @@ def test_roots_are_frozen(tmp_path):
         roots.config_root = tmp_path / "other"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_roots.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.config.roots'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/aegis/config/roots.py
@@ -160,12 +160,12 @@ class AegisRoots:
         return self.state_root / ".aegis" / "state"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_roots.py -v`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Assert it matches the existing state-dir convention**
+- [x] **Step 5: Assert it matches the existing state-dir convention**
 
 The new `state_dir` property must agree with `state.workspace.state_dir`
 (`src/aegis/state/workspace.py:67`), or state silently splits in two.
@@ -181,7 +181,7 @@ def test_state_dir_agrees_with_workspace_helper(tmp_path):
 Run: `uv run pytest tests/test_roots.py -v`
 Expected: PASS (6 tests)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/config/roots.py tests/test_roots.py
@@ -201,7 +201,7 @@ git commit -m "feat(config): AegisRoots — name the three roots explicitly"
 - Consumes: `AegisRoots` from Task 1.
 - Produces: `SessionManager(..., roots: AegisRoots)` — keyword-only, **required**. `manager.roots` is a public attribute. `manager.state_root` remains a `Path` (never `None`) derived from `roots.state_root`. `attach_scheduler_context(scheduler=…, state_root=…, …)` keeps its signature for now but **no longer assigns** `self.state_root`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_manager_roots.py
@@ -240,12 +240,12 @@ def test_two_managers_have_disjoint_state_roots(tmp_path):
     assert _mgr(a).state_root != _mgr(b).state_root
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_manager_roots.py -v`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'roots'`
 
-- [ ] **Step 3: Add `roots` to the constructor**
+- [x] **Step 3: Add `roots` to the constructor**
 
 In `src/aegis/core/manager.py`, change the signature at line 56:
 
@@ -273,7 +273,7 @@ Replace line 81 (`self.state_root: Path | None = None`) with:
         self.state_root: Path = roots.state_root
 ```
 
-- [ ] **Step 4: Delete the three cwd fallbacks**
+- [x] **Step 4: Delete the three cwd fallbacks**
 
 Line 97 and line 117 — replace `root_fn=lambda: self.state_root or Path.cwd(),` with:
 
@@ -294,7 +294,7 @@ This is the one site in this task where the three roots actually diverge;
 copying the `state_root` pattern here would carry the conflation forward
 into the new API.
 
-- [ ] **Step 5: Stop `attach_scheduler_context` reassigning `state_root`**
+- [x] **Step 5: Stop `attach_scheduler_context` reassigning `state_root`**
 
 At `manager.py:136`, delete the line `self.state_root = state_root` and
 replace it with an assertion that the caller agrees with the constructor —
@@ -307,7 +307,7 @@ a silent disagreement here would reintroduce the split:
                 f"manager roots {self.state_root}")
 ```
 
-- [ ] **Step 6: Update the two `cli.py` call sites**
+- [x] **Step 6: Update the two `cli.py` call sites**
 
 At `cli.py:401` and `:404`, replace the `Path.cwd()` arguments:
 
@@ -327,17 +327,17 @@ construct it locally at the top of `_serve` so the file stays importable:
 
 Task 6 replaces this local with the threaded parameter.
 
-- [ ] **Step 7: Run the new tests**
+- [x] **Step 7: Run the new tests**
 
 Run: `uv run pytest tests/test_manager_roots.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 8: Run the blast radius**
+- [x] **Step 8: Run the blast radius**
 
 Run: `uv run pytest tests/ -k "manager or session or serve or persist or lock" -q`
 Expected: PASS. Any failure here is a real call site needing `roots=`; fix it rather than restoring the default.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/core/manager.py src/aegis/cli.py tests/test_manager_roots.py
@@ -360,7 +360,7 @@ schedule-less serve fell back to Path.cwd(). It is now a constructor input."
 - Consumes: `AegisRoots` from Task 1.
 - Produces: `AgentSession(..., project_root: Path)` — required, no `or Path.cwd()` fallback. `session.project_root` and `session.place` both derive from it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_session_roots.py
@@ -377,12 +377,12 @@ def test_project_root_ignores_process_cwd(tmp_path, monkeypatch):
         "fallback this task removes")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_session_roots.py -v`
 Expected: FAIL — `project_root` currently has a default of `None`
 
-- [ ] **Step 3: Make it required**
+- [x] **Step 3: Make it required**
 
 In `src/aegis/core/session.py`, change the `project_root` parameter to have
 no default, and replace lines 85 and 91:
@@ -393,19 +393,19 @@ no default, and replace lines 85 and 91:
         self.project_root = Path(project_root)
 ```
 
-- [ ] **Step 4: Run and fix call sites**
+- [x] **Step 4: Run and fix call sites**
 
 Run: `uv run pytest tests/ -k "session" -q`
 Expected: failures at every construction site missing `project_root`. Pass
 `roots.harness_cwd` from `_session_factory` (`cli.py:47`); pass `tmp_path` in
 tests.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `uv run pytest tests/test_session_roots.py tests/ -k "session" -q`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/core/session.py src/aegis/cli.py tests/test_session_roots.py
@@ -425,6 +425,31 @@ git commit -m "fix(core): require an explicit project_root on AgentSession"
 - Produces: MCP tool closures resolve `roots.config_root` from the bound manager. No `find_project_root()` call remains in `mcp/server.py`.
 
 **Why this task is the sharpest one:** these 26 sites resolve the root **at call time from the process cwd**. Embedded, an agent working in worktree B that calls `aegis_config_add_agent` writes to whichever `.aegis.yaml` the process walks up to — silently, and into another instance's config.
+
+> **Coordinator deviation, 2026-09-11 — `bridge.roots` does not exist on two of the three bridges.**
+> Step 4 binds `roots = bridge.roots`, but `build_server(bridge)` is called with
+> three different implementations and only one has the attribute after Task 2:
+>
+> | Bridge | Call site | `.roots` after Task 2 |
+> |---|---|---|
+> | `SessionManager` | `cli.py:416` (`serve`) | yes |
+> | `AegisApp` | `tui/app.py:472` — `self._mcp.bind(self)` | **no** |
+> | `_NullBridge` | `runtime.py:59` fallback | **no** |
+>
+> `AppBridge` (`mcp/bridge.py:58`) does not declare `roots` either. As written,
+> Task 4 makes every TUI session raise `AttributeError` when `AegisMCP.start()`
+> builds the server, and breaks `_NullBridge`'s stated contract that "tools
+> return empty/unavailable rather than crashing".
+>
+> **The task's own test cannot catch this** — it sets `.roots` by hand on a
+> `_StubBridge`, so it goes green while both real bridges break. That is the
+> "green suite over a broken path" failure this plan's parent spec exists to
+> prevent.
+>
+> Folded into Task 4 rather than deferred: declare `roots` on the `AppBridge`
+> Protocol, and give `AegisApp` and `_NullBridge` one derived from the cwd each
+> already holds. Task 7b can replace `AegisApp`'s derivation with the threaded
+> roots once the TUI boots through `_serve`.
 
 - [ ] **Step 1: Write the failing test**
 
