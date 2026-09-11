@@ -5,6 +5,7 @@ import signal
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
+from typing import Protocol
 
 import typer
 from rich.console import Console
@@ -156,53 +157,60 @@ def run(
                 f"--remote: unsupported scheme {parsed.scheme!r}")
         _run_tui_with_manager(mgr, cwd=cwd, clean=clean, agent=agent)
         return
-    # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
-    # TUI ConfigPanel instead of refusing. Once the user saves at least
-    # one agent + a default_agent, normal session spawn becomes
-    # available (currently via app relaunch — slice 16 will make this
-    # in-place via the watchdog reload path).
     root = find_project_root() or Path.cwd()
-    voice_cfg = None
-    hosts: dict = {}
     if not (root / ".aegis.yaml").is_file():
-        agents: dict = {}
-        default_agent = ""
-        queues: dict = {}
-    else:
-        try:
-            agents, default_agent = load_config()
-        except ConfigError as e:
-            _console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
-        name = agent or default_agent
-        if name not in agents:
-            _console.print(
-                f"[red]Unknown agent {name!r}. "
-                f"Known: {sorted(agents)}[/red]")
-            raise typer.Exit(1)
-        default_agent = name
-        try:
-            queues = load_queues(root)
-        except ConfigError as e:
-            _console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
-        from aegis.config.yaml_loader import load_config as _load_yaml
-        try:
-            _yc = _load_yaml(root)
-            voice_cfg = _yc.voice
-            hosts = _yc.hosts
-        except ConfigError:
-            voice_cfg = None
-
-    effective_cwd = str(root) if cwd == "." else cwd
+        # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
+        # TUI ConfigPanel instead of refusing. There is no brain to boot
+        # yet: load_config would raise and `aegis` in a fresh directory
+        # would exit 1 instead of offering to create one.
+        _run_bootstrap_tui(root, cwd=cwd, clean=clean)
+        return
 
     try:
-        pick_workspace_to_resume(state_dir(Path.cwd()), clean=clean)
-    except CorruptWorkspace as e:
-        typer.echo(f"aegis: {e}", err=True)
-        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
-                   err=True)
-        raise typer.Exit(code=2)
+        agents, default_agent = load_config(root)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    name = agent or default_agent
+    if name not in agents:
+        _console.print(
+            f"[red]Unknown agent {name!r}. "
+            f"Known: {sorted(agents)}[/red]")
+        raise typer.Exit(1)
+    default_agent = name
+
+    effective_cwd = str(root) if cwd == "." else cwd
+    roots = AegisRoots.for_project(root, harness_cwd=Path(effective_cwd))
+
+    try:
+        queues = load_queues(root)
+    except ConfigError as e:
+        _console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    voice_cfg = None
+    hosts: dict = {}
+    schedules: dict = {}
+    remotes: dict = {}
+    remote_plane = None
+    inline_schedule_names: set[str] = set()
+    try:
+        from aegis.config.yaml_loader import (
+            import_plugins, load_config as _load_yaml,
+        )
+        _yc = _load_yaml(root)
+        # The scheduler dispatches @workflow functions by name, so the
+        # plugin dirs have to be imported before it starts — otherwise
+        # `aegis` fires a schedule into an empty registry.
+        import_plugins(_yc)
+        voice_cfg = _yc.voice
+        hosts = _yc.hosts
+        schedules = _yc.schedules
+        remotes = _yc.remotes
+        remote_plane = _yc.remote_plane
+        inline_schedule_names = _yc.inline_schedule_names
+    except ConfigError:
+        voice_cfg = None
 
     # Best-effort background refresh of ~/.cache/aegis/models.yaml so
     # prices + context windows stay current without a release. Never
@@ -214,7 +222,7 @@ def run(
         pass
 
     from aegis.hosts.registry import HostRegistry
-    host_registry = HostRegistry(hosts, state_dir=root / ".aegis" / "state",
+    host_registry = HostRegistry(hosts, state_dir=roots.state_dir,
                                  local_root=effective_cwd)
     make_session = _session_factory(effective_cwd, host_registry)
 
@@ -222,10 +230,109 @@ def run(
     # bootstrap_resume can call drv.resume(...) without re-instantiating
     # per tab.
     drivers = {slug: cls() for slug, cls in DRIVERS.items()}
-    AegisApp(agents, default_agent, make_session, AegisMCP(),
-             queues=queues, clean=clean, drivers=drivers,
-             cwd=effective_cwd, voice=voice_cfg,
-             hosts=hosts, host_registry=host_registry).run()
+    ui = LocalTuiAttachment(
+        clean=clean, agent=default_agent, queues=queues, voice=voice_cfg,
+        hosts=hosts, host_registry=host_registry, drivers=drivers,
+        cwd=effective_cwd, agents=agents, roots=roots)
+
+    async def _main():
+        stop = asyncio.Event()
+        await _serve(roots=roots, agents=agents, default_agent=default_agent,
+                     make_session=make_session, mcp=AegisMCP(),
+                     stop=stop, queues=queues, schedules=schedules,
+                     remotes=remotes, remote_plane=remote_plane,
+                     # web= stays off: `aegis serve`/`aegis web` publish the
+                     # web frontend, and a console URL printed over a
+                     # full-screen TUI is not a surface anyone asked for.
+                     web=None,
+                     hosts=hosts, host_registry=host_registry,
+                     inline_schedule_names=inline_schedule_names, ui=ui)
+
+    asyncio.run(_main())
+
+
+def _run_bootstrap_tui(root: Path, *, cwd: str, clean: bool) -> None:
+    """No config anywhere: open the TUI on an empty agent set so the user
+    lands in the ConfigPanel. There is nothing to boot a brain around yet —
+    no agents, no queues, no schedules — so this keeps the pre-7b shape."""
+    effective_cwd = str(root) if cwd == "." else cwd
+
+    try:
+        pick_workspace_to_resume(state_dir(Path.cwd()), clean=clean)
+    except CorruptWorkspace as e:
+        typer.echo(f"aegis: {e}", err=True)
+        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
+                   err=True)
+        raise typer.Exit(code=2)
+
+    try:
+        from aegis.models.refresh import maybe_refresh
+        maybe_refresh()
+    except Exception:  # noqa: BLE001
+        pass
+
+    from aegis.hosts.registry import HostRegistry
+    host_registry = HostRegistry({}, state_dir=root / ".aegis" / "state",
+                                 local_root=effective_cwd)
+    drivers = {slug: cls() for slug, cls in DRIVERS.items()}
+    AegisApp({}, "", _session_factory(effective_cwd, host_registry),
+             AegisMCP(), queues={}, clean=clean, drivers=drivers,
+             cwd=effective_cwd, voice=None,
+             hosts={}, host_registry=host_registry).run()
+
+
+class UIAttachment(Protocol):
+    """A front end bound to an already-booted brain. The brain wires every
+    subsystem before this runs; the attachment only renders."""
+
+    async def run(self, manager) -> None: ...
+
+
+class LocalTuiAttachment:
+    """The Textual TUI on this process's terminal.
+
+    Uses ``bridge=`` (Task 7a), NOT ``manager=`` — the latter is the
+    --remote path and would disable the local plane. Uses ``run_async()``,
+    because this runs inside _serve's loop where a blocking ``.run()``
+    deadlocks.
+
+    ``mcp`` and ``make_session`` are read off the manager rather than taken
+    as constructor arguments. That is the whole point of the unified boot:
+    _serve has already built one MCP plane and bound it, and one factory the
+    manager spawns through. Constructing a second AegisMCP here would put a
+    working server on a second port, addressing a bridge with no sessions on
+    it; passing None for either crashes the local plane outright
+    (app.py:488, :576, :661, :874, :1206, :1700 for the MCP; :874, :1812,
+    :2376 for the factory). Sourcing both from the manager makes a second
+    plane unrepresentable rather than merely discouraged.
+    """
+
+    def __init__(self, *, clean: bool, agent: str | None, queues: dict,
+                 voice, hosts: dict, host_registry, drivers: dict,
+                 cwd: str, agents: dict, roots) -> None:
+        self._kw = dict(clean=clean, queues=queues, voice=voice,
+                        hosts=hosts, host_registry=host_registry,
+                        drivers=drivers, cwd=cwd, agents=agents)
+        self._agent = agent
+        self._roots = roots
+
+    async def run(self, manager) -> None:
+        # Workspace resume is a VIEW concern and a cwd site; it belongs
+        # here, rooted, not in the shared boot path.
+        try:
+            pick_workspace_to_resume(self._roots.state_dir,
+                                     clean=self._kw["clean"])
+        except CorruptWorkspace as e:
+            typer.echo(f"aegis: {e}", err=True)
+            typer.echo(
+                "hint: re-run with `aegis --clean` to ignore prior state.",
+                err=True)
+            raise typer.Exit(code=2) from e
+
+        app = AegisApp(default_agent=self._agent or "",
+                       make_session=manager.make_session,
+                       mcp=manager.mcp, bridge=manager, **self._kw)
+        await app.run_async()
 
 
 async def _build_remote_manager(*, url: str, token: str | None,
@@ -378,7 +485,8 @@ async def _serve(*, roots: AegisRoots,
                  remotes: dict | None = None,
                  remote_plane=None, web=None,
                  hosts: dict | None = None, host_registry=None,
-                 inline_schedule_names: set[str] | None = None) -> None:
+                 inline_schedule_names: set[str] | None = None,
+                 ui: "UIAttachment | None" = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -411,7 +519,16 @@ async def _serve(*, roots: AegisRoots,
     mgr.attach_remotes(remotes or {})
     mgr.attach_remote_plane(remote_plane)
     mcp.bind(mgr)
-    await mcp.start()
+    if ui is None:
+        await mcp.start()
+    # else: the front end is the AppBridge the MCP plane has to address —
+    # its panes ARE the sessions an agent calling aegis_list_sessions or
+    # aegis_spawn means. build_server captures the bridge at start(), so
+    # starting here would freeze the plane onto a manager that owns no
+    # panes, and rebinding afterwards would be silently ignored. The
+    # attachment's app rebinds this same object to itself and starts it
+    # from on_mount, exactly as the TUI has always done. The port is picked
+    # in AegisMCP.__init__, so it is already known below.
     # The reverse tunnel forwards THIS port, so the registry can only learn
     # it once the MCP server has actually bound.
     if host_registry is not None:
@@ -481,7 +598,13 @@ async def _serve(*, roots: AegisRoots,
         tasks.append(asyncio.create_task(web_fe.run()))
         _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
-        await stop.wait()
+        if ui is not None:
+            # The front end owns the lifetime: when it exits, the brain
+            # comes down with it.
+            await ui.run(mgr)
+            stop.set()
+        else:
+            await stop.wait()
     finally:
         for t in tasks:
             t.cancel()

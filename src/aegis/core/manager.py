@@ -101,6 +101,24 @@ class SessionManager:
             root_fn=lambda: self.state_root,
             state_dir=None)  # in-memory v1; live-handle filter reaps dead holders
 
+    @property
+    def mcp(self):
+        """The one MCP plane this manager's sessions are spawned onto.
+
+        Public because a UI attaching to an already-booted manager must run
+        on *this* object: a second AegisMCP would come up on a second port,
+        addressing a bridge that holds no sessions, and every spawned agent
+        would call into the wrong plane.
+        """
+        return self._mcp
+
+    @property
+    def make_session(self):
+        """The session factory the manager spawns through. Same reason as
+        ``mcp``: a front end that built its own would spawn harnesses this
+        manager never learns about."""
+        return self._make_session
+
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
 

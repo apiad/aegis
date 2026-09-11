@@ -422,6 +422,22 @@ class AegisApp(App):
         # `manager=` is a different thing entirely: it is --remote.
         self.manager = bridge
 
+        # An injected manager owns the roots, so the app adopts them rather
+        # than re-deriving them from its cwd. They differ the moment aegis
+        # is embedded: one process, several instances, each with a state
+        # root that is not the worktree its harness runs in. Adopted here,
+        # ahead of every plane below that writes under _state_dir — the
+        # canvas, the terminals, the locks and the transcripts.
+        if bridge is not None:
+            self.roots = bridge.roots
+            self.state_root: Path = self.roots.state_root
+            self._state_dir = self.roots.state_dir
+        else:
+            # No bridge: unchanged. state_root/_state_dir stay on the
+            # process cwd (Task 6 threads roots into the rest of this path).
+            self.roots = AegisRoots.for_project(Path(self._cwd))
+            self.state_root = Path.cwd()
+
         # AppBridge surface. AegisApp is the bridge in the interactive
         # (TUI) path. QueueManager spawns workers through an adapter that
         # creates real ConversationPanes (so workers are visible tabs Alex
@@ -475,15 +491,10 @@ class AegisApp(App):
             root_fn=lambda: self.state_root or Path.cwd(),
             state_dir=self._state_dir)
         self.remotes: dict = {}  # populated later from loaded YAML
-        # Scheduler-context stubs to satisfy AppBridge. The TUI does not
-        # run a scheduler; the aegis_schedule_* MCP tools will gracefully
-        # return errors when scheduler is None.
+        # Scheduler-context stub to satisfy AppBridge. The app itself runs no
+        # scheduler; under `aegis` one runs on the injected manager, and the
+        # aegis_schedule_* MCP tools keep returning errors here as before.
         self.scheduler = None
-        self.state_root: Path = Path.cwd()
-        # The config MCP tools resolve .aegis.yaml from bridge.roots, so the
-        # TUI owes build_server one. Derived from the cwd this app already
-        # holds; Task 7b replaces it with the roots threaded through _serve.
-        self.roots = AegisRoots.for_project(Path(self._cwd))
         self.workflow_registry = _SN(get=lambda _: None)
         self._mcp.bind(self)
 

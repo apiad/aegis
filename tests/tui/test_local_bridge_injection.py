@@ -6,6 +6,8 @@ manager.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
@@ -118,6 +120,50 @@ async def test_bridge_keeps_the_hosts_axis_on(tmp_path):
         assert screen._title == "host"
         await pilot.press("escape")
         await pilot.pause()
+
+
+async def test_bridge_roots_win_over_the_cwd(tmp_path):
+    """An injected manager owns the roots; the app must adopt them.
+
+    Task 7a left the app deriving roots/state_root/_state_dir from
+    ``self._cwd`` (app.py:371, :482, :486). An embedded caller whose
+    ``state_root`` differs from its ``harness_cwd`` then writes its
+    transcripts, locks, canvases and terminals into the harness's worktree.
+    The roots below are deliberately split so a cwd-derived implementation
+    cannot pass: every assertion names ``state``, the app is handed
+    ``cwd=work``.
+    """
+    state = tmp_path / "state"
+    work = tmp_path / "work"
+    state.mkdir()
+    work.mkdir()
+    roots = AegisRoots(config_root=state, state_root=state,
+                       harness_cwd=work)
+    mgr = SessionManager(agents={}, default_agent="",
+                         make_session=lambda *a, **k: None, mcp=None,
+                         roots=roots)
+    app = AegisApp(agents={}, default_agent="", make_session=_factory,
+                   mcp=FakeMCP(), queues={}, clean=True, drivers={},
+                   cwd=str(work), voice=None, bridge=mgr)
+
+    assert app.roots is roots, (
+        "the config MCP tools resolve .aegis.yaml from bridge.roots")
+    assert app.state_root == state
+    assert app._state_dir == state / ".aegis" / "state"
+    # The planes that actually write: a wrong state dir here is silent.
+    assert app.canvas_manager._root == state / ".aegis" / "state" / "canvases"
+    assert app.terminal_manager.state_dir == (
+        state / ".aegis" / "state" / "terminals")
+
+
+async def test_without_a_bridge_the_roots_still_come_from_the_cwd(tmp_path):
+    """The no-bridge path is every `aegis` invocation before this task and
+    every test app; adopting roots must not move it."""
+    app = AegisApp(agents={}, default_agent="", make_session=_factory,
+                   mcp=FakeMCP(), queues={}, clean=True, drivers={},
+                   cwd=str(tmp_path), voice=None)
+    assert app.roots.config_root == tmp_path.resolve()
+    assert app._state_dir == Path.cwd() / ".aegis" / "state"
 
 
 def test_the_remote_only_methods_are_still_remote_only(tmp_path):
