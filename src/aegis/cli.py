@@ -79,6 +79,54 @@ def _session_factory(cwd: str, hosts=None):
     return make_session
 
 
+@dataclass(frozen=True)
+class BootConfig:
+    """Everything a boot path reads out of `.aegis.yaml`."""
+
+    agents: dict
+    default_agent: str
+    queues: dict
+    schedules: dict
+    remotes: dict
+    remote_plane: object | None
+    hosts: dict
+    voice: object | None
+    web: object | None
+    inline_schedule_names: set[str]
+
+
+def load_boot_config(roots: AegisRoots) -> BootConfig:
+    """Every entry point's config load.
+
+    Raises `ConfigError`; only the CLI wrappers turn that into an exit
+    code. A library caller embedding aegis in its own process must see the
+    exception rather than have the process exited out from under it, so
+    nothing in here reaches for `typer.Exit`, `sys.exit` or the console.
+    """
+    from aegis.commands.prompt_loader import load_prompt_commands
+    from aegis.config.yaml_loader import (
+        import_plugins, load_config as _load_yaml,
+    )
+    root = roots.config_root
+    agents, default_agent = load_config(root)
+    yaml_cfg = _load_yaml(root)
+    # The scheduler dispatches @workflow functions by name, so the plugin
+    # dirs have to be imported before it starts — otherwise a schedule
+    # fires into an empty registry.
+    import_plugins(yaml_cfg)
+    load_prompt_commands(root)
+    return BootConfig(
+        agents=agents, default_agent=default_agent,
+        queues=load_queues(root),
+        schedules=yaml_cfg.schedules, remotes=yaml_cfg.remotes,
+        remote_plane=yaml_cfg.remote_plane, hosts=yaml_cfg.hosts,
+        voice=yaml_cfg.voice,
+        # Only a token-bearing block counts, or serve starts a web frontend
+        # with no auth.
+        web=(yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None),
+        inline_schedule_names=yaml_cfg.inline_schedule_names)
+
+
 def _version_callback(value: bool) -> None:
     if value:
         try:
@@ -166,12 +214,17 @@ def run(
         _run_bootstrap_tui(root, cwd=cwd, clean=clean)
         return
 
+    effective_cwd = str(root) if cwd == "." else cwd
+    roots = AegisRoots.for_project(root, harness_cwd=Path(effective_cwd))
+
     try:
-        agents, default_agent = load_config(root)
+        boot = load_boot_config(roots)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
-    name = agent or default_agent
+
+    agents = boot.agents
+    name = agent or boot.default_agent
     if name not in agents:
         _console.print(
             f"[red]Unknown agent {name!r}. "
@@ -179,38 +232,13 @@ def run(
         raise typer.Exit(1)
     default_agent = name
 
-    effective_cwd = str(root) if cwd == "." else cwd
-    roots = AegisRoots.for_project(root, harness_cwd=Path(effective_cwd))
-
-    try:
-        queues = load_queues(root)
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
-
-    voice_cfg = None
-    hosts: dict = {}
-    schedules: dict = {}
-    remotes: dict = {}
-    remote_plane = None
-    inline_schedule_names: set[str] = set()
-    try:
-        from aegis.config.yaml_loader import (
-            import_plugins, load_config as _load_yaml,
-        )
-        _yc = _load_yaml(root)
-        # The scheduler dispatches @workflow functions by name, so the
-        # plugin dirs have to be imported before it starts — otherwise
-        # `aegis` fires a schedule into an empty registry.
-        import_plugins(_yc)
-        voice_cfg = _yc.voice
-        hosts = _yc.hosts
-        schedules = _yc.schedules
-        remotes = _yc.remotes
-        remote_plane = _yc.remote_plane
-        inline_schedule_names = _yc.inline_schedule_names
-    except ConfigError:
-        voice_cfg = None
+    queues = boot.queues
+    voice_cfg = boot.voice
+    hosts = boot.hosts
+    schedules = boot.schedules
+    remotes = boot.remotes
+    remote_plane = boot.remote_plane
+    inline_schedule_names = boot.inline_schedule_names
 
     # Best-effort background refresh of ~/.cache/aegis/models.yaml so
     # prices + context windows stay current without a release. Never
@@ -829,38 +857,25 @@ def _ensure_web_token(root: Path) -> str:
 
 
 def _run_serve(cwd: str) -> None:
-    try:
-        agents, default_agent = load_config()
-    except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
     root = find_project_root() or Path.cwd()
     effective = str(root) if cwd == "." else cwd
     roots = AegisRoots.for_project(root, harness_cwd=Path(effective))
 
     try:
-        queues = load_queues(root)
+        boot = load_boot_config(roots)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    try:
-        from aegis.config.yaml_loader import (
-            import_plugins, load_config as _load_yaml,
-        )
-        yaml_cfg = _load_yaml(root)
-        import_plugins(yaml_cfg)
-        from aegis.commands.prompt_loader import load_prompt_commands
-        load_prompt_commands(root)
-        schedules = yaml_cfg.schedules
-        remotes = yaml_cfg.remotes
-        remote_plane = yaml_cfg.remote_plane
-        inline_schedule_names = yaml_cfg.inline_schedule_names
-        web = yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None
-        hosts = yaml_cfg.hosts
-    except ConfigError as e:
-        _console.print(f"[red]Failed to load .aegis.yaml: {e}[/red]")
-        raise typer.Exit(1)
+    agents = boot.agents
+    default_agent = boot.default_agent
+    queues = boot.queues
+    schedules = boot.schedules
+    remotes = boot.remotes
+    remote_plane = boot.remote_plane
+    inline_schedule_names = boot.inline_schedule_names
+    web = boot.web
+    hosts = boot.hosts
 
     # Execution hosts. The registry owns one SSH ControlMaster per host and
     # is handed the MCP port once the server binds, so it must exist before
