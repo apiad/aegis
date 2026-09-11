@@ -943,7 +943,7 @@ local plane intact."
 
 **The bug this fixes:** `tui/app.py:466` — *"The TUI does not run a scheduler."* After this task it does.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_boot_unification.py
@@ -1000,12 +1000,12 @@ async def test_headless_boot_still_works(tmp_path):
                  mcp=_StubMCP(), stop=stop, ui=None)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_boot_unification.py -v`
 Expected: FAIL — `_serve() got an unexpected keyword argument 'ui'`
 
-- [ ] **Step 3: Define the attachment**
+- [x] **Step 3: Define the attachment**
 
 ```python
 from typing import Protocol
@@ -1058,7 +1058,7 @@ Locally those objects are used at `app.py:642` (`drv.resume`), `:824`
 per-session model override). `None` breaks all four. Likewise pass `hosts`
 and `host_registry`, which `cli.py:226-227` passes today.
 
-- [ ] **Step 4: Accept and run the attachment in `_serve`**
+- [x] **Step 4: Accept and run the attachment in `_serve`**
 
 After every subsystem is wired, and before awaiting `stop`:
 
@@ -1070,7 +1070,7 @@ After every subsystem is wired, and before awaiting `stop`:
         await stop.wait()
 ```
 
-- [ ] **Step 5: Route `aegis` through `_serve`, keeping bootstrap mode**
+- [x] **Step 5: Route `aegis` through `_serve`, keeping bootstrap mode**
 
 Replace the direct `AegisApp(...)` at `cli.py:224` with a `_run_serve`-style
 call passing `ui=LocalTuiAttachment(...)`.
@@ -1095,12 +1095,12 @@ delete `pick_workspace_to_resume` (`:198-205`) — it moves into
 `LocalTuiAttachment.run` above, with its `CorruptWorkspace` → `Exit(2)`
 contract intact.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run pytest tests/cli/test_boot_unification.py -v`
 Expected: PASS (2 tests)
 
-- [ ] **Step 7: Exercise the three live paths**
+- [x] **Step 7: Exercise the three live paths**
 
 Unit tests do not cover the boot path every user runs. All three, reading
 the rc directly:
@@ -1123,12 +1123,12 @@ uv run --project /home/apiad/Workspace/repos/aegis aegis; echo "corrupt rc=$?"
 Expected: `normal rc=124` (timeout, i.e. it ran), `bootstrap rc=124` (**not**
 1), `corrupt rc=2`.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `uv run pytest -q`
 Expected: PASS except the 1–2 known inotify flakes.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/aegis/cli.py tests/cli/test_boot_unification.py
