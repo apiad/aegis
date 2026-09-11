@@ -1152,7 +1152,7 @@ into the attachment rather than being deleted."
 - Consumes: nothing new.
 - Produces: `load_boot_config(roots: AegisRoots) -> BootConfig` raising `ConfigError`. The CLI wrappers catch it and call `typer.Exit`; library callers see the exception.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_config_errors_raise.py
@@ -1180,12 +1180,12 @@ def test_unknown_default_agent_raises(tmp_path):
         load_boot_config(AegisRoots.for_project(tmp_path))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_config_errors_raise.py -v`
 Expected: FAIL — `load_boot_config` does not exist
 
-- [ ] **Step 3: Extract the loader**
+- [x] **Step 3: Extract the loader**
 
 ```python
 @dataclass(frozen=True)
@@ -1227,7 +1227,7 @@ Replace the three guard blocks with calls to it, wrapping in
 `try/except ConfigError` → `_console.print` + `typer.Exit(1)` **only** in the
 typer command bodies.
 
-- [ ] **Step 4: Verify, including that the web UI still boots**
+- [x] **Step 4: Verify, including that the web UI still boots**
 
 `BootConfig` must carry `web`, or this task silently kills the web frontend
 in a plan whose contract is "the web client is untouched".
@@ -1254,14 +1254,14 @@ def test_boot_config_carries_web_and_is_token_gated(tmp_path):
 Run: `uv run pytest tests/cli/test_config_errors_raise.py tests/ -k "config or cli or web" -q`
 Expected: PASS
 
-- [ ] **Step 5: Confirm the CLI still exits nonzero on bad config**
+- [x] **Step 5: Confirm the CLI still exits nonzero on bad config**
 
 The point is to move the exit, not remove it.
 
 Run: `cd /tmp && mkdir -p badcfg && cd badcfg && printf 'agents: [broken\n' > .aegis.yaml && uv run --project /home/apiad/Workspace/repos/aegis aegis --clean; echo "rc=$?"`
 Expected: a red error line and `rc=1`. **Read the rc directly — do not pipe.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/cli.py tests/cli/test_config_errors_raise.py
