@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 from fastmcp import FastMCP
 
@@ -604,25 +605,22 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     # One envelope per call into this surface, minted at the single choke
     # point every tool passes through — including plugin @tools, which a
     # per-tool wrapper would miss.
-    from pathlib import Path
-
     from aegis.comms.middleware import CommsMiddleware
     from aegis.comms.persistence import CommsLedger
+
+    # Where this instance resolves .aegis.yaml and its state. Bound once,
+    # from the bridge — never re-derived from the process cwd at call time,
+    # which in an embedded process is some other instance's project.
+    roots = bridge.roots
 
     _qm = getattr(bridge, "queue_manager", None)
     _state_dir = getattr(_qm, "_state_dir", None) if _qm is not None else None
     server.add_middleware(CommsMiddleware(CommsLedger(
-        Path(_state_dir) if _state_dir
-        else Path.cwd() / ".aegis" / "state"), tokens=tokens))
+        Path(_state_dir) if _state_dir else roots.state_dir), tokens=tokens))
 
     server.tool(aegis_meta)
 
     config_write_lock = asyncio.Lock()
-
-    # Where this instance resolves .aegis.yaml. Bound once, from the
-    # bridge — never re-derived from the process cwd at call time, which
-    # in an embedded process is some other instance's project.
-    roots = bridge.roots
 
     # --- config-edit read tools ----------------------------------------
 
@@ -2305,20 +2303,22 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     from aegis.tools import _REGISTRY as _TOOL_REG
 
     for _entry in _TOOL_REG.values():
-        _register_user_tool(server, _entry)
+        _register_user_tool(server, _entry, state_dir=roots.state_dir)
 
     return server
 
 
-def _register_user_tool(server: "FastMCP", entry) -> None:
-    """Wrap a ToolEntry as a FastMCP tool with auto-derived schema."""
+def _register_user_tool(server: "FastMCP", entry, *, state_dir: Path) -> None:
+    """Wrap a ToolEntry as a FastMCP tool with auto-derived schema.
+
+    ``state_dir`` is this instance's, threaded from ``build_server``: a
+    plugin @tool used to write to whatever ``.aegis/state`` the process
+    happened to be standing in."""
     import inspect
-    from pathlib import Path
 
     from aegis.tools.runner import invoke_tool
 
     async def _wrapper(**kwargs):
-        state_dir = Path.cwd() / ".aegis" / "state"
         return await invoke_tool(entry, kwargs=kwargs, state_dir=state_dir)
 
     _wrapper.__name__ = entry.name

@@ -3,14 +3,23 @@ from pathlib import Path
 
 import aegis.commands.builtins  # noqa: F401 — ensure /usage is registered
 from aegis.commands import REGISTRY, CommandContext, dispatch
+from aegis.config.roots import AegisRoots
 
 
 def _ev(**event):
     return json.dumps({"v": 1, "aegis_ts": event.pop("ts"), "event": event})
 
 
-def _mk(tmp_path: Path):
-    sess = tmp_path / ".aegis" / "state" / "sessions"
+def _mk(tmp_path: Path) -> Path:
+    """Build a project *below* tmp_path and return its root.
+
+    Deliberately not tmp_path itself: the autouse ``isolated_project_dir``
+    fixture chdirs to tmp_path, so a project rooted there is also the
+    process cwd and a test cannot tell the two apart. One level down, a
+    ``/usage`` that resolved from the cwd finds nothing.
+    """
+    root = tmp_path / "project"
+    sess = root / ".aegis" / "state" / "sessions"
     sess.mkdir(parents=True)
     (sess / "alpha.jsonl").write_text("\n".join([
         _ev(ts="2026-06-01T12:00:00.000000Z", t="SystemInit",
@@ -23,13 +32,22 @@ def _mk(tmp_path: Path):
             usage={"input": 5, "cache_creation": 100,
                    "cache_read": 200, "output": 50}),
     ]) + "\n")
-    (tmp_path / ".aegis.yaml").write_text(
+    (root / ".aegis.yaml").write_text(
         "agents:\n  opus:\n    provider: claude-code\n    model: opus\n"
         "default_agent: opus\n")
+    return root
 
 
-def _ctx():
-    return CommandContext(bridge=object(), handle="me")
+class _Bridge:
+    """A bridge is all /usage needs from the app: the roots it aggregates
+    under."""
+
+    def __init__(self, root: Path) -> None:
+        self.roots = AegisRoots.for_project(root)
+
+
+def _ctx(root: Path):
+    return CommandContext(bridge=_Bridge(root), handle="me")
 
 
 def test_usage_registered():
@@ -37,10 +55,9 @@ def test_usage_registered():
     assert REGISTRY["usage"].source == "builtin"
 
 
-async def test_usage_dashboard(tmp_path, monkeypatch):
-    _mk(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    res = await dispatch("/usage", _ctx())
+async def test_usage_dashboard(tmp_path):
+    root = _mk(tmp_path)
+    res = await dispatch("/usage", _ctx(root))
     assert res.ok, res.body
     assert "AEGIS USAGE" in res.body
     assert "billed" in res.title
@@ -50,28 +67,27 @@ async def test_usage_dashboard(tmp_path, monkeypatch):
     assert "total" in res.body
 
 
-async def test_usage_views(tmp_path, monkeypatch):
-    _mk(tmp_path)
-    monkeypatch.chdir(tmp_path)
+async def test_usage_views(tmp_path):
+    root = _mk(tmp_path)
     for v in ("tools", "sessions", "month", "dow", "hour"):
-        res = await dispatch(f"/usage {v}", _ctx())
+        res = await dispatch(f"/usage {v}", _ctx(root))
         assert res.ok, (v, res.title, res.body)
         assert res.body
 
 
-async def test_usage_unknown_view(tmp_path, monkeypatch):
-    _mk(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    res = await dispatch("/usage bogus", _ctx())
+async def test_usage_unknown_view(tmp_path):
+    root = _mk(tmp_path)
+    res = await dispatch("/usage bogus", _ctx(root))
     assert not res.ok
     assert "bogus" in res.title
 
 
-async def test_usage_no_sessions(tmp_path, monkeypatch):
-    (tmp_path / ".aegis.yaml").write_text(
+async def test_usage_no_sessions(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".aegis.yaml").write_text(
         "agents:\n  opus:\n    provider: claude-code\n    model: opus\n"
         "default_agent: opus\n")
-    monkeypatch.chdir(tmp_path)
-    res = await dispatch("/usage", _ctx())
+    res = await dispatch("/usage", _ctx(root))
     assert res.ok
     assert "no session logs" in res.title.lower()

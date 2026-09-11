@@ -18,7 +18,7 @@ async def test_render_observer_sees_chunks_and_command_end(state_dir):
     def cb(kind: str, payload: dict) -> None:
         events.append((kind, payload))
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="r", shell="/bin/bash")
     mgr.add_render_observer("r", cb)
     rec = await mgr.run("r", "echo hello", writer="human")
@@ -39,7 +39,7 @@ async def test_remove_render_observer_stops_firing(state_dir):
     def cb(kind: str, payload: dict) -> None:
         seen.append(kind)
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="x", shell="/bin/bash")
     mgr.add_render_observer("x", cb)
     await mgr.run("x", "true", writer="human")
@@ -55,6 +55,6 @@ async def test_remove_render_observer_stops_firing(state_dir):
 @pytest.mark.asyncio
 async def test_render_observer_unknown_terminal_errors(state_dir):
     from aegis.terminal.manager import TerminalNotFound
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     with pytest.raises(TerminalNotFound):
         mgr.add_render_observer("ghost", lambda *a: None)

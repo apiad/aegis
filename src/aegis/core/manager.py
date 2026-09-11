@@ -83,7 +83,7 @@ class SessionManager:
         self.roots = roots
         # Was None until attach_scheduler_context happened to set it, which
         # only occurred under `aegis serve` with schedules configured. Every
-        # other boot fell through to Path.cwd().
+        # other boot fell through to the process working directory.
         self.state_root: Path = roots.state_root
         self._persist_dir = None
         self.workflow_registry = None

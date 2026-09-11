@@ -9,7 +9,7 @@ def state_dir(tmp_path: Path) -> Path:
 
 
 async def test_spawn_creates_state_dir_and_meta(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     info = await mgr.spawn(name="build", shell="/bin/bash", cwd=str(state_dir.parent))
     assert info.name == "build"
     assert info.shell == "/bin/bash"
@@ -19,7 +19,7 @@ async def test_spawn_creates_state_dir_and_meta(state_dir):
 
 
 async def test_spawn_duplicate_name_errors(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="dup", shell="/bin/bash")
     with pytest.raises(TerminalAlreadyExists):
         await mgr.spawn(name="dup", shell="/bin/bash")
@@ -27,7 +27,7 @@ async def test_spawn_duplicate_name_errors(state_dir):
 
 
 async def test_list_returns_spawned_terminals(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="a", shell="/bin/bash")
     await mgr.spawn(name="b", shell="/bin/bash")
     names = {t.name for t in mgr.list()}
@@ -37,14 +37,14 @@ async def test_list_returns_spawned_terminals(state_dir):
 
 
 async def test_close_removes_from_list(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="gone", shell="/bin/bash")
     await mgr.close("gone")
     assert all(t.name != "gone" for t in mgr.list())
 
 
 async def test_close_preserves_ledger_by_default(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="kept", shell="/bin/bash")
     await mgr.close("kept")
     assert (state_dir / "kept" / "meta.json").exists()

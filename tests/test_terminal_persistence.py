@@ -61,7 +61,7 @@ async def test_stale_in_flight_marked_killed_by_restart(tmp_path: Path):
     }
     (term_dir / "ledger.jsonl").write_text(json.dumps(stale) + "\n")
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="build", shell="/bin/bash")
     recs = mgr.read("build", last_n=10)
     assert recs[0].killed_by_restart is True
@@ -87,7 +87,7 @@ async def test_completed_records_not_touched_on_respawn(tmp_path: Path):
     )
     (term_dir / "ledger.jsonl").write_text(json.dumps(asdict(done)) + "\n")
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="build", shell="/bin/bash")
     recs = mgr.read("build", last_n=10)
     assert recs[0].killed_by_restart is False

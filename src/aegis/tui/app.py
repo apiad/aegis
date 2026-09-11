@@ -450,7 +450,8 @@ class AegisApp(App):
         from aegis.terminal.manager import TerminalManager
         from aegis.terminal.notify import make_terminal_notifier
         self.terminal_manager = TerminalManager(
-            state_dir=self._state_dir / "terminals")
+            state_dir=self._state_dir / "terminals",
+            default_cwd=Path(self._cwd))
         self.terminal_manager.set_notifier(
             make_terminal_notifier(self.inbox_router))
         from aegis.groups.bridge import make_groups_bridge

@@ -54,7 +54,7 @@ def state_dir(tmp_path: Path) -> Path:
 
 
 async def test_term_spawn_and_list(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     res = await _call(server, "aegis_term_spawn",
@@ -68,7 +68,7 @@ async def test_term_spawn_and_list(state_dir):
 
 
 async def test_term_run_returns_record(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     await _call(server, "aegis_term_spawn",
@@ -81,7 +81,7 @@ async def test_term_run_returns_record(state_dir):
 
 
 async def test_term_subscribe_unsubscribe(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     await _call(server, "aegis_term_spawn", name="s", from_handle="agent:a")
@@ -96,7 +96,7 @@ async def test_term_subscribe_unsubscribe(state_dir):
 
 
 async def test_term_read_returns_records(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     await _call(server, "aegis_term_spawn", name="r", from_handle="agent:a")
@@ -111,7 +111,7 @@ async def test_term_read_returns_records(state_dir):
 
 
 async def test_term_close_through_mcp(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     await _call(server, "aegis_term_spawn", name="c", from_handle="agent:a")
@@ -123,7 +123,7 @@ async def test_term_close_through_mcp(state_dir):
 
 
 async def test_term_spawn_duplicate_returns_error(state_dir):
-    tm = TerminalManager(state_dir=state_dir)
+    tm = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     bridge = FakeBridge(tm)
     server = build_server(bridge)
     await _call(server, "aegis_term_spawn", name="d", from_handle="agent:a")

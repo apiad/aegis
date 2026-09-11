@@ -92,8 +92,15 @@ def _now_iso() -> str:
 
 
 class TerminalManager:
-    def __init__(self, state_dir: str | Path) -> None:
+    """``default_cwd`` is where a terminal opens when the spawn names no
+    directory — this instance's harness cwd, threaded in, never the
+    process cwd, which in an embedded process is some other instance's
+    worktree."""
+
+    def __init__(self, state_dir: str | Path, *,
+                 default_cwd: str | Path) -> None:
         self.state_dir = Path(state_dir)
+        self.default_cwd = Path(default_cwd)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self._terminals: dict[str, _TerminalState] = {}
         self._spawn_lock = asyncio.Lock()
@@ -153,7 +160,7 @@ class TerminalManager:
             if name in self._terminals:
                 raise TerminalAlreadyExists(name)
             shell = shell or os.environ.get("SHELL") or "/bin/bash"
-            cwd = cwd or os.getcwd()
+            cwd = cwd or str(self.default_cwd)
             term_dir = self.state_dir / name
             term_dir.mkdir(parents=True, exist_ok=True)
             argv = _build_argv(shell, term_dir)

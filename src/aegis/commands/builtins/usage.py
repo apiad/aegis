@@ -71,8 +71,11 @@ async def _usage(ctx: CommandContext, args) -> CommandResult:
             title += " · " + " · ".join(
                 f"{p.label} {w:.0f}%" for p, w in summary)
         return CommandResult(True, title, "\n".join(quota_report(readings)))
-    dmodel, dprovider = default_agent()
-    report = build_report(state_dir(), default_model=dmodel,
+    # The bridge's roots, not the process cwd: embedded, several instances
+    # share a process and each has its own logs to aggregate.
+    root = ctx.bridge.roots.config_root
+    dmodel, dprovider = default_agent(root)
+    report = build_report(state_dir(root), default_model=dmodel,
                           default_provider=dprovider)
     if not report.sessions:
         return CommandResult(True, "no session logs found")

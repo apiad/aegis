@@ -408,7 +408,8 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     mgr.attach_canvas_manager(cm)
     from aegis.terminal.manager import TerminalManager
     from aegis.terminal.notify import make_terminal_notifier
-    tm = TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals")
+    tm = TerminalManager(state_dir=_state_dir(Path.cwd()) / "terminals",
+                         default_cwd=roots.harness_cwd)
     tm.set_notifier(make_terminal_notifier(inbox))
     mgr.attach_terminal_manager(tm)
     mgr.attach_remotes(remotes or {})

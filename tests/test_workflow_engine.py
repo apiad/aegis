@@ -4,14 +4,24 @@ from pathlib import Path
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.workflow import WorkflowEngine
 
 
 class _StubBridge:
     queue_manager = None
     inbox_router = None
+    roots = None
     def list_sessions(self): return []
     def list_agents(self): return ["default"]
+
+
+class _RootedStubBridge(_StubBridge):
+    """A bridge that carries roots, which is what ``bash`` needs to know
+    where to run when a step names no cwd."""
+
+    def __init__(self, root: Path) -> None:
+        self.roots = AegisRoots.for_project(root)
 
 
 def _engine(tmp_path: Path, **kw):
@@ -19,6 +29,13 @@ def _engine(tmp_path: Path, **kw):
         workflow_name="t", workflow_run_id="01TID",
         bridge=_StubBridge(), queue_manager=None, inbox_router=None,
         state_dir=tmp_path, **kw)
+
+
+def _rooted_engine(root: Path, **kw):
+    return WorkflowEngine(
+        workflow_name="t", workflow_run_id="01TID",
+        bridge=_RootedStubBridge(root), queue_manager=None,
+        inbox_router=None, state_dir=root, **kw)
 
 
 def test_engine_exposes_name_run_id_caller(tmp_path):
@@ -75,7 +92,7 @@ from aegis.workflow import WorkflowError
 
 
 async def test_bash_returns_completed_process(tmp_path):
-    e = _engine(tmp_path)
+    e = _rooted_engine(tmp_path)
     proc = await e.bash("echo hi")
     assert isinstance(proc, subprocess.CompletedProcess)
     assert proc.returncode == 0
@@ -84,27 +101,36 @@ async def test_bash_returns_completed_process(tmp_path):
 
 
 async def test_bash_nonzero_returncode_not_raised(tmp_path):
-    e = _engine(tmp_path)
+    e = _rooted_engine(tmp_path)
     proc = await e.bash("false")
     assert proc.returncode != 0
 
 
 async def test_bash_timeout_raises_workflow_error(tmp_path):
-    e = _engine(tmp_path)
+    e = _rooted_engine(tmp_path)
     with pytest.raises(WorkflowError, match="timed out"):
         await e.bash("sleep 5", timeout=0.1)
 
 
-async def test_bash_default_cwd_is_project_root(tmp_path, monkeypatch):
-    # Run from a tmp dir; bash() should still resolve to project root
-    # (or fall back to tmp_path when no .aegis.yaml upstream).
-    monkeypatch.chdir(tmp_path)
-    e = _engine(tmp_path)
+async def test_bash_default_cwd_is_project_root(tmp_path):
+    """A cwd-less bash step runs in the bridge's root, not the process
+    cwd. Rooted one level below tmp_path, which the autouse
+    isolated_project_dir fixture has already made the cwd — so the two
+    are distinguishable and the old cwd resolution would fail here."""
+    root = tmp_path / "project"
+    root.mkdir()
+    e = _rooted_engine(root)
     proc = await e.bash("pwd")
-    # We don't assert exact path (depends on find_project_root in test env)
-    # — just that it executed and produced a string.
     assert proc.returncode == 0
-    assert proc.stdout.strip()
+    assert proc.stdout.strip() == str(root.resolve())
+
+
+async def test_bash_without_roots_fails_loud(tmp_path):
+    """Rather than silently shelling out wherever the process happens to
+    be standing, which in an embedded process is another instance."""
+    e = _engine(tmp_path)
+    with pytest.raises(WorkflowError, match="no project root"):
+        await e.bash("pwd")
 
 
 async def test_bash_explicit_cwd_honored(tmp_path):

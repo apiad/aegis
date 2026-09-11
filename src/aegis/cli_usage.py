@@ -6,10 +6,12 @@ same two.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import typer
 
+from aegis.config import find_project_root
 from aegis.usage import build_report
 from aegis.usage.env import default_agent, state_dir
 from aegis.usage.quota import quota_report
@@ -48,8 +50,11 @@ def usage(
     if ctx.invoked_subcommand:
         return
     zone = ZoneInfo(tz) if tz else None
-    dmodel, dprovider = default_agent()
-    report = build_report(state_dir(), default_model=dmodel,
+    # A CLI entrypoint: the invocation directory *is* the input, which is
+    # exactly what the rest of `aegis` does at its command boundaries.
+    root = find_project_root() or Path.cwd()
+    dmodel, dprovider = default_agent(root)
+    report = build_report(state_dir(root), default_model=dmodel,
                           default_provider=dprovider, since=since,
                           handle=session)
     if model:

@@ -44,7 +44,7 @@ async def test_notifier_wakes_subscribers_except_writer(state_dir):
         async def deliver(self, handle: str, message) -> None:
             delivered.append((handle, message.body))
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     mgr.set_notifier(make_terminal_notifier(FakeRouter()))
     await mgr.spawn(name="n1", shell="/bin/bash")
     mgr.subscribe("n1", "agent:alice")
@@ -64,7 +64,7 @@ async def test_human_writer_wakes_all_subscribers(state_dir):
         async def deliver(self, handle: str, message) -> None:
             delivered.append(handle)
 
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     mgr.set_notifier(make_terminal_notifier(FakeRouter()))
     await mgr.spawn(name="n2", shell="/bin/bash")
     mgr.subscribe("n2", "agent:alice")

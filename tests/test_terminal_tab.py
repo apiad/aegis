@@ -36,7 +36,7 @@ class _Host(App):
 
 @pytest.mark.asyncio
 async def test_terminal_tab_mounts_and_finalizes_command(tmp_path: Path):
-    mgr = TerminalManager(state_dir=tmp_path / "state")
+    mgr = TerminalManager(state_dir=tmp_path / "state", default_cwd=tmp_path)
     info = await mgr.spawn(name="t", shell="/bin/bash")
     tab = TerminalTab(mgr, info)
     app = _Host(tab)
@@ -56,7 +56,7 @@ def test_terminal_tab_attrs_quack_like_pane(tmp_path: Path):
     """TerminalTab must expose handle, agent_slug, state, unseen, id so
     the AegisApp tabbar treats it like a ConversationPane."""
     import asyncio
-    mgr = TerminalManager(state_dir=tmp_path / "state")
+    mgr = TerminalManager(state_dir=tmp_path / "state", default_cwd=tmp_path)
 
     async def _go():
         info = await mgr.spawn(name="quack", shell="/bin/bash")

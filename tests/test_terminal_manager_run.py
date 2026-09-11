@@ -11,7 +11,7 @@ def state_dir(tmp_path: Path) -> Path:
 
 
 async def test_run_returns_exit_zero_for_true(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t1", shell="/bin/bash")
     rec = await mgr.run("t1", "true", writer="agent:tester")
     assert rec.exit == 0
@@ -21,7 +21,7 @@ async def test_run_returns_exit_zero_for_true(state_dir):
 
 
 async def test_run_returns_nonzero_exit_for_false(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t2", shell="/bin/bash")
     rec = await mgr.run("t2", "false", writer="agent:tester")
     assert rec.exit == 1
@@ -29,7 +29,7 @@ async def test_run_returns_nonzero_exit_for_false(state_dir):
 
 
 async def test_run_captures_stdout(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t3", shell="/bin/bash")
     rec = await mgr.run("t3", "echo hello", writer="agent:tester")
     assert rec.exit == 0
@@ -38,7 +38,7 @@ async def test_run_captures_stdout(state_dir):
 
 
 async def test_run_serializes_concurrent_calls(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t4", shell="/bin/bash")
     r1, r2 = await asyncio.gather(
         mgr.run("t4", "echo first; sleep 0.05", writer="agent:a"),
@@ -51,7 +51,7 @@ async def test_run_serializes_concurrent_calls(state_dir):
 
 
 async def test_read_last_n(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t5", shell="/bin/bash")
     for i in range(3):
         await mgr.run("t5", f"echo {i}", writer="human")
@@ -62,7 +62,7 @@ async def test_read_last_n(state_dir):
 
 
 async def test_read_since_seq(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="t6", shell="/bin/bash")
     for i in range(3):
         await mgr.run("t6", f"echo {i}", writer="human")
@@ -72,7 +72,7 @@ async def test_read_since_seq(state_dir):
 
 
 async def test_run_unknown_terminal_errors(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     with pytest.raises(TerminalNotFound):
         await mgr.run("nope", "true", writer="human")
 
@@ -81,7 +81,7 @@ async def test_run_unknown_terminal_errors(state_dir):
 
 
 async def test_stdout_excludes_command_echo(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="e1", shell="/bin/bash")
     rec = await mgr.run("e1", "echo hello", writer="human")
     # The PTY echoes the typed command; the B marker must reset the
@@ -95,7 +95,7 @@ async def test_stdout_excludes_command_echo(state_dir):
 
 
 async def test_multiline_command_rejected(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="ml", shell="/bin/bash")
     with pytest.raises(ValueError):
         await mgr.run("ml", "echo a\necho b", writer="human")
@@ -106,7 +106,7 @@ async def test_multiline_command_rejected(state_dir):
 
 
 async def test_run_falls_back_to_injection_without_osc133(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="fb", shell="/bin/bash")
     # Simulate a shell where the init hooks never took (no A/B/D from the
     # prompt cycle). run() must inject its own markers and still resolve.
@@ -121,7 +121,7 @@ async def test_run_falls_back_to_injection_without_osc133(state_dir):
 
 
 async def test_run_times_out(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="to", shell="/bin/bash")
     rec = await mgr.run("to", "sleep 10", writer="human", timeout=0.3)
     assert rec.timed_out is True
@@ -133,7 +133,7 @@ async def test_run_times_out(state_dir):
 
 
 async def test_reader_crash_finalizes_pending(state_dir):
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="rc", shell="/bin/bash")
     state = mgr._terminals["rc"]
 
@@ -166,7 +166,7 @@ async def test_spawn_preserves_user_prompt_command(state_dir, tmp_path):
     (home / ".bashrc").write_text(
         f'export PROMPT_COMMAND="echo tick >> {beacon}"\n'
     )
-    mgr = TerminalManager(state_dir=state_dir)
+    mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="pc", shell="/bin/bash",
                     env={**os.environ, "HOME": str(home)})
     rec = await mgr.run("pc", "true", writer="human", timeout=5.0)

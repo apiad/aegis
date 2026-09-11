@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 import secrets
 import subprocess
 import sys
@@ -11,7 +10,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from aegis.config import find_project_root
 from aegis.mcp.bridge import SessionInfo
 from aegis.queue.schema import InboxMessage, new_ulid as _new_ulid, now_iso
 from aegis.workflow.decorator import (
@@ -138,6 +136,22 @@ class WorkflowEngine:
         self._spawned_handles: set[str] = set()
         self._touched_handles: set[str] = set()
 
+    @property
+    def project_root(self) -> Path:
+        """Where a ``bash`` step runs when it names no cwd.
+
+        Comes from the bridge's ``AegisRoots``, never from the process
+        cwd: embedded, one process holds several instances and the cwd
+        belongs to whichever of them was started last, if any. Raises
+        rather than guessing — a workflow silently shelling out in the
+        wrong worktree is the failure this exists to prevent."""
+        roots = getattr(self._bridge, "roots", None)
+        if roots is None:
+            raise WorkflowError(
+                "workflow engine has no project root: its bridge carries "
+                "no AegisRoots, so bash() cannot default its cwd")
+        return Path(roots.config_root)
+
     # ── read-only passthroughs ───────────────────────────────────────
     def list_sessions(self) -> list[SessionInfo]:
         return self._bridge.list_sessions()
@@ -196,7 +210,7 @@ class WorkflowEngine:
                     stderr=res.get("stderr", ""))
             return res
         if cwd is None:
-            cwd = str(find_project_root() or os.getcwd())
+            cwd = str(self.project_root)
         proc = await asyncio.create_subprocess_shell(
             cmd, cwd=str(cwd), env=env,
             stdout=asyncio.subprocess.PIPE,
