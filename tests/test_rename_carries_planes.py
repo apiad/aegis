@@ -19,8 +19,11 @@ empty while the monitor was still watching under ``<old>``.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.queue.inbox import InboxRouter
 
@@ -40,6 +43,7 @@ def _mgr() -> SessionManager:
         {"default": object()}, "default",
         make_session=lambda profile, url, handle: FakeHarness(),
         mcp=None, inbox=InboxRouter(),
+        roots=AegisRoots.for_project(Path.cwd()),
     )
 
 

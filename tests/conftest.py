@@ -256,6 +256,7 @@ async def live_session_manager(tmp_path):
     up sessions + MCP server on teardown. Used only by ``-m live`` tests.
     """
     from aegis.config import Agent
+    from aegis.config.roots import AegisRoots
     from aegis.core.manager import SessionManager
     from aegis.drivers import get_driver
     from aegis.mcp import AegisMCP
@@ -271,7 +272,8 @@ async def live_session_manager(tmp_path):
         return get_driver(profile.harness).session(
             profile, str(tmp_path), mcp_url, handle)
 
-    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox)
+    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox,
+                         roots=AegisRoots.for_project(tmp_path))
     mcp.bind(mgr)
     await mcp.start()
     try:

@@ -28,8 +28,12 @@ def _agent():
 
 
 def _manager(factory, mcp):
+    from pathlib import Path
+
+    from aegis.config.roots import AegisRoots
     from aegis.core.manager import SessionManager
-    return SessionManager({"main": _agent()}, "main", factory, mcp)
+    return SessionManager({"main": _agent()}, "main", factory, mcp,
+                          roots=AegisRoots.for_project(Path.cwd()))
 
 
 def test_a_spawned_handle_has_a_token():

@@ -8,9 +8,11 @@ keeps a peer ask from ever disturbing the conversation it sits beside.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.core.session import AgentSession
 from aegis.events import AssistantText, Result
@@ -121,7 +123,8 @@ def _mgr(sessions: dict[str, AgentSession]) -> SessionManager:
     mgr = SessionManager(agents={"default": FakeAgent()},
                          default_agent="default",
                          make_session=lambda *a, **k: FakeSession([[]]),
-                         mcp=None)
+                         mcp=None,
+                         roots=AegisRoots.for_project(Path.cwd()))
     mgr._sessions = list(sessions.values())
     return mgr
 

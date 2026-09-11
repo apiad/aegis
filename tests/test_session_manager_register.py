@@ -1,8 +1,10 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 
 
@@ -16,7 +18,8 @@ def _sm():
         default_agent="r",
         make_session=lambda *a, **kw: MagicMock(),
         mcp=None,
-        inbox=MagicMock())
+        inbox=MagicMock(),
+        roots=AegisRoots.for_project(Path.cwd()))
 
 
 def test_register_agent_adds_to_live_map():

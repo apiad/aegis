@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.core.session import AgentSession
 from aegis.events import Result
@@ -153,6 +155,7 @@ def _mgr() -> SessionManager:
         {"default": object()}, "default",
         make_session=lambda profile, url, handle: _Harness(),
         mcp=None, inbox=InboxRouter(),
+        roots=AegisRoots.for_project(Path.cwd()),
     )
 
 

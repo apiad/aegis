@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.events import AssistantText, Result
 from aegis.state.session_log import replay_events
@@ -30,7 +31,7 @@ async def test_serve_spawn_persists_events(tmp_path):
     mgr = SessionManager(
         agents={"default": object()}, default_agent="default",
         make_session=lambda profile, url, handle: FakeSession(evs),
-        mcp=None)
+        mcp=None, roots=AegisRoots.for_project(tmp_path))
     mgr.attach_persistence(tmp_path)
     handle = await mgr.spawn("default")
     await mgr.get(handle).send("go")
@@ -46,7 +47,7 @@ async def test_no_persistence_when_not_attached(tmp_path):
         agents={"default": object()}, default_agent="default",
         make_session=lambda profile, url, handle: FakeSession(
             [AssistantText(text="x", usage=None)]),
-        mcp=None)
+        mcp=None, roots=AegisRoots.for_project(tmp_path))
     handle = await mgr.spawn("default")
     await mgr.get(handle).send("go")
     await mgr.get(handle)._task

@@ -15,6 +15,7 @@ import shutil
 import pytest
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.drivers import get_driver
 from aegis.mcp import AegisMCP
@@ -38,7 +39,8 @@ async def test_live_digest_reflects_real_enqueue(tmp_path):
         return get_driver(profile.harness).session(
             profile, str(tmp_path), mcp_url, handle)
 
-    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox)
+    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox,
+                         roots=AegisRoots.for_project(tmp_path))
     qm = QueueManager(
         {"default": Queue(name="default", agent_profile="default",
                           max_parallel=1)},

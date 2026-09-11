@@ -380,10 +380,13 @@ async def _serve(*, agents, default_agent, make_session, mcp,
                  inline_schedule_names: set[str] | None = None) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
+    from aegis.config.roots import AegisRoots
+    roots = AegisRoots.for_project(Path(local_root or "."))
+
     inbox = InboxRouter()
     mgr = SessionManager(agents, default_agent, make_session, mcp,
                          inbox=inbox, hosts=hosts or {},
-                         local_root=local_root)
+                         local_root=local_root, roots=roots)
     qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
@@ -391,17 +394,15 @@ async def _serve(*, agents, default_agent, make_session, mcp,
     from aegis.queue import ReminderService
     mgr.attach_reminder_service(ReminderService(inbox, mgr))
     # Canvas plane — shared markdown blackboards reachable via MCP.
-    from pathlib import Path
-
     from aegis.canvas.manager import CanvasManager
     from aegis.canvas.notify import make_canvas_notifier
     from aegis.state.workspace import state_dir as _state_dir
     # Persist every serve-spawned session to JSONL (same state_dir the
     # WebFrontend reads from), so seq is a real disk line index in web mode.
-    mgr.attach_persistence(_state_dir(Path.cwd()))
+    mgr.attach_persistence(roots.state_dir)
     # Persist the claims registry to the same state_dir the TUI uses, so
     # aegis_claim survives a serve restart and both frontends share one store.
-    mgr.attach_locks_state(_state_dir(Path.cwd()))
+    mgr.attach_locks_state(roots.state_dir)
     cm = CanvasManager(state_dir=_state_dir(Path.cwd()),
                        notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)
@@ -856,9 +857,11 @@ def workflow_run_cmd(
     async def main_async():
         from aegis.queue import InboxRouter, QueueManager
         inbox = InboxRouter(state_dir=root / ".aegis" / "state")
+        from aegis.config.roots import AegisRoots
         mgr = SessionManager(agents, default_agent, make_session,
                              AegisMCP(), inbox=inbox, hosts=_hosts,
-                             local_root=str(root))
+                             local_root=str(root),
+                             roots=AegisRoots.for_project(root))
         qm = QueueManager(queues, mgr, inbox,
                           state_dir=root / ".aegis" / "state")
         mgr.attach_queue_manager(qm)

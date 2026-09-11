@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.queue import InboxMessage, now_iso, sender_agent
 from aegis.queue.inbox import InboxRouter
@@ -27,6 +29,7 @@ def _mgr(*, inbox=None) -> SessionManager:
         make_session=lambda profile, url, handle: FakeHarness(),
         mcp=None,
         inbox=inbox,
+        roots=AegisRoots.for_project(Path.cwd()),
     )
 
 

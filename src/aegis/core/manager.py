@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.handles import HandleRegistry
 from aegis.core.session import AgentSession
 from aegis.hosts.models import HostSpec, Place
@@ -55,7 +56,8 @@ class SessionManager:
     def __init__(self, agents: dict, default_agent: str,
                  make_session: SessionFactory, mcp,
                  *, inbox=None, hosts: dict | None = None,
-                 local_root: str | None = None) -> None:
+                 local_root: str | None = None,
+                 roots: "AegisRoots") -> None:
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
@@ -78,7 +80,11 @@ class SessionManager:
         self.remotes: dict = {}  # populated by cli.serve from loaded YAML
         self.remote_plane = None  # populated by cli.serve from loaded YAML
         self.scheduler = None  # populated by cli.serve if schedules configured
-        self.state_root: Path | None = None
+        self.roots = roots
+        # Was None until attach_scheduler_context happened to set it, which
+        # only occurred under `aegis serve` with schedules configured. Every
+        # other boot fell through to Path.cwd().
+        self.state_root: Path = roots.state_root
         self._persist_dir = None
         self.workflow_registry = None
         self._inline_schedule_names: set[str] = set()
@@ -94,7 +100,7 @@ class SessionManager:
         from aegis.locks.bridge import make_locks_bridge
         self.locks = make_locks_bridge(
             live_handles=self.live_handles,
-            root_fn=lambda: self.state_root or Path.cwd(),
+            root_fn=lambda: self.state_root,
             state_dir=None)  # in-memory v1; live-handle filter reaps dead holders
 
     def attach_queue_manager(self, qm) -> None:
@@ -114,7 +120,7 @@ class SessionManager:
         from aegis.locks.bridge import make_locks_bridge
         self.locks = make_locks_bridge(
             live_handles=self.live_handles,
-            root_fn=lambda: self.state_root or Path.cwd(),
+            root_fn=lambda: self.state_root,
             state_dir=state_dir)
 
     def attach_remotes(self, remotes: dict) -> None:
@@ -133,7 +139,10 @@ class SessionManager:
                                  workflow_registry,
                                  inline_schedule_names: set[str]) -> None:
         self.scheduler = scheduler
-        self.state_root = state_root
+        if Path(state_root) != self.state_root:
+            raise ValueError(
+                f"scheduler state_root {state_root} disagrees with "
+                f"manager roots {self.state_root}")
         self.workflow_registry = workflow_registry
         self._inline_schedule_names = set(inline_schedule_names)
 
@@ -161,10 +170,8 @@ class SessionManager:
         self.queue_manager.register_queue(queue)
 
     def reload_plugins(self) -> None:
-        from pathlib import Path
-
         from aegis.config import yaml_loader
-        root = self.state_root or Path.cwd()
+        root = self.roots.config_root
         cfg = yaml_loader.load_config(root)
         yaml_loader.import_plugins(cfg)
 

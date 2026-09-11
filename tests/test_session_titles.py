@@ -6,8 +6,11 @@ the ones where a *lower* authority silently wins.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.state.titles import TITLE_RANK, outranks, sanitize_title
 
 
@@ -98,7 +101,8 @@ def manager_with_session():
     mgr = SessionManager(
         {"default": object()}, "default",
         make_session=lambda profile, url, handle: FakeHarness(),
-        mcp=None, inbox=None)
+        mcp=None, inbox=None,
+        roots=AegisRoots.for_project(Path.cwd()))
     session = mgr._sync_spawn("default")
     return mgr, session.handle
 

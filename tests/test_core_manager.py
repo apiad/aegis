@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.mcp.bridge import AppBridge
 
@@ -24,6 +26,7 @@ def make_mgr():
         agents, "default",
         make_session=lambda profile, url, handle: FakeHarness(),
         mcp=None,
+        roots=AegisRoots.for_project(Path.cwd()),
     )
 
 
@@ -144,7 +147,8 @@ async def test_spawn_with_opening_prompt_kicks_first_turn():
     agents = {"default": object()}
     m = SessionManager(agents, "default",
                        make_session=lambda a, u, h: Recording(),
-                       mcp=None)
+                       mcp=None,
+                       roots=AegisRoots.for_project(Path.cwd()))
     s = m._sync_spawn("default", opening_prompt="hello there")
     # spawn wraps the first send() in asyncio.create_task; yield once so
     # that outer task runs and sets s._task.
@@ -182,6 +186,7 @@ async def test_spawn_threads_inbox_router_when_set():
     inbox = InboxRouter()
     m = SessionManager({"default": object()}, "default",
                        make_session=lambda a, u, h: FakeHarness(),
-                       mcp=None, inbox=inbox)
+                       mcp=None, inbox=inbox,
+                       roots=AegisRoots.for_project(Path.cwd()))
     s = m._sync_spawn("default")
     assert s._inbox is inbox

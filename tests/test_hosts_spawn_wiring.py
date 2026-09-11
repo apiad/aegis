@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.hosts.models import HostSpec, Place
 
@@ -45,7 +46,8 @@ def _manager(tmp_path):
         mcp=None,
         hosts={"vps": HostSpec(name="vps", ssh="vps.apiad.net",
                                cwd="/home/apiad/Workspace")},
-        local_root=str(tmp_path))
+        local_root=str(tmp_path),
+        roots=AegisRoots.for_project(tmp_path))
     return mgr, seen
 
 

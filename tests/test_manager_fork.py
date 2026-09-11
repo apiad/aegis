@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.tui.state import AgentState
 
@@ -44,7 +46,8 @@ def _mgr(built: list, *, supports_fork=True):
 
     mgr = SessionManager(agents={"default": FakeAgent()},
                          default_agent="default",
-                         make_session=make_session, mcp=None)
+                         make_session=make_session, mcp=None,
+                         roots=AegisRoots.for_project(Path.cwd()))
     mgr._fork_capability = lambda harness: supports_fork
     return mgr
 
@@ -143,7 +146,8 @@ async def test_fork_refuses_parent_with_no_session_id():
 
     mgr = SessionManager(agents={"default": FakeAgent()},
                          default_agent="default",
-                         make_session=make_session, mcp=None)
+                         make_session=make_session, mcp=None,
+                         roots=AegisRoots.for_project(Path.cwd()))
     mgr._fork_capability = lambda harness: True
     parent = await mgr.spawn("default")
     with pytest.raises(ValueError, match="no session id yet"):

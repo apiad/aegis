@@ -22,9 +22,12 @@ failure is deterministic rather than a coin flip.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.events import AssistantText, Result
 from aegis.tui import names as names_mod
@@ -59,7 +62,7 @@ def _mgr() -> SessionManager:
     return SessionManager(
         {"default": object()}, "default",
         make_session=lambda profile, url, handle, **kw: FakeHarness(),
-        mcp=None)
+        mcp=None, roots=AegisRoots.for_project(Path.cwd()))
 
 
 # --- serve / web path (SessionManager) ------------------------------------

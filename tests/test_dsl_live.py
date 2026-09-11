@@ -9,6 +9,7 @@ import shutil
 import pytest
 
 from aegis.config import Agent
+from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.drivers import get_driver
 from aegis.mcp import AegisMCP
@@ -35,7 +36,8 @@ async def test_live_dynamic_map_fanout_and_reduce(tmp_path):
         return get_driver(profile.harness).session(
             profile, str(tmp_path), mcp_url, handle)
 
-    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox)
+    mgr = SessionManager(agents, "default", make_session, mcp, inbox=inbox,
+                         roots=AegisRoots.for_project(tmp_path))
     qm = QueueManager(
         {"impl": Queue(name="impl", agent_profile="worker-sonnet",
                        max_parallel=2)},
