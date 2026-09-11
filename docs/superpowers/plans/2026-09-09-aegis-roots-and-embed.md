@@ -712,7 +712,7 @@ ambiguity this stage exists to remove. Delete the parameter and replace its
 two internal uses (`manager.py:193` and `:208`, the `Place("local", …)`
 comparison) with `str(self.roots.harness_cwd)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/cli/test_serve_roots.py
@@ -735,12 +735,12 @@ def test_serve_has_no_cwd_calls():
     assert "Path.cwd()" not in source
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/cli/test_serve_roots.py -v`
 Expected: FAIL on both
 
-- [ ] **Step 3: Change the signature**
+- [x] **Step 3: Change the signature**
 
 ```python
 async def _serve(*, roots: AegisRoots,
@@ -753,7 +753,7 @@ async def _serve(*, roots: AegisRoots,
                  inline_schedule_names: set[str] | None = None) -> None:
 ```
 
-- [ ] **Step 4: Replace all eight cwd calls**
+- [x] **Step 4: Replace all eight cwd calls**
 
 Delete the local `roots = AegisRoots.for_project(...)` added in Task 2 Step 6, then:
 
@@ -768,7 +768,7 @@ Delete the local `roots = AegisRoots.for_project(...)` added in Task 2 Step 6, t
     web_fe = WebFrontend(mgr, web, state_dir=roots.state_dir, ...)
 ```
 
-- [ ] **Step 5: Update `_run_serve` to build and pass roots**
+- [x] **Step 5: Update `_run_serve` to build and pass roots**
 
 ```python
     roots = AegisRoots.for_project(root, harness_cwd=Path(effective))
@@ -781,17 +781,17 @@ Delete the local `roots = AegisRoots.for_project(...)` added in Task 2 Step 6, t
                      inline_schedule_names=inline_schedule_names)
 ```
 
-- [ ] **Step 6: Verify and add `cli.py` to the guard**
+- [x] **Step 6: Verify and add `cli.py` to the guard**
 
 Run: `uv run pytest tests/cli/test_serve_roots.py -v`
 Expected: PASS
 
-- [ ] **Step 7: Run the blast radius**
+- [x] **Step 7: Run the blast radius**
 
 Run: `uv run pytest tests/ -k "serve or cli or scheduler" -q`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/cli.py tests/cli/test_serve_roots.py
