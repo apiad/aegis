@@ -1,6 +1,23 @@
 # Aegis View Seam Implementation Plan (daemon stage 4)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: EXECUTED 2026-09-11** — `9207664`…`44efce6`. Suite green at
+> **3628 passed, 1 skipped, 1 xfailed, rc=0** (baseline 3592 + 36 new).
+>
+> **One property of the stage gate is not built and is marked
+> `xfail(strict=True)`**: a tab opened in one view does not appear in the
+> other. `AegisApp` is its own `AppBridge` on the local plane and spawns
+> through `_SessionManagerAdapter(self)`, so `bridge=` supplies roots and
+> handles but never panes. Measured: two views over one `SessionManager`
+> mount two *different* default tabs, and a session spawned on the manager
+> reaches neither. The remote plane has the equivalent wiring
+> (`_on_remote_session_list`, `app.py:2058`); the local plane has none, and
+> this plan carries no task for it. **Stage 5 must build it** — see
+> `tests/views/test_multi_view.py`.
+>
+> Six defects in this plan were found and repaired during execution; they
+> are recorded in *Execution notes* at the foot of this file.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Run N independent `AegisApp` views over one brain in one process, each at its own geometry with its own focus, scroll and drafts, with view state persisted and restorable — exercised entirely in-process, with no transport.
 
@@ -144,7 +161,7 @@ class _FakeTokens:
 
 **Why a class factory and not a partial:** `App` stores a driver *class* (`app.py:637`) and instantiates it itself. There is no seam to pass a sink through, so the sink is bound onto a generated subclass.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/views/test_view_driver.py
@@ -293,12 +310,12 @@ async def test_every_attribute_webdriver_expects_is_present():
     drv._input_reader.close()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_view_driver.py -v -m "not live"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.views'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # src/aegis/views/driver.py
@@ -435,12 +452,12 @@ from aegis.views.driver import ViewDriver, view_driver_for
 __all__ = ["ViewDriver", "view_driver_for"]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/views/test_view_driver.py -v -m "not live"`
 Expected: PASS (9 tests)
 
-- [ ] **Step 5: Mutation-check the bypass and the overrides**
+- [x] **Step 5: Mutation-check the bypass and the overrides**
 
 Each departure from `WebDriver` exists because of a specific
 process-global, and a test that cannot see it removed is not testing it.
@@ -470,7 +487,7 @@ The override is belt-and-braces and the plan says so rather than pretending
 a test pins it — an earlier draft of this plan claimed a red here that does
 not occur.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/views/__init__.py src/aegis/views/driver.py tests/views/test_view_driver.py
@@ -495,7 +512,7 @@ ganglion handshake nothing in aegis consumes is dropped."
 - Consumes: `view_driver_for` from Task 1.
 - Produces: `AegisApp(..., driver_class: type | None = None)` — forwarded to `App.__init__`. `None` keeps today's auto-detection exactly.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/views/test_app_driver_injection.py
@@ -531,12 +548,12 @@ def test_no_driver_class_keeps_auto_detection():
                                      fromlist=["ViewDriver"]).ViewDriver)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_app_driver_injection.py -v -m "not live"`
 Expected: FAIL — `AegisApp.__init__() got an unexpected keyword argument 'driver_class'`
 
-- [ ] **Step 3: Add the parameter and forward it**
+- [x] **Step 3: Add the parameter and forward it**
 
 In `src/aegis/tui/app.py`, add to the keyword-only block ending at `:321`:
 
@@ -554,7 +571,7 @@ and replace the bare `super().__init__()` at `:322`:
         super().__init__(driver_class=driver_class)
 ```
 
-- [ ] **Step 4: Run the tests and the blast radius**
+- [x] **Step 4: Run the tests and the blast radius**
 
 Run: `uv run python -m pytest tests/views/test_app_driver_injection.py -v -m "not live"`
 Expected: PASS (2 tests)
@@ -563,7 +580,7 @@ Run: `uv run python -m pytest tests/ -k "app or tui or pane or remote" -q -m "no
 Expected: PASS. `super().__init__()` took no arguments before, so a failure
 here means `App.__init__` rejects something — read the error, do not add a guard.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/tui/app.py tests/views/test_app_driver_injection.py
@@ -586,7 +603,7 @@ git commit -m "feat(tui): AegisApp(driver_class=) forwards to Textual"
 
 **The line that is easy to get wrong and is worth reading twice:** a *draft* is per-view; a *pending message* is not. `PendingStrip` holds messages already submitted while the agent is mid-turn, queued for the turn boundary and cancellable by clicking a chip. Per-view they would show different queues for one agent, and cancelling in one view would not cancel in the other. **Text still in the box is yours; text you have sent is everyone's.** Task 7 verifies this against the code rather than assuming it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/views/test_view_state.py
@@ -635,12 +652,12 @@ def test_a_view_id_cannot_escape_the_views_dir(tmp_path):
         save_view(tmp_path, ViewState("../../etc/passwd", (80, 24), None, {}, {}))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_view_state.py -v -m "not live"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.views.state'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # src/aegis/views/state.py
@@ -722,12 +739,12 @@ def load_view(state_dir: Path, view_id: str) -> ViewState | None:
         return None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/views/test_view_state.py -v -m "not live"`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/views/state.py tests/views/test_view_state.py
@@ -765,7 +782,7 @@ git commit -m "feat(views): ViewState — focus, scroll, drafts and geometry per
 > and persists one keyed per-tty. Step 5 proves resume still works through
 > the new path before the task is allowed to commit.
 
-- [ ] **Step 1: Enumerate the call sites before editing**
+- [x] **Step 1: Enumerate the call sites before editing**
 
 Run:
 ```bash
@@ -773,7 +790,7 @@ grep -rn "active_handle" src/ tests/
 ```
 Record the list in your final report. Every one is either a brain read to delete or a view read to redirect.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/views/test_workspace_is_brain_only.py
@@ -801,12 +818,12 @@ def test_saved_workspace_carries_no_focus(tmp_path):
     assert "active_handle" not in raw
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_workspace_is_brain_only.py -v -m "not live"`
 Expected: FAIL — `active_handle` is still a field.
 
-- [ ] **Step 4: Remove the field**
+- [x] **Step 4: Remove the field**
 
 Delete `active_handle` from the `Workspace` dataclass (`:61`), from the dict
 `save` builds (`:80`), and from the `Workspace(...)` that `load` returns
@@ -834,7 +851,7 @@ Then move the focus read, in this same change:
 
 Every other reader found in Step 1 is redirected the same way.
 
-- [ ] **Step 5: Prove resume still restores focus**
+- [x] **Step 5: Prove resume still restores focus**
 
 The regression this task would otherwise ship is invisible to the unit
 tests above, so assert it directly:
@@ -857,7 +874,7 @@ async def test_resume_still_restores_the_focused_tab(tmp_path):
         "resume still reads focus off the workspace")
 ```
 
-- [ ] **Step 6: Run the FULL suite, not a blast radius**
+- [x] **Step 6: Run the FULL suite, not a blast radius**
 
 This is the only breaking refactor in the plan: it removes a dataclass
 field that construction sites pass by keyword, so the failures are
@@ -871,7 +888,7 @@ Run: `uv run python -m pytest -q -m "not live"`
 Expected: green, no regression against the 3592 baseline. Read the rc
 directly; never through a pipe.
 
-- [ ] **Step 6: Verify an old state file still loads**
+- [x] **Step 6: Verify an old state file still loads**
 
 ```bash
 uv run python - <<'PY'
@@ -887,7 +904,7 @@ PY
 ```
 Expected: `loaded: True | has focus: False`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/aegis/state/workspace.py src/aegis/tui/app.py tests/views/test_workspace_is_brain_only.py
@@ -913,7 +930,7 @@ files still load; the key is ignored."
   - `View(view_id: str, app: AegisApp, state: ViewState)` with `frames: list[bytes]` (the sink's buffer), `async def run() -> None`, `async def stop() -> None`, `def repaint() -> None`.
   - `async def open_view(view_id, *, manager, geometry, roots, mcp, **app_kw) -> View` — builds the app on a bound driver, restores persisted view state if any.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/views/test_view.py
@@ -987,12 +1004,12 @@ async def test_geometry_is_the_drivers_and_not_the_environments(tmp_path,
     await v.stop()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_view.py -v -m "not live"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.views.view'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # src/aegis/views/view.py
@@ -1097,12 +1114,12 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
     return View(view_id=view_id, app=app, state=state, frames=frames)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/views/test_view.py -v -m "not live"`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/views/view.py tests/views/test_view.py
@@ -1122,7 +1139,7 @@ git commit -m "feat(views): View — one AegisApp bound to one sink and geometry
 - Consumes: `View`, `open_view` (Task 5).
 - Produces: `ViewRegistry(manager, roots, mcp, **app_kw)` with `async def open(view_id, geometry) -> View`, `async def close(view_id) -> None`, `def get(view_id) -> View | None`, `def list() -> list[str]`, `async def close_all() -> None`. Re-opening a live `view_id` returns the existing view rather than a second one.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/views/test_view_registry.py
@@ -1188,12 +1205,12 @@ async def test_closing_a_view_persists_its_state(tmp_path):
         "lucid-knuth": "half typed"}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/views/test_view_registry.py -v -m "not live"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.views.registry'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # src/aegis/views/registry.py
@@ -1262,12 +1279,12 @@ __all__ = ["ViewDriver", "view_driver_for", "View", "open_view",
            "ViewRegistry", "ViewState"]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/views/test_view_registry.py -v -m "not live"`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/views/registry.py src/aegis/views/__init__.py tests/views/test_view_registry.py
@@ -1316,7 +1333,7 @@ draft half is covered by `test_focus_and_drafts_do_not_cross` in Task 8.
 
 **Assert on the substrate, not on a proxy.** Comparing two `View` objects for non-identity is a proxy that passes while both apps render at one geometry. The size assertion must read what each app actually rendered at, and the no-crossing assertion must read the per-view state, not the registry keys.
 
-- [ ] **Step 1: Write the gate**
+- [x] **Step 1: Write the gate**
 
 ```python
 # tests/views/test_multi_view.py
@@ -1466,12 +1483,12 @@ async def test_a_reattached_view_gets_a_full_frame(tmp_path):
     await reg.close_all()
 ```
 
-- [ ] **Step 2: Run the gate**
+- [x] **Step 2: Run the gate**
 
 Run: `uv run python -m pytest tests/views/test_multi_view.py -v -m "not live"`
 Expected: PASS (5 tests)
 
-- [ ] **Step 3: Mutation-check the gate**
+- [x] **Step 3: Mutation-check the gate**
 
 A gate that cannot fail is worth less than none, and this one is the
 acceptance test for the stage. Three mutations, each must turn it RED:
@@ -1493,13 +1510,13 @@ Record the RED output for each, then revert. **Mutation 3 is the one most
 likely to be "simplified" back by a later contributor**, which is exactly
 why it is pinned.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `uv run python -m pytest -q -m "not live"`
 Expected: **3592 + this plan's new tests passed, 1 skipped, rc=0.** Read the
 rc directly; never through a pipe.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/views/test_multi_view.py
@@ -1530,3 +1547,66 @@ These are the spec's own four, none of which stage 4 forces:
 2. **Geometry with zero views attached.** A brain with no views has no screen; the first view to attach defines its own. Stage 4 sidesteps this because a `View` always brings a geometry — confirm nothing in the TUI assumes a size before the first attach.
 3. **Voice with N views.** One microphone, many views: `VoiceStrip` needs an explicit owner or push-to-talk is ambiguous.
 4. **Tab order on reorder.** Order is brain state, so reordering in one view reorders for everyone. Confirm that is wanted, or move it view-side.
+
+---
+
+## Execution notes (2026-09-11)
+
+Six defects in this plan, found while executing it. Recorded because the
+plan had already survived one critique pass, and every one of these is the
+same shape that pass was looking for: prose right, literal code wrong.
+
+1. **`FakeMCP` was unreachable.** The fixture is defined in
+   `tests/views/conftest.py` and then called as a bare `FakeMCP()` in four
+   test modules. pytest does not inject conftest names into test modules,
+   so every one of those would have died with `NameError`. Fixed with
+   `tests/views/__init__.py` plus an explicit
+   `from tests.views.conftest import FakeMCP`, matching `tests/tui/`.
+
+2. **`AegisApp.spawn_session` does not exist.** Task 8's gate called it.
+   The real surfaces are `AegisApp.spawn` (`app.py:1812`, the app's *own*
+   local plane) and `SessionManager.spawn` (`manager.py:259`, the brain).
+   The distinction is the whole point of the test, and the gate now spawns
+   on the manager.
+
+3. **The cross-view property is unbuilt** — see the status header. The
+   plan asserts it as a gate without a task that builds it.
+
+4. **Focus persistence would have silently narrowed.** Task 4 has
+   `LocalTuiAttachment` persist the `ViewState` on exit. Focus previously
+   rode in `workspace.json`, which `_write_snapshot` rewrites on *every tab
+   change*, so it survived a kill and not merely a clean exit. Persisting
+   only at shutdown is a behaviour change against a constraint this plan
+   calls absolute. `write_view_snapshot` keeps the old property.
+
+5. **`open_view` never passed the `ViewState` to the app.** It restores
+   one, hands it to the `View`, and builds the `AegisApp` without it — so
+   the app would read focus off `None` on resume and write focus into an
+   object nobody persisted. A write-only field, which is exactly what the
+   plan warns about two paragraphs earlier for geometry.
+
+6. **Two of the three gate mutations could not go red.**
+   - *Mutation 2* (drop `state.geometry = geometry`): every geometry
+     assertion opened a view at the same size it had persisted, so the
+     restored and requested values were identical and the line was
+     invisible. `test_geometry_comes_from_this_attach_not_the_last` now
+     opens narrow over a wide persisted state.
+   - *Mutation 3* (`repaint` via `refresh()`): passed — and so did
+     `repaint()` as a literal `return`. The test cleared the sink while the
+     boot render was still draining, so `pause()` supplied frames whether
+     repaint did anything or not. The test now quiesces first.
+
+   Chasing mutation 3 also disproved the plan's measured claim that
+   `app.refresh(repaint=True, layout=True)` "emits nothing". On Textual
+   8.2.6 against a quiesced 80x24 view, three strategies are byte-for-byte
+   identical at 4000 bytes over 25 addressed rows, and only doing nothing
+   differs. The private `compositor._dirty_regions` coupling bought nothing
+   and is gone.
+
+Also fixed, and **not** caused by this plan: `tests/tui/test_remote_pane_
+hydration.py` permanently replaced `AegisApp.theme` and
+`AegisApp.current_theme` with unrestored class properties (`2a23189`,
+2026-07-16). Every later `AegisApp` got a `MagicMock` theme and empty CSS
+variables; the next app to actually render died parsing `App.DEFAULT_CSS`.
+Latent for two months because no test had run two *rendering* apps in one
+process. `9e631c4`.
