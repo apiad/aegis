@@ -1026,11 +1026,27 @@ class AegisApp(App):
         cs = self._switcher()
         if cs is None:
             return
+        # The conversation this session has already had.
+        #
+        # Every other pane construction passes a replay; this one did not,
+        # and for a session being spawned right now the omission is
+        # invisible because there is nothing to replay. On a reattach it is
+        # the whole problem: the daemon still holds the session, the view is
+        # rebuilt from nothing, and the tab returns with the right handle,
+        # the right status bar, and an empty transcript. Everything said
+        # before the detach is on disk and simply never read.
+        #
+        # Off the loop for the same reason boot resume is: this decodes the
+        # whole log, ~500ms on a 24MB one, and the backfill runs once per
+        # tab the brain is holding.
+        log_id = getattr(session, "log_id", None) or session.handle
+        replay = _safe_replay(self._state_dir, log_id)
         pane = ConversationPane(
             None, session.agent, session.agent_slug, session.handle,
             self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir, core=session,
+            log_id=log_id, replay=replay,
             # Once-per-session concerns that happen to live on a pane: the
             # Ctrl+H history preview and the autotitle. Only the view that
             # opened the tab carries them, so they fire once rather than

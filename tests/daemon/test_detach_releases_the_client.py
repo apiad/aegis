@@ -173,3 +173,110 @@ async def test_closing_the_last_tab_also_releases_the_client(tmp_path):
     finally:
         stop.set()
         await asyncio.wait_for(task, timeout=60)
+
+
+async def test_the_client_receives_the_terminal_restore_before_the_close(
+        tmp_path):
+    """The driver writing the escapes is half of it; they have to arrive.
+
+    `serve_view` races the pump against the app and then cancels the
+    flusher, so bytes the app wrote on its way down can still be sitting in
+    the pending buffer when the socket closes. Dropping them leaves the
+    terminal in exactly the state the escapes exist to undo, which is
+    indistinguishable from never writing them.
+
+    The flusher polls every 5ms and usually wins that race on its own,
+    which is why removing the final drain does not fail this test. The
+    test below starves the flusher to pin the drain itself.
+    """
+    roots = AegisRoots.for_project(tmp_path)
+    stop = asyncio.Event()
+    task = await _serve_task(roots, stop)
+    try:
+        reader, writer, _screen = await _attach(roots, "tty-restore")
+
+        writer.write(encode_data(CTRL_Q))
+        await writer.drain()
+
+        decoder = FrameDecoder()
+        tail = bytearray()
+        try:
+            async with asyncio.timeout(10):
+                while True:
+                    chunk = await reader.read(65536)
+                    if not chunk:
+                        break
+                    for kind, payload in decoder.feed(chunk):
+                        if kind == "D":
+                            tail.extend(payload)
+        except TimeoutError:
+            pass
+
+        got = bytes(tail)
+        for what, seq in [("leave alt screen", b"?1049l"),
+                          ("show cursor", b"?25h"),
+                          ("mouse off", b"?1003l"),
+                          ("bracketed paste off", b"?2004l")]:
+            assert seq in got, (
+                f"{what} never reached the client; the terminal is left in "
+                f"that mode after detach ({len(got)} bytes arrived)")
+        writer.close()
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=60)
+
+
+async def test_the_restore_survives_a_flusher_that_never_runs(
+        tmp_path, monkeypatch):
+    """Pins the final drain, which the test above cannot.
+
+    Whether the app's last bytes reach the socket is otherwise a race
+    between a 5ms poll and the cancellation right after it, and a race the
+    poll usually wins is still a race: it is exactly the kind that fails on
+    a loaded machine and nowhere else. Starving the flusher makes the drain
+    the only route, so removing it fails here every time.
+    """
+    import aegis.daemon.server as server
+
+    async def _never(_writer, _pending):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(server, "_flush", _never)
+
+    roots = AegisRoots.for_project(tmp_path)
+    stop = asyncio.Event()
+    task = await _serve_task(roots, stop)
+    try:
+        sock = lifecycle.socket_path(roots)
+        async with asyncio.timeout(25):
+            while not sock.exists():
+                await asyncio.sleep(0.02)
+        reader, writer = await asyncio.open_unix_connection(str(sock))
+        writer.write(hello("tty-starved", 100, 30))
+        await writer.drain()
+        await asyncio.sleep(3)          # boot, with nothing being flushed
+
+        writer.write(encode_data(CTRL_Q))
+        await writer.drain()
+
+        decoder = FrameDecoder()
+        tail = bytearray()
+        try:
+            async with asyncio.timeout(10):
+                while True:
+                    chunk = await reader.read(65536)
+                    if not chunk:
+                        break
+                    for kind, payload in decoder.feed(chunk):
+                        if kind == "D":
+                            tail.extend(payload)
+        except TimeoutError:
+            pass
+
+        assert b"?1049l" in bytes(tail), (
+            "with the flusher starved, the terminal restore never reached "
+            f"the client: {len(tail)} bytes arrived")
+        writer.close()
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=60)

@@ -152,6 +152,33 @@ class ViewDriver(WebDriver):
         self.flush()
         self._app.call_later(self._app.post_message, events.AppBlur())
 
+    def stop_application_mode(self) -> None:
+        """Undo what ``start_application_mode`` did, then exit as WebDriver.
+
+        `WebDriver.stop_application_mode` writes no escapes at all, which is
+        right for a browser: the page tears the emulator down, so the modes
+        die with it. A terminal is not a page. Detaching left the user's
+        shell inside the alt screen, cursor hidden, mouse reporting still
+        on, so every mouse movement printed escape sequences into their
+        prompt.
+
+        Nothing downstream can repair this. `aegis attach` restores termios,
+        which is line discipline rather than terminal modes, and it is
+        deliberately a dumb pipe that parses no frames and acts on no meta.
+        The driver that turned these modes on is the only thing that knows
+        they are on.
+
+        Order follows `LinuxDriver.stop_application_mode`: paste and mouse
+        off first, then leave the alt screen and show the cursor last, so
+        the final state is written to the normal screen.
+        """
+        self._disable_bracketed_paste()
+        self._disable_mouse_support()
+        self.write("\x1b[?1049l")   # leave alt screen
+        self.write("\x1b[?25h")     # show cursor
+        self.flush()
+        super().stop_application_mode()
+
     def run_input_thread(self) -> None:
         """No stdin. Input arrives through the transport, not the tty.
 

@@ -100,6 +100,20 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
                     with contextlib.suppress(asyncio.CancelledError,
                                              Exception):
                         await task
+                # The app's last bytes are the ones that matter most, and
+                # they are the ones most easily lost. `stop_application_mode`
+                # writes the escapes that leave the alt screen, show the
+                # cursor and turn mouse reporting off; they land in
+                # `pending`, and the flusher that would carry them polls
+                # every 5ms and is cancelled just below. Dropping them is
+                # indistinguishable from never writing them: the user gets
+                # their shell back inside the alt screen with the mouse
+                # still reporting.
+                if pending:
+                    with contextlib.suppress(Exception):
+                        writer.write(b"".join(pending))
+                        pending.clear()
+                        await writer.drain()
         finally:
             flusher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
