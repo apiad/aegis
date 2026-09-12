@@ -16,6 +16,61 @@ log = logging.getLogger(__name__)
 DEFAULT_IDLE_TIMEOUT_S = 1800.0
 
 
+def source_mtime() -> float:
+    """The newest mtime under the installed aegis package.
+
+    Exact for an editable install, which is how aegis is developed: every
+    edit moves it. Silent for a wheel, where nothing under the package
+    changes after install, so the staleness check below simply never fires
+    there.
+    """
+    root = Path(__file__).resolve().parent.parent
+    newest = 0.0
+    for p in root.rglob("*.py"):
+        try:
+            newest = max(newest, p.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def is_stale(rec) -> bool:
+    """Whether ``rec``'s daemon is running code that has since been edited.
+
+    The registry records a ``version`` and comparing it would not answer
+    this: a dev edit does not bump a release number, so the daemon that
+    served Alex stale code all morning matched his working tree at 0.37.0
+    on both sides. What separates them is that the process is older than
+    the source.
+    """
+    try:
+        return source_mtime() > rec.started
+    except Exception:  # noqa: BLE001 — never block an attach on this
+        return False
+
+
+def nothing_to_lose(roots) -> bool:
+    """Whether replacing this root's daemon would cost the user nothing.
+
+    Read from the workspace snapshot rather than asked of the daemon,
+    which would need a protocol message for one question. It is the
+    persisted roster, so it can lag what the daemon holds right now, and
+    the lag is handled by which way the answer errs: anything open, or any
+    doubt at all, means do not replace. The cost of being wrong that way is
+    a warning the user can act on. The cost of being wrong the other way is
+    their work.
+    """
+    from aegis.state.workspace import load
+
+    try:
+        ws = load(roots.state_dir)
+    except Exception:  # noqa: BLE001 — includes CorruptWorkspace
+        return False
+    if ws is None:
+        return True
+    return not (ws.tabs or ws.terminals or ws.files)
+
+
 class SpawnFailed(Exception):
     """An autostarted daemon never came up."""
 

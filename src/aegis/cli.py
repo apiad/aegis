@@ -366,9 +366,50 @@ def _daemon_preflight(root: Path) -> None:
     load_boot_config(AegisRoots.for_project(root, harness_cwd=root))
 
 
+def _daemon_for(root: Path):
+    """Seam, so a test can present a daemon without one existing."""
+    from aegis.daemon import registry as _dreg
+    return _dreg.daemon_for(root)
+
+
+def _handle_stale_daemon(root: Path) -> None:
+    """Replace, or report, a daemon running code that has since changed.
+
+    A daemon keeps whatever it booted with, `ensure_daemon` returns any
+    daemon that answers its socket, and the reaper needs zero views AND
+    zero sessions for thirty minutes, so one holding a tab never exits. The
+    result was a morning of fixes that could not reach the user, with
+    nothing on screen to say why.
+
+    Replacing it silently is right only when there is nothing to lose, so
+    that is the only case that acts. Otherwise this prints and attaches
+    anyway: refusing would lock the user out of a working brain, which is a
+    worse version of the problem it is here to solve.
+    """
+    from aegis.daemon import registry as _dreg
+    from aegis.daemon.lifecycle import is_stale, nothing_to_lose
+
+    rec = _daemon_for(root)
+    if rec is None or not is_stale(rec):
+        return
+    roots = AegisRoots.for_project(root, harness_cwd=root)
+    if nothing_to_lose(roots):
+        _dreg.kill(rec)
+        _console.print(
+            "[dim]restarted the daemon: it was running older code[/dim]")
+        return
+    _console.print(
+        f"[yellow]the daemon for this root (pid {rec.pid}) started before "
+        f"the current code and keeps running what it booted with. "
+        f"`aegis kill` when you can afford to drop its tabs.[/yellow]",
+        soft_wrap=True)
+
+
 def _attach_to_daemon(root: Path, view_id: str) -> None:
     """Ensure a daemon for ``root`` and pipe this terminal to it."""
     from aegis.daemon.lifecycle import SpawnFailed
+
+    _handle_stale_daemon(root)
 
     async def _go():
         path = await _ensure_daemon(
