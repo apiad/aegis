@@ -385,6 +385,9 @@ class AegisApp(App):
         # id is `pane-<birth handle>` and Textual ids are immutable, so a
         # name freed by a rename or a close is NOT free to mint again — see
         # aegis.core.handles.
+        # Replaced below with the bridge's registry when one is injected:
+        # handles are brain state, and two registries over one session set
+        # let two views mint the same name.
         self._handles = HandleRegistry()
         # F3 dashboard mode — app-wide, not per-pane (see set_sidebar_mode).
         self._sidebar_mode = False
@@ -463,6 +466,12 @@ class AegisApp(App):
             self.roots = bridge.roots
             self.state_root: Path = self.roots.state_root
             self._state_dir = self.roots.state_dir
+            # Handles are brain state, not view state. Adopted here for the
+            # same reason as roots: with a registry per view, two views
+            # minting at the same moment can mint the SAME name -- the
+            # manager believes one session exists while the second pane
+            # collides on its immutable DOM id `pane-<handle>`.
+            self._handles = bridge.handles
         else:
             # No bridge: unchanged. state_root/_state_dir stay on the
             # process cwd (Task 6 threads roots into the rest of this path).
@@ -921,6 +930,28 @@ class AegisApp(App):
 
         _write_meta()
 
+        if self.manager is not None:
+            # Bridged: the brain owns the session set, so it mints the
+            # session and every view -- including this one -- learns about it
+            # through the observer. Spawning locally here is what used to
+            # trap a tab in the view it was opened in.
+            sess = self.manager._sync_spawn(
+                slug, handle=h, host=host, cwd=cwd, agent=agent)
+            # Mount here rather than waiting for our own observer callback:
+            # callers use the returned pane immediately, and the callback is
+            # scheduled on a worker. Whichever arrives second no-ops on
+            # _mount_brain_pane's pane_for guard.
+            await self._mount_brain_pane(
+                sess, foreground=foreground,
+                on_first_user_message=_write_meta,
+                on_first_result=(
+                    lambda opening, _h=sess.handle: self._autotitle(
+                        _h, opening)))
+            pane = self.pane_for(sess.handle)
+            if pane is not None and opening_prompt is not None:
+                pane._submit(opening_prompt)
+            return pane
+
         pane = ConversationPane(
             self._make_session(agent, self._mcp.url, h,
                                **self._factory_kwargs(place)), agent,
@@ -955,7 +986,9 @@ class AegisApp(App):
     # split. Only which tabs EXIST crosses.
 
     async def _mount_brain_pane(self, session, *,
-                                foreground: bool = False) -> None:
+                                foreground: bool = False,
+                                on_first_user_message=None,
+                                on_first_result=None) -> None:
         """Mount a pane over a session the BRAIN owns.
 
         ``core=`` rather than a fresh ``AgentSession``: the pane must not
@@ -973,11 +1006,26 @@ class AegisApp(App):
             self._palette, digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
             state_dir_path=self._state_dir, core=session,
+            # Once-per-session concerns that happen to live on a pane: the
+            # Ctrl+H history preview and the autotitle. Only the view that
+            # opened the tab carries them, so they fire once rather than
+            # once per attached view. They belong on the brain -- stage 5,
+            # when a view can detach and take them with it.
+            on_first_user_message=on_first_user_message,
+            on_first_result=on_first_result,
             place=getattr(session, "place", None),
             project_root=Path(self._cwd))
         self._panes.append(pane)
         pane.display = False   # see _mount_hidden note in _mount_and_kick
-        await cs.mount(pane)
+        try:
+            await cs.mount(pane)
+        except Exception:  # noqa: BLE001
+            # The view detached mid-mount. Views come and go constantly once
+            # a daemon is attachable, and a half-mounted pane surfaces as a
+            # NoMatches crash out of a worker rather than a clean detach.
+            if pane in self._panes:
+                self._panes.remove(pane)
+            return
         if foreground:
             cs.current = pane.id
         self._refresh_tabbar()

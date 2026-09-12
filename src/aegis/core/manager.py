@@ -208,12 +208,21 @@ class SessionManager:
                     cwd: str | None = None,
                     fork_from: str | None = None,
                     forked_from: dict | None = None,
-                    place: Place | None = None) -> AgentSession:
+                    place: Place | None = None,
+                    agent: "Agent | None" = None) -> AgentSession:
         slug = slug or self._default_agent
-        if slug not in self._agents:
-            raise KeyError(slug)
-        agent = _overlay_agent(self._agents[slug], model=model,
-                              effort=effort, prompt=prompt)
+        if agent is None:
+            if slug not in self._agents:
+                raise KeyError(slug)
+            agent = self._agents[slug]
+        # else: a prebuilt Agent from the TUI's custom harness/model picker.
+        # Its slug is a display label like "claude:opus" and is deliberately
+        # NOT in the roster, so the lookup above would KeyError. Taking the
+        # agent directly is what lets that tab be brain-owned like any other
+        # -- exempting it instead would mean custom tabs alone never crossed
+        # to a second view.
+        agent = _overlay_agent(agent, model=model,
+                               effort=effort, prompt=prompt)
         # Resolve placement BEFORE minting a handle or building a session:
         # an unknown host must fail without leaving a half-built tab behind.
         place = place or resolve_place(

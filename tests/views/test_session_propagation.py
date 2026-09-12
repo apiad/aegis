@@ -182,14 +182,16 @@ async def test_the_app_and_its_brain_share_one_handle_registry(tmp_path):
     reg, mgr = _reg(tmp_path)
     a = await reg.open("narrow", (80, 24))
     b = await reg.open("wide", (140, 50))
-    async with a.app.run_test(headless=False, size=(80, 24)):
-        async with b.app.run_test(headless=False, size=(140, 50)):
+    async with a.app.run_test(headless=False, size=(80, 24)) as pa:
+        async with b.app.run_test(headless=False, size=(140, 50)) as pb:
             assert a.app._handles is mgr.handles
             assert b.app._handles is mgr.handles
             h = await mgr.spawn("default")
+            await pa.pause()
+            await pb.pause()
             assert mgr.handles.owner(h) is not None
             # A name the brain has bound cannot be minted again by a view.
-            assert a.app._mint_handle() != h
+            assert a.app._mint_handle(None) != h
     await reg.close_all()
 
 
