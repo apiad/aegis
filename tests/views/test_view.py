@@ -55,6 +55,53 @@ async def test_a_first_attach_has_no_prior_state(tmp_path):
     await v.stop()
 
 
+async def test_geometry_comes_from_this_attach_not_the_last(tmp_path):
+    """A terminal can be resized between two attaches.
+
+    Every other geometry test here opens at the SAME size it persisted, so
+    none of them can see `state.geometry = geometry` removed — the restored
+    value and the requested one are identical and the line is invisible.
+    This one opens narrow over a wide persisted state.
+    """
+    roots = AegisRoots.for_project(tmp_path)
+    save_view(roots.state_dir, ViewState("tty-1", (140, 50), "lucid-knuth"))
+    v = await open_view("tty-1", manager=_mgr(roots), geometry=(80, 24),
+                        roots=roots, mcp=FakeMCP())
+    assert v.state.geometry == (80, 24), (
+        "the view came back at its previous size, not the one it attached "
+        "at — a resized terminal would render at the old geometry")
+    # The rest of the restored state must survive that override.
+    assert v.state.active_handle == "lucid-knuth"
+    await v.stop()
+
+
+async def test_run_hands_the_views_geometry_to_its_driver(tmp_path):
+    """`run()` must pass size= explicitly.
+
+    run_async defaults size to None, which reaches the driver as None and
+    falls through to the COLUMNS/ROWS env vars (web_driver.py:52-59) — the
+    process-global this whole stage exists to remove. Asserted on the live
+    driver, not on ViewState: a geometry that never leaves the dataclass is
+    a write-only field.
+    """
+    import asyncio
+    monkey_free_roots = AegisRoots.for_project(tmp_path)
+    v = await open_view("tty-1", manager=_mgr(monkey_free_roots),
+                        geometry=(140, 50), roots=monkey_free_roots,
+                        mcp=FakeMCP())
+    await v.run()
+    try:
+        for _ in range(100):          # let the app reach driver construction
+            await asyncio.sleep(0.01)
+            if getattr(v.app, "_driver", None) is not None:
+                break
+        assert v.app._driver is not None, "the app never built a driver"
+        assert v.app._driver._size == (140, 50), (
+            f"driver got {v.app._driver._size}, not the view's geometry")
+    finally:
+        await v.stop()
+
+
 async def test_the_app_holds_the_same_view_state_object(tmp_path):
     """Restored state must reach the app, or it is write-only.
 

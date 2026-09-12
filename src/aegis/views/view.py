@@ -55,18 +55,25 @@ class View:
         partial unless the whole screen region is dirty
         (`_compositor.py:1118`), and there is no repaint meta message. So a
         reattaching client would otherwise receive deltas against a screen
-        it has never seen. Measured: ``app.refresh(repaint=True,
-        layout=True)`` emits nothing; dirtying the screen region does.
+        it has never seen.
+
+        ``Screen.refresh()`` with no region already marks the whole screen,
+        which is all this needs. Measured on Textual 8.2.6 against a
+        quiesced 80x24 view, three ways, byte-for-byte identical -- 4000
+        bytes in one frame addressing 25 rows::
+
+            screen.refresh()                             -> 4000 bytes
+            app.refresh(repaint=True, layout=True)       -> 4000 bytes
+            compositor._dirty_regions.add(...) + refresh -> 4000 bytes
+            (nothing)                                    ->    0 bytes
+
+        An earlier draft poked ``compositor._dirty_regions`` first, on the
+        measured claim that ``refresh()`` emits nothing. It does not, and no
+        test can tell those three apart because there is nothing to tell
+        apart -- so this uses the public call rather than coupling to two
+        private Textual attributes for no observable gain.
         """
-        screen = self.app.screen
-        compositor = screen._compositor
-        # compositor.size.region, not screen.size.region: the test at
-        # _compositor.py:1118 is `screen_region in self._dirty_regions`
-        # where self is the Compositor. The two are normally equal, so
-        # using the screen's happens to work and couples the call to the
-        # wrong object — it would drift silently the first time they differ.
-        compositor._dirty_regions.add(compositor.size.region)
-        screen.refresh()
+        self.app.screen.refresh()
 
     def persist(self, state_dir: Path) -> None:
         save_view(state_dir, self.state)
