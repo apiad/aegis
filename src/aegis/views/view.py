@@ -33,8 +33,8 @@ class View:
         ``v.frames.clear()``) keep operating on the real list."""
         return self.sink.frames
 
-    async def run(self) -> None:
-        """Run the app until it exits. The caller owns the task.
+    async def run(self, *, ready_timeout: float = 30.0) -> None:
+        """Start the app and return once it can render.
 
         ``size=`` is not optional. ``run_async`` defaults it to ``None``,
         which reaches the driver as ``size=None`` and sends it to the
@@ -42,9 +42,53 @@ class View:
         process-global this whole stage is about. A view whose geometry
         lives only in its ``ViewState`` and never reaches its driver has a
         write-only field and N views that all render at one size.
+
+        **Returning before the app is ready is not acceptable here.** A
+        transport calls ``repaint()`` the moment ``run()`` returns, and
+        ``App.screen`` raises ``ScreenStackError`` until the first screen
+        is pushed — so an unsynchronised ``run()`` makes every attach a
+        race that the fast path loses. ``auto_pilot`` is Textual's own
+        ready callback (`app.py:2256`, the same one ``run_test`` uses) and
+        its task is awaited only in ``run_async``'s ``finally``, so a
+        callback that returns immediately signals readiness without
+        exiting the app.
+
+        The screen-stack poll after it is not redundant: the ready
+        callback fires from ``_process_messages`` before the default
+        screen is necessarily on the stack, which is why ``run_test`` also
+        calls ``Pilot._wait_for_screen`` after waiting on the same event.
+        ``screen_stack`` is the public form of that check.
         """
+        ready = asyncio.Event()
+
+        async def _signal_ready(_pilot) -> None:
+            ready.set()
+
         self._task = asyncio.create_task(
-            self.app.run_async(size=self.state.geometry))
+            self.app.run_async(size=self.state.geometry,
+                               auto_pilot=_signal_ready))
+        # Race the readiness signal against the app dying during boot, so a
+        # view that cannot start fails its client instead of hanging it.
+        waiter = asyncio.create_task(ready.wait())
+        done, _ = await asyncio.wait(
+            {waiter, self._task}, timeout=ready_timeout,
+            return_when=asyncio.FIRST_COMPLETED)
+        if waiter not in done:
+            waiter.cancel()
+            if self._task in done:
+                self._task.result()      # re-raise the boot failure
+            raise TimeoutError(
+                f"view {self.view_id} was not ready in {ready_timeout:.0f}s")
+        deadline = asyncio.get_running_loop().time() + ready_timeout
+        while not self.app.screen_stack:
+            if self._task.done():
+                self._task.result()
+                raise RuntimeError(
+                    f"view {self.view_id} exited before it had a screen")
+            if asyncio.get_running_loop().time() > deadline:
+                raise TimeoutError(
+                    f"view {self.view_id} never pushed a screen")
+            await asyncio.sleep(0.005)
 
     async def stop(self) -> None:
         if self._task is not None and not self._task.done():
