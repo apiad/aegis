@@ -12,7 +12,32 @@ from __future__ import annotations
 
 import pathlib
 import pytest
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+
+
+@contextlib.contextmanager
+def _class_stubs(cls, **attrs):
+    """Install class attributes for the duration of the block, then undo.
+
+    Restores by *deleting* names the class did not define itself, rather
+    than writing the inherited value back: writing it back would copy a
+    descriptor from the base onto the subclass, which for a Textual
+    reactive is not the same object the base binds.
+    """
+    own = {name: cls.__dict__.get(name) for name in attrs}
+    try:
+        for name, value in attrs.items():
+            setattr(cls, name, value)
+        yield
+    finally:
+        for name, previous in own.items():
+            if previous is None and name not in cls.__dict__:
+                continue
+            if previous is None:
+                delattr(cls, name)
+            else:
+                setattr(cls, name, previous)
 
 
 # ---------------------------------------------------------------------------
@@ -214,11 +239,18 @@ async def test_on_mount_remote_hydrates_panes_for_existing_sessions():
     app.register_theme = MagicMock()
     app.bind = MagicMock()
     app.query_one = MagicMock(return_value=MagicMock(current=None))
-    type(app).theme = property(fget=lambda self: "default",
-                               fset=lambda self, v: None)
-    type(app).current_theme = property(fget=lambda self: MagicMock())
-
-    await app.on_mount()
+    # These stubs go on the CLASS, because `theme` is a Textual reactive
+    # descriptor and cannot be shadowed per instance. That makes them
+    # process-global: left in place they give every later AegisApp a
+    # MagicMock theme, so its CSS variables come out empty and the next app
+    # to actually render dies parsing App.DEFAULT_CSS with
+    # `variable_name='background', variables=dict_keys([])`. Nothing caught
+    # it until tests/views ran two rendering apps in one process.
+    with _class_stubs(type(app),
+                      theme=property(fget=lambda self: "default",
+                                     fset=lambda self, v: None),
+                      current_theme=property(fget=lambda self: MagicMock())):
+        await app.on_mount()
 
     assert len(spawn_calls) == 2, (
         f"Expected 2 _spawn_remote_pane calls (one per session), "
