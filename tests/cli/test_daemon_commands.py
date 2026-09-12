@@ -125,27 +125,10 @@ def test_bare_aegis_goes_through_the_daemon(tmp_path, monkeypatch):
     assert calls["view_id"], "attached without a view id"
 
 
-def test_foreground_takes_the_old_path_not_the_daemon(tmp_path, monkeypatch):
-    """--foreground is the escape hatch for CI, uvx and debugging the
-    daemon itself. It must not touch ensure_daemon."""
-    (tmp_path / ".aegis.yaml").write_text(
-        "default_agent: a\nagents:\n  a:\n    harness: claude-code\n"
-        "    model: opus\n", encoding="utf-8")
-    touched = []
+# `test_foreground_takes_the_old_path_not_the_daemon` lived here. It
+# asserted that `--foreground` did not call ensure_daemon, by replacing
+# asyncio.run with a function that closed the coroutine without running it,
+# so it could not have caught the path breaking. The flag is gone: bare
+# `aegis` is the only shape, and `test_run_attaches_to_the_daemon` below is
+# what pins it.
 
-    async def _never(root, **kw):
-        touched.append(root)
-        return tmp_path / "d.sock"
-
-    monkeypatch.setattr(cli, "_ensure_daemon", _never)
-    ran = []
-
-    def _capture(coro):
-        ran.append(coro)
-        coro.close()
-
-    monkeypatch.setattr(cli.asyncio, "run", _capture)
-    monkeypatch.chdir(tmp_path)
-    runner.invoke(cli.app, ["--foreground"])
-    assert touched == [], "--foreground went through the daemon"
-    assert ran, "--foreground did not boot a brain in this process"

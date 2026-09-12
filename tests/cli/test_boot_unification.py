@@ -101,82 +101,52 @@ async def test_attachment_runs_on_the_one_mcp_serve_bound(tmp_path,
     second port, addressing a bridge that is not the one holding the brain.
     Every spawned agent would then call into a plane with no sessions on it.
     """
-    from aegis.cli import LocalTuiAttachment, _serve
+    from aegis.cli import _serve
     from aegis.config.roots import AegisRoots
 
-    captured: dict = {}
-    monkeypatch.setattr("aegis.cli.AegisApp", _recording_app(captured))
+    seen: dict = {}
+
+    class _Attachment:
+        """Stands for any `ui=`. `aegis.embed`'s `_Capture` is the only one
+        left now that `--foreground` is gone, and it wants this same
+        guarantee: the manager it is handed is the one `_serve` wired."""
+
+        async def run(self, manager) -> None:
+            seen["manager"] = manager
 
     mcp = _StubMCP()
     factory = lambda *a, **k: None   # noqa: E731
     roots = AegisRoots.for_project(tmp_path)
-    ui = LocalTuiAttachment(clean=True, agent=None, queues={}, voice=None,
-                            hosts={}, host_registry=None, drivers={},
-                            cwd=str(tmp_path), agents={}, roots=roots)
     stop = asyncio.Event()
     stop.set()
 
     await _serve(roots=roots, agents={}, default_agent="",
-                 make_session=factory, mcp=mcp, stop=stop, ui=ui)
+                 make_session=factory, mcp=mcp, stop=stop, ui=_Attachment())
 
-    kw = captured["kwargs"]
-    assert captured.get("ran"), "the attachment never ran the app"
+    assert "manager" in seen, "the attachment never ran"
     assert mcp.bound, "_serve never bound the MCP plane"
-    manager = mcp.bound[0]
-    assert kw["bridge"] is manager, (
-        "the app must be handed the very manager _serve wired, via bridge=")
-    assert kw["mcp"] is mcp, (
-        "the app must run on the MCP object _serve bound to the manager, "
-        "not a second AegisMCP on a second port")
-    assert kw["make_session"] is factory, (
+    assert seen["manager"] is mcp.bound[0], (
+        "the attachment must be handed the very manager _serve bound to the "
+        "MCP plane, not a second one on a second port")
+    assert seen["manager"].make_session is factory, (
         "a fresh session factory would spawn harnesses the manager does "
-        "not know about; mcp=None/make_session=None crash outright")
-    assert kw.get("manager") is None, (
-        "manager= is the --remote path and disables the local plane")
+        "not know about")
 
 
-async def test_attachment_passes_the_real_agent_objects(tmp_path,
-                                                        monkeypatch):
-    """`{slug: None}` is the --remote client's shape (cli.py:302), where
-    there are no local Agent objects. Locally they back drv.resume,
-    _resolve_place and the per-session model overlay."""
-    from aegis.cli import LocalTuiAttachment
-    from aegis.config import Agent
-    from aegis.config.roots import AegisRoots
-    from aegis.core.manager import SessionManager
+# `test_attachment_passes_the_real_agent_objects` lived here. It asserted
+# how LocalTuiAttachment forwarded agents, hosts and the host registry into
+# AegisApp, and it went when that class did: `aegis --foreground` was the
+# only caller, and a second way to start that nobody ran was not worth the
+# duplicated wiring it needed.
 
-    captured: dict = {}
-    monkeypatch.setattr("aegis.cli.AegisApp", _recording_app(captured))
+def test_serve_routes_the_boot_through_serve(monkeypatch, tmp_path):
+    """The brain must reach `_serve` carrying its schedules.
 
-    agent = Agent(harness="claude-code", model="opus", effort="high",
-                  permission="auto")
-    hosts = {"box": object()}
-    registry = object()
-    roots = AegisRoots.for_project(tmp_path)
-    mgr = SessionManager(agents={"main": agent}, default_agent="main",
-                         make_session=lambda *a, **k: None, mcp=_StubMCP(),
-                         roots=roots)
-    ui = LocalTuiAttachment(clean=False, agent="main", queues={"q": object()},
-                            voice=None, hosts=hosts, host_registry=registry,
-                            drivers={}, cwd=str(tmp_path),
-                            agents={"main": agent}, roots=roots)
-    await ui.run(mgr)
-
-    kw = captured["kwargs"]
-    assert kw["agents"]["main"] is agent
-    assert kw["hosts"] is hosts
-    assert kw["host_registry"] is registry
-    assert kw["default_agent"] == "main"
-
-
-def test_run_routes_the_tui_through_serve(monkeypatch, tmp_path):
-    """`aegis --foreground` with a config must boot the shared brain and
-    attach the TUI, which is what makes it fire schedules.
-
-    ``--foreground`` since the daemon landed: bare `aegis` is a client and
-    boots no brain in this process. The in-process shape this pins is the
-    one `--foreground` preserves, and it is also what `aegis serve` runs,
-    so the property still has a caller.
+    This used to be asserted through `aegis --foreground`, which is gone.
+    The property was never about that flag: it is why schedules fire at all,
+    and the divergence the spec named was a TUI path that constructed
+    AegisApp directly and passed no `schedules`. `aegis serve` is the caller
+    that has it now.
     """
     from aegis.cli import app as cli_app
 
@@ -199,12 +169,12 @@ def test_run_routes_the_tui_through_serve(monkeypatch, tmp_path):
         "aegis.tui.app.AegisApp.run",
         lambda self: (_ for _ in ()).throw(
             AssertionError("the TUI was launched outside _serve")))
-    r = CliRunner().invoke(cli_app, ["--foreground"])
+    r = CliRunner().invoke(cli_app, ["serve"])
     assert r.exit_code == 0, r.output
-    assert seen, "`aegis` did not route through _serve"
-    assert seen["ui"] is not None, "`aegis` booted without a UI attachment"
+    assert seen, "`aegis serve` did not route through _serve"
+    assert seen["views"], "`aegis serve` did not publish a view socket"
     assert seen["schedules"], (
-        "`aegis` dropped the configured schedules on the floor — the "
+        "`aegis serve` dropped the configured schedules on the floor; the "
         "scheduler would never fire")
     assert seen["roots"].config_root == tmp_path.resolve()
 

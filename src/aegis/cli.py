@@ -20,7 +20,6 @@ from aegis.drivers import DRIVERS, get_driver
 from aegis.mcp import AegisMCP
 from aegis.state.workspace import state_dir
 from aegis.tui import AegisApp
-from aegis.views.state import ViewState, load_view, save_view
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
@@ -159,10 +158,6 @@ def run(
     clean: bool = typer.Option(
         False, "--clean",
         help="Ignore prior workspace state; start fresh"),
-    foreground: bool = typer.Option(
-        False, "--foreground",
-        help="Run the brain and one view in this process (CI, uvx, "
-             "debugging the daemon). The pre-daemon shape."),
     remote: str = typer.Option(
         None, "--remote",
         help="Run against a remote aegis serve. "
@@ -219,78 +214,11 @@ def run(
         _run_bootstrap_tui(root, cwd=cwd, clean=clean)
         return
 
-    if not foreground:
-        # `aegis` is a client. The brain is a daemon, started on demand.
-        # Deliberately ahead of load_boot_config: the client needs no
-        # agents and no queues, and a config error is legible where it
-        # actually happens — in `aegis serve`, which can be run in a
-        # terminal and read.
-        _attach_to_daemon(root, _tty_view_id())
-        return
-
-    effective_cwd = str(root) if cwd == "." else cwd
-    roots = AegisRoots.for_project(root, harness_cwd=Path(effective_cwd))
-
-    try:
-        boot = load_boot_config(roots)
-    except ConfigError as e:
-        _print_error(e)
-        raise typer.Exit(1)
-
-    agents = boot.agents
-    name = agent or boot.default_agent
-    if name not in agents:
-        _console.print(
-            f"[red]Unknown agent {name!r}. "
-            f"Known: {sorted(agents)}[/red]")
-        raise typer.Exit(1)
-    default_agent = name
-
-    queues = boot.queues
-    voice_cfg = boot.voice
-    hosts = boot.hosts
-    schedules = boot.schedules
-    remotes = boot.remotes
-    remote_plane = boot.remote_plane
-    inline_schedule_names = boot.inline_schedule_names
-
-    # Best-effort background refresh of ~/.cache/aegis/models.yaml so
-    # prices + context windows stay current without a release. Never
-    # blocks startup; failures are silent.
-    try:
-        from aegis.models.refresh import maybe_refresh
-        maybe_refresh()
-    except Exception:  # noqa: BLE001
-        pass
-
-    from aegis.hosts.registry import HostRegistry
-    host_registry = HostRegistry(hosts, state_dir=roots.state_dir,
-                                 local_root=effective_cwd)
-    make_session = _session_factory(effective_cwd, host_registry)
-
-    # Driver registry for workspace resume — one instance per provider so
-    # bootstrap_resume can call drv.resume(...) without re-instantiating
-    # per tab.
-    drivers = {slug: cls() for slug, cls in DRIVERS.items()}
-    ui = LocalTuiAttachment(
-        clean=clean, agent=default_agent, queues=queues, voice=voice_cfg,
-        hosts=hosts, host_registry=host_registry, drivers=drivers,
-        cwd=effective_cwd, agents=agents, roots=roots)
-
-    async def _main():
-        stop = asyncio.Event()
-        await _serve(roots=roots, agents=agents, default_agent=default_agent,
-                     make_session=make_session, mcp=AegisMCP(),
-                     stop=stop, queues=queues, schedules=schedules,
-                     remotes=remotes, remote_plane=remote_plane,
-                     # web= stays off: `aegis serve`/`aegis web` publish the
-                     # web frontend, and a console URL printed over a
-                     # full-screen TUI is not a surface anyone asked for.
-                     web=None,
-                     hosts=hosts, host_registry=host_registry,
-                     inline_schedule_names=inline_schedule_names, ui=ui)
-
-    asyncio.run(_main())
+    # `aegis` is a client. The brain is a daemon, started on demand.
+    # Deliberately ahead of load_boot_config: the client needs no agents and
+    # no queues, and a config error is legible where it actually happens, in
+    # `aegis serve`, which can be run in a terminal and read.
+    _attach_to_daemon(root, _tty_view_id())
 
 
 def _run_bootstrap_tui(root: Path, *, cwd: str, clean: bool) -> None:
@@ -338,50 +266,61 @@ def _tty_view_id() -> str:
     return "tty-" + name.strip("/").replace("/", "-")
 
 
-class LocalTuiAttachment:
-    """The Textual TUI on this process's terminal.
+@dataclass(frozen=True)
+class ResolvedBoot:
+    """Everything `_serve` needs, derived once from a project root.
 
-    Uses ``bridge=`` (Task 7a), NOT ``manager=`` — the latter is the
-    --remote path and would disable the local plane. Uses ``run_async()``,
-    because this runs inside _serve's loop where a blocking ``.run()``
-    deadlocks.
-
-    ``mcp`` and ``make_session`` are read off the manager rather than taken
-    as constructor arguments. That is the whole point of the unified boot:
-    _serve has already built one MCP plane and bound it, and one factory the
-    manager spawns through. Constructing a second AegisMCP here would put a
-    working server on a second port, addressing a bridge with no sessions on
-    it; passing None for either crashes the local plane outright
-    (app.py:488, :576, :661, :874, :1206, :1700 for the MCP; :874, :1812,
-    :2376 for the factory). Sourcing both from the manager makes a second
-    plane unrepresentable rather than merely discouraged.
+    Two callers build this and they drifted while there were three. The
+    error printer is the visible case: `run()` gained `_print_error` so a
+    long path would not break the message across a line, and `_run_serve`
+    kept `_console.print` and its wrapping. `_run_serve` also re-derived
+    `root / ".aegis" / "state"` by hand with a roots object in scope, which
+    is the pattern `AegisRoots` exists to remove. Both are gone by
+    construction now: there is one sequence and the callers differ only in
+    what they do with it.
     """
+    roots: AegisRoots
+    boot: object
+    host_registry: object
+    make_session: object
 
-    def __init__(self, *, clean: bool, agent: str | None, queues: dict,
-                 voice, hosts: dict, host_registry, drivers: dict,
-                 cwd: str, agents: dict, roots) -> None:
-        self._kw = dict(clean=clean, queues=queues, voice=voice,
-                        hosts=hosts, host_registry=host_registry,
-                        drivers=drivers, cwd=cwd, agents=agents)
-        self._agent = agent
-        self._roots = roots
+    @property
+    def serve_kwargs(self) -> dict:
+        """The kwargs every caller passes through unchanged."""
+        b = self.boot
+        return {
+            "roots": self.roots,
+            "agents": b.agents,
+            "default_agent": b.default_agent,
+            "make_session": self.make_session,
+            "queues": b.queues,
+            "schedules": b.schedules,
+            "remotes": b.remotes,
+            "remote_plane": b.remote_plane,
+            "hosts": b.hosts,
+            "host_registry": self.host_registry,
+            "inline_schedule_names": b.inline_schedule_names,
+        }
 
-    async def run(self, manager) -> None:
-        # Focus, scroll and drafts are this terminal's, not the brain's.
-        # Keyed per-tty so two terminals attached to one project each keep
-        # their own focused tab; "tty" when stdin is not a terminal.
-        view_id = _tty_view_id()
-        state = (load_view(self._roots.state_dir, view_id)
-                 or ViewState(view_id=view_id, geometry=(80, 24)))
 
-        app = AegisApp(default_agent=self._agent or "",
-                       make_session=manager.make_session,
-                       mcp=manager.mcp, bridge=manager,
-                       view_state=state, **self._kw)
-        try:
-            await app.run_async()
-        finally:
-            save_view(self._roots.state_dir, state)
+def resolve_boot(root: Path, cwd: str = ".") -> ResolvedBoot:
+    """Read the config for ``root`` and build what a boot needs from it.
+
+    Raises ConfigError; the caller decides how to report it.
+    """
+    from aegis.hosts.registry import HostRegistry
+
+    effective = str(root) if cwd == "." else cwd
+    roots = AegisRoots.for_project(root, harness_cwd=Path(effective))
+    boot = load_boot_config(roots)
+    # The registry owns one SSH ControlMaster per host and is handed the MCP
+    # port once the server binds, so it must exist before the factory that
+    # closes over it.
+    host_registry = HostRegistry(boot.hosts, state_dir=roots.state_dir,
+                                 local_root=effective)
+    return ResolvedBoot(roots=roots, boot=boot, host_registry=host_registry,
+                        make_session=_session_factory(effective,
+                                                      host_registry))
 
 
 async def _ensure_daemon(root: Path, **kw):
@@ -1053,38 +992,17 @@ def _ensure_web_token(root: Path) -> str:
 
 def _run_serve(cwd: str) -> None:
     root = find_project_root() or Path.cwd()
-    effective = str(root) if cwd == "." else cwd
-    roots = AegisRoots.for_project(root, harness_cwd=Path(effective))
-
     try:
-        boot = load_boot_config(roots)
+        resolved = resolve_boot(root, cwd)
     except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
+        _print_error(e)
         raise typer.Exit(1)
-
-    agents = boot.agents
-    default_agent = boot.default_agent
-    queues = boot.queues
-    schedules = boot.schedules
-    remotes = boot.remotes
-    remote_plane = boot.remote_plane
-    inline_schedule_names = boot.inline_schedule_names
-    web = boot.web
-    hosts = boot.hosts
-
-    # Execution hosts. The registry owns one SSH ControlMaster per host and
-    # is handed the MCP port once the server binds, so it must exist before
-    # the factory that closes over it.
-    from aegis.hosts.registry import HostRegistry
-    host_registry = HostRegistry(hosts, state_dir=root / ".aegis" / "state",
-                                 local_root=effective)
-    make_session = _session_factory(effective, host_registry)
 
     # Headless has no terminal to lose, but it is also the path nobody is
     # watching — a traceback on a detached stdout is as good as unwritten.
     from aegis.state import aegis_log
-    aegis_log.configure(root / ".aegis" / "state")
-    aegis_log.write(f"serve starting (cwd {effective})")
+    aegis_log.configure(resolved.roots.state_dir)
+    aegis_log.write(f"serve starting (cwd {resolved.roots.harness_cwd})")
 
     async def main_async():
         stop = asyncio.Event()
@@ -1092,14 +1010,8 @@ def _run_serve(cwd: str) -> None:
         aegis_log.install_asyncio_hook(loop)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
-        await _serve(roots=roots, agents=agents, default_agent=default_agent,
-                     make_session=make_session, mcp=AegisMCP(),
-                     stop=stop, queues=queues,
-                     schedules=schedules,
-                     remotes=remotes, remote_plane=remote_plane, web=web,
-                     hosts=hosts, host_registry=host_registry,
-                     inline_schedule_names=inline_schedule_names,
-                     views=True)
+        await _serve(**resolved.serve_kwargs, mcp=AegisMCP(), stop=stop,
+                     web=resolved.boot.web, views=True)
 
     asyncio.run(main_async())
 

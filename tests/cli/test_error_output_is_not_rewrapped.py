@@ -47,3 +47,24 @@ def test_a_config_error_survives_an_eighty_column_console(
     assert r.exit_code == 1, r.output
     assert "top level must be a mapping" in r.output, \
         f"message was re-wrapped by the console: {r.output!r}"
+
+
+def test_serve_reports_a_config_error_the_same_way(tmp_path, monkeypatch):
+    """`aegis serve` had the wrapped copy of this for as long as there were
+    two boot paths.
+
+    `run()` was fixed and `_run_serve` was not, because they were two
+    sequences and the fix was scoped to one. Both resolve their boot through
+    `resolve_boot` now and report through `_print_error`, so the wording and
+    the wrapping cannot differ again by being edited in one place.
+    """
+    deep = tmp_path / ("s" * 60)
+    deep.mkdir()
+    monkeypatch.chdir(deep)
+    (deep / ".aegis.yaml").write_text("- not a mapping\n")
+
+    r = runner.invoke(app, ["serve"], env={"COLUMNS": "80"})
+
+    assert r.exit_code == 1, r.output
+    assert "top level must be a mapping" in r.output, \
+        f"aegis serve re-wrapped the message: {r.output!r}"

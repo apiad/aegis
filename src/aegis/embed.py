@@ -52,14 +52,12 @@ class EmbeddedAegis:
 @asynccontextmanager
 async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
     """Yield a booted aegis rooted at `root`. Several may coexist."""
-    from aegis.cli import _serve, _session_factory, load_boot_config
-    from aegis.hosts.registry import HostRegistry
+    from aegis.cli import _serve, resolve_boot
     from aegis.mcp import AegisMCP
 
-    roots = AegisRoots.for_project(Path(root), harness_cwd=harness_cwd)
-    cfg = load_boot_config(roots)
-    host_registry = HostRegistry(cfg.hosts, state_dir=roots.state_dir,
-                                 local_root=str(roots.harness_cwd))
+    resolved = resolve_boot(Path(root),
+                            str(harness_cwd) if harness_cwd else ".")
+    roots = resolved.roots
     stop = asyncio.Event()
     holder: dict = {}
     mcp = AegisMCP()
@@ -84,14 +82,7 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
             await stop.wait()
 
     task = asyncio.create_task(_serve(
-        roots=roots, agents=cfg.agents, default_agent=cfg.default_agent,
-        make_session=_session_factory(str(roots.harness_cwd), host_registry),
-        mcp=mcp, stop=stop, queues=cfg.queues,
-        schedules=cfg.schedules, remotes=cfg.remotes,
-        remote_plane=cfg.remote_plane, hosts=cfg.hosts,
-        host_registry=host_registry,
-        inline_schedule_names=cfg.inline_schedule_names,
-        ui=_Capture()))
+        **resolved.serve_kwargs, mcp=mcp, stop=stop, ui=_Capture()))
     try:
         while "manager" not in holder and not task.done():
             await asyncio.sleep(0.01)
