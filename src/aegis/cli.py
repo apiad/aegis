@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -542,7 +543,8 @@ async def _serve(*, roots: AegisRoots,
                  remote_plane=None, web=None,
                  hosts: dict | None = None, host_registry=None,
                  inline_schedule_names: set[str] | None = None,
-                 ui: "UIAttachment | None" = None) -> None:
+                 ui: "UIAttachment | None" = None,
+                 views: bool = False) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -647,6 +649,33 @@ async def _serve(*, roots: AegisRoots,
         await reload_watcher.start()
 
     tasks = []
+    view_registry = None
+    socket_server = None
+    if views:
+        # The daemon. A registry of views over this one brain, published on
+        # a unix socket that `aegis attach` pipes. `ui` is the OTHER shape
+        # — one view that owns the process — and the two are exclusive.
+        from aegis.daemon import registry as _dreg
+        from aegis.daemon.lifecycle import (
+            IdleReaper, idle_timeout_s, socket_path,
+        )
+        from aegis.daemon.server import UnixSocketServer
+        from aegis.views.registry import ViewRegistry
+        view_registry = ViewRegistry(
+            manager=mgr, roots=roots, mcp=mcp,
+            agents=agents, default_agent=default_agent,
+            make_session=make_session, queues=queues or {},
+            hosts=hosts or {}, host_registry=host_registry,
+            cwd=str(roots.harness_cwd))
+        socket_server = UnixSocketServer(socket_path(roots), view_registry)
+        await socket_server.start()
+        _dreg.record(_dreg.DaemonRecord(
+            root=roots.state_root, pid=os.getpid(),
+            socket=socket_server.path, started=_dreg.now(),
+            version=_aegis_version()))
+        tasks.append(asyncio.create_task(IdleReaper(
+            view_registry, mgr, timeout_s=idle_timeout_s(),
+            stop=stop).run()))
     if web is not None:
         from aegis.web.frontend import WebFrontend
         web_fe = WebFrontend(mgr, web, state_dir=roots.state_dir,
@@ -664,6 +693,13 @@ async def _serve(*, roots: AegisRoots,
     finally:
         for t in tasks:
             t.cancel()
+        if socket_server is not None:
+            await socket_server.stop()
+        if view_registry is not None:
+            await view_registry.close_all()
+        if views:
+            from aegis.daemon import registry as _dreg
+            _dreg.forget(roots.state_root)
         if reload_watcher is not None:
             await reload_watcher.stop()
         if scheduler is not None:
@@ -931,7 +967,8 @@ def _run_serve(cwd: str) -> None:
                      schedules=schedules,
                      remotes=remotes, remote_plane=remote_plane, web=web,
                      hosts=hosts, host_registry=host_registry,
-                     inline_schedule_names=inline_schedule_names)
+                     inline_schedule_names=inline_schedule_names,
+                     views=True)
 
     asyncio.run(main_async())
 
