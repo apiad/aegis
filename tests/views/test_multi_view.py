@@ -102,9 +102,9 @@ async def test_a_session_opened_in_one_view_appears_in_the_other(tmp_path):
     view ever rendered the tab.
 
     Spawns on the MANAGER, not on one view's app: "opened in one view" means
-    the view asked the brain, which is the only route by which a second view
-    could ever learn of it. Spawning through `a.app.spawn` exercises A's own
-    local plane and could never reach B by construction.
+    the view asked the brain, which is the route by which a second view
+    learns of it. That a view's own Ctrl+N takes that route is a separate
+    property, pinned in test_session_propagation.py.
     """
     reg, mgr = _reg(tmp_path, agents=True)
     a = await reg.open("narrow", (80, 24))

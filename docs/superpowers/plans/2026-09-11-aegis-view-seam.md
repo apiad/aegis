@@ -3,16 +3,14 @@
 > **Status: EXECUTED 2026-09-11** — `9207664`…`44efce6`. Suite green at
 > **3628 passed, 1 skipped, 1 xfailed, rc=0** (baseline 3592 + 36 new).
 >
-> **One property of the stage gate is not built and is marked
-> `xfail(strict=True)`**: a tab opened in one view does not appear in the
-> other. `AegisApp` is its own `AppBridge` on the local plane and spawns
-> through `_SessionManagerAdapter(self)`, so `bridge=` supplies roots and
-> handles but never panes. Measured: two views over one `SessionManager`
-> mount two *different* default tabs, and a session spawned on the manager
-> reaches neither. The remote plane has the equivalent wiring
-> (`_on_remote_session_list`, `app.py:2058`); the local plane has none, and
-> this plan carries no task for it. **Stage 5 must build it** — see
-> `tests/views/test_multi_view.py`.
+> **The gate's fifth property shipped separately and the gate is now whole.**
+> When this plan was executed, a tab opened in one view did not appear in the
+> other — `AegisApp` was its own `AppBridge` on the local plane, so `bridge=`
+> supplied roots and handles but never panes. That was marked
+> `xfail(strict=True)` here and closed the same day by
+> `docs/superpowers/plans/2026-09-11-aegis-session-propagation.md`
+> (`5b11cff`..`9e3220e`). `tests/views/test_multi_view.py` now passes all
+> five with no xfail.
 >
 > Six defects in this plan were found and repaired during execution; they
 > are recorded in *Execution notes* at the foot of this file.

@@ -1,7 +1,26 @@
 # Session Propagation Implementation Plan (closes stage 4's xfail)
 
+> **Status: EXECUTED 2026-09-11** — `5b11cff`..`9e3220e`. Suite green at
+> **3642 passed, 1 skipped, 0 xfailed, rc=0**. The stage-4 gate passes all
+> five properties.
+>
+> **One thing this plan did not anticipate, found while building Task 2:**
+> `on_loop` and `on_recap` were *single slots* on `AgentSession`, assigned by
+> the pane on the stated assumption that "one frontend owns the chip". With
+> N panes over one session the second assignment silently replaces the
+> first, so the loop chip and the end-of-turn recap would have rendered only
+> in the last view to attach — with no exception and nothing to notice. Both
+> are observer lists now; the single slot stays for `RemotePaneCore`, which
+> has no `add_*` form.
+>
+> Also beyond the plan: `_sync_spawn` gained an optional prebuilt `Agent` so
+> the TUI's custom harness/model picker goes through the brain too. Its slug
+> is a display label like `claude:opus` and is deliberately absent from the
+> roster, so the roster lookup would `KeyError` — exempting it would have
+> meant custom tabs alone never crossed to a second view.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans
-> to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
+> to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax.
 
 **Goal:** A tab opened in one view appears in every other view over the same
 brain, and closing it closes it everywhere — so `tests/views/test_multi_view.py
@@ -83,7 +102,7 @@ where the first argument is `"added"` or `"removed"`. Fired after the session
 list has been mutated, so an observer that reads `list_sessions()` sees the
 new truth.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Assert: an observer fires on spawn with `("added", session)`; fires on close
 with `("removed", session)`; that **two** observers both fire (this is the
@@ -91,16 +110,16 @@ N-views property — a single-slot callback would pass a one-observer test and
 fail the whole plan); and that an observer raising does not take the spawn
 down with it, since one broken view must not stop the brain.
 
-- [ ] **Step 2: Run it — expect `AttributeError: … has no attribute
+- [x] **Step 2: Run it — expect `AttributeError: … has no attribute
       'add_session_observer'`**
-- [ ] **Step 3: Implement.** List, not a slot. Fire after
+- [x] **Step 3: Implement.** List, not a slot. Fire after
       `self._sessions.append(s)` (`:249`) and after `self._sessions.remove(s)`
       (`:470`). Wrap each callback in `try/except Exception` and keep going.
-- [ ] **Step 4: Run it — expect PASS**
-- [ ] **Step 5: Mutation-check.** Make the observer store a single callback
+- [x] **Step 4: Run it — expect PASS**
+- [x] **Step 5: Mutation-check.** Make the observer store a single callback
       instead of a list → the two-observer test goes red. Remove the
       `try/except` → the broken-observer test goes red. Read both failures.
-- [ ] **Step 6: Commit** — `feat(core): SessionManager announces added and
+- [x] **Step 6: Commit** — `feat(core): SessionManager announces added and
       removed sessions`
 
 ---
@@ -118,7 +137,7 @@ session that has no pane; on `"removed"` it unmounts.
 harness. `core=` is the existing seam for precisely that (`pane.py:112`) and
 an `AgentSession` satisfies its contract — both measured above.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Assert, with two views over one manager: a session spawned on the manager
 *after* both views are running reaches **both** pane sets; a session that
@@ -131,17 +150,17 @@ The identity assertion is the one that matters. Two panes over two *different*
 `AgentSession`s wrapping one harness would satisfy a handle-equality check and
 be a different, broken thing.
 
-- [ ] **Step 2: Run it — expect the handles never to arrive**
-- [ ] **Step 3: Implement.** Subscribe in the local-plane branch only
+- [x] **Step 2: Run it — expect the handles never to arrive**
+- [x] **Step 3: Implement.** Subscribe in the local-plane branch only
       (`bridge is not None`). Mount through `run_worker`, not bare
       `create_task` — the pane's `compose()` needs Textual's `active_app`
       ContextVar, which bare `create_task` does not propagate (the reason is
       already written at `app.py:2432-2437`).
-- [ ] **Step 4: Run it — expect PASS**
-- [ ] **Step 5: Mutation-check.** Return a copy instead of the live session
+- [x] **Step 4: Run it — expect PASS**
+- [x] **Step 5: Mutation-check.** Return a copy instead of the live session
       → the identity assertion goes red. Skip the attach-time backfill →
       the pre-existing-session test goes red.
-- [ ] **Step 6: Commit** — `feat(tui): a bridged app mounts a pane per brain
+- [x] **Step 6: Commit** — `feat(tui): a bridged app mounts a pane per brain
       session`
 
 ---
@@ -157,25 +176,25 @@ be a different, broken thing.
 via Task 2's observer. `AegisApp` adopts `bridge.handles` instead of minting
 its own registry.
 
-- [ ] **Step 1: Enumerate before editing** — `grep -rn "_handles" src/ tests/`.
+- [x] **Step 1: Enumerate before editing** — `grep -rn "_handles" src/ tests/`.
       Record the list; each is either a brain read to redirect or a local-path
       read to leave alone.
-- [ ] **Step 2: Write the failing test.** `Ctrl+N` in view A (the real action,
+- [x] **Step 2: Write the failing test.** `Ctrl+N` in view A (the real action,
       `action_new_tab`, not the adapter directly) puts the tab in view B; and
       the app and its bridge share **one** registry object, so a handle minted
       in either is unavailable in the other.
-- [ ] **Step 3: Run it — expect the tab to stay in A**
-- [ ] **Step 4: Implement.** Adopt `bridge.handles` where the bridge is
+- [x] **Step 3: Run it — expect the tab to stay in A**
+- [x] **Step 4: Implement.** Adopt `bridge.handles` where the bridge is
       adopted (beside `self.roots = bridge.roots`, `app.py:462-465`). Delegate
       the adapter's spawn. **The no-bridge branch keeps today's code
       unchanged** — `aegis serve --headless`, embedded hosts and the tests
       that build a bare `AegisApp` all run it.
-- [ ] **Step 5: Run the FULL suite.** Not a blast radius: this changes the
+- [x] **Step 5: Run the FULL suite.** Not a blast radius: this changes the
       spawn route every interactive path takes, and the failures will be
       scattered. Read the rc directly, never through a pipe.
-- [ ] **Step 6: Mutation-check.** Keep the app's own registry → the
+- [x] **Step 6: Mutation-check.** Keep the app's own registry → the
       shared-registry test goes red for a stated reason.
-- [ ] **Step 7: Commit** — `refactor(tui): one spawn route and one handle
+- [x] **Step 7: Commit** — `refactor(tui): one spawn route and one handle
       registry when bridged`
 
 ---
@@ -185,17 +204,17 @@ its own registry.
 **Files:** `tests/views/test_multi_view.py`, `TASKS.md`, the stage-4 plan's
 status header.
 
-- [ ] **Step 1: Delete the `xfail(strict=True)` marker and its reason.**
+- [x] **Step 1: Delete the `xfail(strict=True)` marker and its reason.**
       Because it is `strict`, the suite has been failing on XPASS from the
       moment Task 3 landed — that is the marker doing its job.
-- [ ] **Step 2: Run the gate — expect 5 passed, 0 xfailed**
-- [ ] **Step 3: Mutation-check the gate itself.** Unsubscribe the observer in
+- [x] **Step 2: Run the gate — expect 5 passed, 0 xfailed**
+- [x] **Step 3: Mutation-check the gate itself.** Unsubscribe the observer in
       `app.py` → `test_a_session_opened_in_one_view_appears_in_the_other` goes
       red. A gate that cannot fail is worth less than none.
-- [ ] **Step 4: Run the full suite** — expect no regression against 3629.
-- [ ] **Step 5: Update the docs.** Stage-4 plan header stops saying a property
+- [x] **Step 4: Run the full suite** — expect no regression against 3629.
+- [x] **Step 5: Update the docs.** Stage-4 plan header stops saying a property
       is unbuilt; `TASKS.md` stage-5 entry stops leading with the xfail.
-- [ ] **Step 6: Commit** — `test(views): the stage-4 gate is whole — tabs
+- [x] **Step 6: Commit** — `test(views): the stage-4 gate is whole — tabs
       cross views`
 
 ---

@@ -24,7 +24,7 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
-| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | specced, needs a plan; first task is closing stage 4's xfail |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | specced, needs a plan; stage 4's xfail is closed (`9e3220e`) |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
@@ -398,17 +398,14 @@ Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
 2026-09-11** (`9207664`..`5259bb3`, suite 3629/rc=0) — `ViewDriver`, `View`,
 `ViewRegistry`, `ViewState`, and `Workspace` reduced to brain state.
 
-**Stage 5 is unblocked except for one thing, which is its first task:** a
-tab opened in one view does not appear in the other, and it is
-`xfail(strict=True)` in `tests/views/test_multi_view.py`. `AegisApp` is its
-own `AppBridge` on the local plane and spawns through
-`_SessionManagerAdapter(self)`, so `bridge=` supplies roots and handles but
-never panes — two views over one `SessionManager` mount two *different*
-default tabs. `AgentSession` already keeps observer *lists*
-(`core/session.py:206-210`), so N panes over one session is supported; the
-fix is routing `AegisApp.spawn` through the manager when a bridge is
-present. Decided 2026-09-11: do that, accepting the spawn-route change to
-the single-view path.
+**Stage 5 is unblocked.** The one gap stage 4 left -- a tab opened in one
+view not appearing in the other -- was closed the same day by
+`docs/superpowers/plans/2026-09-11-aegis-session-propagation.md`
+(`5b11cff`..`9e3220e`, suite 3642/rc=0). `SessionManager` announces its
+session set, a bridged `AegisApp` mounts `ConversationPane(core=session)`
+per brain session and backfills at attach, and both the spawn route and the
+handle registry are the brain's. The stage-4 gate passes all five with no
+xfail.
 
 Also settled 2026-09-11, so stage 5 does not have to re-open them: view ids
 are client-minted and client-persisted; `ViewState.scroll` / `.drafts` get
