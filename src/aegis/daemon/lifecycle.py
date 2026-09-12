@@ -113,19 +113,31 @@ async def _connectable(path: Path) -> bool:
     return True
 
 
-async def ensure_daemon(root: Path, *, timeout_s: float = 20.0) -> Path:
+async def ensure_daemon(root: Path, *, timeout_s: float = 20.0,
+                        preflight=None) -> Path:
     """Return a connectable socket for ``root``, starting one if needed.
 
     Liveness is "the socket accepts a connection", not "the file exists":
     a SIGKILLed daemon leaves the file behind, and a stale file that
     satisfied this check would make every `aegis` invocation hang against
     a dead socket.
+
+    ``preflight`` runs immediately before a spawn and may raise to abort
+    it. It exists for the config check: a daemon dies silently on a broken
+    ``.aegis.yaml`` (its stderr is /dev/null), so without one the user
+    waits out the whole timeout to be told the daemon did not come up
+    rather than being shown the parse error. It runs ONLY on the spawn
+    path -- when a daemon is already live its config is whatever it
+    booted with, and refusing to attach over a local parse error would
+    lock the user out of a working brain.
     """
     roots = AegisRoots.for_project(Path(root))
     path = socket_path(roots)
     if await _connectable(path):
         return path
 
+    if preflight is not None:
+        preflight()
     _spawn_detached(Path(root))
     waited = 0.0
     step = 0.05

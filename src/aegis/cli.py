@@ -160,6 +160,10 @@ def run(
     clean: bool = typer.Option(
         False, "--clean",
         help="Ignore prior workspace state; start fresh"),
+    foreground: bool = typer.Option(
+        False, "--foreground",
+        help="Run the brain and one view in this process (CI, uvx, "
+             "debugging the daemon). The pre-daemon shape."),
     remote: str = typer.Option(
         None, "--remote",
         help="Run against a remote aegis serve. "
@@ -214,6 +218,15 @@ def run(
         # yet: load_config would raise and `aegis` in a fresh directory
         # would exit 1 instead of offering to create one.
         _run_bootstrap_tui(root, cwd=cwd, clean=clean)
+        return
+
+    if not foreground:
+        # `aegis` is a client. The brain is a daemon, started on demand.
+        # Deliberately ahead of load_boot_config: the client needs no
+        # agents and no queues, and a config error is legible where it
+        # actually happens — in `aegis serve`, which can be run in a
+        # terminal and read.
+        _attach_to_daemon(root, _tty_view_id(), clean=clean)
         return
 
     effective_cwd = str(root) if cwd == "." else cwd
@@ -318,20 +331,6 @@ class UIAttachment(Protocol):
     async def run(self, manager) -> None: ...
 
 
-def _print_error(exc: Exception) -> None:
-    """Print an error without letting Rich re-wrap it.
-
-    `Console.print` wraps at the console width, which breaks a message
-    mid-phrase whenever the path in it is long enough. A config error under
-    a 76-character temp path came out as "...: top \nlevel must be a
-    mapping": legible to a human squinting at it, but no longer one line to
-    grep, and it made a test pass or fail on how long pytest's temp
-    directory happened to be that run.  `soft_wrap` leaves wrapping to the
-    terminal, which is where it belongs.
-    """
-    _console.print(f"[red]{exc}[/red]", soft_wrap=True)
-
-
 def _tty_view_id() -> str:
     """A stable id for this terminal, usable as a single filename component.
 
@@ -404,6 +403,96 @@ class LocalTuiAttachment:
             await app.run_async()
         finally:
             save_view(self._roots.state_dir, state)
+
+
+async def _ensure_daemon(root: Path, **kw):
+    """Seam. Imported lazily and indirected so a Typer-level test can stub
+    the transport without stubbing a coroutine nested in a command body."""
+    from aegis.daemon.lifecycle import ensure_daemon
+    return await ensure_daemon(root, **kw)
+
+
+async def _attach(path, view_id: str, **kw):
+    from aegis.daemon.client import attach
+    return await attach(path, view_id, **kw)
+
+
+def _print_error(exc: Exception) -> None:
+    """Print an error without letting Rich re-wrap it.
+
+    `Console.print` wraps at the console width, which breaks a message
+    mid-phrase whenever the path in it is long enough. A config error under
+    a 76-character temp path came out as "…: top \nlevel must be a
+    mapping": legible to a human squinting at it, but no longer one line to
+    grep, and it broke a test that had done nothing but move to a longer
+    directory. `soft_wrap` leaves the wrapping to the terminal, which is
+    where it belongs.
+    """
+    _console.print(f"[red]{exc}[/red]", soft_wrap=True)
+
+
+def _daemon_preflight(root: Path, *, clean: bool = False) -> None:
+    """Check what the client can check before spawning a daemon for ``root``.
+
+    The daemon's stderr is /dev/null, so it dies silently on bad state and
+    the user would otherwise wait out the full spawn timeout to be told
+    only that it "did not come up".
+
+    Two things are checked, and both used to be reported by the pre-daemon
+    `aegis` from inside the boot it no longer runs. A broken `.aegis.yaml`
+    raises ConfigError. An unparseable `workspace.json` raises
+    CorruptWorkspace, whose message names the file and whose hint tells the
+    user that `--clean` gets them past it; without this the daemon boots,
+    fails to read the file, and the client prints an exit footer as though
+    nothing were wrong. `--clean` skips the workspace check for the same
+    reason the flag exists.
+    """
+    roots = AegisRoots.for_project(root, harness_cwd=root)
+    load_boot_config(roots)
+    pick_workspace_to_resume(roots.state_dir, clean=clean)
+
+
+def _attach_to_daemon(root: Path, view_id: str, *, clean: bool = False) -> None:
+    """Ensure a daemon for ``root`` and pipe this terminal to it."""
+    from aegis.daemon.lifecycle import SpawnFailed
+
+    async def _go():
+        path = await _ensure_daemon(
+            root, preflight=lambda: _daemon_preflight(root, clean=clean))
+        await _attach(path, view_id)
+
+    try:
+        asyncio.run(_go())
+    except CorruptWorkspace as e:
+        # typer.echo and code 2, matching the two other sites that report
+        # this. The client is the only thing left that can say it.
+        typer.echo(f"aegis: {e}", err=True)
+        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
+                   err=True)
+        raise typer.Exit(code=2) from e
+    except ConfigError as e:
+        _print_error(e)
+        raise typer.Exit(1) from e
+    except SpawnFailed as e:
+        _print_error(e)
+        raise typer.Exit(1) from e
+    # The footer the spec asks for: on detach, say what survives, so
+    # Ctrl+Q does not read as "I just killed my agents".
+    rec = None
+    try:
+        from aegis.daemon import registry as _dreg
+        rec = _dreg.daemon_for(root)
+    except Exception:  # noqa: BLE001 — a footer must never fail the exit
+        pass
+    if rec is not None:
+        _console.print(
+            f"[dim]brain running (pid {rec.pid}) · "
+            f"`aegis kill` to stop[/dim]")
+
+
+def _root_for(cwd: str) -> Path:
+    return Path(cwd).resolve() if cwd != "." else (
+        find_project_root() or Path.cwd())
 
 
 async def _build_remote_manager(*, url: str, token: str | None,
@@ -733,8 +822,60 @@ async def _serve(*, roots: AegisRoots,
 
 @app.command()
 def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
-    """Run the headless daemon (MCP plane + optional web frontend)."""
+    """Run the daemon in the foreground (brain + views + MCP plane)."""
     _run_serve(cwd)
+
+
+@app.command()
+def attach(
+    view: str = typer.Option(None, "--view",
+                             help="View id. Defaults to this terminal."),
+    cwd: str = typer.Option(".", "--cwd",
+                            help="Project root whose daemon to attach."),
+) -> None:
+    """Attach this terminal to the daemon for a project root."""
+    root = _root_for(cwd)
+    _attach_to_daemon(root, view or _tty_view_id())
+
+
+@app.command("ls")
+def ls_cmd() -> None:
+    """List running aegis daemons across all project roots."""
+    from aegis.daemon import registry as _dreg
+    daemons = _dreg.live_daemons()
+    if not daemons:
+        _console.print("no aegis daemons running")
+        return
+    for rec in daemons:
+        age = max(0, int(_dreg.now() - rec.started))
+        _console.print(f"{rec.pid:>8}  up {age:>6}s  {rec.root}")
+
+
+@app.command("kill")
+def kill_cmd(
+    cwd: str = typer.Option(".", "--cwd",
+                            help="Project root whose daemon to stop."),
+    all_: bool = typer.Option(False, "--all",
+                              help="Stop every running daemon."),
+) -> None:
+    """Stop the daemon for a project root (or all of them)."""
+    from aegis.daemon import registry as _dreg
+    if all_:
+        daemons = _dreg.live_daemons()
+        if not daemons:
+            _console.print("no aegis daemons running")
+            return
+        for rec in daemons:
+            _dreg.kill(rec)
+            _console.print(f"stopped {rec.pid} ({rec.root})")
+        return
+    root = _root_for(cwd)
+    rec = _dreg.daemon_for(root)
+    if rec is None:
+        _console.print(f"[red]no aegis daemon for {root}[/red]")
+        raise typer.Exit(1)
+    _dreg.kill(rec)
+    _console.print(f"stopped {rec.pid} ({rec.root})")
 
 
 @app.command()

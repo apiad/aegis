@@ -170,8 +170,14 @@ async def test_attachment_passes_the_real_agent_objects(tmp_path,
 
 
 def test_run_routes_the_tui_through_serve(monkeypatch, tmp_path):
-    """`aegis` with a config must boot the shared brain and attach the TUI,
-    which is what makes it fire schedules."""
+    """`aegis --foreground` with a config must boot the shared brain and
+    attach the TUI, which is what makes it fire schedules.
+
+    ``--foreground`` since the daemon landed: bare `aegis` is a client and
+    boots no brain in this process. The in-process shape this pins is the
+    one `--foreground` preserves, and it is also what `aegis serve` runs,
+    so the property still has a caller.
+    """
     from aegis.cli import app as cli_app
 
     (tmp_path / ".aegis.yaml").write_text(
@@ -193,7 +199,7 @@ def test_run_routes_the_tui_through_serve(monkeypatch, tmp_path):
         "aegis.tui.app.AegisApp.run",
         lambda self: (_ for _ in ()).throw(
             AssertionError("the TUI was launched outside _serve")))
-    r = CliRunner().invoke(cli_app, [])
+    r = CliRunner().invoke(cli_app, ["--foreground"])
     assert r.exit_code == 0, r.output
     assert seen, "`aegis` did not route through _serve"
     assert seen["ui"] is not None, "`aegis` booted without a UI attachment"

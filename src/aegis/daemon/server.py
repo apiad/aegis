@@ -58,12 +58,23 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
         view.sink.attach(sink_fn)
         flusher = loop.create_task(_flush(writer, pending))
         try:
+            # No repaint here, and that is a deliberate absence.
+            #
+            # Textual emits deltas unless the whole screen is dirty
+            # (`_compositor.py:1118`), so a client attaching to a view that
+            # has ALREADY rendered would receive deltas against a screen it
+            # has never seen -- which is what View.repaint() exists for. In
+            # this stage that client cannot exist: the refusal above means
+            # registry.open() can only return a freshly built view, whose
+            # own boot render is full. A repaint() call here is therefore
+            # structurally dead, and verified so -- the whole gate passes
+            # with it removed.
+            #
+            # 5b reintroduces the case (a browser reconnecting to a view
+            # the daemon kept warm). The repaint belongs with it, guarded
+            # by a test that can fail, rather than parked here where none
+            # can.
             await view.run()
-            # The client has never seen this screen -- on a reattach it has
-            # seen a DIFFERENT one, which is worse. Textual emits deltas
-            # unless the whole screen is dirty (`_compositor.py:1118`), so
-            # ask for a full frame before any delta can be generated.
-            view.repaint()
             await _pump(reader, decoder, view)
         finally:
             flusher.cancel()
