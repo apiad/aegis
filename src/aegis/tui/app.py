@@ -1386,11 +1386,21 @@ class AegisApp(App):
                         severity="warning")
             return
         tab = plan.resumable[0].tab
-        # Handle retirement is per-process, so a session logged under this
-        # name in an EARLIER run can collide with a pane minted in this one.
-        # Mounting it anyway is DuplicateIds and the whole app; refusing
-        # costs the operator one reopen.
-        if self._handles.owner(tab.handle) is not None:
+        # What makes a reopen unsafe is a MOUNTED pane already holding the
+        # DOM id, not the handle having been bound at some point: mounting
+        # a second `pane-<handle>` is DuplicateIds and the whole app.
+        #
+        # Asking `self._handles.owner(...)` instead asked a question one
+        # size too big. The registry never frees a handle (by design — see
+        # core/handles.py), so under `aegis serve`, where the process lives
+        # for days rather than dying with the terminal, the first tab you
+        # closed retired its name forever and every later reopen was
+        # refused for a live tab that did not exist. The scan above already
+        # jumps to a pane that is genuinely live under this handle; what it
+        # cannot see is a pane RENAMED away from its birth handle, whose
+        # `#pane-<birth>` is still mounted. That is this query, and it is
+        # the whole of the hazard.
+        if self.query(f"#pane-{tab.handle}"):
             self.notify(
                 f"cannot reopen {tab.handle}: a live tab already holds "
                 f"that handle — rename it first",
