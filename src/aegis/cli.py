@@ -661,11 +661,19 @@ async def _serve(*, roots: AegisRoots,
         )
         from aegis.daemon.server import UnixSocketServer
         from aegis.views.registry import ViewRegistry
+        # `drivers` is not optional garnish here: it is what makes a view
+        # able to RESUME. plan_resume() skips every tab whose provider is
+        # not in this dict, so a view built without it restores no tabs at
+        # boot and refuses every Ctrl+R reopen with "driver-no-resume" --
+        # which is exactly the daemon looking like it had lost your
+        # history. Every other AegisApp construction in this file passes
+        # it; this one is the path that forgot.
         view_registry = ViewRegistry(
             manager=mgr, roots=roots, mcp=mcp,
             agents=agents, default_agent=default_agent,
             make_session=make_session, queues=queues or {},
             hosts=hosts or {}, host_registry=host_registry,
+            drivers={slug: cls() for slug, cls in DRIVERS.items()},
             cwd=str(roots.harness_cwd))
         socket_server = UnixSocketServer(socket_path(roots), view_registry)
         await socket_server.start()

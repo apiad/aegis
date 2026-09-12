@@ -118,3 +118,51 @@ async def test_serve_without_views_publishes_no_socket(tmp_path):
     finally:
         stop.set()
         await asyncio.wait_for(task, timeout=60)
+
+
+async def test_serve_gives_its_views_drivers_that_can_resume(tmp_path,
+                                                             monkeypatch):
+    """The daemon's views must be able to resume, and only _serve can make
+    them so: `open_view` builds no driver registry, so a view has whatever
+    `aegis serve` handed `ViewRegistry` and nothing else. Without it,
+    `plan_resume` skips every tab as "driver-no-resume" -- boot restores
+    nothing and Ctrl+R reopens nothing, which is the daemon appearing to
+    have lost its history.
+
+    Driven through the real _serve, for the reason this file exists: a test
+    that passes `drivers=` itself cannot fail when the wiring stops passing
+    it. Asserted at the registry boundary rather than after attaching a
+    client, so the failure is this assertion rather than a timeout waiting
+    on a view whose boot the missing drivers already broke -- and asserted
+    as a resumable plan, which is the question boot and Ctrl+R actually ask.
+    """
+    import aegis.views.registry as regmod
+    from aegis.state.workspace import Workspace, WorkspaceTab
+    from aegis.tui.resume_plan import plan_resume
+
+    built: list = []
+    real = regmod.ViewRegistry
+
+    class _Recording(real):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            built.append(kw)
+
+    monkeypatch.setattr(regmod, "ViewRegistry", _Recording)
+
+    stop = asyncio.Event()
+    _roots, task = await _boot(tmp_path, stop)
+    try:
+        await _until(lambda: bool(built))
+        kw = built[0]
+        tab = WorkspaceTab(handle="h", profile="default", order=0,
+                           provider="claude-code", session_id="sid-1",
+                           created_at="2026-09-12T00:00:00Z", log_id="lg")
+        plan = plan_resume(Workspace(tabs=[tab]), kw.get("agents", {}),
+                           kw.get("drivers", {}))
+        assert plan.resumable, (
+            "aegis serve built its views with no driver that can resume: "
+            f"{[(s.tab.handle, s.reason.value) for s in plan.skipped]}")
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=60)
