@@ -18,9 +18,8 @@ from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
 from aegis.drivers import DRIVERS, get_driver
 from aegis.mcp import AegisMCP
-from aegis.state.workspace import CorruptWorkspace, state_dir
+from aegis.state.workspace import state_dir
 from aegis.tui import AegisApp
-from aegis.tui.app import pick_workspace_to_resume
 from aegis.views.state import ViewState, load_view, save_view
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -226,7 +225,7 @@ def run(
         # agents and no queues, and a config error is legible where it
         # actually happens — in `aegis serve`, which can be run in a
         # terminal and read.
-        _attach_to_daemon(root, _tty_view_id(), clean=clean)
+        _attach_to_daemon(root, _tty_view_id())
         return
 
     effective_cwd = str(root) if cwd == "." else cwd
@@ -301,14 +300,6 @@ def _run_bootstrap_tui(root: Path, *, cwd: str, clean: bool) -> None:
     effective_cwd = str(root) if cwd == "." else cwd
 
     try:
-        pick_workspace_to_resume(state_dir(Path.cwd()), clean=clean)
-    except CorruptWorkspace as e:
-        typer.echo(f"aegis: {e}", err=True)
-        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
-                   err=True)
-        raise typer.Exit(code=2)
-
-    try:
         from aegis.models.refresh import maybe_refresh
         maybe_refresh()
     except Exception:  # noqa: BLE001
@@ -376,18 +367,6 @@ class LocalTuiAttachment:
         self._roots = roots
 
     async def run(self, manager) -> None:
-        # Workspace resume is a VIEW concern and a cwd site; it belongs
-        # here, rooted, not in the shared boot path.
-        try:
-            pick_workspace_to_resume(self._roots.state_dir,
-                                     clean=self._kw["clean"])
-        except CorruptWorkspace as e:
-            typer.echo(f"aegis: {e}", err=True)
-            typer.echo(
-                "hint: re-run with `aegis --clean` to ignore prior state.",
-                err=True)
-            raise typer.Exit(code=2) from e
-
         # Focus, scroll and drafts are this terminal's, not the brain's.
         # Keyed per-tty so two terminals attached to one project each keep
         # their own focused tab; "tty" when stdin is not a terminal.
@@ -431,45 +410,34 @@ def _print_error(exc: Exception) -> None:
     _console.print(f"[red]{exc}[/red]", soft_wrap=True)
 
 
-def _daemon_preflight(root: Path, *, clean: bool = False) -> None:
-    """Check what the client can check before spawning a daemon for ``root``.
+def _daemon_preflight(root: Path) -> None:
+    """Parse the config before spawning a daemon for ``root``.
 
-    The daemon's stderr is /dev/null, so it dies silently on bad state and
-    the user would otherwise wait out the full spawn timeout to be told
-    only that it "did not come up".
+    The daemon's stderr is /dev/null, so it dies silently on a broken
+    `.aegis.yaml` and the user would otherwise wait out the full spawn
+    timeout to be told only that it "did not come up". Raises ConfigError,
+    which the caller turns into the message and exit code the pre-daemon
+    `aegis` printed.
 
-    Two things are checked, and both used to be reported by the pre-daemon
-    `aegis` from inside the boot it no longer runs. A broken `.aegis.yaml`
-    raises ConfigError. An unparseable `workspace.json` raises
-    CorruptWorkspace, whose message names the file and whose hint tells the
-    user that `--clean` gets them past it; without this the daemon boots,
-    fails to read the file, and the client prints an exit footer as though
-    nothing were wrong. `--clean` skips the workspace check for the same
-    reason the flag exists.
+    Only the config. The workspace snapshot used to be checked here too,
+    and refused the boot when it would not parse. It is a cache of the tab
+    roster, so `load_or_quarantine` moves it aside and the TUI says where
+    it went. Refusing to start was the more expensive answer.
     """
-    roots = AegisRoots.for_project(root, harness_cwd=root)
-    load_boot_config(roots)
-    pick_workspace_to_resume(roots.state_dir, clean=clean)
+    load_boot_config(AegisRoots.for_project(root, harness_cwd=root))
 
 
-def _attach_to_daemon(root: Path, view_id: str, *, clean: bool = False) -> None:
+def _attach_to_daemon(root: Path, view_id: str) -> None:
     """Ensure a daemon for ``root`` and pipe this terminal to it."""
     from aegis.daemon.lifecycle import SpawnFailed
 
     async def _go():
         path = await _ensure_daemon(
-            root, preflight=lambda: _daemon_preflight(root, clean=clean))
+            root, preflight=lambda: _daemon_preflight(root))
         await _attach(path, view_id)
 
     try:
         asyncio.run(_go())
-    except CorruptWorkspace as e:
-        # typer.echo and code 2, matching the two other sites that report
-        # this. The client is the only thing left that can say it.
-        typer.echo(f"aegis: {e}", err=True)
-        typer.echo("hint: re-run with `aegis --clean` to ignore prior state.",
-                   err=True)
-        raise typer.Exit(code=2) from e
     except ConfigError as e:
         _print_error(e)
         raise typer.Exit(1) from e

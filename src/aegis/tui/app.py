@@ -208,17 +208,26 @@ def needs_close_marker(state_dir_path: Path, log_id: str) -> bool:
     return has_meta
 
 
-def pick_workspace_to_resume(state_dir_path: Path, clean: bool) -> "Workspace | None":
-    """Return the Workspace to resume, or None for a fresh start.
+def pick_workspace_to_resume(
+        state_dir_path: Path,
+        clean: bool) -> "tuple[Workspace | None, Path | None]":
+    """The Workspace to resume, and the snapshot moved aside if one was.
 
-    None can mean: clean=True, no workspace.json exists, or the file
-    was empty. CorruptWorkspace bubbles up to the caller, which is
-    responsible for printing a clear error and exiting nonzero.
+    A None workspace means clean=True, no snapshot on disk, or a snapshot
+    that could not be read. The second element is the path an unreadable
+    one was moved to, which the caller shows the user.
+
+    This used to raise CorruptWorkspace and leave the caller to print and
+    exit non-zero. That made sense while `aegis` was the boot. It stopped
+    making sense when the boot moved into the daemon, whose stderr is
+    /dev/null: the exit reached nobody, and refusing to start over a cache
+    of the tab roster costs more than the cache is worth. See
+    `load_or_quarantine`.
     """
     if clean:
-        return None
-    from aegis.state.workspace import load
-    return load(state_dir_path)
+        return None, None
+    from aegis.state.workspace import load_or_quarantine
+    return load_or_quarantine(state_dir_path)
 
 
 def write_workspace_snapshot(state_dir_path: Path, tabs,
@@ -671,8 +680,17 @@ class AegisApp(App):
         # each re-load from disk, the default-agent `_spawn` (which writes
         # a fresh snapshot when no agent tabs were resumable) would have
         # already clobbered the on-disk terminals/files list.
-        ws = (None if self._clean
-              else pick_workspace_to_resume(self._state_dir, clean=False))
+        ws, quarantined = ((None, None) if self._clean
+                           else pick_workspace_to_resume(self._state_dir,
+                                                         clean=False))
+        if quarantined is not None:
+            # Said here rather than logged. The daemon's stderr goes to
+            # /dev/null, so a log line reaches nobody, and tabs that vanish
+            # without a word read as lost work.
+            self.notify(
+                f"workspace.json was unreadable and has been moved to "
+                f"{quarantined.name}; starting with no restored tabs",
+                severity="warning", timeout=10)
         resumed_agents = await self._resume_agent_tabs(ws) if ws else False
         # Bridged: the brain owns the session set, so subscribe before
         # adopting -- a session spawned between the two would otherwise be

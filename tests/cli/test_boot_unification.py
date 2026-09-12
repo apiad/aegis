@@ -228,23 +228,10 @@ def test_bootstrap_mode_without_config_does_not_exit_1(monkeypatch, tmp_path):
     assert ran.get("agents") == {}, "bootstrap TUI never opened"
 
 
-def test_corrupt_workspace_still_exits_2(monkeypatch, tmp_path):
-    """pick_workspace_to_resume moves into the attachment; its
-    CorruptWorkspace -> Exit(2) contract must move with it."""
-    import typer
+# `test_corrupt_workspace_still_exits_2` lived here. The attachment no
+# longer reads the workspace at all: an unreadable snapshot is moved aside
+# by `load_or_quarantine` during the app's own boot, which is the only
+# place that can tell the user about it. The contract it guarded is now in
+# tests/test_workspace_quarantine.py, asserted against a real boot.
 
-    from aegis.cli import LocalTuiAttachment
-    from aegis.config.roots import AegisRoots
-    from aegis.state.workspace import CorruptWorkspace
 
-    def _boom(*_a, **_k):
-        raise CorruptWorkspace("workspace.json is not JSON")
-
-    monkeypatch.setattr("aegis.cli.pick_workspace_to_resume", _boom)
-    ui = LocalTuiAttachment(clean=False, agent=None, queues={}, voice=None,
-                            hosts={}, host_registry=None, drivers={},
-                            cwd=str(tmp_path), agents={},
-                            roots=AegisRoots.for_project(tmp_path))
-    with pytest.raises(typer.Exit) as exc:
-        asyncio.run(ui.run(object()))
-    assert exc.value.exit_code == 2

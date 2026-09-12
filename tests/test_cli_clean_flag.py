@@ -28,7 +28,7 @@ def test_clean_flag_shows_in_help():
 def test_pick_workspace_returns_none_when_clean(tmp_path):
     sd = state_dir(tmp_path)
     save(sd, Workspace(tabs=[]))
-    assert pick_workspace_to_resume(sd, clean=True) is None
+    assert pick_workspace_to_resume(sd, clean=True) == (None, None)
 
 
 def test_pick_workspace_returns_workspace_when_not_clean(tmp_path):
@@ -37,10 +37,12 @@ def test_pick_workspace_returns_workspace_when_not_clean(tmp_path):
                        provider="claude-code", session_id="sid-1",
                        created_at="2026-05-21T00:00:00Z")
     save(sd, Workspace(tabs=[tab]))
-    out = pick_workspace_to_resume(sd, clean=False)
+    out, quarantined = pick_workspace_to_resume(sd, clean=False)
     assert out is not None
     assert out.tabs == [tab]
+    assert quarantined is None
 
 
 def test_pick_workspace_returns_none_when_missing(tmp_path):
-    assert pick_workspace_to_resume(state_dir(tmp_path), clean=False) is None
+    assert pick_workspace_to_resume(state_dir(tmp_path),
+                                    clean=False) == (None, None)

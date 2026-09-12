@@ -19,6 +19,17 @@ class CorruptWorkspace(Exception):
     """workspace.json exists but is unparseable or schema-mismatched."""
 
 
+class WorkspaceVersionMismatch(CorruptWorkspace):
+    """The snapshot is well-formed JSON written by a different format.
+
+    Split out because it is an ordinary event and the other cause is not.
+    A version bump on upgrade, or a downgrade, produces this for every
+    root at once; unparseable bytes cannot happen from a crash, because
+    `save` writes a temp file and renames. `load_or_quarantine` answers
+    them differently and needs to tell them apart by type rather than by
+    reading the wording of a message."""
+
+
 @dataclass(frozen=True)
 class WorkspaceTab:
     handle: str
@@ -107,7 +118,7 @@ def load(state_dir_path: Path) -> Workspace | None:
     except (json.JSONDecodeError, ValueError) as e:
         raise CorruptWorkspace(f"unparseable workspace.json: {e}") from e
     if not isinstance(raw, dict) or raw.get("version") != WORKSPACE_VERSION:
-        raise CorruptWorkspace(
+        raise WorkspaceVersionMismatch(
             f"workspace.json version mismatch (expected {WORKSPACE_VERSION}, "
             f"got {raw.get('version') if isinstance(raw, dict) else '?'})")
     try:
@@ -151,3 +162,38 @@ def load(state_dir_path: Path) -> Workspace | None:
     # An older file still carries "active_handle"; it is simply ignored, so
     # an existing state dir keeps loading.
     return Workspace(tabs=tabs, terminals=terminals, files=files)
+
+
+def load_or_quarantine(
+        state_dir_path: Path) -> "tuple[Workspace | None, Path | None]":
+    """Load the snapshot, surviving the two ways it can be unreadable.
+
+    Returns the workspace and, when one was moved aside, the path it was
+    moved to. Both are None when there is nothing to resume.
+
+    A boot must not fail on this file. It caches the tab roster, the
+    terminals and the open files; the transcripts live in `sessions/` keyed
+    by `log_id` and stay reachable from Ctrl+R. Refusing to start costs the
+    user everything to save a layout.
+
+    A version mismatch returns None and leaves the file alone. It is what
+    an upgrade looks like, and `state/history.py` already treats an index
+    it cannot read as an absent one.
+
+    Unparseable JSON is moved to `workspace.json.corrupt<N>` instead of
+    being dropped, matching what `state/repair.py` does with a damaged
+    log: the bytes we could not parse may still be readable by hand. It
+    must leave the original path empty, or the next boot reads the same
+    broken file and quarantines it again.
+    """
+    p = state_dir_path / "workspace.json"
+    try:
+        return load(state_dir_path), None
+    except WorkspaceVersionMismatch:
+        return None, None
+    except CorruptWorkspace:
+        n = 1
+        while (dest := p.with_suffix(f".json.corrupt{n}")).exists():
+            n += 1
+        os.replace(p, dest)
+        return None, dest

@@ -14,18 +14,8 @@ import pytest
 from typer.testing import CliRunner
 
 from aegis.cli import app
-from aegis.state.workspace import state_dir
 
 runner = CliRunner()
-
-_GOOD_CONFIG = (
-    "default_agent: default\n"
-    "agents:\n"
-    "  default:\n"
-    "    provider: claude-code\n"
-    "    model: opus\n"
-)
-
 
 @pytest.fixture(autouse=True)
 def _never_spawn_a_daemon(monkeypatch, tmp_path):
@@ -42,36 +32,15 @@ def _never_spawn_a_daemon(monkeypatch, tmp_path):
     monkeypatch.setenv("AEGIS_DAEMON_DIR", str(tmp_path / "daemons"))
 
 
-def test_a_corrupt_workspace_is_named_before_any_daemon_is_spawned(
+def test_a_broken_config_is_reported_before_any_daemon_is_spawned(
         tmp_path, monkeypatch):
+    """The check that stays. A daemon spawned on an unparseable config dies
+    with its reason in /dev/null, so the client must refuse first, and the
+    autouse fixture above turns any spawn into a failure."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".aegis.yaml").write_text(_GOOD_CONFIG)
-    sd = state_dir(tmp_path)
-    sd.mkdir(parents=True)
-    (sd / "workspace.json").write_text("{not json")
+    (tmp_path / ".aegis.yaml").write_text("- not a mapping\n")
 
     r = runner.invoke(app, [])
 
-    assert r.exit_code == 2, r.output
-    out = r.output + (r.stderr or "")
-    assert "workspace.json" in out
-    assert "--clean" in out, "the hint that gets the user past it is missing"
-
-
-def test_clean_skips_the_workspace_check(tmp_path, monkeypatch):
-    """`--clean` exists to ignore prior state, so the check it would trip
-    over must not run. Asserted by the spawn guard firing: getting as far
-    as a spawn attempt IS passing the check."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".aegis.yaml").write_text(_GOOD_CONFIG)
-    sd = state_dir(tmp_path)
-    sd.mkdir(parents=True)
-    (sd / "workspace.json").write_text("{not json")
-
-    r = runner.invoke(app, ["--clean"])
-
-    out = r.output + (r.stderr or "")
-    assert "workspace.json" not in out, \
-        "--clean was refused by the check it is meant to skip"
-    assert isinstance(r.exception, AssertionError), \
-        f"expected to reach the spawn guard, got {r.exception!r}"
+    assert r.exit_code == 1, r.output
+    assert "must be a mapping" in r.output
