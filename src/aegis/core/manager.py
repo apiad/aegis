@@ -17,6 +17,8 @@ from aegis.state.titles import outranks, sanitize_title
 from aegis.tui.state import AgentState
 
 SessionFactory = Callable[[object, str, str], object]
+#: ``(kind, session)`` where kind is "added" or "removed".
+SessionCb = Callable[[str, AgentSession], None]
 
 
 def _overlay_agent(base: Agent, *, model: str | None,
@@ -87,6 +89,10 @@ class SessionManager:
         self.workflow_registry = None
         self._inline_schedule_names: set[str] = set()
         self._sessions: list[AgentSession] = []
+        # Views subscribe here to learn what tabs exist. A list, not a slot:
+        # the whole point is N views over one brain, and a single callback
+        # would silently serve only the last one to attach.
+        self._session_observers: list[SessionCb] = []
         self._mru: list[str] = []  # most-recently-active first
         # Every handle this process has bound, live or retired. See
         # aegis.core.handles — a name freed by a rename or a close is NOT
@@ -252,6 +258,9 @@ class SessionManager:
             s.add_event_observer(
                 make_session_log_observer(self._persist_dir, s.log_id))
         self._touch(h)
+        # After the append and the log observer, before the opening turn: a
+        # view must be able to mount its pane and see the first event.
+        self._announce("added", s)
         if opening_prompt is not None:
             asyncio.create_task(s.send(opening_prompt))
         return s
@@ -459,6 +468,23 @@ class SessionManager:
             self._mru.remove(handle)
         self._mru.insert(0, handle)
 
+    def add_session_observer(self, cb: "SessionCb") -> None:
+        """Subscribe to the session set: ``cb("added"|"removed", session)``.
+
+        Fired *after* the list has been mutated, so an observer that reads
+        ``list_sessions()`` sees the new truth rather than the old one.
+        """
+        self._session_observers.append(cb)
+
+    def _announce(self, kind: str, s: AgentSession) -> None:
+        for cb in list(self._session_observers):
+            try:
+                cb(kind, s)
+            except Exception:
+                # One view with a bug must not stop the brain from spawning,
+                # and must not starve the views subscribed after it.
+                pass
+
     def get(self, handle: str) -> AgentSession | None:
         return next((s for s in self._sessions if s.handle == handle), None)
 
@@ -476,6 +502,8 @@ class SessionManager:
         # outlives it and a later caller could still present it.
         if self._mcp is not None:
             self._mcp.tokens.revoke(handle)
+        # Last: every view drops its pane for a tab that no longer exists.
+        self._announce("removed", s)
 
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
         s = self.get(handle)
