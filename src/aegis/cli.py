@@ -222,7 +222,7 @@ def run(
     try:
         boot = load_boot_config(roots)
     except ConfigError as e:
-        _console.print(f"[red]{e}[/red]")
+        _print_error(e)
         raise typer.Exit(1)
 
     agents = boot.agents
@@ -316,6 +316,20 @@ class UIAttachment(Protocol):
     subsystem before this runs; the attachment only renders."""
 
     async def run(self, manager) -> None: ...
+
+
+def _print_error(exc: Exception) -> None:
+    """Print an error without letting Rich re-wrap it.
+
+    `Console.print` wraps at the console width, which breaks a message
+    mid-phrase whenever the path in it is long enough. A config error under
+    a 76-character temp path came out as "...: top \nlevel must be a
+    mapping": legible to a human squinting at it, but no longer one line to
+    grep, and it made a test pass or fail on how long pytest's temp
+    directory happened to be that run.  `soft_wrap` leaves wrapping to the
+    terminal, which is where it belongs.
+    """
+    _console.print(f"[red]{exc}[/red]", soft_wrap=True)
 
 
 def _tty_view_id() -> str:
