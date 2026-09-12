@@ -115,5 +115,7 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
         # persists it on close. Two objects here would restore state the
         # app never sees and persist state the app never wrote.
         view_state=state,
+        # A daemon view detaches on Ctrl+Q; it does not own the brain.
+        owns_brain=False,
         **app_kw)
     return View(view_id=view_id, app=app, state=state, sink=sink)

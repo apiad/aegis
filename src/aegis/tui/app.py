@@ -341,7 +341,8 @@ class AegisApp(App):
                  manager: "object | None" = None,
                  bridge: "object | None" = None,
                  driver_class: "type | None" = None,
-                 view_state: "ViewState | None" = None) -> None:
+                 view_state: "ViewState | None" = None,
+                 owns_brain: bool = True) -> None:
         # A view supplies its own driver so its frames go to that view's
         # sink instead of this process's stdout. None keeps Textual's
         # auto-detection, which is every existing caller.
@@ -355,6 +356,12 @@ class AegisApp(App):
         # to the first restored tab, exactly as it did for a workspace with
         # no active_handle.
         self._view_state = view_state
+        # Whether quitting this app tears the brain down with it. True for
+        # every caller that IS the process (LocalTuiAttachment, the
+        # bootstrap TUI, --remote); False for a daemon view, whose panes
+        # wrap the brain's sessions and whose MCP plane belongs to _serve.
+        # Quitting one view there must cost that view and nothing else.
+        self._owns_brain = owns_brain
         # Execution hosts — the third orthogonal spawn axis. Empty means
         # every pane runs local, which is the pre-hosts behaviour.
         self._hosts: dict = hosts or {}
@@ -1862,6 +1869,16 @@ class AegisApp(App):
         # B1: remote mode — delegate teardown to the manager and exit cleanly.
         if hasattr(self, "_remote_manager"):
             await self._remote_manager.shutdown()
+            self.exit()
+            return
+        if not self._owns_brain:
+            # Detach. The roster is brain state and is persisted by the
+            # brain; the ViewState is persisted by the View on stop. What
+            # we must NOT do is the teardown below — closing panes closes
+            # the sessions other views are looking at (a bridged pane's
+            # _core IS the brain's AgentSession), and stopping the MCP
+            # plane takes the agent surface down for all of them.
+            self._file_indexer.stop()
             self.exit()
             return
         # Persist the current roster BEFORE teardown so any session_ids
