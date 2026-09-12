@@ -14,6 +14,7 @@ from pathlib import Path
 from aegis.config.roots import AegisRoots
 from aegis.tui.app import AegisApp
 from aegis.views.driver import view_driver_for
+from aegis.views.sink import FrameSink
 from aegis.views.state import ViewState, load_view, save_view
 
 
@@ -22,8 +23,15 @@ class View:
     view_id: str
     app: AegisApp
     state: ViewState
-    frames: list[bytes] = field(default_factory=list)
+    sink: FrameSink = field(default_factory=FrameSink)
     _task: asyncio.Task | None = None
+
+    @property
+    def frames(self) -> list[bytes]:
+        """The detached buffer. A property, not a field, so the existing
+        in-process assertions (``len(v.frames)``, ``v.frames[:] = …``,
+        ``v.frames.clear()``) keep operating on the real list."""
+        return self.sink.frames
 
     async def run(self) -> None:
         """Run the app until it exits. The caller owns the task.
@@ -88,7 +96,7 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
     every caller that forgets it into an ``AttributeError`` at mount — and
     in a daemon that is a view that silently never appears.
     """
-    frames: list[bytes] = []
+    sink = FrameSink()
     restored = load_view(roots.state_dir, view_id)
     state = restored or ViewState(view_id=view_id, geometry=geometry)
     # Geometry always comes from this attach, not from the last one: the
@@ -101,11 +109,11 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
         make_session=app_kw.pop("make_session", None),
         mcp=mcp,
         bridge=manager,
-        driver_class=view_driver_for(frames.append),
+        driver_class=view_driver_for(sink),
         # The SAME object the View holds, not a copy. The app writes focus
         # into it on every tab change (app.py's _write_snapshot); the View
         # persists it on close. Two objects here would restore state the
         # app never sees and persist state the app never wrote.
         view_state=state,
         **app_kw)
-    return View(view_id=view_id, app=app, state=state, frames=frames)
+    return View(view_id=view_id, app=app, state=state, sink=sink)
