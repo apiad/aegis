@@ -3,6 +3,7 @@
 > **Status:** design, 2026-09-12. Not yet planned. Brainstormed against the
 > measurements in `vault/Atlas/Architecture/2026-09-12-slop-profile-phase-0-findings.md`
 > (the Workspace vault), which supplies every number quoted here.
+> Roadmap pointer: `TASKS.md`, under *Active*.
 
 A plugin that holds one side of a conversation to a declared writing style:
 detailed guidance at session start, a short adaptive reminder each turn, and a

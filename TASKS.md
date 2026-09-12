@@ -1175,6 +1175,34 @@ for worktrees.
 - Spec: `docs/superpowers/specs/2026-05-27-agent-sandbox-design.md`
 - Plan: *not yet drafted*
 
+### Writing style — a measured gate on the conversation turn *(specced 2026-09-12, no plan yet)*
+
+A plugin that holds the agent's side of a conversation to a declared style:
+guidance at session start, a short adaptive reminder each `pre_turn`, and a
+mechanical check at the turn boundary that can spend **one** repair turn,
+delivered through the tier-3 self-reminder already in `_chain_if_pending`.
+It counts strings, so deciding costs no tokens. Scoped to the conversation
+turn only; files the agent writes stay with `rift` and skills.
+
+Third sibling of the loop judge and the recap at the turn boundary, and it
+inherits the judge's authority rule: the verdict is the plugin's, never the
+agent's.
+
+Needs two small core changes, both mirroring shapes that already exist:
+
+- `PostTurnResult(remind=...)`. `post_turn` is observer-only today
+  (`asyncio.create_task` + a read-only `SessionHandle`), so a hook cannot
+  reach `add_reminder()`.
+- `PostTurnEvent.own_message`. `assistant_message` is deliberately inclusive
+  of subagent narration (`session.py:681`); the gate needs `own_text_parts`.
+
+- Spec: `docs/superpowers/specs/2026-09-12-writing-style-plugin-design.md`
+- Plan: *not yet drafted*
+- **Before the gate is turned on:** measure the fire rate in report-only mode
+  over a week of real `.aegis/state/sessions/*.jsonl`, the way the
+  turn-boundary spec measured cost before implementing. Without that number,
+  "strict but sensible" is an opinion.
+
 ### Queue v1 polish *(shipped 2026-07-13)*
 
 Small follow-ups on top of the shipped substrate:
