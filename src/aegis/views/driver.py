@@ -16,12 +16,15 @@ consumes.
 """
 from __future__ import annotations
 
+from codecs import getincrementaldecoder
 from threading import Event, Thread
 from typing import Callable
 
 from textual import events
+from textual._xterm_parser import XTermParser
 from textual.driver import Driver
-from textual.drivers.web_driver import WebDriver
+from textual.drivers._byte_stream import ByteStream
+from textual.drivers.web_driver import WebDriver, _ExitInput
 
 
 class _NullInputReader:
@@ -73,8 +76,52 @@ class ViewDriver(WebDriver):
         self._deliveries: dict = {}
         self._write = self._emit
 
+        # The input direction. WebDriver builds these inside
+        # run_input_thread and holds them on the thread's stack
+        # (`web_driver.py:186-191`); a fed driver has no thread, so they
+        # are instance state. One set per view: XTermParser and the utf-8
+        # decoder are both stateful across chunks, and a socket splits
+        # wherever it likes -- mid-escape-sequence, mid-codepoint, and
+        # mid-4-byte-length-header.
+        self._byte_stream = ByteStream()
+        self._parser = XTermParser(debug=self._debug)
+        self._decode = getincrementaldecoder("utf-8")().decode
+
     def _emit(self, data: bytes) -> None:
         type(self)._sink(data)
+
+    def feed(self, data: bytes) -> None:
+        """Take a chunk of a client's stream. The input half of the seam.
+
+        The body of ``WebDriver.run_input_thread`` (`web_driver.py:193-205`)
+        without the thread: same ByteStream demux, same parser, same
+        ``process_message``. Called on the event loop, so ``process_message``
+        reaches ``App.post_message`` directly rather than across a thread.
+
+        A damaged frame is swallowed per-frame rather than raised. The
+        caller is a transport reading from an untrusted client, and every
+        other view in this process shares one loop with it: a raise here
+        would take down a socket task holding a view that did nothing
+        wrong. ``_ExitInput`` is the one exception that must NOT be
+        swallowed -- ``on_meta`` raises it for ``{"type": "exit"}``, which
+        is the client saying it is gone.
+        """
+        for packet_type, payload in self._byte_stream.feed(data):
+            if packet_type == "D":
+                for event in self._parser.feed(self._decode(payload)):
+                    self.process_message(event)
+            else:
+                try:
+                    self._on_meta(packet_type, payload)
+                except _ExitInput:
+                    raise
+                except Exception:  # noqa: BLE001 — see docstring
+                    from traceback import format_exc
+
+                    from textual import log
+                    log(format_exc())
+        for event in self._parser.tick():
+            self.process_message(event)
 
     def start_application_mode(self) -> None:
         """Enter application mode without owning the process.
