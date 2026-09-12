@@ -2,7 +2,41 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: not started.** Written 2026-09-12 against `c88f21a`.
+**Status: tasks 1–11 shipped; task 12 outstanding.** Written 2026-09-12
+against `c88f21a`.
+
+Tasks 1–10 landed in `3f3d46a`..`7fb52a0`. Task 11 landed in `fb5189c`,
+together with the one regression it caused: moving the boot out of the
+client took the corrupt-`workspace.json` report with it, so the preflight
+now reads the workspace as well as the config.
+
+**Task 12 has not been done, and it is the task that matters most here.**
+Its Step 2 asks for a hand-drive in a real terminal and says in writing
+not to call this working on a green suite. Nobody ran it, and the cost was
+immediate. `aegis serve` built its views with no `drivers`, so
+`plan_resume` skipped every tab as "driver-no-resume": the daemon restored
+no tabs at boot and reopened nothing from Ctrl+R. Alex hit it the same
+day. Fixed in `51fc07a`, with `tests/daemon/test_serve_wiring.py` and
+`tests/views/test_view_can_resume.py`.
+
+This plan never names `drivers` either. Task 10 lists what `_serve` hands
+`ViewRegistry` and the list omits it, so the code inherited the gap from
+the plan rather than from a typo. Two further defects came out of the same
+report and are fixed in `2296f0c` and `468aba2`: a pane released none of
+the six observers it subscribed to its core, and `_resume_from_history`
+asked whether a handle had ever been used rather than whether a pane was
+mounted. Both were invisible while the process died with the terminal and
+became daily once the daemon outlived it.
+
+Suite at `fb5189c`: 3738 passed, 2 skipped, rc=0, against the 3642
+baseline.
+
+**Known open, not covered by this plan.** `ensure_daemon` returns any
+daemon that answers the socket and never compares the version the registry
+records, and the reaper needs zero views and zero sessions for 30 minutes.
+A daemon holding one tab therefore never exits, and no code change reaches
+the user until someone runs `aegis kill` by hand. That is how three fixes
+landed and changed nothing for Alex.
 
 **Goal:** `aegis` becomes a client. A detached daemon holds the brain and every view; a terminal attaches over a unix socket, pipes bytes both ways, and detaching leaves the brain running.
 
@@ -84,7 +118,7 @@ Stage 4 disabled stdin (`run_input_thread` returns, `_input_reader` is a null ob
 - Consumes: nothing.
 - Produces: `ViewDriver.feed(self, data: bytes) -> None`. Accepts a chunk of the client's stream — framed `b"D"`/`b"M"` packets, split at arbitrary boundaries. Called from the event loop, never from a thread.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/views/test_view_input.py`:
 
@@ -186,12 +220,12 @@ async def test_a_damaged_meta_frame_does_not_kill_the_view(tmp_path):
         assert [getattr(e, "key", None) for e in seen] == ["y"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_view_input.py -q`
 Expected: FAIL, four times, with `AttributeError: 'BoundViewDriver' object has no attribute 'feed'`.
 
-- [ ] **Step 3: Implement `feed`**
+- [x] **Step 3: Implement `feed`**
 
 In `src/aegis/views/driver.py`, add to the imports:
 
@@ -259,12 +293,12 @@ and the import it needs, beside the others:
 from textual.drivers.web_driver import WebDriver, _ExitInput
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_view_input.py -q`
 Expected: 4 passed.
 
-- [ ] **Step 5: Mutation-check the split-chunk test**
+- [x] **Step 5: Mutation-check the split-chunk test**
 
 The split test is the one that earns its keep — a naive `feed` that ignores framing would pass the single-chunk test. Confirm it fails when framing is dropped:
 
@@ -299,7 +333,7 @@ uv run pytest tests/views/test_view_input.py -q
 
 Expected: 4 passed, and `grep -c MUTANT src/aegis/views/driver.py` is 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -336,7 +370,7 @@ place for them."
   - `FrameSink(cap: int = 4096)`; `__call__(data: bytes) -> None`; `.frames -> list[bytes]`; `.attach(fn: Callable[[bytes], None]) -> None`; `.detach(fn) -> None`; `.consumers -> int`.
   - `View.sink: FrameSink`, and `View.frames` as a read-only property returning `self.sink.frames` (so `view.frames`, `len()`, `[:]  =` and `.clear()` in existing tests keep working against the real list).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/views/test_frame_sink.py`:
 
@@ -409,12 +443,12 @@ def test_one_slow_consumer_does_not_stop_the_others():
     assert got == [b"a"]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_frame_sink.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'aegis.views.sink'`.
 
-- [ ] **Step 3: Write `FrameSink`**
+- [x] **Step 3: Write `FrameSink`**
 
 Create `src/aegis/views/sink.py`:
 
@@ -474,12 +508,12 @@ class FrameSink:
             del self.frames[:len(self.frames) - self._cap]
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_frame_sink.py -q`
 Expected: 7 passed.
 
-- [ ] **Step 5: Thread it through `View`**
+- [x] **Step 5: Thread it through `View`**
 
 In `src/aegis/views/view.py`, replace the `frames` field on the dataclass:
 
@@ -525,12 +559,12 @@ from aegis.views.sink import FrameSink
 ```
 and add `"FrameSink"` to `__all__`.
 
-- [ ] **Step 6: Run the whole views suite**
+- [x] **Step 6: Run the whole views suite**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views -q`
 Expected: all pass, including the stage-4 gate `test_multi_view.py` untouched.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -569,7 +603,7 @@ One module both sides import, so the client and the server cannot disagree about
   - `parse_hello(payload: bytes) -> tuple[str, int, int]`, raising `ProtocolError` on anything malformed
   - `ProtocolError(Exception)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/__init__.py` (empty) and `tests/daemon/test_protocol.py`:
 
@@ -649,12 +683,12 @@ def test_a_malformed_hello_raises(payload):
         parse_hello(payload)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_protocol.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'aegis.daemon'`.
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 Create `src/aegis/daemon/__init__.py`:
 
@@ -758,12 +792,12 @@ class FrameDecoder:
             yield kind, payload
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_protocol.py -q`
 Expected: 13 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -797,7 +831,7 @@ So `AegisApp` learns whether it owns the brain. Every existing caller keeps toda
 - Consumes: `open_view` from Task 2.
 - Produces: `AegisApp(..., owns_brain: bool = True)`, stored as `self._owns_brain`. `open_view` passes `owns_brain=False`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/views/test_detach_does_not_kill_the_brain.py`:
 
@@ -891,12 +925,12 @@ async def test_the_local_tui_still_owns_its_brain(tmp_path):
     assert app._owns_brain is True
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_detach_does_not_kill_the_brain.py -q`
 Expected: FAIL — `AttributeError: 'AegisApp' object has no attribute '_owns_brain'` on the third, and the first two failing on a closed harness / stopped plane.
 
-- [ ] **Step 3: Add the flag and the branch**
+- [x] **Step 3: Add the flag and the branch**
 
 In `src/aegis/tui/app.py`, add to `__init__`'s keyword-only arguments (after `view_state`):
 
@@ -937,17 +971,17 @@ In `src/aegis/views/view.py`, inside `open_view`'s `AegisApp(...)` call, add:
         owns_brain=False,
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/views/test_detach_does_not_kill_the_brain.py -q`
 Expected: 3 passed.
 
-- [ ] **Step 5: Run the TUI and views suites for regressions**
+- [x] **Step 5: Run the TUI and views suites for regressions**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/tui tests/views -q`
 Expected: all pass. The default is `True`, so nothing existing changes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -981,7 +1015,7 @@ Sequence: read the hello → open (or restore) the view from the registry → st
 - Consumes: `FrameDecoder`, `parse_hello`, `ProtocolError` (Task 3); `ViewRegistry.open/close` (stage 4); `View.sink`, `View.repaint`, `View.run` (Tasks 2 and stage 4); `ViewDriver.feed` (Task 1).
 - Produces: `async def serve_view(reader, writer, registry, *, on_close=None) -> None`. `reader` needs `read(n) -> bytes` (b"" at EOF); `writer` needs `write(bytes)`, `drain()`, `close()`, `wait_closed()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/test_serve_view.py`:
 
@@ -1183,12 +1217,12 @@ async def test_a_second_client_for_a_live_view_is_refused(tmp_path):
     await asyncio.wait_for(ta, timeout=10)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_serve_view.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'aegis.daemon.server'`.
 
-- [ ] **Step 3: Write `serve_view`**
+- [x] **Step 3: Write `serve_view`**
 
 Create `src/aegis/daemon/server.py`:
 
@@ -1358,12 +1392,12 @@ class UnixSocketServer:
             self.path.unlink()
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_serve_view.py -q`
 Expected: 8 passed.
 
-- [ ] **Step 5: Mutation-check the repaint and the refusal**
+- [x] **Step 5: Mutation-check the repaint and the refusal**
 
 Two assertions here are the kind that pass vacuously. Break each and confirm red.
 
@@ -1398,7 +1432,7 @@ uv run pytest tests/daemon/test_serve_view.py -q
 
 Expected: 8 passed, `grep -c MUTANT src/aegis/daemon/server.py` is 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -1431,7 +1465,7 @@ Task 5 proved the logic over pipes. This proves the socket: a real listener, rea
 - Consumes: `UnixSocketServer` (Task 5), `hello`/`FrameDecoder`/`encode_data` (Task 3).
 - Produces: nothing.
 
-- [ ] **Step 1: Write the gate**
+- [x] **Step 1: Write the gate**
 
 Create `tests/daemon/test_unix_socket.py`:
 
@@ -1647,12 +1681,12 @@ async def test_a_stale_socket_file_does_not_block_a_restart(tmp_path):
         await server.stop()
 ```
 
-- [ ] **Step 2: Run the gate**
+- [x] **Step 2: Run the gate**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_unix_socket.py -q`
 Expected: 7 passed. If any fail, the defect is in Task 5's `server.py` — fix it there and re-run rather than weakening an assertion here.
 
-- [ ] **Step 3: Mutation-check the gate**
+- [x] **Step 3: Mutation-check the gate**
 
 The two assertions worth doubting are the geometry (does it really come from *this* hello?) and the reattach repaint (does the client really get a frame, or did it read the boot render?).
 
@@ -1685,7 +1719,7 @@ uv run pytest tests/daemon/test_unix_socket.py -q
 
 Expected: 7 passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -1713,7 +1747,7 @@ Eighty lines that never grow. Raw mode on, two pipe loops, `SIGWINCH` → a resi
 - Consumes: `FrameDecoder`, `encode_data`, `hello`, `resize` (Task 3).
 - Produces: `async def attach(path: str | Path, view_id: str, *, stdin_fd: int = 0, stdout: BinaryIO | None = None) -> None`; `def terminal_size(fd: int) -> tuple[int, int]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/test_attach_client.py`:
 
@@ -1854,12 +1888,12 @@ def test_terminal_size_falls_back_when_the_fd_is_not_a_tty():
         os.close(w_fd)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_attach_client.py -q`
 Expected: collection error — `ModuleNotFoundError: No module named 'aegis.daemon.client'`.
 
-- [ ] **Step 3: Write the client**
+- [x] **Step 3: Write the client**
 
 Create `src/aegis/daemon/client.py`:
 
@@ -1990,12 +2024,12 @@ async def attach(path: str | Path, view_id: str, *, stdin_fd: int = 0,
                 await writer.wait_closed()
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_attach_client.py -q`
 Expected: 5 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -2033,7 +2067,7 @@ Daemons across roots, so the record cannot live under a root. One JSON file per 
   - `daemon_for(root: Path) -> DaemonRecord | None`
   - `is_alive(pid: int) -> bool`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/test_daemon_registry.py`:
 
@@ -2119,12 +2153,12 @@ def _a_dead_pid() -> int:
     return pid
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_daemon_registry.py -q`
 Expected: collection error — `ImportError: cannot import name 'registry'`.
 
-- [ ] **Step 3: Write the registry**
+- [x] **Step 3: Write the registry**
 
 Create `src/aegis/daemon/registry.py`:
 
@@ -2266,12 +2300,12 @@ def now() -> float:
     return time.time()
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_daemon_registry.py -q`
 Expected: 7 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -2309,7 +2343,7 @@ module could have."
   - `async def ensure_daemon(root: Path, *, timeout_s: float = 20.0) -> Path` — returns a connectable socket path, spawning `aegis serve` detached if needed
   - `SpawnFailed(Exception)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/test_lifecycle.py`:
 
@@ -2466,12 +2500,12 @@ def test_python_dash_m_aegis_is_runnable():
     assert "aegis" in (r.stdout + r.stderr).lower()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_lifecycle.py -q`
 Expected: collection error — `ImportError: cannot import name 'lifecycle'`.
 
-- [ ] **Step 3: Write the modules**
+- [x] **Step 3: Write the modules**
 
 Create `src/aegis/__main__.py`:
 
@@ -2630,12 +2664,12 @@ async def ensure_daemon(root: Path, *, timeout_s: float = 20.0) -> Path:
         f"try `aegis serve --cwd {root}` in a terminal to see why")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_lifecycle.py -q`
 Expected: 13 passed.
 
-- [ ] **Step 5: Mutation-check the reaper's second condition**
+- [x] **Step 5: Mutation-check the reaper's second condition**
 
 The zero-sessions condition is the one that keeps the VPS daemon alive, and a reaper that ignored it would still pass most of this file.
 
@@ -2670,7 +2704,7 @@ uv run pytest tests/daemon/test_lifecycle.py -q
 
 Expected: 13 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -2706,7 +2740,7 @@ The daemon *is* `aegis serve`. It gains a `ViewRegistry`, a socket server, a reg
 - Consumes: `UnixSocketServer` (Task 5), `registry`/`DaemonRecord` (Task 8), `socket_path`/`IdleReaper`/`idle_timeout_s` (Task 9), `ViewRegistry` (stage 4).
 - Produces: `_serve(..., views: bool = False)`. When True, `_serve` builds a `ViewRegistry` over the manager, starts a `UnixSocketServer` on `socket_path(roots)`, records the daemon, runs an `IdleReaper`, and tears all of it down in its `finally`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/daemon/test_serve_wiring.py`:
 
@@ -2832,12 +2866,12 @@ async def test_serve_without_views_publishes_no_socket(tmp_path):
         await asyncio.wait_for(task, timeout=30)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_serve_wiring.py -q`
 Expected: FAIL — `TypeError: _serve() got an unexpected keyword argument 'views'`.
 
-- [ ] **Step 3: Wire `_serve`**
+- [x] **Step 3: Wire `_serve`**
 
 In `src/aegis/cli.py`, add the parameter to `_serve`'s signature, after `ui`:
 
@@ -2905,17 +2939,17 @@ In `_run_serve`, pass the flag — `aegis serve` *is* the daemon now:
                      views=True)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/daemon/test_serve_wiring.py -q`
 Expected: 4 passed.
 
-- [ ] **Step 5: Run the CLI suite for regressions**
+- [x] **Step 5: Run the CLI suite for regressions**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/cli -q`
 Expected: all pass. `views` defaults False, so the `aegis` (non-daemon) path in `run()` is unchanged until Task 11.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -2945,7 +2979,7 @@ The command surface. `aegis` becomes ensure-daemon-then-attach; `--foreground` k
 - Consumes: `attach` (Task 7), `ensure_daemon`/`SpawnFailed` (Task 9), `live_daemons`/`daemon_for`/`kill` (Task 8), `_tty_view_id` (`cli.py:320`, existing).
 - Produces: CLI commands `aegis attach [--view ID] [--cwd DIR]`, `aegis ls`, `aegis kill [--cwd DIR] [--all]`; `aegis --foreground`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/cli/test_daemon_commands.py`:
 
@@ -3058,12 +3092,12 @@ def test_foreground_takes_the_old_path_not_the_daemon(tmp_path, monkeypatch):
     assert touched == [], "--foreground went through the daemon"
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/cli/test_daemon_commands.py -q`
 Expected: FAIL — `No such command 'ls'` and friends.
 
-- [ ] **Step 3: Add the commands**
+- [x] **Step 3: Add the commands**
 
 In `src/aegis/cli.py`, add these near `_tty_view_id` (the seams the tests monkeypatch — they exist so a Typer-level test can stub the transport without stubbing an `async def` inside a command body):
 
@@ -3180,17 +3214,17 @@ and insert the daemon branch in `run()` **immediately after the bootstrap-mode b
         return
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/cli/test_daemon_commands.py -q`
 Expected: 7 passed.
 
-- [ ] **Step 5: Run the full CLI suite**
+- [x] **Step 5: Run the full CLI suite**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && uv run pytest tests/cli -q`
 Expected: all pass. Any test that invoked `aegis` expecting the in-process TUI must now pass `--foreground`; fix those call sites rather than removing the branch.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
