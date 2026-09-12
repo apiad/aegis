@@ -658,8 +658,15 @@ class AegisApp(App):
         ws = (None if self._clean
               else pick_workspace_to_resume(self._state_dir, clean=False))
         resumed_agents = await self._resume_agent_tabs(ws) if ws else False
+        # Bridged: the brain owns the session set, so subscribe before
+        # adopting -- a session spawned between the two would otherwise be
+        # missed by both, appearing in no view at all.
+        adopted = False
+        if self.manager is not None:
+            self.manager.add_session_observer(self._on_brain_session)
+            adopted = await self._adopt_brain_sessions()
         self._boot_done = True
-        if not resumed_agents:
+        if not resumed_agents and not adopted:
             await self._spawn(self._default_agent)
         else:
             # Persist the resumed roster now that the guard is open.
@@ -941,6 +948,88 @@ class AegisApp(App):
             # _submit is sync but launches the turn as a worker task.
             pane._submit(opening_prompt)
         return pane
+
+    # ---- brain sessions -------------------------------------------------
+    # Tab identity is brain state: a session that exists, exists for every
+    # view. Focus, scroll and drafts stay per-view -- that is the stage-4
+    # split. Only which tabs EXIST crosses.
+
+    async def _mount_brain_pane(self, session, *,
+                                foreground: bool = False) -> None:
+        """Mount a pane over a session the BRAIN owns.
+
+        ``core=`` rather than a fresh ``AgentSession``: the pane must not
+        wrap the harness a second time. Two AgentSessions over one harness
+        would give each view its own transcript and its own pending queue,
+        so a message cancelled in one view would still be live in the other.
+        """
+        if self.pane_for(session.handle) is not None:
+            return
+        cs = self._switcher()
+        if cs is None:
+            return
+        pane = ConversationPane(
+            None, session.agent, session.agent_slug, session.handle,
+            self._palette, digest=self.queue_digest,
+            monitor_manager=self.monitor_manager,
+            state_dir_path=self._state_dir, core=session,
+            place=getattr(session, "place", None),
+            project_root=Path(self._cwd))
+        self._panes.append(pane)
+        pane.display = False   # see _mount_hidden note in _mount_and_kick
+        await cs.mount(pane)
+        if foreground:
+            cs.current = pane.id
+        self._refresh_tabbar()
+        if foreground:
+            pane.focus_input()
+
+    async def _drop_brain_pane(self, handle: str) -> None:
+        """A session closed on the brain is gone from every view."""
+        pane = self.pane_for(handle)
+        if pane is None:
+            return
+        await pane.close()
+        if pane in self._panes:
+            self._panes.remove(pane)
+        try:
+            await pane.remove()
+        except Exception:  # noqa: BLE001 — pane may already be detached
+            pass
+        self._refresh_tabbar()
+
+    def _on_brain_session(self, kind: str, session) -> None:
+        """The manager's session-set callback. Sync, and must stay cheap.
+
+        Mounting goes through ``run_worker`` rather than a bare
+        ``create_task`` so it runs inside Textual's ``active_app``
+        ContextVar -- without it the pane's ``compose()`` raises
+        NoActiveAppError when the spawn originated in an MCP tool handler.
+        Same reason as the queue-spawn path below.
+        """
+        if not self.is_running:
+            return
+        if kind == "added":
+            self.run_worker(self._mount_brain_pane(session),
+                            group=f"brain-pane-{session.handle}",
+                            exclusive=False)
+        elif kind == "removed":
+            self.run_worker(self._drop_brain_pane(session.handle),
+                            group=f"brain-drop-{session.handle}",
+                            exclusive=False)
+
+    async def _adopt_brain_sessions(self) -> bool:
+        """Mount a pane for every session the brain already holds.
+
+        The backfill is what makes a late attach work: the brain outlives
+        its views, so a client attaching to a running aegis must find the
+        tabs that are already open rather than an empty window. Returns
+        True iff anything was adopted, so boot can skip the default spawn.
+        """
+        sessions = list(getattr(self.manager, "_sessions", []))
+        for i, s in enumerate(sessions):
+            await self._mount_brain_pane(s, foreground=(i == 0))
+        return bool(sessions)
 
     async def _close_pane(self, pane) -> None:
         """Unified pane teardown — inbox unbind (agent panes only), then

@@ -4,8 +4,6 @@ Deliberately in-process: each view's frames are read out of its own sink,
 so a failure here is the seam and never a socket. The transport arrives in
 stage 5 and inherits this contract.
 """
-import pytest
-
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
@@ -95,16 +93,6 @@ async def test_both_views_hold_their_own_geometry(tmp_path):
     await reg.close_all()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "UNBUILT: nothing propagates the brain's session set into a view's pane "
-    "list. AegisApp is its own AppBridge on the local plane (app.py:472-478) "
-    "and spawns through _SessionManagerAdapter(self), so `bridge=` supplies "
-    "roots and handles but never panes. Measured 2026-09-11: two views over "
-    "one SessionManager mount two DIFFERENT default tabs, and a session "
-    "spawned on the manager reaches neither. The remote plane has the "
-    "equivalent wiring (_on_remote_session_list, app.py:2058) and the local "
-    "plane has no counterpart. strict=True so whoever builds it must come "
-    "back and delete this marker."))
 async def test_a_session_opened_in_one_view_appears_in_the_other(tmp_path):
     """Tab identity is brain state: opening a tab opens it for everyone.
 

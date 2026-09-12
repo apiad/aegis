@@ -203,6 +203,11 @@ class AgentSession:
         # Fired on arm / fire / stop so a frontend can render the loop chip
         # and announce termination. (session, state_or_None, reason).
         self.on_loop: LoopCb | None = None
+        # N views mean N loop chips and N recap blocks over one session, so
+        # these are lists. `on_loop` / `on_recap` stay as the single primary
+        # slot for callers that assign (RemotePaneCore has no add_* form).
+        self._loop_observers: list[LoopCb] = []
+        self._recap_observers: list = []
         self._extra_event_observers: list[EventCb] = []
         self._extra_state_observers: list[StateCb] = []
         self._extra_inbox_observers: list[InboxCb] = []
@@ -502,9 +507,34 @@ class AgentSession:
     def loop_status(self) -> dict | None:
         return self._loop.status() if self._loop is not None else None
 
+    def add_loop_observer(self, cb: "LoopCb") -> None:
+        """Subscribe an additional loop callback. Fires after ``on_loop``."""
+        self._loop_observers.append(cb)
+
+    def add_recap_observer(self, cb) -> None:
+        """Subscribe an additional recap callback. Fires after ``on_recap``."""
+        self._recap_observers.append(cb)
+
     def _emit_loop(self, reason: str) -> None:
         if self.on_loop is not None:
             self.on_loop(self, self._loop, reason)
+        for cb in list(self._loop_observers):
+            try:
+                cb(self, self._loop, reason)
+            except Exception:                                 # noqa: BLE001
+                log.exception("loop observer raised")
+
+    def _emit_recap(self, recap) -> None:
+        if self.on_recap is not None:
+            try:
+                self.on_recap(self, recap)
+            except Exception:                                 # noqa: BLE001
+                log.exception("on_recap observer raised")
+        for cb in list(self._recap_observers):
+            try:
+                cb(self, recap)
+            except Exception:                                 # noqa: BLE001
+                log.exception("recap observer raised")
 
     def cancel_pending(self, msg: InboxMessage) -> bool:
         """Remove a still-buffered message by object identity. Returns True
@@ -750,11 +780,7 @@ class AgentSession:
         if recap.line.strip() == self._last_recap_line.strip():
             return
         self._last_recap_line = recap.line
-        if self.on_recap is not None:
-            try:
-                self.on_recap(self, recap)
-            except Exception:                                 # noqa: BLE001
-                log.exception("on_recap observer raised")
+        self._emit_recap(recap)
 
     def _record_repo(self, ev: ToolUse) -> None:
         """Note the repo behind a write tool call.

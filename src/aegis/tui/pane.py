@@ -875,14 +875,23 @@ class ConversationPane(Widget):
         self._core.add_state_observer(self._on_core_state)
         self._core.add_inbox_observer(self._on_core_inbox)
         self._core.add_dispatch_observer(self._on_core_dispatch)
-        # Single primary slot (no add_loop_observer — one frontend owns the
-        # chip). Harmless on a RemotePaneCore, which has no loop of its own.
-        self._core.on_loop = self._on_loop_change
-        # Same single-slot shape: the automatic end-of-turn recap renders
-        # through the very block /recap uses, so there is one surface
-        # rather than two that can drift. Harmless on a RemotePaneCore,
-        # which never fires it.
-        self._core.on_recap = self._on_recap
+        # Was a single primary slot on the stated assumption that one
+        # frontend owns the chip. With N views over one brain that is false:
+        # the second pane's assignment would silently replace the first, so
+        # the chip would render only in the last view to attach and nothing
+        # would report it. RemotePaneCore has no add_* form, hence the
+        # fallback — it has no loop of its own either way.
+        if hasattr(self._core, "add_loop_observer"):
+            self._core.add_loop_observer(self._on_loop_change)
+        else:
+            self._core.on_loop = self._on_loop_change
+        # Same story as on_loop above: the end-of-turn recap renders through
+        # the very block /recap uses, and every view needs it, not just the
+        # last to attach. Harmless on a RemotePaneCore, which never fires it.
+        if hasattr(self._core, "add_recap_observer"):
+            self._core.add_recap_observer(self._on_recap)
+        else:
+            self._core.on_recap = self._on_recap
         # RemotePaneCore has no log of its own; fall back to the handle so
         # the attribute always answers.
         self.log_id: str = getattr(self._core, "log_id", None) or handle
