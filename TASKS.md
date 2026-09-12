@@ -23,7 +23,8 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 > no row here at all). Read *The order* against the prose numbers, not these.
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
-| 2 | **Daemon stages 4–6** — view seam, transports + `aegis attach`, deletion | specced, needs a plan |
+| 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | specced, needs a plan; first task is closing stage 4's xfail |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
@@ -393,8 +394,51 @@ Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
 - Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md`
 - Plan review: `docs/superpowers/reviews/2026-09-09-roots-and-embed-plan-review.md`
 
-**Next action:** execute the stages 1–3 plan, Task 1. Stages 1–3 carry no
-deletion and unblock sindri on their own; stages 4–6 need their own plan.
+**Next action:** stages 1–3 shipped (`9c903ca`); **stage 4 shipped
+2026-09-11** (`9207664`..`5259bb3`, suite 3629/rc=0) — `ViewDriver`, `View`,
+`ViewRegistry`, `ViewState`, and `Workspace` reduced to brain state.
+
+**Stage 5 is unblocked except for one thing, which is its first task:** a
+tab opened in one view does not appear in the other, and it is
+`xfail(strict=True)` in `tests/views/test_multi_view.py`. `AegisApp` is its
+own `AppBridge` on the local plane and spawns through
+`_SessionManagerAdapter(self)`, so `bridge=` supplies roots and handles but
+never panes — two views over one `SessionManager` mount two *different*
+default tabs. `AgentSession` already keeps observer *lists*
+(`core/session.py:206-210`), so N panes over one session is supported; the
+fix is routing `AegisApp.spawn` through the manager when a bridge is
+present. Decided 2026-09-11: do that, accepting the spawn-route change to
+the single-view path.
+
+Also settled 2026-09-11, so stage 5 does not have to re-open them: view ids
+are client-minted and client-persisted; `ViewState.scroll` / `.drafts` get
+wired alongside the transport (declared but inert today); the auth swap is
+an ordinary change rather than an atomic one, because `dev.apiad.net` can be
+taken down for it; voice is untouched.
+
+### Voice capture belongs on the client *(flagged 2026-09-11; future feature, not 1.0)*
+
+Voice is **host-side**: `MicrophoneSource()` opens `sounddevice` in the
+daemon process (`voice/session.py:74`), so the mic is the daemon host's. It
+works for local views by coincidence — daemon and terminal are the same
+machine — and cannot work at all for a web view or **a tty over ssh from
+another machine**, which is the case that makes this worth doing.
+
+Moving capture to the client is a real feature, not a tidy-up: an audio
+channel across the transport, capture in the browser (`getUserMedia`) or in
+the attaching client, and a decision about whether transcription stays on
+the daemon (one warm engine, audio on the wire) or moves to the client (no
+audio on the wire, N engines). The seam as built carries bytes out and key
+events in, and deliberately nothing else.
+
+Until then the known wart is a double-injection: two local views both
+toggling voice open two concurrent input streams, which on PipeWire/Pulse
+both succeed, so one utterance is transcribed into two different agents. Not
+an error, self-inflicted, and cheap to guard with a module-level "one live
+`VoiceSession`" lock if it ever actually bites.
+
+See open question 3 in the spec, which recorded the wrong premise
+(ownership) until it was corrected.
 
 ### Terminals — redesign from scratch *(defect found 2026-08-10; no longer reproduces 2026-09-11)*
 

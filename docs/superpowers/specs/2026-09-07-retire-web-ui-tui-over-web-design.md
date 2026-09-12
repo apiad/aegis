@@ -576,7 +576,36 @@ Non-blocking; settle during planning.
 2. **Geometry with zero views attached.** A brain with no views has no screen;
    the first view to attach defines its own. Confirm nothing in the TUI assumes
    a size before the first attach.
-3. **Voice with N views.** One microphone, many views — `VoiceStrip` needs an
-   explicit owner, or push-to-talk becomes ambiguous.
+3. ~~**Voice with N views.** One microphone, many views — `VoiceStrip` needs an
+   explicit owner, or push-to-talk becomes ambiguous.~~
+   **Settled 2026-09-11, and the premise was wrong.** There is no shared
+   resource to assign an owner to: `_default_factory` builds
+   `MicrophoneSource()` on `sounddevice` *in the daemon process*
+   (`voice/session.py:74`), so the mic is the **daemon host's**, never the
+   client's. That splits into two facts, neither needing a decision:
+   - *Local views* (daemon and terminals on one box): the mic is the right
+     mic. Two views both toggling voice open two concurrent input streams,
+     which on PipeWire/Pulse both succeed — so one utterance is transcribed
+     twice into two different agents. A double-injection, not an error, and
+     it takes deliberately pressing the voice key in two views.
+   - *Remote views* (browser, or a tty over ssh from another machine): voice
+     cannot work at all, and no ownership model fixes it. The capture device
+     is on the client side of a seam carrying bytes out and key events in.
+
+   No resource cost either way: `_ENGINE_CACHE` is module-level
+   (`session.py:15`), so N views share one warm Whisper engine.
+
+   **Stages 4–6 change nothing here.** Voice stays per-view and host-side.
+   Refusing voice when a second view attaches — considered and rejected —
+   would break the working local case to prevent a self-inflicted
+   double-transcription nobody has hit.
+
+   **Future feature, deliberately out of scope: move capture client-side.**
+   That is what makes voice work in a web view and from multiple ttys over
+   ssh, and it is a real feature — an audio channel across the transport,
+   capture in the browser (`getUserMedia`) or in the attaching client, and a
+   decision about whether transcription stays on the daemon (one warm engine,
+   audio on the wire) or moves to the client (no audio on the wire, N
+   engines). Not a stage 4/5/6 concern. Tracked in `TASKS.md`.
 4. **Tab order on reorder.** Order is brain state, so reordering in one view
    reorders for everyone. Confirm that is wanted, or move it view-side.
