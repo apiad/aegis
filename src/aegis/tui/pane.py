@@ -1111,6 +1111,40 @@ class ConversationPane(Widget):
         if getattr(self.app, "sidebar_mode", False):
             self.set_task_dock(True)
 
+    def release_core_observers(self) -> None:
+        """Drop every subscription ``__init__`` took against ``self._core``.
+
+        A separate leak from ``_unsubs`` with a separate blast radius:
+        ``_unsubs`` covers the app-lived planes (queue digest, monitors,
+        repo tracker), these six are the core's own observer lists.
+
+        A pane and its core usually die together, which is why this went
+        unnoticed. Under the daemon a core OUTLIVES its panes -- views
+        attach and detach all day -- so a detached widget stayed wired to a
+        live brain, did layout work for every event forever, and finally
+        reached ``#transcript`` on a subtree that had unmounted with it.
+
+        Called from ``on_unmount``, and directly by the app when a mount
+        FAILS: Textual sends no unmount for a widget that never finished
+        mounting, which is exactly the half-mounted pane a view detaching
+        mid-mount leaves behind.
+
+        ``RemotePaneCore`` has no ``remove_*`` forms, hence the getattr --
+        it has no observer lists to leak either.
+        """
+        for remove, cb in (
+            ("remove_event_observer", self._on_core_event),
+            ("remove_state_observer", self._on_core_state),
+            ("remove_inbox_observer", self._on_core_inbox),
+            ("remove_dispatch_observer", self._on_core_dispatch),
+            ("remove_loop_observer", self._on_loop_change),
+            ("remove_recap_observer", self._on_recap),
+        ):
+            fn = getattr(self._core, remove, None)
+            if fn is not None:
+                with contextlib.suppress(Exception):
+                    fn(cb)
+
     def on_unmount(self) -> None:
         """Release the sidebar's subscriptions.
 
@@ -1125,6 +1159,7 @@ class ConversationPane(Widget):
             with contextlib.suppress(Exception):
                 unsub()
         self._unsubs.clear()
+        self.release_core_observers()
         # The tab is gone, so this agent is no longer standing anywhere. A
         # repo it was the last writer of leaves the board with it.
         tracker = getattr(self, "_repo_tracker", None)

@@ -1030,6 +1030,14 @@ class AegisApp(App):
             # The view detached mid-mount. Views come and go constantly once
             # a daemon is attachable, and a half-mounted pane surfaces as a
             # NoMatches crash out of a worker rather than a clean detach.
+            #
+            # Dropping it from _panes is not enough to make it gone: the
+            # pane wired six observers to the BRAIN's session in __init__,
+            # and Textual sends no unmount for a widget that never finished
+            # mounting, so on_unmount never runs. Left subscribed, it keeps
+            # rendering into a detached subtree for every event the brain
+            # emits -- which is the NoMatches this comment describes.
+            pane.release_core_observers()
             if pane in self._panes:
                 self._panes.remove(pane)
             return

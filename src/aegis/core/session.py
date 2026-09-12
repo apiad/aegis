@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -308,6 +309,36 @@ class AgentSession:
         except ValueError:
             pass
 
+    def remove_state_observer(self, cb: StateCb) -> None:
+        """Unsubscribe a state callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._extra_state_observers.remove(cb)
+
+    def remove_inbox_observer(self, cb: InboxCb) -> None:
+        """Unsubscribe an inbox callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._extra_inbox_observers.remove(cb)
+
+    def remove_dispatch_observer(self, cb: DispatchCb) -> None:
+        """Unsubscribe a dispatch callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._extra_dispatch_observers.remove(cb)
+
+    def remove_close_observer(self, cb: CloseCb) -> None:
+        """Unsubscribe a close callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._extra_close_observers.remove(cb)
+
+    def remove_loop_observer(self, cb) -> None:
+        """Unsubscribe a loop callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._loop_observers.remove(cb)
+
+    def remove_recap_observer(self, cb) -> None:
+        """Unsubscribe a recap callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._recap_observers.remove(cb)
+
     def _emit_close(self, reason: str) -> None:
         if self.on_close is not None:
             try:
@@ -339,9 +370,15 @@ class AgentSession:
         # only doing work while this session's turn is live.
         self._trackers_working(state == AgentState.working, self._now())
         if self.on_state is not None:
-            self.on_state(self, state, finished)
-        for cb in self._extra_state_observers:
-            cb(self, state, finished)
+            try:
+                self.on_state(self, state, finished)
+            except Exception:
+                log.exception("on_state raised; continuing")
+        for cb in list(self._extra_state_observers):
+            try:
+                cb(self, state, finished)
+            except Exception:
+                log.exception("state observer raised; continuing")
 
     @property
     def unsolicited_turn(self) -> bool:
@@ -741,9 +778,15 @@ class AgentSession:
         elif isinstance(ev, ToolUse):
             self._record_repo(ev)
         if self.on_event is not None:
-            self.on_event(self, ev)
-        for cb in self._extra_event_observers:
-            cb(self, ev)
+            try:
+                self.on_event(self, ev)
+            except Exception:
+                log.exception("on_event raised; continuing")
+        for cb in list(self._extra_event_observers):
+            try:
+                cb(self, ev)
+            except Exception:
+                log.exception("event observer raised; continuing")
 
     def _maybe_recap(self, facts) -> None:
         """Fire a recap without making the turn wait for it."""
