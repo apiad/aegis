@@ -75,7 +75,31 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
             # by a test that can fail, rather than parked here where none
             # can.
             await view.run()
-            await _pump(reader, decoder, view)
+            # Race the client's input against the app's own lifetime.
+            #
+            # `_pump` returns on EOF from the client, which covers the
+            # client going away. It cannot cover the app going away, and a
+            # detach does exactly that: Ctrl+Q exits the app and leaves
+            # this coroutine reading a socket nobody will ever write to
+            # again. The user sees a terminal that stopped responding, and
+            # the view stays in the registry keyed by their tty, so the
+            # next attach is handed a view whose app is dead.
+            #
+            # Whichever ends first ends the connection. The `finally`
+            # below then closes the socket and drops the view, which is
+            # what makes the next `aegis` build a fresh one.
+            pump = asyncio.create_task(_pump(reader, decoder, view))
+            stopped = asyncio.create_task(view.wait_stopped())
+            try:
+                await asyncio.wait(
+                    {pump, stopped}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in (pump, stopped):
+                    task.cancel()
+                for task in (pump, stopped):
+                    with contextlib.suppress(asyncio.CancelledError,
+                                             Exception):
+                        await task
         finally:
             flusher.cancel()
             with contextlib.suppress(asyncio.CancelledError):

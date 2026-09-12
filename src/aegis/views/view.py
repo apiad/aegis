@@ -90,6 +90,17 @@ class View:
                     f"view {self.view_id} never pushed a screen")
             await asyncio.sleep(0.005)
 
+    async def wait_stopped(self) -> None:
+        """Block until the app behind this view has exited.
+
+        `asyncio.wait` rather than awaiting the task, so that cancelling
+        this waiter does not cancel the app. The caller races it against
+        its own I/O and cancels the loser.
+        """
+        if self._task is None:
+            return
+        await asyncio.wait({self._task})
+
     async def stop(self) -> None:
         if self._task is not None and not self._task.done():
             self.app.exit()
