@@ -38,6 +38,57 @@ async def test_resume_still_restores_the_focused_tab(tmp_path):
         "resume still reads focus off the workspace")
 
 
+async def test_the_local_tui_boot_gives_its_app_a_view_state(tmp_path):
+    """`aegis` is the single-view path this plan must not change.
+
+    Focus moved off the workspace, so if the local boot does not build and
+    hand over a ViewState, the app reads focus off None forever and resume
+    quietly stops restoring the focused tab — with every unit test above
+    still green, because they construct AegisApp directly.
+    """
+    from aegis.cli import LocalTuiAttachment
+    from aegis.config.roots import AegisRoots
+    from aegis.views.state import load_view
+
+    captured: dict = {}
+
+    class _RecordingApp:
+        def __init__(self, *args, **kwargs):
+            captured["kwargs"] = kwargs
+
+        async def run_async(self):
+            # Whatever the app writes into its view state must be what the
+            # attachment persists — same object, not a copy.
+            captured["kwargs"]["view_state"].active_handle = "lucid-knuth"
+
+    import aegis.cli
+    original = aegis.cli.AegisApp
+    aegis.cli.AegisApp = _RecordingApp
+    try:
+        roots = AegisRoots.for_project(tmp_path)
+        ui = LocalTuiAttachment(clean=True, agent=None, queues={}, voice=None,
+                                hosts={}, host_registry=None, drivers={},
+                                cwd=str(tmp_path), agents={}, roots=roots)
+
+        class _Mgr:
+            make_session = None
+            mcp = None
+            roots = None
+
+        mgr = _Mgr()
+        mgr.roots = roots
+        await ui.run(mgr)
+    finally:
+        aegis.cli.AegisApp = original
+
+    vs = captured["kwargs"].get("view_state")
+    assert vs is not None, "the local TUI boot passed no ViewState"
+    persisted = load_view(roots.state_dir, vs.view_id)
+    assert persisted is not None, (
+        f"nothing was persisted for view {vs.view_id!r} on exit")
+    assert persisted.active_handle == "lucid-knuth"
+
+
 def test_focus_survives_a_kill_not_only_a_clean_exit(tmp_path):
     """Focus used to ride in workspace.json, written on every tab change.
     Persisting it only on exit would silently narrow that to clean exits."""
