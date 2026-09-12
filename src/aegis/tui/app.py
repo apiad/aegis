@@ -1059,7 +1059,24 @@ class AegisApp(App):
             if pane in self._panes:
                 self._panes.remove(pane)
             return
-        if foreground:
+        # `or cs.current is None` is the whole of it, and it is not a
+        # nicety: a view holding panes and pointing at none of them renders
+        # a tab bar over a blank screen, with no input box and no way in.
+        #
+        # Two routes mount a brain pane and they race by design. A bridged
+        # `_spawn` mounts directly with foreground=True, and the brain's
+        # session observer mounts through `run_worker`; whichever is second
+        # no-ops on the `pane_for` guard above. But `_on_brain_session`
+        # passes no foreground, so when the worker wins, the pane is hidden
+        # and nothing ever reveals it. Under `run_test` the direct call
+        # wins and this never appears. Under the real ViewDriver the worker
+        # wins, which is every actual `aegis`.
+        #
+        # Fixing it here rather than at the observer covers the other ways
+        # a view can be handed its first session: another view's spawn, an
+        # MCP tool, a queue worker. None of those pass foreground either,
+        # and a view that receives one while showing nothing should show it.
+        if foreground or cs.current is None:
             cs.current = pane.id
         self._refresh_tabbar()
         if foreground:
