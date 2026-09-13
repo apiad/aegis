@@ -8,23 +8,26 @@ fake agents' emits and the probe.
 from __future__ import annotations
 
 import contextlib
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from aegis.bench import BenchError
+from aegis.bench import BenchError, ScenarioSkipped
 from aegis.bench.launcher import Target
 from aegis.bench.records import Recorder, read_jsonl
 from aegis.bench.rig import Rig, pump, wait_until
 from aegis.bench.script import (
-    acp_chunks, make_script, synthetic_blocks, synthetic_fill)
+    acp_chunks, load_fixture, make_script, synthetic_blocks,
+    synthetic_fill)
 from aegis.bench.world import (
     World, build_world, client_argv, start_daemon, teardown)
 
 READY_TEXT = "type a message"
 F3 = b"\x1bOR"
 CTRL_T = b"\x14"
+CTRL_RIGHT = b"\x1b[1;5C"
 
 
 class ScenarioContext:
@@ -40,6 +43,7 @@ class ScenarioContext:
         self.world: World | None = None
         self.rigs: list[Rig] = []        # attached now; what pump reads
         self._all_rigs: list[Rig] = []   # ever attached; what gates cover
+        self._tabs_open = 0
 
     # --- recording -----------------------------------------------------
     def metric(self, name: str, value: float) -> None:
@@ -82,7 +86,9 @@ class ScenarioContext:
         if self.target.topology == "daemon":
             self.metric("startup.daemon_boot_ms",
                         start_daemon(self.world, wrap=self._wrap()))
-        return self.attach("a")
+        rig = self.attach("a")
+        self._tabs_open = 1
+        return rig
 
     def attach(self, label: str) -> Rig:
         assert self.world is not None
@@ -113,18 +119,82 @@ class ScenarioContext:
         if rig in self.rigs:
             self.rigs.remove(rig)
 
+    def tabs(self) -> list[str]:
+        """Tab handles in order, from the daemon's workspace snapshot."""
+        assert self.world is not None
+        path = self.world.root / ".aegis" / "state" / "workspace.json"
+        try:
+            tabs = json.loads(path.read_text()).get("tabs", [])
+        except (OSError, ValueError):
+            return []
+        return [t["handle"] for t in sorted(tabs, key=lambda t: t["order"])]
+
+    def new_tab(self, rig: Rig, *, old_text: str = "compositor") -> str:
+        """Open a tab with Ctrl+T and bring it on screen with Ctrl+Right.
+
+        In a daemon view the new pane mounts in the background, because
+        ``_mount_brain_pane`` only foregrounds when told to and the observer
+        worker that wins the mount race never is. A new tab is appended
+        after the current one, so one Ctrl+Right reaches it; a build that
+        does foreground it is detected and no key is pressed. Keys, not a
+        click on the label: seven labels do not fit in 120 columns.
+
+        The switch is confirmed on screen, never assumed. ``old_text`` is in
+        every script's text, so the previous tab's transcript shows it and a
+        fresh tab's does not. The count of open tabs is tracked here rather
+        than read from ``workspace.json`` beforehand, because the daemon
+        writes that snapshot lazily and a stale baseline once named the old
+        tab as the new one. The time from key to switch is sampled as
+        ``tabs.switch_ms``.
+        """
+        if not wait_until(self.rigs, lambda: self._shows(rig, old_text), 10):
+            raise BenchError(f"the current tab shows no {old_text!r}, so a "
+                             "switch away from it cannot be confirmed")
+        opened = self._tabs_open
+        rig.write(CTRL_T)
+        if not wait_until(self.rigs, lambda: len(self.tabs()) > opened, 15):
+            raise BenchError("Ctrl+T opened no tab")
+        self._tabs_open = opened + 1
+        handle = self.tabs()[opened]
+        # Let the view mount the pane before moving to it; the label may
+        # never be drawn when the tab bar is full, so this does not insist.
+        wait_until(self.rigs, lambda: rig.contains(handle), 3)
+        self.wait_quiet(rig, 300, timeout_s=1.0)
+        if not self._shows(rig, old_text):
+            return handle
+        t = rig.write(CTRL_RIGHT)
+        if not wait_until(self.rigs, lambda: not self._shows(rig, old_text),
+                          10):
+            raise BenchError(f"Ctrl+Right did not bring tab {handle} "
+                             "on screen")
+        self.sample("tabs.switch_ms", (time.monotonic_ns() - t) / 1e6)
+        self.wait_quiet(rig, 300, timeout_s=1.0)
+        return handle
+
+    @staticmethod
+    def _shows(rig: Rig, text: str) -> bool:
+        return any(text in line for line in rig.screen())
+
+    def dump_screens(self) -> None:
+        """Write each client's reconstructed screen beside the repeat, so a
+        failure leaves evidence of what was on screen when it happened."""
+        for rig in self._all_rigs:
+            (self.rep_dir / f"screen-{rig.label}.txt").write_text(
+                "\n".join(rig.screen()) + "\n")
+
     def emits(self, kind: str) -> list[dict]:
         return [r for r in read_jsonl(self.rep_dir / "emit.jsonl")
                 if r["k"] == kind]
 
     def send_prompt(self, rig: Rig, word: str, *,
-                    timeout_s: float = 20) -> None:
+                    timeout_s: float = 20) -> int:
         """Type ``word`` and submit it, confirmed by the fake agent.
 
         A cold attach leaves focus on the tab bar, so this clicks the input
         first, as a user must. Enter is retried because a keystroke can
         land while the pane is still wiring its session; the fake agent's
-        ``prompt`` record, not the screen, is the confirmation.
+        ``prompt`` record, not the screen, is the confirmation. Returns the
+        pid of the fake agent that received it.
         """
         before = len(self.emits("prompt"))
         if not rig.click_text(READY_TEXT):
@@ -137,8 +207,22 @@ class ScenarioContext:
             rig.write(b"\r")
             if wait_until(self.rigs,
                           lambda: len(self.emits("prompt")) > before, 3):
-                return
+                return self.emits("prompt")[before]["pid"]
         raise BenchError(f"prompt {word!r} never reached the fake agent")
+
+    def send_to_new_tab(self, rig: Rig, word: str, pids: set[int]) -> int:
+        """Send ``word`` and insist a fresh agent received it.
+
+        A prompt that lands in an existing tab still reaches *an* agent, so
+        without this check a failed tab switch passes and measures the
+        wrong thing. It did, twice, before this check existed.
+        """
+        pid = self.send_prompt(rig, word)
+        if pid in pids:
+            raise BenchError(f"prompt {word!r} landed in an existing tab "
+                             f"(pid {pid}), not the tab just opened")
+        pids.add(pid)
+        return pid
 
     def wait_turns(self, n: int, *, timeout_s: float) -> None:
         if not wait_until(self.rigs, lambda: len(self.emits("turn_end")) >= n,
@@ -294,6 +378,99 @@ def typing(ctx: ScenarioContext) -> None:
              f"{len(pending)} of {len(typed)} keystrokes never echoed")
 
 
+def idle(ctx: ScenarioContext) -> None:
+    """Three tabs with finished turns, then nothing: the CPU and wakeup
+    floor an operator pays for leaving aegis open."""
+    rig = ctx.boot(make_script({"ack": synthetic_blocks(3, 0, mark=False)}))
+    pids = {ctx.send_prompt(rig, "ack")}
+    for n in (1, 2):
+        ctx.wait_turns(n, timeout_s=60)
+        ctx.new_tab(rig)
+        ctx.send_to_new_tab(rig, "ack", pids)
+    ctx.wait_turns(3, timeout_s=60)
+    ctx.wait_quiet(rig, 1000)
+    with ctx.window():
+        ctx.pump_for(20.0)
+
+
+def many_tabs(ctx: ScenarioContext) -> None:
+    """One visible stream while six background tabs stream too.
+
+    Claude-shaped streams, not ACP: an ACP reply renders only when its
+    turn ends, so a background ACP tab would cost nothing in the window.
+    """
+    # 1800 blocks at 50 ms is 90 s, so every background stream is still
+    # running when the measured window opens, however slow the tab setup.
+    rig = ctx.boot(make_script({"bg": synthetic_blocks(1800, 50, mark=False),
+                                "go": synthetic_blocks(150, 50)}))
+    pids = {ctx.send_prompt(rig, "bg")}
+    for _ in range(5):
+        ctx.new_tab(rig)
+        ctx.send_to_new_tab(rig, "bg", pids)
+    ctx.new_tab(rig)
+    ctx.expect_markers()
+    with ctx.window():
+        go_pid = ctx.send_to_new_tab(rig, "go", pids)
+        if not wait_until(ctx.rigs, lambda: any(
+                r["pid"] == go_pid for r in ctx.emits("turn_end")), 120):
+            raise BenchError("the visible stream did not finish")
+        ctx.pump_for(1.0)
+
+
+def two_clients(ctx: ScenarioContext) -> None:
+    rig = ctx.boot(make_script({"go": synthetic_blocks(200, 50)}))
+    ctx.expect_markers("a")
+    ctx.expect_markers("b")
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        ctx.pump_for(2.0)
+        ctx.attach("b")
+        ctx.wait_turns(1, timeout_s=180)
+        ctx.pump_for(1.0)
+
+
+def claude_stream(ctx: ScenarioContext) -> None:
+    """Token deltas, when aegis asks claude for them.
+
+    The fake records its argv when aegis starts it, so the skip is decided
+    by what aegis actually passed, not by reading aegis's source.
+    """
+    try:
+        steps = load_fixture("claude-stream")
+    except FileNotFoundError as exc:
+        raise ScenarioSkipped("fixture claude-stream is not recorded") from exc
+    rig = ctx.boot(make_script({"go": steps}))
+    ctx.expect_markers()
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        argv = ctx.emits("argv")
+        if argv and not argv[-1]["partial"]:
+            raise ScenarioSkipped(
+                "aegis does not pass --include-partial-messages to claude")
+        ctx.wait_turns(1, timeout_s=300)
+        ctx.pump_for(1.0)
+
+
+def soak(ctx: ScenarioContext) -> None:
+    """Ten minutes of repeated turns: does memory keep growing?"""
+    rig = ctx.boot(make_script({
+        "soak": synthetic_fill(100) + synthetic_blocks(50, 20, mark=False)}))
+    turns = 0
+    with ctx.window():
+        deadline = time.monotonic() + 600
+        while time.monotonic() < deadline:
+            ctx.send_prompt(rig, "soak")
+            turns += 1
+            ctx.wait_turns(turns, timeout_s=300)
+    lines = sum(r["lines"] for r in ctx.emits("turn_end"))
+    samples = [r for r in read_jsonl(ctx.rep_dir / "probe.jsonl")
+               if r["k"] == "sample" and r.get("rss")]
+    if len(samples) >= 2 and lines:
+        growth_mb = (samples[-1]["rss"] - samples[0]["rss"]) / 2**20
+        ctx.metric("mem.rss_growth_mb_per_1k_lines",
+                   growth_mb / (lines / 1000))
+
+
 SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("startup", startup, "cold boot, first frame, warm re-attach"),
     Scenario("claude-blocks", claude_blocks,
@@ -303,7 +480,16 @@ SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("acp-stream", acp_stream,
              "chunk-by-chunk streaming through the ACP driver"),
     Scenario("typing", typing, "keystroke echo while a stream runs"),
+    Scenario("idle", idle, "three finished tabs, nothing happening, 20 s"),
+    Scenario("many-tabs", many_tabs,
+             "one visible stream, six background streams"),
+    Scenario("two-clients", two_clients,
+             "a second client attaches mid-stream",
+             topologies=("daemon",)),
+    Scenario("claude-stream", claude_stream,
+             "token deltas, if aegis requests them"),
+    Scenario("soak", soak, "ten minutes of turns; memory growth"),
 )}
-DEFAULT = ["startup", "claude-blocks", "acp-stream", "deep-stream", "resize",
-           "typing"]
+DEFAULT = ["startup", "idle", "claude-blocks", "claude-stream", "acp-stream",
+           "deep-stream", "resize", "typing", "many-tabs", "two-clients"]
 QUICK = ["startup", "claude-blocks", "acp-stream", "resize"]

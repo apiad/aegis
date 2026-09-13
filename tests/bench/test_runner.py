@@ -1,10 +1,7 @@
-import pytest
-
 from aegis.bench.runner import failed, runs_dir
 from aegis.bench.scenarios import DEFAULT, QUICK, SCENARIOS
 
 
-@pytest.mark.xfail(strict=True, reason="scenario sets complete in Task 8")
 def test_scenario_sets_are_registered():
     assert set(QUICK) <= set(DEFAULT) <= set(SCENARIOS)
     assert "soak" in SCENARIOS and "soak" not in DEFAULT

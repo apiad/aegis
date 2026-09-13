@@ -45,6 +45,7 @@ METRICS: dict[str, MetricSpec] = {
     **{f"latency.echo_ms.{q}": _t(2.0) for q in ("p50", "p95", "max")},
     **{f"{g}.{m}.{q}": _t(5.0) for g in ("resize", "sidebar")
        for m in ("first_frame_ms", "settle_ms") for q in ("p50", "max")},
+    **{f"tabs.switch_ms.{q}": _t(20.0) for q in ("p50", "max")},
     **{f"render.tick_ms.{q}": _t(0.5) for q in ("p50", "p95", "p99", "max")},
     "render.layout_ms.p95": _t(0.5),
     "render.compose_ms.p95": _t(0.5),
