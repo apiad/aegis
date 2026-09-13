@@ -1,6 +1,6 @@
 from aegis.bench.frames import (
     SYNC_BEGIN, SYNC_END, SYNC_QUERY, FrameSplitter, find_markers, locate,
-    marker, sgr_click, strip_ansi)
+    marker, render_screen, sgr_click, strip_ansi)
 
 
 def test_locate_finds_row_and_column_after_cursor_move():
@@ -15,6 +15,22 @@ def test_locate_finds_row_and_column_after_cursor_move():
 def test_locate_prefers_the_last_draw():
     raw = b"\x1b[5;1Hxx target\x1b[9;4Htarget"
     assert locate(raw, "target") == (9, 4)
+
+
+def test_render_screen_overlays_spans_in_draw_order():
+    raws = [b"\x1b[1;1Hhello world",
+            b"\x1b[1;7H\x1b[1mthere\x1b[0m\x1b[2;3Hbold"]
+    screen = render_screen(raws, cols=20, rows=3)
+    assert screen[0] == "hello there".ljust(20)
+    assert screen[1] == "  bold".ljust(20)
+    assert screen[2] == " " * 20
+
+
+def test_render_screen_clips_to_the_grid():
+    screen = render_screen([b"\x1b[2;18Hoverflow", b"\x1b[9;1Hgone"],
+                           cols=20, rows=3)
+    assert screen[1] == " " * 17 + "ove"
+    assert all(len(line) == 20 for line in screen)
 
 
 def test_sgr_click_is_press_then_release():

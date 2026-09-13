@@ -21,7 +21,8 @@ import psutil
 from ptyprocess import PtyProcess
 
 from aegis.bench.frames import (
-    SYNC_REPLY, Frame, FrameSplitter, find_markers, locate, sgr_click)
+    SYNC_REPLY, Frame, FrameSplitter, ScreenGrid, find_markers, locate,
+    sgr_click)
 from aegis.bench.records import Recorder
 
 _TEXT_KEEP = 200_000
@@ -47,6 +48,7 @@ class Rig:
         self._answered = 0
         self._text = ""
         self._raw_frames: deque[bytes] = deque(maxlen=_RAW_FRAMES_KEEP)
+        self.grid = ScreenGrid(cols, rows)
         self._last_sample = 0.0
 
     def start(self) -> None:
@@ -92,6 +94,7 @@ class Rig:
                 self.markers_seen.setdefault(m, f.t_ns)
             self._text = (self._text + f.text)[-_TEXT_KEEP:]
             self._raw_frames.append(f.raw)
+            self.grid.apply(f.raw)
             self.recorder.write({"k": "frame", "client": self.label,
                                  "t_ns": f.t_ns, "nbytes": f.nbytes,
                                  "markers": marks})
@@ -108,12 +111,18 @@ class Rig:
         t = time.monotonic_ns()
         self.proc.setwinsize(rows, cols)
         self.cols, self.rows = cols, rows
+        # Textual redraws everything after a resize; start the model clean.
+        self.grid.resize(cols, rows)
         return t
 
     def contains(self, s: str) -> bool:
         """Whether ``s`` appeared in any frame so far (frames are diffs, so
         this is text the client drew, not the current screen)."""
         return s in self._text
+
+    def screen(self) -> list[str]:
+        """What the client's screen shows now, one string per row."""
+        return self.grid.lines()
 
     def click_text(self, needle: str) -> bool:
         """Click where ``needle`` was last drawn, as a user does to focus a

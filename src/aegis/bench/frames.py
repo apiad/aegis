@@ -61,6 +61,51 @@ def sgr_click(row: int, col: int) -> bytes:
     return (f"\x1b[<0;{col};{row}M\x1b[<0;{col};{row}m").encode()
 
 
+class ScreenGrid:
+    """The screen as frames have left it: each span written at its cursor
+    position, later spans over earlier ones.
+
+    Approximate on purpose. Wide characters and relative cursor motion are
+    ignored, which is enough to ask what text a row shows now. Frames are
+    diffs, so the grid must see every frame since the last full redraw.
+    """
+
+    def __init__(self, cols: int, rows: int) -> None:
+        self.resize(cols, rows)
+
+    def resize(self, cols: int, rows: int) -> None:
+        self.cols, self.rows = cols, rows
+        self._grid = [[" "] * cols for _ in range(rows)]
+
+    def apply(self, raw: bytes) -> None:
+        moves = list(_CUP.finditer(raw))
+        for i, m in enumerate(moves):
+            row, col = int(m.group(1)) - 1, int(m.group(2)) - 1
+            if not 0 <= row < self.rows:
+                continue
+            end = moves[i + 1].start() if i + 1 < len(moves) else len(raw)
+            text = strip_ansi(raw[m.end():end]).replace("\r", "")
+            text = text.replace("\n", "")
+            line = self._grid[row]
+            for j, ch in enumerate(text):
+                c = col + j
+                if c >= self.cols:
+                    break
+                if c >= 0:
+                    line[c] = ch
+
+    def lines(self) -> list[str]:
+        return ["".join(r) for r in self._grid]
+
+
+def render_screen(raws, cols: int, rows: int) -> list[str]:
+    """The screen a sequence of raw frames leaves behind."""
+    grid = ScreenGrid(cols, rows)
+    for raw in raws:
+        grid.apply(raw)
+    return grid.lines()
+
+
 @dataclass(frozen=True)
 class Frame:
     t_ns: int

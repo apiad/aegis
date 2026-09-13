@@ -1,6 +1,7 @@
 """Run scenarios × repeats against a target and write the run directory."""
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import os
@@ -137,6 +138,8 @@ def run(opts: RunOptions, console: Console) -> tuple[dict, Path]:
                 res.update(status="failed",
                            reason=f"{type(exc).__name__}: {exc}")
                 (rep_dir / "error.txt").write_text(traceback.format_exc())
+                with contextlib.suppress(Exception):
+                    ctx.dump_screens()
             finally:
                 try:
                     ctx.close()
