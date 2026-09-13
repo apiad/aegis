@@ -45,3 +45,11 @@ def test_steps_carry_dropped_delay_and_cap_it():
 def test_first_step_is_capped_at_one_second():
     steps = steps_from([(4000.0, _text("slow start"))], "/tmp/w")
     assert steps[0]["dt_ms"] == 1000.0
+
+
+def test_sanitize_keeps_only_lines_a_replay_needs():
+    # A recorded session carried a rate_limit_event, which aegis parses as
+    # an unknown event: noise in a committed fixture.
+    assert sanitize({"type": "rate_limit_event"}, "/tmp/w") is None
+    assert sanitize({"type": "stream_event", "event": {}}, "/tmp/w") is not None
+    assert sanitize(_text("kept"), "/tmp/w") is not None

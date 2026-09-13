@@ -27,20 +27,23 @@ _NOTES = ("Terminal UIs keep a model of the screen and diff it against the "
           "previous frame. Synchronized output (DEC mode 2026) lets the "
           "terminal present a frame atomically.\n")
 
-# The fake claude writes init and result itself, per turn.
-_OWNED = ("system", "result")
+# Only the line types a replay feeds aegis. The fake writes system/init
+# and result itself, per turn; anything else (a recorded rate_limit_event,
+# say) is noise that aegis parses as an unknown event.
+_REPLAYED = ("assistant", "user", "stream_event")
 FIRST_CAP_MS = 1000.0
 CAP_MS = 5000.0
 
 
 def sanitize(line: dict, work: str, home: str | None = None) -> dict | None:
-    """The line as a fixture keeps it, or None for a line the fake owns.
+    """The line as a fixture keeps it, or None for a line a replay does
+    not feed aegis.
 
     Ids are dropped and the scratch directory and home directory are
     replaced, so a committed fixture carries no path from the machine that
     recorded it.
     """
-    if line.get("type") in _OWNED:
+    if line.get("type") not in _REPLAYED:
         return None
     line = {k: v for k, v in line.items() if k not in ("uuid", "session_id")}
     text = json.dumps(line, ensure_ascii=False).replace(work, "/work")
