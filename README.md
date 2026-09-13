@@ -247,7 +247,7 @@ plan → dispatch implementer per task with durable resume),
   anywhere.**
 - **Queue dashboard.** Always-on one-line strip above the status bar
   shows live per-queue depth and the most recent in-flight worker.
-  `Ctrl+D` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
+  `F4` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
   QUEUED / RECENT` bands and a live assistant-text tail.
 - **File browser + viewer.** `Ctrl+O` opens a **FileBrowserTab** — a
   persistent tab, not a modal, so several can coexist. It lists files
@@ -618,7 +618,9 @@ ConfigPanel via `F2`.
 | `Ctrl+1`..`9` / `Ctrl+Tab` / `Ctrl+←→` | Switch tabs |
 | `Ctrl+Shift+←→` | Move the active tab along the bar (or drag it with the mouse) |
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
-| `Ctrl+D` | Open / close the queue dashboard |
+| `F4` | Open / close the queue dashboard |
+| `Ctrl+D` | Detach: leave the daemon and its agents running |
+| `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — recency list, filter, tree sidebar, editor |
 | `F2` | Open the **ConfigPanel** — edit agents/queues/etc. live |

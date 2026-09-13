@@ -26,6 +26,14 @@ class DaemonRecord:
     socket: Path
     started: float
     version: str = "0"
+    # Whether a client's autostart started this daemon, rather than a
+    # person or systemd running `aegis serve`. It is what decides whether
+    # Ctrl+Q may stop it, so the default is False in both directions: a
+    # record written before this field existed, or one we cannot read,
+    # grants nothing. Erring that way costs a daemon that outlives its
+    # client and `aegis kill` clears it; erring the other way stops the
+    # VPS.
+    autostarted: bool = False
 
 
 def registry_dir() -> Path:
@@ -63,6 +71,7 @@ def record(rec: DaemonRecord) -> Path:
         "socket": str(rec.socket),
         "started": rec.started,
         "version": rec.version,
+        "autostarted": bool(rec.autostarted),
     }
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -84,7 +93,8 @@ def _read(p: Path) -> DaemonRecord | None:
         return DaemonRecord(
             root=Path(raw["root"]), pid=int(raw["pid"]),
             socket=Path(raw["socket"]), started=float(raw["started"]),
-            version=str(raw.get("version", "0")))
+            version=str(raw.get("version", "0")),
+            autostarted=bool(raw.get("autostarted", False)))
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         # One damaged file must not make `aegis ls` unusable everywhere.
         return None

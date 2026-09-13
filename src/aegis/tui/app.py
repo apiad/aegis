@@ -298,7 +298,12 @@ class AegisApp(App):
         Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
         Binding("ctrl+e", "new_terminal", "New terminal", priority=True),
         Binding("ctrl+w", "close_tab", "Close tab", priority=True),
-        Binding("ctrl+d", "open_dashboard", "Queues", priority=True),
+        # Ctrl+D detaches, as it ends a session in a shell. It leaves the
+        # brain running and cannot stop a daemon, which is what makes it
+        # the safe key of the pair. The queues dashboard moved to F4, with
+        # F2 config and F3 tasks.
+        Binding("ctrl+d", "detach", "Detach", priority=True),
+        Binding("f4", "open_dashboard", "Queues", priority=True),
         # Ctrl+R, not Ctrl+H: most terminals send Ctrl+H as \x08, which the
         # xterm parser reports as `backspace` — a "ctrl+h" binding is dead
         # there. Kept as an alias for terminals that speak the kitty keyboard
@@ -351,7 +356,8 @@ class AegisApp(App):
                  bridge: "object | None" = None,
                  driver_class: "type | None" = None,
                  view_state: "ViewState | None" = None,
-                 owns_brain: bool = True) -> None:
+                 owns_brain: bool = True,
+                 can_stop_daemon=None) -> None:
         # A view supplies its own driver so its frames go to that view's
         # sink instead of this process's stdout. None keeps Textual's
         # auto-detection, which is every existing caller.
@@ -371,6 +377,16 @@ class AegisApp(App):
         # wrap the brain's sessions and whose MCP plane belongs to _serve.
         # Quitting one view there must cost that view and nothing else.
         self._owns_brain = owns_brain
+        # Set by Ctrl+Q in a view, read by the daemon once this view is
+        # gone. A request, not a decision: whether it is granted depends on
+        # nothing this app can see, namely whether any other client is
+        # still attached and whether this daemon was started by a client at
+        # all. Ctrl+D never sets it.
+        self.quit_stops_daemon = False
+        # Answers "would Ctrl+Q here actually stop the daemon". None for
+        # every caller that is not a daemon view, which is every caller
+        # that owns its brain.
+        self._can_stop_daemon = can_stop_daemon or (lambda: False)
         # Execution hosts — the third orthogonal spawn axis. Empty means
         # every pane runs local, which is the pre-hosts behaviour.
         self._hosts: dict = hosts or {}
@@ -1932,6 +1948,55 @@ class AegisApp(App):
         elif pane is not None:
             pane.set_voice_state("idle")
 
+    def _detach(self) -> None:
+        """End this view and leave everything else standing.
+
+        The roster is brain state and the brain persists it; the ViewState
+        is persisted by the View on stop. What this must NOT do is the
+        teardown in `action_quit`: closing panes closes the sessions other
+        views are looking at, because a bridged pane's `_core` IS the
+        brain's AgentSession, and stopping the MCP plane takes the agent
+        surface down for all of them.
+        """
+        self._file_indexer.stop()
+        self.exit()
+
+    async def action_detach(self) -> None:
+        """Ctrl+D. Leaves the daemon running, always.
+
+        Kept incapable of stopping anything: it never sets
+        `quit_stops_daemon`. That is the whole difference between the two
+        keys, and it is why this one needs no conditions.
+        """
+        if self._voice is not None:
+            self._stop_voice()
+        if not self._owns_brain:
+            self._detach()
+            return
+        await self.action_quit()
+
+    def _a_turn_is_running(self) -> bool:
+        from aegis.core.session import AgentState
+
+        mgr = getattr(self, "manager", None)
+        if mgr is None:
+            return False
+        try:
+            return any(getattr(s, "state", None) is AgentState.working
+                       for s in getattr(mgr, "_sessions", []))
+        except Exception:  # noqa: BLE001 — never block a quit on this
+            return False
+
+    async def _confirm_stop_mid_turn(self) -> bool:
+        """True to go through with it. Anything unexpected means no."""
+        from aegis.tui.picker import _ChoicePicker
+
+        choice = await self.push_screen_wait(_ChoicePicker(
+            [("stop", "Stop the daemon and lose the turn"),
+             ("cancel", "Keep it running")],
+            title="An agent is mid-turn. Ctrl+D detaches without stopping."))
+        return choice == "stop"
+
     async def action_quit(self) -> None:
         if self._voice is not None:
             self._stop_voice()
@@ -1941,14 +2006,18 @@ class AegisApp(App):
             self.exit()
             return
         if not self._owns_brain:
-            # Detach. The roster is brain state and is persisted by the
-            # brain; the ViewState is persisted by the View on stop. What
-            # we must NOT do is the teardown below — closing panes closes
-            # the sessions other views are looking at (a bridged pane's
-            # _core IS the brain's AgentSession), and stopping the MCP
-            # plane takes the agent surface down for all of them.
-            self._file_indexer.stop()
-            self.exit()
+            # One question, and only when it buys something. Ctrl+Q is an
+            # explicit act, so it does not confirm in general; it confirms
+            # when the cost is an agent's turn, because no keystroke should
+            # spend that silently. If the daemon would refuse to stop
+            # anyway, quitting costs this view alone and there is nothing
+            # to warn about.
+            if self._can_stop_daemon() and self._a_turn_is_running():
+                if not await self._confirm_stop_mid_turn():
+                    return
+            # Ask. The daemon decides; see ViewRegistry.request_quit.
+            self.quit_stops_daemon = True
+            self._detach()
             return
         # Persist the current roster BEFORE teardown so any session_ids
         # latched mid-turn (after the last tab event) reach disk and the

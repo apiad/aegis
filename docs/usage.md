@@ -15,7 +15,9 @@
 | `Ctrl+Tab` / `Ctrl+→` / `Ctrl+←` | Next / previous tab |
 | `Ctrl+Shift+→` / `Ctrl+Shift+←` | Move the active tab one slot along the bar (`Alt+Shift+←→` alias) |
 | `Drag a tab` | Reorder with the mouse — the tab follows the pointer across its neighbours |
-| `Ctrl+D` | Open / close the queue dashboard |
+| `F4` | Open / close the queue dashboard |
+| `Ctrl+D` | Detach: leave the daemon and its agents running |
+| `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
@@ -436,7 +438,7 @@ far along it is.
 
 When queues are configured in `.aegis.yaml`, a one-line **strip** sits
 just above the status bar in every conversation showing live per-queue
-depth and the most recent in-flight worker. Press `Ctrl+D` to expand
+depth and the most recent in-flight worker. Press `F4` to expand
 into a full-screen modal with `QUEUES / IN-FLIGHT / QUEUED / RECENT`
 bands and a detail panel that tails the selected worker's assistant
 text. See [Queues → Dashboard](queues.md#dashboard-ctrld) for the full

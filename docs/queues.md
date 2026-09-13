@@ -135,9 +135,9 @@ format adapts to how many queues you have:
 
 If no queues are configured in `.aegis.yaml`, the strip is hidden.
 
-### Dashboard (`Ctrl+D`)
+### Dashboard (`F4`)
 
-Press `Ctrl+D` from any conversation for a full-screen modal:
+Press `F4` from any conversation for a full-screen modal:
 
 - **QUEUES** — config (agent profile, max-parallel) + live counts.
 - **IN-FLIGHT** — running workers with elapsed time and payload

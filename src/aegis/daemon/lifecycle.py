@@ -150,8 +150,13 @@ def _spawn_detached(root: Path) -> None:
     group and dies with the terminal, which is the one thing a daemon may
     not do.
     """
+    # `--autostarted` is what lets the daemon record that a client started
+    # it, which is the only condition under which a client may later stop
+    # it. A daemon a person or systemd starts carries no such mark and is
+    # therefore unstoppable from any TUI.
     subprocess.Popen(
-        [sys.executable, "-m", "aegis", "serve", "--cwd", str(root)],
+        [sys.executable, "-m", "aegis", "serve", "--cwd", str(root),
+         "--autostarted"],
         cwd=str(root), start_new_session=True,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

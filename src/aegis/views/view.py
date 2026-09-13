@@ -143,7 +143,8 @@ class View:
 
 
 async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
-                    roots: AegisRoots, mcp, **app_kw) -> View:
+                    roots: AegisRoots, mcp, can_stop_daemon=None,
+                    **app_kw) -> View:
     """Build a view, restoring its persisted state if it has any.
 
     ``mcp`` is required, not defaulted. The local plane binds and starts it
@@ -170,7 +171,12 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
         # persists it on close. Two objects here would restore state the
         # app never sees and persist state the app never wrote.
         view_state=state,
-        # A daemon view detaches on Ctrl+Q; it does not own the brain.
+        # A daemon view detaches on Ctrl+D; it does not own the brain.
         owns_brain=False,
+        # Whether Ctrl+Q here would actually stop the daemon. Read at the
+        # moment the key is pressed, because both halves of the answer can
+        # change while a view sits open: another client attaches, or the
+        # last one leaves.
+        can_stop_daemon=can_stop_daemon,
         **app_kw)
     return View(view_id=view_id, app=app, state=state, sink=sink)

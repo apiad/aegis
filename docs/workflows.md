@@ -159,7 +159,7 @@ to `"implementer"`.
 
 ## Visibility in the TUI
 
-The `Ctrl+D` dashboard has a `WORKFLOWS` band (below `IN-FLIGHT`)
+The `F4` dashboard has a `WORKFLOWS` band (below `IN-FLIGHT`)
 showing every workflow run the current process knows about — running
 ones first, then recently-terminal ones in reverse-finish order:
 

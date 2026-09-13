@@ -1199,7 +1199,7 @@ def test_app_constructs_digest():
 
 
 @pytest.mark.asyncio
-async def test_ctrl_d_opens_dashboard():
+async def test_f4_opens_dashboard():
     from aegis.queue import Queue
     from aegis.tui.dashboard import QueueDashboard
 
@@ -1207,7 +1207,9 @@ async def test_ctrl_d_opens_dashboard():
                              max_parallel=2)}
     app = _app(queues=queues)
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+d")
+        # F4, not Ctrl+D: that key detaches now, and the queues
+        # dashboard moved to sit with F2 config and F3 tasks.
+        await pilot.press("f4")
         await pilot.pause()
         assert isinstance(app.screen, QueueDashboard)
 
@@ -1221,7 +1223,9 @@ async def test_escape_dismisses_dashboard_when_open():
                              max_parallel=2)}
     app = _app(queues=queues)
     async with app.run_test() as pilot:
-        await pilot.press("ctrl+d")
+        # F4, not Ctrl+D: that key detaches now, and the queues
+        # dashboard moved to sit with F2 config and F3 tasks.
+        await pilot.press("f4")
         await pilot.pause()
         assert isinstance(app.screen, QueueDashboard)
         await pilot.press("escape")

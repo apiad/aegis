@@ -595,7 +595,8 @@ async def _serve(*, roots: AegisRoots,
                  hosts: dict | None = None, host_registry=None,
                  inline_schedule_names: set[str] | None = None,
                  ui: "UIAttachment | None" = None,
-                 views: bool = False) -> None:
+                 views: bool = False,
+                 autostarted: bool = False) -> None:
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
@@ -721,6 +722,10 @@ async def _serve(*, roots: AegisRoots,
         # it; this one is the path that forgot.
         view_registry = ViewRegistry(
             manager=mgr, roots=roots, mcp=mcp,
+            # Ctrl+Q may stop this daemon only if a client autostarted it.
+            # A daemon a person or systemd started gets no hook at all, so
+            # there is nothing for a keystroke to reach.
+            on_last_quit=(stop.set if autostarted else None),
             agents=agents, default_agent=default_agent,
             make_session=make_session, queues=queues or {},
             hosts=hosts or {}, host_registry=host_registry,
@@ -731,7 +736,7 @@ async def _serve(*, roots: AegisRoots,
         _dreg.record(_dreg.DaemonRecord(
             root=roots.state_root, pid=os.getpid(),
             socket=socket_server.path, started=_dreg.now(),
-            version=_aegis_version()))
+            version=_aegis_version(), autostarted=autostarted))
         tasks.append(asyncio.create_task(IdleReaper(
             view_registry, mgr, timeout_s=idle_timeout_s(),
             stop=stop).run()))
@@ -769,9 +774,15 @@ async def _serve(*, roots: AegisRoots,
 
 
 @app.command()
-def serve(cwd: str = typer.Option(".", "--cwd")) -> None:
+def serve(
+    cwd: str = typer.Option(".", "--cwd"),
+    autostarted: bool = typer.Option(
+        False, "--autostarted", hidden=True,
+        help="Set by a client's autostart. Marks this daemon as one a "
+             "client may later stop; a daemon you start yourself is not."),
+) -> None:
     """Run the daemon in the foreground (brain + views + MCP plane)."""
-    _run_serve(cwd)
+    _run_serve(cwd, autostarted=autostarted)
 
 
 @app.command()
@@ -1031,7 +1042,7 @@ def _ensure_web_token(root: Path) -> str:
     return token
 
 
-def _run_serve(cwd: str) -> None:
+def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
     root = find_project_root() or Path.cwd()
     try:
         resolved = resolve_boot(root, cwd)
@@ -1052,7 +1063,8 @@ def _run_serve(cwd: str) -> None:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
         await _serve(**resolved.serve_kwargs, mcp=AegisMCP(), stop=stop,
-                     web=resolved.boot.web, views=True)
+                     web=resolved.boot.web, views=True,
+                     autostarted=autostarted)
 
     asyncio.run(main_async())
 

@@ -131,10 +131,18 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
             writer.close()
             await writer.wait_closed()
         if view is not None:
+            # Read BEFORE closing: `close` stops the app, and a stopped
+            # app is still the object that recorded the request.
+            asked_to_stop = bool(getattr(view.app, "quit_stops_daemon",
+                                         False))
             # Closing persists the ViewState and stops the app. The brain
             # is untouched: the app's owns_brain is False, so its quit path
             # closes no panes and stops no plane.
             await registry.close(view.view_id)
+            # And only now, with this view gone from the registry, can the
+            # question "is anyone else attached" be asked honestly.
+            if asked_to_stop:
+                registry.request_quit()
         if on_close is not None:
             on_close()
 

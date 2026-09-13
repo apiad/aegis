@@ -322,7 +322,7 @@ The following are intentionally out of scope for v0.9:
 - **No alerts or push notifications.** Budget state surfaces only
   through the pull surfaces above (CLI / MCP / HTTP). The rejection
   at enqueue time is the only "loud" signal.
-- **No TUI surface in v0.9.** Budget bands in the `Ctrl+D` dashboard
+- **No TUI surface in v0.9.** Budget bands in the `F4` dashboard
   and the always-on strip are deferred to v0.9.1.
 - **No per-agent-profile budgets.** The policy boundary is the queue.
   If two queues share a profile and you want separate budgets, split
