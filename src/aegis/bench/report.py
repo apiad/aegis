@@ -59,3 +59,39 @@ def render_markdown(summary: dict) -> str:
                       for m, v in sc["median"].items()]
             lines.append("")
     return "\n".join(lines)
+
+
+_COLOR = {"regressed": "red", "improved": "green", "changed": "yellow",
+          "new": "cyan", "gone": "cyan"}
+
+
+def print_compare(rows_by_scenario: dict, console: Console, *,
+                  a_label: str, b_label: str,
+                  all_rows: bool = False) -> None:
+    """One table per scenario; noise and unchanged rows are hidden unless
+    ``all_rows``, so what is printed is what moved."""
+    for name, rows in rows_by_scenario.items():
+        shown = [r for r in rows
+                 if all_rows or r.verdict not in ("noise", "same")]
+        t = Table("metric", a_label, b_label, "Δ%", "verdict", title=name)
+        for r in shown:
+            color = _COLOR.get(r.verdict)
+            delta = "-" if r.delta_pct is None else f"{r.delta_pct:+.1f}"
+            label = f"[{color}]{r.verdict}[/]" if color else r.verdict
+            t.add_row(r.metric, _fmt(r.a), _fmt(r.b), delta, label)
+        if shown:
+            console.print(t)
+        else:
+            console.print(f"{name}: no change beyond noise "
+                          f"({len(rows)} metrics)")
+
+
+def print_history(summaries: list[dict], metrics: list[str], scenario: str,
+                  console: Console) -> None:
+    t = Table("build", "topology", *metrics, title=scenario)
+    for s in summaries:
+        med = s["scenarios"].get(scenario, {}).get("median", {})
+        t.add_row(s["fingerprint"]["aegis_build"],
+                  s["fingerprint"]["topology"],
+                  *(_fmt(med.get(m)) for m in metrics))
+    console.print(t)

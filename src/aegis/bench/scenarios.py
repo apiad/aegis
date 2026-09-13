@@ -17,7 +17,8 @@ from aegis.bench import BenchError
 from aegis.bench.launcher import Target
 from aegis.bench.records import Recorder, read_jsonl
 from aegis.bench.rig import Rig, pump, wait_until
-from aegis.bench.script import make_script, synthetic_blocks, synthetic_fill
+from aegis.bench.script import (
+    acp_chunks, make_script, synthetic_blocks, synthetic_fill)
 from aegis.bench.world import (
     World, build_world, client_argv, start_daemon, teardown)
 
@@ -250,12 +251,59 @@ def resize(ctx: ScenarioContext) -> None:
             _time_change(ctx, rig, rig.write(F3), "sidebar")
 
 
+def acp_stream(ctx: ScenarioContext) -> None:
+    rig = ctx.boot(make_script({"go": acp_chunks(500, 50)}),
+                   default_agent="bench-acp")
+    ctx.expect_markers()
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        ctx.wait_turns(1, timeout_s=120)
+        ctx.pump_for(1.0)
+
+
+def typing(ctx: ScenarioContext) -> None:
+    """Keystroke echo while a stream is running.
+
+    A keystroke counts as echoed when a frame draws the last eight typed
+    characters: Textual rewrites the input line as one span, and eight
+    random consonants never occur in the streamed text.
+    """
+    import random
+    rig = ctx.boot(make_script({"go": acp_chunks(900, 50)}),
+                   default_agent="bench-acp")
+    typed = "".join(random.Random(7).choice("bcdfghjkmnpqrstvwxz")
+                    for _ in range(200))
+    pending: list[tuple[str, int]] = []
+
+    def on_frame(frame) -> None:
+        while pending and pending[0][0] in frame.text:
+            _, t_sent = pending.pop(0)
+            ctx.sample("latency.echo_ms", (frame.t_ns - t_sent) / 1e6)
+
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        ctx.pump_for(1.0)
+        rig.listeners.append(on_frame)
+        for i, ch in enumerate(typed):
+            t = rig.write(ch.encode())
+            pending.append((typed[max(0, i - 7):i + 1], t))
+            ctx.pump_for(0.05)
+        ctx.pump_for(1.0)
+        rig.listeners.remove(on_frame)
+    ctx.gate("echo_lost", not pending,
+             f"{len(pending)} of {len(typed)} keystrokes never echoed")
+
+
 SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("startup", startup, "cold boot, first frame, warm re-attach"),
     Scenario("claude-blocks", claude_blocks,
              "whole text blocks, as aegis receives claude today"),
     Scenario("deep-stream", deep_stream, "stream after ~300 mounted blocks"),
     Scenario("resize", resize, "resizes and sidebar toggles at ~300 blocks"),
+    Scenario("acp-stream", acp_stream,
+             "chunk-by-chunk streaming through the ACP driver"),
+    Scenario("typing", typing, "keystroke echo while a stream runs"),
 )}
-DEFAULT = ["startup", "claude-blocks", "deep-stream", "resize"]
-QUICK = ["startup", "claude-blocks", "resize"]
+DEFAULT = ["startup", "claude-blocks", "acp-stream", "deep-stream", "resize",
+           "typing"]
+QUICK = ["startup", "claude-blocks", "acp-stream", "resize"]

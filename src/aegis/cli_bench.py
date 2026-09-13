@@ -88,3 +88,68 @@ def list_cmd() -> None:
         _console.print("recent runs:")
     for p in runs:
         _console.print(f"  {p.parent.name}")
+
+
+@app.command("compare")
+def compare_cmd(
+    a: str = typer.Argument(..., help="Run id, run dir or summary path."),
+    b: str = typer.Argument(None, help="Second run; omit with --baseline."),
+    baseline: str = typer.Option(None, "--baseline",
+                                 help="'latest-release' or a summary."),
+    force: bool = typer.Option(False, "--force",
+                               help="Compare across hosts or sizes."),
+    all_rows: bool = typer.Option(False, "--all",
+                                  help="Include noise and unchanged rows."),
+) -> None:
+    """Compare two runs metric by metric; exit 1 if anything regressed."""
+    from aegis.bench import BenchError
+    from aegis.bench.compare import compare, latest_release, load_summary
+    from aegis.bench.report import print_compare
+    try:
+        if baseline:
+            base = (latest_release() if baseline == "latest-release"
+                    else load_summary(baseline))
+            if base is None:
+                raise BenchError("no saved release in bench/history")
+            left, right = base, load_summary(a)
+        else:
+            if b is None:
+                raise typer.BadParameter("give two runs, or one and --baseline")
+            left, right = load_summary(a), load_summary(b)
+        rows = compare(left, right, force=force)
+    except BenchError as exc:
+        _console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    print_compare(rows, _console, a_label=left["fingerprint"]["aegis_build"],
+                  b_label=right["fingerprint"]["aegis_build"],
+                  all_rows=all_rows)
+    regressed = any(r.verdict == "regressed"
+                    for rs in rows.values() for r in rs)
+    raise typer.Exit(1 if regressed else 0)
+
+
+_HISTORY_METRICS = ["latency.marker_ms.p50", "latency.marker_ms.p95",
+                    "render.tick_ms.p95", "loop.lag_ms.p99",
+                    "cpu.daemon_s_per_s", "mem.rss_peak_mb"]
+
+
+@app.command("history")
+def history_cmd(
+    metric: list[str] = typer.Option(None, "--metric", "-m"),
+    scenario: str = typer.Option("claude-blocks", "--scenario", "-s"),
+) -> None:
+    """Show metrics across the saved summaries for this host."""
+    import json
+
+    from aegis.bench.compare import version_key
+    from aegis.bench.report import print_history
+    from aegis.bench.runner import history_dir
+    base = history_dir()
+    files = sorted(base.glob("*.json"),
+                   key=lambda p: (version_key(p) or (0, 0, 0), p.stem)) \
+        if base.exists() else []
+    if not files:
+        _console.print(f"no saved summaries in {base}")
+        return
+    print_history([json.loads(p.read_text()) for p in files],
+                  list(metric or _HISTORY_METRICS), scenario, _console)
