@@ -1559,6 +1559,27 @@ Doc truth lands last, when the claims it makes are finally true.
 
 ## Backlog
 
+### Technical-writing harness — plugin vision *(captured 2026-09-13)*
+
+Aegis configured for technical writing: a plugin with its own stages (outline,
+draft, measure, critique, revise) and, once plugin-owned windows and
+keybindings exist, its own surface. The central idea is **one mechanism, many
+voice packs**: what makes writing personal is the corpus, so "customisable per
+user / topic / domain / language" resolves to voice directories rather than
+config keys, and language falls out of the corpus instead of being a field.
+
+Grounded in a day of measurement rather than taste. Two blind reads by Alex,
+different topics, both picked the passage closest to his own measured profile
+rather than the cleanest one, which is why every check here has to be
+two-sided.
+
+Sibling, not part: `2026-09-12-writing-style-plugin-design.md` gates the
+agent's conversation turns. This one produces artifacts.
+
+- Vision: `docs/superpowers/specs/2026-09-13-technical-writing-harness-vision.md`
+- Mechanical half: `repos/rift/docs/reference-corpora-design.md`
+- Evidence index: inside the vision doc, last section
+
 ### Plugin-first core — multi-quarter direction
 
 Full vision at
