@@ -141,7 +141,7 @@ _HISTORY_METRICS = ["latency.marker_ms.p50", "latency.marker_ms.p95",
 @app.command("history")
 def history_cmd(
     metric: list[str] = typer.Option(None, "--metric", "-m"),
-    scenario: str = typer.Option("claude-blocks", "--scenario", "-s"),
+    scenario: str = typer.Option("block-stream", "--scenario", "-s"),
 ) -> None:
     """Show metrics across the saved summaries for this host."""
     import json
@@ -158,3 +158,27 @@ def history_cmd(
         return
     print_history([json.loads(p.read_text()) for p in files],
                   list(metric or _HISTORY_METRICS), scenario, _console)
+
+
+@app.command("record")
+def record_cmd(
+    partial: bool = typer.Option(False, "--partial",
+                                 help="Record with --include-partial-messages."),
+    prompt: str = typer.Option(None, "--prompt",
+                               help="Replace the default recording prompt."),
+    out: Path = typer.Option(None, "--out",
+                             help="Fixture path; defaults to the packaged one."),
+    model: str = typer.Option("sonnet", "--model"),
+) -> None:
+    """Record a real claude session as a replay fixture. Costs tokens."""
+    from aegis.bench import BenchError
+    from aegis.bench.record import RECORD_PROMPT, record_fixture
+    name = "claude-stream" if partial else "claude-blocks"
+    dest = out or Path(__file__).parent / "bench" / "fixtures" / f"{name}.jsonl"
+    try:
+        n = record_fixture(dest, partial=partial,
+                           prompt=prompt or RECORD_PROMPT, model=model)
+    except BenchError as exc:
+        _console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    _console.print(f"recorded {n} steps -> {dest}")

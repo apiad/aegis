@@ -293,6 +293,22 @@ def startup(ctx: ScenarioContext) -> None:
 
 
 def claude_blocks(ctx: ScenarioContext) -> None:
+    """A recorded claude session, replayed as aegis receives it today: a
+    few large Markdown blocks and a tool call, at their recorded delays."""
+    rig = ctx.boot(make_script({"go": load_fixture("claude-blocks")}))
+    ctx.expect_markers()
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        ctx.wait_turns(1, timeout_s=300)
+        ctx.pump_for(1.0)
+
+
+def block_stream(ctx: ScenarioContext) -> None:
+    """120 short text blocks at 50 ms.
+
+    A real session's handful of large blocks yields two to four markers,
+    too few for a percentile to mean anything; this yields 120.
+    """
     rig = ctx.boot(make_script({"go": synthetic_blocks(120, 50)}))
     ctx.expect_markers()
     with ctx.window():
@@ -474,7 +490,9 @@ def soak(ctx: ScenarioContext) -> None:
 SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("startup", startup, "cold boot, first frame, warm re-attach"),
     Scenario("claude-blocks", claude_blocks,
-             "whole text blocks, as aegis receives claude today"),
+             "a recorded claude session, whole blocks as aegis gets them"),
+    Scenario("block-stream", block_stream,
+             "120 short blocks at 50 ms, for latency percentiles"),
     Scenario("deep-stream", deep_stream, "stream after ~300 mounted blocks"),
     Scenario("resize", resize, "resizes and sidebar toggles at ~300 blocks"),
     Scenario("acp-stream", acp_stream,
@@ -490,6 +508,7 @@ SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
              "token deltas, if aegis requests them"),
     Scenario("soak", soak, "ten minutes of turns; memory growth"),
 )}
-DEFAULT = ["startup", "idle", "claude-blocks", "claude-stream", "acp-stream",
-           "deep-stream", "resize", "typing", "many-tabs", "two-clients"]
-QUICK = ["startup", "claude-blocks", "acp-stream", "resize"]
+DEFAULT = ["startup", "idle", "claude-blocks", "block-stream", "claude-stream",
+           "acp-stream", "deep-stream", "resize", "typing", "many-tabs",
+           "two-clients"]
+QUICK = ["startup", "block-stream", "acp-stream", "resize"]

@@ -36,3 +36,11 @@ def test_acp_chunks_marks_every_nth():
     steps = acp_chunks(10, 50, mark_every=5)
     assert [s["mark"] for s in steps].count(True) == 2
     assert steps[1]["dt_ms"] == 20.0
+
+
+def test_marker_before_markdown_block_syntax_is_its_own_paragraph():
+    for text in ("# Heading", "- item", "| a | b |", "```python\nx\n```"):
+        line = {"type": "assistant", "message": {"content": [
+            {"type": "text", "text": text}]}}
+        assert inject_marker(line, "«b0001»")
+        assert line["message"]["content"][0]["text"] == f"«b0001»\n\n{text}"

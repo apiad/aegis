@@ -93,16 +93,24 @@ def route(script: dict, prompt_text: str) -> list[dict]:
     return steps
 
 
+_MD_BLOCK_START = ("#", "-", "*", "+", ">", "|", "```")
+
+
 def inject_marker(line: dict, m: str) -> bool:
     """Put marker ``m`` where the TUI will draw it; False if nothing drawable.
 
     Text is prefixed (the start of a new block is on screen when it
-    mounts); a stream delta is suffixed (a delta extends the tail).
+    mounts); a stream delta is suffixed (a delta extends the tail). Text
+    that opens with Markdown block syntax gets the marker as its own
+    paragraph, so a heading, list, table or code fence still renders as
+    one: a recorded session is replayed to measure real Markdown.
     """
     if line.get("type") == "assistant":
         for block in line.get("message", {}).get("content", []) or []:
             if isinstance(block, dict) and block.get("type") == "text":
-                block["text"] = f"{m} {block.get('text', '')}"
+                text = block.get("text", "")
+                sep = "\n\n" if text.lstrip().startswith(_MD_BLOCK_START) else " "
+                block["text"] = f"{m}{sep}{text}"
                 return True
         return False
     if line.get("type") == "stream_event":

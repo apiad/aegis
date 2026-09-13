@@ -5,7 +5,7 @@ from aegis.bench.scenarios import DEFAULT, QUICK, SCENARIOS
 def test_scenario_sets_are_registered():
     assert set(QUICK) <= set(DEFAULT) <= set(SCENARIOS)
     assert "soak" in SCENARIOS and "soak" not in DEFAULT
-    assert QUICK == ["startup", "claude-blocks", "acp-stream", "resize"]
+    assert QUICK == ["startup", "block-stream", "acp-stream", "resize"]
 
 
 def test_quick_and_default_only_name_registered_scenarios():

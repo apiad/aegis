@@ -112,6 +112,7 @@ the rig cannot see markers at all.
 | `startup` | yes | cold daemon boot to socket; attach to first frame; detach and re-attach to a warm daemon |
 | `idle` | yes | three tabs with finished turns, nothing happening, 20 s |
 | `claude-blocks` | yes | the no-partial fixture: whole text blocks and tool calls, real timing |
+| `block-stream` | yes | 120 short synthetic blocks at 50 ms; the recorded session yields only two to four markers, too few for percentiles |
 | `claude-stream` | yes | the partial fixture. The shim emits `stream_event` lines only when its argv has `--include-partial-messages`; today aegis does not pass it, so the scenario reports `skipped` with that reason |
 | `acp-stream` | yes | the lovelaice driver against `fake_acp`, chunks at 50 per second |
 | `deep-stream` | yes | a fast first turn mounts about 300 blocks, then a measured streaming turn |
@@ -121,7 +122,7 @@ the rig cannot see markers at all.
 | `two-clients` | yes | a second client attaches mid-stream; both are measured |
 | `soak` | no | ten minutes of 4x replay; memory growth per 1,000 events |
 
-`--quick` runs `startup`, `claude-blocks`, `acp-stream` and `resize` once.
+`--quick` runs `startup`, `block-stream`, `acp-stream` and `resize` once.
 
 ## CLI
 
