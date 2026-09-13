@@ -40,6 +40,8 @@ def _r(unit: str, floor: float, better: str = "lower") -> MetricSpec:
 METRICS: dict[str, MetricSpec] = {
     **{f"latency.marker_ms.{q}": _t(2.0) for q in ("p50", "p95", "p99", "max")},
     **{f"latency.marker_b_ms.{q}": _t(2.0) for q in ("p50", "p95", "max")},
+    "latency.markers_undrawn_pct": _r("%", 1.0),
+    "latency.markers_undrawn_b_pct": _r("%", 1.0),
     **{f"latency.echo_ms.{q}": _t(2.0) for q in ("p50", "p95", "max")},
     **{f"{g}.{m}.{q}": _t(5.0) for g in ("resize", "sidebar")
        for m in ("first_frame_ms", "settle_ms") for q in ("p50", "max")},
@@ -107,15 +109,23 @@ def _markers(out: dict, gates: list, client: str, *, since: float,
             lost.append(r["marker"])
         else:
             lat.append((seen - r["t_emit_ns"]) / NS_MS)
-    prefix = ("latency.marker_ms" if client == "a"
-              else f"latency.marker_{client}_ms")
-    _dist(out, prefix, lat, ("p50", "p95", "p99", "max"))
-    detail = f"{len(lost)} of {len(lat) + len(lost)} lost"
+    suffix = "" if client == "a" else f"_{client}"
+    _dist(out, f"latency.marker{suffix}_ms", lat,
+          ("p50", "p95", "p99", "max"))
+    total = len(lat) + len(lost)
+    if total:
+        out[f"latency.markers_undrawn{suffix}_pct"] = round(
+            100 * len(lost) / total, 2)
+    # A marker can go undrawn for a real reason: text that scrolls past
+    # between two repaints, or a reply rendered in one piece when the turn
+    # ends (ACP sessions, measured 2026-09-13). That is data, reported as
+    # the undrawn share. Only a stream in which no marker was ever drawn
+    # says the rig itself is blind, and that fails the run.
+    detail = f"{len(lat)} of {total} drawn"
     if lost:
-        detail += f": {lost[:5]}"
-    gates.append({"name": "markers_lost" if client == "a"
-                  else f"markers_lost_{client}",
-                  "ok": not lost, "detail": detail})
+        detail += f"; first undrawn: {lost[:5]}"
+    gates.append({"name": f"markers_seen{suffix}",
+                  "ok": total == 0 or bool(lat), "detail": detail})
 
 
 def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:

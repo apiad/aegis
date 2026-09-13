@@ -34,17 +34,18 @@ def test_marker_latency_joins_emit_to_first_frame_in_window(tmp_path):
     # «b0001» was emitted before the window opened and is not counted.
     assert m["latency.marker_ms.p50"] == 30.0
     assert m["latency.marker_ms.max"] == 40.0
-    assert {g["name"]: g["ok"] for g in gates}["markers_lost"] is True
+    assert m["latency.markers_undrawn_pct"] == 0.0
+    assert {g["name"]: g["ok"] for g in gates}["markers_seen"] is True
 
 
-def test_lost_marker_fails_the_gate(tmp_path):
+def test_no_marker_drawn_fails_the_gate(tmp_path):
     _w(tmp_path / "events.jsonl", [{"k": "expect_markers", "client": "a"}])
     _w(tmp_path / "emit.jsonl", [
         {"k": "marker", "marker": "«b0001»", "t_emit_ns": 1}])
     _w(tmp_path / "frames.jsonl", [])
     _, gates = repeat_metrics(tmp_path)
-    lost = next(g for g in gates if g["name"] == "markers_lost")
-    assert lost["ok"] is False and "«b0001»" in lost["detail"]
+    seen = next(g for g in gates if g["name"] == "markers_seen")
+    assert seen["ok"] is False and "«b0001»" in seen["detail"]
 
 
 def test_second_client_counts_only_markers_after_it_was_ready(tmp_path):
@@ -59,7 +60,7 @@ def test_second_client_counts_only_markers_after_it_was_ready(tmp_path):
          "markers": ["«b0002»"]}])
     m, gates = repeat_metrics(tmp_path)
     assert m["latency.marker_b_ms.p50"] == 10.0
-    assert {g["name"]: g["ok"] for g in gates}["markers_lost_b"] is True
+    assert {g["name"]: g["ok"] for g in gates}["markers_seen_b"] is True
 
 
 def test_probe_ticks_lag_and_samples(tmp_path):
@@ -114,3 +115,19 @@ def test_summarize_takes_median_over_repeats():
         "repeats": [{"a": 1.0}, {"a": 9.0}, {"a": 3.0}]}})
     assert s["scenarios"]["x"]["median"] == {"a": 3.0}
     assert s["schema"] == 1
+
+
+def test_partly_undrawn_markers_are_data_not_a_failure(tmp_path):
+    # A reply rendered in one piece at turn end draws only its tail: the
+    # markers above the fold were never on screen. Measured on ACP.
+    _w(tmp_path / "events.jsonl", [{"k": "expect_markers", "client": "a"}])
+    _w(tmp_path / "emit.jsonl", [
+        {"k": "marker", "marker": "«b0001»", "t_emit_ns": 1 * MS},
+        {"k": "marker", "marker": "«b0002»", "t_emit_ns": 2 * MS}])
+    _w(tmp_path / "frames.jsonl", [
+        {"k": "frame", "client": "a", "t_ns": 5 * MS, "nbytes": 1,
+         "markers": ["«b0002»"]}])
+    m, gates = repeat_metrics(tmp_path)
+    assert m["latency.markers_undrawn_pct"] == 50.0
+    assert m["latency.marker_ms.p50"] == 3.0
+    assert {g["name"]: g["ok"] for g in gates}["markers_seen"] is True

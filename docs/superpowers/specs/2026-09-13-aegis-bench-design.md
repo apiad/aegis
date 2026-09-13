@@ -95,9 +95,15 @@ host shares, so emit and frame timestamps are directly comparable.
 
 A marker is `«bNNNN»`, short enough never to wrap. The fake agent inserts
 one every N characters of text. Marker-to-bytes latency is the first frame
-whose stripped text contains the marker, minus its emit time. A marker
-that never appears fails the run: a lost marker is a broken measurement,
-not a fast frame.
+whose stripped text contains the marker, minus its emit time.
+
+A marker can go undrawn for a real reason: text that scrolls past between
+two repaints, or a reply rendered in one piece when the turn ends. The
+first real `acp-stream` run showed the second: ACP sessions queue every
+chunk until the prompt returns, so 55 of 100 markers were never on screen.
+The undrawn share is reported as `latency.markers_undrawn_pct`. Only a
+stream in which no marker is ever drawn fails the run, because that says
+the rig cannot see markers at all.
 
 ## Scenarios
 
@@ -176,7 +182,7 @@ A repeat fails, and the run exits non-zero, when any of these is false:
    `app._sync_available` true.
 2. The probe reports `app.is_headless` false.
 3. Every required probe hook installed.
-4. No marker was lost.
+4. When markers were emitted, at least one was drawn (`markers_seen`).
 5. The daemon's `aegis.__file__` matches the target the launcher was asked
    for.
 
