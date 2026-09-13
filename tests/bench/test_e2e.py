@@ -52,6 +52,16 @@ def test_markers_reach_the_terminal(tmp_path):
         assert wait_until([rig], lambda: len(emitted()) == 20 and all(
             m in rig.markers_seen for m in emitted()), 60)
         assert rig.saw_sync
+
+        # The probe ran inside the real daemon, not headless, with sync on,
+        # against the aegis the launcher was asked for. Its sampler flushes
+        # once a second, so give it a beat before reading.
+        wait_until([rig], lambda: False, 1.5)
+        recs = read_jsonl(tmp_path / "probe.jsonl")
+        assert any(r["k"] == "tick" for r in recs)
+        gate = [r for r in recs if r["k"] == "gate"][-1]
+        assert gate["sync"] is True and gate["headless"] is False
+        assert gate["aegis_file"] == target.aegis_file
     finally:
         if rig is not None:
             rig.close()
