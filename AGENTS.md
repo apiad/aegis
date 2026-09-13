@@ -2,13 +2,16 @@
 
 ## Running
 
-    aegis                         # full-screen TUI — first-class UI for
-                                  # local dev (opens ConfigPanel when
-                                  # there's no .aegis.yaml)
-    aegis web                     # installable PWA — first-class UI for
-                                  # remote (and local) dev; ensures a token,
-                                  # opens the browser, serves the web client
-    aegis serve                   # headless: MCP plane + web frontend
+    aegis                         # attach this terminal to the daemon for
+                                  # this root, starting one if none is up
+                                  # (opens ConfigPanel when there's no
+                                  #  .aegis.yaml)
+    aegis attach [--view ID]      # the same, under an explicit view id
+    aegis ls                      # daemons across every project root
+    aegis kill [--cwd DIR|--all]  # stop this root's daemon, or all of them
+    aegis serve [--cwd DIR]       # run the daemon in this terminal, where
+                                  # its output can be read
+    aegis web                     # installable PWA over the same backend
     aegis logs [-c] [-f]          # the aegis process log — what the harness
                                   # itself did, and the crashes it recorded
                                   # on its way down (-c = crashes only)
@@ -16,15 +19,25 @@
                                   # (agent / harness / queue / default-agent
                                   #  / plugin-dir / show)
 
-The TUI and the web/PWA client are **two co-equal first-class UIs** over
-one `aegis serve` backend: the TUI for local dev, the web client for
-remote dev over a flaky link (mobile-first, installable) and local dev
-too. Both render the same transcripts with the same fidelity.
+**`aegis` boots no brain.** A detached `aegis serve` holds the brain and
+every view; a terminal connects over a unix socket and pipes bytes. So
+sessions outlive the terminal, several terminals can watch one brain, and
+`Ctrl+Q` detaches rather than shutting anything down. The daemon also
+keeps whatever code it booted with, which is the first thing to suspect
+when an edit does not appear: see `know-how/the-daemon.md`.
+
+The TUI and the web/PWA client are two co-equal first-class UIs over one
+backend: the TUI for local dev, the web client for remote dev over a flaky
+link (mobile-first, installable) and local dev too. Both render the same
+transcripts with the same fidelity.
 
 ## Know-how
 
 Procedure docs under `know-how/` — match the task, load the doc before acting:
 
+- `know-how/the-daemon.md` — *reach for it when running or debugging the
+  local daemon: why `aegis` did not pick up an edit, why a detach did not
+  kill your agents, what `ls`/`kill` do, or why a tab did not come back.*
 - `know-how/deploying-web.md` — *reach for it when deploying / redeploying /
   debugging the public aegis web UI (`dev.apiad.net`) on the VPS.*
 - `know-how/embedding-aegis.md` — *reach for it when driving aegis as a

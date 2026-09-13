@@ -394,9 +394,41 @@ Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
 - Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md`
 - Plan review: `docs/superpowers/reviews/2026-09-09-roots-and-embed-plan-review.md`
 
-**Next action:** stages 1–3 shipped (`9c903ca`); **stage 4 shipped
-2026-09-11** (`9207664`..`5259bb3`, suite 3629/rc=0) — `ViewDriver`, `View`,
+**Next action: stage 5b.** Stages 1–3 shipped (`9c903ca`); stage 4 shipped
+2026-09-11 (`9207664`..`5259bb3`, suite 3629/rc=0) — `ViewDriver`, `View`,
 `ViewRegistry`, `ViewState`, and `Workspace` reduced to brain state.
+
+**Stage 5a shipped 2026-09-12/13** (`3f3d46a`..`9171f2b`, suite 3758/rc=0).
+`aegis` is a client: a detached `aegis serve` holds the brain and every
+view, a terminal attaches over a unix socket, `Ctrl+Q` detaches, and
+`attach`/`ls`/`kill` manage daemons across roots. `--foreground` was
+deleted rather than kept (`4640e73`): it was a second way to start whose
+wiring duplicated `_run_serve`'s, and the copies had already drifted.
+`resolve_boot` is the one sequence now, shared with `aegis.embed`.
+
+Nothing in that stage was verified by a green suite alone, and it should
+not have been: the plan's own Task 12 asks for a hand-drive and it was
+skipped, which is how `aegis serve` shipped building its views with no
+`drivers` — every tab skipped as `driver-no-resume`, so the daemon
+restored nothing and Ctrl+R reopened nothing. Six more defects came out of
+Alex driving it by hand, all invisible to the suite because `run_test`
+wins races the real ViewDriver loses. **Task 12 stays open**: its
+hand-drive results are not recorded, and only Alex can supply them.
+
+**Known open in 5a**, none blocking 5b: closing a tab leaves its session
+in the brain (`_close_pane` calls `pane.close()` rather than
+`SessionManager.close()`), so a closed tab can return on reattach; and
+every `aegis` invocation spends ~2.3s importing `fastmcp` through
+`aegis.core.manager`, paid twice on a cold start, in a client whose whole
+job is to open a socket.
+
+**Stage 5b is what remains of the spec's stage 5**: the WebSocket
+transport under the same `serve_view`, the token handshake in the first
+frame, `aegis attach wss://…`, the browser terminal view, dropping Caddy's
+`basicauth`, and the transport-equivalence gate that needs two transports
+to exist. Its risk is different in kind: today Caddy rejects unauthenticated
+traffic before it reaches our code, and afterwards aegis's own handshake is
+the only thing between the internet and `permission: full` on the VPS.
 
 **Stage 5 is unblocked.** The one gap stage 4 left -- a tab opened in one
 view not appearing in the other -- was closed the same day by

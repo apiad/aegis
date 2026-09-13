@@ -275,16 +275,21 @@ plan → dispatch implementer per task with durable resume),
   through the same comment-preserving atomic-write path.
 - **Session persistence.** `aegis` reopens the last workspace by
   default — agent tabs, terminal tabs, profiles, order, with each
-  underlying session genuinely resumed (model memory intact).
-  `aegis --clean` opts out.
+  underlying session genuinely resumed (model memory intact). A tab is
+  restored by resuming its harness conversation, so one that never took a
+  turn has no id to resume and does not come back. `aegis --clean` opts
+  out.
 - **Workflow catalog.** `aegis.workflows` ships four ready-to-use
   seeds (`brainstorm_to_spec`, `execute_plan`, `review_branch`,
   `tdd_cycle`); importing them registers. Engine offers `ask_human`,
   explicit `checkpoint` + durable resume, `bash_predicate` retry
   loops, and `parallel` fan-out.
-- **Headless + web.** `aegis serve` runs the SessionManager + MCP
-  plane without a TUI; add a `web:` token to drive the team from an
-  installable, mobile-first web/PWA client (`aegis web`).
+- **A daemon, and clients.** `aegis` boots no brain: a detached
+  `aegis serve` holds it and every view, and a terminal attaches over a
+  unix socket. Sessions outlive the terminal, several terminals can watch
+  one brain, and `Ctrl+Q` detaches. `aegis ls` and `aegis kill` manage
+  daemons across roots. Add a `web:` token to drive the same backend from
+  an installable, mobile-first web/PWA client (`aegis web`).
 - **MCP plane.** Every spawned agent is injected with the aegis MCP
   server: orientation (`aegis_meta`), session listing, handoff, queue
   dispatch, canvas ops, terminal ops, group broadcast/gather, workflow
@@ -664,7 +669,14 @@ queues:
 
 Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 
-## Headless + web
+## The daemon, headless and web
+
+`aegis` is a client. `aegis serve` is the daemon it attaches to, and
+running it in a terminal yourself is how you read its output when it will
+not start. `aegis ls` lists daemons across roots and `aegis kill` stops
+one. A daemon keeps the code it booted with, and reaps itself after 30
+minutes with no views and no sessions; `know-how/the-daemon.md` covers
+both.
 
 `aegis serve` runs the SessionManager and MCP plane without the TUI; add
 a `web:` block to serve the installable, mobile-first web/PWA client and

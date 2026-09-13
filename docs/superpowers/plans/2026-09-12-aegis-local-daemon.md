@@ -3264,7 +3264,7 @@ nohup bash -c 'uv run python -m pytest -q -m "not live" > /tmp/aegis-5a.log 2>&1
 
 Wait on it with `aegis_monitor` (`done: grep -q DONE /tmp/aegis-5a.log`, `progress` counting `grep -c PASSED`), never a sleep loop. Expected: no regression against 3642 passed / 1 skipped, plus this plan's ~60 new tests.
 
-- [ ] **Step 2: Drive it by hand, in a real terminal**
+- [ ] **Step 2: Drive it by hand, in a real terminal** — PARTIALLY DONE, results not recorded. Alex drove steps 1–4 of the checklist and reported five defects, all fixed (`51fc07a`, `8df4461`, `8900d6d`, `e9d0816`, `9171f2b`). The detach/reattach half is not written down, and this step is not closed until it is.
 
 This is the step that cannot be delegated to the suite. In a terminal (not through a pilot, not through a pipe):
 
@@ -3285,11 +3285,11 @@ Open a **second** terminal at the same root, run `uv run aegis`, and confirm: bo
 
 Record the outcome verbatim in the commit message — including anything that did not work. If something is broken, fix it and re-drive; do not write "works" from the suite being green.
 
-- [ ] **Step 3: Write the know-how**
+- [x] **Step 3: Write the know-how**
 
 Create `know-how/the-daemon.md`, in the house shape (a *when to reach for it* line first). It must cover: the two shapes (`aegis` versus `aegis --foreground`), where the socket lives, what `ls`/`kill` do, `AEGIS_IDLE_TIMEOUT`, the fact that `Ctrl+Q` now detaches, and how to debug a daemon that will not start (`aegis serve --cwd <root>` in a terminal, and `.aegis/state/aegis.log`).
 
-- [ ] **Step 4: Update the indexes and this plan's status**
+- [x] **Step 4: Update the indexes and this plan's status**
 
 - `AGENTS.md` — add the `know-how/the-daemon.md` index entry with its *when to reach for it* line.
 - `README.md` — the command table gains `attach`, `ls`, `kill`, `--foreground`.
@@ -3297,7 +3297,7 @@ Create `know-how/the-daemon.md`, in the house shape (a *when to reach for it* li
 - This file — change the status header from **not started** to shipped, with the commit range and the suite numbers.
 - Check off every `- [ ]` in this plan that was executed.
 
-- [ ] **Step 5: Run `rift check`**
+- [x] **Step 5: Run `rift check`**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && rift check`
 Expected: no new errors. The repo lints that every rule is documented in `AGENTS.md`; a new know-how file that the index does not mention is exactly what it catches.
