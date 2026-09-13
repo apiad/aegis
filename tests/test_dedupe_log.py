@@ -148,3 +148,34 @@ def test_an_event_with_no_content_is_never_collapsed(tmp_path):
 
     assert report.removed == 0
     assert len(log.read_text().splitlines()) == 2
+
+
+def test_the_doctor_command_reports_without_crashing(tmp_path, monkeypatch):
+    """`--dedupe` crashed on its own success line, after rewriting files.
+
+    The report is a DedupeReport and carries no handle, so the first log it
+    actually deduped took the command down mid-corpus. The data survived
+    because the rewrite is atomic and keeps a backup, but the run did not,
+    and no unit test could see it: they all call `dedupe_log` directly.
+    """
+    from typer.testing import CliRunner
+
+    from aegis.cli import app
+    from aegis.state.workspace import state_dir
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: a\nagents:\n  a:\n    provider: claude-code\n"
+        "    model: opus\n")
+    sd = state_dir(tmp_path)
+    (sd / "sessions").mkdir(parents=True)
+    _write(sd / "sessions" / "20260913T100000000000Z-dup-me.jsonl", [
+        _rec("2026-09-13T10:00:00.000000Z", {"t": "AssistantText", "text": "hi"}),
+        _rec("2026-09-13T10:00:00.000900Z", {"t": "AssistantText", "text": "hi"}),
+    ])
+
+    result = CliRunner().invoke(app, ["doctor", "--dedupe"])
+
+    assert result.exit_code == 0, result.output
+    assert "deduped" in result.output, result.output
+    assert "1 duplicate record(s) dropped" in result.output

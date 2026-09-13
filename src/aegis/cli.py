@@ -949,7 +949,7 @@ def doctor(
             if done.removed:
                 total += done.removed
                 _console.print(
-                    f"[green]deduped {done.handle}[/green] → "
+                    f"[green]deduped {r.handle}[/green] → "
                     f"{done.removed} duplicate record(s) dropped, "
                     f"original at {done.backup.name}")
         _console.print(
