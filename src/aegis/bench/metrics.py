@@ -12,6 +12,7 @@ import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
+from aegis.bench.host import busy_pct
 from aegis.bench.records import read_jsonl
 
 MB = 2**20
@@ -72,6 +73,10 @@ METRICS: dict[str, MetricSpec] = {
     "startup.first_frame_ms": _t(50.0),
     "startup.ready_ms": _t(50.0),
     "startup.warm_first_frame_ms": _t(20.0),
+    # Neutral: the host's load is context for every other number, not a
+    # property of aegis that can get better or worse.
+    "host.load_per_core.max": _r("load/core", 0.25, better="neutral"),
+    "host.cpu_busy_pct": _r("%", 5.0, better="neutral"),
 }
 
 
@@ -222,6 +227,19 @@ def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:
             grouped.setdefault(e["name"], []).append(e["value"])
     for name, values in grouped.items():
         _dist(out, name, values, ("p50", "p95", "max"))
+
+    loads = [e for e in events if e["k"] == "load"]
+    if loads:
+        out["host.load_per_core.max"] = round(
+            max(e["l1"] / max(1, e.get("cores") or 1) for e in loads), 3)
+        # The load average lags by a minute; jiffies at the window edges say
+        # exactly how busy the whole machine was during the window.
+        edges = [e for e in loads if e.get("cpu_total")]
+        if len(edges) >= 2:
+            busy = busy_pct((edges[0]["cpu_idle"], edges[0]["cpu_total"]),
+                            (edges[-1]["cpu_idle"], edges[-1]["cpu_total"]))
+            if busy is not None:
+                out["host.cpu_busy_pct"] = busy
 
     gate_recs = [r for r in probe if r["k"] == "gate"]
     if gate_recs:

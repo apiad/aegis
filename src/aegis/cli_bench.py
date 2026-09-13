@@ -126,6 +126,15 @@ def compare_cmd(
         _console.print(f"[yellow]note:[/] {thin} repeat(s) on the thinner "
                        "side; with fewer than 3, repeat ranges cannot tell a "
                        "real change from noise")
+    from aegis.bench.host import BUSY_CPU_PCT
+    busy = [s.get("run_id", "?") for s in (left, right)
+            if any(sc.get("median", {}).get("host.cpu_busy_pct", 0)
+                   > BUSY_CPU_PCT for sc in s["scenarios"].values())]
+    if busy:
+        _console.print(f"[yellow]note:[/] {', '.join(busy)} ran on a busy "
+                       f"host (CPU above {BUSY_CPU_PCT:.0f}% busy in a "
+                       "window); a timing verdict may reflect the machine, "
+                       "not aegis")
     print_compare(rows, _console, a_label=left.get("run_id", "a"),
                   b_label=right.get("run_id", "b"), all_rows=all_rows)
     regressed = any(r.verdict == "regressed"

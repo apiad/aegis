@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.bench import BenchError, ScenarioSkipped
+from aegis.bench.host import cores, cpu_times, loadavg
 from aegis.bench.launcher import Target
 from aegis.bench.records import Recorder, read_jsonl
 from aegis.bench.rig import Rig, pump, wait_until
@@ -64,11 +65,21 @@ class ScenarioContext:
     @contextlib.contextmanager
     def window(self):
         start = time.monotonic_ns()
+        self._record_load()
         try:
             yield
         finally:
+            self._record_load()
             self.events.write({"k": "window", "start_ns": start,
                                "end_ns": time.monotonic_ns()})
+
+    def _record_load(self) -> None:
+        """Host load and CPU jiffies at a window edge: the numbers inside
+        only compare with runs made on a similarly quiet machine."""
+        idle, total = cpu_times()
+        self.events.write({"k": "load", "t_ns": time.monotonic_ns(),
+                           "l1": loadavg()[0], "cores": cores(),
+                           "cpu_idle": idle, "cpu_total": total})
 
     # --- world ---------------------------------------------------------
     def _wrap(self) -> list[str] | None:

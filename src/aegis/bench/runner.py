@@ -15,6 +15,7 @@ from pathlib import Path
 from rich.console import Console
 
 from aegis.bench import BenchError, ScenarioSkipped
+from aegis.bench.host import BUSY_CPU_PCT, loadavg, sample_busy_pct
 from aegis.bench.launcher import Target, resolve_target
 from aegis.bench.metrics import repeat_metrics, summarize
 from aegis.bench.scenarios import SCENARIOS, ScenarioContext
@@ -81,6 +82,8 @@ def fingerprint(target: Target, opts: RunOptions) -> dict:
         "host": socket.gethostname(), "cpu": cpu, "cores": os.cpu_count(),
         "governor": _read(
             "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
+        "loadavg": list(loadavg()),
+        "cpu_busy_pct_start": sample_busy_pct(1.0),
         "size": f"{opts.cols}x{opts.rows}", "speed": opts.speed,
         "sabotage_ms": opts.sabotage_ms, "target": target.label,
         "topology": target.topology, "aegis_version": target.version,
@@ -114,6 +117,12 @@ def run(opts: RunOptions, console: Console) -> tuple[dict, Path]:
     run_dir.mkdir(parents=True, exist_ok=True)
     console.print(f"[bold]aegis bench[/] {run_id}  target {target.build} "
                   f"({target.topology})  -> {run_dir}")
+    busy = fp["cpu_busy_pct_start"]
+    if busy is not None and busy > BUSY_CPU_PCT:
+        console.print(f"[yellow]warning:[/] the host is busy ({busy:.0f}% "
+                      f"CPU over the last second, load "
+                      f"{fp['loadavg'][0]:.1f} on {fp['cores']} cores); "
+                      "these timings will not compare with a quiet run")
     results: dict[str, dict] = {}
     for name in opts.scenarios:
         sc = SCENARIOS[name]

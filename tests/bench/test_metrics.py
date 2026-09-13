@@ -131,3 +131,26 @@ def test_partly_undrawn_markers_are_data_not_a_failure(tmp_path):
     assert m["latency.markers_undrawn_pct"] == 50.0
     assert m["latency.marker_ms.p50"] == 3.0
     assert {g["name"]: g["ok"] for g in gates}["markers_seen"] is True
+
+
+def test_host_load_is_reported_per_core(tmp_path):
+    # Measured 2026-09-13: the same block stream went from p50 28 ms to
+    # 141 ms at load 11 on 8 cores. The load has to travel with the numbers.
+    _w(tmp_path / "events.jsonl", [
+        {"k": "load", "t_ns": 1, "l1": 2.0, "cores": 8},
+        {"k": "load", "t_ns": 2, "l1": 11.0, "cores": 8}])
+    m, _ = repeat_metrics(tmp_path)
+    assert m["host.load_per_core.max"] == 1.375
+
+
+def test_host_cpu_busy_share_comes_from_the_window_edges(tmp_path):
+    # Load average lags by design; /proc/stat at the window edges measures
+    # exactly how contended the window was.
+    _w(tmp_path / "events.jsonl", [
+        {"k": "load", "t_ns": 1, "l1": 1.0, "cores": 8,
+         "cpu_idle": 1000, "cpu_total": 2000},
+        {"k": "load", "t_ns": 2, "l1": 1.0, "cores": 8,
+         "cpu_idle": 1100, "cpu_total": 2400}])
+    m, _ = repeat_metrics(tmp_path)
+    # 400 jiffies passed, 100 of them idle: 75% busy.
+    assert m["host.cpu_busy_pct"] == 75.0
