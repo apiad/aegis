@@ -180,21 +180,34 @@ A repeat fails, and the run exits non-zero, when any of these is false:
 5. The daemon's `aegis.__file__` matches the target the launcher was asked
    for.
 
-`aegis bench selftest` runs `claude-blocks` plain and with
-`--sabotage 40`. It passes only when marker-to-bytes p50 rises by between
-30 and 80 ms and the probe attributes the added time to the sabotaged
-span.
+`aegis bench selftest` runs a synthetic block stream plain and with
+`--sabotage 40`. It passes only when marker-to-bytes p50 rises by at least
+30 ms and the probe's sabotaged span p50 rises by at least 36 ms. There is
+no upper bound: a sleep on the event loop also delays whatever queues
+behind it, so the latency rise can legitimately exceed the sleep.
 
 ## Targets
 
 `--target` runs the benchmark against another aegis build. The rig,
-fixtures and fake agents come from the running bench; only the daemon and
-client come from the target. A version string runs
+fixtures and fake agents come from the running bench; only the aegis
+processes come from the target. A version string runs
 `uvx --from aegis-harness==VERSION python`, and a path runs that
 interpreter. Aegis-internal probe hooks are optional per target; Textual
-hooks stay required. Older releases have different CLI entry points, so the
-launcher records the target's version and fails with a clear message when
-`aegis serve` or `aegis attach` is missing.
+hooks stay required.
+
+A target runs in one of two topologies, chosen by introspecting it:
+
+- **daemon**: the target's `aegis.cli` has an `attach` command. The bench
+  starts `aegis serve` with the probe installed and attaches `aegis attach`
+  in the pty. `aegis attach` first shipped after v0.37.0 (commit
+  `fb5189c`, 2026-09-12).
+- **in-process**: no `attach` command. The pty runs the target's `aegis`
+  directly, and the probe is installed in that process, which holds the
+  brain and the only view. Daemon hops, `two-clients` and warm re-attach
+  do not apply and report `skipped`.
+
+The topology is part of the fingerprint, so a comparison between the two
+shows what the daemon path costs.
 
 ## Testing
 
