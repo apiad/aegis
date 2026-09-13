@@ -155,14 +155,21 @@ async def test_a_session_spawned_in_the_brain_reaches_both_terminals(tmp_path):
         b = await _connect(server.path, "term-b", (80, 24))
         await _until(lambda: reg.get("term-a") and reg.get("term-b"))
 
-        await mgr.spawn("default")
+        handle = await mgr.spawn("default")
 
         def panes(view_id):
             app = reg.get(view_id).app
             return [p.handle for p in app._panes
                     if isinstance(p, ConversationPane)]
 
-        await _until(lambda: panes("term-a") and panes("term-b"))
+        # Wait for THIS handle in both, not for either view to hold any
+        # pane at all. The weaker condition is satisfied the moment each
+        # view has the tab its own boot spawned, which is before the
+        # spawned session has propagated, so the comparison below raced it
+        # and won or lost on how long a view took to mount. It lost once
+        # the adopt path started reading a replay off disk.
+        await _until(lambda: handle in panes("term-a")
+                     and handle in panes("term-b"))
         assert panes("term-a") == panes("term-b")
     finally:
         for c in (a, b):

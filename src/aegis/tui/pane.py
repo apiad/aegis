@@ -895,10 +895,23 @@ class ConversationPane(Widget):
         # RemotePaneCore has no log of its own; fall back to the handle so
         # the attribute always answers.
         self.log_id: str = getattr(self._core, "log_id", None) or handle
-        if state_dir_path is not None:
+        if state_dir_path is not None and core is None:
             # Keyed on the session's immutable log id, never the handle:
             # handles are recycled out of a finite pool, so two unrelated
             # sessions sharing one would append into the same file.
+            #
+            # `core is None` means this pane built the AgentSession above,
+            # so nothing else is writing that transcript. A pane handed a
+            # core did not: the brain spawned it and `SessionManager` added
+            # the writer then (`core/manager.py`). Adding a second one here
+            # wrote every event twice, and once per pane, so a view
+            # attached three times multiplied every later line by three.
+            # It reads as a rendering bug on reattach and is not one: the
+            # replay is faithful and the file really does hold it N times.
+            #
+            # `release_core_observers` cannot undo it either, because this
+            # observer is an anonymous closure the pane keeps no reference
+            # to.
             self._core.add_event_observer(
                 make_session_log_observer(state_dir_path, self.log_id))
         self._replay = replay
