@@ -1295,7 +1295,11 @@ class ConversationPane(Widget):
             records.append(BlockRecord(
                 Text("⚠ interrupted", style="yellow"), "⚠ interrupted", False))
 
-        self._history = records
+        # Anything already recorded arrived AFTER this replay was read off
+        # disk, in the window between constructing the pane and showing it.
+        # Assigning over it dropped the turn an agent produced while a view
+        # was attaching, and dropped it silently.
+        self._history = records + self._history
         self._window_start = max(0, len(records) - REPLAY_TAIL)
         self._window_end = len(records)
         t = self._transcript()
@@ -1377,6 +1381,29 @@ class ConversationPane(Widget):
 
     def _transcript(self) -> VerticalScroll:
         return self.query_one("#transcript", VerticalScroll)
+
+    def _live_transcript(self) -> "VerticalScroll | None":
+        """The transcript, or None while it cannot take a widget yet.
+
+        A pane subscribes to its core in ``__init__``, and
+        ``_mount_brain_pane`` builds panes over sessions the brain is
+        already running, so events arrive before this pane is composed and
+        again before it is mounted. Both are transient and neither is an
+        error: ``_history`` is the source of truth and ``on_show`` paints
+        from it.
+
+        Two different failures, because the widget appears before it is
+        usable. Before compose there is no node and ``query_one`` raises
+        NoMatches; after compose and before mount the node exists and
+        ``mount`` raises MountError.
+        """
+        from textual.css.query import NoMatches
+
+        try:
+            t = self.query_one("#transcript", VerticalScroll)
+        except NoMatches:
+            return None
+        return t if t.is_mounted else None
 
     # --- keyboard navigation ---------------------------------------------
     # The transcript is not focusable — focus lives in the input, where Up
@@ -1738,7 +1765,12 @@ class ConversationPane(Widget):
                               file_target=file_target,
                               remote_path=remote_path,
                               host=self._host)
-        t = self._transcript()
+        t = self._live_transcript()
+        if t is None:
+            # Recorded, not mounted. Same shape as the truncated-window
+            # branch below: the history record is the source of truth and
+            # `on_show` paints it.
+            return block
         if self._window_end < len(self._history) - 1:
             # The tail is already truncated (we are scrolled up and the
             # window stopped following the newest content). Record it and
