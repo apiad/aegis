@@ -1143,6 +1143,18 @@ class AegisApp(App):
             self.run_worker(self._mount_brain_pane(session),
                             group=f"brain-pane-{session.handle}",
                             exclusive=False)
+        elif kind == "renamed":
+            # Found by identity, not by handle: the session no longer
+            # answers to the name this view knows it by, and does not yet
+            # answer to anything this view has heard of. The pane object is
+            # the only stable link.
+            for pane in self._panes:
+                if getattr(pane, "_core", None) is session:
+                    pane.handle = session.handle
+                    with contextlib.suppress(Exception):
+                        pane.refresh_title()
+                    self._refresh_tabbar()
+                    break
         elif kind == "removed":
             self.run_worker(self._drop_brain_pane(session.handle),
                             group=f"brain-drop-{session.handle}",

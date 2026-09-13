@@ -658,6 +658,12 @@ class SessionManager:
         # untouched — this only handles the caller supplying a new one.
         if title is not None:
             await self.set_title(new, title, source="agent")
+        # Tell the views. Every plane keyed by the handle moved above and
+        # none of them is a view: a view holds a pane whose `handle` is a
+        # copy, so without this the tool answers ok, the registry, inbox,
+        # locks, MCP token, monitors and reminders all move, and the tab bar
+        # keeps the old name.
+        self._announce("renamed", session)
         return {"ok": True, "old": old, "new": new}
 
     async def handoff(self, from_handle: str, target_handle: str,
