@@ -839,6 +839,10 @@ def kill_cmd(
 
 @app.command()
 def doctor(
+        dedupe: bool = typer.Option(
+            False, "--dedupe",
+            help="Drop records a second writer left behind (adjacent, "
+                 "identical, same instant). Keeps the original."),
         repair: bool = typer.Option(
             False, "--repair",
             help="Rewrite damaged logs from their readable records."),
@@ -855,7 +859,7 @@ def doctor(
 ) -> None:
     """Report (and optionally fix) damage in stored conversations."""
     from aegis.state.repair import (
-        _boundaries, repair_log, split_log, survey,
+        _boundaries, dedupe_log, repair_log, split_log, survey,
     )
     from aegis.state.session_log import parse_log_id, scan_log
 
@@ -930,6 +934,27 @@ def doctor(
             _console.print(
                 f"[green]repaired {done.handle}[/green] → {done.records} "
                 f"records kept, original at {done.backup.name}")
+
+    if dedupe:
+        # Every log, not just the damaged ones: duplication is orthogonal
+        # to damage, and a perfectly well-formed log is exactly what a
+        # second writer produces.
+        total = 0
+        for r in reports:
+            if r.live:
+                # Same reason as --repair: a running session holds an fd on
+                # the inode we would replace.
+                continue
+            done = dedupe_log(r.path)
+            if done.removed:
+                total += done.removed
+                _console.print(
+                    f"[green]deduped {done.handle}[/green] → "
+                    f"{done.removed} duplicate record(s) dropped, "
+                    f"original at {done.backup.name}")
+        _console.print(
+            f"{total} duplicate record(s) dropped" if total
+            else "no duplicate records found")
 
     if split:
         for r, _n in merged:
