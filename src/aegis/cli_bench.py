@@ -103,7 +103,8 @@ def compare_cmd(
 ) -> None:
     """Compare two runs metric by metric; exit 1 if anything regressed."""
     from aegis.bench import BenchError
-    from aegis.bench.compare import compare, latest_release, load_summary
+    from aegis.bench.compare import (
+        compare, latest_release, load_summary, min_repeats)
     from aegis.bench.report import print_compare
     try:
         if baseline:
@@ -120,9 +121,13 @@ def compare_cmd(
     except BenchError as exc:
         _console.print(f"[red]{exc}[/]")
         raise typer.Exit(2) from exc
-    print_compare(rows, _console, a_label=left["fingerprint"]["aegis_build"],
-                  b_label=right["fingerprint"]["aegis_build"],
-                  all_rows=all_rows)
+    thin = min_repeats(left, right)
+    if thin < 3:
+        _console.print(f"[yellow]note:[/] {thin} repeat(s) on the thinner "
+                       "side; with fewer than 3, repeat ranges cannot tell a "
+                       "real change from noise")
+    print_compare(rows, _console, a_label=left.get("run_id", "a"),
+                  b_label=right.get("run_id", "b"), all_rows=all_rows)
     regressed = any(r.verdict == "regressed"
                     for rs in rows.values() for r in rs)
     raise typer.Exit(1 if regressed else 0)

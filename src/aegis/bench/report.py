@@ -73,7 +73,12 @@ def print_compare(rows_by_scenario: dict, console: Console, *,
     for name, rows in rows_by_scenario.items():
         shown = [r for r in rows
                  if all_rows or r.verdict not in ("noise", "same")]
-        t = Table("metric", a_label, b_label, "Δ%", "verdict", title=name)
+        t = Table(title=name)
+        t.add_column("metric", no_wrap=True)
+        t.add_column(a_label, justify="right")
+        t.add_column(b_label, justify="right")
+        t.add_column("Δ%", justify="right")
+        t.add_column("verdict")
         for r in shown:
             color = _COLOR.get(r.verdict)
             delta = "-" if r.delta_pct is None else f"{r.delta_pct:+.1f}"

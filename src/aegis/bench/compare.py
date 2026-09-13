@@ -45,8 +45,22 @@ def verdict(spec: MetricSpec, a: list[float], b: list[float]) -> str:
         return "noise"
     if min(b) <= max(a) and min(a) <= max(b):
         return "noise"
+    if spec.better == "neutral":
+        return "changed"
     worse = diff > 0 if spec.better == "lower" else diff < 0
     return "regressed" if worse else "improved"
+
+
+def min_repeats(a: dict, b: dict) -> int:
+    """Repeats on the thinner side, over the scenarios both runs share.
+
+    With one repeat a side, each range is a single point and never
+    overlaps the other, so the separation test rejects nothing.
+    """
+    shared = set(a["scenarios"]) & set(b["scenarios"])
+    return min((min(len(a["scenarios"][n]["repeats"]),
+                    len(b["scenarios"][n]["repeats"])) for n in shared),
+               default=0)
 
 
 def compare(a: dict, b: dict, *, force: bool = False) -> dict[str, list[Row]]:

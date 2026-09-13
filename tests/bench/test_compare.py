@@ -1,6 +1,6 @@
 import pytest
 
-from aegis.bench.compare import CompareError, compare, verdict
+from aegis.bench.compare import CompareError, compare, min_repeats, verdict
 from aegis.bench.metrics import MetricSpec
 
 T = MetricSpec("ms", floor=0.5)
@@ -68,3 +68,18 @@ def test_delta_percent_is_relative_to_the_baseline():
     rows = compare(_summary(reps=({"render.tick_ms.p50": 4.0},)),
                    _summary(reps=({"render.tick_ms.p50": 5.0},)))["x"]
     assert rows[0].delta_pct == pytest.approx(25.0)
+
+
+def test_neutral_metrics_report_changed_never_a_direction():
+    # Fewer frames for the same workload is neither better nor worse.
+    fps = MetricSpec("/s", better="neutral", floor=2.0, kind="resource")
+    assert verdict(fps, [30, 31], [50, 52]) == "changed"
+    assert verdict(fps, [50, 52], [30, 31]) == "changed"
+    assert verdict(fps, [30, 31], [30.5, 31]) == "noise"
+
+
+def test_min_repeats_counts_the_thinner_side():
+    a = _summary(reps=({"render.tick_ms.p50": 4.0},) * 3)
+    b = _summary(reps=({"render.tick_ms.p50": 4.0},))
+    assert min_repeats(a, b) == 1
+    assert min_repeats(a, a) == 3

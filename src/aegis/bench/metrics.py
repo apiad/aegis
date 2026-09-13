@@ -50,8 +50,10 @@ METRICS: dict[str, MetricSpec] = {
     "render.compose_ms.p95": _t(0.5),
     "render.display_ms.p95": _t(0.5),
     "render.paint_ms.p50": _t(0.5),
-    "render.ticks_per_s": _r("/s", 2.0),
-    "render.frames_per_s": _r("/s", 2.0),
+    # Neutral: fewer frames for the same workload is neither better nor
+    # worse, so a change is reported without a direction.
+    "render.ticks_per_s": _r("/s", 2.0, better="neutral"),
+    "render.frames_per_s": _r("/s", 2.0, better="neutral"),
     "render.bytes_per_frame.p50": _r("B", 200),
     "render.height_calls": MetricSpec("calls", kind="count"),
     "render.render_lines_calls": MetricSpec("calls", kind="count"),
