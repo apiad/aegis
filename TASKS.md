@@ -422,6 +422,19 @@ every `aegis` invocation spends ~2.3s importing `fastmcp` through
 `aegis.core.manager`, paid twice on a cold start, in a client whose whole
 job is to open a socket.
 
+**Open before 5b is planned: where the WebSocket and the token live.**
+`docs/superpowers/specs/2026-09-13-aegis-web-as-a-client-design.md` is
+Alex's variant, specced 2026-09-13. `aegis server` publishes a unix socket
+and binds no TCP port; `aegis web` becomes a separate process that owns
+the web app and is one more client on that socket. It removes by
+construction the failure of 2026-09-13, where a terminal `aegis` started a
+web server it was never asked for and four daemons fought over one pinned
+port, and it stops the process facing the internet from being the process
+running `permission: full`. It costs a hop, a second systemd unit, and an
+answer to whether `aegis attach wss://…` survives. Decide before planning
+5b: that stage chooses where the transport and the token go, and both are
+expensive to move afterwards.
+
 **Stage 5b is what remains of the spec's stage 5**: the WebSocket
 transport under the same `serve_view`, the token handshake in the first
 frame, `aegis attach wss://…`, the browser terminal view, dropping Caddy's
