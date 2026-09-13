@@ -1,6 +1,30 @@
 from aegis.bench.frames import (
-    SYNC_BEGIN, SYNC_END, SYNC_QUERY, FrameSplitter, find_markers, marker,
-    strip_ansi)
+    SYNC_BEGIN, SYNC_END, SYNC_QUERY, FrameSplitter, find_markers, locate,
+    marker, sgr_click, strip_ansi)
+
+
+def test_locate_finds_row_and_column_after_cursor_move():
+    # The shape Textual writes: a cursor move, styled padding, the text.
+    raw = (b"\x1b[1;1Hheader\x1b[39;1H\x1b[48;2;20;20;18m  \x1b[0m"
+           b"\x1b[38;2;1;1;1mtype a message\xe2\x80\xa6\x1b[0m")
+    assert locate(raw, "type a message") == (39, 3)
+    assert locate(raw, "header") == (1, 1)
+    assert locate(raw, "absent") is None
+
+
+def test_locate_prefers_the_last_draw():
+    raw = b"\x1b[5;1Hxx target\x1b[9;4Htarget"
+    assert locate(raw, "target") == (9, 4)
+
+
+def test_sgr_click_is_press_then_release():
+    assert sgr_click(39, 3) == b"\x1b[<0;3;39M\x1b[<0;3;39m"
+
+
+def test_frames_keep_their_raw_bytes_for_locating():
+    s = FrameSplitter()
+    (f,) = s.feed(b"\x1b[7;2Hhi" + SYNC_END, 1)
+    assert locate(f.raw, "hi") == (7, 2)
 
 
 def test_marker_format_round_trips():

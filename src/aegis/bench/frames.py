@@ -22,6 +22,7 @@ _ANSI = re.compile(
     rb"|\x1b[\x20-\x2f]+[\x30-\x7e]"                # nF, e.g. charset
     rb"|\x1b[\x30-\x7e]")                           # Fp / Fe / Fs
 _MARKER = re.compile(r"«b\d{4,}»")
+_CUP = re.compile(rb"\x1b\[(\d+);(\d+)H")
 
 
 def strip_ansi(data: bytes) -> str:
@@ -36,11 +37,36 @@ def find_markers(text: str) -> list[str]:
     return _MARKER.findall(text)
 
 
+def locate(raw: bytes, needle: str) -> tuple[int, int] | None:
+    """1-based (row, col) of the last place ``needle`` was drawn in ``raw``.
+
+    Textual writes every changed span after an absolute cursor move, so the
+    text between two moves sits on one row starting at the first move's
+    column. Wide characters before the needle would shift the column; the
+    rig only locates plain ASCII labels, where that cannot happen.
+    """
+    found = None
+    moves = list(_CUP.finditer(raw))
+    for i, m in enumerate(moves):
+        end = moves[i + 1].start() if i + 1 < len(moves) else len(raw)
+        text = strip_ansi(raw[m.end():end])
+        pos = text.rfind(needle)
+        if pos >= 0 and "\n" not in text[:pos]:
+            found = (int(m.group(1)), int(m.group(2)) + pos)
+    return found
+
+
+def sgr_click(row: int, col: int) -> bytes:
+    """A left-button press and release in SGR mouse encoding (mode 1006)."""
+    return (f"\x1b[<0;{col};{row}M\x1b[<0;{col};{row}m").encode()
+
+
 @dataclass(frozen=True)
 class Frame:
     t_ns: int
     nbytes: int
     text: str
+    raw: bytes = b""
 
 
 class FrameSplitter:
@@ -67,5 +93,6 @@ class FrameSplitter:
         while (i := self._buf.find(SYNC_END)) >= 0:
             raw = self._buf[:i].replace(SYNC_BEGIN, b"")
             self._buf = self._buf[i + len(SYNC_END):]
-            frames.append(Frame(t_ns=t_ns, nbytes=i, text=strip_ansi(raw)))
+            frames.append(Frame(t_ns=t_ns, nbytes=i, text=strip_ansi(raw),
+                                raw=raw))
         return frames
