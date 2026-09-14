@@ -4,7 +4,7 @@
 (`docs/superpowers/reviews/2026-09-08-one-boot-path-spec-review.md`) and a
 second round of measurement that replaced the architecture.*
 
-*Status: stages 1–4 and 5a implemented (`9c903ca`, `5259bb3`, `9171f2b`); stage 5b and stage 6 not planned.*
+*Status: stages 1–4 and 5a implemented (`9c903ca`, `5259bb3`, `9171f2b`); stage 5b and stage 6 not planned. Stage 5 and the transport, command, auth and testing sections amended 2026-09-14 by `2026-09-13-aegis-web-as-a-client-design.md`.*
 
 Three goals that turn out to be one refactor:
 
@@ -135,17 +135,23 @@ terminal emulation, and no semantic protocol.
 ## The design
 
 ```
-aegis daemon — one per project root
+aegis server — one per project root
 ├── brain      — SessionManager, MCP, queues, schedules, hosts, canvas,
 │                terminals, monitors                        ← exactly one
 ├── views      — N × AegisApp, each its own geometry/focus/scroll
-└── transports — unix socket  .aegis/state/daemon.sock   (terminals)
-                 WebSocket    per the `web:` config block (browsers)
+└── transport  — unix socket  .aegis/state/daemon.sock   (every client)
+
+aegis web — its own process, one more client of that socket
+└── one view per browser tab, frames relayed to xterm.js over HTTPS/WSS
 ```
 
-Both transports carry identical framed ANSI. The `web:` block stops meaning
-"run a web server" and starts meaning "also listen on WS", so **one daemon
-serves your terminal and dev.apiad.net at once**.
+Terminals and `aegis web` read the same framed ANSI off one socket. The
+daemon binds no TCP port, and the `web:` block belongs to `aegis web`
+alone, so a terminal `aegis` never starts a web server.
+
+*Amended 2026-09-14.* This section first had the daemon also listen on a
+WebSocket per the `web:` block. It moved out with the decision in
+`2026-09-13-aegis-web-as-a-client-design.md`.
 
 A view holds the manager **by direct Python reference**. There is one
 `AegisApp` class, instantiated N times. No protocol between UI and brain, and
@@ -189,7 +195,7 @@ still in the box is yours; text you have sent is everyone's.
 ### Persistent views
 
 A view outlives its socket. On disconnect the daemon keeps it, keyed by client
-id — `localStorage` for browsers, per-tty for terminals, `--view NAME` to
+id — `sessionStorage` for browsers (one view per tab), per-tty for terminals, `--view NAME` to
 override. Reconnect restores your focus, scroll and drafts.
 
 This needs a forced full repaint on reattach, because Textual emits
@@ -255,24 +261,23 @@ grows.
 | Client needs a `SessionManager` | yes | no |
 | Protocol grows with each feature | **yes — the rot** | **no** |
 
-**Required: attach must work across machines.** Both transports carry the
-identical `b"D" + length + ANSI` frames, so the client takes a target rather
-than assuming a local socket:
+**Attach is local.** It connects to this root's unix socket:
 
 ```bash
-aegis attach                              # this root's daemon, unix socket
-aegis attach --view review                # a named view on it
-aegis attach wss://dev.apiad.net --token …   # a daemon on another machine
+aegis attach                 # this root's daemon
+aegis attach --view review   # a named view on it
 ```
 
-The remote form is a first-class requirement, not a nicety: it is how a
-terminal on zion drives the VPS daemon while keeping **local** geometry,
-tmux and scrollback — none of which survive an `ssh vps -t aegis attach`
-session, where the far side owns the terminal.
+*Amended 2026-09-14.* This section first required a remote form,
+`aegis attach wss://host --token …`, so a terminal on zion could drive the
+VPS daemon with local geometry, tmux and scrollback. It was dropped with the
+decision in `2026-09-13-aegis-web-as-a-client-design.md`. Over `ssh vps` the
+TUI still draws into the local terminal at its size and local tmux wraps
+ssh, so what the remote form kept was the TUI's own scrollback, and it cost
+a relay for terminal clients with a second token path. Remote terminals go
+over ssh.
 
-The cost is a URL scheme and a token. Raw mode, the pipe loop and `SIGWINCH`
-are unchanged, because the frames are the same on both transports. What must
-*not* creep in is any awareness of sessions, agents or queues — the moment the
+What must *not* creep in is any awareness of sessions, agents or queues — the moment the
 client parses aegis concepts it has become `RemoteSessionManager` again, and
 this table stops being true.
 
@@ -281,16 +286,17 @@ this table stops being true.
 | Command | Before | After |
 |---|---|---|
 | `aegis` | TUI, own boot path, no scheduler/peer plane | ensure daemon, attach a terminal view |
-| `aegis attach [--view N]` | — | explicit attach to this root's daemon |
-| `aegis attach wss://host --token …` | — | **attach a local terminal to a remote daemon** |
-| `aegis serve` | headless MCP + queues + schedules + plane + web frontend | **run the daemon** in the foreground |
-| `aegis web` | ensure token, open browser, `_run_serve` | **open a browser at the daemon's URL** — no longer a server |
+| `aegis attach [--view N]` | — | explicit attach to this root's daemon, over its unix socket |
+| `aegis serve` → `aegis server` | headless MCP + queues + schedules + plane + web frontend | **run the daemon** in the foreground; unix socket only, never a TCP port |
+| `aegis web` | ensure token, open browser, `_run_serve` | **the web server**: its own process, a client of the daemon's socket, one view per browser tab |
 | `aegis kill` / `aegis ls` | — | stop / list daemons |
 | `aegis --remote ws://…`, `ssh://…` | broken | **removed** |
 | `aegis token` | prints web token | unchanged |
 
-On the VPS, `aegis-web.service` runs `aegis serve`; Caddy proxies to the WS
-transport as it does today.
+On the VPS, `aegis-server.service` runs `aegis server` and
+`aegis-web.service` runs `aegis web`, ordered `After=` and `Requires=` the
+server; Caddy proxies `aegis web`. Remote terminals reach the VPS daemon
+with `ssh vps` and then `aegis`.
 
 ### Auth
 
@@ -304,9 +310,12 @@ to put in that frame, and `server.py:103` uses it to guard `/download`.
 
 | Client | How it presents `web.token` |
 |---|---|
-| Browser | `?t=` **once**, exchanged immediately for an `HttpOnly; Secure; SameSite` cookie; the page reads nothing thereafter and the WS handshake authenticates from the cookie |
-| `aegis attach wss://…` | the same auth frame, token from `~/.aegis/tokens/<host>` (so it is not in shell history either); `--token` overrides |
-| `aegis attach` (local) | nothing — the unix socket is guarded by filesystem permissions |
+| Browser | `?t=` **once**, exchanged immediately for an `HttpOnly; Secure; SameSite` cookie; the page reads nothing thereafter and `aegis web`'s WS handshake authenticates from the cookie |
+| `aegis attach`, and `aegis web` itself | nothing — the unix socket is guarded by filesystem permissions |
+
+`aegis web` checks the token and the daemon checks nothing, because the
+daemon has no port. *Amended 2026-09-14*: this section first placed the
+handshake in the daemon.
 
 **Why not `?token=` everywhere.** It reads simpler, but it moves the
 credential from a handshake into URLs, and URLs land in Caddy's access log,
@@ -314,24 +323,16 @@ browser history and any `Referer`. This token *is* a shell — the daemon runs
 `permission: full` on the VPS Workspace — so it should appear in exactly one
 place, once.
 
-**What dropping `basicauth` buys**, beyond one secret instead of two: the
-terminal client no longer needs to synthesise a basic-auth header from
-`--user`/`~/.netrc` (a terminal has no login prompt), and two documented traps
+**What dropping `basicauth` buys**, beyond one secret instead of two: two documented traps
 in `know-how/deploying-web.md` disappear — the service-worker install-time 401,
 and URL-embedded credentials polluting the SW scope.
 
 **What it costs, stated plainly.** Today Caddy rejects unauthenticated traffic
 *before* it reaches aegis, so scanners never touch our code. Afterwards,
-aegis's own handshake is the only thing between the open internet and full code
-execution on the VPS. `secrets.token_urlsafe(32)` is strong enough that this is
+`aegis web`'s handshake is the only thing between the open internet and the
+daemon's socket, which is full code execution on the VPS. `secrets.token_urlsafe(32)` is strong enough that this is
 an acceptable trade, but it makes the handshake path security-critical: it gets
 adversarial tests (see Testing), not happy-path ones.
-
-**`wss://` only for remote targets.** The `ws://` path in the retired
-`--remote` was never TLS-capable (`know-how/remote-tui.md` lists it as a known
-limitation). A client that carries a full-access token across a network must
-not repeat that: plain `ws://` is accepted for `localhost` and refused
-otherwise.
 
 ### Explicitly out of scope
 
@@ -420,7 +421,7 @@ async with aegis.embed(root=Path("/srv/repos/foo")) as ae:
 
 | Entry point | Owns loop | Views |
 |---|---|---|
-| `aegis serve` | yes | 0…N, as clients arrive |
+| `aegis server` | yes | 0…N, as clients arrive |
 | `aegis --foreground` | yes | 1, local tty |
 | `aegis.embed()` | **no — caller's** | 0 |
 
@@ -519,19 +520,20 @@ The bar is: **exercise the real artifact, not an adjacent one.**
 - **Pending versus draft**: submit a message from view A mid-turn, assert it
   appears in view B's pending strip, and that cancelling it in B cancels it
   in A.
-- **Transport equivalence**: attach one view over the unix socket and one over
-  WS, and assert the emitted frames are byte-identical for the same view state.
-  This is the assertion that keeps `aegis attach` a dumb pipe — the moment the
-  remote client needs its own encoding, the two transports have diverged and
-  the second implementation is back.
-- **Remote attach refuses plaintext**: `aegis attach ws://` to a non-loopback
-  host is rejected before the token is sent. Assert on the token never leaving
-  the process, not merely on the error message.
+- **Relay equivalence**: attach one view over the unix socket directly and one
+  through `aegis web`, and assert the frames reaching the browser side are
+  byte-identical for the same view state. This is the assertion that keeps
+  `aegis web` a relay — the moment it needs its own encoding, the second
+  implementation is back.
+- **The daemon restarts under `aegis web`**: with a browser attached, stop and
+  restart `aegis server`; assert the browser's view returns under the same id
+  with a full frame, and that the browser's connection to `aegis web` never
+  dropped.
 - **The handshake is now the only gate, so it gets adversarial tests**, not
   happy-path ones: no token, empty token, wrong token, well-formed token for a
   *different* daemon, auth frame sent second instead of first, and a
   non-auth frame sent before authenticating. Each asserts the connection is
-  refused **before any brain state is touched** — not merely that an error
+  refused **before `aegis web` opens a view on the daemon** — not merely that an error
   frame comes back.
 - **The token never appears in a URL or a log.** After a full browser session
   (load, cookie exchange, WS connect, reconnect), assert `web.token` appears in
@@ -553,15 +555,20 @@ The bar is: **exercise the real artifact, not an adjacent one.**
    without waiting on anything below.
 4. **The view seam.** Driver subclass, N views over one brain, brain/view state
    split, persistence. Exercised with `--foreground` and the unix socket only.
-5. **Transports and clients.** WS + `aegis attach` (both the local unix-socket
-   form and the remote `wss://` form, which is a requirement of this stage, not
-   a follow-up), autostart, idle timeout,
-   `ls`/`kill`. Both UIs still exist here — **`web=` stays wired through this
-   stage** so dev.apiad.net keeps serving while the daemon is exercised beside
-   it on a second port.
-6. **Delete.** The web client, WS plane, `RemoteSessionManager`, `ws_client`,
-   `--remote`, their tests and docs. Flip `aegis-web.service`, and only now
-   remove `web=`. The command table describes the world after **this** stage.
+5. **Transports and clients**, in two parts. *Amended 2026-09-14*; this stage
+   first put a WebSocket in the daemon and required `aegis attach wss://`.
+   - **5a (shipped 2026-09-12/13):** the unix socket, local `aegis attach`,
+     autostart, idle timeout, `ls`/`kill`.
+   - **5b:** `aegis serve` becomes `aegis server` and `_serve` loses `web=`,
+     so the daemon binds no port. `aegis web` becomes its own process: a
+     client of the socket that serves one view per browser tab to xterm.js,
+     owns the token handshake, and survives a daemon restart. The old web
+     layer stays in the tree, unwired, and dev.apiad.net keeps serving from
+     the version already deployed on the VPS.
+6. **Delete.** The old web client, WS plane, `RemoteSessionManager`,
+   `ws_client`, `--remote`, their tests and docs. Deploy the VPS as
+   `aegis-server.service` plus `aegis-web.service` and drop Caddy's
+   `basicauth`. The command table describes the world after **this** stage.
 
 Stages 1–3 carry no deletion and can ship while the web UI stands. Stages 5–6
 are cleanly revertible; **stage 1 is not**, once the rest builds on it — the

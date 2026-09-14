@@ -1,6 +1,7 @@
 # `aegis web` as a client, not a second daemon
 
-**Status: proposed.** Written 2026-09-13 against `f8ab7e5`, after stage 5a
+**Status: accepted 2026-09-14**, with the decisions below; the daemon spec's
+stage 5 is amended to match. Written 2026-09-13 against `f8ab7e5`, after stage 5a
 shipped. Decides where the WebSocket and the token live, which is a
 question stage 5b answers differently and cannot leave open.
 
@@ -196,7 +197,7 @@ need the same vendored xterm.js.
 | Between the internet and `permission: full` | the daemon | `aegis web`, then a unix socket |
 | Hops for a browser keystroke | browser → daemon | browser → `aegis web` → daemon |
 | Blast radius of a web restart | the brain goes too | the brain survives |
-| `aegis attach wss://…` | the daemon's WS | `aegis web` proxies it, or it is dropped |
+| `aegis attach wss://…` | the daemon's WS | dropped; remote terminals go over ssh |
 
 ### What this variant buys
 
@@ -224,27 +225,36 @@ today is not a state that can exist.
 `aegis attach wss://…` loses its obvious home. Either `aegis web` grows a
 pass-through for terminal clients, or the remote-terminal case is served
 by ssh plus the unix socket and the `wss://` form is dropped. That is a
-real scope question this design has to answer and 5b does not.
+real scope question this design has to answer and 5b does not. It is
+answered below: dropped.
 
 It is scope beyond what was planned. 5b's plan does not exist yet, so
 nothing is thrown away, but the estimate grows by a process boundary.
 
-## Open questions
+## Decisions (2026-09-14)
 
-1. **Does `aegis attach wss://…` survive?** If yes, `aegis web` proxies
-   raw view frames for terminal clients alongside its browser clients. If
-   no, remote terminals go over ssh and the unix socket, which works today
-   and needs no token at all.
-2. **How does `aegis web` find its daemon?** The same `ensure_daemon`
-   autostart a terminal uses, or a refusal when none is running. On the
-   VPS, systemd ordering answers it; on a laptop it is a real choice.
-3. **Does `aegis web` survive the daemon restarting?** Reconnect and
-   repaint every view, or drop its browsers. The `repaint()` that stage 5a
-   removed from `serve_view` comes back here, for exactly the case it was
-   removed for not having yet.
-4. **One view per browser, or one per tab?** View ids are client-minted
-   and client-persisted, which is settled; what is not settled is whether
-   two tabs of one browser share a view or get their own.
+These were the open questions. Each is settled.
+
+1. **`aegis attach wss://…` is dropped.** Remote terminals go over ssh.
+   Over `ssh vps` the TUI draws into the local terminal at its size and
+   local tmux wraps ssh; what is lost is the TUI's own local scrollback.
+   Keeping the form would make `aegis web` a relay for terminal clients
+   with a second token path, which is a second program. `aegis web`
+   serves browsers only.
+2. **`aegis web` finds its daemon with `ensure_daemon`**, the same
+   autostart a terminal uses, so `aegis web` on a laptop works with nothing
+   else running. On the VPS, `aegis-web.service` carries `After=` and
+   `Requires=aegis-server.service`, so the server is already up. A race
+   between them is harmless since the single-daemon lock (`3498235`).
+3. **`aegis web` survives a daemon restart.** Its socket connection
+   retries with backoff, each browser shows a reconnecting overlay, and
+   each view reopens under its own id, which restores focus, scroll and
+   drafts. Browsers are never dropped. The reattach needs a full frame,
+   which is the `repaint()` stage 5a removed from `serve_view`.
+4. **One view per browser tab.** A view has one geometry, so two tabs of
+   different sizes cannot share one. The view id lives in `sessionStorage`:
+   a reload keeps its view and a new tab gets a new one. A rule for reaping
+   view files no tab will reopen is left to the plan.
 
 ## Recommendation
 
@@ -255,6 +265,5 @@ The reason is not the failure it prevents, though that is real. It is that
 is checked, and both choices are expensive to move afterwards. Picking the
 shape first costs a spec. Picking it second costs the transport.
 
-The one thing to settle before writing a plan is open question 1, because
-the answer decides whether `aegis web` is a browser server or a general
-relay, and that is a different program.
+Decision 1 was the one that shaped the program: it makes `aegis web` a
+browser server, not a general relay.

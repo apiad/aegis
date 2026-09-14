@@ -24,7 +24,7 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
-| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b and 6 not planned |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b decided 2026-09-14 (`aegis web` as a socket client), not yet planned; 6 not planned |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
@@ -450,8 +450,9 @@ implementations and **two** boot paths, and two of the three are broken:
 reference. Measured, not assumed: Textual's app state is all `ContextVar`
 (`_context.py:17-27`), `WebDriver._write` is an instance attribute, and the
 frames carry raw ANSI — so browsers and terminals are one protocol with two
-renderers. `aegis attach [wss://host]` is an ~80-line dumb pipe; `aegis web`
-shrinks to a browser-opener. ~3,592 lines deleted.
+renderers. `aegis attach` is an ~80-line dumb pipe over the unix socket,
+and `aegis web` is its own process, serving browsers as one more client of
+that socket. ~3,592 lines deleted.
 
 Also the seam **sindri** needs: `aegis.embed()`, N instances per process.
 
@@ -572,26 +573,21 @@ re-derived:
   retired `--remote` protocol fell behind the TUI.
 - **Owed: a spec for the federated peer plane.** Not written.
 
-**Open before 5b is planned: where the WebSocket and the token live.**
+**Decided 2026-09-14: `aegis web` is a client, not part of the daemon.**
 `docs/superpowers/specs/2026-09-13-aegis-web-as-a-client-design.md` is
-Alex's variant, specced 2026-09-13. `aegis server` publishes a unix socket
-and binds no TCP port; `aegis web` becomes a separate process that owns
-the web app and is one more client on that socket. It removes by
-construction the failure of 2026-09-13, where a terminal `aegis` started a
-web server it was never asked for and four daemons fought over one pinned
-port, and it stops the process facing the internet from being the process
-running `permission: full`. It costs a hop, a second systemd unit, and an
-answer to whether `aegis attach wss://…` survives. Decide before planning
-5b: that stage chooses where the transport and the token go, and both are
-expensive to move afterwards.
+accepted. `aegis server` publishes a unix socket and binds no TCP port;
+`aegis web` is a separate process that owns the port, the token and one
+view per browser tab, and survives a daemon restart. `aegis attach wss://…`
+is dropped: remote terminals go over ssh. The daemon spec's stage 5 is
+amended to match.
 
-**Stage 5b is what remains of the spec's stage 5**: the WebSocket
-transport under the same `serve_view`, the token handshake in the first
-frame, `aegis attach wss://…`, the browser terminal view, dropping Caddy's
-`basicauth`, and the transport-equivalence gate that needs two transports
-to exist. Its risk is different in kind: today Caddy rejects unauthenticated
-traffic before it reaches our code, and afterwards aegis's own handshake is
-the only thing between the internet and `permission: full` on the VPS.
+**Stage 5b is what remains of the spec's stage 5**: `aegis serve` becomes
+`aegis server` with no port, and `aegis web` becomes a socket client with
+the token handshake, a browser terminal view on xterm.js, reconnect across
+a daemon restart, and the relay-equivalence gate. Its risk is different in
+kind: today Caddy rejects unauthenticated traffic before it reaches our
+code, and once stage 6 drops `basicauth`, `aegis web`'s handshake is the only
+thing between the internet and the daemon's socket on the VPS.
 
 **Stage 5 is unblocked.** The one gap stage 4 left -- a tab opened in one
 view not appearing in the other -- was closed the same day by
