@@ -1,6 +1,6 @@
 # aegis bench Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** `aegis bench`, a benchmark that drives a real aegis daemon and client in a pty and reports rendering time, latency, event-loop stalls, CPU and memory, comparable across releases.
 
@@ -9,6 +9,8 @@
 **Tech Stack:** Python 3.13, typer, rich, ptyprocess, psutil, agent-client-protocol, Textual 8.2.x, pytest.
 
 **Spec:** `docs/superpowers/specs/2026-09-13-aegis-bench-design.md`
+
+**Status:** executed 2026-09-13 to 2026-09-14. Departures from these steps are recorded in the spec's implementation notes.
 
 ## Global Constraints
 
@@ -61,7 +63,7 @@
 **Interfaces:**
 - Produces: `BenchError(RuntimeError)`, `ScenarioSkipped(Exception)`; `Recorder(path).write(rec: dict)`, `Recorder.close()`; `read_jsonl(path) -> list[dict]` (missing file returns `[]`, damaged lines skipped); `MarkerSeq(path).next() -> int`; `SYNC_BEGIN, SYNC_END, SYNC_QUERY, SYNC_REPLY: bytes`; `strip_ansi(data: bytes) -> str`; `marker(n: int) -> str`; `find_markers(text: str) -> list[str]`; `Frame(t_ns: int, nbytes: int, text: str)`; `FrameSplitter().feed(chunk: bytes, t_ns: int) -> list[Frame]`, attributes `queries: int`, `saw_sync_begin: bool`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/bench/test_frames.py
@@ -131,12 +133,12 @@ def test_marker_seq_is_shared_across_instances(tmp_path):
     assert [a.next(), b.next(), a.next()] == [1, 2, 3]
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `uv run pytest tests/bench -q`
 Expected: FAIL, `ModuleNotFoundError: No module named 'aegis.bench'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # src/aegis/bench/__init__.py
@@ -284,12 +286,12 @@ class FrameSplitter:
         return frames
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `uv run pytest tests/bench -q`
 Expected: PASS (8 tests). If `test_frame_nbytes_counts_raw_bytes` fails because `SYNC_BEGIN` precedes, `nbytes` is the raw length up to `SYNC_END`, which is the bytes the terminal parsed for this frame.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/bench/__init__.py src/aegis/bench/records.py src/aegis/bench/frames.py tests/bench/__init__.py tests/bench/test_frames.py tests/bench/test_records.py
@@ -319,7 +321,7 @@ git commit -m "feat(bench): frame splitting, markers and JSONL records" -- src/a
   - Env contract for fakes: `AEGIS_BENCH_SCRIPT` (script JSON path), `AEGIS_BENCH_EMIT` (emit JSONL path; the marker counter lives beside it as `marker.seq`).
   - Emit records: `{"k":"argv","pid","partial":bool}`, `{"k":"prompt","pid","t_ns","word"}`, `{"k":"marker","pid","marker","t_emit_ns"}`, `{"k":"turn_end","pid","t_ns","lines":int}`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/bench/test_script.py
@@ -424,12 +426,12 @@ def test_stream_events_are_dropped_without_the_partial_flag(tmp_path):
         "partial": False}
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `uv run pytest tests/bench/test_script.py tests/bench/test_fake_claude.py -q`
 Expected: FAIL, `ModuleNotFoundError: No module named 'aegis.bench.script'`.
 
-- [ ] **Step 3: Implement `script.py`**
+- [x] **Step 3: Implement `script.py`**
 
 ```python
 # src/aegis/bench/script.py
@@ -532,7 +534,7 @@ def inject_marker(line: dict, m: str) -> bool:
     return False
 ```
 
-- [ ] **Step 4: Implement `fake_claude.py`**
+- [x] **Step 4: Implement `fake_claude.py`**
 
 ```python
 # src/aegis/bench/fake_claude.py
@@ -633,12 +635,12 @@ if __name__ == "__main__":
 
 A step with `mark: True` whose line takes no marker (a tool call) still consumes a sequence number. That leaves gaps, never collisions, which is all the join needs.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/bench -q`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/bench/script.py src/aegis/bench/fake_claude.py tests/bench/test_script.py tests/bench/test_fake_claude.py
@@ -668,7 +670,7 @@ git commit -m "feat(bench): workload scripts and a stream-json fake claude" -- s
   - `Rig(argv, *, cwd, env, cols, rows, label, recorder: Recorder)`: `start()`, `pid`, `closed`, `frames: int`, `first_frame_ns`, `markers_seen: dict[str, int]`, `listeners: list[Callable[[Frame], None]]`, `on_readable()`, `write(data: bytes) -> int`, `resize(cols, rows) -> int`, `contains(s: str) -> bool` (anywhere in the text seen so far, last 200 KB), `last_frame_ns`, `sample_proc()`, `close(timeout_s=5)`.
   - `pump(rigs: list[Rig], timeout_s: float = 0.02) -> None`; `wait_until(rigs, predicate: Callable[[], bool], timeout_s: float) -> bool`.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 ```python
 # tests/bench/test_launcher.py
@@ -692,7 +694,7 @@ def test_argv_installs_probe_before_importing_aegis(tmp_path):
     assert "'serve', '--cwd', '/x'" in code
 ```
 
-- [ ] **Step 2: Implement `launcher.py`**
+- [x] **Step 2: Implement `launcher.py`**
 
 ```python
 # src/aegis/bench/launcher.py
@@ -782,7 +784,7 @@ def aegis_argv(target: Target, args: list[str], *,
     return [*target.python, "-c", code]
 ```
 
-- [ ] **Step 3: Implement `world.py`**
+- [x] **Step 3: Implement `world.py`**
 
 ```python
 # src/aegis/bench/world.py
@@ -937,7 +939,7 @@ def teardown(world: World, *, keep: bool = False) -> None:
         shutil.rmtree(world.root, ignore_errors=True)
 ```
 
-- [ ] **Step 4: Implement `rig.py`**
+- [x] **Step 4: Implement `rig.py`**
 
 ```python
 # src/aegis/bench/rig.py
@@ -1103,7 +1105,7 @@ def wait_until(rigs: list[Rig], predicate: Callable[[], bool],
 
 `ptyprocess` spawns the child with `setsid`, so `os.killpg(pid, …)` in `close` reaches an in-process target's fake agents too.
 
-- [ ] **Step 5: Write the end-to-end slice test (opt-in)**
+- [x] **Step 5: Write the end-to-end slice test (opt-in)**
 
 ```python
 # tests/bench/test_e2e.py
@@ -1158,17 +1160,17 @@ def test_markers_reach_the_terminal(tmp_path):
         teardown(world)
 ```
 
-- [ ] **Step 6: Run the slice**
+- [x] **Step 6: Run the slice**
 
 Run: `uv run pytest tests/bench/test_launcher.py -q && AEGIS_BENCH_E2E=1 uv run pytest tests/bench/test_e2e.py -q`
 Expected: PASS. The spike on 2026-09-13 lost the prompt when it typed 3 s after the first frame on a cold daemon; the test types, then presses Enter until the fake records a prompt. If it still fails, read `tmp_path/serve.log` and dump `rig._text[-3000:]` before changing the retry logic, and write down in this plan what the cold-boot cause was. The world probe dir must exist even though `probe.py` does not yet: create an empty `src/aegis/bench/probe.py` with a docstring and a no-op `install()` in this task so `stage_probe` can copy it; Task 4 replaces it.
 
-- [ ] **Step 7: Confirm the teardown leaves nothing behind**
+- [x] **Step 7: Confirm the teardown leaves nothing behind**
 
 Run: `ps -eo pid,args | grep -c "[a]egis-bench-"`
 Expected: `0`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(bench): pty rig, throwaway world and launcher" -- src/aegis/bench/launcher.py src/aegis/bench/world.py src/aegis/bench/rig.py src/aegis/bench/probe.py tests/bench/test_launcher.py tests/bench/test_e2e.py
@@ -1194,7 +1196,7 @@ git commit -m "feat(bench): pty rig, throwaway world and launcher" -- src/aegis/
   - `{"k":"gate","sync":bool,"headless":bool,"aegis_file":str}` on first display and whenever it changes
 - `install() -> None` raises `ProbeError` when a required hook is missing, when `AEGIS_BENCH_PROBE` is unset, or when sabotage is requested and `ConversationPane._paint_streaming` is missing.
 
-- [ ] **Step 1: Write the failing tests** (in subprocesses, so patched Textual classes never leak into the test process)
+- [x] **Step 1: Write the failing tests** (in subprocesses, so patched Textual classes never leak into the test process)
 
 ```python
 # tests/bench/test_probe.py
@@ -1261,12 +1263,12 @@ def test_spans_nest_inside_a_tick(tmp_path):
     assert tick["layout"] >= 2_000_000 and tick["dur_ns"] >= tick["layout"]
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `uv run pytest tests/bench/test_probe.py -q`
 Expected: FAIL (placeholder has no hooks record).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # src/aegis/bench/probe.py
@@ -1488,12 +1490,12 @@ def install() -> None:
 
 `_patch` for the optional pane hook imports `aegis.tui.pane` before `aegis.cli`. That is an ordinary import of the same module the CLI imports next, so the patched class is the one the app uses.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `uv run pytest tests/bench/test_probe.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Prove the probe runs inside the real daemon**
+- [x] **Step 5: Prove the probe runs inside the real daemon**
 
 Extend `tests/bench/test_e2e.py::test_markers_reach_the_terminal` with, before teardown:
 
@@ -1508,7 +1510,7 @@ Extend `tests/bench/test_e2e.py::test_markers_reach_the_terminal` with, before t
 Run: `AEGIS_BENCH_E2E=1 uv run pytest tests/bench/test_e2e.py -q`
 Expected: PASS. Then break it on purpose: temporarily change `REQUIRED`'s first method name to `_on_timer_updatex`, rerun, and confirm the test fails with the daemon's `ProbeError` in the message; restore and confirm `cmp` shows the file matches `git show HEAD:` plus this task's diff.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(bench): in-process probe for frame spans, loop lag, GC and memory" -- src/aegis/bench/probe.py tests/bench/test_probe.py tests/bench/test_e2e.py
@@ -1533,7 +1535,7 @@ git commit -m "feat(bench): in-process probe for frame spans, loop lag, GC and m
 
 Metric names (all in `METRICS`): `latency.marker_ms.{p50,p95,p99,max}`, `latency.marker_b_ms.{p50,p95,max}`, `latency.echo_ms.{p50,p95,max}`, `resize.first_frame_ms.{p50,max}`, `resize.settle_ms.{p50,max}`, `sidebar.first_frame_ms.{p50,max}`, `sidebar.settle_ms.{p50,max}`, `render.tick_ms.{p50,p95,p99,max}`, `render.layout_ms.p95`, `render.compose_ms.p95`, `render.display_ms.p95`, `render.paint_ms.p50`, `render.ticks_per_s`, `render.frames_per_s`, `render.bytes_per_frame.p50`, `render.height_calls`, `render.render_lines_calls`, `loop.lag_ms.{p50,p99,max}`, `loop.stalls_16_per_min`, `loop.stalls_50_per_min`, `loop.stalls_100_per_min`, `gc.pause_total_ms`, `gc.pause_max_ms`, `cpu.daemon_s_per_s`, `cpu.client_s_per_s`, `mem.rss_peak_mb`, `mem.rss_end_mb`, `mem.uss_peak_mb`, `mem.rss_growth_mb_per_1k_lines`, `startup.daemon_boot_ms`, `startup.first_frame_ms`, `startup.ready_ms`, `startup.warm_first_frame_ms`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/bench/test_metrics.py
@@ -1630,12 +1632,12 @@ def test_summarize_takes_median_over_repeats():
     assert s["schema"] == 1
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `uv run pytest tests/bench/test_metrics.py -q`
 Expected: FAIL, module missing.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # src/aegis/bench/metrics.py
@@ -1860,12 +1862,12 @@ def summarize(run_id: str, fingerprint: dict,
             "scenarios": scenarios}
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `uv run pytest tests/bench/test_metrics.py -q`
 Expected: PASS. If `test_every_emitted_metric_has_a_spec` fails, the `_dist` filter or a spec name is wrong; fix the name, never loosen the assertion.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(bench): fold raw records into windowed metrics and gates" -- src/aegis/bench/metrics.py tests/bench/test_metrics.py
@@ -1890,7 +1892,7 @@ git commit -m "feat(bench): fold raw records into windowed metrics and gates" --
   - `runs_dir() -> Path` (`$AEGIS_BENCH_HOME/runs`, default `~/.aegis/bench/runs`), `history_dir() -> Path`, `fingerprint(target, opts) -> dict`, `run(opts, console) -> tuple[dict, Path]` (summary, run dir), `save_history(summary) -> Path`, `failed(summary) -> bool`.
   - CLI: `aegis bench run [--scenario/-s NAME ...] [--quick] [--repeat N] [--size COLSxROWS] [--target T] [--speed X] [--profile] [--sabotage MS] [--save] [--out DIR] [--keep]`, `aegis bench list`.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```python
 # tests/bench/test_runner.py
@@ -1919,7 +1921,7 @@ def test_failed_counts_gate_failures_and_failed_status():
     assert not failed(skipped)
 ```
 
-- [ ] **Step 2: Implement `scenarios.py`** with the context and these scenarios: `startup`, `claude-blocks` (synthetic until Task 9 swaps in the fixture), `acp-stream` (depends on Task 7's fake; register it now, it fails until Task 7 lands, so run only `startup` and `claude-blocks` in this task), `deep-stream`, `resize`.
+- [x] **Step 2: Implement `scenarios.py`** with the context and these scenarios: `startup`, `claude-blocks` (synthetic until Task 9 swaps in the fixture), `acp-stream` (depends on Task 7's fake; register it now, it fails until Task 7 lands, so run only `startup` and `claude-blocks` in this task), `deep-stream`, `resize`.
 
 ```python
 # src/aegis/bench/scenarios.py
@@ -2170,7 +2172,7 @@ QUICK = ["startup", "claude-blocks", "resize"]
 
 `DEFAULT` and `QUICK` grow in Tasks 7 and 8; the final values are the ones `test_scenario_sets_are_registered` asserts, so that test stays red until Task 8. Mark it `xfail(strict=True)` in this task with reason "scenario sets complete in Task 8" and remove the mark there.
 
-- [ ] **Step 3: Implement `runner.py`**
+- [x] **Step 3: Implement `runner.py`**
 
 ```python
 # src/aegis/bench/runner.py
@@ -2339,7 +2341,7 @@ def save_history(summary: dict) -> Path:
     return path
 ```
 
-- [ ] **Step 4: Implement `cli_bench.py` (run + list) and register it**
+- [x] **Step 4: Implement `cli_bench.py` (run + list) and register it**
 
 ```python
 # src/aegis/cli_bench.py
@@ -2494,7 +2496,7 @@ def render_markdown(summary: dict) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 5: Run unit tests and a real run**
+- [x] **Step 5: Run unit tests and a real run**
 
 Run: `uv run pytest tests/bench -q`
 Expected: PASS (with the one strict xfail).
@@ -2502,11 +2504,11 @@ Expected: PASS (with the one strict xfail).
 Run: `uv run aegis bench run -s startup -s claude-blocks --repeat 1`
 Expected: exit 0; the table shows `latency.marker_ms.*`, `render.tick_ms.*`, `loop.lag_ms.*`, `cpu.daemon_s_per_s`, `mem.rss_peak_mb`, `startup.*`; no failed gates. Read the rc directly (`echo $?` as its own command), never through a pipe.
 
-- [ ] **Step 6: Break it on purpose**
+- [x] **Step 6: Break it on purpose**
 
 Run: `uv run aegis bench run -s claude-blocks --repeat 1 --sabotage 40`, then compare `latency.marker_ms.p50` and `render.paint_ms.p50` with the plain run. Expected: both rise by at least 30 ms. If they do not, the sabotage does not reach `_paint_streaming` on this path; stop and fix the measurement before continuing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "feat(bench): aegis bench run with startup, block, deep and resize scenarios" -- src/aegis/bench/scenarios.py src/aegis/bench/runner.py src/aegis/bench/report.py src/aegis/cli_bench.py src/aegis/cli.py tests/bench/test_runner.py
@@ -2530,7 +2532,7 @@ git commit -m "feat(bench): aegis bench run with startup, block, deep and resize
   - `latest_release(host: str) -> dict | None` (highest `X.Y.Z` history file without a sha suffix)
   - CLI `aegis bench compare A [B] [--baseline latest-release] [--force]`, `aegis bench history [--metric M ...] [--scenario S]`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```python
 # tests/bench/test_compare.py
@@ -2612,7 +2614,7 @@ async def test_prompt_streams_marked_chunks(tmp_path, monkeypatch):
 
 Before writing `test_fake_acp.py`, read `tests/test_drivers_acp.py::test_acp_session_basic_round_trip` and copy exactly how it constructs the `Agent`, the driver and the session, and how it closes the session; the snippet above is the shape, the existing test is the authority for the constructor arguments.
 
-- [ ] **Step 2: Implement `compare.py`**
+- [x] **Step 2: Implement `compare.py`**
 
 ```python
 # src/aegis/bench/compare.py
@@ -2715,7 +2717,7 @@ def latest_release(host: str | None = None) -> dict | None:
     return json.loads(max(files, key=_version_key).read_text())
 ```
 
-- [ ] **Step 3: Implement `fake_acp.py`**
+- [x] **Step 3: Implement `fake_acp.py`**
 
 ```python
 # src/aegis/bench/fake_acp.py
@@ -2809,7 +2811,7 @@ if __name__ == "__main__":
 
 `route` falls back to a claude-shaped ack for unknown prompts; `prompt` skips steps without `chunk`, so an unknown prompt ends the turn with no text. That is fine for the bench, which only sends known words.
 
-- [ ] **Step 4: Add the ACP scenarios** to `scenarios.py` and register them:
+- [x] **Step 4: Add the ACP scenarios** to `scenarios.py` and register them:
 
 ```python
 def acp_stream(ctx: ScenarioContext) -> None:
@@ -2852,12 +2854,12 @@ The echo detector matches the last eight typed characters in a frame, because Te
 
 Update `SCENARIOS`, `DEFAULT = ["startup", "claude-blocks", "acp-stream", "deep-stream", "resize", "typing"]`, `QUICK = ["startup", "claude-blocks", "acp-stream", "resize"]`.
 
-- [ ] **Step 5: Verify the lovelaice YAML shape the world writes**
+- [x] **Step 5: Verify the lovelaice YAML shape the world writes**
 
 Run: `uv run aegis bench run -s acp-stream --repeat 1 --keep`
 Expected: exit 0 with `latency.marker_ms.*`. If the daemon rejects `provider: lovelaice` in `.aegis.yaml`, read `src/aegis/config/yaml_loader.py` for how agent entries become `Agent` objects, fix `_CONFIG` in `world.py`, and rerun. The kept world is under `/tmp/aegis-bench-*`; remove it after reading.
 
-- [ ] **Step 6: Add `compare` and `history`** to `report.py` and `cli_bench.py`
+- [x] **Step 6: Add `compare` and `history`** to `report.py` and `cli_bench.py`
 
 ```python
 # report.py additions
@@ -2955,14 +2957,14 @@ def history_cmd(
                   _console)
 ```
 
-- [ ] **Step 7: Run tests and a real compare**
+- [x] **Step 7: Run tests and a real compare**
 
 Run: `uv run pytest tests/bench -q`
 Expected: PASS (strict xfail still present).
 Run two `claude-blocks` runs with `--repeat 3`, then `uv run aegis bench compare <run1> <run2> --all`.
 Expected: nearly every timing row reads `noise`; if many read `regressed`/`improved` between identical code, the thresholds are too tight for this machine. Record what you saw in the plan and raise the floors in `METRICS`, not `REL`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(bench): compare, history, fake ACP agent, acp-stream and typing" -- src/aegis/bench tests/bench src/aegis/cli_bench.py
@@ -2976,7 +2978,7 @@ git commit -m "feat(bench): compare, history, fake ACP agent, acp-stream and typ
 - Modify: `src/aegis/bench/scenarios.py`
 - Test: `tests/bench/test_runner.py` (remove the strict xfail)
 
-- [ ] **Step 1: Add `idle`, `many-tabs`, `two-clients`, `claude-stream`, `soak`**
+- [x] **Step 1: Add `idle`, `many-tabs`, `two-clients`, `claude-stream`, `soak`**
 
 ```python
 def idle(ctx: ScenarioContext) -> None:
@@ -3073,18 +3075,18 @@ QUICK = ["startup", "claude-blocks", "acp-stream", "resize"]
 
 Import `load_fixture` from `aegis.bench.script`.
 
-- [ ] **Step 2: Remove the strict xfail and run everything**
+- [x] **Step 2: Remove the strict xfail and run everything**
 
 Run: `uv run pytest tests/bench -q`
 Expected: PASS.
 Run: `uv run aegis bench run --repeat 1`
 Expected: every scenario `ok` except `claude-stream` (`skipped`, fixture not recorded yet); exit 0. `soak` is not in the default set.
 
-- [ ] **Step 3: Confirm no leftovers**
+- [x] **Step 3: Confirm no leftovers**
 
 Run: `ps -eo pid,args | grep -c "[a]egis-bench-"` → `0`; `ls -d /tmp/aegis-bench-* 2>/dev/null | wc -l` → `0`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(bench): idle, many-tabs, two-clients, claude-stream and soak scenarios" -- src/aegis/bench/scenarios.py tests/bench/test_runner.py
@@ -3102,7 +3104,7 @@ git commit -m "feat(bench): idle, many-tabs, two-clients, claude-stream and soak
 **Interfaces:**
 - Produces: `record_fixture(out: Path, *, partial: bool, prompt: str = RECORD_PROMPT, model: str = "sonnet", claude: str = "claude") -> int` (lines written); `sanitize(line: dict, work: str) -> dict | None` (drops `system`/`result`, strips `uuid`, replaces the work dir with `/work`).
 
-- [ ] **Step 1: Failing test for `sanitize`**
+- [x] **Step 1: Failing test for `sanitize`**
 
 ```python
 # tests/bench/test_record.py
@@ -3119,7 +3121,7 @@ def test_sanitize_drops_owned_lines_and_scrubs_paths():
     assert out["message"]["content"][0]["content"] == "/work/notes.md ok"
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```python
 # src/aegis/bench/record.py
@@ -3217,12 +3219,12 @@ def record_cmd(
     _console.print(f"recorded {n} lines -> {dest}")
 ```
 
-- [ ] **Step 3: Record both fixtures**
+- [x] **Step 3: Record both fixtures**
 
 Run (network, real tokens): `uv run aegis bench record` and `uv run aegis bench record --partial`
 Expected: dozens of lines each; `claude-stream.jsonl` contains `stream_event` lines; `grep -c /home/apiad src/aegis/bench/fixtures/*.jsonl` prints `0` for both (nothing personal leaked; if not 0, extend `sanitize` and re-record).
 
-- [ ] **Step 4: Switch `claude-blocks` to the fixture**
+- [x] **Step 4: Switch `claude-blocks` to the fixture**
 
 ```python
 def claude_blocks(ctx: ScenarioContext) -> None:
@@ -3236,12 +3238,12 @@ def claude_blocks(ctx: ScenarioContext) -> None:
 
 Check the wheel includes the fixtures: `uv build --wheel -o /tmp/aegis-wheel && unzip -l /tmp/aegis-wheel/*.whl | grep fixtures` lists both files. Remove `/tmp/aegis-wheel` afterwards.
 
-- [ ] **Step 5: Run**
+- [x] **Step 5: Run**
 
 Run: `uv run pytest tests/bench -q` then `uv run aegis bench run -s claude-blocks -s claude-stream --repeat 1`
 Expected: `claude-blocks` ok with markers, `claude-stream` `skipped: aegis does not pass --include-partial-messages`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(bench): record real claude sessions as replay fixtures" -- src/aegis/bench/record.py src/aegis/bench/fixtures src/aegis/bench/scenarios.py src/aegis/cli_bench.py tests/bench/test_record.py
@@ -3255,7 +3257,7 @@ git commit -m "feat(bench): record real claude sessions as replay fixtures" -- s
 - Modify: `src/aegis/cli_bench.py` (add `selftest`), `src/aegis/bench/scenarios.py` (hidden `selftest-stream`)
 - Test: manual verification steps (these are the checks that the measurement itself works)
 
-- [ ] **Step 1: Hidden selftest scenario**
+- [x] **Step 1: Hidden selftest scenario**
 
 ```python
 def selftest_stream(ctx: ScenarioContext) -> None:
@@ -3269,7 +3271,7 @@ def selftest_stream(ctx: ScenarioContext) -> None:
 
 Register it in `SCENARIOS` but not in `DEFAULT` or `QUICK`; `aegis bench list` shows it with its description "used by selftest".
 
-- [ ] **Step 2: `selftest` command**
+- [x] **Step 2: `selftest` command**
 
 ```python
 @app.command("selftest")
@@ -3296,17 +3298,17 @@ def selftest_cmd(sabotage: int = typer.Option(40, "--sabotage")) -> None:
 Run: `uv run aegis bench selftest`, read the rc as its own command.
 Expected: pass. Then prove the selftest can fail: `uv run aegis bench selftest --sabotage 0` must exit 1.
 
-- [ ] **Step 3: Older release target**
+- [x] **Step 3: Older release target**
 
 Run: `uv run aegis bench run --target 0.37.0 -s claude-blocks -s startup -s two-clients --repeat 1`
 Expected: topology `in-process`; `two-clients` skipped; `claude-blocks` ok; `probe_sync` gate true. If the in-process client never negotiates sync or the probe's optional pane hook is missing, the run still passes (optional); a missing *required* hook is a real failure to investigate, not to relax.
 
-- [ ] **Step 4: Profiling**
+- [x] **Step 4: Profiling**
 
 Run: `uv run aegis bench run -s claude-blocks --repeat 1 --profile`
 Expected: `profile.speedscope.json` in the repeat dir, non-empty. If `py-spy` cannot attach (it launches the daemon as its own child, which `ptrace_scope=1` allows), write the failure into `serve.log` expectations in `know-how/benchmarking.md` and make `--profile` exit 2 with that message rather than a silent empty file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(bench): selftest proves the rig sees a regression" -- src/aegis/cli_bench.py src/aegis/bench/scenarios.py
@@ -3320,21 +3322,21 @@ git commit -m "feat(bench): selftest proves the rig sees a regression" -- src/ae
 - Create: `know-how/benchmarking.md`, `bench/history/zion/<version>-<sha>.json`, `bench/history/zion/0.37.0.json`
 - Modify: `AGENTS.md` (know-how index + layout entry), `know-how/releasing.md` (bench step), `CHANGELOG.md` (`[Unreleased]` → `### Added`), `docs/superpowers/specs/2026-09-13-aegis-bench-design.md` (status), this plan (check boxes)
 
-- [ ] **Step 1: `know-how/benchmarking.md`** covering: when to reach for it; `aegis bench run --quick` vs full; reading a summary (window, medians, gates); `compare --baseline latest-release`; `--target` topologies and what an in-process vs daemon comparison means; `selftest` before trusting a surprising result; traps: never run against a loaded box (record `governor`), a dirty tree is marked `-dirty`, `--keep` worlds live in `/tmp`, counts only cover `Widget` base methods, `claude-stream` skips until aegis requests partial messages, the probe measures up to bytes on the pty and not the terminal emulator.
-- [ ] **Step 2: AGENTS.md** know-how bullet: `know-how/benchmarking.md` — *reach for it when measuring TUI rendering, latency, CPU or memory, comparing releases, or before claiming a performance change.* Layout bullet for `src/aegis/bench/` and `src/aegis/cli_bench.py`.
-- [ ] **Step 3: releasing.md**: before tagging, run `uv run aegis bench run --save` on zion (idle machine), `uv run aegis bench compare --baseline latest-release <run-id>`, and commit `bench/history/zion/<version>.json` with the release. For the release file, rename the saved `<version>-<sha>.json` to `<version>.json` once the tag's commit is HEAD.
-- [ ] **Step 4: CHANGELOG** `[Unreleased]` / `### Added`: `aegis bench` with one line on what it measures and the history file.
-- [ ] **Step 5: Save the first history**
+- [x] **Step 1: `know-how/benchmarking.md`** covering: when to reach for it; `aegis bench run --quick` vs full; reading a summary (window, medians, gates); `compare --baseline latest-release`; `--target` topologies and what an in-process vs daemon comparison means; `selftest` before trusting a surprising result; traps: never run against a loaded box (record `governor`), a dirty tree is marked `-dirty`, `--keep` worlds live in `/tmp`, counts only cover `Widget` base methods, `claude-stream` skips until aegis requests partial messages, the probe measures up to bytes on the pty and not the terminal emulator.
+- [x] **Step 2: AGENTS.md** know-how bullet: `know-how/benchmarking.md` — *reach for it when measuring TUI rendering, latency, CPU or memory, comparing releases, or before claiming a performance change.* Layout bullet for `src/aegis/bench/` and `src/aegis/cli_bench.py`.
+- [x] **Step 3: releasing.md**: before tagging, run `uv run aegis bench run --save` on zion (idle machine), `uv run aegis bench compare --baseline latest-release <run-id>`, and commit `bench/history/zion/<version>.json` with the release. For the release file, rename the saved `<version>-<sha>.json` to `<version>.json` once the tag's commit is HEAD.
+- [x] **Step 4: CHANGELOG** `[Unreleased]` / `### Added`: `aegis bench` with one line on what it measures and the history file.
+- [x] **Step 5: Save the first history**
 
 Run: `uv run aegis bench run --save` (full default set, 3 repeats) and `uv run aegis bench run --target 0.37.0 --save`
 Then: `uv run aegis bench history -s claude-blocks` shows both rows.
 
-- [ ] **Step 6: Gates**
+- [x] **Step 6: Gates**
 
 Run: `uv run pytest tests/bench -q`, `uv run ruff check src/aegis/bench src/aegis/cli_bench.py`, `uv run ty check src/aegis/bench`, `rift check` (each rc read on its own).
 Run the blast-radius subset of the existing suite: `uv run pytest tests/cli tests/daemon -q` (the full suite has known inotify flakes).
 
-- [ ] **Step 7: Flip statuses and commit**
+- [x] **Step 7: Flip statuses and commit**
 
 Spec status → `Implemented 2026-09-13`. Check off this plan's boxes.
 

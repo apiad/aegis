@@ -44,6 +44,28 @@ an update:
 uv sync --locked
 ```
 
+## Before tagging: record the benchmark
+
+Every release gets a benchmark summary on zion, so `aegis bench history`
+shows whether rendering, latency, CPU and memory moved.
+
+1. Make sure the machine is quiet. `aegis bench run` warns when the CPU is
+   over 50% busy, and a busy run does not compare. Stop other sessions'
+   test suites first.
+2. From the release commit, with `src/` clean:
+
+   ```bash
+   aegis bench run --save
+   aegis bench compare <run-id> --baseline latest-release
+   ```
+
+3. `--save` writes `bench/history/zion/<version>-<sha>.json`. Rename it to
+   `bench/history/zion/<version>.json`, which is what `latest-release` and
+   `history` treat as a release, and commit it with the release.
+
+Read every `regressed` row before tagging, and either explain it in the
+changelog or fix it. See `know-how/benchmarking.md`.
+
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
 
 Sessions land features and write the changelog entry *only* for the thing they

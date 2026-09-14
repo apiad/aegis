@@ -56,6 +56,9 @@ Procedure docs under `know-how/` — match the task, load the doc before acting:
   debugging a `hosts:` entry — a session whose harness runs on another
   machine (`/spawn main@vps`) — or the SSH ControlMaster / reverse MCP
   tunnel behind it. Distinct from `--remote` and from `remotes:`.*
+- `know-how/benchmarking.md` — *reach for it when measuring TUI rendering,
+  latency, CPU or memory, comparing a change or a release, or before
+  claiming a performance change.*
 
 `aegis` and `aegis serve` both resolve the project root via
 `find_project_root()` (closest ancestor containing `.aegis.yaml`); the
@@ -102,6 +105,11 @@ Use `uv` (not pip): `uv pip install -e .`, `uv run pytest`.
   (`tests/test_multi_instance.py`).
 - `src/aegis/cli_config.py` - the `aegis config ...` subapp; all writing
   verbs route through `aegis.config.edit` helpers.
+- `src/aegis/cli_bench.py` + `src/aegis/bench/` - `aegis bench`: a pty rig
+  plays the terminal against a real daemon and client in a throwaway
+  `/tmp` world, with fake `claude` and `lovelaice-acp` agents and an
+  in-process probe loaded through a `python -c` launcher, so production
+  code carries no benchmark hook. See `know-how/benchmarking.md`.
 - `src/aegis/tui/config_panel.py` - the TUI ConfigPanel tab + AddAgentModal;
   mounted at boot when there's no `.aegis.yaml`, also reachable mid-session
   via `F2`.

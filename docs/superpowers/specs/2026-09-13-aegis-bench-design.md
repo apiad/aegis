@@ -1,7 +1,8 @@
 # aegis bench: release-over-release performance benchmark
 
-*Status: approved 2026-09-13, not yet implemented. Plan:
-`docs/superpowers/plans/2026-09-13-aegis-bench.md`.*
+*Status: implemented 2026-09-14. Plan:
+`docs/superpowers/plans/2026-09-13-aegis-bench.md`. The implementation
+notes at the end record where the build departed from this text.*
 
 ## Why
 
@@ -31,6 +32,7 @@ pty, the same process topology an operator uses. Nothing runs headless.
 | CPU | daemon and client CPU seconds per wall second, separately |
 | Memory | daemon RSS and USS, peak and at the end; RSS growth per 1,000 events |
 | Startup | cold daemon boot to socket ready; attach to first complete frame |
+| Host | CPU busy share in the window, from `/proc/stat`; load average per core. Both are neutral context, and a run over 50% busy is flagged |
 
 The terminal emulator's own drawing is excluded. It is the same cost for
 every TUI, and a pty cannot observe it.
@@ -245,3 +247,48 @@ release.
   marker emit times exist for it.
 - Changing aegis rendering. The benchmark measures; fixes are separate
   work judged by its numbers.
+
+## Implementation notes (2026-09-14)
+
+The build followed this design, with these departures, each forced by a
+measurement.
+
+- **Typing into a cold view.** A cold attach leaves focus on the tab bar,
+  so the rig clicks the input before typing. It locates text from the
+  cursor moves in the raw frames.
+- **Tabs.** Ctrl+T in a daemon view opens the tab in the background.
+  Scenarios move to it with Ctrl+Right, confirm the switch on a screen
+  reconstructed from every frame (`ScreenGrid`), and time it as
+  `tabs.switch_ms`. A prompt that lands in an existing tab fails the run,
+  because a failed switch otherwise passed silently, twice.
+- **`block-stream`.** The recorded `claude-blocks` session holds a single
+  4,882-character text block, one marker per repeat, so 120 synthetic
+  blocks carry the latency percentiles.
+- **Host state.** `host.cpu_busy_pct` and `host.load_per_core.max` are
+  recorded per window and the fingerprint samples the busy share before a
+  run. The warning uses the busy share: at load 7.2 on 8 cores a window was
+  17% busy with quiet-host latency.
+- **Fixtures** keep only assistant, user and stream_event lines; a recorded
+  `rate_limit_event` had reached aegis as an unknown event.
+- **Teardown** sends SIGINT before SIGTERM, because py-spy writes its
+  profile only on a graceful stop, and polls the daemon so an unreaped
+  zombie does not hold every wait to its timeout. `profile_written` gates
+  `--profile`.
+- **Failures leave evidence.** A failed repeat writes
+  `screen-<client>.txt` beside its traceback.
+
+The first runs also measured aegis itself. None of this is fixed by the
+bench:
+
+- a cold attach leaves the input unfocused (`_mount_brain_pane` focuses
+  only with `foreground=True`, and the observer worker never passes it);
+- Ctrl+T in a daemon view opens the new tab in the background, the same
+  cause;
+- ACP replies render only when the turn ends: `AgentSession._run_turn`
+  awaits `send`, which awaits `conn.prompt` for the whole turn
+  (`acp-stream`: no paint for 10 s, 55 of 100 markers never drawn);
+- a second attached view stops drawing a live stream about 0.4 s after
+  attaching (`two-clients`: 92.8% of its markers undrawn);
+- `import aegis.cli` takes 2.1 s, most of a warm re-attach;
+- a 4.9 KB Markdown block cost a 212 ms frame tick, and GC pauses reached
+  138 ms under `many-tabs`.

@@ -7,6 +7,24 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **`aegis bench` measures what reaches the terminal, and runs with every
+  release.** It drives a real `aegis serve` and a real client in a pty, with
+  fake `claude` and `lovelaice-acp` agents replaying recorded or synthetic
+  sessions, and reports marker-to-bytes latency, frame tick time with its
+  layout, compose and display split, event-loop stalls, GC pauses, CPU and
+  memory, per scenario and per repeat. `compare` gives per-metric verdicts
+  and exits 1 on a regression, `history` tables saved releases,
+  `--target X.Y.Z` measures an older release from PyPI, `--profile` records
+  a py-spy profile, and `selftest` proves the rig sees an injected 40 ms
+  regression. Production code knows nothing about it: the probe loads
+  through a `python -c` launcher.
+
+  The first runs found four aegis behaviours, none fixed here. A cold
+  attach leaves focus on the tab bar. Ctrl+T in a daemon view opens the new
+  tab in the background. ACP replies render only when the turn ends. A
+  second attached view stops drawing a live stream. See
+  `know-how/benchmarking.md`.
+
 - **The `REPOS` section now says how many lines the session wrote, not just
   how many files are dirty.** `~n` answers *how much is uncommitted right
   now* and goes to zero on every commit — so a session that commits as it
