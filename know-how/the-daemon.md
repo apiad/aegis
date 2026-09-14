@@ -86,6 +86,20 @@ and the TUI says where it went.
 Crashes the daemon recorded on its way down are in
 `<root>/.aegis/state/aegis.log`, and `aegis logs -c` prints only those.
 
+## One daemon per root
+
+A daemon holds an flock on `<root>/.aegis/state/daemon.lock` for as long as
+it runs, and takes it before it binds a port or touches the socket. A
+second `aegis serve` for the same root prints "a daemon is already running"
+and exits 1, so clients racing to autostart leave exactly one daemon. The
+kernel drops the lock when its holder dies, SIGKILL included. Deleting the
+lock file never unsticks anything: a held lock only ever means a live
+process.
+
+If `aegis serve` refuses with that message while `aegis ls` lists nothing,
+a daemon is alive but unregistered. `fuser <root>/.aegis/state/daemon.lock`
+names its pid; stop it by that pid.
+
 ## One plane per brain
 
 Queues, monitors, reminders, the inbox, canvas, terminals, groups and claims

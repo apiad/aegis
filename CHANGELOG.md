@@ -58,6 +58,18 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   fails when a new `attach_*` lands on `SessionManager` without being
   listed.
 
+- **Clients starting aegis at the same moment could leave several daemons
+  on one root.** `ensure_daemon` checked the socket and then spawned with
+  nothing atomic in between, and each new daemon deleted the previous one's
+  socket on its way up, leaving that one running with its agents and ports
+  but unreachable. On 2026-09-13 that was four daemons in eighty seconds.
+  A daemon now holds an flock on `.aegis/state/daemon.lock` for its whole
+  life. A second `aegis serve` for the same root says "a daemon is already
+  running" and exits before it binds a port or touches the socket, and a
+  client waits for a daemon that holds the lock instead of spawning beside
+  it. The kernel releases the lock when a daemon dies, SIGKILL included, so
+  a crash never leaves a file to delete by hand.
+
 ## [0.37.0] - 2026-08-27
 
 ### Fixed

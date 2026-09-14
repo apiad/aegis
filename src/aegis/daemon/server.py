@@ -206,9 +206,9 @@ class UnixSocketServer:
 
     async def start(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # A socket file survives SIGKILL. Removing a stale one is safe
-        # because the caller has already established (via the daemon
-        # registry) that no live daemon owns this root.
+        # A socket file survives SIGKILL. Removing a stale one is safe only
+        # because the caller holds this root's daemon lock
+        # (lifecycle.acquire_daemon_lock), so no live daemon owns it.
         with contextlib.suppress(FileNotFoundError):
             self.path.unlink()
         self._server = await asyncio.start_unix_server(

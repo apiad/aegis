@@ -1091,6 +1091,18 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
     aegis_log.configure(resolved.roots.state_dir)
     aegis_log.write(f"serve starting (cwd {resolved.roots.harness_cwd})")
 
+    # One daemon per root, decided here: before the MCP plane picks a port
+    # and before the socket is touched, so a daemon that loses a race leaves
+    # nothing behind. See lifecycle.DaemonLock.
+    from aegis.daemon.lifecycle import DaemonAlreadyRunning, acquire_daemon_lock
+    lock = acquire_daemon_lock(resolved.roots, wait_s=1.0)
+    if lock is None:
+        aegis_log.write("serve refused: another daemon holds this root's lock")
+        _print_error(DaemonAlreadyRunning(
+            f"a daemon is already running for {resolved.roots.state_root}; "
+            "`aegis attach` reaches it and `aegis kill` stops it"))
+        raise typer.Exit(1)
+
     async def main_async():
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
@@ -1101,7 +1113,10 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
                      web=resolved.boot.web, views=True,
                      autostarted=autostarted)
 
-    asyncio.run(main_async())
+    try:
+        asyncio.run(main_async())
+    finally:
+        lock.release()
 
 
 # Workflow subcommand group --------------------------------------------

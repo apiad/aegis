@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fcntl
 import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from aegis.config.roots import AegisRoots
@@ -77,6 +79,73 @@ class SpawnFailed(Exception):
 
 def socket_path(roots: AegisRoots) -> Path:
     return roots.state_dir / "daemon.sock"
+
+
+class DaemonAlreadyRunning(Exception):
+    """`aegis serve` found another daemon holding this root's lock."""
+
+
+def lock_path(roots: AegisRoots) -> Path:
+    return roots.state_dir / "daemon.lock"
+
+
+class DaemonLock:
+    """One root's daemon lock, held for as long as the daemon runs.
+
+    An flock rather than a pid file: taking it is atomic, which a
+    probe-then-spawn is not, and the kernel drops it when the holder dies,
+    SIGKILL included, so a crashed daemon never locks the next one out.
+    Python opens file descriptors non-inheritable, so the harness processes
+    a daemon spawns do not keep the lock after the daemon is gone.
+    """
+
+    def __init__(self, fd: int) -> None:
+        self._fd: int | None = fd
+
+    def release(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+
+
+def acquire_daemon_lock(roots: AegisRoots, *,
+                        wait_s: float = 0.0) -> DaemonLock | None:
+    """Take this root's daemon lock, or None when another process holds it.
+
+    ``wait_s`` is for the daemon, which retries briefly: a client's
+    `daemon_lock_held` probe holds the lock for an instant, and a daemon
+    that tried in that instant and gave up would leave no daemon at all. A
+    real rival holds the lock for its whole life, so a short window never
+    lets two through.
+    """
+    path = lock_path(roots)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + wait_s
+    while True:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return DaemonLock(fd)
+        except BlockingIOError:
+            os.close(fd)
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.05)
+
+
+def daemon_lock_held(roots: AegisRoots) -> bool:
+    """Whether a daemon for this root is running or booting, by its lock.
+
+    A root that never had a daemon has no lock file, and probing must not
+    create one: the client may still refuse to spawn over a broken config.
+    """
+    if not lock_path(roots).exists():
+        return False
+    lock = acquire_daemon_lock(roots)
+    if lock is None:
+        return True
+    lock.release()
+    return False
 
 
 def idle_timeout_s() -> float:
@@ -196,12 +265,21 @@ async def ensure_daemon(root: Path, *, timeout_s: float = 20.0,
     if await _connectable(path):
         return path
 
-    if preflight is not None:
-        preflight()
-    _spawn_detached(Path(root))
+    # Spawn only while nobody holds the lock. A holder is a daemon that is
+    # booting, or one still exiting (a replaced stale daemon, a kill):
+    # spawning beside it produces a process that finds the lock taken and
+    # exits, which is why this keeps asking until it has spawned once.
+    spawned = False
     waited = 0.0
     step = 0.05
-    while waited < timeout_s:
+    while True:
+        if not spawned and not daemon_lock_held(roots):
+            if preflight is not None:
+                preflight()
+            _spawn_detached(Path(root))
+            spawned = True
+        if waited >= timeout_s:
+            break
         await asyncio.sleep(step)
         waited += step
         if await _connectable(path):
