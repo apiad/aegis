@@ -6,9 +6,9 @@ stands. Only which tabs EXIST crosses.
 import pytest
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -31,7 +31,7 @@ def _reg(tmp_path):
     """A registry over one brain, with an agent roster on both halves."""
     roots = AegisRoots.for_project(tmp_path)
     roster = {"default": _agent()}
-    mgr = SessionManager(roster, "default",
+    mgr = make_brain(roster, "default",
                          make_session=lambda p, u, h, **kw: _FakeHarness(),
                          mcp=None, roots=roots)
     reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(),

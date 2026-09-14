@@ -2,10 +2,10 @@
 the brain by direct reference through bridge= (stage 3), so there is no
 protocol between the view and the manager."""
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.views.state import ViewState, save_view
 from aegis.views.view import open_view
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -20,7 +20,7 @@ class _FakeHarness:
 
 
 def _mgr(roots):
-    return SessionManager({"default": object()}, "default",
+    return make_brain({"default": object()}, "default",
                           make_session=lambda p, u, h: _FakeHarness(),
                           mcp=None, roots=roots)
 

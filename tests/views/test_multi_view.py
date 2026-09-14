@@ -6,9 +6,9 @@ stage 5 and inherits this contract.
 """
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -37,7 +37,7 @@ def _reg(tmp_path, *, agents=False):
     """
     roots = AegisRoots.for_project(tmp_path)
     roster = {"default": _agent()}
-    mgr = SessionManager(roster, "default",
+    mgr = make_brain(roster, "default",
                          make_session=lambda p, u, h: _FakeHarness(),
                          mcp=None, roots=roots)
     app_kw = {}

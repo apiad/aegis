@@ -8,11 +8,11 @@ import asyncio
 
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.daemon.protocol import FrameDecoder, encode_data, hello
 from aegis.daemon.server import UnixSocketServer
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -30,7 +30,7 @@ def _brain(tmp_path):
     roots = AegisRoots.for_project(tmp_path)
     roster = {"default": Agent(harness="claude-code", model="opus",
                                effort="high", permission="auto")}
-    mgr = SessionManager(roster, "default",
+    mgr = make_brain(roster, "default",
                          make_session=lambda p, u, h: _FakeHarness(),
                          mcp=None, roots=roots)
     reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(),

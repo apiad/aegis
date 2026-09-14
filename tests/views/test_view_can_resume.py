@@ -18,12 +18,12 @@ from __future__ import annotations
 
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.events import AssistantText, Result, SystemInit
 from aegis.tui.resume_plan import plan_resume
 from aegis.state.workspace import Workspace, WorkspaceTab
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -49,7 +49,7 @@ def _agent():
 def _registry(tmp_path, **extra):
     roots = AegisRoots.for_project(tmp_path)
     roster = {"default": _agent()}
-    mgr = SessionManager(roster, "default",
+    mgr = make_brain(roster, "default",
                          make_session=lambda p, u, h, **kw: _FakeHarness(),
                          mcp=None, roots=roots)
     reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(),

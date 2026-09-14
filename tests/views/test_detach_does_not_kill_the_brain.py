@@ -7,9 +7,9 @@ harness was never closed), not on the app's exit code.
 """
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -39,7 +39,7 @@ def _reg(tmp_path):
         harnesses.append(h)
         return h
 
-    mgr = SessionManager(roster, "default", make_session=_make,
+    mgr = make_brain(roster, "default", make_session=_make,
                          mcp=None, roots=roots)
     reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(),
                        agents=roster, default_agent="default",

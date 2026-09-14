@@ -1,7 +1,7 @@
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -17,7 +17,7 @@ class _FakeHarness:
 
 def _reg(tmp_path):
     roots = AegisRoots.for_project(tmp_path)
-    mgr = SessionManager({"default": object()}, "default",
+    mgr = make_brain({"default": object()}, "default",
                          make_session=lambda p, u, h: _FakeHarness(),
                          mcp=None, roots=roots)
     return ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP()), mgr

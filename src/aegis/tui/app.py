@@ -511,24 +511,32 @@ class AegisApp(App):
             self.roots = AegisRoots.for_project(Path(self._cwd))
             self.state_root = Path.cwd()
 
-        # AppBridge surface. AegisApp is the bridge in the interactive
-        # (TUI) path. QueueManager spawns workers through an adapter that
-        # creates real ConversationPanes (so workers are visible tabs Alex
-        # can click into), and the per-pane inbox binding lives in _spawn.
-        self.inbox_router = InboxRouter()
-        self.queue_manager = QueueManager(
-            self._queues, _SessionManagerAdapter(self), self.inbox_router)
+        # AppBridge surface. Who owns it depends on who the bridge is.
+        #
+        # With a bridge the BRAIN is the AppBridge, and building a second set
+        # here is how a view ends up rendering planes nothing else writes to:
+        # an agent arms a monitor through MCP, it lands on the brain's
+        # MonitorManager, and the strip is subscribed to this app's. The spec
+        # settles it (queues, monitors, canvas and terminals are brain state,
+        # one copy for all views), and aegis.core.planes lists them.
+        if bridge is not None:
+            from aegis.core.planes import BRAIN_PLANES, CONSTRUCTED_PLANES
+            for _plane in BRAIN_PLANES + CONSTRUCTED_PLANES:
+                _owned = getattr(bridge, _plane, None)
+                if _owned is None:
+                    # Raise rather than substitute: a private copy is the
+                    # bug, because nothing else would ever write to it.
+                    raise RuntimeError(
+                        f"the brain has no {_plane!r}; a view must not "
+                        "build its own")
+                setattr(self, _plane, _owned)
+        else:
+            self._build_planes()
+        # Derived display state, not a plane: one per view, over whichever
+        # queue manager this app ended up with. Two digests over one manager
+        # is correct; two managers is the bug above.
         self.queue_digest = QueueDigest(self.queue_manager)
         self.queue_digest.start()
-        # Process-monitor plane — polls agent-supplied bash and wakes the
-        # agent on the outcome (interrupting a busy turn). AegisApp is the
-        # session-manager seam (list_sessions / interrupt).
-        self.monitor_manager = MonitorManager(self.inbox_router, self)
-        # Reminder plane — self-left notes delivered back to the agent's own
-        # inbox (turn-end, or after a delay). AegisApp is the session seam.
-        from aegis.queue import ReminderService
-        self.reminder_service = ReminderService(self.inbox_router, self)
-        self.loop_service = LoopService(self)
         # Quota plane — live subscription utilisation for the status bar, one
         # poller per provider. Quota is an account property, so all of them run
         # regardless of which agents are open: the number is what tells you
@@ -538,6 +546,34 @@ class AegisApp(App):
         self.quota_services = build_services()
         # handle -> last seen AgentState, for turn-end detection in _tick.
         self._quota_states: dict[str, object] = {}
+        self.remotes: dict = {}  # populated later from loaded YAML
+        # Scheduler-context stub to satisfy AppBridge. The app itself runs no
+        # scheduler; under `aegis` one runs on the injected manager, and the
+        # aegis_schedule_* MCP tools keep returning errors here as before.
+        self.scheduler = None
+        self.workflow_registry = _SN(get=lambda _: None)
+        self._mcp.bind(self)
+
+    def _build_planes(self) -> None:
+        """The planes an app with no bridge owns, because it IS the bridge.
+
+        QueueManager spawns workers through an adapter that creates real
+        ConversationPanes (so workers are visible tabs Alex can click into),
+        and the per-pane inbox binding lives in _spawn. A bridged app never
+        calls this: it adopts the brain's (see __init__).
+        """
+        self.inbox_router = InboxRouter()
+        self.queue_manager = QueueManager(
+            self._queues, _SessionManagerAdapter(self), self.inbox_router)
+        # Process-monitor plane — polls agent-supplied bash and wakes the
+        # agent on the outcome (interrupting a busy turn). AegisApp is the
+        # session-manager seam (list_sessions / interrupt).
+        self.monitor_manager = MonitorManager(self.inbox_router, self)
+        # Reminder plane — self-left notes delivered back to the agent's own
+        # inbox (turn-end, or after a delay). AegisApp is the session seam.
+        from aegis.queue import ReminderService
+        self.reminder_service = ReminderService(self.inbox_router, self)
+        self.loop_service = LoopService(self)
         # Canvas plane — shared markdown blackboards. Notifier dispatches
         # write events to subscribers via the inbox router.
         from aegis.canvas.manager import CanvasManager
@@ -563,13 +599,6 @@ class AegisApp(App):
                                   if isinstance(p, ConversationPane)},
             root_fn=lambda: self.state_root or Path.cwd(),
             state_dir=self._state_dir)
-        self.remotes: dict = {}  # populated later from loaded YAML
-        # Scheduler-context stub to satisfy AppBridge. The app itself runs no
-        # scheduler; under `aegis` one runs on the injected manager, and the
-        # aegis_schedule_* MCP tools keep returning errors here as before.
-        self.scheduler = None
-        self.workflow_registry = _SN(get=lambda _: None)
-        self._mcp.bind(self)
 
     def inline_schedule_names(self) -> set[str]:
         return set()
@@ -668,7 +697,10 @@ class AegisApp(App):
         if self._host_registry is not None:
             self._host_registry.set_mcp_port(self._mcp.port)
         self._file_indexer.start(Path.cwd())
-        await self.queue_manager.start()
+        # A bridged app adopted the brain's queue manager, and the brain
+        # already started it; replaying its state a second time re-queues.
+        if self.manager is None:
+            await self.queue_manager.start()
 
         # Load user-authored prompt commands (.aegis/commands/*.md) for this
         # project so they are dispatchable from the input box.
@@ -1184,7 +1216,11 @@ class AegisApp(App):
         close, remove, list-pop."""
         # B1: skip inbox_router in remote mode — it's a _DisabledPlaneStub.
         if isinstance(pane, ConversationPane) and not hasattr(self, "_remote_manager"):
-            self.inbox_router.unbind_session(pane.handle)
+            # A bridged view shares the brain's inbox, and the brain binds
+            # and unbinds its own sessions: closing a tab here must not cut
+            # delivery to a session the brain is still running.
+            if self.manager is None:
+                self.inbox_router.unbind_session(pane.handle)
             self._record_session_closed(pane.log_id, reason="user")
         await pane.close()
         if pane in self._panes:

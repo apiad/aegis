@@ -10,11 +10,12 @@ from pathlib import Path
 
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.events import AssistantText, Result
 from aegis.hosts.models import HostSpec
 from aegis.tui.app import AegisApp
 from aegis.tui.pane import ConversationPane
+
+from tests.brain import make_brain
 
 
 class FakeSession:
@@ -62,7 +63,7 @@ def _factory(*_a, **_k):
 
 
 def _manager(tmp_path):
-    return SessionManager(
+    return make_brain(
         agents={}, default_agent="", make_session=lambda *a, **k: None,
         mcp=None, roots=AegisRoots.for_project(tmp_path))
 
@@ -139,7 +140,7 @@ async def test_bridge_roots_win_over_the_cwd(tmp_path):
     work.mkdir()
     roots = AegisRoots(config_root=state, state_root=state,
                        harness_cwd=work)
-    mgr = SessionManager(agents={}, default_agent="",
+    mgr = make_brain(agents={}, default_agent="",
                          make_session=lambda *a, **k: None, mcp=None,
                          roots=roots)
     app = AegisApp(agents={}, default_agent="", make_session=_factory,

@@ -21,10 +21,10 @@ from __future__ import annotations
 
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
-from aegis.core.manager import SessionManager
 from aegis.tui.pane import ConversationPane
 from aegis.views.registry import ViewRegistry
 
+from tests.brain import make_brain
 from tests.views.conftest import FakeMCP
 
 
@@ -46,7 +46,7 @@ def _agent():
 async def test_a_rename_on_the_brain_reaches_every_view(tmp_path):
     roots = AegisRoots.for_project(tmp_path)
     roster = {"opus": _agent()}
-    mgr = SessionManager(roster, "opus",
+    mgr = make_brain(roster, "opus",
                          make_session=lambda p, u, h, **kw: _FakeHarness(),
                          mcp=None, roots=roots)
     reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(),

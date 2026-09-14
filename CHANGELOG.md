@@ -44,6 +44,20 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   to zero rather than taking the row down. On a narrow column the churn
   outlives `~n ↑n`: those describe a moment, this describes the session.
 
+### Fixed
+
+- **A monitor an agent armed never appeared in the TUI.** Under the daemon,
+  every attached view built its own queues, monitors, reminders, inbox,
+  canvas, terminals, groups and claims beside the brain's. Agents reach the
+  brain's through MCP and the screen rendered the view's, so
+  `aegis_monitor` answered ok and the strip stayed empty; the queue chips
+  and dashboard had the same blindness. A view now adopts the brain's planes
+  and refuses to open over a brain that lacks one, and closing a tab in a
+  view no longer unbinds the brain's session from its inbox.
+  `src/aegis/core/planes.py` lists which planes a view adopts, and a test
+  fails when a new `attach_*` lands on `SessionManager` without being
+  listed.
+
 ## [0.37.0] - 2026-08-27
 
 ### Fixed
