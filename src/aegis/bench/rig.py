@@ -157,8 +157,14 @@ class Rig:
                 self.write(b"\x04")  # Ctrl+D detaches
             wait_until([self], lambda: self.closed, timeout_s)
         # ptyprocess spawns the child as a session leader, so its group
-        # holds an in-process target's fake agents too.
+        # holds an in-process target's fake agents too. SIGINT first: a
+        # client wrapped by py-spy only writes its profile on a graceful
+        # exit.
         with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(self.pid, signal.SIGINT)
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline and self.proc.isalive():
+                time.sleep(0.05)
             os.killpg(self.pid, signal.SIGKILL)
         with contextlib.suppress(Exception):
             self.proc.close(force=True)

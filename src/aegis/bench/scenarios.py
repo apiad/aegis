@@ -276,6 +276,13 @@ class ScenarioContext:
         finally:
             if self.world is not None:
                 teardown(self.world, keep=self.keep)
+            if self.profile:
+                # A profiler that died without writing must fail the run,
+                # not hand back a profiled run with no profile.
+                prof = self.rep_dir / "profile.speedscope.json"
+                self.gate("profile_written",
+                          prof.exists() and prof.stat().st_size > 0,
+                          str(prof))
             self.events.close()
             self.frames.close()
 
@@ -498,6 +505,18 @@ def soak(ctx: ScenarioContext) -> None:
                    growth_mb / (lines / 1000))
 
 
+def selftest_stream(ctx: ScenarioContext) -> None:
+    """Used by ``aegis bench selftest``: blocks 100 ms apart, so each one is
+    its own streaming paint and a sleep added to the paint shows up once
+    per marker."""
+    rig = ctx.boot(make_script({"go": synthetic_blocks(60, 100)}))
+    ctx.expect_markers()
+    with ctx.window():
+        ctx.send_prompt(rig, "go")
+        ctx.wait_turns(1, timeout_s=120)
+        ctx.pump_for(1.0)
+
+
 SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("startup", startup, "cold boot, first frame, warm re-attach"),
     Scenario("claude-blocks", claude_blocks,
@@ -518,6 +537,8 @@ SCENARIOS: dict[str, Scenario] = {s.name: s for s in (
     Scenario("claude-stream", claude_stream,
              "token deltas, if aegis requests them"),
     Scenario("soak", soak, "ten minutes of turns; memory growth"),
+    Scenario("selftest-stream", selftest_stream,
+             "used by aegis bench selftest"),
 )}
 DEFAULT = ["startup", "idle", "claude-blocks", "block-stream", "claude-stream",
            "acp-stream", "deep-stream", "resize", "typing", "many-tabs",

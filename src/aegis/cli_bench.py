@@ -191,3 +191,43 @@ def record_cmd(
         _console.print(f"[red]{exc}[/]")
         raise typer.Exit(2) from exc
     _console.print(f"recorded {n} steps -> {dest}")
+
+
+@app.command("selftest")
+def selftest_cmd(
+    sabotage: int = typer.Option(40, "--sabotage", min=10,
+                                 help="Milliseconds added to every streaming "
+                                      "paint in the second run."),
+) -> None:
+    """Prove the bench sees an injected regression; exit 1 if it does not."""
+    from aegis.bench import BenchError
+    from aegis.bench.runner import RunOptions, failed, run
+    try:
+        plain, _ = run(RunOptions(scenarios=["selftest-stream"], repeat=1),
+                       _console)
+        slow, _ = run(RunOptions(scenarios=["selftest-stream"], repeat=1,
+                                 sabotage_ms=sabotage), _console)
+    except BenchError as exc:
+        _console.print(f"[red]bench failed:[/] {exc}")
+        raise typer.Exit(2) from exc
+    if failed(plain) or failed(slow):
+        _console.print("[red]selftest: a run failed; see its run directory[/]")
+        raise typer.Exit(1)
+    a = plain["scenarios"]["selftest-stream"]["median"]
+    b = slow["scenarios"]["selftest-stream"]["median"]
+    keys = ("latency.marker_ms.p50", "render.paint_ms.p50")
+    missing = [k for k in keys if k not in a or k not in b]
+    if missing:
+        _console.print(f"[red]selftest: a run lacks {missing}[/]")
+        raise typer.Exit(1)
+    lat = b["latency.marker_ms.p50"] - a["latency.marker_ms.p50"]
+    paint = b["render.paint_ms.p50"] - a["render.paint_ms.p50"]
+    # A sleep on the loop also delays whatever queues behind it, so the
+    # latency rise has a floor and no ceiling.
+    need_lat, need_paint = 0.75 * sabotage, 0.9 * sabotage
+    ok = lat >= need_lat and paint >= need_paint
+    verdict = "[green]pass[/]" if ok else "[red]fail[/]"
+    _console.print(f"marker p50 {lat:+.1f} ms (needs >= {need_lat:.0f}); "
+                   f"paint p50 {paint:+.1f} ms (needs >= {need_paint:.0f}): "
+                   f"{verdict}")
+    raise typer.Exit(0 if ok else 1)

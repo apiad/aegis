@@ -132,15 +132,29 @@ def client_argv(world: World, *, view: str,
     return [*(wrap or []), *argv]
 
 
-def kill_group(pid: int) -> None:
-    """SIGTERM the process group led by ``pid``, then SIGKILL what stays."""
-    for sig, wait_s in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 2.0)):
+def kill_group(pid: int, leader: subprocess.Popen | None = None) -> None:
+    """Stop the process group led by ``pid``: SIGINT, then SIGTERM, then
+    SIGKILL for whatever stays.
+
+    SIGINT first because a graceful exit is what writes a profile: py-spy
+    records until Control-C, and after a SIGTERM a run under ``--profile``
+    had no profile file at all. It also lets the probe's atexit hook flush
+    its last records.
+
+    ``leader`` is polled while waiting: an exited child the bench has not
+    reaped is a zombie, still a member of its group, and would keep every
+    wait running to its timeout.
+    """
+    for sig, wait_s in ((signal.SIGINT, 10.0), (signal.SIGTERM, 5.0),
+                        (signal.SIGKILL, 2.0)):
         try:
             os.killpg(pid, sig)
         except (ProcessLookupError, PermissionError):
             return
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
+            if leader is not None:
+                leader.poll()
             try:
                 os.killpg(pid, 0)
             except (ProcessLookupError, PermissionError):
@@ -150,7 +164,7 @@ def kill_group(pid: int) -> None:
 
 def teardown(world: World, *, keep: bool = False) -> None:
     if world.daemon is not None:
-        kill_group(world.daemon.pid)
+        kill_group(world.daemon.pid, leader=world.daemon)
         with contextlib.suppress(subprocess.TimeoutExpired):
             world.daemon.wait(timeout=5)
     if not keep:
