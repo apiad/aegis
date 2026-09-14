@@ -2,7 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: not started.** Written 2026-09-13 against `bc78e3b`.
+**Status: shipped 2026-09-14** (`7deb8a0`, `cffaa86`, `f1822bb`). Written
+2026-09-13 against `bc78e3b`. Suite `-m "not live"`: 3866 passed, 1 skipped.
+Verified on a real `aegis serve` with a pty client: a monitor armed over MCP
+is drawn on the tab's strip, and is not with the pre-change `app.py`.
+
+Departures from the steps below:
+
+- `CONSTRUCTED_PLANES` in `planes.py` names `inbox_router`, `locks`,
+  `groups` and `loop_service`, instead of four hand-written assignments in
+  `app.py`.
+- The local constructions moved into `AegisApp._build_planes()`; the digest
+  and quota services are built on both paths, so Tasks 2 and 3 landed as one
+  commit.
+- Sharing the inbox made two view-side calls unsafe that this plan had not
+  seen: `on_mount` started the brain's queue manager a second time, and
+  `_close_pane` unbound a session the brain still runs. Both are skipped when
+  bridged, with a test for the second.
+- Adopt-or-raise broke twelve test files that opened views over a bare
+  `SessionManager`; they now build their brain with `tests/brain.py`.
+- AGENTS.md no longer has a Layout section, so Task 5's pointer became a
+  rule in DESIGN.md's *Rules that span modules*.
+- Task 1's `assert ... or True` could never fail and was dropped.
 
 **Goal:** A view renders the brain's queues, monitors, reminders, loops,
 canvas, terminals and locks, instead of its own private copies of them.
@@ -92,7 +113,7 @@ omission into a red run.
   bridged view adopts. `NOT_VIEW_FACING: dict[str, str]` — `attach_*`
   method names that are not view-facing, mapped to the reason.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/core/test_plane_inventory.py`:
 
@@ -150,12 +171,12 @@ def test_every_brain_plane_is_a_real_manager_attribute():
             f"{plane!r} has no attach_{plane} on SessionManager")
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/core/test_plane_inventory.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.core.planes'`
 
-- [ ] **Step 3: Write the inventory**
+- [x] **Step 3: Write the inventory**
 
 Create `src/aegis/core/planes.py`:
 
@@ -208,12 +229,12 @@ NOT_VIEW_FACING: dict[str, str] = {
 }
 ```
 
-- [ ] **Step 4: Run it to verify it passes**
+- [x] **Step 4: Run it to verify it passes**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/core/test_plane_inventory.py -q`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Mutation-check the guard**
+- [x] **Step 5: Mutation-check the guard**
 
 The guard is worthless if it cannot fail. Remove one entry and confirm:
 
@@ -230,7 +251,7 @@ git checkout src/aegis/core/planes.py
 Expected: FAIL naming `attach_monitor_manager` as unclassified, then green
 again after the checkout.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -259,7 +280,7 @@ view-facing, with the reason, or the coverage test fails."
   are adopted the same way; they have no `attach_*` and so are named
   explicitly rather than derived.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/views/test_view_uses_the_brains_planes.py`:
 
@@ -374,13 +395,13 @@ async def test_the_local_path_still_builds_its_own(tmp_path, monkeypatch):
     assert app.queue_manager is not None
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/views/test_view_uses_the_brains_planes.py -q`
 Expected: FAIL on `test_a_bridged_view_shares_every_declared_plane`, naming
 `queue_manager` or `monitor_manager`.
 
-- [ ] **Step 3: Adopt in the bridged branch**
+- [x] **Step 3: Adopt in the bridged branch**
 
 In `src/aegis/tui/app.py`, the block that begins
 `# AppBridge surface. AegisApp is the bridge in the interactive (TUI) path.`
@@ -430,12 +451,12 @@ Keep the remaining local-only constructions (`canvas_manager`,
 `terminal_manager`, `groups`, `locks`) inside the same `else:` branch,
 unchanged from what they are today. The digest is Task 3.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/views/test_view_uses_the_brains_planes.py -q`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Run the views and daemon suites**
+- [x] **Step 5: Run the views and daemon suites**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/views/ tests/daemon/ -q`
 Expected: PASS. If `tests/views/test_session_propagation.py` fails, the
@@ -444,7 +465,7 @@ through the manager rather than through `_SessionManagerAdapter`, so
 workers appear via the session observer. That is the intended behaviour;
 fix the test's expectation, not the code.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -472,7 +493,7 @@ Adoption raises rather than falling back. A silent substitute is the bug."
 - Produces: `self.queue_digest`, one per view, subscribed to the brain's
   queue manager.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/views/test_view_uses_the_brains_planes.py`:
 
@@ -496,13 +517,13 @@ async def test_each_view_has_its_own_digest_over_the_brains_queues(
         await reg.close_all()
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/views/test_view_uses_the_brains_planes.py::test_each_view_has_its_own_digest_over_the_brains_queues -q`
 Expected: FAIL, because the digest is built in the `else:` branch only and
 a bridged app has none.
 
-- [ ] **Step 3: Build the digest on both paths**
+- [x] **Step 3: Build the digest on both paths**
 
 Move the digest construction out of the `else:` branch so it runs for both,
 immediately after `self.queue_manager` is set either way:
@@ -515,12 +536,12 @@ immediately after `self.queue_manager` is set either way:
         self.queue_digest.start()
 ```
 
-- [ ] **Step 4: Run it to verify it passes**
+- [x] **Step 4: Run it to verify it passes**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/views/test_view_uses_the_brains_planes.py -q`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -544,7 +565,7 @@ assert wiring; this asserts what he sees.
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/views/test_view_uses_the_brains_planes.py`:
 
@@ -580,7 +601,7 @@ async def test_a_monitor_armed_on_the_brain_is_visible_to_a_view(tmp_path):
         await reg.close_all()
 ```
 
-- [ ] **Step 2: Run it to verify it passes**
+- [x] **Step 2: Run it to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/views/test_view_uses_the_brains_planes.py -q`
 Expected: PASS, 5 tests. The real signature is
@@ -589,7 +610,7 @@ progress=None, cwd=None, interval_s=2.0, timeout_s=3600.0,
 interrupt=False, autorun=True) -> str`; the read is
 `snapshot(for_handle=…)`. Both at `src/aegis/monitor/manager.py:76,126`.
 
-- [ ] **Step 3: Mutation-check it**
+- [x] **Step 3: Mutation-check it**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -604,7 +625,7 @@ git checkout src/aegis/core/planes.py
 Expected: the monitor test FAILS with the plane dropped from the
 inventory, then green again.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -622,7 +643,7 @@ The symptom, asserted end to end rather than as wiring."
 - Modify: `know-how/the-daemon.md`
 - Modify: `AGENTS.md` (the Layout section's `core/` entry)
 
-- [ ] **Step 1: Run the whole suite**
+- [x] **Step 1: Run the whole suite**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -632,7 +653,7 @@ nohup bash -c '.venv/bin/python -m pytest -q -m "not live" > /tmp/aegis-planes.l
 Wait on `grep -q "^DONE rc=" /tmp/aegis-planes.log`, never a fixed sleep.
 Expected: no regression against 3810 passed / 3 skipped.
 
-- [ ] **Step 2: Add the rule to the daemon know-how**
+- [x] **Step 2: Add the rule to the daemon know-how**
 
 Append to `know-how/the-daemon.md`:
 
@@ -651,7 +672,7 @@ leave the strip empty.
 the step that kept being skipped.
 ```
 
-- [ ] **Step 3: Point at it from AGENTS.md**
+- [x] **Step 3: Point at it from AGENTS.md**
 
 In the `Layout` section, after the `src/aegis/config/roots.py` entry, add:
 
@@ -661,12 +682,12 @@ In the `Layout` section, after the `src/aegis/config/roots.py` entry, add:
   its own; the coverage test forces every new `attach_*` to be classified.
 ```
 
-- [ ] **Step 4: Run rift**
+- [x] **Step 4: Run rift**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && rift check`
 Expected: no new errors. It lints that every path named in the docs exists.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
