@@ -415,12 +415,94 @@ Alex driving it by hand, all invisible to the suite because `run_test`
 wins races the real ViewDriver loses. **Task 12 stays open**: its
 hand-drive results are not recorded, and only Alex can supply them.
 
-**Known open in 5a**, none blocking 5b: closing a tab leaves its session
-in the brain (`_close_pane` calls `pane.close()` rather than
-`SessionManager.close()`), so a closed tab can return on reattach; and
-every `aegis` invocation spends ~2.3s importing `fastmcp` through
+**Next, and it comes before everything else: one plane per brain.**
+Plan at `docs/superpowers/plans/2026-09-13-one-plane-per-brain.md`
+(`1ab6cbc`, not started). In daemon mode the brain and every view hold
+SEPARATE inbox routers, queue managers, monitor managers, reminder
+services and locks. Measured by object identity on 2026-09-13: not one
+matches. Agents reach the brain's through MCP and the UI renders the
+view's, so an agent arms a monitor, the tool answers ok, and the strip
+stays empty. Alex hit exactly that.
+
+The spec already settles it. `2026-09-07-retire-web-ui-tui-over-web-design.md`,
+*Brain state versus view state*: queues, monitors, canvas and terminals
+are brain state, one copy for all views. So this is a defect against a
+written requirement.
+
+The plan's first task is the guard, not the fix: `src/aegis/core/planes.py`
+declares which planes a view adopts, and a test fails until every new
+`attach_*` on `SessionManager` is classified. Two of everything existed
+because adding a plane to the brain obliged nobody to wire it to the
+views; the inventory is that obligation. Checked and already correct, so
+nobody redoes them: hosts (passed into `ViewRegistry` at `cli.py:734`) and
+pending messages (they live on the session, not the pane).
+
+One instance of the same class was fixed on its own: a rename on the brain
+now reaches the views (`bc78e3b`). `_announce` had two kinds and no third
+for it, so `aegis_rename` moved the handle registry, the inbox, the locks,
+the MCP token, the monitors and the reminders, and left the tab bar
+showing the old name.
+
+**Then the single-daemon lock.** `ensure_daemon` probes the socket and
+then spawns with nothing atomic between, so every client that times out
+spawns another daemon for the same root; and `UnixSocketServer.start()`
+unlinks the existing socket on a precondition nothing guarantees, so each
+new daemon makes the previous one unreachable. On 2026-09-13 that produced
+four daemons in eighty seconds, a live process holding port 8899 with no
+socket and no registry entry, and `aegis` hanging for the full 20s
+timeout. Root cause of the cascade, and the vision's own consequence
+"two processes pointing at the same `.aegis/` should not corrupt each
+other".
+
+**Known open in 5a**, none blocking: closing a tab leaves its session in
+the brain (`_close_pane` calls `pane.close()` rather than
+`SessionManager.close()`), so a closed tab can return on reattach; every
+`aegis` invocation spends ~2.3s importing `fastmcp` through
 `aegis.core.manager`, paid twice on a cold start, in a client whose whole
-job is to open a socket.
+job is to open a socket; and `aegis web` pins its port into `.aegis.yaml`
+permanently, which is why a terminal `aegis` binds 8899 at all.
+
+**Task 12 of the 5a plan is still open and only Alex can close it.** Steps
+1-4 of its hand-drive were driven and produced five defects, all fixed
+(`51fc07a`, `8df4461`, `8900d6d`, `e9d0816`, `9171f2b`). The detach and
+reattach half is not recorded, and the step asks for the results verbatim.
+
+**The VPS runs `fa2e816`**, which has no `src/aegis/daemon/` at all. None
+of stages 1-5a is deployed there, so `~/Workspace/.aegis/state/daemon.sock`
+does not exist on it and nothing remote can be exercised until it is
+updated. Not on any other list.
+
+### Decisions taken 2026-09-13, for whoever plans the remote work
+
+Discussed at length, not implemented, recorded so the reasoning is not
+re-derived:
+
+- **`aegis attach <host>` over ssh is dropped.** It buys nothing over
+  `ssh host` then `aegis` there: the app runs in the remote daemon either
+  way and the same frames cross the same wire. A shell alias covers it.
+  That also answers the blocking question in the `aegis web` spec below:
+  terminals go over ssh, so `aegis web` serves browsers and is not a
+  general relay.
+- **Federating sessions alone is not worth building.** Without
+  collaboration across daemons it is N independent aegises drawn in one
+  window, and `git push` plus `aegis` on the other box already does the
+  work. Verified the gap: `peer_ask` resolves its target with
+  `self.get()`, local sessions only, and the same holds for `read_peer`,
+  handoff and groups. The only thing that crosses daemons today is queue
+  dispatch with a **best-effort, no-retry** callback.
+- **So the unit that federates is the peer plane, not the tab**, and
+  `remotes:` is the seam it grows from, since it is already a
+  daemon-to-daemon channel with peer identity and accept tokens. A remote
+  tab then falls out of the same primitives rather than needing its own.
+- **Handles become `<name>-<uuid[:6]>`** so two machines cannot mint the
+  same one. Cost to weigh when specced: a handle is not only a key, it is
+  typed by hand into `/spawn`, `aegis_enqueue` and `peer_ask`, and it is
+  the DOM id.
+- **A remote tab's promise should be bounded** to transcript, input,
+  interrupt and title, with everything else done where the session lives.
+  `RemotePaneCore` is already second-class this way. Unbounded is how the
+  retired `--remote` protocol fell behind the TUI.
+- **Owed: a spec for the federated peer plane.** Not written.
 
 **Open before 5b is planned: where the WebSocket and the token live.**
 `docs/superpowers/specs/2026-09-13-aegis-web-as-a-client-design.md` is
