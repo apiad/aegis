@@ -86,6 +86,24 @@ and the TUI says where it went.
 Crashes the daemon recorded on its way down are in
 `<root>/.aegis/state/aegis.log`, and `aegis logs -c` prints only those.
 
+## One plane per brain
+
+Queues, monitors, reminders, the inbox, canvas, terminals, groups and claims
+belong to the brain, one copy for every view. A view adopts them and never
+builds its own: an agent reaches the brain's through MCP, so a view's
+private copy is something nothing writes to. That is how a monitor an agent
+armed once left the strip empty.
+
+`src/aegis/core/planes.py` declares which planes a view adopts, and a view
+over a brain missing one raises at construction instead of substituting.
+Adding an `attach_*` to `SessionManager` without naming it there fails
+`tests/core/test_plane_inventory.py`. A test that opens views needs a brain
+wired like `_serve`'s, which `tests/brain.py::make_brain` builds.
+
+If a symptom looks like an agent's action "succeeded and nothing shows", check
+object identity between `SessionManager` and `view.app` for the plane in
+question before anything else.
+
 ## Known noise
 
 `view client refused: client closed before hello` in the log is

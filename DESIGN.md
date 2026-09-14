@@ -40,6 +40,12 @@ because a silently shadowed agent or queue is a worse failure than a refused boo
 
 ## Rules that span modules
 
+**A view adopts the brain's planes; it never builds its own.** Queues, monitors,
+reminders, the inbox, canvas, terminals, groups and claims are brain state. Agents
+reach the brain's copy through MCP, so a copy a view built for itself renders
+something nothing writes to. `src/aegis/core/planes.py` is the inventory, and a test
+forces every new `attach_*` on `SessionManager` into it.
+
 **One authority for handle names.** A handle bound anywhere in a process is never
 handed to a different session. A pane's DOM id is its birth handle and Textual ids
 are immutable, so reusing a name is `DuplicateIds` and takes the whole app down.
