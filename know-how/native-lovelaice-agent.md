@@ -1,8 +1,8 @@
-# know-how: the native lovelaice agent
+---
+when: working on drivers/lovelaice.py or the Lovelaice provider, or debugging a native harness-free agent tab that runs local or direct-API models with no external CLI
+---
 
-**Reach for this when** you work on `drivers/lovelaice.py`, the `Lovelaice`
-provider, or debug a native (harness-free) agent tab — the one that runs local
-or direct-API models with no external CLI.
+# know-how: the native lovelaice agent
 
 ## What it is
 

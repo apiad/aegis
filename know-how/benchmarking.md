@@ -1,8 +1,8 @@
-# Benchmarking the TUI (`aegis bench`)
+---
+when: measuring rendering, latency, CPU or memory; comparing a change or a release against the last one; or before claiming anything got faster or slower
+---
 
-*When to reach for it: measuring rendering, latency, CPU or memory;
-comparing a change or a release against the last one; or before claiming
-anything got faster or slower.*
+# Benchmarking the TUI (`aegis bench`)
 
 `aegis bench` drives a real `aegis serve` and a real client in a pty and
 reports what reaches the terminal. The design is in

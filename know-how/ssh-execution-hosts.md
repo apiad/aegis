@@ -1,9 +1,8 @@
-# Running a harness on another machine (`hosts:`)
+---
+when: configuring or debugging an execution host (a session whose harness runs on another box over SSH, like /spawn main@vps) or the SSH ControlMaster and reverse MCP tunnel behind it
+---
 
-*When to reach for it: configuring or debugging an execution host — a
-session whose harness process runs on another box over SSH
-(`/spawn main@vps`), or the SSH ControlMaster / reverse MCP tunnel behind
-it.*
+# Running a harness on another machine (`hosts:`)
 
 The local aegis keeps the session, the transcript, the tab and the MCP
 peer identity. Only the harness subprocess runs elsewhere — so that

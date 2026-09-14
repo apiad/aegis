@@ -600,6 +600,13 @@ async def _serve(*, roots: AegisRoots,
                  ui: "UIAttachment | None" = None,
                  views: bool = False,
                  autostarted: bool = False) -> None:
+    """The single boot path: every entry point wires aegis through here.
+
+    With no `ui` attachment this starts the MCP plane itself. With one it
+    defers `mcp.start()` to the attachment, because `build_server` captures
+    the bridge at `start()` and a front end rebinds the plane to itself
+    first; starting early would serve the wrong bridge.
+    """
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()

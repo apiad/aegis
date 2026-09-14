@@ -1,7 +1,8 @@
-# Deploying the aegis web UI (dev.apiad.net)
+---
+when: standing up, redeploying or debugging the public aegis web client on the VPS (dev.apiad.net)
+---
 
-*When to reach for it: standing up / redeploying / debugging the public aegis
-web client on the VPS.*
+# Deploying the aegis web UI (dev.apiad.net)
 
 The aegis web PWA runs as a persistent service on the main VPS
 (`vps.apiad.net`, `95.217.238.34`), rooted at `~/Workspace`, exposed at

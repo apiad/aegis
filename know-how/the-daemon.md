@@ -1,8 +1,8 @@
-# The daemon: `aegis` is a client
+---
+when: running, debugging or reasoning about the local daemon, such as why aegis did not pick up an edit, why a detach did not kill agents, what ls and kill do, or why a tab did not come back
+---
 
-*When to reach for it: running, debugging or reasoning about the local
-daemon — why `aegis` did not pick up your edit, why a detach did not kill
-your agents, what `ls` and `kill` do, or why a tab did not come back.*
+# The daemon: `aegis` is a client
 
 `aegis` boots no brain. A detached `aegis serve` holds the brain and every
 view; your terminal connects to a unix socket under the project root and

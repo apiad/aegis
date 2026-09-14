@@ -293,6 +293,7 @@ class AegisApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", priority=True),
+        # Interrupt is Escape because Textual reserves ctrl+c.
         Binding("escape", "interrupt", "Interrupt", priority=True),
         Binding("ctrl+t", "new_tab", "New tab", priority=True),
         Binding("ctrl+n", "pick_agent", "New tab (pick)", priority=True),
@@ -579,6 +580,11 @@ class AegisApp(App):
 
     @property
     def palette(self) -> AegisColors:
+        """The theme's role colors, threaded into renderers and widgets.
+
+        Named `palette` rather than `colors`, which would shadow Textual's
+        `App.colors`.
+        """
         return self._palette
 
     @property

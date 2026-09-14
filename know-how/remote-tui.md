@@ -1,8 +1,8 @@
-# Running the TUI against a remote aegis serve (`--remote`)
+---
+when: connecting the TUI to a remote or auto-launched aegis serve with --remote ws or ssh URLs, or debugging the WebSocket client or SSH tunnel path
+---
 
-*When to reach for it: connecting the Textual TUI to a remote (or
-auto-launched local) `aegis serve` daemon via `--remote ws://…` or
-`--remote ssh://…`, or debugging the WS client / SSH tunnel path.*
+# Running the TUI against a remote aegis serve (`--remote`)
 
 `--remote` makes the TUI a WebSocket client of an `aegis serve` daemon.
 Sessions live in the daemon; the TUI is a stateless viewport. You can

@@ -1,9 +1,8 @@
-# know-how: embedding aegis as a library
+---
+when: driving aegis from another program with aegis.embed() instead of a terminal, or touching anything that resolves a path (the three roots replaced Path.cwd() and must stay threaded)
+---
 
-**Reach for this when** you drive aegis from another program
-(`aegis.embed()`) instead of from a terminal, or when you touch anything
-that resolves a path — the three roots replaced `Path.cwd()` and must stay
-threaded.
+# know-how: embedding aegis as a library
 
 ## The three roots
 

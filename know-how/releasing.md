@@ -1,8 +1,8 @@
-# Cutting a release (tag → CI → PyPI)
+---
+when: bumping the version and cutting a release of aegis-harness, before editing pyproject.toml or pushing a vX.Y.Z tag; covers the uv.lock gate that has failed the publish twice
+---
 
-*When to reach for it: bumping the version and cutting a release of
-`aegis-harness` — before you edit `pyproject.toml` or push a `vX.Y.Z`
-tag. Covers the `uv.lock` gate that has failed the publish twice.*
+# Cutting a release (tag → CI → PyPI)
 
 Releases are **tag-driven**. Pushing a `v*` tag triggers
 `.github/workflows/release.yml`, which sanity-checks the tag against

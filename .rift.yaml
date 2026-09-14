@@ -3,8 +3,8 @@
 # Everything here is mechanical: rift extracts strings from the code and config
 # and asks whether they appear in the docs, or the reverse. It never reads prose
 # for meaning. The split between what is linted here and what still needs a
-# reader is written down in AGENTS.md, and the last rule in this file enforces
-# that that table stays complete.
+# reader is written down in DESIGN.md. The agent-docs contract these rules end
+# with is vault/Atlas/Know-how/writing-agent-docs.md in the workspace.
 #
 # aegis is a code repo, not a book, so none of the prose/voice rule shapes from
 # `repos/books-tsoc/.rift.yaml` are used. Every rule below is doc-truth: a
@@ -19,7 +19,7 @@
 # the entities are short and the docs are long.
 #
 # Scope: rift is a private repo and not on PyPI, so CI cannot install it. These
-# rules run from the Makefile on a dev machine only. See AGENTS.md.
+# rules run from the Makefile on a dev machine only.
 
 rules:
 
@@ -48,6 +48,7 @@ rules:
     extract:
       file: &docs
         - "AGENTS.md"
+        - "DESIGN.md"
         - "README.md"
         - "know-how/*.md"
         - "docs/*.md"
@@ -77,12 +78,10 @@ rules:
   # Each of these extracts a set that IS the roster — a registry dict, a
   # directory of procedure docs — and asks whether the docs kept up.
 
-  - name: "every know-how doc is indexed in AGENTS.md"
-    extract:
-      paths: "know-how/*.md"
-    require:
-      in: "AGENTS.md"
-      as: mention
+  # REMOVED 2026-09-14: "every know-how doc is indexed in AGENTS.md". A hand-kept
+  # index is derivable from the files; `make know-how` prints the menu from each
+  # doc's when: line instead, and the contract rules at the end of this file
+  # forbid the index coming back.
 
   # `files:` yields bare stems, which is what mkdocs writes in `nav:`. The stems
   # under `docs/` are unique, so the usual `files:`-is-lossy trap does not bite
@@ -164,15 +163,36 @@ rules:
       in: "docs/configuration.md"
       wrap: '${entity}:'
 
-  # --------------------------------------------------------- self-check ----
+  # ---------------------------------------------------- agent-docs contract ----
 
-  # This file and AGENTS.md must not drift apart: AGENTS.md is where the
-  # linted-vs-semantic contract is written down, and a rule nobody documented is
-  # a rule nobody knows is being enforced.
-  - name: "every lint rule is documented in AGENTS.md"
+  # REMOVED 2026-09-14: "every lint rule is documented in AGENTS.md". A rule written
+  # in a doc and enforced by this file was two sources of truth, and the doc was the
+  # one that rotted. Each rule's reason is the comment above it.
+
+  # `make know-how` prints one when: line per doc. A doc without one is missing from
+  # the menu, so nobody finds it.
+  - name: "every know-how doc carries a single-line when: in its frontmatter"
+    severity: warning
+    contain:
+      in: "know-how/*.md"
+      zone: { before: '^# ' }
+      matches: '\A---\n(?:.*\n)*?when: \S.*\n(?:.*\n)*?---\n'
+
+  # forbid masks inline code, so it cannot see a backticked filename. This extracts
+  # from the raw file and requires each name in a file that never exists, so any
+  # know-how filename in AGENTS.md is reported.
+  - name: "AGENTS.md names no individual know-how doc"
     extract:
-      file: ".rift.yaml"
-      regex: '^  - name: "([^"]+)"'
+      file: "AGENTS.md"
+      regex: '(know-how/[A-Za-z0-9_-]+\.md)'
     require:
-      in: "AGENTS.md"
-      as: mention
+      in: "this-file-never-exists.md"
+
+  # Status is derivable from git and CHANGELOG.md, and goes false one commit later.
+  - name: "AGENTS.md and DESIGN.md carry no status log"
+    extract:
+      list: ['Task \d+ done', '\d+ tests\b', 'shipped \(20\d\d-', 'as of 20\d\d-', 'current status', 'not yet implemented']
+    forbid:
+      in: ["AGENTS.md", "DESIGN.md"]
+      as: regex
+      case_insensitive: true
