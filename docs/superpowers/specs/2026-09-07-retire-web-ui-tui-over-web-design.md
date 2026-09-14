@@ -4,7 +4,7 @@
 (`docs/superpowers/reviews/2026-09-08-one-boot-path-spec-review.md`) and a
 second round of measurement that replaced the architecture.*
 
-*Status: ready to plan.*
+*Status: stages 1–4 and 5a implemented (`9c903ca`, `5259bb3`, `9171f2b`); stage 5b and stage 6 not planned.*
 
 Three goals that turn out to be one refactor:
 
