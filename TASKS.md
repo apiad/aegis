@@ -363,6 +363,72 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### aegis bench — follow-ups *(built 2026-09-13/14; baseline not yet recorded)*
+
+`aegis bench` is on main (`e8e1956`..`aaf2a00`). Spec:
+`docs/superpowers/specs/2026-09-13-aegis-bench-design.md`; procedure and
+traps: `know-how/benchmarking.md`.
+
+**Finish the bench**
+
+- [ ] Record the first history baseline on a quiet host. Stopped 2026-09-14
+  13:30: another session's full pytest run put four xdist workers at ~99% CPU
+  mid-run. Needs about an hour with the CPU under 30% busy. From a clean
+  worktree at `main` (`git worktree add --detach /tmp/aegis-bench-wt main`,
+  then `uv sync` inside it): `aegis bench run --save`, then
+  `aegis bench run --target 0.37.0 --save`. `--save` writes into the checkout
+  aegis is imported from, so copy the worktree's `bench/history/zion/` back,
+  rename the dev file to `<version>.json` per `know-how/releasing.md`, and
+  commit it.
+- [ ] Mark the subprocess-heavy bench tests `slow` once the `slow` marker and
+  the `--max-unmarked-duration` lane land (uncommitted in another session on
+  2026-09-14). Likely `tests/bench/test_launcher.py`, `test_probe.py`,
+  `test_fake_acp.py` and `test_fake_claude.py`; measure with
+  `pytest tests/bench --durations=0` first.
+
+**aegis behaviour the bench measured, not fixed**
+
+- [ ] A cold attach leaves the input unfocused: keys go to the tab bar until a
+  click. `_mount_brain_pane` in `src/aegis/tui/app.py` calls `focus_input()`
+  only with `foreground=True`, and the observer worker that wins the mount
+  race under the real ViewDriver never passes it.
+- [ ] Ctrl+T in a daemon view opens the new tab in the background and the view
+  stays on the old tab. Same cause.
+- [ ] ACP sessions (lovelaice, gemini, opencode) do not stream to the screen.
+  `AgentSession._run_turn` awaits `session.send()`, and `AcpSession.send`
+  awaits `conn.prompt()` for the whole turn, so every chunk waits until it
+  ends. `acp-stream`: no streaming paint for 10 s, 55 of 100 markers never
+  drawn.
+- [ ] A second attached view stops drawing a live stream about 0.4 s after it
+  attaches (`two-clients`: 92.8% of its markers undrawn). Suspected: the pane
+  mounted on attach keeps `_streaming_block` as `None` after replay.
+  Unconfirmed.
+- [ ] Claude sessions render a message block at a time, not token by token:
+  the claude driver never passes `--include-partial-messages`. The
+  `claude-stream` scenario and fixture are ready to measure the change.
+- [ ] `import aegis.cli` takes 2.1 s (`aegis.drivers` 1.23 s, of which
+  `fastmcp` 0.87 s), most of a warm re-attach; a client never runs the MCP
+  server or a driver.
+- [ ] A 4.9 KB Markdown block cost a 212 ms frame tick (`claude-blocks`), and
+  GC pauses reached 121–138 ms (`many-tabs`, `block-stream`).
+- [ ] One handle got two session logs minted 0.3 ms apart (`knotty-karp`,
+  2026-09-13), which looks like the double-writer race `6ee639a` fixed.
+
+**Rendering work the bench now makes measurable** (from the 2026-09-13 TUI
+performance research)
+
+- [ ] Reopen `docs/superpowers/specs/2026-07-30-transcript-line-api-design.md`. It was shelved on a headless 6.3 ms frame, and
+  headless Textual skips content measurement, strip rendering and ANSI
+  encoding. Decide with `block-stream`, `deep-stream` and `resize` numbers.
+- [ ] Stream Markdown incrementally, re-parsing only the last block, instead
+  of plain `Text` until the stream settles.
+- [ ] Skip the layout pass on streaming repaints whose height did not change
+  (`update_content` defaults to `layout=True`), and throttle the layout
+  refresh in `Sidebar._paint`.
+- [ ] Daemon transport: replace the 5 ms poll in `_flush` in
+  `src/aegis/daemon/server.py` with an event, and flush once per read in
+  `src/aegis/daemon/client.py`.
+
 ### The daemon — one brain, many views *(specced 2026-09-07; stages 1–3 planned + reviewed 2026-09-09)*
 
 **The v1.0 change.** aegis currently ships **three** front-end
