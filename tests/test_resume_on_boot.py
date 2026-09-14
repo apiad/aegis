@@ -230,6 +230,7 @@ async def test_files_resume_on_boot(tmp_path, monkeypatch):
         assert {str(t._path) for t in file_tabs} == {str(a), str(b)}
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_terminals_resume_even_with_default_spawn(tmp_path, monkeypatch):
     """Regression: terminals must restore even when no agent tabs

@@ -106,6 +106,7 @@ async def test_bash_nonzero_returncode_not_raised(tmp_path):
     assert proc.returncode != 0
 
 
+@pytest.mark.slow
 async def test_bash_timeout_raises_workflow_error(tmp_path):
     e = _rooted_engine(tmp_path)
     with pytest.raises(WorkflowError, match="timed out"):

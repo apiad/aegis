@@ -3,6 +3,7 @@
 Every test runs the probe in a subprocess: ``install()`` patches Textual
 classes process-wide, and those patches must never leak into the suite.
 """
+import pytest
 import json
 import os
 import subprocess
@@ -32,6 +33,7 @@ def _records(tmp_path):
     return [json.loads(line) for line in lines]
 
 
+@pytest.mark.slow
 def test_install_reports_required_and_counted_hooks(tmp_path):
     out = _py("import probe;probe.install();probe._SINK.flush()",
               _env(tmp_path))
@@ -59,6 +61,7 @@ def test_unset_output_path_fails(tmp_path):
     assert "AEGIS_BENCH_PROBE" in out.stderr
 
 
+@pytest.mark.slow
 def test_spans_inside_a_tick_fold_into_the_tick_record(tmp_path):
     code = (
         "import time, probe\n"
@@ -80,6 +83,7 @@ def test_spans_inside_a_tick_fold_into_the_tick_record(tmp_path):
     assert len(standalone) == 1 and standalone[0]["dur_ns"] >= 2_000_000
 
 
+@pytest.mark.slow
 def test_sabotage_without_the_paint_hook_fails(tmp_path):
     code = ("import aegis.tui.pane as p;del p.ConversationPane._paint_streaming;"
             "import probe;probe.install()")

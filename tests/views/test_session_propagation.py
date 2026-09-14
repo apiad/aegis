@@ -3,6 +3,7 @@
 Focus, scroll and drafts stay per-view -- that is the stage-4 split and it
 stands. Only which tabs EXIST crosses.
 """
+import pytest
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
@@ -142,6 +143,7 @@ async def test_the_loop_chip_and_recap_reach_every_view(tmp_path):
     await reg.close_all()
 
 
+@pytest.mark.slow
 async def test_a_tab_opened_in_one_view_appears_in_the_other(tmp_path):
     """The user-visible property, driven through the real Ctrl+N action
     rather than the manager.

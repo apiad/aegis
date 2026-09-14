@@ -5,8 +5,11 @@ import pytest
 from aegis.config import Agent, Lovelaice
 from aegis.drivers.lovelaice import LovelaiceDriver
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("lovelaice-acp") is None, reason="lovelaice-acp not on PATH")
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(shutil.which("lovelaice-acp") is None,
+                       reason="lovelaice-acp not on PATH"),
+]
 
 
 @pytest.mark.asyncio

@@ -56,6 +56,7 @@ async def test_ctrl_shift_left_moves_the_active_tab_back():
         assert app._active.handle == before[2]
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_moving_past_an_edge_is_a_noop():
     """Clamp, don't wrap — a tab teleporting to the far end reads as a bug."""

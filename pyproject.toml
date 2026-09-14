@@ -92,7 +92,8 @@ target-version = "py313"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
-    "live: tests that spawn a real `claude` subprocess (auto-skip when not on PATH; deselect with `-m \"not live\"` for the hermetic suite)",
+    "live: drives real agent CLIs, models or remote hosts; skipped unless `--run-live` (`make test-live`)",
+    "slow: 1.5s or more serially, setup and teardown included; `make test` deselects it, `make test-all` runs it",
 ]
 
 [tool.coverage.run]
@@ -114,6 +115,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.8.0",
     "mcp>=1.0.0",
     "pytest-httpx>=0.36.2",
 ]

@@ -18,6 +18,8 @@ from aegis.config import Agent
 from aegis.tui.app import AegisApp
 from aegis.transcript_constants import EVICT_BATCH, N_MAX
 
+pytestmark = pytest.mark.slow
+
 
 def _agent():
     return Agent(harness="claude-code", model="opus",

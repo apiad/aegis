@@ -36,6 +36,7 @@ async def test_nonzero_exit_noted():
     assert "[exited 3]" in body
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_timeout_kills():
     body = await run_shell_escape("sleep 5", Path.cwd(), timeout=0.2)

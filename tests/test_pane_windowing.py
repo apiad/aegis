@@ -89,6 +89,7 @@ async def test_replay_populates_full_history_but_mounts_only_tail():
                 == pane._history[-1].payload)
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_scroll_up_reloads_older_blocks():
     """Scrolling to the top re-mounts up to LOAD_BATCH older blocks."""
@@ -119,6 +120,7 @@ async def test_scroll_up_reloads_older_blocks():
         assert pane._window_start == expected
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_load_older_is_idempotent_while_pending():
     """Multiple rapid scroll events near the top coalesce into one load."""
@@ -146,6 +148,7 @@ async def test_load_older_is_idempotent_while_pending():
         assert pane._window_start == max(0, start_before - LOAD_BATCH)
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_eviction_caps_mounted_widget_count():
     """Once history exceeds N_MAX and user is at the bottom, eviction
@@ -167,6 +170,7 @@ async def test_eviction_caps_mounted_widget_count():
         assert pane._window_start >= 50
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_no_eviction_while_user_scrolled_up():
     """User reading old content does not get yanked when new events arrive."""

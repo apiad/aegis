@@ -18,6 +18,90 @@ from aegis.tui.dashboard import QueueDashboard
 from aegis.tui.themes import aegis_colors, INK
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-live", action="store_true", default=False,
+        help="run tests marked live (real agent CLIs, models, remote hosts)")
+    parser.addoption(
+        "--max-unmarked-duration", type=float, default=None,
+        metavar="SECONDS",
+        help="fail the run when a test not marked slow takes longer than "
+             "this, setup and teardown included")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Live tests are opt-in. Skipping them only when their CLI was off PATH
+    meant a bare `pytest` on a dev machine, where every CLI is installed,
+    spent real quota and pushed schedules to a remote host."""
+    if config.getoption("--run-live"):
+        return
+    skip = pytest.mark.skip(reason="live: pass --run-live (make test-live)")
+    for item in items:
+        if item.get_closest_marker("live"):
+            item.add_marker(skip)
+
+
+# nodeid -> seconds across setup, call and teardown; filled on the controller
+# under xdist, since reports reach it from every worker.
+_durations: dict[str, float] = {}
+_marked_slow: set[str] = set()
+
+
+def pytest_runtest_logreport(report):
+    _durations[report.nodeid] = _durations.get(report.nodeid, 0.0) \
+        + report.duration
+    if "slow" in report.keywords:
+        _marked_slow.add(report.nodeid)
+
+
+def _over_budget(config) -> list[tuple[float, str]]:
+    budget = config.getoption("--max-unmarked-duration")
+    if budget is None:
+        return []
+    return sorted(((d, n) for n, d in _durations.items()
+                   if n not in _marked_slow and d > budget), reverse=True)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """The slow marker is only worth something if it stays true. A test that
+    grows past the budget without the marker fails the run, instead of
+    quietly making the fast lane slower."""
+    if hasattr(session.config, "workerinput"):
+        return
+    if _over_budget(session.config) and session.exitstatus == 0:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    over = _over_budget(config)
+    if not over:
+        return
+    budget = config.getoption("--max-unmarked-duration")
+    terminalreporter.section(
+        f"unmarked tests over {budget:g}s", sep="=", red=True)
+    for seconds, nodeid in over:
+        terminalreporter.line(f"{seconds:6.2f}s  {nodeid}")
+    terminalreporter.line(
+        "make them faster, or mark them @pytest.mark.slow")
+
+
+@pytest.fixture(autouse=True)
+def no_real_provider_accounts(request, tmp_path, monkeypatch):
+    """Keep hermetic tests off the operator's accounts.
+
+    Every AegisApp starts a quota poller on its first tick. With real
+    credentials on disk it called api.anthropic.com and opencode.ai with the
+    user's own token — 29 tests per run on zion, and never on CI, which has no
+    credentials. Model pickers likewise shelled out to the real `opencode
+    models`. Live tests keep the real accounts; that is what they are for.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+    monkeypatch.setenv("CLAUDE_CREDS", str(tmp_path / "no-claude-creds.json"))
+    monkeypatch.setenv("OPENCODE_AUTH", str(tmp_path / "no-opencode-auth.json"))
+    monkeypatch.setattr("aegis.models._run_opencode_models", lambda: None)
+
+
 class MockQueue:
     """Mock async queue for testing workflow step behavior."""
 

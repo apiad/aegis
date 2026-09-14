@@ -26,6 +26,7 @@ async def test_spawn_duplicate_name_errors(state_dir):
     await mgr.close("dup")
 
 
+@pytest.mark.slow
 async def test_list_returns_spawned_terminals(state_dir):
     mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="a", shell="/bin/bash")

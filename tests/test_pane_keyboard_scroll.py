@@ -155,6 +155,7 @@ async def test_ctrl_down_past_the_last_message_restores_the_live_follow():
         assert pane._stick_to_bottom is True
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_short_trailing_messages_still_walk_instead_of_hopping_in_place():
     """The last blocks of a transcript are usually shorter than the viewport,

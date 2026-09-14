@@ -27,6 +27,8 @@ from aegis.events import AssistantText, Result, SystemInit
 
 from tests.views.conftest import FakeMCP
 
+pytestmark = pytest.mark.slow
+
 CTRL_Q = b"\x11"
 
 

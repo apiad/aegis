@@ -120,6 +120,7 @@ async def test_run_falls_back_to_injection_without_osc133(state_dir):
 # --- P1: a bounded default timeout (no infinite hang) -----------------
 
 
+@pytest.mark.slow
 async def test_run_times_out(state_dir):
     mgr = TerminalManager(state_dir=state_dir, default_cwd=state_dir.parent)
     await mgr.spawn(name="to", shell="/bin/bash")

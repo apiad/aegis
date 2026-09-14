@@ -16,6 +16,7 @@ screen, so a scroll position or a narrow terminal cannot make it pass.
 """
 from __future__ import annotations
 
+import pytest
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
@@ -25,6 +26,8 @@ from aegis.views.registry import ViewRegistry
 from textual.widgets import ContentSwitcher
 
 from tests.views.conftest import FakeMCP
+
+pytestmark = pytest.mark.slow
 
 
 class _FakeHarness:

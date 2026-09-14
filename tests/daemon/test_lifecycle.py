@@ -168,6 +168,7 @@ async def test_ensure_daemon_raises_when_the_spawn_never_listens(
         await lifecycle.ensure_daemon(tmp_path, timeout_s=0.5)
 
 
+@pytest.mark.slow
 def test_python_dash_m_aegis_is_runnable():
     """_spawn_detached launches `sys.executable -m aegis serve`, because the
     daemon must start from a uvx or bare-venv context where the console

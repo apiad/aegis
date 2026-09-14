@@ -131,6 +131,7 @@ async def test_eviction_prunes_in_one_batch():
         assert pane._window_start == EVICT_BATCH
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_scroll_up_load_mounts_in_one_batch():
     """Same shape on the way back in: one mount call, not LOAD_BATCH."""

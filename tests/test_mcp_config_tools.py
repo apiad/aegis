@@ -149,6 +149,7 @@ async def test_config_list_schedules_empty_when_none(root_with_yaml):
 
 # --- aegis_config_add_agent --------------------------------------------
 
+@pytest.mark.slow
 async def test_config_add_agent_persists_and_live_registers(root_with_yaml):
     bridge = _StubBridge()
     server = build_server(bridge)

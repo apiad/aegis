@@ -31,6 +31,8 @@ from aegis.events import AssistantText, Result, SystemInit
 
 from tests.views.conftest import FakeMCP
 
+pytestmark = pytest.mark.slow
+
 
 class _FakeHarness:
     async def start(self): ...

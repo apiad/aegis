@@ -1,6 +1,9 @@
+import pytest
 import sys
 
 from aegis.bench.launcher import aegis_argv, resolve_target
+
+pytestmark = pytest.mark.slow
 
 
 def test_current_target_is_this_interpreter_in_daemon_topology():

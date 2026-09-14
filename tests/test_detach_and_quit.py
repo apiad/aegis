@@ -20,6 +20,7 @@ own laptop daemon untouchable.
 """
 from __future__ import annotations
 
+import pytest
 import json
 
 from aegis.daemon import registry as dreg
@@ -185,6 +186,7 @@ async def _quit_over_the_socket(roots, view_id="tty-q"):
     writer.close()
 
 
+@pytest.mark.slow
 async def test_quit_stops_a_daemon_the_client_autostarted(tmp_path,
                                                           monkeypatch):
     """Asserted on the stop signal rather than on the task finishing.
@@ -206,6 +208,7 @@ async def test_quit_stops_a_daemon_the_client_autostarted(tmp_path,
         await asyncio.wait_for(task, timeout=30)
 
 
+@pytest.mark.slow
 async def test_quit_leaves_a_daemon_a_person_started(tmp_path, monkeypatch):
     """`aegis serve` under systemd on the VPS. No key in any TUI may stop
     it, and this is the assertion that says so."""
@@ -224,6 +227,7 @@ async def test_quit_leaves_a_daemon_a_person_started(tmp_path, monkeypatch):
         await asyncio.wait_for(task, timeout=30)
 
 
+@pytest.mark.slow
 async def test_quit_leaves_a_daemon_another_client_is_still_using(
         tmp_path, monkeypatch):
     import asyncio

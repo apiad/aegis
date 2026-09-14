@@ -167,6 +167,7 @@ async def test_tabbar_shows_handle_slug_dot():
         assert "*" not in bar            # active pane, not unseen
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_tabbar_scrolls_active_into_view():
     app = AegisApp({"default": _agent()}, "default",
