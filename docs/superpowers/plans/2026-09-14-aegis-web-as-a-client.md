@@ -2,7 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: not started.** Written 2026-09-14 against `0eac50d`.
+**Status: not started.** Written 2026-09-14 against `0eac50d`; revised the
+same day after a review that ran Tasks 1–8 in a throwaway worktree.
 
 **Goal:** `aegis web` becomes its own process, a client of the daemon's unix
 socket that serves one view per browser tab to xterm.js; the daemon stops
@@ -30,7 +31,7 @@ vendored as ES modules, node 22 for the page's unit tests.
 - `src/aegis/webterm/` imports nothing from `aegis.core`, `aegis.tui`, `aegis.views`, `aegis.web` or `aegis.mcp`. Task 2 adds the test that enforces it.
 - The old aegis-aware web layer (`src/aegis/web/`) stays in the tree, unwired. Stage 6 deletes it. Do not edit it.
 - Do not redeploy the VPS during this plan. dev.apiad.net keeps serving the version deployed there until stage 6.
-- The token appears in exactly one URL, the one-time `/?t=` login, which is exchanged for an `HttpOnly; Secure; SameSite=Strict` cookie. uvicorn's access log stays off.
+- The token appears in exactly one URL, the one-time `/?t=` login, which is exchanged for an `HttpOnly; Secure; SameSite=Lax` cookie. `/term` also refuses a browser `Origin` that is not its own host. uvicorn's access log stays off.
 - Browser view ids are `web-<uuid>` from `crypto.randomUUID()`, kept in `sessionStorage` under `aegis-view`: one view per tab.
 - No new Python dependency and no npm build step. Vendored files keep their MIT `LICENSE` beside them and their versions in `VERSIONS`.
 - `aegis serve` stays as a hidden alias of `aegis server`: `aegis bench --target 0.37.0` starts releases that only know `serve`.
@@ -710,7 +711,7 @@ def test_the_login_url_trades_the_token_for_a_cookie(world):
     assert r.status_code == 303
     assert r.headers["location"] == "/", "the token must not survive into the next URL"
     cookie = r.headers["set-cookie"].lower()
-    for attr in ("httponly", "secure", "samesite=strict", f"{COOKIE}="):
+    for attr in ("httponly", "secure", "samesite=lax", f"{COOKIE}="):
         assert attr in cookie, f"{attr} missing from {cookie}"
 
 
@@ -739,6 +740,20 @@ def test_a_socket_without_the_cookie_is_refused_before_the_daemon(cookie, world)
             ws.receive_bytes()
     assert e.value.code == 4401
     assert calls == [], "an unauthenticated socket reached the daemon"
+
+
+def test_a_socket_from_another_origin_is_refused_before_the_daemon(world):
+    """SameSite stops other sites, not sibling subdomains: a page on any
+    other host under the same domain is same-site, and its socket carries
+    the cookie."""
+    client, calls = _logged_in(world[0]), world[1]
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect(
+                "/term", headers={"origin": "https://other.example"}) as ws:
+            ws.send_bytes(hello("web-1", 80, 24))
+            ws.receive_bytes()
+    assert e.value.code == 4403
+    assert calls == [], "a foreign origin reached the daemon"
 
 
 def test_an_authenticated_socket_reaches_the_daemon_only_after_hello(world):
@@ -792,7 +807,9 @@ secret. The page itself, and the socket behind it, need the cookie.
 from __future__ import annotations
 
 import contextlib
+import logging
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.responses import (
@@ -803,6 +820,8 @@ from starlette.websockets import WebSocket
 
 from aegis.webterm.auth import COOKIE, token_ok
 from aegis.webterm.relay import Connect, relay
+
+log = logging.getLogger(__name__)
 
 _PKG_STATIC = Path(__file__).resolve().parent / "static"
 _YEAR = 60 * 60 * 24 * 365
@@ -840,8 +859,13 @@ def build_webterm_app(*, token: str, connect: Connect,
             if not token_ok(presented, token):
                 return PlainTextResponse("unauthorized", status_code=401)
             response = RedirectResponse("/", status_code=303)
+            # Lax, not Strict: a Strict cookie is withheld from the redirect
+            # when the login link was opened from another site (webmail, a
+            # chat client in a browser), so the first visit would be a 401.
+            # Lax already keeps the cookie off a cross-site WebSocket, and the
+            # Origin check in `term` covers same-site hosts.
             response.set_cookie(COOKIE, token, max_age=_YEAR, httponly=True,
-                                secure=True, samesite="strict")
+                                secure=True, samesite="lax")
             return response
         if not token_ok(request.cookies.get(COOKIE), token):
             return PlainTextResponse(
@@ -856,9 +880,17 @@ def build_webterm_app(*, token: str, connect: Connect,
         if not token_ok(ws.cookies.get(COOKIE), token):
             await ws.close(code=4401)
             return
+        # Browsers always send Origin on a WebSocket; a client without one
+        # is not a browser and cannot be carrying someone else's cookie.
+        origin = ws.headers.get("origin")
+        if origin is not None and urlsplit(origin).netloc != ws.headers.get("host"):
+            await ws.close(code=4403)
+            return
         await ws.accept()
         try:
             await relay(_StarletteBrowser(ws), connect)
+        except Exception:  # noqa: BLE001 — an unreachable daemon ends this socket, not the server
+            log.info("relay ended: daemon unreachable", exc_info=True)
         finally:
             with contextlib.suppress(Exception):
                 await ws.close()
@@ -874,7 +906,7 @@ def build_webterm_app(*, token: str, connect: Connect,
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/webterm -q -p no:cacheprovider`
-Expected: PASS. If `test_an_authenticated_socket_reaches_the_daemon_only_after_hello` hangs rather than failing, the relay's `connect()` exception is being swallowed; it must propagate out of `relay` so the socket closes.
+Expected: PASS. `test_an_authenticated_socket_reaches_the_daemon_only_after_hello` depends on `term` catching the exception `connect()` raises: Starlette's `TestClient` re-raises any exception that escapes the app, so without the `except` the test fails with `_Refused` (seen in review). The `finally` still closes the socket.
 
 - [ ] **Step 5: Mutation-check the door**
 
@@ -1005,6 +1037,9 @@ def test_one_view_per_tab():
     js = (STATIC / "term.js").read_text()
     assert "sessionStorage" in js and "localStorage" not in js, (
         "two tabs of one browser must not share a view: a view has one geometry")
+    assert "BroadcastChannel" in js, (
+        "Duplicate tab copies sessionStorage; without a claim check the copy "
+        "is refused by the daemon and retries forever")
 ```
 
 - [ ] **Step 3: Run it to verify it fails**
@@ -1054,15 +1089,33 @@ import { FitAddon } from "/static/vendor/xterm/addon-fit.mjs";
 import { FrameDecoder, encodeData, hello, resize } from "/static/frames.js";
 
 // One view per tab. sessionStorage survives a reload of this tab and nothing
-// else, so a reload reopens its view and a second tab gets its own.
-function viewId() {
+// else, so a reload reopens its view and a second tab gets its own. Except
+// "Duplicate tab", which copies sessionStorage: the daemon refuses a second
+// client on a live view id, so a copied id is checked against the tabs that
+// hold one before this tab says hello. A reloading tab has no one to answer.
+const claims = new BroadcastChannel("aegis-view");
+async function claimViewId() {
   let id = sessionStorage.getItem("aegis-view");
+  if (id) {
+    const taken = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 200);
+      claims.onmessage = (e) => {
+        if (e.data.taken === id) { clearTimeout(timer); resolve(true); }
+      };
+      claims.postMessage({ asking: id });
+    });
+    if (taken) id = null;
+  }
   if (!id) {
     id = "web-" + crypto.randomUUID();
     sessionStorage.setItem("aegis-view", id);
   }
+  claims.onmessage = (e) => {
+    if (e.data.asking === id) claims.postMessage({ taken: id });
+  };
   return id;
 }
+const viewId = await claimViewId();
 
 const status = document.getElementById("status");
 function say(text) {
@@ -1089,7 +1142,7 @@ function send(bytes) {
   if (ws.readyState === WebSocket.OPEN) ws.send(bytes);
 }
 
-ws.onopen = () => send(hello(viewId(), term.cols, term.rows));
+ws.onopen = () => send(hello(viewId, term.cols, term.rows));
 ws.onmessage = (event) => {
   if (typeof event.data === "string") return;
   for (const [type, payload] of decoder.feed(new Uint8Array(event.data))) {
@@ -1132,6 +1185,7 @@ a real `aegis web` and a real daemon.
 - Create: `src/aegis/webterm/server.py`
 - Modify: `src/aegis/cli.py` — `BootConfig.web` (`cli.py:97`) and its argument (`cli.py:126-129`); `_serve`'s `web=None` parameter (`cli.py:597`) and the `if web is not None:` block (`cli.py:753-758`); `web=resolved.boot.web,` in `_run_serve` (`cli.py:1113`); the `web` command (`cli.py:982-1004`).
 - Test: `tests/webterm/test_server.py`, `tests/cli/test_web_command.py`, `tests/cli/test_daemon_ignores_the_web_block.py`, `tests/webterm/test_web_process.py`
+- Modify: `tests/cli/test_config_errors_raise.py` (`test_boot_config_carries_web_and_is_token_gated` asserts the field this task removes)
 
 **Interfaces:**
 - Consumes: `build_webterm_app(token=, connect=)` (Task 3); `aegis.daemon.lifecycle.ensure_daemon(root, *, timeout_s=20.0, preflight=None) -> Path`; `aegis.cli._ensure_daemon(root, **kw)` (the existing test seam); `aegis.cli._daemon_preflight(root)`; `aegis.cli._ensure_web_token(root) -> str`; `aegis.config.yaml_loader.load_config(root).web -> WebConfig(token, bind, port)`; `aegis.state.workspace.state_dir(root) -> Path`.
@@ -1398,10 +1452,27 @@ In `src/aegis/cli.py`:
    ```
 5. In `_run_serve`'s `await _serve(…)` call, change `web=resolved.boot.web, views=True,` to `views=True,`.
 
+In `tests/cli/test_config_errors_raise.py`, replace
+`test_boot_config_carries_web_and_is_token_gated` with its inverse. The old test
+asserted the daemon receives the `web:` block, which is the behavior this task
+removes:
+
+```python
+def test_boot_config_carries_no_web(tmp_path):
+    """The daemon must not see the `web:` block. `aegis web` owns it, and a
+    daemon that read it bound the port on every terminal autostart."""
+    from aegis.cli import load_boot_config
+
+    (tmp_path / ".aegis.yaml").write_text(
+        _GOOD + "web:\n  bind: 127.0.0.1\n  port: 8899\n  token: secret\n",
+        encoding="utf-8")
+    assert not hasattr(load_boot_config(AegisRoots.for_project(tmp_path)), "web")
+```
+
 Then confirm nothing else read them:
 
-Run: `cd /home/apiad/Workspace/repos/aegis && grep -nE 'boot\.web|web=web|WebFrontend' src/aegis/cli.py src/aegis/embed.py`
-Expected: no output.
+Run: `cd /home/apiad/Workspace/repos/aegis && grep -nE 'boot\.web|web=web|WebFrontend\(' src/aegis/cli.py src/aegis/embed.py`
+Expected: no output. (Without the `\(`, the comment at `cli.py:621` that mentions `WebFrontend` matches.)
 
 - [ ] **Step 6: Run the unit tests to verify they pass**
 
@@ -1533,12 +1604,24 @@ cp /tmp/relay.bak $f
 
 Expected: FAIL (the frame stream is corrupted and `READY` never decodes), then restored.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 10: Smoke it in a real browser, now rather than in Task 9**
+
+The gate above uses a Python WebSocket client. It cannot tell whether a
+browser loads `xterm.mjs` as a module, keeps the `Secure` cookie on
+`http://127.0.0.1`, or draws anything at all. Those would otherwise first
+show up at the end of the plan.
+
+Start `aegis web --no-browser` on a throwaway root as in Task 9 Step 5. Then,
+with the `saidkick` skill, open the printed URL and record in this plan:
+the address bar shows `/` without `?t=`, and a screenshot shows the aegis tab
+bar. If either fails, stop and fix it before Task 6.
+
+- [ ] **Step 11: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
 git add src/aegis/webterm/server.py tests/webterm/test_server.py tests/cli/test_web_command.py tests/cli/test_daemon_ignores_the_web_block.py tests/webterm/test_web_process.py
-git commit -m "feat(web): aegis web is a client of the daemon; the daemon binds no web port" -- src/aegis/webterm/server.py src/aegis/cli.py tests/webterm/test_server.py tests/cli/test_web_command.py tests/cli/test_daemon_ignores_the_web_block.py tests/webterm/test_web_process.py
+git commit -m "feat(web): aegis web is a client of the daemon; the daemon binds no web port" -- src/aegis/webterm/server.py src/aegis/cli.py tests/webterm/test_server.py tests/cli/test_web_command.py tests/cli/test_daemon_ignores_the_web_block.py tests/cli/test_config_errors_raise.py tests/webterm/test_web_process.py
 ```
 
 ---
@@ -1627,6 +1710,36 @@ async def test_keys_typed_while_the_daemon_was_gone_are_not_replayed(daemon):
     await asyncio.wait_for(task, 5)
 
 
+async def test_keys_typed_while_the_daemon_is_being_started_are_not_replayed(daemon):
+    """The real reconnect spends its gap inside connect(): ensure_daemon
+    spawning a daemon can take seconds, and the connect then succeeds.
+    Dropping stale input only before connect() let these keys through
+    (seen in review)."""
+    attempts = []
+    typed = asyncio.Event()
+
+    async def spawning():
+        attempts.append(1)
+        if len(attempts) == 2:
+            await typed.wait()          # still spawning when the key is typed
+        return await daemon.connect()
+
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, spawning, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: len(daemon.received) == 1)
+    await daemon.hang_up(0)
+    await until(lambda: RECONNECTING in b.texts)
+    b.push(encode_data(b"rm -rf typed into the void"))
+    await asyncio.sleep(0.05)
+    typed.set()
+    await until(lambda: len(daemon.received) == 2 and daemon.received[1])
+    await asyncio.sleep(0.1)
+    assert b"rm -rf" not in bytes(daemon.received[1])
+    b.leave()
+    await asyncio.wait_for(task, 5)
+
+
 async def test_a_refusal_is_not_announced_as_attached(daemon):
     b = FakeBrowser()
     task = asyncio.create_task(relay(b, daemon.connect, delays=FAST))
@@ -1689,13 +1802,9 @@ async def relay(browser: BrowserSocket, connect: Connect, *,
     failures = 0
     try:
         while True:
-            if opening is None:
-                if failures:
-                    delay = delays[min(failures - 1, len(delays) - 1)]
-                    if await _browser_left_within(delay, reader_task):
-                        return
-                # After the wait, so keys typed during it are dropped too.
-                if not _drop_stale_input(inbox, size):
+            if opening is None and failures:
+                delay = delays[min(failures - 1, len(delays) - 1)]
+                if await _browser_left_within(delay, reader_task):
                     return
             try:
                 reader, writer = await connect()
@@ -1705,6 +1814,12 @@ async def relay(browser: BrowserSocket, connect: Connect, *,
                 opening = None
                 continue
             try:
+                if opening is None:
+                    # After connect(), not before: connect() is where a
+                    # restart spends its gap (ensure_daemon spawning a
+                    # daemon), so keys typed at any point in it are dropped.
+                    if not _drop_stale_input(inbox, size):
+                        return
                 writer.write(opening if opening is not None
                              else hello(view_id, size[0], size[1]))
                 await writer.drain()
@@ -2036,6 +2151,8 @@ The alias exists because `aegis bench --target 0.37.0` starts releases that
 only know `serve`, and a unit written for `serve` must keep working until
 stage 6 deploys the new ones.
 """
+import re
+
 from typer.testing import CliRunner
 
 CONFIG = "default_agent: main\nagents:\n  main:\n    provider: claude-code\n    model: opus\n"
@@ -2067,8 +2184,9 @@ def test_help_names_server_and_hides_serve():
     from aegis.cli import app
 
     out = CliRunner().invoke(app, ["--help"]).output
-    assert "server" in out
-    assert " serve " not in out.replace("server", "")
+    # Match command rows, not prose: `--remote`'s help mentions "aegis serve."
+    assert re.search(r"│ server\s", out), out
+    assert not re.search(r"│ serve\s", out), "serve is listed in --help"
 ```
 
 In `tests/test_detach_and_quit.py::test_the_autostart_spawn_marks_the_daemon`, add after the existing assertion:
@@ -2340,7 +2458,9 @@ daemon does not read this block and never binds this port.
 `aegis web` creates a token on first run when none is set and writes it
 here; `port` is never written back. The login URL it prints carries the
 token once, and the page exchanges it for an `HttpOnly`, `Secure`,
-`SameSite=Strict` cookie.
+`SameSite=Lax` cookie. Browsers keep a `Secure` cookie over plain http only
+for localhost, so to reach `aegis web` from another machine (a phone on
+the LAN included) put it behind https.
 ```
 
 In `DESIGN.md`, replace the paragraph beginning `**Two co-equal front ends
@@ -2366,6 +2486,10 @@ by an id in that tab's `sessionStorage`. When the daemon goes away the
 tabs show "reconnecting" and return to the same views once it is back; a
 view file is written when its connection closes, so nothing is lost but
 keys typed during the gap, which are dropped on purpose.
+
+`aegis web` restarts a daemon that is gone, the same way a terminal does.
+So `aegis kill` does not stay killed while a browser tab is open: stop
+`aegis web` first.
 ```
 
 - [ ] **Step 3: CHANGELOG, TASKS, status headers**
@@ -2428,9 +2552,10 @@ this plan, verbatim, the result of each:
 2. The screenshot shows the aegis tab bar and the `type a message…` input.
 3. After a click in the input, typed text appears in it. (A cold attach leaves focus on the tab bar; that is a known defect listed in `TASKS.md`, not this plan's.)
 4. Ctrl+T, sent with the key bar's Ctrl then `t` on a narrow viewport, opens a second tab in the tab bar.
-5. A reload of the page returns to the same view with both tabs.
+5. A reload of the page returns to the same view with both tabs. A brief "reconnecting" flash is acceptable: the old view closes asynchronously, so the reloaded page's hello can be refused once and retried.
 6. A second browser tab on the same URL gets its own view: its focus change does not move the first tab's.
 7. `AEGIS_DAEMON_DIR="$R/.daemons" aegis kill --cwd "$R"`: the page shows "reconnecting", then returns with its tabs.
+8. The browser's "Duplicate tab" on the first tab opens a working view of its own within a second, not a permanent "reconnecting".
 
 Stop `aegis web` and the daemon by PID afterwards.
 
@@ -2453,7 +2578,7 @@ git push origin main
 - `src/aegis/webterm/` imports no aegis concept module (Task 2, mutation-checked).
 - `aegis server` runs the daemon; `aegis serve` still does and is hidden.
 - The page's JS logic runs under node in `make test`.
-- The seven browser checks in Task 9 Step 5 are recorded with their results.
+- The eight browser checks in Task 9 Step 5 are recorded with their results.
 - `-m "not live"` is green; rift has no errors.
 
 ## Deliberately not in this plan
