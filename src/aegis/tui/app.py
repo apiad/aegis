@@ -771,6 +771,11 @@ class AegisApp(App):
         resumable — fall through to the default spawn."""
         if not ws.tabs:
             return False
+        # Bridged: the brain restores once, for the first view. A later view
+        # attaching to a brain that already holds tabs adopts them instead.
+        mgr = getattr(self, "manager", None)
+        if mgr is not None and mgr.list_sessions():
+            return False
 
         import asyncio
 
@@ -791,6 +796,19 @@ class AegisApp(App):
                 failures.append((tab.handle, "duplicate handle in workspace"))
                 continue
             self._handles.reserve(tab.handle)
+            if mgr is not None:
+                # Bridged: restore on the brain, so the tab has a token and
+                # a place in aegis_list_sessions.
+                try:
+                    sess = mgr._sync_spawn(
+                        tab.profile, handle=tab.handle,
+                        resume_from=tab.session_id,
+                        log_id=tab.log_id or tab.handle)
+                except Exception as e:  # noqa: BLE001
+                    failures.append((tab.handle, str(e)))
+                    continue
+                await self._mount_brain_pane(sess)
+                continue
             drv = self._drivers[tab.provider]
             agent = self._agents[tab.profile]
             try:
@@ -1528,6 +1546,24 @@ class AegisApp(App):
                 severity="warning")
             return
         self._handles.reserve(tab.handle)
+        mgr = getattr(self, "manager", None)
+        if mgr is not None:
+            # Bridged: reopen on the brain. A session rebuilt here would
+            # have no token and no place in aegis_list_sessions.
+            try:
+                sess = mgr._sync_spawn(
+                    tab.profile, handle=tab.handle,
+                    resume_from=tab.session_id,
+                    log_id=tab.log_id or tab.handle)
+            except Exception as e:  # noqa: BLE001
+                self.notify(f"resume failed: {e}", severity="error")
+                return
+            await self._mount_brain_pane(sess, foreground=True)
+            pane = self.pane_for(sess.handle)
+            if pane is not None:
+                pane.focus_input()
+            self._refresh_tabbar()
+            return
         drv = self._drivers[tab.provider]
         agent = self._agents[tab.profile]
         try:
@@ -2165,6 +2201,14 @@ class AegisApp(App):
                     host: str | None = None,
                     cwd: str | None = None) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
+        mgr = getattr(self, "manager", None)
+        if mgr is not None:
+            # Bridged: /spawn opens a brain session, like Ctrl+N does in
+            # _spawn. The view mounts it through the session observer.
+            return await mgr.spawn(
+                profile, handle=handle, opening_prompt=opening_prompt,
+                spawned_by=spawned_by, model=model, effort=effort,
+                prompt=prompt, host=host, cwd=cwd)
         sm_adapter = _SessionManagerAdapter(self)
         sess = sm_adapter.spawn(profile, handle=handle,
                                 opening_prompt=opening_prompt,
@@ -2183,6 +2227,11 @@ class AegisApp(App):
         """
         import contextlib
 
+        mgr = getattr(self, "manager", None)
+        if mgr is not None:
+            # Bridged: the harness belongs to the brain's session, and the
+            # new one needs a token only the brain can mint.
+            return await mgr.reconnect(handle)
         pane = next((p for p in self._panes
                      if getattr(p, "handle", None) == handle), None)
         if pane is None:
@@ -2220,6 +2269,11 @@ class AegisApp(App):
                    effort: str | None = None,
                    forked_by: str | None = None) -> str:
         """AppBridge-shaped: branch a pane's conversation into a new tab."""
+        mgr = getattr(self, "manager", None)
+        if mgr is not None:
+            return await mgr.fork(
+                target, prompt=prompt, slug=slug, model=model,
+                effort=effort, forked_by=forked_by)
         sm_adapter = _SessionManagerAdapter(self)
         sess = sm_adapter.fork(target, prompt=prompt, handle=slug,
                                model=model, effort=effort)
@@ -2724,6 +2778,20 @@ class _SessionFocusAdapter:
                 return
 
 
+def _refuse_when_bridged(app: "AegisApp") -> None:
+    """A bridged view never builds a session of its own.
+
+    The MCP plane serves the brain, so a session built by a view has no
+    token and is invisible to every agent: read_peer, handoff, rename and
+    /loop all answer "unknown session". Raising here is what makes the next
+    path someone adds to a view fail in a test rather than in the daemon.
+    """
+    if getattr(app, "manager", None) is not None:
+        raise RuntimeError(
+            "a bridged view must open sessions on the brain, not build "
+            "its own")
+
+
 class _SessionManagerAdapter:
     """SessionManager-shaped facade over AegisApp for QueueManager.
 
@@ -2759,6 +2827,7 @@ class _SessionManagerAdapter:
               prompt: str | None = None,
               host: str | None = None,
               cwd: str | None = None):
+        _refuse_when_bridged(self._app)
         from aegis.core.manager import _overlay_agent
         agent = _overlay_agent(self._app._agents[slug], model=model,
                                effort=effort, prompt=prompt)
@@ -2797,6 +2866,7 @@ class _SessionManagerAdapter:
         which sends the factory down the driver's fork() path instead of
         session(). The parent pane is not touched.
         """
+        _refuse_when_bridged(self._app)
         from aegis.core.fork_guard import facts_for, refuse_reasons
         from aegis.core.manager import _overlay_agent
 

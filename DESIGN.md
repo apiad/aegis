@@ -46,6 +46,13 @@ reach the brain's copy through MCP, so a copy a view built for itself renders
 something nothing writes to. `src/aegis/core/planes.py` is the inventory, and a test
 forces every new `attach_*` on `SessionManager` into it.
 
+**A view opens sessions on the brain; it never builds one.** Only the brain mints
+the token a harness presents to MCP and lists the session in
+`aegis_list_sessions`. A session a view built itself is on screen and unknown to
+every agent, so `read_peer`, `handoff`, `rename` and `/loop` fail for it. New tab,
+`/spawn`, `/fork`, a history reopen, the boot restore and a reconnect all go through
+`SessionManager`, and a bridged view that reaches for its own raises.
+
 **One authority for handle names.** A handle bound anywhere in a process is never
 handed to a different session. A pane's DOM id is its birth handle and Textual ids
 are immutable, so reusing a name is `DuplicateIds` and takes the whole app down.

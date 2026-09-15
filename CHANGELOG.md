@@ -46,6 +46,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **Agents could not see tabs opened with `/spawn`, `/fork`, Ctrl+R or a
+  restart.** Only Ctrl+N had been moved onto the brain when the daemon
+  arrived. The other ways a view opens a tab built the session inside the
+  view, so its harness got no MCP token and the brain never listed it:
+  `aegis_list_sessions` came back empty, and `read_peer`, `handoff`,
+  `rename` and `/loop` answered "unknown session" for tabs on screen. Every
+  one of them now creates the session on the brain, and a bridged view that
+  tries to build its own raises. Tabs opened before this fix stay invisible
+  until the daemon restarts on it.
+
 - **A monitor an agent armed never appeared in the TUI.** Under the daemon,
   every attached view built its own queues, monitors, reminders, inbox,
   canvas, terminals, groups and claims beside the brain's. Agents reach the

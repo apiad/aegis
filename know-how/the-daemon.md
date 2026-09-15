@@ -118,6 +118,19 @@ If a symptom looks like an agent's action "succeeded and nothing shows", check
 object identity between `SessionManager` and `view.app` for the plane in
 question before anything else.
 
+Sessions follow the same rule. Every tab a view opens (Ctrl+N, `/spawn`,
+`/fork`, a Ctrl+R reopen, the tabs restored at boot, a reconnect) is created
+by the brain, because only the brain mints the token the harness presents to
+MCP. A session a view builds for itself is invisible to every agent:
+`aegis_list_sessions` omits it, and `read_peer`, `handoff`, `rename` and
+`/loop` answer "unknown session". A bridged view that tries raises, through
+`_refuse_when_bridged` in `tui/app.py`.
+
+When agents report "unknown session" for tabs you can see, read the harness
+argv (`tr '\0' '\n' < /proc/<pid>/cmdline`): a `--mcp-config` with no
+`X-Aegis-Session` header is a session the brain never created. Fixing the code
+does not rescue it; the daemon has to restart on the fixed code.
+
 ## Known noise
 
 `view client refused: client closed before hello` in the log is

@@ -209,7 +209,13 @@ class SessionManager:
                     fork_from: str | None = None,
                     forked_from: dict | None = None,
                     place: Place | None = None,
-                    agent: "Agent | None" = None) -> AgentSession:
+                    agent: "Agent | None" = None,
+                    resume_from: str | None = None,
+                    log_id: str | None = None) -> AgentSession:
+        # ``resume_from`` and ``log_id`` reopen a conversation that already
+        # has a log: a tab restored at boot or reopened from history. It is
+        # a brain session like any other, so it goes through here and gets
+        # a token, rather than being rebuilt by a view.
         slug = slug or self._default_agent
         if agent is None:
             if slug not in self._agents:
@@ -243,6 +249,8 @@ class SessionManager:
         extra: dict = {}
         if fork_from is not None:
             extra["fork_from"] = fork_from
+        if resume_from is not None:
+            extra["resume_from"] = resume_from
         if place != Place("local", str(self.roots.harness_cwd)):
             extra["place"] = place
         # Mint BEFORE the factory runs: the factory builds the argv, and the
@@ -256,6 +264,7 @@ class SessionManager:
                          opening_prompt=opening_prompt,
                          project_root=self.roots.harness_cwd,
                          state_dir=self.roots.state_dir,
+                         log_id=log_id,
                          place=place)
         s.spawned_by = spawned_by
         s.forked_from = forked_from
