@@ -67,7 +67,9 @@ def cmd_list() -> None:
         console.print("[dim]no plugins installed[/]")
         return
     table = Table(title="Installed plugins")
-    table.add_column("Name"); table.add_column("Version"); table.add_column("Installed")
+    table.add_column("Name")
+    table.add_column("Version")
+    table.add_column("Installed")
     for p in plugs:
         table.add_row(p.get("name", ""), p.get("version", ""), p.get("installed", ""))
     console.print(table)
@@ -88,7 +90,8 @@ def cmd_update(
     else:
         targets = [p["name"] for p in (lockfile.read_lock(Path.cwd()).get("plugins") or [])]
     if not targets:
-        console.print("[dim]no plugins installed[/]"); return
+        console.print("[dim]no plugins installed[/]")
+        return
 
     for t in targets:
         try:
@@ -108,7 +111,8 @@ def cmd_search(query: str) -> None:
     from aegis.plugins.install import search_plugins
     hits = search_plugins(query=query, project_root=Path.cwd())
     if not hits:
-        console.print(f"[dim]no plugins match {query!r}[/]"); return
+        console.print(f"[dim]no plugins match {query!r}[/]")
+        return
     for h in hits:
         console.print(
             f"[bold]{h['name']}[/] {h['version']}  "

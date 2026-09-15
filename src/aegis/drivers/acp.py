@@ -35,6 +35,24 @@ import acp.connection as _acp_connection
 from aegis.hooks import SessionHandle
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_pre_spawn_hooks
+from aegis.config import Agent
+from aegis.config.persona import read_persona
+from aegis.drivers.base import HarnessDriver, HarnessSession
+from aegis.hosts.launcher import LOCAL, Launcher
+from aegis.mcp.identity import HEADER_NAME
+from aegis.events import (
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    ContextUpdate,
+    CostUsage,
+    Event,
+    PlanEntry,
+    Result,
+    SystemInit,
+    ToolResult,
+    ToolUse,
+)
 
 
 # ---------------------------------------------------------------------
@@ -88,25 +106,6 @@ class _RingHandler(logging.Handler):
 
     def clear(self) -> None:
         self._records.clear()
-
-from aegis.config import Agent
-from aegis.config.persona import read_persona
-from aegis.drivers.base import HarnessDriver, HarnessSession
-from aegis.hosts.launcher import LOCAL, Launcher
-from aegis.mcp.identity import HEADER_NAME
-from aegis.events import (
-    AgentPlan,
-    AssistantText,
-    AssistantThinking,
-    ContextUpdate,
-    CostUsage,
-    Event,
-    PlanEntry,
-    Result,
-    SystemInit,
-    ToolResult,
-    ToolUse,
-)
 
 try:
     from importlib.metadata import PackageNotFoundError as _PNFE

@@ -35,8 +35,8 @@ def _load_jsonl(state_dir: Path, queue: str) -> list[dict]:
     log = state_dir / "queues" / f"{queue}.jsonl"
     if not log.exists():
         return []
-    return [json.loads(l) for l in log.read_text().splitlines()
-            if l.strip()]
+    return [json.loads(line) for line in log.read_text().splitlines()
+            if line.strip()]
 
 
 @app.command("list")

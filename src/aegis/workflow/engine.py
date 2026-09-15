@@ -6,7 +6,7 @@ import json
 import secrets
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -247,13 +247,11 @@ class WorkflowEngine:
         feedback. Raises ``PredicateFailed`` if the budget is
         exhausted."""
         attempts = 0
-        last_result: _BashResult | None = None
         while True:
             res = await self.bash(cmd, cwd=cwd, timeout=timeout)
             attempts += 1
             if res["exit"] == 0:
                 return res
-            last_result = res
             if attempts > max_retries:
                 raise PredicateFailed(
                     cmd,

@@ -82,7 +82,7 @@ def parse_sections(text: str) -> list[Section]:
         # join with \n. Add trailing \n if there were lines, to keep the
         # block-style separation when rendering back.
         preamble_body = "\n".join(pre_lines)
-        if preamble_body.strip() != "" or any(l != "" for l in pre_lines):
+        if preamble_body.strip() != "" or any(line != "" for line in pre_lines):
             out.append(Section(name=PREAMBLE, body=preamble_body))
     # Each heading -> next heading or EOF
     for idx, (line_no, name) in enumerate(heads):

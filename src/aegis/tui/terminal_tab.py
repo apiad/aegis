@@ -26,7 +26,6 @@ from __future__ import annotations
 import contextlib
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from rich.text import Text
 from textual.app import ComposeResult

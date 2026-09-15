@@ -20,8 +20,8 @@ from aegis.recap import recap_for
 from aegis.recap.gate import should_recap
 from aegis.repos.writes import write_target
 from aegis.hooks import (
-    PostTurnEvent, PreTurnContext, PreTurnResult, SessionEndEvent,
-    SessionHandle, SessionStartEvent, Turn,
+    PostTurnEvent, PreTurnContext, SessionEndEvent,
+    SessionHandle, SessionStartEvent,
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks

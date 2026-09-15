@@ -258,8 +258,8 @@ def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
                 f'aegis_read_peer("{source}") before answering, unless the '
                 f'question is plainly self-contained.\n\n')
     else:
-        slice_ = (f"Its transcript could not be read, so you are seeing "
-                  f"none of it.\n\n")
+        slice_ = ("Its transcript could not be read, so you are seeing "
+                  "none of it.\n\n")
         pull = (f'Read it with aegis_read_peer("{source}") before '
                 f'answering, unless the question is plainly '
                 f'self-contained.\n\n')

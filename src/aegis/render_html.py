@@ -13,7 +13,7 @@ from aegis.events import (
     ToolResult, ToolUse, Unknown,
 )
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
+    PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
     tool_glyph,
 )
 

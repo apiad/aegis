@@ -6,7 +6,7 @@ import signal
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import typer
 from rich.console import Console
@@ -20,6 +20,9 @@ from aegis.drivers import DRIVERS, get_driver
 from aegis.mcp import AegisMCP
 from aegis.state.workspace import state_dir
 from aegis.tui import AegisApp
+
+if TYPE_CHECKING:
+    from aegis.tui.remote_manager import RemoteSessionManager
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()

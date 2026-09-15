@@ -11,7 +11,6 @@ Subcommands:
 """
 from __future__ import annotations
 
-from decimal import Decimal
 
 import typer
 from rich.console import Console

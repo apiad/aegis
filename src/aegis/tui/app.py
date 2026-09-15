@@ -32,6 +32,7 @@ from aegis.tui.themes import (
 from aegis.tui.widgets import TabBar
 
 if TYPE_CHECKING:      # aegis.views imports this module; keep it type-only
+    from aegis.state.workspace import Workspace
     from aegis.views.state import ViewState
 
 SessionFactory = Callable[[Agent, str, str], HarnessSession]

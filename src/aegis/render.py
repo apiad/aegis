@@ -9,12 +9,12 @@ from rich.text import Text
 from dataclasses import replace
 
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
+    AgentPlan, AssistantText, AssistantThinking, ToolUse,
     ToolResult, Result, SystemInit, Unknown, UserMessage, Event,
 )
 from aegis.comms.descriptors import aegis_glyph
 from aegis.render_shared import (
-    KIND_ICON, PLAN_STATUS_GLYPH, describe_tool, diff_window,
+    PLAN_STATUS_GLYPH, describe_tool, diff_window,
     format_tool_args, result_parts, tool_glyph,
 )
 
@@ -147,10 +147,10 @@ def _render_diff(diff: tuple[str, str, str], colors,
     body = Text()
     body.append(f"  ┌ {path}\n", style=colors.muted)
     for line in removed:
-        body.append(f"  │ -", style=colors.err)
+        body.append("  │ -", style=colors.err)
         body.append(f" {line}\n", style=colors.err)
     for line in added:
-        body.append(f"  │ +", style=colors.ok)
+        body.append("  │ +", style=colors.ok)
         body.append(f" {line}\n", style=colors.ok)
     if elided > 0:
         body.append(f"  │ … {elided} more line"
