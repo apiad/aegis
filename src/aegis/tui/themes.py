@@ -4,6 +4,7 @@ re-exports the names the TUI has always imported, building the Textual
 ``Theme`` objects from the loaded YAML so existing call sites and snapshot
 tests are unaffected.
 """
+
 from __future__ import annotations
 
 from textual.theme import Theme
@@ -18,6 +19,11 @@ THEMES: dict[str, Theme] = {"ink": INK, "parchment": PARCHMENT, "slate": SLATE}
 DEFAULT_THEME = "aegis-ink"
 
 __all__ = [
-    "INK", "PARCHMENT", "SLATE", "THEMES", "DEFAULT_THEME",
-    "AegisColors", "aegis_colors",
+    "INK",
+    "PARCHMENT",
+    "SLATE",
+    "THEMES",
+    "DEFAULT_THEME",
+    "AegisColors",
+    "aegis_colors",
 ]

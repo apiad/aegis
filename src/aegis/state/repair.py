@@ -8,6 +8,7 @@ where the surviving bytes are consolidated. It never deletes: the
 original is kept alongside as ``<name>.jsonl.corrupt<N>``, because even
 the bytes we couldn't parse may be readable by hand later.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.state.session_log import (
-    parse_log_id, scan_log, session_log_path,
+    parse_log_id,
+    scan_log,
+    session_log_path,
 )
 
 
@@ -41,6 +44,7 @@ def _live_handles(state_dir_path: Path) -> set[str]:
     those logs would drop everything its session appends afterwards — the
     running process holds an fd on the inode we'd replace."""
     from aegis.state.workspace import CorruptWorkspace, load
+
     try:
         ws = load(state_dir_path)
     except (CorruptWorkspace, OSError):
@@ -55,9 +59,14 @@ def survey(state_dir_path: Path) -> list[LogReport]:
         return []
     live = _live_handles(state_dir_path)
     reports = [
-        LogReport(path=p, handle=p.stem, records=len(scan.records),
-                  damaged=scan.damaged, recovered=scan.recovered,
-                  live=p.stem in live)
+        LogReport(
+            path=p,
+            handle=p.stem,
+            records=len(scan.records),
+            damaged=scan.damaged,
+            recovered=scan.recovered,
+            live=p.stem in live,
+        )
         for p, scan in ((p, scan_log(p)) for p in sorted(sessions.glob("*.jsonl")))
     ]
     reports.sort(key=lambda r: (-r.damaged, r.handle))
@@ -94,10 +103,12 @@ def _dup_backup_path(path: Path) -> Path:
 
 def _ts_of(raw: str) -> float | None:
     from datetime import datetime
+
     try:
         obj = json.loads(raw)
         return datetime.fromisoformat(
-            str(obj["aegis_ts"]).replace("Z", "+00:00")).timestamp()
+            str(obj["aegis_ts"]).replace("Z", "+00:00")
+        ).timestamp()
     except Exception:  # noqa: BLE001 — unreadable is "not comparable"
         return None
 
@@ -153,19 +164,24 @@ def dedupe_log(path: Path) -> DedupeReport:
     removed = 0
     for raw in lines:
         event, when = _event_of(raw), _ts_of(raw)
-        if (event is not None and when is not None
-                and event == prev_event and prev_ts is not None
-                and 0 <= when - prev_ts <= _SAME_INSTANT_S):
+        if (
+            event is not None
+            and when is not None
+            and event == prev_event
+            and prev_ts is not None
+            and 0 <= when - prev_ts <= _SAME_INSTANT_S
+        ):
             removed += 1
-            continue          # prev_* stay put: a run of copies collapses
+            continue  # prev_* stay put: a run of copies collapses
         kept.append(raw)
         prev_event, prev_ts = event, when
 
     if not removed:
         return DedupeReport(path=path, removed=0)
 
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".dedupe",
-                               dir=str(path.parent))
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{path.stem}.", suffix=".dedupe", dir=str(path.parent)
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             for raw in kept:
@@ -189,13 +205,19 @@ def repair_log(path: Path) -> LogReport:
     for handles with no live session — see ``LogReport.live``.
     """
     scan = scan_log(path)
-    report = LogReport(path=path, handle=path.stem, records=len(scan.records),
-                       damaged=scan.damaged, recovered=scan.recovered)
+    report = LogReport(
+        path=path,
+        handle=path.stem,
+        records=len(scan.records),
+        damaged=scan.damaged,
+        recovered=scan.recovered,
+    )
     if report.healthy:
         return report
 
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".repair",
-                               dir=str(path.parent))
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{path.stem}.", suffix=".repair", dir=str(path.parent)
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             for rec in scan.records:
@@ -209,9 +231,14 @@ def repair_log(path: Path) -> LogReport:
     backup = _backup_path(path)
     os.replace(path, backup)
     os.replace(tmp, path)
-    return LogReport(path=path, handle=path.stem, records=len(scan.records),
-                     damaged=scan.damaged, recovered=scan.recovered,
-                     backup=backup)
+    return LogReport(
+        path=path,
+        handle=path.stem,
+        records=len(scan.records),
+        damaged=scan.damaged,
+        recovered=scan.recovered,
+        backup=backup,
+    )
 
 
 def _boundaries(records: list[dict]) -> list[int]:
@@ -310,5 +337,12 @@ def repair_all(state_dir_path: Path) -> list[LogReport]:
     return done
 
 
-__all__ = ["LogReport", "repair_all", "repair_log", "session_log_path",
-           "split_all", "split_log", "survey"]
+__all__ = [
+    "LogReport",
+    "repair_all",
+    "repair_log",
+    "session_log_path",
+    "split_all",
+    "split_log",
+    "survey",
+]

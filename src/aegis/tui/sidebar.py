@@ -15,6 +15,7 @@ Two pieces, the shape every strip here already uses:
 * ``render_sidebar(model, palette, width)`` — pure Rich Text renderer.
 * ``Sidebar`` — the Textual widget.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -55,7 +56,7 @@ class SidebarModel:
     plan_working: bool = False
     plan_frame: int = 0
     # QUEUES
-    queues: object | None = None          # aegis.queue.digest.Snapshot
+    queues: object | None = None  # aegis.queue.digest.Snapshot
     # MONITORS
     monitors: list[MonitorView] = field(default_factory=list)
     # REPOS
@@ -113,8 +114,7 @@ def _session(m: SidebarModel, palette, width: int) -> Text | None:
 
 
 def _context(m: SidebarModel, palette, width: int) -> Text | None:
-    segs = [Segment("metrics", m.metrics, 0),
-            Segment("quota", m.quota, 0)]
+    segs = [Segment("metrics", m.metrics, 0), Segment("quota", m.quota, 0)]
     rows = _rows(segs, palette, width)
     if not rows:
         return None
@@ -131,11 +131,15 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
     # (East Asian Ambiguous — Rich measures one cell, terminals draw two,
     # neighbours overlap) and budgets labels at width - 9. Re-implementing
     # rows here would re-pay both bugs.
-    body = render_plan_dock(m.plan or PlanState(), palette,
-                            working=m.plan_working, frame=m.plan_frame,
-                            width=width, subplans=m.subplans)
-    head = heading("PLAN", palette, width,
-                   right=f"{done}/{total}" if total else "")
+    body = render_plan_dock(
+        m.plan or PlanState(),
+        palette,
+        working=m.plan_working,
+        frame=m.plan_frame,
+        width=width,
+        subplans=m.subplans,
+    )
+    head = heading("PLAN", palette, width, right=f"{done}/{total}" if total else "")
     # The dock was a free-standing surface, so it opens with its own
     # `tasks d/t` line and ends every row — including the last — with a
     # newline. As a *section* it needs neither: `head` already carries the
@@ -153,8 +157,10 @@ def _queues(m: SidebarModel, palette, width: int) -> Text | None:
     snap = m.queues
     if snap is None or not snap.queues:
         return None
-    return _block(heading("QUEUES", palette, width),
-                  [format_q(q, palette, width) for q in snap.queues])
+    return _block(
+        heading("QUEUES", palette, width),
+        [format_q(q, palette, width) for q in snap.queues],
+    )
 
 
 def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
@@ -163,8 +169,10 @@ def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
     # One monitor per row rather than sharing a line — the strip's rule,
     # for the same reason: a long description must not push another
     # monitor's bar off the edge.
-    return _block(heading("MONITORS", palette, width),
-                  [format_mon(v, palette, width) for v in m.monitors])
+    return _block(
+        heading("MONITORS", palette, width),
+        [format_mon(v, palette, width) for v in m.monitors],
+    )
 
 
 def _repos(m: SidebarModel, palette, width: int) -> Text | None:
@@ -184,10 +192,12 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
     # tick, the clock every minute, the last two never. The pair at the
     # bottom is the pair you go looking for rather than notice — which
     # directory this aegis is rooted at, and which build of it is running.
-    segs = [Segment("system", m.system, 0),
-            Segment("clock", m.clock, 0),
-            Segment("cwd", m.cwd, 0),
-            Segment("build", m.build, 0)]
+    segs = [
+        Segment("system", m.system, 0),
+        Segment("clock", m.clock, 0),
+        Segment("cwd", m.cwd, 0),
+        Segment("build", m.build, 0),
+    ]
     rows = _rows(segs, palette, width)
     if not rows:
         return None
@@ -199,15 +209,20 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
 # StatusBar's priority ladder, turned ninety degrees: the panel scrolls, so
 # what you see without scrolling should be what moves.
 SECTIONS: tuple[Callable[[SidebarModel, object, int], Text | None], ...] = (
-    _session, _context, _plan, _queues, _monitors, _repos, _system,
+    _session,
+    _context,
+    _plan,
+    _queues,
+    _monitors,
+    _repos,
+    _system,
 )
 
 
 def render_sidebar(model: SidebarModel, palette, width: int) -> Text:
     """The whole column. A section that renders ``None`` contributes
     nothing — not a heading, not a blank row."""
-    blocks = [b for b in (s(model, palette, width) for s in SECTIONS)
-              if b is not None]
+    blocks = [b for b in (s(model, palette, width) for s in SECTIONS) if b is not None]
     out = Text()
     for i, b in enumerate(blocks):
         if i:
@@ -262,7 +277,7 @@ class Sidebar(VerticalScroll):
         self._model = SidebarModel()
         self._body = Static("")
         self._open = False
-        self._paints = 0        # test seam for the closed-mode no-op
+        self._paints = 0  # test seam for the closed-mode no-op
         self.display = False
 
     def compose(self):
@@ -329,11 +344,9 @@ class Sidebar(VerticalScroll):
 
     def _paint(self) -> None:
         self._paints += 1
-        self._body.update(
-            render_sidebar(self._model, self._palette, self._width()))
+        self._body.update(render_sidebar(self._model, self._palette, self._width()))
 
     def plain(self) -> str:
         """The current column as plain text. A test seam: reaching into a
         Static's renderable couples the tests to Textual's internals."""
-        return render_sidebar(
-            self._model, self._palette, self._width()).plain
+        return render_sidebar(self._model, self._palette, self._width()).plain

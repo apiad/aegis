@@ -1,6 +1,7 @@
 """Field-level truncation of an ``encode_event()`` dict for the compact WS
 wire. The result stays valid input to ``decode_event`` (extra keys ignored);
 the full event is fetched on demand via the ``get_event`` RPC."""
+
 from __future__ import annotations
 
 from aegis.comms.descriptors import aegis_glyph
@@ -38,8 +39,9 @@ def compact_encoded(d: dict) -> tuple[dict, bool]:
         out = dict(d)
         name = d.get("name", "")
         raw = d.get("raw_input")
-        out["desc"] = describe_tool(name, raw, d.get("summary", ""),
-                                    d.get("locations") or ())
+        out["desc"] = describe_tool(
+            name, raw, d.get("summary", ""), d.get("locations") or ()
+        )
         out["icon"] = tool_glyph(name, d.get("kind"), raw)
         out["comms"] = aegis_glyph(name, raw or {}) is not None
         out.pop("raw_input", None)

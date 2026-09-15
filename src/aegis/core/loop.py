@@ -9,6 +9,7 @@ In-memory and session-scoped by design: a loop does not survive a restart.
 Auto-firing a restored loop would mean a cold TUI starts spending tokens at
 boot without anyone asking it to.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -71,6 +72,9 @@ class LoopState:
         return f"{self.text}\n\nStill outstanding: {addendum}"
 
     def status(self) -> dict:
-        return {"text": self.text, "iteration": self.iteration,
-                "max_iterations": self.max_iterations,
-                "still_streak": self.still_streak}
+        return {
+            "text": self.text,
+            "iteration": self.iteration,
+            "max_iterations": self.max_iterations,
+            "still_streak": self.still_streak,
+        }

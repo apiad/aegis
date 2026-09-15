@@ -16,6 +16,7 @@ In-memory only — pending future-time timers do not survive an ``aegis serve``
 restart (matching monitors, and moot anyway since sessions are subprocesses
 that die on restart). No JSONL persistence in v1.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -59,8 +60,7 @@ def parse_after(after: str | float | int) -> float:
             # Reject stray characters between unit tokens (e.g. "20x").
             if _DURATION_RE.sub("", text).strip():
                 raise ValueError(f"unparseable duration: {after!r}")
-            seconds = sum(float(n) * _UNIT_SECONDS[u.lower()]
-                          for n, u in matches)
+            seconds = sum(float(n) * _UNIT_SECONDS[u.lower()] for n, u in matches)
     if seconds <= 0:
         raise ValueError(f"duration must be positive: {after!r}")
     return seconds
@@ -71,15 +71,20 @@ class _Pending:
     id: str
     from_handle: str
     note: str
-    fire_at: str          # iso8601
+    fire_at: str  # iso8601
     delay_s: float
     task: asyncio.Task | None = None
 
 
 class ReminderService:
-    def __init__(self, inbox_router, session_manager=None, *,
-                 clock: Callable[[], float] = time.time,
-                 now: Callable[[], str] = now_iso) -> None:
+    def __init__(
+        self,
+        inbox_router,
+        session_manager=None,
+        *,
+        clock: Callable[[], float] = time.time,
+        now: Callable[[], str] = now_iso,
+    ) -> None:
         self._inbox = inbox_router
         self._sm = session_manager
         self._clock = clock
@@ -91,8 +96,9 @@ class ReminderService:
         return get(handle) if callable(get) else None
 
     # ----- entry point ----------------------------------------------
-    def remind(self, *, from_handle: str, note: str,
-               after: str | float | None = None) -> dict:
+    def remind(
+        self, *, from_handle: str, note: str, after: str | float | None = None
+    ) -> dict:
         if after is None:
             return self._remind_turn_end(from_handle, note)
         try:
@@ -105,17 +111,16 @@ class ReminderService:
         session = self._session_for(from_handle)
         if session is None:
             return {"error": f"no live session for handle {from_handle!r}"}
-        msg = InboxMessage(
-            sender=sender_reminder(), timestamp=self._now(), body=note)
+        msg = InboxMessage(sender=sender_reminder(), timestamp=self._now(), body=note)
         session.add_reminder(msg)
         return {"reminder_id": new_ulid(), "when": "turn_end"}
 
-    def _remind_future(self, from_handle: str, note: str,
-                       delay_s: float) -> dict:
+    def _remind_future(self, from_handle: str, note: str, delay_s: float) -> dict:
         rid = new_ulid()
         fire_at = _iso_after(delay_s)
-        pending = _Pending(id=rid, from_handle=from_handle, note=note,
-                           fire_at=fire_at, delay_s=delay_s)
+        pending = _Pending(
+            id=rid, from_handle=from_handle, note=note, fire_at=fire_at, delay_s=delay_s
+        )
         self._pending[rid] = pending
         pending.task = asyncio.create_task(self._fire_after(rid))
         return {"reminder_id": rid, "when": fire_at}
@@ -132,15 +137,20 @@ class ReminderService:
         if self._pending.pop(rid, None) is None:
             return
         msg = InboxMessage(
-            sender=sender_reminder(), timestamp=self._now(), body=pending.note)
+            sender=sender_reminder(), timestamp=self._now(), body=pending.note
+        )
         with contextlib.suppress(Exception):
             await self._inbox.deliver(pending.from_handle, msg)
 
     # ----- introspection / lifecycle --------------------------------
     def list_reminders(self, *, from_handle: str | None = None) -> list[dict]:
         return [
-            {"reminder_id": p.id, "from_handle": p.from_handle,
-             "note": p.note, "fire_at": p.fire_at}
+            {
+                "reminder_id": p.id,
+                "from_handle": p.from_handle,
+                "note": p.note,
+                "fire_at": p.fire_at,
+            }
             for p in self._pending.values()
             if from_handle is None or p.from_handle == from_handle
         ]
@@ -148,8 +158,7 @@ class ReminderService:
     def cancel(self, reminder_id: str) -> dict:
         pending = self._pending.pop(reminder_id, None)
         if pending is None:
-            return {"ok": False,
-                    "error": f"unknown reminder {reminder_id!r}"}
+            return {"ok": False, "error": f"unknown reminder {reminder_id!r}"}
         if pending.task is not None:
             pending.task.cancel()
         return {"ok": True, "reminder_id": reminder_id}
@@ -177,5 +186,6 @@ class ReminderService:
 
 def _iso_after(delay_s: float) -> str:
     from datetime import datetime, timedelta, timezone
+
     fire = datetime.now(timezone.utc) + timedelta(seconds=delay_s)
     return fire.strftime("%Y-%m-%dT%H:%M:%SZ")

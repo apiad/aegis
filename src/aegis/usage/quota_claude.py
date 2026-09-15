@@ -8,6 +8,7 @@ service and renderer consume.
 The endpoint is undocumented and may change or vanish. Every failure path here
 degrades to a message in the status bar; nothing raises into the render loop.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,11 @@ import urllib.request
 from pathlib import Path
 
 from aegis.usage.quota import (
-    QuotaError, QuotaProvider, QuotaSnapshot, QuotaWindow, _severity,
+    QuotaError,
+    QuotaProvider,
+    QuotaSnapshot,
+    QuotaWindow,
+    _severity,
     _timestamp,
 )
 
@@ -69,27 +74,33 @@ def parse_quota(payload: dict, *, now: float) -> QuotaSnapshot:
             continue
         if not isinstance(percent, (int, float)) or isinstance(percent, bool):
             continue
-        windows.append(QuotaWindow(
-            kind=kind,
-            percent=float(percent),
-            severity=_severity(float(percent), raw.get("severity")),
-            resets_at=_timestamp(raw.get("resets_at")),
-            is_active=bool(raw.get("is_active")),
-        ))
+        windows.append(
+            QuotaWindow(
+                kind=kind,
+                percent=float(percent),
+                severity=_severity(float(percent), raw.get("severity")),
+                resets_at=_timestamp(raw.get("resets_at")),
+                is_active=bool(raw.get("is_active")),
+            )
+        )
     return QuotaSnapshot(windows=tuple(windows), fetched_at=now)
 
 
-def fetch_quota(token: str, *, timeout: float = 10.0,
-                opener=None, now: float | None = None) -> QuotaSnapshot:
+def fetch_quota(
+    token: str, *, timeout: float = 10.0, opener=None, now: float | None = None
+) -> QuotaSnapshot:
     """Ask the endpoint. Blocking — callers run it off the event loop.
 
     ``opener`` is the injection seam for tests; it defaults to
     ``urllib.request.urlopen``.
     """
-    request = urllib.request.Request(URL, headers={
-        "Authorization": f"Bearer {token}",
-        "anthropic-beta": BETA,
-    })
+    request = urllib.request.Request(
+        URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": BETA,
+        },
+    )
     open_url = opener or urllib.request.urlopen
     try:
         with open_url(request, timeout=timeout) as response:
@@ -108,8 +119,7 @@ def fetch_quota(token: str, *, timeout: float = 10.0,
         raise QuotaError("unreachable") from exc
     if not isinstance(payload, dict):
         raise QuotaError("unreachable")
-    return parse_quota(
-        payload, now=time.monotonic() if now is None else now)
+    return parse_quota(payload, now=time.monotonic() if now is None else now)
 
 
 PROVIDER = QuotaProvider(

@@ -1,2 +1,1 @@
-"""Internal helpers shared by catalog seeds. Not part of the public API.
-"""
+"""Internal helpers shared by catalog seeds. Not part of the public API."""

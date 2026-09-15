@@ -5,6 +5,7 @@ confirms support, so ``\\e[?2026l`` ends one complete frame. The rig
 answers the support query itself; a target that never negotiates produces
 no frames, which the run reports as a failed gate.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,11 +17,12 @@ SYNC_QUERY = b"\x1b[?2026$p"
 SYNC_REPLY = b"\x1b[?2026;2$y"
 
 _ANSI = re.compile(
-    rb"\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]"   # CSI
-    rb"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"          # OSC
-    rb"|\x1bP[^\x1b]*\x1b\\"                        # DCS
-    rb"|\x1b[\x20-\x2f]+[\x30-\x7e]"                # nF, e.g. charset
-    rb"|\x1b[\x30-\x7e]")                           # Fp / Fe / Fs
+    rb"\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]"  # CSI
+    rb"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC
+    rb"|\x1bP[^\x1b]*\x1b\\"  # DCS
+    rb"|\x1b[\x20-\x2f]+[\x30-\x7e]"  # nF, e.g. charset
+    rb"|\x1b[\x30-\x7e]"
+)  # Fp / Fe / Fs
 _MARKER = re.compile(r"«b\d{4,}»")
 _CUP = re.compile(rb"\x1b\[(\d+);(\d+)H")
 
@@ -49,7 +51,7 @@ def locate(raw: bytes, needle: str) -> tuple[int, int] | None:
     moves = list(_CUP.finditer(raw))
     for i, m in enumerate(moves):
         end = moves[i + 1].start() if i + 1 < len(moves) else len(raw)
-        text = strip_ansi(raw[m.end():end])
+        text = strip_ansi(raw[m.end() : end])
         pos = text.rfind(needle)
         if pos >= 0 and "\n" not in text[:pos]:
             found = (int(m.group(1)), int(m.group(2)) + pos)
@@ -84,7 +86,7 @@ class ScreenGrid:
             if not 0 <= row < self.rows:
                 continue
             end = moves[i + 1].start() if i + 1 < len(moves) else len(raw)
-            text = strip_ansi(raw[m.end():end]).replace("\r", "")
+            text = strip_ansi(raw[m.end() : end]).replace("\r", "")
             text = text.replace("\n", "")
             line = self._grid[row]
             for j, ch in enumerate(text):
@@ -137,7 +139,6 @@ class FrameSplitter:
         frames: list[Frame] = []
         while (i := self._buf.find(SYNC_END)) >= 0:
             raw = self._buf[:i].replace(SYNC_BEGIN, b"")
-            self._buf = self._buf[i + len(SYNC_END):]
-            frames.append(Frame(t_ns=t_ns, nbytes=i, text=strip_ansi(raw),
-                                raw=raw))
+            self._buf = self._buf[i + len(SYNC_END) :]
+            frames.append(Frame(t_ns=t_ns, nbytes=i, text=strip_ansi(raw), raw=raw))
         return frames

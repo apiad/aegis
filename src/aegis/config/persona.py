@@ -5,6 +5,7 @@ persona. `read_persona` resolves + reads it at spawn; drivers inject the
 returned text as a system prompt that composes with (never replaces) the
 aegis handle/callback primer.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,5 +29,4 @@ def read_persona(agent: Agent, cwd: str) -> str | None:
     try:
         return p.read_text(encoding="utf-8")
     except OSError as e:
-        raise ConfigError(
-            f"persona prompt file {p} is unreadable: {e}") from e
+        raise ConfigError(f"persona prompt file {p} is unreadable: {e}") from e

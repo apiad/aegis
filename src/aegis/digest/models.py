@@ -1,4 +1,5 @@
 """The digest's data, frozen and pure."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class CommitLine:
     """One commit, as `git log --oneline` gives it."""
+
     sha: str
     subject: str
 
@@ -20,6 +22,7 @@ class RepoDelta:
     silently wrong answer rather than an error — the rule ``Claim.host``
     and ``render_shared.file_target`` already follow.
     """
+
     name: str
     host: str = "local"
     commits: tuple[CommitLine, ...] = ()
@@ -30,6 +33,7 @@ class RepoDelta:
 @dataclass(frozen=True)
 class TurnFacts:
     """One turn's substrate movement."""
+
     repos: tuple[RepoDelta, ...] = ()
     plan_done_delta: int = 0
     plan_done: int = 0

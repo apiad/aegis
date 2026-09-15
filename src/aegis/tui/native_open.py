@@ -7,6 +7,7 @@ rather than in aegis's read-only file tab (ctrl+click).
 Deliberately not ``webbrowser.open``: on Linux that would cheerfully
 open a ``.py`` in Firefox instead of the registered editor.
 """
+
 from __future__ import annotations
 
 import re
@@ -54,8 +55,12 @@ def open_native(target: str) -> str | None:
     if cmd is None:
         return "no xdg-open/open on this host"
     try:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     except OSError as e:
         return f"could not open: {e}"
     return None

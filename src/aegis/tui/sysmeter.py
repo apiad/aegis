@@ -12,6 +12,7 @@ section, where a terminal's vertical axis is free. Every formatter here is
 pure and takes its inputs explicitly: a clock that reads ``now()`` itself
 cannot be asserted on.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,8 +25,8 @@ HIGH_THRESHOLD = 90.0
 
 @dataclass
 class SystemStats:
-    cpu: float   # system-wide CPU utilisation, 0–100
-    ram: float   # virtual-memory utilisation, 0–100
+    cpu: float  # system-wide CPU utilisation, 0–100
+    ram: float  # virtual-memory utilisation, 0–100
     disk: float  # usage of the project-root filesystem, 0–100
 
 
@@ -51,11 +52,14 @@ def format_system(stats: SystemStats, colors) -> str:
             val = f"[{colors.working}]{val}[/]"
         return f"[{colors.muted}]{label}[/] {val}"
 
-    return " · ".join((
-        seg("CPU", stats.cpu),
-        seg("RAM", stats.ram),
-        seg("DSK", stats.disk),
-    ))
+    return " · ".join(
+        (
+            seg("CPU", stats.cpu),
+            seg("RAM", stats.ram),
+            seg("DSK", stats.disk),
+        )
+    )
+
 
 def format_system_tiers(stats: SystemStats, colors) -> tuple[str, str]:
     """Widest and narrowest forms of the system segment.
@@ -125,8 +129,7 @@ def format_cwd(path: str | Path, colors) -> tuple[str, ...]:
         tiers.append("…/" + "/".join(p.parts[-2:]))
     if len(p.parts) > 1:
         tiers.append(p.name)
-    return tuple(f"[{colors.muted}]CWD[/] {t}"
-                 for t in dict.fromkeys(tiers))
+    return tuple(f"[{colors.muted}]CWD[/] {t}" for t in dict.fromkeys(tiers))
 
 
 def format_build(colors) -> tuple[str, ...]:
@@ -138,5 +141,6 @@ def format_build(colors) -> tuple[str, ...]:
     """
     from aegis.version import BUILD
 
-    return tuple(dict.fromkeys((
-        f"[{colors.muted}]aegis[/] {BUILD}", BUILD, BUILD.split("+")[0])))
+    return tuple(
+        dict.fromkeys((f"[{colors.muted}]aegis[/] {BUILD}", BUILD, BUILD.split("+")[0]))
+    )

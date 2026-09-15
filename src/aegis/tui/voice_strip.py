@@ -6,6 +6,7 @@ cancel-first restart, same ``set_animating`` seam so a backgrounded pane
 stops redrawing. Elapsed time comes from ``time.monotonic()``, so a frozen
 strip's clock is still right when the pane comes back.
 """
+
 from __future__ import annotations
 
 import contextlib

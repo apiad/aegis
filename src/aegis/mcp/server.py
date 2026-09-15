@@ -11,12 +11,19 @@ from fastmcp import FastMCP
 from aegis.mcp.bridge import AppBridge
 from aegis.mcp.identity import HEADER_NAME
 from aegis.remote.client import (
-    remote_schedule_list, remote_schedule_logs, remote_schedule_push,
-    remote_schedule_remove, remote_schedule_show,
+    remote_schedule_list,
+    remote_schedule_logs,
+    remote_schedule_push,
+    remote_schedule_remove,
+    remote_schedule_show,
 )
 from aegis.scheduler.push import (
-    list_payload, logs_payload, remove_schedule, show_payload,
-    validate_spec, write_atomic,
+    list_payload,
+    logs_payload,
+    remove_schedule,
+    show_payload,
+    validate_spec,
+    write_atomic,
 )
 
 
@@ -31,25 +38,33 @@ def _resolve_remote(bridge, target: str | None):
         return None, None
     remotes = getattr(bridge, "remotes", {}) or {}
     if target not in remotes:
-        return None, {"error": f"unknown target {target!r}; "
-                                f"known: {sorted(remotes)}"}
+        return None, {"error": f"unknown target {target!r}; known: {sorted(remotes)}"}
     return remotes[target], None
 
 
-async def _aegis_group_spawn_impl(bridge, *, profile: str, group: str,
-                                  handle: str | None = None) -> dict:
-    h = await bridge.groups.spawn(profile=profile, group=group,
-                                   handle=handle)
+async def _aegis_group_spawn_impl(
+    bridge, *, profile: str, group: str, handle: str | None = None
+) -> dict:
+    h = await bridge.groups.spawn(profile=profile, group=group, handle=handle)
     return {"handle": h, "group": group}
 
 
-async def _aegis_group_broadcast_impl(bridge, *, group: str, sender: str,
-                                      objective: str, output_format: str,
-                                      tool_guidance: str,
-                                      boundaries: str) -> dict:
+async def _aegis_group_broadcast_impl(
+    bridge,
+    *,
+    group: str,
+    sender: str,
+    objective: str,
+    output_format: str,
+    tool_guidance: str,
+    boundaries: str,
+) -> dict:
     bid = await bridge.groups.broadcast(
-        group, sender=sender, objective=objective,
-        output_format=output_format, tool_guidance=tool_guidance,
+        group,
+        sender=sender,
+        objective=objective,
+        output_format=output_format,
+        tool_guidance=tool_guidance,
         boundaries=boundaries,
     )
     return {"broadcast_id": bid}
@@ -59,43 +74,40 @@ def _group_result_to_dict(result) -> dict:
     return {
         "broadcast_id": result.broadcast_id,
         "by_member": {h: asdict(mr) for h, mr in result.by_member.items()},
-        "combined":  result.combined,
-        "errors":    dict(result.errors),
-        "timeouts":  list(result.timeouts),
+        "combined": result.combined,
+        "errors": dict(result.errors),
+        "timeouts": list(result.timeouts),
     }
 
 
-async def _aegis_group_wait_all_impl(bridge, *, group: str,
-                                     timeout: float = 600.0,
-                                     reducer: str = "concat") -> dict:
-    result = await bridge.groups.wait_all(group, timeout=timeout,
-                                           reducer=reducer)
+async def _aegis_group_wait_all_impl(
+    bridge, *, group: str, timeout: float = 600.0, reducer: str = "concat"
+) -> dict:
+    result = await bridge.groups.wait_all(group, timeout=timeout, reducer=reducer)
     return _group_result_to_dict(result)
 
 
-async def _aegis_group_wait_any_impl(bridge, *, group: str,
-                                     timeout: float = 600.0,
-                                     cancel_losers: bool = True) -> dict:
+async def _aegis_group_wait_any_impl(
+    bridge, *, group: str, timeout: float = 600.0, cancel_losers: bool = True
+) -> dict:
     result = await bridge.groups.wait_any(
-        group, timeout=timeout, cancel_losers=cancel_losers)
+        group, timeout=timeout, cancel_losers=cancel_losers
+    )
     return _group_result_to_dict(result)
 
 
-async def _aegis_group_spawn_mixed_impl(bridge, *, group: str,
-                                        profiles: list[str] | None = None,
-                                        preset: str | None = None) -> dict:
+async def _aegis_group_spawn_mixed_impl(
+    bridge, *, group: str, profiles: list[str] | None = None, preset: str | None = None
+) -> dict:
     if preset is not None:
         cfg = getattr(bridge, "config", None) or {}
         presets = (cfg.get("groups") or {}).get("presets") or {}
         if preset not in presets:
-            raise KeyError(
-                f"unknown group preset {preset!r}; "
-                f"known: {sorted(presets)}")
+            raise KeyError(f"unknown group preset {preset!r}; known: {sorted(presets)}")
         profiles = list(presets[preset].get("profiles") or [])
     if not profiles:
         raise ValueError("must pass either `profiles` or `preset`")
-    handles = await bridge.groups.spawn_mixed(
-        group=group, profiles=profiles)
+    handles = await bridge.groups.spawn_mixed(group=group, profiles=profiles)
     return {"handles": list(handles), "group": group}
 
 
@@ -111,24 +123,25 @@ async def _aegis_group_rename_impl(bridge, *, old: str, new: str) -> dict:
     return await bridge.groups.rename(old, new)
 
 
-async def _aegis_rename_impl(bridge, *, old_handle: str,
-                             new_handle: str,
-                             title: str | None = None) -> dict:
+async def _aegis_rename_impl(
+    bridge, *, old_handle: str, new_handle: str, title: str | None = None
+) -> dict:
     """Rename a live aegis session's handle in place."""
     return await bridge.rename_handle(old_handle, new_handle, title)
 
 
-async def _aegis_title_impl(bridge, *, from_handle: str,
-                            title: str) -> dict:
+async def _aegis_title_impl(bridge, *, from_handle: str, title: str) -> dict:
     """Set a session's display title at agent authority."""
     return await bridge.set_title(from_handle, title, source="agent")
 
 
-async def _aegis_group_move_member_impl(bridge, *, handle: str,
-                                        from_group: str,
-                                        to_group: str) -> dict:
+async def _aegis_group_move_member_impl(
+    bridge, *, handle: str, from_group: str, to_group: str
+) -> dict:
     return await bridge.groups.move_member(
-        handle, from_group=from_group, to_group=to_group)
+        handle, from_group=from_group, to_group=to_group
+    )
+
 
 BRIEFING = (
     "You are running inside aegis — a meta-harness for coding agents. "
@@ -143,7 +156,7 @@ BRIEFING = (
     "Each entry has handle, agent_slug, state, active, unseen. Use this "
     "to see who you can hand off to and whether they are idle. Each entry "
     "also carries `host` — the machine that peer's harness runs on "
-    "(\"local\", or a configured host like \"vps\"). A peer on another host "
+    '("local", or a configured host like "vps"). A peer on another host '
     "reads and writes THAT machine's files: paths are not interchangeable "
     "between hosts, and file claims are scoped per host. When work belongs "
     "on a particular box, hand it to a peer already there.\n"
@@ -246,7 +259,7 @@ BRIEFING = (
     "turn-end reminder — it comes back as your LAST turn, strictly behind "
     "buffered inbox messages and any spontaneous-event drain (if your turn "
     "ends but the inbox still has items, those go first; the reminder is "
-    "the last thing). Set `after` (seconds or \"20m\"/\"2h\") for a delayed "
+    'the last thing). Set `after` (seconds or "20m"/"2h") for a delayed '
     "reminder that lands in your inbox at that time. "
     "aegis_reminders(from_handle?) / aegis_reminder_cancel(reminder_id) "
     "list / cancel pending future-time reminders.\n"
@@ -402,7 +415,7 @@ BRIEFING = (
     "cut its current turn when it needs a blocking correction now. Use "
     "aegis_enqueue when you want a FRESH worker spawned for one task and "
     "the result returned to you.\n\n"
-    "EXECUTION HOSTS. aegis_spawn(..., host=\"vps\", cwd=\"/srv/app\") "
+    'EXECUTION HOSTS. aegis_spawn(..., host="vps", cwd="/srv/app") '
     "puts the new agent's HARNESS on another machine over a persistent "
     "SSH connection. It is still an ordinary peer of yours — same handles, "
     "same handoffs, same canvases, reachable over this same MCP surface — "
@@ -508,9 +521,12 @@ def _canvas_info_to_dict(info) -> dict:
         "file": info.file,
         "created_at": info.created_at,
         "sections": [
-            {"name": s.name, "lines": s.lines,
-             "last_writer": s.last_writer,
-             "updated_at": s.updated_at}
+            {
+                "name": s.name,
+                "lines": s.lines,
+                "last_writer": s.last_writer,
+                "updated_at": s.updated_at,
+            }
             for s in info.sections
         ],
     }
@@ -533,8 +549,10 @@ def make_handoff(bridge):
     """Factory for the ``aegis_handoff`` tool callable, kept module-level so
     its logic is unit-testable without standing up FastMCP. The returned
     async function is registered verbatim via ``server.tool(...)``."""
-    async def aegis_handoff(from_handle: str, target_handle: str,
-                            context: str, interrupt: bool = False) -> str:
+
+    async def aegis_handoff(
+        from_handle: str, target_handle: str, context: str, interrupt: bool = False
+    ) -> str:
         """One-way context transfer to a live peer aegis session.
 
         Delivered via the universal inbox channel: the target receives a
@@ -562,11 +580,12 @@ def make_handoff(bridge):
         if from_handle == target_handle:
             return "handoff rejected: cannot hand off to yourself"
         sessions = list(bridge.list_sessions())
-        target_info = next(
-            (s for s in sessions if s.handle == target_handle), None)
+        target_info = next((s for s in sessions if s.handle == target_handle), None)
         if target_info is None:
-            return (f"handoff rejected: no session {target_handle!r} "
-                    f"(use aegis_list_sessions)")
+            return (
+                f"handoff rejected: no session {target_handle!r} "
+                f"(use aegis_list_sessions)"
+            )
         was_working = target_info.state == "working"
         if interrupt and was_working:
             # drain=False: our deliver() below drains the buffer, so the
@@ -575,16 +594,15 @@ def make_handoff(bridge):
         receipt = await bridge.inbox_router.deliver(
             target_handle,
             InboxMessage(
-                sender=sender_agent(from_handle),
-                timestamp=now_iso(),
-                body=context))
+                sender=sender_agent(from_handle), timestamp=now_iso(), body=context
+            ),
+        )
         if interrupt and was_working:
             return f"interrupted & landed at {target_handle}"
         # The sender's view of land-vs-queue follows the target's state at
         # call time; the receipt depth gives the queue position.
         if target_info.state == "working":
-            return (f"queued for {target_handle} "
-                    f"(position {receipt.depth})")
+            return f"queued for {target_handle} (position {receipt.depth})"
         return f"landed at {target_handle}"
 
     return aegis_handoff
@@ -615,8 +633,12 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     _qm = getattr(bridge, "queue_manager", None)
     _state_dir = getattr(_qm, "_state_dir", None) if _qm is not None else None
-    server.add_middleware(CommsMiddleware(CommsLedger(
-        Path(_state_dir) if _state_dir else roots.state_dir), tokens=tokens))
+    server.add_middleware(
+        CommsMiddleware(
+            CommsLedger(Path(_state_dir) if _state_dir else roots.state_dir),
+            tokens=tokens,
+        )
+    )
 
     server.tool(aegis_meta)
 
@@ -638,20 +660,27 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         out: dict = {
             "agents": {
                 slug: {
-                    "harness": a.harness, "model": a.model,
+                    "harness": a.harness,
+                    "model": a.model,
                     "effort": a.effort.value if a.effort else None,
                     "permission": a.permission.value,
-                } for slug, a in cfg.agents.items()
+                }
+                for slug, a in cfg.agents.items()
             },
             "queues": {
-                name: {"agent": q.agent, "max_parallel": q.max_parallel,
-                       "budgets": list(q.budgets or [])}
+                name: {
+                    "agent": q.agent,
+                    "max_parallel": q.max_parallel,
+                    "budgets": list(q.budgets or []),
+                }
                 for name, q in (cfg.queues or {}).items()
             },
             "schedules": {
-                name: {"cron": s.get("cron"),
-                       "enabled": s.get("enabled", True),
-                       "workflow": s.get("workflow")}
+                name: {
+                    "cron": s.get("cron"),
+                    "enabled": s.get("enabled", True),
+                    "workflow": s.get("workflow"),
+                }
                 for name, s in (cfg.schedules or {}).items()
             },
             "plugin_dirs": [str(p) for p in (cfg.plugin_dirs or [])],
@@ -671,9 +700,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         except ConfigError:
             return []
         return [
-            {"slug": slug, "harness": a.harness, "model": a.model,
-             "effort": a.effort.value if a.effort else None,
-             "permission": a.permission.value}
+            {
+                "slug": slug,
+                "harness": a.harness,
+                "model": a.model,
+                "effort": a.effort.value if a.effort else None,
+                "permission": a.permission.value,
+            }
             for slug, a in cfg.agents.items()
         ]
 
@@ -689,9 +722,12 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         except ConfigError:
             return []
         return [
-            {"name": name, "agent": q.agent,
-             "max_parallel": q.max_parallel,
-             "budgets": list(q.budgets or [])}
+            {
+                "name": name,
+                "agent": q.agent,
+                "max_parallel": q.max_parallel,
+                "budgets": list(q.budgets or []),
+            }
             for name, q in (cfg.queues or {}).items()
         ]
 
@@ -707,10 +743,12 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         except ConfigError:
             return []
         return [
-            {"name": name,
-             "cron": s.get("cron"),
-             "enabled": s.get("enabled", True),
-             "workflow": s.get("workflow")}
+            {
+                "name": name,
+                "cron": s.get("cron"),
+                "enabled": s.get("enabled", True),
+                "workflow": s.get("workflow"),
+            }
             for name, s in (cfg.schedules or {}).items()
         ]
 
@@ -718,8 +756,11 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_config_add_agent(
-        slug: str, harness: str, model: str,
-        effort: str | None = None, permission: str | None = None,
+        slug: str,
+        harness: str,
+        model: str,
+        effort: str | None = None,
+        permission: str | None = None,
     ) -> dict:
         """Add an agent profile to .aegis.yaml. Hot-registers on the live
         agent map so the next spawn can use the new slug."""
@@ -729,8 +770,14 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         root = roots.config_root
         async with config_write_lock:
             try:
-                _add(root, slug, provider=harness, model=model,
-                     effort=effort, permission=permission)
+                _add(
+                    root,
+                    slug,
+                    provider=harness,
+                    model=model,
+                    effort=effort,
+                    permission=permission,
+                )
             except ConfigError as e:
                 return {"error": str(e)}
             kw: dict = {"harness": harness, "model": model}
@@ -741,10 +788,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             try:
                 agent = Agent(**kw)
                 bridge.register_agent(slug, agent)
-            except Exception as e:                       # noqa: BLE001
-                return {"ok": True, "live": False,
-                        "restart_required_for": ["agents"],
-                        "note": f"persisted but live-register failed: {e}"}
+            except Exception as e:  # noqa: BLE001
+                return {
+                    "ok": True,
+                    "live": False,
+                    "restart_required_for": ["agents"],
+                    "note": f"persisted but live-register failed: {e}",
+                }
             return {"ok": True, "live": True, "restart_required_for": []}
 
     @server.tool
@@ -752,18 +802,20 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         """Drop an agent profile from .aegis.yaml. Restart required."""
         from aegis.config import ConfigError
         from aegis.config.edit import remove_agent as _rm
+
         root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, slug)
             except ConfigError as e:
                 return {"error": str(e)}
-        return {"ok": True, "live": False,
-                "restart_required_for": ["agents"]}
+        return {"ok": True, "live": False, "restart_required_for": ["agents"]}
 
     @server.tool
     async def aegis_config_add_queue(
-        name: str, agent: str, max_parallel: int,
+        name: str,
+        agent: str,
+        max_parallel: int,
         budgets: list[dict] | None = None,
     ) -> dict:
         """Add a queue to .aegis.yaml. Hot-registers on the live
@@ -774,18 +826,22 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         root = roots.config_root
         async with config_write_lock:
             try:
-                _add(root, name, agent=agent, max_parallel=max_parallel,
-                     budgets=budgets)
+                _add(
+                    root, name, agent=agent, max_parallel=max_parallel, budgets=budgets
+                )
             except ConfigError as e:
                 return {"error": str(e)}
             try:
                 fresh_queues = load_queues(root)
                 queue = fresh_queues[name]
                 bridge.register_queue(queue)
-            except Exception as e:                       # noqa: BLE001
-                return {"ok": True, "live": False,
-                        "restart_required_for": ["queues"],
-                        "note": f"persisted but live-register failed: {e}"}
+            except Exception as e:  # noqa: BLE001
+                return {
+                    "ok": True,
+                    "live": False,
+                    "restart_required_for": ["queues"],
+                    "note": f"persisted but live-register failed: {e}",
+                }
             return {"ok": True, "live": True, "restart_required_for": []}
 
     @server.tool
@@ -793,14 +849,14 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         """Drop a queue from .aegis.yaml. Restart required."""
         from aegis.config import ConfigError
         from aegis.config.edit import remove_queue as _rm
+
         root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, name)
             except ConfigError as e:
                 return {"error": str(e)}
-        return {"ok": True, "live": False,
-                "restart_required_for": ["queues"]}
+        return {"ok": True, "live": False, "restart_required_for": ["queues"]}
 
     @server.tool
     async def aegis_config_add_plugin_dir(path: str) -> dict:
@@ -808,6 +864,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         @workflow functions register immediately."""
         from aegis.config import ConfigError
         from aegis.config.edit import add_plugin_dir as _add
+
         root = roots.config_root
         async with config_write_lock:
             try:
@@ -816,10 +873,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 return {"error": str(e)}
             try:
                 bridge.reload_plugins()
-            except Exception as e:                       # noqa: BLE001
-                return {"ok": True, "live": False,
-                        "restart_required_for": ["plugins"],
-                        "note": f"persisted but reload failed: {e}"}
+            except Exception as e:  # noqa: BLE001
+                return {
+                    "ok": True,
+                    "live": False,
+                    "restart_required_for": ["plugins"],
+                    "note": f"persisted but reload failed: {e}",
+                }
             return {"ok": True, "live": True, "restart_required_for": []}
 
     @server.tool
@@ -828,48 +888,60 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         deregister @workflow functions imported from that dir."""
         from aegis.config import ConfigError
         from aegis.config.edit import remove_plugin_dir as _rm
+
         root = roots.config_root
         async with config_write_lock:
             try:
                 _rm(root, path)
             except ConfigError as e:
                 return {"error": str(e)}
-        return {"ok": True, "live": False,
-                "restart_required_for": ["plugins"]}
+        return {"ok": True, "live": False, "restart_required_for": ["plugins"]}
 
     @server.tool
     async def aegis_config_set_schedule_enabled(
-        name: str, enabled: bool,
+        name: str,
+        enabled: bool,
     ) -> dict:
         """Set the enabled flag on a schedule. ReloadWatcher picks the
         change up automatically — no bridge call needed."""
         from aegis.config.edit import set_schedule_enabled as _set
+
         root = roots.config_root
         async with config_write_lock:
             try:
                 new_state = _set(root, name, enabled)
             except (FileNotFoundError, KeyError, ValueError) as e:
                 return {"error": str(e)}
-        return {"ok": True, "live": True, "restart_required_for": [],
-                "enabled": new_state}
+        return {
+            "ok": True,
+            "live": True,
+            "restart_required_for": [],
+            "enabled": new_state,
+        }
 
     @server.tool
     async def aegis_config_toggle_schedule_enabled(name: str) -> dict:
         """Flip the enabled flag on a schedule. Returns new state."""
         from aegis.config.edit import toggle_schedule_enabled as _tog
+
         root = roots.config_root
         async with config_write_lock:
             try:
                 new_state = _tog(root, name)
             except (FileNotFoundError, KeyError, ValueError) as e:
                 return {"error": str(e)}
-        return {"ok": True, "live": True, "restart_required_for": [],
-                "enabled": new_state}
+        return {
+            "ok": True,
+            "live": True,
+            "restart_required_for": [],
+            "enabled": new_state,
+        }
 
     # Lazily attach a WorkflowRunner so the MCP workflow tools have a
     # canonical place to track running tasks + pending human questions.
     if getattr(bridge, "workflow_runner", None) is None:
         from aegis.workflow.runner import WorkflowRunner
+
         try:
             bridge.workflow_runner = WorkflowRunner(bridge)  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001 — frozen dataclass etc.
@@ -893,8 +965,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         minute of actual work, not one minute of wall clock.
         """
         if not any(s.handle == handle for s in bridge.list_sessions()):
-            return {"error": f"no session {handle!r} "
-                             f"(use aegis_list_sessions)"}
+            return {"error": f"no session {handle!r} (use aegis_list_sessions)"}
         state = bridge.plan_state(handle)
         if state is None:
             return {"handle": handle, "done": 0, "total": 0, "tasks": []}
@@ -903,8 +974,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             "done": state.done,
             "total": state.total,
             "tasks": [
-                {"subject": t.subject, "status": t.status,
-                 "working_s": t.working_s}
+                {"subject": t.subject, "status": t.status, "working_s": t.working_s}
                 for t in state.tasks
             ],
         }
@@ -953,16 +1023,20 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         """
         read = getattr(bridge, "read_peer", None)
         if read is None:
-            return {"ok": False, "text": "", "header": "",
-                    "error": "this aegis frontend cannot read peer "
-                             "transcripts"}
+            return {
+                "ok": False,
+                "text": "",
+                "header": "",
+                "error": "this aegis frontend cannot read peer transcripts",
+            }
         return await read(handle, turns)
 
     server.tool(make_handoff(bridge))
 
     @server.tool
-    async def aegis_rename(old_handle: str, new_handle: str,
-                           title: str | None = None) -> dict:
+    async def aegis_rename(
+        old_handle: str, new_handle: str, title: str | None = None
+    ) -> dict:
         """Rename a live aegis session's handle in place.
 
         Use this to change your own handle (or a peer's) from the generated
@@ -988,8 +1062,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         collision with another live session.
         """
         return await _aegis_rename_impl(
-            bridge, old_handle=old_handle, new_handle=new_handle,
-            title=title)
+            bridge, old_handle=old_handle, new_handle=new_handle, title=title
+        )
 
     @server.tool
     async def aegis_title(from_handle: str, title: str) -> dict:
@@ -1007,17 +1081,20 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         and the refusal says so rather than failing silently. Returns
         ``{"ok": True, ...}`` or ``{"error": "..."}``.
         """
-        return await _aegis_title_impl(
-            bridge, from_handle=from_handle, title=title)
+        return await _aegis_title_impl(bridge, from_handle=from_handle, title=title)
 
     @server.tool
-    async def aegis_spawn(agent: str, prompt: str, from_handle: str,
-                          slug: str | None = None,
-                          model: str | None = None,
-                          effort: str | None = None,
-                          persona: str | None = None,
-                          host: str | None = None,
-                          cwd: str | None = None) -> dict:
+    async def aegis_spawn(
+        agent: str,
+        prompt: str,
+        from_handle: str,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        persona: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> dict:
         """Create a NEW INDEPENDENT top-level agent and hand it an opening
         prompt. Unlike a harness subagent (the ``Task`` tool), this agent is a
         real peer: it gets its own handle and session, appears as its own tab,
@@ -1050,23 +1127,32 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 default (or the project root, locally).
         """
         from aegis.hosts.errors import HostError
+
         try:
-            handle = await bridge.spawn(agent, handle=slug,
-                                        opening_prompt=prompt,
-                                        spawned_by=from_handle,
-                                        model=model, effort=effort,
-                                        prompt=persona,
-                                        host=host, cwd=cwd)
+            handle = await bridge.spawn(
+                agent,
+                handle=slug,
+                opening_prompt=prompt,
+                spawned_by=from_handle,
+                model=model,
+                effort=effort,
+                prompt=persona,
+                host=host,
+                cwd=cwd,
+            )
         except HostError as e:
             return {"error": str(e)}
         return {"handle": handle}
 
     @server.tool
-    async def aegis_fork(target_handle: str, from_handle: str,
-                         prompt: str | None = None,
-                         slug: str | None = None,
-                         model: str | None = None,
-                         effort: str | None = None) -> dict:
+    async def aegis_fork(
+        target_handle: str,
+        from_handle: str,
+        prompt: str | None = None,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+    ) -> dict:
         """Branch a peer's conversation into a NEW independent agent that
         already knows everything that peer knows.
 
@@ -1102,16 +1188,24 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             effort: per-session reasoning-effort override.
         """
         if target_handle == from_handle:
-            return {"error": (
-                "an agent cannot fork itself over MCP: calling this tool "
-                "puts you mid-turn, and a fork would branch from the "
-                "dangling tool call you are inside. Use the /fork slash "
-                "command, which runs at a turn boundary.")}
+            return {
+                "error": (
+                    "an agent cannot fork itself over MCP: calling this tool "
+                    "puts you mid-turn, and a fork would branch from the "
+                    "dangling tool call you are inside. Use the /fork slash "
+                    "command, which runs at a turn boundary."
+                )
+            }
         try:
-            handle = await bridge.fork(target_handle, prompt=prompt,
-                                       slug=slug, model=model, effort=effort,
-                                       forked_by=from_handle)
-        except ValueError as e:                # the guard's refusal reasons
+            handle = await bridge.fork(
+                target_handle,
+                prompt=prompt,
+                slug=slug,
+                model=model,
+                effort=effort,
+                forked_by=from_handle,
+            )
+        except ValueError as e:  # the guard's refusal reasons
             return {"error": f"fork refused: {e}"}
         return {"handle": handle}
 
@@ -1150,8 +1244,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return {"closed": True, "handle": handle}
 
     @server.tool
-    async def aegis_claim(paths: list[str], from_handle: str,
-                          intent: str = "shared", desc: str = "") -> dict:
+    async def aegis_claim(
+        paths: list[str], from_handle: str, intent: str = "shared", desc: str = ""
+    ) -> dict:
         """Register that you're working on a set of files, and find out who
         else is. Returns whether your claim was granted plus the overlapping
         claims of other agents.
@@ -1188,18 +1283,24 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         # Claims are host-scoped: the same path names a different file on a
         # different machine, so a claim carries the host of the session that
         # made it and only overlaps claims on that same host.
-        host = next((s.host for s in bridge.list_sessions()
-                     if s.handle == from_handle), "local")
+        host = next(
+            (s.host for s in bridge.list_sessions() if s.handle == from_handle), "local"
+        )
         claim, granted, overlaps = bridge.locks.claim(
-            from_handle, paths, intent=intent, desc=desc, host=host)
+            from_handle, paths, intent=intent, desc=desc, host=host
+        )
         return {
             "claim_id": claim.claim_id,
             "granted": granted,
             "host": claim.host,
             "overlaps": [
-                {"handle": c.handle, "host": c.host,
-                 "paths": sorted(set(c.prefixes) | set(c.files)),
-                 "intent": c.intent, "desc": c.desc}
+                {
+                    "handle": c.handle,
+                    "host": c.host,
+                    "paths": sorted(set(c.prefixes) | set(c.files)),
+                    "intent": c.intent,
+                    "desc": c.desc,
+                }
                 for c in overlaps
             ],
         }
@@ -1221,16 +1322,26 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         before you claim, or to decide whom to coordinate with.
         """
         return [
-            {"claim_id": c.claim_id, "handle": c.handle, "host": c.host,
-             "paths": sorted(set(c.prefixes) | set(c.files)),
-             "intent": c.intent, "desc": c.desc, "since": c.since}
+            {
+                "claim_id": c.claim_id,
+                "handle": c.handle,
+                "host": c.host,
+                "paths": sorted(set(c.prefixes) | set(c.files)),
+                "intent": c.intent,
+                "desc": c.desc,
+                "since": c.since,
+            }
             for c in bridge.locks.active()
         ]
 
     @server.tool
-    async def aegis_enqueue(queue: str, payload: str, from_handle: str,
-                            callback: bool | None = None,
-                            target: str | None = None) -> dict:
+    async def aegis_enqueue(
+        queue: str,
+        payload: str,
+        from_handle: str,
+        callback: bool | None = None,
+        target: str | None = None,
+    ) -> dict:
         """Enqueue a task on a named queue. Returns task_id + queued_position.
 
         If ``target`` is set, the enqueue is forwarded to a configured
@@ -1256,56 +1367,68 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         Unknown queue/target returns ``{"error": "..."}``.
         """
         from aegis.queue import sender_agent
+
         if target is not None:
             remotes = getattr(bridge, "remotes", {}) or {}
             if target not in remotes:
-                return {"error":
-                        f"unknown target {target!r}; "
-                        f"known: {sorted(remotes)}"}
+                return {"error": f"unknown target {target!r}; known: {sorted(remotes)}"}
             effective_callback = bool(callback)  # default False for remote
             spec = remotes[target]
             if effective_callback:
                 if getattr(bridge, "remote_plane", None) is None:
-                    return {"error":
-                            "callback=true on a remote target requires "
-                            "remote_plane to be configured on this serve"}
+                    return {
+                        "error": "callback=true on a remote target requires "
+                        "remote_plane to be configured on this serve"
+                    }
                 if not getattr(bridge.remote_plane, "peer_name", None):
-                    return {"error":
-                            "callback=true on a remote target requires "
-                            "remote_plane.peer_name to be set on this "
-                            "serve (so the receiver knows who to call "
-                            "back)"}
+                    return {
+                        "error": "callback=true on a remote target requires "
+                        "remote_plane.peer_name to be set on this "
+                        "serve (so the receiver knows who to call "
+                        "back)"
+                    }
                 if not spec.peer_name:
-                    return {"error":
-                            f"callback=true on a remote target requires "
-                            f"remotes[{target!r}].peer_name to be set "
-                            f"(the receiver's name for this serve in "
-                            f"its own `remotes:` mapping)"}
+                    return {
+                        "error": f"callback=true on a remote target requires "
+                        f"remotes[{target!r}].peer_name to be set "
+                        f"(the receiver's name for this serve in "
+                        f"its own `remotes:` mapping)"
+                    }
             callback_to = spec.peer_name if effective_callback else None
             callback_handle = from_handle if effective_callback else None
             from aegis.remote.client import remote_enqueue
+
             result = await remote_enqueue(
-                spec, queue, payload, from_handle,
-                callback_to=callback_to, callback_handle=callback_handle)
+                spec,
+                queue,
+                payload,
+                from_handle,
+                callback_to=callback_to,
+                callback_handle=callback_handle,
+            )
             if "error" not in result:
                 result["target"] = target
                 if effective_callback:
                     result["callback_note"] = (
                         "callback will deliver to your inbox when the remote "
-                        "task terminates")
+                        "task terminates"
+                    )
                 else:
                     result["callback_note"] = (
                         "fire-and-forget — completion behavior is whatever the "
-                        "receiving serve is configured to do")
+                        "receiving serve is configured to do"
+                    )
             return result
         # local path: callback defaults to True
         effective_local_callback = True if callback is None else bool(callback)
 
         try:
             result = bridge.queue_manager.enqueue(
-                queue, payload,
+                queue,
+                payload,
                 enqueued_by=sender_agent(from_handle),
-                callback=effective_local_callback)
+                callback=effective_local_callback,
+            )
         except KeyError as e:
             return {"error": f"enqueue rejected: unknown queue {e.args[0]!r}"}
         if isinstance(result, dict):
@@ -1314,13 +1437,17 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return {"task_id": tid, "queued_position": pos}
 
     @server.tool
-    async def aegis_monitor(from_handle: str, description: str, done: str,
-                            progress: str | None = None,
-                            fail: str | None = None,
-                            interval_s: float = 2.0,
-                            timeout_s: float = 3600.0,
-                            interrupt: bool = False,
-                            cwd: str | None = None) -> dict:
+    async def aegis_monitor(
+        from_handle: str,
+        description: str,
+        done: str,
+        progress: str | None = None,
+        fail: str | None = None,
+        interval_s: float = 2.0,
+        timeout_s: float = 3600.0,
+        interrupt: bool = False,
+        cwd: str | None = None,
+    ) -> dict:
         """Watch a long-running process without polling; wake on the outcome.
 
         aegis does NOT launch or own the process — you start it yourself
@@ -1369,6 +1496,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         where = str(root) if root else None
         if cwd:
             from pathlib import Path
+
             p = Path(cwd)
             if not p.is_absolute() and root:
                 p = Path(root) / p
@@ -1377,10 +1505,16 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             where = str(p)
         try:
             mid = bridge.monitor_manager.start_monitor(
-                from_handle=from_handle, description=description, done=done,
-                fail=fail, progress=progress, cwd=where,
-                interval_s=interval_s, timeout_s=timeout_s,
-                interrupt=interrupt)
+                from_handle=from_handle,
+                description=description,
+                done=done,
+                fail=fail,
+                progress=progress,
+                cwd=where,
+                interval_s=interval_s,
+                timeout_s=timeout_s,
+                interrupt=interrupt,
+            )
         except ValueError as exc:
             return {"error": str(exc)}
         out: dict = {"monitor_id": mid}
@@ -1392,7 +1526,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 "ones above are still watching something real — cancel any "
                 "whose process you already killed or superseded with "
                 "aegis_monitor_cancel(monitor_id), or it will sit there "
-                "until it times out.")
+                "until it times out."
+            )
         return out
 
     @server.tool
@@ -1417,8 +1552,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return await bridge.monitor_manager.cancel(monitor_id)
 
     @server.tool
-    async def aegis_remind(from_handle: str, note: str,
-                           after: str | float | None = None) -> dict:
+    async def aegis_remind(
+        from_handle: str, note: str, after: str | float | None = None
+    ) -> dict:
         """Leave a note for your future self, delivered back to your OWN inbox.
 
         Two timings:
@@ -1475,9 +1611,11 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         # advisory=True: this is the AGENT asking. The operator's
         # `/loop stop` goes through the same service without it and
         # reaps outright.
-        return svc.stop(from_handle=from_handle,
-                        reason=reason or "the agent believes it is done",
-                        advisory=True)
+        return svc.stop(
+            from_handle=from_handle,
+            reason=reason or "the agent believes it is done",
+            advisory=True,
+        )
 
     @server.tool
     async def aegis_reminders(from_handle: str | None = None) -> list[dict]:
@@ -1498,8 +1636,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_run_workflow(
-        name: str, kwargs: dict | None = None,
-        from_handle: str = "", callback: bool = True,
+        name: str,
+        kwargs: dict | None = None,
+        from_handle: str = "",
+        callback: bool = True,
     ) -> dict:
         """Invoke a registered workflow. Non-blocking: returns
         ``{workflow_run_id, status: "running"}`` immediately; the
@@ -1529,8 +1669,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
         if get_workflow(name) is None:
             return {
-                "error": (f"unknown workflow: {name!r}. "
-                          f"Available: {list_workflows()}")}
+                "error": (f"unknown workflow: {name!r}. Available: {list_workflows()}")
+            }
 
         runner: WorkflowRunner = getattr(bridge, "workflow_runner", None)
         if runner is None:
@@ -1542,8 +1682,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
         run_id = new_ulid()
         qm = bridge.queue_manager
-        state_dir = (getattr(qm, "_state_dir", None)
-                     if qm is not None else None)
+        state_dir = getattr(qm, "_state_dir", None) if qm is not None else None
         kw = kwargs or {}
 
         async def _deliver_callback() -> None:
@@ -1557,7 +1696,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 timestamp=now_iso(),
                 body=str(body) if body is not None else "",
                 task_id=run_id,
-                status=("ok" if ok else "error"))
+                status=("ok" if ok else "error"),
+            )
             await bridge.inbox_router.deliver(from_handle, msg)
 
         # Schedule via Textual's App.run_worker when the bridge is the
@@ -1567,17 +1707,20 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         # adapter's mount path). Otherwise asyncio.create_task is fine.
         rw = getattr(bridge, "run_worker", None)
         if rw is not None:
+
             def _sched(coro, *, name):  # noqa: ANN001
                 return rw(coro, name=name, exclusive=False)
         else:
             _sched = None
         await runner.start(
-            name, kw,
+            name,
+            kw,
             host=from_handle or None,
             state_dir=state_dir,
             workflow_id=run_id,
             scheduler=_sched,
-            done_callback=_deliver_callback)
+            done_callback=_deliver_callback,
+        )
         return {
             "workflow_id": run_id,
             "workflow_run_id": run_id,
@@ -1587,8 +1730,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_run_dynamic_workflow(
-        spec: dict, kwargs: dict | None = None,
-        from_handle: str = "", callback: bool = True,
+        spec: dict,
+        kwargs: dict | None = None,
+        from_handle: str = "",
+        callback: bool = True,
     ) -> dict:
         """Run a JSON DSL spec as a dynamic workflow.
 
@@ -1620,22 +1765,28 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             return {"error": f"config load failed: {e}"}
 
         try:
-            validate(model,
-                     agents=set(cfg.agents.keys()),
-                     queues=set(cfg.queues.keys()),
-                     default_agent=cfg.default_agent)
+            validate(
+                model,
+                agents=set(cfg.agents.keys()),
+                queues=set(cfg.queues.keys()),
+                default_agent=cfg.default_agent,
+            )
         except DslValidationError as e:
             return {"error": f"semantic validation: {e}"}
 
         plan: PlanPreview = build_plan(model, kwargs=kwargs)
-        operator_invoked = (from_handle == "")
+        operator_invoked = from_handle == ""
         decision = gate_decision(
             projected_agents=plan.projected_agents,
             threshold=cfg.dynamic_workflow_autoapprove_agents,
-            operator_invoked=operator_invoked)
+            operator_invoked=operator_invoked,
+        )
         if decision == "prompt":
-            return {"status": "gated", "plan": plan.render(),
-                    "projected_agents": plan.projected_agents}
+            return {
+                "status": "gated",
+                "plan": plan.render(),
+                "projected_agents": plan.projected_agents,
+            }
 
         runner: WorkflowRunner | None = getattr(bridge, "workflow_runner", None)
         if runner is None:
@@ -1647,13 +1798,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
         run_id = new_ulid()
         qm = bridge.queue_manager
-        state_dir = (getattr(qm, "_state_dir", None)
-                     if qm is not None else None)
+        state_dir = getattr(qm, "_state_dir", None) if qm is not None else None
 
         async def _deliver_callback() -> None:
             if not callback or not from_handle:
                 return
             from aegis.queue import InboxMessage
+
             st = runner.status(run_id)
             ok = st.get("status") == "ok"
             body = st.get("result") if ok else st.get("error", "")
@@ -1662,11 +1813,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 timestamp=now_iso(),
                 body=str(body) if body is not None else "",
                 task_id=run_id,
-                status=("ok" if ok else "error"))
+                status=("ok" if ok else "error"),
+            )
             await bridge.inbox_router.deliver(from_handle, msg)
 
         rw = getattr(bridge, "run_worker", None)
         if rw is not None:
+
             def _sched(coro, *, name):  # noqa: ANN001
                 return rw(coro, name=name, exclusive=False)
         else:
@@ -1674,15 +1827,23 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
         await runner.start(
             "dynamic",
-            {"spec": spec, "kwargs": kwargs or {},
-             "default_profile": cfg.default_agent},
+            {
+                "spec": spec,
+                "kwargs": kwargs or {},
+                "default_profile": cfg.default_agent,
+            },
             host=from_handle or None,
             state_dir=state_dir,
             workflow_id=run_id,
             scheduler=_sched,
-            done_callback=_deliver_callback)
-        return {"workflow_id": run_id, "workflow_run_id": run_id,
-                "host": from_handle or None, "status": "running"}
+            done_callback=_deliver_callback,
+        )
+        return {
+            "workflow_id": run_id,
+            "workflow_run_id": run_id,
+            "host": from_handle or None,
+            "status": "running",
+        }
 
     @server.tool
     async def aegis_workflow_status(workflow_id: str) -> dict:
@@ -1706,8 +1867,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return await runner.cancel(workflow_id)
 
     @server.tool
-    async def aegis_canvas_open(name: str, file: str | None = None,
-                                from_handle: str = "") -> dict:
+    async def aegis_canvas_open(
+        name: str, file: str | None = None, from_handle: str = ""
+    ) -> dict:
         """Open or create a shared canvas — a markdown file multiple
         agents can collaboratively write to.
 
@@ -1720,6 +1882,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         updated_at}], created_at}``.
         """
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
@@ -1730,14 +1893,15 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return _canvas_info_to_dict(info)
 
     @server.tool
-    async def aegis_canvas_read(name: str,
-                                section: str | None = None,
-                                from_handle: str = "") -> dict:
+    async def aegis_canvas_read(
+        name: str, section: str | None = None, from_handle: str = ""
+    ) -> dict:
         """Read a canvas — full file when ``section`` is omitted, or
         just that section's body. Returns ``{content: <str>}`` on
         success, ``{error: ...}`` if the canvas/section is missing.
         """
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
@@ -1749,8 +1913,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_canvas_write_section(
-            name: str, section: str, content: str,
-            from_handle: str) -> dict:
+        name: str, section: str, content: str, from_handle: str
+    ) -> dict:
         """Replace one section of the canvas with ``content``. If the
         section doesn't exist, it's appended to the end of the file.
 
@@ -1759,39 +1923,39 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         suppress your own write from your own inbox notifications.
         """
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
         try:
-            res = await cm.write_section(name, section, content,
-                                         writer=from_handle)
+            res = await cm.write_section(name, section, content, writer=from_handle)
         except CanvasError as e:
             return {"error": f"canvas_write_section rejected: {e}"}
         return _write_result_to_dict(res)
 
     @server.tool
     async def aegis_canvas_append_to_section(
-            name: str, section: str, text: str,
-            from_handle: str) -> dict:
+        name: str, section: str, text: str, from_handle: str
+    ) -> dict:
         """Append ``text`` to an existing section (joined with newline);
         create the section if missing. Cheaper than ``write_section`` for
         log-style growth.
         """
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
         try:
-            res = await cm.append_to_section(name, section, text,
-                                             writer=from_handle)
+            res = await cm.append_to_section(name, section, text, writer=from_handle)
         except CanvasError as e:
             return {"error": f"canvas_append_to_section rejected: {e}"}
         return _write_result_to_dict(res)
 
     @server.tool
-    async def aegis_canvas_subscribe(name: str, from_handle: str,
-                                     sections: list[str] | None = None
-                                     ) -> dict:
+    async def aegis_canvas_subscribe(
+        name: str, from_handle: str, sections: list[str] | None = None
+    ) -> dict:
         """Subscribe to canvas changes. When another agent writes to a
         watched section, you receive a normal user-message turn with
         sender ``canvas:<name>`` — same delivery channel as queue
@@ -1804,6 +1968,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         after an aegis restart.
         """
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
@@ -1814,10 +1979,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return {"ok": True, "subscribers": subs}
 
     @server.tool
-    async def aegis_canvas_unsubscribe(name: str,
-                                       from_handle: str) -> dict:
+    async def aegis_canvas_unsubscribe(name: str, from_handle: str) -> dict:
         """Stop receiving notifications for a canvas."""
         from aegis.canvas.manager import CanvasError
+
         cm = getattr(bridge, "canvas_manager", None)
         if cm is None:
             return {"error": "canvas plane not available"}
@@ -1842,8 +2007,11 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_spawn(
-        name: str, shell: str | None = None, cwd: str | None = None,
-        env: dict | None = None, from_handle: str = "",
+        name: str,
+        shell: str | None = None,
+        cwd: str | None = None,
+        env: dict | None = None,
+        from_handle: str = "",
     ) -> dict:
         """Spawn a live shared PTY terminal.
 
@@ -1853,6 +2021,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         last_exit}``.
         """
         from aegis.terminal.manager import TerminalAlreadyExists
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1872,7 +2041,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_run(
-        name: str, cmd: str, timeout: float | None = None,
+        name: str,
+        cmd: str,
+        timeout: float | None = None,
         from_handle: str = "",
     ) -> dict:
         """Run a single command in a terminal. Blocks until the shell's
@@ -1889,6 +2060,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         inbox. Returns the full command record.
         """
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1903,13 +2075,16 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_keys(
-        name: str, keys: str, from_handle: str = "",
+        name: str,
+        keys: str,
+        from_handle: str = "",
     ) -> dict:
         """Send raw bytes to a terminal — fire-and-forget, bypasses the
         per-terminal lock. Use for interactive prompts (``y\\n``),
         Ctrl-C (``\\x03``), or driving REPLs. UTF-8 string accepted.
         """
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1922,13 +2097,16 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_read(
-        name: str, last_n: int = 5, since_seq: int | None = None,
+        name: str,
+        last_n: int = 5,
+        since_seq: int | None = None,
         from_handle: str = "",
     ) -> list[dict]:
         """Read command records from a terminal's ledger. ``since_seq``
         overrides ``last_n`` when set (returns records with seq > value).
         """
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return []
@@ -1940,7 +2118,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_subscribe(
-        name: str, from_handle: str,
+        name: str,
+        from_handle: str,
     ) -> dict:
         """Subscribe to a terminal's command-finish events. Every command
         the terminal finishes wakes you with a normal user-message turn
@@ -1948,6 +2127,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         Idempotent.
         """
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1960,10 +2140,12 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_unsubscribe(
-        name: str, from_handle: str,
+        name: str,
+        from_handle: str,
     ) -> dict:
         """Stop receiving command-finish wakes for a terminal."""
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1976,13 +2158,16 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
     @server.tool
     async def aegis_term_close(
-        name: str, purge: bool = False, from_handle: str = "",
+        name: str,
+        purge: bool = False,
+        from_handle: str = "",
     ) -> dict:
         """Close a terminal. SIGTERM then SIGKILL after 2s. ``purge=true``
         also wipes the terminal's state directory; the default keeps the
         ledger on disk.
         """
         from aegis.terminal.manager import TerminalNotFound
+
         tm = getattr(bridge, "terminal_manager", None)
         if tm is None:
             return {"error": "terminal plane not available"}
@@ -1993,21 +2178,27 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return {"ok": True}
 
     @server.tool
-    async def aegis_group_spawn(profile: str, group: str,
-                                 handle: str | None = None) -> dict:
+    async def aegis_group_spawn(
+        profile: str, group: str, handle: str | None = None
+    ) -> dict:
         """Spawn a new agent into a group. Creates the group implicitly
         if it doesn't exist. Returns ``{handle, group}``.
 
         Profile must resolve in the loaded ``.aegis.yaml`` agents list.
         """
-        return await _aegis_group_spawn_impl(bridge, profile=profile,
-                                              group=group, handle=handle)
+        return await _aegis_group_spawn_impl(
+            bridge, profile=profile, group=group, handle=handle
+        )
 
     @server.tool
-    async def aegis_group_broadcast(from_handle: str, group: str,
-                                    objective: str, output_format: str,
-                                    tool_guidance: str,
-                                    boundaries: str) -> dict:
+    async def aegis_group_broadcast(
+        from_handle: str,
+        group: str,
+        objective: str,
+        output_format: str,
+        tool_guidance: str,
+        boundaries: str,
+    ) -> dict:
         """Broadcast a four-field message to every member of a group.
 
         Required fields: ``objective``, ``output_format``, ``tool_guidance``,
@@ -2020,38 +2211,45 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         first completes raises BroadcastInFlight.
         """
         from aegis.queue import sender_agent
+
         return await _aegis_group_broadcast_impl(
-            bridge, group=group, sender=sender_agent(from_handle),
-            objective=objective, output_format=output_format,
-            tool_guidance=tool_guidance, boundaries=boundaries,
+            bridge,
+            group=group,
+            sender=sender_agent(from_handle),
+            objective=objective,
+            output_format=output_format,
+            tool_guidance=tool_guidance,
+            boundaries=boundaries,
         )
 
     @server.tool
-    async def aegis_group_wait_all(group: str, timeout: float = 600.0,
-                                    reducer: str = "concat") -> dict:
+    async def aegis_group_wait_all(
+        group: str, timeout: float = 600.0, reducer: str = "concat"
+    ) -> dict:
         """Block until every member of ``group`` posts one
         post-broadcast turn, or until ``timeout`` seconds elapse.
         Returns the ``GroupResult`` bundle as a JSON-serialisable dict.
         """
         return await _aegis_group_wait_all_impl(
-            bridge, group=group, timeout=timeout, reducer=reducer)
+            bridge, group=group, timeout=timeout, reducer=reducer
+        )
 
     @server.tool
-    async def aegis_group_wait_any(group: str, timeout: float = 600.0,
-                                    cancel_losers: bool = True) -> dict:
+    async def aegis_group_wait_any(
+        group: str, timeout: float = 600.0, cancel_losers: bool = True
+    ) -> dict:
         """Block until the first member of ``group`` posts one
         post-broadcast turn. Surviving members receive an inbox
         cancel signal unless ``cancel_losers=False``.
         """
         return await _aegis_group_wait_any_impl(
-            bridge, group=group, timeout=timeout,
-            cancel_losers=cancel_losers)
+            bridge, group=group, timeout=timeout, cancel_losers=cancel_losers
+        )
 
     @server.tool
     async def aegis_group_spawn_mixed(
-            group: str,
-            profiles: list[str] | None = None,
-            preset: str | None = None) -> dict:
+        group: str, profiles: list[str] | None = None, preset: str | None = None
+    ) -> dict:
         """Spawn one member per profile string into ``group``. Profiles
         may repeat; each entry gets its own session. ``preset`` looks up
         a named profile list from ``.aegis.yaml`` ``groups.presets``;
@@ -2059,7 +2257,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         the list of handles in the same order as the resolved profiles.
         """
         return await _aegis_group_spawn_mixed_impl(
-            bridge, group=group, profiles=profiles, preset=preset)
+            bridge, group=group, profiles=profiles, preset=preset
+        )
 
     @server.tool
     async def aegis_group_status(group: str) -> dict:
@@ -2076,20 +2275,21 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     @server.tool
     async def aegis_group_rename(old: str, new: str) -> dict:
         """Rename a group from ``old`` to ``new``."""
-        return await _aegis_group_rename_impl(
-            bridge, old=old, new=new)
+        return await _aegis_group_rename_impl(bridge, old=old, new=new)
 
     @server.tool
-    async def aegis_group_move_member(handle: str, from_group: str,
-                                       to_group: str) -> dict:
+    async def aegis_group_move_member(
+        handle: str, from_group: str, to_group: str
+    ) -> dict:
         """Move a member from ``from_group`` to ``to_group``."""
         return await _aegis_group_move_member_impl(
-            bridge, handle=handle, from_group=from_group,
-            to_group=to_group)
+            bridge, handle=handle, from_group=from_group, to_group=to_group
+        )
 
     @server.tool
-    async def aegis_schedule_push(name: str, spec: dict, from_handle: str,
-                                   target: str | None = None) -> dict:
+    async def aegis_schedule_push(
+        name: str, spec: dict, from_handle: str, target: str | None = None
+    ) -> dict:
         """Push a schedule into a scheduler. ``target=None`` writes
         locally into this serve's ``.aegis/schedules/``; ``target='<peer>'``
         routes through the matching remote.
@@ -2103,20 +2303,22 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             return err
         if spec_remote is not None:
             return await remote_schedule_push(
-                spec_remote, name=name, spec_body=spec,
-                pushed_from=f"agent:{from_handle}")
+                spec_remote,
+                name=name,
+                spec_body=spec,
+                pushed_from=f"agent:{from_handle}",
+            )
         try:
             validate_spec(spec, workflow_registry=bridge.workflow_registry)
         except ValueError as e:
             return {"error": str(e)}
-        dest = write_atomic(bridge.state_root, name, spec,
-                            pushed_from=f"agent:{from_handle}")
-        return {"name": name,
-                "written_to": str(dest.relative_to(bridge.state_root))}
+        dest = write_atomic(
+            bridge.state_root, name, spec, pushed_from=f"agent:{from_handle}"
+        )
+        return {"name": name, "written_to": str(dest.relative_to(bridge.state_root))}
 
     @server.tool
-    async def aegis_schedule_list(from_handle: str,
-                                   target: str | None = None) -> dict:
+    async def aegis_schedule_list(from_handle: str, target: str | None = None) -> dict:
         """List schedules on this serve (or a remote peer). Same shape
         as the HTTP ``GET /remote/v1/schedule`` endpoint:
         ``{schedules: [{name, source, next_fire, fire_count, in_flight,
@@ -2129,11 +2331,14 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             return await remote_schedule_list(spec)
         return list_payload(
             getattr(bridge, "scheduler", None),
-            bridge.state_root, bridge.inline_schedule_names())
+            bridge.state_root,
+            bridge.inline_schedule_names(),
+        )
 
     @server.tool
-    async def aegis_schedule_show(name: str, from_handle: str,
-                                   target: str | None = None) -> dict:
+    async def aegis_schedule_show(
+        name: str, from_handle: str, target: str | None = None
+    ) -> dict:
         """Inspect one schedule. Returns the full spec + runtime fields
         + ``pushed_from``/``pushed_at`` provenance, or
         ``{"error": "not found"}`` on miss.
@@ -2145,14 +2350,18 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             return await remote_schedule_show(spec, name)
         payload = show_payload(
             getattr(bridge, "scheduler", None),
-            bridge.state_root, bridge.inline_schedule_names(), name)
+            bridge.state_root,
+            bridge.inline_schedule_names(),
+            name,
+        )
         if payload is None:
             return {"error": "not found"}
         return payload
 
     @server.tool
-    async def aegis_schedule_remove(name: str, from_handle: str,
-                                     target: str | None = None) -> dict:
+    async def aegis_schedule_remove(
+        name: str, from_handle: str, target: str | None = None
+    ) -> dict:
         """Remove a pushed schedule. Refuses inline/overlay-sourced
         entries. Returns ``{ok: True}`` on success or
         ``{"error": ...}`` otherwise.
@@ -2164,7 +2373,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             return await remote_schedule_remove(spec, name)
         result = remove_schedule(
             getattr(bridge, "scheduler", None),
-            bridge.state_root, bridge.inline_schedule_names(), name)
+            bridge.state_root,
+            bridge.inline_schedule_names(),
+            name,
+        )
         if result.status == "ok":
             return {"ok": True}
         if result.status == "not_found":
@@ -2172,9 +2384,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return {"error": f"cannot remove {result.source!r}-source schedule"}
 
     @server.tool
-    async def aegis_schedule_logs(name: str, from_handle: str,
-                                   target: str | None = None,
-                                   tail: int = 50) -> dict:
+    async def aegis_schedule_logs(
+        name: str, from_handle: str, target: str | None = None, tail: int = 50
+    ) -> dict:
         """Tail the JSONL lifecycle log for a schedule. Returns
         ``{records: [...]}`` (empty list if no log file)."""
         spec, err = _resolve_remote(bridge, target)
@@ -2185,9 +2397,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return logs_payload(bridge.state_root, name, tail=tail)
 
     @server.tool
-    async def aegis_budget_status(from_handle: str,
-                                   queue: str | None = None,
-                                   target: str | None = None) -> dict:
+    async def aegis_budget_status(
+        from_handle: str, queue: str | None = None, target: str | None = None
+    ) -> dict:
         """Inspect per-queue budgets on this serve or a remote peer.
 
         queue=None: summary across all queues on the targeted serve.
@@ -2198,8 +2410,8 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             remotes = getattr(bridge, "remotes", {}) or {}
             if target not in remotes:
                 return {"error": f"unknown target {target!r}"}
-            from aegis.remote.client import (remote_budget_list,
-                                              remote_budget_show)
+            from aegis.remote.client import remote_budget_list, remote_budget_show
+
             spec = remotes[target]
             if queue is None:
                 return await remote_budget_list(spec)
@@ -2208,40 +2420,60 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         # Local path.
         from datetime import datetime, timezone
         from aegis.budget.evaluator import evaluate_budgets
+
         qm = bridge.queue_manager
         now = datetime.now(timezone.utc)
 
         def _ser(c):
-            return {"constraint": c.constraint, "limit": str(c.limit),
-                    "spent": str(c.spent), "window": c.window_str,
-                    "allowed": c.allowed, "headroom": str(c.headroom)}
+            return {
+                "constraint": c.constraint,
+                "limit": str(c.limit),
+                "spent": str(c.spent),
+                "window": c.window_str,
+                "allowed": c.allowed,
+                "headroom": str(c.headroom),
+            }
 
         if queue is None:
             rows = []
             for name, q in qm._queues.items():
                 if not q.budgets:
-                    rows.append({"name": name, "budgets_count": 0,
-                                  "status": "no-budget"})
+                    rows.append(
+                        {"name": name, "budgets_count": 0, "status": "no-budget"}
+                    )
                     continue
                 tail = qm._load_recent_jsonl(
-                    name, max_age=max(b.window for b in q.budgets))
+                    name, max_age=max(b.window for b in q.budgets)
+                )
                 d = evaluate_budgets(tail, q.budgets, now)
-                rows.append({"name": name, "budgets_count": len(q.budgets),
-                              "status": "ok" if d.allowed else "blocked"})
+                rows.append(
+                    {
+                        "name": name,
+                        "budgets_count": len(q.budgets),
+                        "status": "ok" if d.allowed else "blocked",
+                    }
+                )
             return {"queues": rows}
 
         if queue not in qm._queues:
             return {"error": f"unknown queue {queue!r}"}
         q = qm._queues[queue]
         if not q.budgets:
-            return {"name": queue, "allowed": True, "checks": [],
-                    "blocked_by": [], "unblock_at": None}
-        tail = qm._load_recent_jsonl(
-            queue, max_age=max(b.window for b in q.budgets))
+            return {
+                "name": queue,
+                "allowed": True,
+                "checks": [],
+                "blocked_by": [],
+                "unblock_at": None,
+            }
+        tail = qm._load_recent_jsonl(queue, max_age=max(b.window for b in q.budgets))
         d = evaluate_budgets(tail, q.budgets, now)
-        return {"name": queue, "allowed": d.allowed,
-                "checks": [_ser(c) for c in d.checks],
-                "blocked_by": [_ser(c) for c in d.blocked_by]}
+        return {
+            "name": queue,
+            "allowed": d.allowed,
+            "checks": [_ser(c) for c in d.checks],
+            "blocked_by": [_ser(c) for c in d.blocked_by],
+        }
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:
@@ -2275,8 +2507,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return await bridge.queue_manager.cancel(task_id)
 
     @server.tool
-    async def aegis_delegate(queue: str, payload: str, from_handle: str,
-                             timeout_s: float | None = None) -> dict:
+    async def aegis_delegate(
+        queue: str, payload: str, from_handle: str, timeout_s: float | None = None
+    ) -> dict:
         """Delegate a task and block until it finishes, returning the
         worker's result directly — the synchronous shape of
         aegis_enqueue + await-callback in one call.
@@ -2295,9 +2528,10 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         returns ``{"error": …}``.
         """
         from aegis.queue import sender_agent
+
         return await bridge.queue_manager.run(
-            queue, payload,
-            enqueued_by=sender_agent(from_handle), timeout=timeout_s)
+            queue, payload, enqueued_by=sender_agent(from_handle), timeout=timeout_s
+        )
 
     # Register user-declared @tool functions.
     from aegis.tools import _REGISTRY as _TOOL_REG

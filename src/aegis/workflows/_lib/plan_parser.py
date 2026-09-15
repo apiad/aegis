@@ -2,6 +2,7 @@
 
 Tasks are ``## Slice <N> — <title>`` headings (em-dash or ASCII hyphen).
 """
+
 from __future__ import annotations
 
 import re
@@ -22,8 +23,7 @@ class Plan:
     tasks: list[Task]
 
 
-_TASK_RE = re.compile(
-    r"^##\s+Slice\s+(\d+)\s+[\u2014\-]\s+(.+)$", re.MULTILINE)
+_TASK_RE = re.compile(r"^##\s+Slice\s+(\d+)\s+[\u2014\-]\s+(.+)$", re.MULTILINE)
 
 
 def parse_plan(path: str | Path) -> Plan:
@@ -36,8 +36,7 @@ def parse_plan(path: str | Path) -> Plan:
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         body = text[start:end].strip()
-        tasks.append(Task(
-            id=f"slice-{m.group(1)}",
-            title=m.group(2).strip(),
-            body=body))
+        tasks.append(
+            Task(id=f"slice-{m.group(1)}", title=m.group(2).strip(), body=body)
+        )
     return Plan(title=title, tasks=tasks)

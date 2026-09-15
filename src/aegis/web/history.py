@@ -12,6 +12,7 @@ normal shape once a session resumes into a log it already crashed in
 (see ``aegis.state.session_log``), so treating it as fatal only moved
 the outage from one transcript to the whole web session.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

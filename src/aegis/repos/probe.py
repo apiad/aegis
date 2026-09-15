@@ -8,6 +8,7 @@ Every failure here degrades rather than raises. A dashboard section that
 takes the paint down with it when a repo is mid-rebase is worse than no
 section, and ``git status`` on a large tree is exactly the call that hangs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -109,8 +110,11 @@ def read_head_branch(root: Path) -> str:
         head = (git_dir(root) / "HEAD").read_text(errors="replace").strip()
     except OSError:
         return ""
-    return head.removeprefix("ref: refs/heads/") if head.startswith(
-        "ref: refs/heads/") else ""
+    return (
+        head.removeprefix("ref: refs/heads/")
+        if head.startswith("ref: refs/heads/")
+        else ""
+    )
 
 
 def _in_progress_op(root: Path) -> str:
@@ -159,15 +163,23 @@ def _git(root: Path, *args: str) -> str | None:
     if shutil.which("git") is None:
         return None
     try:
-        proc = subprocess.run(["git", "-C", str(root), *args],
-                              capture_output=True, text=True,
-                              timeout=PROBE_TIMEOUT)
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("git %s failed for %s: %s", args[0], root, exc)
         return None
     if proc.returncode != 0:
-        log.debug("git %s rc=%s for %s: %s", args[0], proc.returncode, root,
-                  proc.stderr.strip()[:200])
+        log.debug(
+            "git %s rc=%s for %s: %s",
+            args[0],
+            proc.returncode,
+            root,
+            proc.stderr.strip()[:200],
+        )
         return None
     return proc.stdout
 
@@ -225,8 +237,7 @@ def capture_baseline(root: Path) -> Baseline:
     """
     sha = (_git(root, "rev-parse", "HEAD") or "").strip()
     added, deleted = _numstat(root, "HEAD") if sha else (0, 0)
-    return Baseline(sha=sha, added=added, deleted=deleted,
-                    untracked=_untracked(root))
+    return Baseline(sha=sha, added=added, deleted=deleted, untracked=_untracked(root))
 
 
 def _churn(root: Path, baseline: Baseline | None) -> tuple[int, int]:
@@ -256,25 +267,41 @@ def probe_repo(root: Path, baseline: Baseline | None = None) -> RepoState:
     ``baseline`` adds the session's line churn, at the cost of two more git
     calls; without one the state carries the branch and counts alone.
     """
-    fallback = RepoState(root=root, branch=read_head_branch(root),
-                         op=_in_progress_op(root), stale=True)
+    fallback = RepoState(
+        root=root, branch=read_head_branch(root), op=_in_progress_op(root), stale=True
+    )
     if shutil.which("git") is None:
         return fallback
     try:
         proc = subprocess.run(
             ["git", "-C", str(root), "status", "--porcelain=v2", "--branch"],
-            capture_output=True, text=True, timeout=PROBE_TIMEOUT)
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("repo probe failed for %s: %s", root, exc)
         return fallback
     if proc.returncode != 0:
-        log.debug("repo probe rc=%s for %s: %s",
-                  proc.returncode, root, proc.stderr.strip()[:200])
+        log.debug(
+            "repo probe rc=%s for %s: %s",
+            proc.returncode,
+            root,
+            proc.stderr.strip()[:200],
+        )
         return fallback
 
     branch, ahead, behind, dirty, detached = _parse_status_v2(proc.stdout)
     added, deleted = _churn(root, baseline)
-    return RepoState(root=root, branch=branch, ahead=ahead, behind=behind,
-                     dirty=dirty, added=added, deleted=deleted,
-                     detached=detached,
-                     op=_in_progress_op(root), stale=False)
+    return RepoState(
+        root=root,
+        branch=branch,
+        ahead=ahead,
+        behind=behind,
+        dirty=dirty,
+        added=added,
+        deleted=deleted,
+        detached=detached,
+        op=_in_progress_op(root),
+        stale=False,
+    )

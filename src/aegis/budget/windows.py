@@ -1,4 +1,5 @@
 """Parse window strings like '30m', '1h', '24h', '7d', '1w' to timedelta."""
+
 from __future__ import annotations
 
 from datetime import timedelta

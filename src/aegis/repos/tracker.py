@@ -9,6 +9,7 @@ short version is that reads would list every repo an agent merely searched,
 and time decay would drop exactly the case the section exists for — the
 repo an agent left seven uncommitted files in an hour ago.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,12 +41,14 @@ class RepoTracker:
     ever confirms our model of ``git status``.
     """
 
-    def __init__(self, *,
-                 clock: Callable[[], float] = time.monotonic,
-                 probe: Callable[[Path, Baseline | None], RepoState]
-                 = probe_repo,
-                 capture: Callable[[Path], Baseline] = capture_baseline,
-                 ttl: float = TTL) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        probe: Callable[[Path, Baseline | None], RepoState] = probe_repo,
+        capture: Callable[[Path], Baseline] = capture_baseline,
+        ttl: float = TTL,
+    ) -> None:
         self._clock = clock
         self._probe = probe
         self._capture = capture
@@ -82,8 +85,7 @@ class RepoTracker:
 
     # --- membership ---------------------------------------------------
 
-    def record(self, handle: str, path: str | Path, *,
-               host: str = "local") -> None:
+    def record(self, handle: str, path: str | Path, *, host: str = "local") -> None:
         """Note that ``handle`` wrote to ``path``.
 
         Off-host paths are **not** resolved against the local disk: the same
@@ -109,10 +111,14 @@ class RepoTracker:
         if fresh:
             # The free path: a branch name from .git/HEAD costs one file read
             # and is what the row shows until the first probe lands.
-            self._states.setdefault(key, RepoState(
-                root=key[1],
-                branch=read_head_branch(key[1]) if host == "local" else "",
-                stale=True))
+            self._states.setdefault(
+                key,
+                RepoState(
+                    root=key[1],
+                    branch=read_head_branch(key[1]) if host == "local" else "",
+                    stale=True,
+                ),
+            )
             self._notify()
 
     def drop(self, handle: str) -> None:
@@ -161,8 +167,7 @@ class RepoTracker:
             log.exception("baseline capture raised for %s; continuing", root)
             return Baseline()
 
-    def _key(self, path: str | Path,
-             host: str) -> tuple[str, Path] | None:
+    def _key(self, path: str | Path, host: str) -> tuple[str, Path] | None:
         if host != "local":
             # No local resolution is possible or honest. The write's own
             # directory stands in for the repo root, which is enough to name
@@ -177,8 +182,7 @@ class RepoTracker:
     def snapshot(self, for_handle: str = "") -> list[RepoView]:
         """Render rows, most recently written first. Never blocks."""
         views: list[RepoView] = []
-        for key, mem in sorted(self._repos.items(),
-                               key=lambda kv: -kv[1].last_write):
+        for key, mem in sorted(self._repos.items(), key=lambda kv: -kv[1].last_write):
             writers = list(mem.writers)
             if for_handle in writers:
                 # The asking agent leads its own row: the mark says "you are
@@ -186,12 +190,14 @@ class RepoTracker:
                 # as someone else's repo.
                 writers.remove(for_handle)
                 writers.insert(0, for_handle)
-            views.append(RepoView(
-                state=self._states.get(key, RepoState(root=key[1],
-                                                      stale=True)),
-                writers=tuple(writers),
-                mine=for_handle in mem.writers,
-                host=mem.host))
+            views.append(
+                RepoView(
+                    state=self._states.get(key, RepoState(root=key[1], stale=True)),
+                    writers=tuple(writers),
+                    mine=for_handle in mem.writers,
+                    host=mem.host,
+                )
+            )
         return views
 
     # --- probing ------------------------------------------------------
@@ -205,27 +211,34 @@ class RepoTracker:
         is open — closed, no probe runs at all.
         """
         now = self._clock()
-        due = [k for k, mem in self._repos.items()
-               if mem.host == "local"
-               and (force or now - self._probed_at.get(k, 0.0) >= self.ttl)]
+        due = [
+            k
+            for k, mem in self._repos.items()
+            if mem.host == "local"
+            and (force or now - self._probed_at.get(k, 0.0) >= self.ttl)
+        ]
         if not due:
             return
 
         loop = asyncio.get_running_loop()
         results = await asyncio.gather(
-            *(loop.run_in_executor(None, self._probe, key[1],
-                                   self._baselines.get(key))
-              for key in due),
-            return_exceptions=True)
+            *(
+                loop.run_in_executor(
+                    None, self._probe, key[1], self._baselines.get(key)
+                )
+                for key in due
+            ),
+            return_exceptions=True,
+        )
 
         changed = False
         for key, result in zip(due, results, strict=True):
             self._probed_at[key] = now
-            if key not in self._repos:      # closed mid-probe
+            if key not in self._repos:  # closed mid-probe
                 continue
             if isinstance(result, BaseException):
                 log.debug("repo probe raised for %s: %s", key[1], result)
-                continue                    # keep the last known state, stale
+                continue  # keep the last known state, stale
             if self._states.get(key) != result:
                 self._states[key] = result
                 changed = True

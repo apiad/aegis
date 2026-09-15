@@ -10,9 +10,9 @@ from aegis.drivers.opencode import OpenCodeDriver
 # subclasses: ClaudeCode, GeminiCLI, OpenCode).
 DRIVERS: dict[str, type[HarnessDriver]] = {
     "claude-code": ClaudeDriver,
-    "gemini":      GeminiDriver,
-    "opencode":    OpenCodeDriver,
-    "lovelaice":   LovelaiceDriver,
+    "gemini": GeminiDriver,
+    "opencode": OpenCodeDriver,
+    "lovelaice": LovelaiceDriver,
 }
 
 
@@ -20,6 +20,13 @@ def get_driver(harness: str) -> HarnessDriver:
     return DRIVERS[harness]()
 
 
-__all__ = ["DRIVERS", "get_driver", "HarnessDriver", "HarnessSession",
-           "ClaudeDriver", "GeminiDriver", "OpenCodeDriver",
-           "LovelaiceDriver"]
+__all__ = [
+    "DRIVERS",
+    "get_driver",
+    "HarnessDriver",
+    "HarnessSession",
+    "ClaudeDriver",
+    "GeminiDriver",
+    "OpenCodeDriver",
+    "LovelaiceDriver",
+]

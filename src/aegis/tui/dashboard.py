@@ -1,4 +1,5 @@
 """QueueDashboard — modal observability surface for the queue substrate."""
+
 from __future__ import annotations
 
 from rich.text import Text
@@ -18,8 +19,7 @@ class _Band(Widget):
     """
     DEFAULT_CLASSES = "_Band"
 
-    def __init__(self, digest: QueueDigest, palette,
-                 *, id: str | None = None) -> None:
+    def __init__(self, digest: QueueDigest, palette, *, id: str | None = None) -> None:
         super().__init__(id=id)
         self._digest = digest
         self._palette = palette
@@ -30,8 +30,7 @@ class _Band(Widget):
         yield self._inner
 
     def on_mount(self) -> None:
-        self._unsub = self._digest._manager.subscribe(
-            lambda ev: self.refresh_render())
+        self._unsub = self._digest._manager.subscribe(lambda ev: self.refresh_render())
         self.refresh_render()
 
     def on_unmount(self) -> None:
@@ -50,8 +49,7 @@ class QueuesBand(_Band):
         t = Text()
         t.append("QUEUES\n", style=f"bold {pal.accent}")
         if not snap.queues:
-            t.append("(no queues configured in .aegis.yaml)\n",
-                     style=pal.muted)
+            t.append("(no queues configured in .aegis.yaml)\n", style=pal.muted)
             self._inner.update(t)
             return
         for q in snap.queues:
@@ -73,8 +71,7 @@ class QueuesBand(_Band):
         self._inner.update(t)
 
 
-def _format_task_row(t, palette, mode: str,
-                     *, selected: bool = False) -> Text:
+def _format_task_row(t, palette, mode: str, *, selected: bool = False) -> Text:
     """One-line task row. mode is 'inflight' | 'queued' | 'recent'."""
     pal = palette
     line = Text()
@@ -86,11 +83,9 @@ def _format_task_row(t, palette, mode: str,
     elif mode == "queued":
         line.append("○ —          ", style=pal.muted)
     else:  # recent
-        glyph, style = (("✓", pal.ok) if t.state == "ok"
-                        else ("✗", pal.err))
+        glyph, style = ("✓", pal.ok) if t.state == "ok" else ("✗", pal.err)
         line.append(f"{glyph} ", style=style)
-        line.append(
-            (t.worker_handle or "—").ljust(14)[:14], style=pal.muted)
+        line.append((t.worker_handle or "—").ljust(14)[:14], style=pal.muted)
     line.append(f"  {t.queue:<8}", style=pal.muted)
     line.append(f"  {t.payload_summary}", style=pal.ink)
     line.append("\n")
@@ -107,9 +102,11 @@ class InFlightBand(_Band):
         if not running:
             t.append("  (none)\n", style=self._palette.muted)
         for row in running:
-            t.append_text(_format_task_row(
-                row, self._palette, "inflight",
-                selected=(row.task_id == selected)))
+            t.append_text(
+                _format_task_row(
+                    row, self._palette, "inflight", selected=(row.task_id == selected)
+                )
+            )
         self._inner.update(t)
 
 
@@ -123,9 +120,11 @@ class QueuedBand(_Band):
         if not queued:
             t.append("  (none)\n", style=self._palette.muted)
         for row in queued:
-            t.append_text(_format_task_row(
-                row, self._palette, "queued",
-                selected=(row.task_id == selected)))
+            t.append_text(
+                _format_task_row(
+                    row, self._palette, "queued", selected=(row.task_id == selected)
+                )
+            )
         self._inner.update(t)
 
 
@@ -139,9 +138,11 @@ class RecentBand(_Band):
         if not recent:
             t.append("  (none)\n", style=self._palette.muted)
         for row in recent:
-            t.append_text(_format_task_row(
-                row, self._palette, "recent",
-                selected=(row.task_id == selected)))
+            t.append_text(
+                _format_task_row(
+                    row, self._palette, "recent", selected=(row.task_id == selected)
+                )
+            )
         self._inner.update(t)
 
 
@@ -201,8 +202,7 @@ class WorkflowsBand(_Band):
                 t.append(f"host {row.host}", style=pal.muted)
             t.append("  · ", style=pal.muted)
             t.append(state_label, style=gstyle)
-            t.append(f"  · {_format_elapsed(row.elapsed_s)}\n",
-                     style=pal.muted)
+            t.append(f"  · {_format_elapsed(row.elapsed_s)}\n", style=pal.muted)
             # On non-running rows, attach a short tail (one line).
             if row.status == "ok" and row.result_summary:
                 t.append(f"      → {row.result_summary}\n", style=pal.ink)
@@ -236,16 +236,17 @@ class DetailPanel(_Band):
         t.append(f"{match.from_sender}\n", style=pal.ink)
         t.append("state   ", style=pal.muted)
         state_style = {
-            "running": pal.work, "queued": pal.muted,
-            "ok": pal.ok, "err": pal.err,
+            "running": pal.work,
+            "queued": pal.muted,
+            "ok": pal.ok,
+            "err": pal.err,
         }.get(match.state, pal.ink)
         t.append(f"{match.state}\n\n", style=state_style)
         t.append("payload\n", style=pal.muted)
         for line in match.payload_summary.splitlines():
             t.append(f"  {line}\n", style=pal.ink)
         t.append("\nlifecycle\n", style=pal.muted)
-        t.append(f"  completed_at  {match.completed_at or '—'}\n",
-                 style=pal.muted)
+        t.append(f"  completed_at  {match.completed_at or '—'}\n", style=pal.muted)
         if match.state == "running":
             t.append("\ntail (live)\n", style=pal.muted)
             tail = self._digest.tail_of(match.task_id)
@@ -275,8 +276,8 @@ class QueueDashboard(ModalScreen):
     """
     BINDINGS = [
         Binding("escape", "dismiss", "Close"),
-        Binding("up",    "cursor_prev",    "Up",      priority=True),
-        Binding("down",  "cursor_next",    "Down",    priority=True),
+        Binding("up", "cursor_prev", "Up", priority=True),
+        Binding("down", "cursor_next", "Down", priority=True),
         Binding("enter", "refresh_detail", "Refresh", priority=True),
         Binding("greater_than_sign", "jump_to_tab", "Jump", priority=True),
     ]
@@ -300,12 +301,11 @@ class QueueDashboard(ModalScreen):
                 with Vertical(id="right"):
                     yield DetailPanel(digest, palette, id="detail")
             yield Static(
-                "↑↓ select  enter focus  > jump to tab  esc collapse",
-                id="footer")
+                "↑↓ select  enter focus  > jump to tab  esc collapse", id="footer"
+            )
 
     def on_mount(self) -> None:
-        self._unsub = self.app.queue_digest._manager.subscribe(
-            self._on_event)
+        self._unsub = self.app.queue_digest._manager.subscribe(self._on_event)
         # Refresh elapsed-time fields once a second — workflows don't
         # publish events through the queue substrate, and the elapsed
         # column would otherwise freeze between queue events.

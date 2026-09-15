@@ -7,6 +7,7 @@ A schedule's ``lifecycle`` controls when it stops firing:
 - ``{"fires": N}`` — exhausted after N completed fires.
 - ``{"until": "<iso>"}`` — exhausted once wall-clock passes the ISO instant.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

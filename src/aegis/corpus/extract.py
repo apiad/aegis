@@ -3,6 +3,7 @@
 Pure for the same reason `btw/window.py` is: it is the piece every other
 part of the corpus depends on, so it is the piece worth testing hard.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,16 +54,20 @@ def extract_exchanges(events, meta=None) -> list[Exchange]:
     def flush():
         if cur is None:
             return
-        out.append(Exchange(
-            operator_text=cur["operator"][:_MAX_TEXT],
-            assistant_text=" ".join(cur["assistant"])[:_MAX_TEXT],
-            source=cur["source"],
-            handle=handle, cwd=cwd,
-            ts_start=cur["ts_start"], ts_end=cur["ts_end"],
-            files_touched=tuple(dict.fromkeys(cur["files"])),
-            tools_used=tuple(dict.fromkeys(cur["tools"])),
-            friction=tuple(cur["friction"]),
-        ))
+        out.append(
+            Exchange(
+                operator_text=cur["operator"][:_MAX_TEXT],
+                assistant_text=" ".join(cur["assistant"])[:_MAX_TEXT],
+                source=cur["source"],
+                handle=handle,
+                cwd=cwd,
+                ts_start=cur["ts_start"],
+                ts_end=cur["ts_end"],
+                files_touched=tuple(dict.fromkeys(cur["files"])),
+                tools_used=tuple(dict.fromkeys(cur["tools"])),
+                friction=tuple(cur["friction"]),
+            )
+        )
 
     for ev, ts in events:
         t = ev.get("t")
@@ -70,9 +75,16 @@ def extract_exchanges(events, meta=None) -> list[Exchange]:
             src = ev.get("source") or "unknown"
             if src in BOUNDARY_SOURCES:
                 flush()
-                cur = {"operator": _text_of(ev), "assistant": [], "source": src,
-                       "ts_start": ts, "ts_end": ts, "files": [], "tools": [],
-                       "friction": ["interrupted"] if ev.get("interrupted") else []}
+                cur = {
+                    "operator": _text_of(ev),
+                    "assistant": [],
+                    "source": src,
+                    "ts_start": ts,
+                    "ts_end": ts,
+                    "files": [],
+                    "tools": [],
+                    "friction": ["interrupted"] if ev.get("interrupted") else [],
+                }
             elif cur is not None:
                 cur["assistant"].append(_text_of(ev))
                 cur["ts_end"] = ts

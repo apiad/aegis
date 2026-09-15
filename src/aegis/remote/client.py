@@ -1,4 +1,5 @@
 """Caller-side httpx client for the remote plane."""
+
 from __future__ import annotations
 
 import httpx
@@ -17,13 +18,19 @@ async def _build_client(spec: RemoteSpec) -> httpx.AsyncClient:
     if spec.token:
         headers["Authorization"] = f"Bearer {spec.token}"
     return httpx.AsyncClient(
-        base_url=spec.url, headers=headers, timeout=_DEFAULT_TIMEOUT)
+        base_url=spec.url, headers=headers, timeout=_DEFAULT_TIMEOUT
+    )
 
 
-async def remote_enqueue(spec: RemoteSpec, queue: str, payload: str,
-                         from_: str, *,
-                         callback_to: str | None = None,
-                         callback_handle: str | None = None) -> dict:
+async def remote_enqueue(
+    spec: RemoteSpec,
+    queue: str,
+    payload: str,
+    from_: str,
+    *,
+    callback_to: str | None = None,
+    callback_handle: str | None = None,
+) -> dict:
     """POST one enqueue to the remote plane at ``spec.url``.
 
     ``callback_to`` and ``callback_handle`` are optional hints that tell the
@@ -68,8 +75,11 @@ async def remote_callback(spec: RemoteSpec, body: dict) -> dict:
     """POST /remote/v1/callback. Best-effort, no retry."""
     try:
         async with await _build_client(spec) as client:
-            r = await client.post("/remote/v1/callback", json=body,
-                                  timeout=httpx.Timeout(10.0, connect=5.0))
+            r = await client.post(
+                "/remote/v1/callback",
+                json=body,
+                timeout=httpx.Timeout(10.0, connect=5.0),
+            )
     except httpx.TimeoutException:
         return {"error": "callback_dropped: timeout"}
     except httpx.RequestError as e:
@@ -89,18 +99,23 @@ def _normalize_err(prefix: str, resp) -> dict:
     return {"error": f"{prefix} returned {resp.status_code}: {err}"}
 
 
-async def _schedule_request(spec: RemoteSpec, method: str, path: str,
-                            prefix: str, *,
-                            json_body: dict | None = None,
-                            headers: dict | None = None,
-                            params: dict | None = None,
-                            success_codes: tuple[int, ...] = (200,)) -> dict:
+async def _schedule_request(
+    spec: RemoteSpec,
+    method: str,
+    path: str,
+    prefix: str,
+    *,
+    json_body: dict | None = None,
+    headers: dict | None = None,
+    params: dict | None = None,
+    success_codes: tuple[int, ...] = (200,),
+) -> dict:
     client = await _build_client(spec)
     try:
         try:
             resp = await client.request(
-                method, path, json=json_body,
-                headers=headers, params=params)
+                method, path, json=json_body, headers=headers, params=params
+            )
         except httpx.ConnectError as e:
             return {"error": f"{prefix}: remote unreachable: {e}"}
         except httpx.TimeoutException as e:
@@ -132,31 +147,44 @@ async def remote_budget_show(spec: RemoteSpec, queue: str) -> dict:
     return _normalize_err("budget show", r)
 
 
-async def remote_schedule_push(spec: RemoteSpec, *, name: str,
-                               spec_body: dict, pushed_from: str) -> dict:
+async def remote_schedule_push(
+    spec: RemoteSpec, *, name: str, spec_body: dict, pushed_from: str
+) -> dict:
     return await _schedule_request(
-        spec, "PUT", f"/remote/v1/schedule/{name}", "schedule push",
-        json_body=spec_body, headers={"X-Pushed-From": pushed_from})
+        spec,
+        "PUT",
+        f"/remote/v1/schedule/{name}",
+        "schedule push",
+        json_body=spec_body,
+        headers={"X-Pushed-From": pushed_from},
+    )
 
 
 async def remote_schedule_list(spec: RemoteSpec) -> dict:
-    return await _schedule_request(
-        spec, "GET", "/remote/v1/schedule", "schedule list")
+    return await _schedule_request(spec, "GET", "/remote/v1/schedule", "schedule list")
 
 
 async def remote_schedule_show(spec: RemoteSpec, name: str) -> dict:
     return await _schedule_request(
-        spec, "GET", f"/remote/v1/schedule/{name}", "schedule show")
+        spec, "GET", f"/remote/v1/schedule/{name}", "schedule show"
+    )
 
 
 async def remote_schedule_remove(spec: RemoteSpec, name: str) -> dict:
     return await _schedule_request(
-        spec, "DELETE", f"/remote/v1/schedule/{name}", "schedule remove",
-        success_codes=(200, 204))
+        spec,
+        "DELETE",
+        f"/remote/v1/schedule/{name}",
+        "schedule remove",
+        success_codes=(200, 204),
+    )
 
 
-async def remote_schedule_logs(spec: RemoteSpec, name: str,
-                               tail: int = 50) -> dict:
+async def remote_schedule_logs(spec: RemoteSpec, name: str, tail: int = 50) -> dict:
     return await _schedule_request(
-        spec, "GET", f"/remote/v1/schedule/{name}/logs", "schedule logs",
-        params={"tail": str(tail)})
+        spec,
+        "GET",
+        f"/remote/v1/schedule/{name}/logs",
+        "schedule logs",
+        params={"tail": str(tail)},
+    )

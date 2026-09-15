@@ -6,6 +6,7 @@ this and the `--remote` client it replaces, whose protocol grew a message
 for every feature until it fell behind the TUI. The only aegis import here
 is the frame codec, and it should stay the only one.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -42,7 +43,7 @@ def _raw(fd: int):
     try:
         saved = termios.tcgetattr(fd)
     except termios.error:
-        yield          # not a tty: nothing to set, nothing to restore
+        yield  # not a tty: nothing to set, nothing to restore
         return
     try:
         tty.setraw(fd)
@@ -51,8 +52,9 @@ def _raw(fd: int):
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 
 
-async def attach(path: str | Path, view_id: str, *, stdin_fd: int = 0,
-                 stdout: BinaryIO | None = None) -> None:
+async def attach(
+    path: str | Path, view_id: str, *, stdin_fd: int = 0, stdout: BinaryIO | None = None
+) -> None:
     """Connect to a daemon's unix socket and pipe until either end stops."""
     out = stdout if stdout is not None else sys.stdout.buffer
     reader, writer = await asyncio.open_unix_connection(str(path))
@@ -106,8 +108,7 @@ async def attach(path: str | Path, view_id: str, *, stdin_fd: int = 0,
 
     with _raw(stdin_fd):
         loop.add_reader(stdin_fd, _readable)
-        tasks = [asyncio.create_task(_pump_in()),
-                 asyncio.create_task(_pump_out())]
+        tasks = [asyncio.create_task(_pump_in()), asyncio.create_task(_pump_out())]
         try:
             await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:
@@ -118,8 +119,7 @@ async def attach(path: str | Path, view_id: str, *, stdin_fd: int = 0,
                     await t
             with contextlib.suppress(Exception):
                 loop.remove_reader(stdin_fd)
-            with contextlib.suppress(NotImplementedError, ValueError,
-                                     OSError):
+            with contextlib.suppress(NotImplementedError, ValueError, OSError):
                 loop.remove_signal_handler(signal.SIGWINCH)
             with contextlib.suppress(Exception):
                 writer.close()

@@ -25,12 +25,23 @@ from aegis.config import Agent
 from aegis.core.session import AgentSession
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Result, SessionMeta,
-    ThinkingTokens, ToolResult, ToolUse, UserMessage,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    Result,
+    SessionMeta,
+    ThinkingTokens,
+    ToolResult,
+    ToolUse,
+    UserMessage,
 )
 from aegis.render import (
-    coalesce_chunks, render_event, render_inbox_block, render_tool_use,
-    render_user_line, renders_to_nothing,
+    coalesce_chunks,
+    render_event,
+    render_inbox_block,
+    render_tool_use,
+    render_user_line,
+    renders_to_nothing,
 )
 from aegis.render_shared import FileTarget, file_target, format_age
 from aegis.state.session_log import EventReplay, make_session_log_observer
@@ -41,13 +52,18 @@ from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.sidebar import Sidebar, SidebarModel
 from aegis.tui.strip import QueueStrip
-from aegis.tui.sysmeter import (
-    current_locale, format_build, format_clock, format_cwd)
+from aegis.tui.sysmeter import current_locale, format_build, format_clock, format_cwd
 from aegis.tui.voice_strip import VoiceStrip
 from aegis.tui.widgets import GrowingInput, StatusBar
 from aegis.transcript_constants import (  # noqa: F401  (re-exported)
-    N_MAX, REPLAY_TAIL, EVICT_BATCH, LOAD_BATCH, STICKY_EPS, LOAD_MORE_EPS,
-    DEBOUNCE_S, STREAM_REPAINT_S,
+    N_MAX,
+    REPLAY_TAIL,
+    EVICT_BATCH,
+    LOAD_BATCH,
+    STICKY_EPS,
+    LOAD_MORE_EPS,
+    DEBOUNCE_S,
+    STREAM_REPAINT_S,
 )
 
 
@@ -89,9 +105,8 @@ def fold_plan_events(events: list) -> list:
         out.append(ev)
     return out
 
-_BLOCK_TOOLTIP = ("click to copy | ctrl+click to open here | "
-                  "alt+click to open natively")
 
+_BLOCK_TOOLTIP = "click to copy | ctrl+click to open here | alt+click to open natively"
 
 
 @dataclass(slots=True)
@@ -106,6 +121,7 @@ class BlockRecord:
     blocks — `Markdown` parses in its constructor, and the other 99% of the
     renderables were thrown away.
     """
+
     renderable: RenderableType | None
     payload: str
     tight: bool
@@ -117,11 +133,15 @@ class BlockRecord:
         """The renderable, rendering the deferred events on first use."""
         if self.renderable is None:
             from aegis.render import render_event
-            rends = [r for r in (render_event(ev, palette)
-                                 for ev in (self.events or []))
-                     if r is not None]
-            self.renderable = (rends[0] if len(rends) == 1
-                               else Group(*rends) if rends else Text(""))
+
+            rends = [
+                r
+                for r in (render_event(ev, palette) for ev in (self.events or []))
+                if r is not None
+            ]
+            self.renderable = (
+                rends[0] if len(rends) == 1 else Group(*rends) if rends else Text("")
+            )
         return self.renderable
 
 
@@ -130,11 +150,12 @@ class _ToolTrack:
     """Live state for one tool call: enough to re-render its block with a
     ticking timer while running, a frozen duration once done, and the full
     args when expanded."""
-    ev: object                      # the ToolUse event
-    idx: int                        # history index of its block
-    start: float                    # time.monotonic() at dispatch
+
+    ev: object  # the ToolUse event
+    idx: int  # history index of its block
+    start: float  # time.monotonic() at dispatch
     done: bool = False
-    elapsed: float | None = None    # frozen duration once done
+    elapsed: float | None = None  # frozen duration once done
     result_r: RenderableType | None = None
     expanded: bool = False
 
@@ -150,11 +171,12 @@ class _DeferredTrack:
     two spinners racing in one pane would leave the cancel key with no
     defensible answer about which one it kills.
     """
-    idx: int                        # history index of its block
-    start: float                    # time.monotonic() at dispatch
-    label: str                      # "btw", "@beta"
-    subject: str                    # the question, echoed while it runs
-    cancel_note: str                # already resolved against parsed args
+
+    idx: int  # history index of its block
+    start: float  # time.monotonic() at dispatch
+    label: str  # "btw", "@beta"
+    subject: str  # the question, echoed while it runs
+    cancel_note: str  # already resolved against parsed args
     worker: object = None
     done: bool = False
     elapsed: float | None = None
@@ -163,11 +185,12 @@ class _DeferredTrack:
 @dataclass(slots=True)
 class _ResultBlock:
     """The newest turn terminator, tracked so its "x ago" stays honest."""
-    block: object                   # the CopyableBlock
-    ev: object                      # the Result event
-    idx: int                        # history index of its record
-    ended_at: float                 # time.time() when it landed
-    shown: str = ""                 # last age string rendered
+
+    block: object  # the CopyableBlock
+    ev: object  # the Result event
+    idx: int  # history index of its record
+    ended_at: float  # time.time() when it landed
+    shown: str = ""  # last age string rendered
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -178,6 +201,7 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
     """
     if colors is None:
         from aegis.tui.themes import INK, aegis_colors
+
         colors = aegis_colors(INK)
     blocks: list[RenderableType] = []
     for ev in coalesce_chunks(replay.events):
@@ -188,9 +212,9 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
     if replay.damaged:
         # Say it out loud: a silently shortened transcript reads as a
         # conversation that was always this short.
-        note = (f"⚠ {replay.damaged} damaged record(s) skipped"
-                + (f" · {replay.recovered} recovered" if replay.recovered
-                   else ""))
+        note = f"⚠ {replay.damaged} damaged record(s) skipped" + (
+            f" · {replay.recovered} recovered" if replay.recovered else ""
+        )
         blocks.append(Text(note, style="yellow"))
     if replay.interrupted:
         blocks.append(Text("⚠ interrupted", style="yellow"))
@@ -210,12 +234,30 @@ def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _VERBS: tuple[str, ...] = (
-    "Thinking", "Pondering", "Cogitating", "Ruminating",
-    "Brewing", "Marinating", "Percolating", "Stewing",
-    "Distilling", "Conjuring", "Architecting", "Synthesizing",
-    "Crystallizing", "Untangling", "Deliberating", "Forging",
-    "Composing", "Convoluting", "Spelunking", "Wrangling",
-    "Brainstorming", "Plotting", "Scheming", "Reticulating",
+    "Thinking",
+    "Pondering",
+    "Cogitating",
+    "Ruminating",
+    "Brewing",
+    "Marinating",
+    "Percolating",
+    "Stewing",
+    "Distilling",
+    "Conjuring",
+    "Architecting",
+    "Synthesizing",
+    "Crystallizing",
+    "Untangling",
+    "Deliberating",
+    "Forging",
+    "Composing",
+    "Convoluting",
+    "Spelunking",
+    "Wrangling",
+    "Brainstorming",
+    "Plotting",
+    "Scheming",
+    "Reticulating",
 )
 
 
@@ -226,8 +268,9 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{m}m {s:02d}s"
 
 
-def _thought_summary(elapsed_s: float, char_len: int, palette,
-                     token_estimate: int = 0) -> "Text":
+def _thought_summary(
+    elapsed_s: float, char_len: int, palette, token_estimate: int = 0
+) -> "Text":
     """A completed reasoning block renders as a compact one-liner rather than
     a wall of streamed reasoning: ``💭 thought · 0:42 · ~1.2k tok``. Prefer
     the harness-reported thinking-token estimate (Claude redacts the
@@ -235,10 +278,12 @@ def _thought_summary(elapsed_s: float, char_len: int, palette,
     heuristic for harnesses that stream the text instead. The full reasoning
     is preserved as the block's copy payload."""
     from aegis.tui.metrics import _fmt_tokens
+
     approx = token_estimate if token_estimate > 0 else max(1, char_len // 4)
     return Text(
         f"💭 thought · {_fmt_elapsed(elapsed_s)} · ~{_fmt_tokens(approx)} tok",
-        style=f"italic {palette.muted}")
+        style=f"italic {palette.muted}",
+    )
 
 
 class WorkingIndicator(Static):
@@ -329,10 +374,13 @@ class WorkingIndicator(Static):
         # turn, and the indicator is `height: 1` in its own CSS — its size
         # cannot change. The default (layout=True) made the spinner rebuild
         # the entire compositor map ten times a second.
-        self.update(Text(
-            f"{spinner}  {verb}…  {elapsed}",
-            style=f"italic {self._palette.muted}",
-        ), layout=False)
+        self.update(
+            Text(
+                f"{spinner}  {verb}…  {elapsed}",
+                style=f"italic {self._palette.muted}",
+            ),
+            layout=False,
+        )
 
 
 def _extract_backtick_tokens(text: str) -> list[str]:
@@ -380,21 +428,26 @@ class CopyableBlock(Static):
 
     class ToolExpandToggle(Message):
         """A tool-call block was clicked — toggle its collapsed args."""
+
         def __init__(self, tool_call_id: str) -> None:
             super().__init__()
             self.tool_call_id = tool_call_id
 
-    def __init__(self, renderable: RenderableType,
-                 text_payload: str, *, tight: bool = False,
-                 tool_call_id: str | None = None,
-                 file_target: FileTarget | None = None,
-                 remote_path: str | None = None,
-                 host: str = "local") -> None:
+    def __init__(
+        self,
+        renderable: RenderableType,
+        text_payload: str,
+        *,
+        tight: bool = False,
+        tool_call_id: str | None = None,
+        file_target: FileTarget | None = None,
+        remote_path: str | None = None,
+        host: str = "local",
+    ) -> None:
         self._host = host
         # markup=False: the payloads are Rich renderables, and a raw str
         # payload must not be reinterpreted as Textual markup.
-        super().__init__(renderable, markup=False,
-                         classes="-tight" if tight else None)
+        super().__init__(renderable, markup=False, classes="-tight" if tight else None)
         self._renderable = renderable
         self._text_payload = text_payload
         self._tool_call_id = tool_call_id
@@ -410,8 +463,7 @@ class CopyableBlock(Static):
         self._tokens: list[str] | None = None
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        tip = ("click to expand args" if tool_call_id is not None
-               else "click to copy")
+        tip = "click to expand args" if tool_call_id is not None else "click to copy"
         if file_target is not None:
             tip = f"{tip} | ctrl+click to open the file"
         elif remote_path is not None:
@@ -422,12 +474,16 @@ class CopyableBlock(Static):
         # Advertise the open gestures only when this block actually names
         # something openable. Resolved here rather than on every content
         # update: hovering is rare, streaming is not.
-        if (self._tool_call_id is None and self._file_target is None
-                and self.backtick_tokens):
+        if (
+            self._tool_call_id is None
+            and self._file_target is None
+            and self.backtick_tokens
+        ):
             self.tooltip = _BLOCK_TOOLTIP
 
-    def update_content(self, renderable: RenderableType,
-                       text_payload: str, *, layout: bool = True) -> None:
+    def update_content(
+        self, renderable: RenderableType, text_payload: str, *, layout: bool = True
+    ) -> None:
         """Replace the block's content.
 
         ``layout=False`` when the new content provably occupies the same
@@ -497,8 +553,7 @@ class CopyableBlock(Static):
         except Exception:
             return
         try:
-            self.app.notify(
-                f"copied {len(self._text_payload)} chars", timeout=1.5)
+            self.app.notify(f"copied {len(self._text_payload)} chars", timeout=1.5)
         except Exception:
             pass
 
@@ -528,8 +583,7 @@ class CopyableBlock(Static):
         line = target.line
         if line is None and target.anchor:
             try:
-                line = anchor_line(path.read_text(errors="replace"),
-                                   target.anchor)
+                line = anchor_line(path.read_text(errors="replace"), target.anchor)
             except OSError:
                 line = None
         await opener(path, line=line)
@@ -537,13 +591,15 @@ class CopyableBlock(Static):
     @work
     async def _open_file_from_tokens(self) -> None:
         from aegis.tui.picker import (
-            FilePickerModal, _TokenChooser, filter_path_tokens,
-            resolve_unique_match)
+            FilePickerModal,
+            _TokenChooser,
+            filter_path_tokens,
+            resolve_unique_match,
+        )
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
-        paths = (indexer.paths
-                 if (indexer is not None and indexer.ready) else [])
+        paths = indexer.paths if (indexer is not None and indexer.ready) else []
         tokens = filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
             with contextlib.suppress(Exception):
@@ -584,8 +640,7 @@ class CopyableBlock(Static):
         Same token resolution as ctrl+click, different destination — plus
         URLs, which aegis has nothing to do with but a browser does.
         """
-        from aegis.tui.native_open import (
-            is_url, open_native, refuse_reason)
+        from aegis.tui.native_open import is_url, open_native, refuse_reason
         from aegis.tui.picker import _TokenChooser, filter_path_tokens
 
         def _notify(msg: str) -> None:
@@ -601,8 +656,7 @@ class CopyableBlock(Static):
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
-        paths = (indexer.paths
-                 if (indexer is not None and indexer.ready) else [])
+        paths = indexer.paths if (indexer is not None and indexer.ready) else []
         urls = [t for t in self.backtick_tokens if is_url(t)]
         tokens = urls + filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
@@ -651,8 +705,14 @@ class SubagentBox(Widget):
 
     collapsed: reactive[bool] = reactive(True)
 
-    def __init__(self, header: RenderableType, header_payload: str,
-                 palette, *, collapsed: bool = True) -> None:
+    def __init__(
+        self,
+        header: RenderableType,
+        header_payload: str,
+        palette,
+        *,
+        collapsed: bool = True,
+    ) -> None:
         super().__init__()
         self._palette = palette
         self._header = header
@@ -667,13 +727,13 @@ class SubagentBox(Widget):
         self._header_payload = payload
         self._refresh()
 
-    def add_child(self, renderable: RenderableType, payload: str,
-                  *, tight: bool = False) -> None:
+    def add_child(
+        self, renderable: RenderableType, payload: str, *, tight: bool = False
+    ) -> None:
         self._children.append(BlockRecord(renderable, payload, tight))
         self._refresh()
 
-    def fold_child_result(self, renderable: RenderableType,
-                          payload: str) -> bool:
+    def fold_child_result(self, renderable: RenderableType, payload: str) -> bool:
         """Fold a tool result into the box's last child (mirror of the
         top-level tool pairing). False when there's no child to fold into."""
         if not self._children:
@@ -727,9 +787,9 @@ class SubagentBox(Widget):
 def _payload_for_event(ev) -> str:
     """Plain-text clipboard payload for a non-streaming Event."""
     from aegis.events import Result, ToolResult, ToolUse
+
     if isinstance(ev, ToolUse):
-        return (f"{ev.name}({ev.summary})" if ev.summary
-                else f"{ev.name}()")
+        return f"{ev.name}({ev.summary})" if ev.summary else f"{ev.name}()"
     if isinstance(ev, ToolResult):
         return ev.text or ""
     if isinstance(ev, Result):
@@ -741,8 +801,7 @@ def _payload_for_event(ev) -> str:
 
 
 class PaneStateChanged(Message):
-    def __init__(self, pane: "ConversationPane",
-                 finished: bool) -> None:
+    def __init__(self, pane: "ConversationPane", finished: bool) -> None:
         self.pane = pane
         self.finished = finished
         super().__init__()
@@ -826,19 +885,31 @@ class ConversationPane(Widget):
         """The machine this pane's harness runs on. Drives every local
         file affordance: off-host, a path in the transcript names a file
         that is not here."""
-        return getattr(self, "_place", None).host \
-            if getattr(self, "_place", None) else "local"
+        return (
+            getattr(self, "_place", None).host
+            if getattr(self, "_place", None)
+            else "local"
+        )
 
-    def __init__(self, session: HarnessSession, agent: Agent,
-                 agent_slug: str, handle: str, palette,
-                 *, digest=None, monitor_manager=None,
-                 state_dir_path: Path | None = None,
-                 replay: EventReplay | None = None,
-                 on_first_user_message: Callable[[str], None] | None = None,
-                 on_first_result: Callable[[str], None] | None = None,
-                 core=None, log_id: str | None = None,
-                 place=None,
-                 project_root: Path) -> None:
+    def __init__(
+        self,
+        session: HarnessSession,
+        agent: Agent,
+        agent_slug: str,
+        handle: str,
+        palette,
+        *,
+        digest=None,
+        monitor_manager=None,
+        state_dir_path: Path | None = None,
+        replay: EventReplay | None = None,
+        on_first_user_message: Callable[[str], None] | None = None,
+        on_first_result: Callable[[str], None] | None = None,
+        core=None,
+        log_id: str | None = None,
+        place=None,
+        project_root: Path,
+    ) -> None:
         super().__init__(id=f"pane-{handle}")
         self._agent = agent
         self.agent_slug = agent_slug
@@ -854,22 +925,30 @@ class ConversationPane(Widget):
         # the remote shell) keeps these and renders no REPOS section.
         self._repo_tracker = None
         self._repo_timer = None
-        self._created_at: str = (
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        self._created_at: str = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         self.unseen = False
         # ``core`` allows remote mode to inject a RemotePaneCore directly,
         # bypassing the AgentSession wrapping that requires a real HarnessSession.
         if core is not None:
             self._core = core
         else:
-            self._core = AgentSession(session, agent, agent_slug, handle,
-                                      log_id=log_id, place=place,
-                                      project_root=project_root)
+            self._core = AgentSession(
+                session,
+                agent,
+                agent_slug,
+                handle,
+                log_id=log_id,
+                place=place,
+                project_root=project_root,
+            )
         self._core.add_event_observer(self._on_core_event)
         # RemotePaneCore has no place of its own — a --remote session's
         # harness lives in the serve it is attached to, not here.
         if not hasattr(self._core, "place"):
             from aegis.hosts.models import Place
+
             self._core.place = place or Place("local", ".")
         self._place = self._core.place
         self._core.add_state_observer(self._on_core_state)
@@ -913,7 +992,8 @@ class ConversationPane(Widget):
             # observer is an anonymous closure the pane keeps no reference
             # to.
             self._core.add_event_observer(
-                make_session_log_observer(state_dir_path, self.log_id))
+                make_session_log_observer(state_dir_path, self.log_id)
+            )
         self._replay = replay
         # Rebuild plan state before the pane paints anything, so a resumed
         # tab shows its task list immediately instead of staying blank
@@ -952,7 +1032,7 @@ class ConversationPane(Widget):
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
         self._streaming_block: CopyableBlock | None = None
-        self._streaming_kind: str | None = None     # "text" | "thinking"
+        self._streaming_kind: str | None = None  # "text" | "thinking"
         self._streaming_text: str = ""
         self._streaming_thinking_est: int = 0
         self._thinking_started_at: float | None = None
@@ -1060,14 +1140,15 @@ class ConversationPane(Widget):
                 if self._digest is not None:
                     yield QueueStrip(self._digest, self._palette)
                 if self._monitor_manager is not None:
-                    yield MonitorStrip(self._monitor_manager, self._palette,
-                                       handle_of=lambda: self.handle)
+                    yield MonitorStrip(
+                        self._monitor_manager,
+                        self._palette,
+                        handle_of=lambda: self.handle,
+                    )
                 # In remote mode, agent may be None; fall back to empty
                 # strings.
-                _model = getattr(self._agent, "model", "") \
-                    if self._agent else ""
-                _eff_raw = getattr(self._agent, "effort", "") \
-                    if self._agent else ""
+                _model = getattr(self._agent, "model", "") if self._agent else ""
+                _eff_raw = getattr(self._agent, "effort", "") if self._agent else ""
                 _eff = getattr(_eff_raw, "value", _eff_raw)  # Effort → str
                 yield PlanStrip(self._palette, id="plan-strip")
                 yield StatusBar(_model, _eff, self._palette)
@@ -1084,11 +1165,11 @@ class ConversationPane(Widget):
         # outlive any one pane, so the handles MUST be released on unmount
         # — see on_unmount.
         if self._digest is not None:
-            self._unsubs.append(self._digest._manager.subscribe(
-                lambda _ev: self._refresh_sidebar()))
-        if self._monitor_manager is not None:
             self._unsubs.append(
-                self._monitor_manager.subscribe(self._refresh_sidebar))
+                self._digest._manager.subscribe(lambda _ev: self._refresh_sidebar())
+            )
+        if self._monitor_manager is not None:
+            self._unsubs.append(self._monitor_manager.subscribe(self._refresh_sidebar))
         # Attached here rather than at construction: `self.app` is only
         # reachable once mounted, and no write can be recorded before the
         # harness has started, so nothing is missed by waiting.
@@ -1096,13 +1177,13 @@ class ConversationPane(Widget):
         if self._repo_tracker is not None:
             with contextlib.suppress(AttributeError):
                 self._core.repo_tracker = self._repo_tracker
-            self._unsubs.append(
-                self._repo_tracker.subscribe(self._refresh_sidebar))
+            self._unsubs.append(self._repo_tracker.subscribe(self._refresh_sidebar))
             # The probe is the only thing in this column that costs a
             # subprocess, so it runs only while the sidebar is open — the
             # closed mode stays one branch per event, as designed.
             self._repo_timer = self.set_interval(
-                _REPO_TICK, self._tick_repos, pause=True)
+                _REPO_TICK, self._tick_repos, pause=True
+            )
         self.refresh_title()
         # Boot mounts every resumed tab hidden and only shows one, so a pane
         # you may never look at shouldn't pay to paint itself. Deferred to
@@ -1184,7 +1265,7 @@ class ConversationPane(Widget):
         """Tab brought forward: paint a deferred replay if this is the first
         look, resume the 10 Hz visual timers that were frozen while hidden,
         and snap to the tail if the user was following."""
-        self._mount_replay()          # no-op once it has run
+        self._mount_replay()  # no-op once it has run
         self._catch_up_streaming_block()
         ind = self._working_indicator()
         if ind is not None:
@@ -1208,8 +1289,8 @@ class ConversationPane(Widget):
         self._repaint_pending = False
         if self._streaming_block is not None:
             self._streaming_block.update_content(
-                renderable,
-                self._streaming_text if payload is None else payload)
+                renderable, self._streaming_text if payload is None else payload
+            )
         # Explicit (not reliant on Textual's scroll anchor, which drifts in
         # a live terminal); gated on stickiness so a user scrolled up to
         # read is never yanked down.
@@ -1222,8 +1303,7 @@ class ConversationPane(Widget):
         if self._repaint_timer is not None or not self.display:
             return
         with contextlib.suppress(Exception):
-            self._repaint_timer = self.set_timer(
-                STREAM_REPAINT_S, self._flush_repaint)
+            self._repaint_timer = self.set_timer(STREAM_REPAINT_S, self._flush_repaint)
 
     def _flush_repaint(self) -> None:
         self._repaint_timer = None
@@ -1236,8 +1316,11 @@ class ConversationPane(Widget):
         if not self._repaint_pending:
             return
         idx = self._streaming_history_idx
-        if (self._streaming_block is None or idx is None
-                or not (0 <= idx < len(self._history))):
+        if (
+            self._streaming_block is None
+            or idx is None
+            or not (0 <= idx < len(self._history))
+        ):
             self._repaint_pending = False
             return
         rec = self._history[idx]
@@ -1265,15 +1348,15 @@ class ConversationPane(Widget):
             return
         self._replayed = True
         records: list[BlockRecord] = []
-        use_idx: dict[str, int] = {}   # tool_call_id → record index
-        box_idx: dict[str, int] = {}   # Task tool_call_id → box record index
+        use_idx: dict[str, int] = {}  # tool_call_id → record index
+        box_idx: dict[str, int] = {}  # Task tool_call_id → box record index
         open_box: dict[str, int] = {}  # still-open Task tool_call_id → index
 
         def _fold_into(idx: int, ev) -> None:
             if renders_to_nothing(ev):
                 return
             rec = records[idx]
-            rec.events.append(ev)          # rendered if the block is mounted
+            rec.events.append(ev)  # rendered if the block is mounted
             rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
 
         for ev in fold_plan_events(coalesce_chunks(self._replay.events)):
@@ -1293,20 +1376,36 @@ class ConversationPane(Widget):
                 continue
             if renders_to_nothing(ev):
                 continue
-            records.append(BlockRecord(
-                None, _payload_for_event(ev), False, events=[ev],
-                file_target=(file_target(ev.name, ev.raw_input, ev.locations,
-                                         host=self._host)
-                             if isinstance(ev, ToolUse) else None)))
-            if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
-                    and ev.tool_call_id):
+            records.append(
+                BlockRecord(
+                    None,
+                    _payload_for_event(ev),
+                    False,
+                    events=[ev],
+                    file_target=(
+                        file_target(
+                            ev.name, ev.raw_input, ev.locations, host=self._host
+                        )
+                        if isinstance(ev, ToolUse)
+                        else None
+                    ),
+                )
+            )
+            if (
+                isinstance(ev, ToolUse)
+                and ev.name in _SUBAGENT_TOOLS
+                and ev.tool_call_id
+            ):
                 box_idx[ev.tool_call_id] = len(records) - 1
                 open_box[ev.tool_call_id] = len(records) - 1
             elif isinstance(ev, ToolUse) and ev.tool_call_id:
                 use_idx[ev.tool_call_id] = len(records) - 1
         if self._replay.interrupted:
-            records.append(BlockRecord(
-                Text("⚠ interrupted", style="yellow"), "⚠ interrupted", False))
+            records.append(
+                BlockRecord(
+                    Text("⚠ interrupted", style="yellow"), "⚠ interrupted", False
+                )
+            )
 
         # Anything already recorded arrived AFTER this replay was read off
         # disk, in the window between constructing the pane and showing it.
@@ -1316,10 +1415,13 @@ class ConversationPane(Widget):
         self._window_start = max(0, len(records) - REPLAY_TAIL)
         self._window_end = len(records)
         t = self._transcript()
-        for rec in records[self._window_start:]:
-            block = CopyableBlock(rec.materialize(self._palette), rec.payload,
-                                  tight=rec.tight,
-                                  file_target=rec.file_target)
+        for rec in records[self._window_start :]:
+            block = CopyableBlock(
+                rec.materialize(self._palette),
+                rec.payload,
+                tight=rec.tight,
+                file_target=rec.file_target,
+            )
             t.mount(block)
             self._mounted_blocks.append(block)
         t.scroll_end(animate=False)
@@ -1338,6 +1440,7 @@ class ConversationPane(Widget):
         if bar is not None and bar.is_attached:
             return bar
         from textual.css.query import NoMatches
+
         try:
             self._status_bar = self.query_one(StatusBar)
         except NoMatches:
@@ -1349,8 +1452,8 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_metrics(
-                self._core.metrics.render_tiers(time.monotonic(),
-                                                self._palette))
+                self._core.metrics.render_tiers(time.monotonic(), self._palette)
+            )
         self._refresh_sidebar()
 
     def refresh_title(self) -> None:
@@ -1385,8 +1488,9 @@ class ConversationPane(Widget):
         the head of SESSION rather than in a section of its own — it is the
         one segment that demands action, and burying it under a heading at
         some scroll offset would be worse than the bar it replaces."""
-        self._connection_tiers = () if up else (
-            "⚠ disconnected — reconnecting…", "⚠ disconnected")
+        self._connection_tiers = (
+            () if up else ("⚠ disconnected — reconnecting…", "⚠ disconnected")
+        )
         bar = self._bar()
         if bar is not None:
             bar.set_connection_state(up, reason)
@@ -1438,8 +1542,9 @@ class ConversationPane(Widget):
         """
         t = self._transcript()
         base = t.content_region.y - t.scroll_offset.y
-        blocks = [b for b in self._mounted_blocks
-                  if b.is_attached and b.region.height > 0]
+        blocks = [
+            b for b in self._mounted_blocks if b.is_attached and b.region.height > 0
+        ]
         return blocks, [b.region.y - base for b in blocks]
 
     def scroll_to_adjacent_block(self, direction: int) -> None:
@@ -1468,8 +1573,7 @@ class ConversationPane(Widget):
         idx = above[-1] if above else 0
         # Reading upward from mid-block, the first stop is the top of the
         # block you are already inside — not the one before it.
-        target = (idx if direction < 0 and cur > tops[idx]
-                  else idx + direction)
+        target = idx if direction < 0 and cur > tops[idx] else idx + direction
         if target < 0:
             t.scroll_to(y=0, animate=False)
         elif target >= len(blocks):
@@ -1479,10 +1583,12 @@ class ConversationPane(Widget):
 
     def _on_scroll_y(self, _value: float) -> None:
         t = self._transcript()
-        self._stick_to_bottom = (
-            (t.max_scroll_y - t.scroll_y) <= STICKY_EPS)
-        if (self._stick_to_bottom and not self._restoring_tail
-                and self._window_end < len(self._history)):
+        self._stick_to_bottom = (t.max_scroll_y - t.scroll_y) <= STICKY_EPS
+        if (
+            self._stick_to_bottom
+            and not self._restoring_tail
+            and self._window_end < len(self._history)
+        ):
             # Scrolled back down to a window whose tail was dropped while
             # we were reading above. Without this the bottom of the
             # transcript silently shows stale content. Debounced, and
@@ -1502,8 +1608,7 @@ class ConversationPane(Widget):
             if self._load_timer is not None:
                 with contextlib.suppress(Exception):
                     self._load_timer.stop()
-            self._load_timer = self.set_timer(
-                DEBOUNCE_S, self._load_older)
+            self._load_timer = self.set_timer(DEBOUNCE_S, self._load_older)
 
     def _load_older(self) -> None:
         if self._loading_older or self._window_start == 0:
@@ -1514,11 +1619,16 @@ class ConversationPane(Widget):
             new_start = max(0, self._window_start - LOAD_BATCH)
             anchor = self._mounted_blocks[0] if self._mounted_blocks else None
             anchor_y_before = (
-                (anchor.region.y - t.region.y) if anchor is not None else 0)
+                (anchor.region.y - t.region.y) if anchor is not None else 0
+            )
             new_blocks: list[CopyableBlock] = [
-                CopyableBlock(rec.materialize(self._palette), rec.payload,
-                              tight=rec.tight, tool_call_id=rec.tool_call_id,
-                              file_target=rec.file_target)
+                CopyableBlock(
+                    rec.materialize(self._palette),
+                    rec.payload,
+                    tight=rec.tight,
+                    tool_call_id=rec.tool_call_id,
+                    file_target=rec.file_target,
+                )
                 for rec in self._history[new_start : self._window_start]
             ]
             # One batched mount: Textual lays the parent out once per mount
@@ -1539,8 +1649,7 @@ class ConversationPane(Widget):
                     anchor_y_after = anchor.region.y - t.region.y
                     delta = anchor_y_after - anchor_y_before
                     if delta:
-                        t.scroll_to(
-                            y=t.scroll_y + delta, animate=False)
+                        t.scroll_to(y=t.scroll_y + delta, animate=False)
                 self._loading_older = False
 
             self.call_after_refresh(_restore)
@@ -1555,6 +1664,7 @@ class ConversationPane(Widget):
         if ind is not None and ind.is_attached:
             return ind
         from textual.css.query import NoMatches
+
         try:
             self._indicator = self.query_one(WorkingIndicator)
         except NoMatches:
@@ -1573,6 +1683,7 @@ class ConversationPane(Widget):
             from rich.text import Text
 
             from aegis.tui.metrics import _fmt_tokens
+
             for b in self._mounted_blocks:
                 with contextlib.suppress(Exception):
                     b.remove()
@@ -1581,14 +1692,17 @@ class ConversationPane(Widget):
             self._window_start = 0
             self._window_end = 0
             ctx_tokens = self._core.metrics.last_true_input
-            marker = (f"──── transcript cleared · {_fmt_tokens(ctx_tokens)} "
-                      f"context tokens still in play ────")
+            marker = (
+                f"──── transcript cleared · {_fmt_tokens(ctx_tokens)} "
+                f"context tokens still in play ────"
+            )
             self._mount_block(
-                Text(marker, style=self._palette.muted, justify="center"),
-                marker)
+                Text(marker, style=self._palette.muted, justify="center"), marker
+            )
 
-    def _put_block(self, renderable: RenderableType, payload: str,
-                   *, at_idx: int | None = None) -> None:
+    def _put_block(
+        self, renderable: RenderableType, payload: str, *, at_idx: int | None = None
+    ) -> None:
         """Mount a new block, or rewrite the block at ``at_idx`` in place.
 
         The deferred path needs the second: its placeholder was mounted
@@ -1609,8 +1723,9 @@ class ConversationPane(Widget):
             if self._stick_to_bottom:
                 self._transcript().scroll_end(animate=False)
 
-    def _apply_command_result(self, result, width: int,
-                              *, at_idx: int | None = None) -> str | None:
+    def _apply_command_result(
+        self, result, width: int, *, at_idx: int | None = None
+    ) -> str | None:
         """Render one command result into the transcript.
 
         Extracted from ``on_growing_input_submitted`` because deferring
@@ -1639,11 +1754,14 @@ class ConversationPane(Widget):
             # later /btw assembles.
             from aegis.btw import SideNote
             from aegis.render import render_side_note
+
             note = SideNote(**eff["note"])
             self._flush_streaming()
-            self._put_block(render_side_note(note, self._palette),
-                            f"btw: {note.answer}\n{note.footer}".strip(),
-                            at_idx=at_idx)
+            self._put_block(
+                render_side_note(note, self._palette),
+                f"btw: {note.answer}\n{note.footer}".strip(),
+                at_idx=at_idx,
+            )
             return None
         if kind == "recap":
             # Same treatment as a side note, and for the same reason: it
@@ -1652,14 +1770,17 @@ class ConversationPane(Widget):
             # Summaries that compound would summarize themselves.
             from aegis.recap import Recap
             from aegis.render import render_recap
+
             recap = Recap(**eff["recap"])
             self._flush_streaming()
             # at_idx matters here and only here: a deferred /recap mounted
             # a placeholder when you asked, and the answer has to land
             # *there* rather than at the tail.
-            self._put_block(render_recap(recap, self._palette),
-                            f"recap: {recap.text}\n{recap.footer}".strip(),
-                            at_idx=at_idx)
+            self._put_block(
+                render_recap(recap, self._palette),
+                f"recap: {recap.text}\n{recap.footer}".strip(),
+                at_idx=at_idx,
+            )
             return None
         if kind == "peer_answer":
             # An @peer answer is transient *here* and real *there*: it
@@ -1669,18 +1790,23 @@ class ConversationPane(Widget):
             # in the peer's own transcript.
             from aegis.peer import PeerAnswer
             from aegis.render import render_peer_answer
+
             answer = PeerAnswer(**eff["answer"])
             self._flush_streaming()
             self._put_block(
                 render_peer_answer(answer, self._palette),
-                f"@{answer.target}: {answer.answer}\n"
-                f"{answer.footer}".strip(), at_idx=at_idx)
+                f"@{answer.target}: {answer.answer}\n{answer.footer}".strip(),
+                at_idx=at_idx,
+            )
             return None
         from aegis.render import render_command_block
+
         self._flush_streaming()
-        self._put_block(render_command_block(result, self._palette, width),
-                        f"{result.title}\n{result.body}".strip(),
-                        at_idx=at_idx)
+        self._put_block(
+            render_command_block(result, self._palette, width),
+            f"{result.title}\n{result.body}".strip(),
+            at_idx=at_idx,
+        )
         if result.effect:
             self._apply_command_effect(result.effect)
         return None
@@ -1706,7 +1832,7 @@ class ConversationPane(Widget):
         for every pane rather than only for self.
         """
         app_toggle = getattr(self.app, "toggle_sidebar_mode", None)
-        if app_toggle is None:            # pane hosted outside AegisApp
+        if app_toggle is None:  # pane hosted outside AegisApp
             return self.set_task_dock(not self.sidebar_open)
         return app_toggle()
 
@@ -1764,20 +1890,30 @@ class ConversationPane(Widget):
             return False
         return True
 
-    def _mount_block(self, renderable: RenderableType,
-                     text_payload: str,
-                     *, tight: bool = False,
-                     tool_call_id: str | None = None,
-                     file_target: FileTarget | None = None,
-                     remote_path: str | None = None) -> CopyableBlock:
+    def _mount_block(
+        self,
+        renderable: RenderableType,
+        text_payload: str,
+        *,
+        tight: bool = False,
+        tool_call_id: str | None = None,
+        file_target: FileTarget | None = None,
+        remote_path: str | None = None,
+    ) -> CopyableBlock:
         self._history.append(
-            BlockRecord(renderable, text_payload, tight, tool_call_id,
-                        file_target=file_target))
-        block = CopyableBlock(renderable, text_payload, tight=tight,
-                              tool_call_id=tool_call_id,
-                              file_target=file_target,
-                              remote_path=remote_path,
-                              host=self._host)
+            BlockRecord(
+                renderable, text_payload, tight, tool_call_id, file_target=file_target
+            )
+        )
+        block = CopyableBlock(
+            renderable,
+            text_payload,
+            tight=tight,
+            tool_call_id=tool_call_id,
+            file_target=file_target,
+            remote_path=remote_path,
+            host=self._host,
+        )
         t = self._live_transcript()
         if t is None:
             # Recorded, not mounted. Same shape as the truncated-window
@@ -1871,9 +2007,13 @@ class ConversationPane(Widget):
                     b.remove()
             self._mounted_blocks.clear()
             new_blocks = [
-                CopyableBlock(rec.materialize(self._palette), rec.payload,
-                              tight=rec.tight, tool_call_id=rec.tool_call_id,
-                              file_target=rec.file_target)
+                CopyableBlock(
+                    rec.materialize(self._palette),
+                    rec.payload,
+                    tight=rec.tight,
+                    tool_call_id=rec.tool_call_id,
+                    file_target=rec.file_target,
+                )
                 for rec in self._history[start:]
             ]
             ind = self._working_indicator()
@@ -1921,8 +2061,7 @@ class ConversationPane(Widget):
         return list(self.query(CopyableBlock))
 
     def _transcript_has(self, needle: str) -> bool:
-        return any(needle in b.text_payload()
-                   for b in self._transcript_blocks())
+        return any(needle in b.text_payload() for b in self._transcript_blocks())
 
     def focus_input(self) -> None:
         self.query_one(GrowingInput).focus()
@@ -2011,6 +2150,7 @@ class ConversationPane(Widget):
         pal = self.query_one(CommandPalette)
         if value.startswith("/") or addressing:
             from aegis.commands import complete
+
             pal.update(complete(value, self.app))
         else:
             pal.hide()
@@ -2039,17 +2179,17 @@ class ConversationPane(Widget):
         inp = self.query_one(GrowingInput)
         value = inp.value
         if value.startswith("/") and " " not in value:
-            new = choice.insert                      # completing the verb
+            new = choice.insert  # completing the verb
         else:
             head = value.rsplit(" ", 1)[0] if " " in value else ""
             new = (head + " " if head else "") + choice.insert
         inp.value = new
         inp.move_cursor(inp.document.end)
         from aegis.commands import complete
+
         self.query_one(CommandPalette).update(complete(new, self.app))
 
-    async def on_growing_input_submitted(self,
-                                  event: GrowingInput.Submitted) -> None:
+    async def on_growing_input_submitted(self, event: GrowingInput.Submitted) -> None:
         event.stop()
         text = event.value.strip()
         if not text:
@@ -2064,6 +2204,7 @@ class ConversationPane(Widget):
             if not command:
                 return
             from aegis.tui.shell_escape import run_shell_escape
+
             text = await run_shell_escape(command, self._core.project_root)
         elif text.startswith(("/", "@")):
             # Slash family: `/cmd` is a command aegis executes directly and
@@ -2078,8 +2219,8 @@ class ConversationPane(Widget):
             # because it looks like it worked. The web seam has no gate
             # (wssession.py calls classify_input on every line), so a
             # regression here is TUI-only and silent.
-            from aegis.commands import (
-                CommandContext, classify_input, dispatch)
+            from aegis.commands import CommandContext, classify_input, dispatch
+
             kind, payload = classify_input(text)
             if kind == "command":
                 width = self._transcript().size.width or 80
@@ -2096,25 +2237,26 @@ class ConversationPane(Widget):
                 # back onto the inline path — the exact freeze this
                 # deletes, reappearing on one spelling only.
                 from aegis.commands import resolve_deferred
+
                 hit = resolve_deferred(payload)
                 if hit is not None:
                     self._start_deferred(payload, *hit, width)
                     return
                 result = await dispatch(
-                    payload, CommandContext(bridge=self.app,
-                                            handle=self.handle))
+                    payload, CommandContext(bridge=self.app, handle=self.handle)
+                )
                 delivered = self._apply_command_result(result, width)
                 if delivered is None:
                     return
                 text = delivered
             else:
-                text = payload   # "//foo" → deliver "/foo" as a normal message
+                text = payload  # "//foo" → deliver "/foo" as a normal message
         # Every text-box message flows through the one inbox queue. When
         # idle it lands immediately (rendered by _on_core_dispatch); when
         # the agent is mid-turn it queues as a click-to-dequeue chip.
         from aegis.queue import InboxMessage, now_iso, sender_user
-        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
-                           body=text)
+
+        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(), body=text)
         self._record_first_user_message(text)
         self._flush_streaming()
         # Interrupt-send (alt/ctrl+enter): cut the live turn first so the
@@ -2133,8 +2275,11 @@ class ConversationPane(Widget):
         history-write failure break a turn."""
         if text and not self._opening_text:
             self._opening_text = text
-        if (text and not self._first_msg_recorded
-                and self._on_first_user_message is not None):
+        if (
+            text
+            and not self._first_msg_recorded
+            and self._on_first_user_message is not None
+        ):
             self._first_msg_recorded = True
             try:
                 self._on_first_user_message(text)
@@ -2147,8 +2292,11 @@ class ConversationPane(Widget):
         Same contract as the history-header hook above: a failure here is a
         missing label, never a broken turn.
         """
-        if (self._first_result_fired or self._on_first_result is None
-                or not self._opening_text):
+        if (
+            self._first_result_fired
+            or self._on_first_result is None
+            or not self._opening_text
+        ):
             return
         self._first_result_fired = True
         try:
@@ -2162,11 +2310,9 @@ class ConversationPane(Widget):
         self._record_first_user_message(text)
         self._flush_streaming()
         width = self._transcript().size.width or 80
-        self._mount_block(
-            render_user_line(text, self._palette, width), text)
+        self._mount_block(render_user_line(text, self._palette, width), text)
         self._start_indicator()
-        self.run_worker(self._core.send(text),
-                        group="turn", exclusive=True)
+        self.run_worker(self._core.send(text), group="turn", exclusive=True)
 
     def on_chip_dequeued(self, event: Chip.Dequeued) -> None:
         """A queued user message was clicked: cancel it before dispatch."""
@@ -2174,8 +2320,7 @@ class ConversationPane(Widget):
         self._core.cancel_pending(event.msg)
         self.query_one(PendingStrip).remove_msg(event.msg)
 
-    async def deliver_handoff(self, from_handle: str,
-                              context: str) -> None:
+    async def deliver_handoff(self, from_handle: str, context: str) -> None:
         self._submit(f"[handoff from {from_handle}] {context}")
 
     # --- streaming aggregation -------------------------------------
@@ -2188,9 +2333,11 @@ class ConversationPane(Widget):
         # A text stream is rendered cheaply as plain Text per delta (no
         # per-token Markdown re-parse). Finalize it to a single Markdown
         # render on flush so the settled block carries proper formatting.
-        if (self._streaming_kind == "text"
-                and self._streaming_block is not None
-                and self._streaming_text.strip()):
+        if (
+            self._streaming_kind == "text"
+            and self._streaming_block is not None
+            and self._streaming_text.strip()
+        ):
             r = Markdown(self._streaming_text)
             self._streaming_block.update_content(r, self._streaming_text)
             if self._streaming_history_idx is not None:
@@ -2203,21 +2350,22 @@ class ConversationPane(Widget):
         self._streaming_history_idx = None
         self._streaming_thinking_est = 0
 
-    def _render_for_stream(self, kind: str,
-                            text: str) -> RenderableType:
+    def _render_for_stream(self, kind: str, text: str) -> RenderableType:
         if kind == "thinking":
             started = self._thinking_started_at or time.monotonic()
             return _thought_summary(
-                time.monotonic() - started, len(text), self._palette,
-                self._streaming_thinking_est)
+                time.monotonic() - started,
+                len(text),
+                self._palette,
+                self._streaming_thinking_est,
+            )
         # Stream deltas as cheap plain Text — a fresh Markdown(full_text)
         # per token is O(n^2) parsing over the message. The block is
         # re-rendered once as Markdown in _flush_streaming when the stream
         # settles.
         return Text(text)
 
-    def _stream_append(self, kind: str, new_text: str,
-                       token_estimate: int = 0) -> None:
+    def _stream_append(self, kind: str, new_text: str, token_estimate: int = 0) -> None:
         if self._streaming_kind != kind:
             self._flush_streaming()
             self._streaming_kind = kind
@@ -2232,8 +2380,10 @@ class ConversationPane(Widget):
             # that isn't in the tree — the record stays authoritative and
             # jump_to_end re-links it.
             self._streaming_block = (
-                blk if (self._mounted_blocks
-                        and self._mounted_blocks[-1] is blk) else None)
+                blk
+                if (self._mounted_blocks and self._mounted_blocks[-1] is blk)
+                else None
+            )
             # Mounting is itself a reflow, so it starts the repaint window.
             self._last_repaint_at = time.monotonic()
             self._repaint_pending = False
@@ -2242,10 +2392,10 @@ class ConversationPane(Widget):
         else:
             self._streaming_text += new_text
             self._streaming_thinking_est = max(
-                self._streaming_thinking_est, token_estimate)
+                self._streaming_thinking_est, token_estimate
+            )
             if self._streaming_block is not None:
-                r = self._render_for_stream(
-                    kind, self._streaming_text)
+                r = self._render_for_stream(kind, self._streaming_text)
                 # The record is the source of truth and always current; the
                 # widget only has to agree with it when someone can see it,
                 # and no more often than STREAM_REPAINT_S. A repaint is a
@@ -2273,6 +2423,7 @@ class ConversationPane(Widget):
         agent/queue messages were already rendered on arrival by
         _on_core_inbox."""
         from textual.css.query import NoMatches
+
         try:
             strip = self.query_one(PendingStrip)
         except NoMatches:
@@ -2287,8 +2438,8 @@ class ConversationPane(Widget):
                 strip.remove_msg(msg)
                 self._flush_streaming()
                 self._mount_block(
-                    render_user_line(msg.body, self._palette, width),
-                    msg.body)
+                    render_user_line(msg.body, self._palette, width), msg.body
+                )
 
     def _put_recap(self, recap) -> None:
         """Mount a recap block. The one place a recap reaches the screen.
@@ -2299,9 +2450,12 @@ class ConversationPane(Widget):
         session log.
         """
         from aegis.render import render_recap
+
         self._flush_streaming()
-        self._put_block(render_recap(recap, self._palette),
-                        f"recap: {recap.text}\n{recap.footer}".strip())
+        self._put_block(
+            render_recap(recap, self._palette),
+            f"recap: {recap.text}\n{recap.footer}".strip(),
+        )
 
     def _on_recap(self, _core, recap) -> None:
         """Observer slot for the automatic end-of-turn recap.
@@ -2312,8 +2466,9 @@ class ConversationPane(Widget):
         """
         try:
             self._put_recap(recap)
-        except Exception:                       # noqa: BLE001
+        except Exception:  # noqa: BLE001
             import logging
+
             logging.getLogger(__name__).exception("failed to render recap")
 
     def _on_loop_change(self, _core, state, reason: str) -> None:
@@ -2346,6 +2501,7 @@ class ConversationPane(Widget):
         # Plain-text clipboard payload mirrors the substrate header
         # convention so copy-on-click gives the same shape the agent saw.
         from aegis.queue.schema import render_inbox_header
+
         payload = f"{render_inbox_header(msg)}\n{msg.body or ''}"
         self._mount_block(renderable, payload)
 
@@ -2356,15 +2512,14 @@ class ConversationPane(Widget):
             self._refresh_plan_surfaces()
         parent = getattr(ev, "parent_tool_use_id", None)
         if parent and parent in self._subagent_boxes:
-            self._route_into_box(parent, ev)     # subagent child → its box
+            self._route_into_box(parent, ev)  # subagent child → its box
             self.refresh_metrics()
             return
         if isinstance(ev, ToolResult) and ev.tool_call_id in self._subagent_boxes:
             self._close_box(ev.tool_call_id, ev)  # Task result closes its box
             self.refresh_metrics()
             return
-        if (isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS
-                and ev.tool_call_id):
+        if isinstance(ev, ToolUse) and ev.name in _SUBAGENT_TOOLS and ev.tool_call_id:
             self._open_box(ev)
             self.refresh_metrics()
             return
@@ -2385,16 +2540,19 @@ class ConversationPane(Widget):
             self._flush_streaming()
             # Open a live track: render the line with a running spinner+timer
             # and make the block click-to-expand its args.
-            track = _ToolTrack(ev=ev, idx=len(self._history),
-                               start=time.monotonic())
-            renderable = render_tool_use(ev, self._palette, elapsed=0.0,
-                                         running=True, frame=self._spin_frame)
-            self._mount_block(renderable, _payload_for_event(ev),
-                              tool_call_id=ev.tool_call_id,
-                              file_target=file_target(
-                                  ev.name, ev.raw_input, ev.locations,
-                                  host=self._host),
-                              remote_path=self._remote_path_for(ev))
+            track = _ToolTrack(ev=ev, idx=len(self._history), start=time.monotonic())
+            renderable = render_tool_use(
+                ev, self._palette, elapsed=0.0, running=True, frame=self._spin_frame
+            )
+            self._mount_block(
+                renderable,
+                _payload_for_event(ev),
+                tool_call_id=ev.tool_call_id,
+                file_target=file_target(
+                    ev.name, ev.raw_input, ev.locations, host=self._host
+                ),
+                remote_path=self._remote_path_for(ev),
+            )
             # Remember this call's block so its (possibly out-of-order,
             # parallel) ToolResult folds in below instead of appending.
             self._tool_use_idx[ev.tool_call_id] = track.idx
@@ -2418,7 +2576,9 @@ class ConversationPane(Widget):
                     self._fire_first_result()
                 if isinstance(ev, AgentPlan):
                     self._plan_blocks[self._plan_key(ev)] = (
-                        block, len(self._history) - 1)
+                        block,
+                        len(self._history) - 1,
+                    )
         self.refresh_metrics()
 
     def _adopt_result_block(self, block, ev) -> None:
@@ -2428,8 +2588,8 @@ class ConversationPane(Widget):
         if prev is not None:
             self._paint_result(prev, age_s=None)
         self._last_result = _ResultBlock(
-            block=block, ev=ev, idx=len(self._history) - 1,
-            ended_at=time.time())
+            block=block, ev=ev, idx=len(self._history) - 1, ended_at=time.time()
+        )
         self.refresh_result_age()
 
     def _paint_result(self, r: _ResultBlock, *, age_s: float | None) -> None:
@@ -2501,36 +2661,47 @@ class ConversationPane(Widget):
             # freeze.
             from aegis.commands import CommandResult
             from aegis.render import render_command_block
+
             running = self._deferred
             self._flush_streaming()
             self._mount_block(
                 render_command_block(
                     CommandResult(
-                        False, f"{running.label} is already running",
-                        "ESC to cancel it"),
-                    self._palette, width),
-                f"{running.label} is already running")
+                        False, f"{running.label} is already running", "ESC to cancel it"
+                    ),
+                    self._palette,
+                    width,
+                ),
+                f"{running.label} is already running",
+            )
             return
         label = "btw" if cmd.name == "btw" else f"/{cmd.name}"
         subject = " ".join(str(v) for v in args.positional.values() if v)
         self._flush_streaming()
         self._mount_block(Text(""), "")
         track = _DeferredTrack(
-            idx=len(self._history) - 1, start=time.monotonic(),
-            label=label, subject=subject,
-            cancel_note=cmd.resolved_cancel_note(args))
+            idx=len(self._history) - 1,
+            start=time.monotonic(),
+            label=label,
+            subject=subject,
+            cancel_note=cmd.resolved_cancel_note(args),
+        )
         self._deferred = track
         self._render_deferred_block(track)
         self._ensure_tool_timer()
         track.worker = self.run_worker(
-            self._run_deferred(payload, track, width), exclusive=False)
+            self._run_deferred(payload, track, width), exclusive=False
+        )
 
-    async def _run_deferred(self, payload: str, track: "_DeferredTrack",
-                            width: int) -> None:
+    async def _run_deferred(
+        self, payload: str, track: "_DeferredTrack", width: int
+    ) -> None:
         """Dispatch on a worker, then rewrite the placeholder in place."""
         from aegis.commands import CommandContext, dispatch
+
         result = await dispatch(
-            payload, CommandContext(bridge=self.app, handle=self.handle))
+            payload, CommandContext(bridge=self.app, handle=self.handle)
+        )
         if track.done or self._deferred is not track:
             # Cancelled while in flight — the tombstone already owns this
             # block, and a late answer must not overwrite it. A side
@@ -2547,24 +2718,39 @@ class ConversationPane(Widget):
         if not self._any_spinner_running():
             self._stop_tool_timer()
 
-    def _render_deferred_block(self, track: "_DeferredTrack", *,
-                               cancelled: bool = False) -> None:
+    def _render_deferred_block(
+        self, track: "_DeferredTrack", *, cancelled: bool = False
+    ) -> None:
         from aegis.render import render_deferred
-        elapsed = (track.elapsed if track.elapsed is not None
-                   else time.monotonic() - track.start)
+
+        elapsed = (
+            track.elapsed
+            if track.elapsed is not None
+            else time.monotonic() - track.start
+        )
         self._put_block(
-            render_deferred(track.label, track.subject, elapsed,
-                            self._palette, frame=self._spin_frame,
-                            cancelled=cancelled,
-                            cancel_note=track.cancel_note),
-            (f"{track.label} · {track.cancel_note}" if cancelled
-             else f"{track.label} · {track.subject}"),
-            at_idx=track.idx)
+            render_deferred(
+                track.label,
+                track.subject,
+                elapsed,
+                self._palette,
+                frame=self._spin_frame,
+                cancelled=cancelled,
+                cancel_note=track.cancel_note,
+            ),
+            (
+                f"{track.label} · {track.cancel_note}"
+                if cancelled
+                else f"{track.label} · {track.subject}"
+            ),
+            at_idx=track.idx,
+        )
 
     def _any_spinner_running(self) -> bool:
         """Whether the 10 Hz ticker still has anything to animate."""
         return self._any_tool_running() or (
-            self._deferred is not None and not self._deferred.done)
+            self._deferred is not None and not self._deferred.done
+        )
 
     def _any_tool_running(self) -> bool:
         return any(not t.done for t in self._tools.values())
@@ -2596,9 +2782,9 @@ class ConversationPane(Widget):
         if self._deferred is not None and not self._deferred.done:
             self._render_deferred_block(self._deferred)
 
-    def _render_tool_block(self, track: "_ToolTrack",
-                           *, scroll: bool = False,
-                           layout: bool = True) -> None:
+    def _render_tool_block(
+        self, track: "_ToolTrack", *, scroll: bool = False, layout: bool = True
+    ) -> None:
         """(Re)render a tool-call block from its track — running spinner+timer,
         frozen duration, folded result, and expanded args as applicable.
 
@@ -2607,17 +2793,20 @@ class ConversationPane(Widget):
         expanding args genuinely grows the block and keeps the default."""
         running = not track.done
         elapsed = (time.monotonic() - track.start) if running else track.elapsed
-        line = render_tool_use(track.ev, self._palette, elapsed=elapsed,
-                               running=running, frame=self._spin_frame,
-                               expanded=track.expanded)
-        rend = Group(line, track.result_r) if track.result_r is not None \
-            else line
+        line = render_tool_use(
+            track.ev,
+            self._palette,
+            elapsed=elapsed,
+            running=running,
+            frame=self._spin_frame,
+            expanded=track.expanded,
+        )
+        rend = Group(line, track.result_r) if track.result_r is not None else line
         rec = self._history[track.idx]
         rec.renderable = rend
         pos = track.idx - self._window_start
         if 0 <= pos < len(self._mounted_blocks):
-            self._mounted_blocks[pos].update_content(
-                rend, rec.payload, layout=layout)
+            self._mounted_blocks[pos].update_content(rend, rec.payload, layout=layout)
             if scroll and self._stick_to_bottom:
                 self._transcript().scroll_end(animate=False)
 
@@ -2639,7 +2828,8 @@ class ConversationPane(Widget):
             self._stop_tool_timer()
 
     def on_copyable_block_tool_expand_toggle(
-            self, event: "CopyableBlock.ToolExpandToggle") -> None:
+        self, event: "CopyableBlock.ToolExpandToggle"
+    ) -> None:
         event.stop()
         track = self._tools.get(event.tool_call_id)
         if track is None:
@@ -2673,21 +2863,26 @@ class ConversationPane(Widget):
 
     def _route_into_box(self, tid: str, ev) -> None:
         box = self._subagent_boxes[tid]
-        result_r = (render_event(ev, self._palette)
-                    if isinstance(ev, ToolResult) else None)
+        result_r = (
+            render_event(ev, self._palette) if isinstance(ev, ToolResult) else None
+        )
         if result_r is not None and box.fold_child_result(
-                result_r, _payload_for_event(ev)):
+            result_r, _payload_for_event(ev)
+        ):
             pass  # folded into the box's last child (in-box tool pairing)
         else:
             r = render_event(ev, self._palette)
             if r is not None:
-                box.add_child(r, _payload_for_event(ev),
-                              tight=isinstance(ev, ToolUse))
+                box.add_child(r, _payload_for_event(ev), tight=isinstance(ev, ToolUse))
         self._subagent_counts[tid] += 1
         box.set_header(
-            self._box_header(self._subagent_summary[tid], running=True,
-                             count=self._subagent_counts[tid]),
-            box._header_payload)
+            self._box_header(
+                self._subagent_summary[tid],
+                running=True,
+                count=self._subagent_counts[tid],
+            ),
+            box._header_payload,
+        )
         if self._stick_to_bottom:
             self._transcript().scroll_end(animate=False)
 
@@ -2695,18 +2890,25 @@ class ConversationPane(Widget):
         box = self._subagent_boxes[tid]
         icon = "✗" if ev.is_error else "✓"
         box.set_header(
-            self._box_header(self._subagent_summary[tid], running=False,
-                             count=self._subagent_counts[tid], icon=icon),
-            box._header_payload)
+            self._box_header(
+                self._subagent_summary[tid],
+                running=False,
+                count=self._subagent_counts[tid],
+                icon=icon,
+            ),
+            box._header_payload,
+        )
         result_r = render_event(ev, self._palette)
         if result_r is not None:
             box.close(result_r, _payload_for_event(ev))
 
-    def _box_header(self, summary: str, *, running: bool, count: int,
-                    icon: str = "✓") -> Text:
+    def _box_header(
+        self, summary: str, *, running: bool, count: int, icon: str = "✓"
+    ) -> Text:
         status = "⏳" if running else icon
-        return Text.assemble(("🤖 ", self._palette.accent),
-                             f"{summary} · {status} {count} events")
+        return Text.assemble(
+            ("🤖 ", self._palette.accent), f"{summary} · {status} {count} events"
+        )
 
     def _refresh_plan_surfaces(self) -> None:
         """Push the session's plan into the strip and the sidebar. Tolerant
@@ -2732,10 +2934,14 @@ class ConversationPane(Widget):
         tracker = getattr(self, "_repo_tracker", None)
         if tracker is None:
             return
-        with contextlib.suppress(RuntimeError):     # no running loop
-            self.run_worker(tracker.refresh(force=force),
-                            name=f"repos-{self.handle}", exclusive=True,
-                            group="repos", exit_on_error=False)
+        with contextlib.suppress(RuntimeError):  # no running loop
+            self.run_worker(
+                tracker.refresh(force=force),
+                name=f"repos-{self.handle}",
+                exclusive=True,
+                group="repos",
+                exit_on_error=False,
+            )
 
     def _refresh_sidebar(self) -> None:
         """Repaint the sidebar if it is open. Cheap when closed: the widget
@@ -2766,17 +2972,18 @@ class ConversationPane(Widget):
             identity=(ident,) if ident else (),
             state_label=core.state.label,
             loop=self._loop_tiers,
-            metrics=tuple(core.metrics.render_tiers(time.monotonic(),
-                                                    self._palette)),
+            metrics=tuple(core.metrics.render_tiers(time.monotonic(), self._palette)),
             quota=self._quota_tiers,
-            plan=core.plan_state(), subplans=core.subplan_states(),
+            plan=core.plan_state(),
+            subplans=core.subplan_states(),
             plan_working=core.plan.working,
-            queues=self._digest.snapshot()
-            if self._digest is not None else None,
+            queues=self._digest.snapshot() if self._digest is not None else None,
             repos=self._repo_tracker.snapshot(for_handle=self.handle)
-            if getattr(self, "_repo_tracker", None) is not None else [],
+            if getattr(self, "_repo_tracker", None) is not None
+            else [],
             monitors=self._monitor_manager.snapshot(for_handle=self.handle)
-            if self._monitor_manager is not None else [],
+            if self._monitor_manager is not None
+            else [],
             system=self._system_tiers,
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
@@ -2784,14 +2991,14 @@ class ConversationPane(Widget):
             # point. The tick still drives the repaint — `set_system` fires
             # every second and lands on `_refresh_sidebar` — so the clock
             # row stays current without a timer of its own.
-            clock=format_clock(datetime.now().astimezone(),
-                               current_locale(), self._palette),
+            clock=format_clock(
+                datetime.now().astimezone(), current_locale(), self._palette
+            ),
             cwd=format_cwd(Path.cwd(), self._palette),
             build=format_build(self._palette),
         )
 
-    def _on_core_state(self, _core, state: AgentState,
-                       finished: bool) -> None:
+    def _on_core_state(self, _core, state: AgentState, finished: bool) -> None:
         bar = self._bar()
         if bar is not None:
             bar.set_state(state)
@@ -2811,14 +3018,19 @@ class ConversationPane(Widget):
             self._start_indicator()
         else:
             self._stop_indicator()
-        if finished and state is AgentState.error \
-                and not self._transcript_has("⚠ harness"):
+        if (
+            finished
+            and state is AgentState.error
+            and not self._transcript_has("⚠ harness")
+        ):
             self._flush_streaming()
             err = getattr(self._core, "last_error", None)
-            label = (f"⚠ harness error: {type(err).__name__}: {err}"
-                     if err is not None else "⚠ harness error")
-            self._mount_block(
-                Text(label, style=self._palette.err), label)
+            label = (
+                f"⚠ harness error: {type(err).__name__}: {err}"
+                if err is not None
+                else "⚠ harness error"
+            )
+            self._mount_block(Text(label, style=self._palette.err), label)
         self.post_message(PaneStateChanged(self, finished))
         if finished:
             self._freeze_all_tools()
@@ -2844,8 +3056,8 @@ class ConversationPane(Widget):
             await self._core.interrupt(drain=drain)
             self._flush_streaming()
             self._mount_block(
-                Text("^C — interrupted", style=self._palette.muted),
-                "^C — interrupted")
+                Text("^C — interrupted", style=self._palette.muted), "^C — interrupted"
+            )
             self.refresh_metrics()
             inp = self.query_one(GrowingInput)
             inp.disabled = False
@@ -2856,9 +3068,14 @@ class ConversationPane(Widget):
     def show_resume_banner(self, text: str) -> None:
         """Mount a single banner line at the top of this pane's transcript."""
         from textual.widgets import Static
+
         banner = Static(text, classes="resume-banner")
-        self._transcript().mount(banner, before=self._transcript().children[0]
-                                 if self._transcript().children else None)
+        self._transcript().mount(
+            banner,
+            before=self._transcript().children[0]
+            if self._transcript().children
+            else None,
+        )
 
     def show_resume_failure(self, reason: str) -> None:
         """Mount a styled failure banner at the top of this pane's transcript.
@@ -2867,10 +3084,15 @@ class ConversationPane(Widget):
         so Alex can inspect the reason and close it manually.
         """
         from textual.widgets import Static
+
         text = Text(f"⚠ resume failed: {reason}", style="bold red")
         banner = Static(text, classes="resume-failure")
-        self._transcript().mount(banner, before=self._transcript().children[0]
-                                 if self._transcript().children else None)
+        self._transcript().mount(
+            banner,
+            before=self._transcript().children[0]
+            if self._transcript().children
+            else None,
+        )
 
     def clear_transcript(self) -> None:
         """Clear _history and remove all mounted transcript blocks.
@@ -2879,6 +3101,7 @@ class ConversationPane(Widget):
         before the server replays fresh events for this session.
         """
         import contextlib
+
         self._history.clear()
         self._window_start = 0
         self._window_end = 0

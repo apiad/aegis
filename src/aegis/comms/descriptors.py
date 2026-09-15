@@ -8,6 +8,7 @@ the counterpart is, the ledger would contradict the screen.
 Pure by contract — no Rich, no Textual, no I/O, no bridge. ``render_shared``
 imports this, and the web wire imports ``render_shared``.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -31,6 +32,7 @@ class Target:
 
     ``kind`` is one of: agent, queue, canvas, group, term, path, claim, self.
     """
+
     kind: str
     id: str
 
@@ -43,11 +45,11 @@ class AegisToolDescriptor:
     #: means two different acts (``handoff`` with and without ``interrupt``).
     glyph: str | Callable[[dict], str]
     describe: Callable[[dict], str]
-    target: Callable[[dict], Target | None] = field(
-        default=lambda args: None)
+    target: Callable[[dict], Target | None] = field(default=lambda args: None)
 
 
 # --- argument helpers -------------------------------------------------
+
 
 def _s(args: dict, *keys: str) -> str:
     """The first non-empty string among ``keys``. Never raises: the renderer
@@ -65,7 +67,7 @@ def _quote(text: str, limit: int = 48) -> str:
     if not collapsed:
         return ""
     if len(collapsed) > limit:
-        collapsed = collapsed[:limit - 1] + "…"
+        collapsed = collapsed[: limit - 1] + "…"
     return f'"{collapsed}"'
 
 
@@ -83,6 +85,7 @@ def _agent_at(key: str) -> Callable[[dict], Target | None]:
     def target(args: dict) -> Target | None:
         val = _s(args, key)
         return Target("agent", val) if val else None
+
     return target
 
 
@@ -90,15 +93,19 @@ def _target_at(kind: str, *keys: str) -> Callable[[dict], Target | None]:
     def target(args: dict) -> Target | None:
         val = _s(args, *keys)
         return Target(kind, val) if val else None
+
     return target
 
 
 # --- descriptions -----------------------------------------------------
 
+
 def _d_handoff(a: dict) -> str:
-    return _join(_s(a, "target_handle"),
-                 "cut" if a.get("interrupt") else "",
-                 _quote(_s(a, "context")))
+    return _join(
+        _s(a, "target_handle"),
+        "cut" if a.get("interrupt") else "",
+        _quote(_s(a, "context")),
+    )
 
 
 def _g_handoff(a: dict) -> str:
@@ -181,8 +188,8 @@ def _d_term_spawn(a: dict) -> str:
 
 def _d_group_wait(mode: str) -> Callable[[dict], str]:
     def describe(a: dict) -> str:
-        return _join(_s(a, "group"), mode,
-                     _s(a, "reducer") if mode == "all" else "")
+        return _join(_s(a, "group"), mode, _s(a, "reducer") if mode == "all" else "")
+
     return describe
 
 
@@ -197,8 +204,7 @@ def _d_group_spawn_mixed(a: dict) -> str:
 
 
 def _d_group_rename(a: dict) -> str:
-    return _join(_s(a, "old"),
-                 f"renamed to {_s(a, 'new')}" if _s(a, "new") else "")
+    return _join(_s(a, "old"), f"renamed to {_s(a, 'new')}" if _s(a, "new") else "")
 
 
 def _d_group_move(a: dict) -> str:
@@ -230,112 +236,179 @@ def _d_rename(a: dict) -> str:
 
 DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     "handoff": AegisToolDescriptor(
-        "handoff", CONVERSATION, _g_handoff, _d_handoff,
-        _agent_at("target_handle")),
+        "handoff", CONVERSATION, _g_handoff, _d_handoff, _agent_at("target_handle")
+    ),
     "spawn": AegisToolDescriptor(
-        "spawn", CONVERSATION, "✧", _d_spawn, _agent_at("agent")),
+        "spawn", CONVERSATION, "✧", _d_spawn, _agent_at("agent")
+    ),
     "fork": AegisToolDescriptor(
-        "fork", CONVERSATION, "✧", _d_fork, _agent_at("target_handle")),
+        "fork", CONVERSATION, "✧", _d_fork, _agent_at("target_handle")
+    ),
     "close": AegisToolDescriptor(
-        "close", CONVERSATION, "✦", _d_close, _agent_at("handle")),
+        "close", CONVERSATION, "✦", _d_close, _agent_at("handle")
+    ),
     "enqueue": AegisToolDescriptor(
-        "enqueue", CONVERSATION, "⇉", _d_enqueue,
-        _target_at("queue", "queue")),
+        "enqueue", CONVERSATION, "⇉", _d_enqueue, _target_at("queue", "queue")
+    ),
     "delegate": AegisToolDescriptor(
-        "delegate", CONVERSATION, "⇉", _d_delegate,
-        _target_at("queue", "queue")),
+        "delegate", CONVERSATION, "⇉", _d_delegate, _target_at("queue", "queue")
+    ),
     "cancel": AegisToolDescriptor(
-        "cancel", CONVERSATION, "⇎", _d_cancel,
-        _target_at("queue", "task_id")),
+        "cancel", CONVERSATION, "⇎", _d_cancel, _target_at("queue", "task_id")
+    ),
     # --- shared surfaces ---
     "canvas_open": AegisToolDescriptor(
-        "canvas_open", CONVERSATION, "▥", _d_canvas_open,
-        _target_at("canvas", "name")),
+        "canvas_open", CONVERSATION, "▥", _d_canvas_open, _target_at("canvas", "name")
+    ),
     "canvas_write_section": AegisToolDescriptor(
-        "canvas_write_section", CONVERSATION, "▤", _d_canvas_write,
-        _target_at("canvas", "name")),
+        "canvas_write_section",
+        CONVERSATION,
+        "▤",
+        _d_canvas_write,
+        _target_at("canvas", "name"),
+    ),
     "canvas_append_to_section": AegisToolDescriptor(
-        "canvas_append_to_section", CONVERSATION, "▤", _d_canvas_append,
-        _target_at("canvas", "name")),
+        "canvas_append_to_section",
+        CONVERSATION,
+        "▤",
+        _d_canvas_append,
+        _target_at("canvas", "name"),
+    ),
     "canvas_subscribe": AegisToolDescriptor(
-        "canvas_subscribe", CONVERSATION, "▥", _d_canvas_subscribe,
-        _target_at("canvas", "name")),
+        "canvas_subscribe",
+        CONVERSATION,
+        "▥",
+        _d_canvas_subscribe,
+        _target_at("canvas", "name"),
+    ),
     "canvas_unsubscribe": AegisToolDescriptor(
-        "canvas_unsubscribe", CONVERSATION, "▧", _d_canvas_unsubscribe,
-        _target_at("canvas", "name")),
+        "canvas_unsubscribe",
+        CONVERSATION,
+        "▧",
+        _d_canvas_unsubscribe,
+        _target_at("canvas", "name"),
+    ),
     "term_spawn": AegisToolDescriptor(
-        "term_spawn", CONVERSATION, "▥", _d_term_spawn,
-        _target_at("term", "name")),
+        "term_spawn", CONVERSATION, "▥", _d_term_spawn, _target_at("term", "name")
+    ),
     "term_run": AegisToolDescriptor(
-        "term_run", CONVERSATION, "■", _d_term_run,
-        _target_at("term", "name")),
+        "term_run", CONVERSATION, "■", _d_term_run, _target_at("term", "name")
+    ),
     "term_keys": AegisToolDescriptor(
-        "term_keys", CONVERSATION, "■", _d_term_keys,
-        _target_at("term", "name")),
+        "term_keys", CONVERSATION, "■", _d_term_keys, _target_at("term", "name")
+    ),
     "term_subscribe": AegisToolDescriptor(
-        "term_subscribe", CONVERSATION, "▥",
+        "term_subscribe",
+        CONVERSATION,
+        "▥",
         lambda a: _join(_s(a, "name"), "subscribed"),
-        _target_at("term", "name")),
+        _target_at("term", "name"),
+    ),
     "term_unsubscribe": AegisToolDescriptor(
-        "term_unsubscribe", CONVERSATION, "▧",
+        "term_unsubscribe",
+        CONVERSATION,
+        "▧",
         lambda a: _join(_s(a, "name"), "unsubscribed"),
-        _target_at("term", "name")),
+        _target_at("term", "name"),
+    ),
     "term_close": AegisToolDescriptor(
-        "term_close", CONVERSATION, "▧",
+        "term_close",
+        CONVERSATION,
+        "▧",
         lambda a: _join(_s(a, "name"), "closed"),
-        _target_at("term", "name")),
+        _target_at("term", "name"),
+    ),
     # --- groups ---
     "group_spawn": AegisToolDescriptor(
-        "group_spawn", CONVERSATION, "✧", _d_group_spawn,
-        _target_at("group", "group")),
+        "group_spawn", CONVERSATION, "✧", _d_group_spawn, _target_at("group", "group")
+    ),
     "group_spawn_mixed": AegisToolDescriptor(
-        "group_spawn_mixed", CONVERSATION, "✧", _d_group_spawn_mixed,
-        _target_at("group", "group")),
+        "group_spawn_mixed",
+        CONVERSATION,
+        "✧",
+        _d_group_spawn_mixed,
+        _target_at("group", "group"),
+    ),
     "group_broadcast": AegisToolDescriptor(
-        "group_broadcast", CONVERSATION, "⁂",
+        "group_broadcast",
+        CONVERSATION,
+        "⁂",
         lambda a: _join(_s(a, "group"), _quote(_s(a, "objective"))),
-        _target_at("group", "group")),
+        _target_at("group", "group"),
+    ),
     "group_wait_all": AegisToolDescriptor(
-        "group_wait_all", CONVERSATION, "⁑", _d_group_wait("all"),
-        _target_at("group", "group")),
+        "group_wait_all",
+        CONVERSATION,
+        "⁑",
+        _d_group_wait("all"),
+        _target_at("group", "group"),
+    ),
     "group_wait_any": AegisToolDescriptor(
-        "group_wait_any", CONVERSATION, "⁑", _d_group_wait("any"),
-        _target_at("group", "group")),
+        "group_wait_any",
+        CONVERSATION,
+        "⁑",
+        _d_group_wait("any"),
+        _target_at("group", "group"),
+    ),
     "group_rename": AegisToolDescriptor(
-        "group_rename", COORDINATION, "⌗", _d_group_rename,
-        _target_at("group", "old")),
+        "group_rename", COORDINATION, "⌗", _d_group_rename, _target_at("group", "old")
+    ),
     "group_dissolve": AegisToolDescriptor(
-        "group_dissolve", COORDINATION, "⌗",
+        "group_dissolve",
+        COORDINATION,
+        "⌗",
         lambda a: _join(_s(a, "group"), "dissolved"),
-        _target_at("group", "group")),
+        _target_at("group", "group"),
+    ),
     "group_move_member": AegisToolDescriptor(
-        "group_move_member", COORDINATION, "⌗", _d_group_move,
-        _target_at("group", "to_group")),
+        "group_move_member",
+        COORDINATION,
+        "⌗",
+        _d_group_move,
+        _target_at("group", "to_group"),
+    ),
     # --- coordination: acts on shared substrate, with no addressee ---
-    "claim": AegisToolDescriptor(
-        "claim", COORDINATION, "⊙", _d_claim, _t_claim),
+    "claim": AegisToolDescriptor("claim", COORDINATION, "⊙", _d_claim, _t_claim),
     "release": AegisToolDescriptor(
-        "release", COORDINATION, "⊚", lambda a: _s(a, "claim_id"),
-        _target_at("claim", "claim_id")),
+        "release",
+        COORDINATION,
+        "⊚",
+        lambda a: _s(a, "claim_id"),
+        _target_at("claim", "claim_id"),
+    ),
     "monitor": AegisToolDescriptor(
-        "monitor", COORDINATION, "◷", lambda a: _s(a, "description"),
-        _target_at("self", "from_handle")),
+        "monitor",
+        COORDINATION,
+        "◷",
+        lambda a: _s(a, "description"),
+        _target_at("self", "from_handle"),
+    ),
     "remind": AegisToolDescriptor(
-        "remind", COORDINATION, "◷", _d_remind,
-        _target_at("self", "from_handle")),
+        "remind", COORDINATION, "◷", _d_remind, _target_at("self", "from_handle")
+    ),
     "monitor_cancel": AegisToolDescriptor(
-        "monitor_cancel", COORDINATION, "◶", lambda a: _s(a, "monitor_id")),
+        "monitor_cancel", COORDINATION, "◶", lambda a: _s(a, "monitor_id")
+    ),
     "reminder_cancel": AegisToolDescriptor(
-        "reminder_cancel", COORDINATION, "◶",
-        lambda a: _s(a, "reminder_id")),
+        "reminder_cancel", COORDINATION, "◶", lambda a: _s(a, "reminder_id")
+    ),
     "loop_stop": AegisToolDescriptor(
-        "loop_stop", COORDINATION, "◼", lambda a: _quote(_s(a, "reason")),
-        _target_at("self", "from_handle")),
+        "loop_stop",
+        COORDINATION,
+        "◼",
+        lambda a: _quote(_s(a, "reason")),
+        _target_at("self", "from_handle"),
+    ),
     "rename": AegisToolDescriptor(
-        "rename", COORDINATION, "❖", _d_rename, _agent_at("new_handle")),
+        "rename", COORDINATION, "❖", _d_rename, _agent_at("new_handle")
+    ),
     "title": AegisToolDescriptor(
-        "title", COORDINATION, "❖", lambda a: _quote(_s(a, "title")),
-        _target_at("self", "from_handle")),
+        "title",
+        COORDINATION,
+        "❖",
+        lambda a: _quote(_s(a, "title")),
+        _target_at("self", "from_handle"),
+    ),
 }
 
 
@@ -370,26 +443,51 @@ _PALE_ARGS: dict[str, tuple[str, ...]] = {
 }
 
 _INTROSPECTION_VERBS = (
-    "meta", "list_sessions", "list_agents", "peer_plan", "read_peer",
-    "view_file", "claims", "monitors", "reminders", "canvas_list",
-    "canvas_read", "term_list", "term_read", "task_status", "budget_status",
-    "workflow_status", "group_status",
+    "meta",
+    "list_sessions",
+    "list_agents",
+    "peer_plan",
+    "read_peer",
+    "view_file",
+    "claims",
+    "monitors",
+    "reminders",
+    "canvas_list",
+    "canvas_read",
+    "term_list",
+    "term_read",
+    "task_status",
+    "budget_status",
+    "workflow_status",
+    "group_status",
 )
 
 _ADMIN_VERBS = (
-    "config_show", "config_list_agents", "config_list_queues",
-    "config_list_schedules", "config_add_agent", "config_remove_agent",
-    "config_add_queue", "config_remove_queue", "config_add_plugin_dir",
-    "config_remove_plugin_dir", "config_set_schedule_enabled",
-    "config_toggle_schedule_enabled", "schedule_list", "schedule_logs",
-    "schedule_push", "schedule_remove", "schedule_show", "run_workflow",
-    "run_dynamic_workflow", "workflow_cancel",
+    "config_show",
+    "config_list_agents",
+    "config_list_queues",
+    "config_list_schedules",
+    "config_add_agent",
+    "config_remove_agent",
+    "config_add_queue",
+    "config_remove_queue",
+    "config_add_plugin_dir",
+    "config_remove_plugin_dir",
+    "config_set_schedule_enabled",
+    "config_toggle_schedule_enabled",
+    "schedule_list",
+    "schedule_logs",
+    "schedule_push",
+    "schedule_remove",
+    "schedule_show",
+    "run_workflow",
+    "run_dynamic_workflow",
+    "workflow_cancel",
 )
 
-_PALE_FAMILY: dict[str, str] = (
-    {v: INTROSPECTION for v in _INTROSPECTION_VERBS}
-    | {v: ADMIN for v in _ADMIN_VERBS}
-)
+_PALE_FAMILY: dict[str, str] = {v: INTROSPECTION for v in _INTROSPECTION_VERBS} | {
+    v: ADMIN for v in _ADMIN_VERBS
+}
 
 
 def pale_descriptor(verb: str) -> AegisToolDescriptor:
@@ -409,6 +507,7 @@ DESCRIPTORS.update({v: pale_descriptor(v) for v in _PALE_FAMILY})
 
 # --- lookup -----------------------------------------------------------
 
+
 def _bare_verb(name: str) -> str:
     """``mcp__aegis__aegis_handoff`` and ``aegis_handoff`` both give
     ``handoff``.
@@ -421,7 +520,7 @@ def _bare_verb(name: str) -> str:
         parts = name.split("__")
         if len(parts) >= 3:
             name = parts[-1]
-    return name[len(_PREFIX):] if name.startswith(_PREFIX) else ""
+    return name[len(_PREFIX) :] if name.startswith(_PREFIX) else ""
 
 
 def descriptor_for(name: str) -> AegisToolDescriptor | None:

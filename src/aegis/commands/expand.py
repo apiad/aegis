@@ -9,6 +9,7 @@ Order (args first, so ``!`git log $1``` works):
 on expansion. Arg values are substituted before the include/shell scan, so they
 can influence includes/shell — accepted inside the trust boundary.
 """
+
 from __future__ import annotations
 
 import re
@@ -34,7 +35,7 @@ def _sub_args(template: str, argstr: str) -> str:
     raw = argstr.strip()
     toks = _split_args(argstr)
     out = template.replace("$ARGUMENTS", raw)
-    for i in range(9, 0, -1):                 # $9..$1 so $1 doesn't eat $12
+    for i in range(9, 0, -1):  # $9..$1 so $1 doesn't eat $12
         val = toks[i - 1] if i - 1 < len(toks) else ""
         out = out.replace(f"${i}", val)
     return out
@@ -47,8 +48,8 @@ def _sub_files(text: str, root: Path) -> str:
         try:
             return path.read_text(encoding="utf-8")
         except OSError as e:
-            raise ExpandError(
-                f"@{rel}: cannot read include ({e.__class__.__name__})")
+            raise ExpandError(f"@{rel}: cannot read include ({e.__class__.__name__})")
+
     return _FILE_RE.sub(repl, text)
 
 
@@ -56,7 +57,7 @@ async def _sub_shell(text: str, root: Path, run_shell) -> str:
     out: list[str] = []
     last = 0
     for m in _SHELL_RE.finditer(text):
-        out.append(text[last:m.start()])
+        out.append(text[last : m.start()])
         out.append(await run_shell(m.group(1), root))
         last = m.end()
     out.append(text[last:])

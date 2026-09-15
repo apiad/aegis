@@ -5,6 +5,7 @@ why they were conflated as ``Path.cwd()`` for so long. They do not coincide
 when aegis is embedded: one process holds several instances, each rooted at
 a different worktree.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,15 +31,13 @@ class AegisRoots:
     harness_cwd: Path
 
     @classmethod
-    def for_project(cls, root: Path,
-                    harness_cwd: Path | None = None) -> "AegisRoots":
+    def for_project(cls, root: Path, harness_cwd: Path | None = None) -> "AegisRoots":
         """All three from one project directory, the CLI case."""
         resolved = Path(root).resolve()
         return cls(
             config_root=resolved,
             state_root=resolved,
-            harness_cwd=Path(harness_cwd).resolve() if harness_cwd
-            else resolved,
+            harness_cwd=Path(harness_cwd).resolve() if harness_cwd else resolved,
         )
 
     @property

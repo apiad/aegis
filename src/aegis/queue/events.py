@@ -4,6 +4,7 @@ Push-based observability surface for the queue substrate. Every
 QueueManager state transition emits exactly one event after its
 JSONL log entry is committed.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -44,7 +45,10 @@ class QueueCompleted:
 
 
 QueueEvent = Union[
-    QueueEnqueued, QueueDispatched, QueueStarted, QueueCompleted,
+    QueueEnqueued,
+    QueueDispatched,
+    QueueStarted,
+    QueueCompleted,
 ]
 
 QueueObserver = Callable[[QueueEvent], None]

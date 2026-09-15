@@ -1,4 +1,5 @@
 """TUI-side group tab state + presentation helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

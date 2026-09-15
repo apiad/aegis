@@ -1,4 +1,5 @@
 """BroadcastTracker — one in-flight broadcast per group."""
+
 from __future__ import annotations
 
 from aegis.groups.models import BroadcastRecord

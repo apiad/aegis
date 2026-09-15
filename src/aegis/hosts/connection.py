@@ -5,6 +5,7 @@ local MCP port to the remote side, and the one-time preflight that turns
 "the harness isn't installed there" into a sentence instead of a
 mysterious EOF.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,8 +32,7 @@ def parse_allocated_port(line: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def master_argv(spec: HostSpec, control_path: str,
-                mcp_port: int) -> list[str]:
+def master_argv(spec: HostSpec, control_path: str, mcp_port: int) -> list[str]:
     """The backgrounded ControlMaster that every session multiplexes over.
 
     ``-R 0:…`` asks sshd to pick a free remote port, so two aegis
@@ -42,13 +42,21 @@ def master_argv(spec: HostSpec, control_path: str,
     """
     remote_port = spec.remote_mcp_port if spec.remote_mcp_port else 0
     return [
-        "ssh", "-M", "-N",
-        "-o", f"ControlPath={control_path}",
-        "-o", "ControlMaster=yes",
-        "-o", "ControlPersist=60s",
-        "-o", "ExitOnForwardFailure=yes",
-        "-o", "LogLevel=INFO",
-        "-R", f"{remote_port}:127.0.0.1:{mcp_port}",
+        "ssh",
+        "-M",
+        "-N",
+        "-o",
+        f"ControlPath={control_path}",
+        "-o",
+        "ControlMaster=yes",
+        "-o",
+        "ControlPersist=60s",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "LogLevel=INFO",
+        "-R",
+        f"{remote_port}:127.0.0.1:{mcp_port}",
         *spec.ssh_opts,
         spec.ssh,
     ]
@@ -60,28 +68,27 @@ def warmup_command(remote_port: int) -> str:
     Pure bash (`/dev/tcp`), so it needs nothing installed on the remote —
     notably not python3, which a minimal host may lack.
     """
-    return (f"exec 3<>/dev/tcp/127.0.0.1/{remote_port} "
-            f"&& exec 3<&- && exec 3>&-")
+    return f"exec 3<>/dev/tcp/127.0.0.1/{remote_port} && exec 3<&- && exec 3>&-"
 
 
-def preflight_command(binary: str, cwd: str,
-                      login_shell: bool = False) -> str:
+def preflight_command(binary: str, cwd: str, login_shell: bool = False) -> str:
     """Confirm the harness exists and the working tree is there.
 
     ``login_shell`` must match what the launcher will actually use — a
     preflight that resolves PATH differently from the real spawn is worse
     than no preflight, because it green-lights a spawn that then fails.
     """
-    inner = (f"command -v {shlex.quote(binary)} >/dev/null 2>&1 "
-             f"&& test -d {shlex.quote(cwd)}")
+    inner = (
+        f"command -v {shlex.quote(binary)} >/dev/null 2>&1 "
+        f"&& test -d {shlex.quote(cwd)}"
+    )
     return f"bash -lc {shlex.quote(inner)}" if login_shell else inner
 
 
 class HostConnection:
     """Lazily-opened, shared-by-every-session link to one host."""
 
-    def __init__(self, spec: HostSpec, control_path: str,
-                 mcp_port: int) -> None:
+    def __init__(self, spec: HostSpec, control_path: str, mcp_port: int) -> None:
         self._spec = spec
         self.control_path = control_path
         self._mcp_port = mcp_port
@@ -144,9 +151,12 @@ class HostConnection:
             return
         try:
             proc = await asyncio.create_subprocess_exec(
-                "ssh", "-T",
-                "-o", f"ControlPath={self.control_path}",
-                *self._spec.ssh_opts, self._spec.ssh,
+                "ssh",
+                "-T",
+                "-o",
+                f"ControlPath={self.control_path}",
+                *self._spec.ssh_opts,
+                self._spec.ssh,
                 f"bash -c {shlex.quote(warmup_command(self._remote_port))}",
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
@@ -156,7 +166,8 @@ class HostConnection:
             if proc.returncode != 0:
                 self._stderr.append(
                     f"tunnel warm-up failed (rc={proc.returncode}): "
-                    f"{err.decode('utf-8', 'replace').strip()}")
+                    f"{err.decode('utf-8', 'replace').strip()}"
+                )
         except (OSError, asyncio.TimeoutError) as e:
             self._stderr.append(f"tunnel warm-up failed: {e}")
 
@@ -180,7 +191,8 @@ class HostConnection:
             raise HostError(
                 f"host {self._spec.name!r}: ssh exited before announcing a "
                 f"reverse-forward port.\n"
-                f"  ssh stderr:\n{self.stderr_text() or '(empty)'}")
+                f"  ssh stderr:\n{self.stderr_text() or '(empty)'}"
+            )
 
         try:
             return await asyncio.wait_for(read_until_port(), OPEN_TIMEOUT_S)
@@ -191,14 +203,18 @@ class HostConnection:
                 f"{OPEN_TIMEOUT_S:.0f}s waiting for ssh to open the "
                 f"reverse forward. Set `remote_mcp_port:` on the host to "
                 f"skip port auto-detection.\n"
-                f"  ssh stderr:\n{self.stderr_text() or '(empty)'}") from None
+                f"  ssh stderr:\n{self.stderr_text() or '(empty)'}"
+            ) from None
 
     async def preflight(self, binary: str, cwd: str) -> None:
         """Confirm the harness and the working tree exist, once per host."""
         proc = await asyncio.create_subprocess_exec(
-            "ssh", "-T",
-            "-o", f"ControlPath={self.control_path}",
-            *self._spec.ssh_opts, self._spec.ssh,
+            "ssh",
+            "-T",
+            "-o",
+            f"ControlPath={self.control_path}",
+            *self._spec.ssh_opts,
+            self._spec.ssh,
             preflight_command(binary, cwd, self._spec.login_shell),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
@@ -210,7 +226,8 @@ class HostConnection:
                 f"{self._spec.name}: preflight failed — either {binary!r} "
                 f"is not on PATH there or {cwd} does not exist.\n"
                 f"  ssh stderr: "
-                f"{err.decode('utf-8', 'replace').strip() or '(empty)'}")
+                f"{err.decode('utf-8', 'replace').strip() or '(empty)'}"
+            )
 
     def stderr_text(self) -> str:
         """The last of what ssh said, for error messages."""
@@ -220,11 +237,15 @@ class HostConnection:
         """Tear the master down. Idempotent."""
         with contextlib.suppress(Exception):
             proc = await asyncio.create_subprocess_exec(
-                "ssh", "-O", "exit",
-                "-o", f"ControlPath={self.control_path}",
+                "ssh",
+                "-O",
+                "exit",
+                "-o",
+                f"ControlPath={self.control_path}",
                 self._spec.ssh,
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL)
+                stderr=asyncio.subprocess.DEVNULL,
+            )
             await asyncio.wait_for(proc.wait(), timeout=5)
         if self._proc is not None and self._proc.returncode is None:
             self._proc.terminate()

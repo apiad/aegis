@@ -7,16 +7,24 @@ TUI and web client show identical data. Read-only.
     /usage sessions            cost-per-session distribution + top 15
     /usage month|dow|hour      turns bucketed over time (local timezone)
 """
+
 from __future__ import annotations
 
 from aegis.commands import (
-    CommandContext, CommandResult, SlashCommand, register,
+    CommandContext,
+    CommandResult,
+    SlashCommand,
+    register,
 )
 from aegis.commands.args import Arg, ArgSpec
 from aegis.usage import build_report
 from aegis.usage.env import default_agent, state_dir
 from aegis.usage.render import (
-    _money, dashboard_lines, sessions_lines, temporal_lines, tools_lines,
+    _money,
+    dashboard_lines,
+    sessions_lines,
+    temporal_lines,
+    tools_lines,
 )
 
 _VIEWS = ("dashboard", "tools", "sessions", "month", "dow", "hour", "quota")
@@ -36,6 +44,7 @@ def _quota_services(ctx):
         return services
     if _SERVICES is None:
         from aegis.usage.quota_providers import build_services
+
         _SERVICES = build_services()
     return _SERVICES
 
@@ -56,11 +65,13 @@ def _worst(state):
 async def _usage(ctx: CommandContext, args) -> CommandResult:
     view = args.get("view") or "dashboard"
     if view not in _VIEWS:
-        return CommandResult(False, f"unknown view: {view}",
-                             "views: " + ", ".join(_VIEWS[1:]))
+        return CommandResult(
+            False, f"unknown view: {view}", "views: " + ", ".join(_VIEWS[1:])
+        )
     if view == "quota":
         from aegis.usage.quota import quota_report
         from aegis.usage.quota_providers import read_all
+
         readings = await read_all(_quota_services(ctx))
         summary = [(p, _worst(s)) for p, s in readings]
         summary = [(p, w) for p, w in summary if w is not None]
@@ -68,21 +79,23 @@ async def _usage(ctx: CommandContext, args) -> CommandResult:
         if len(summary) == 1:
             title += f" · {summary[0][1]:.0f}%"
         elif summary:
-            title += " · " + " · ".join(
-                f"{p.label} {w:.0f}%" for p, w in summary)
+            title += " · " + " · ".join(f"{p.label} {w:.0f}%" for p, w in summary)
         return CommandResult(True, title, "\n".join(quota_report(readings)))
     # The bridge's roots, not the process cwd: embedded, several instances
     # share a process and each has its own logs to aggregate.
     root = ctx.bridge.roots.config_root
     dmodel, dprovider = default_agent(root)
-    report = build_report(state_dir(root), default_model=dmodel,
-                          default_provider=dprovider)
+    report = build_report(
+        state_dir(root), default_model=dmodel, default_provider=dprovider
+    )
     if not report.sessions:
         return CommandResult(True, "no session logs found")
     if view == "dashboard":
         lines = dashboard_lines(report)
-        title = (f"usage · {len(report.sessions)} sessions · "
-                 f"{_money(report.total_billed())} billed")
+        title = (
+            f"usage · {len(report.sessions)} sessions · "
+            f"{_money(report.total_billed())} billed"
+        )
     elif view == "tools":
         lines, title = tools_lines(report), "usage · tools"
     elif view == "sessions":
@@ -92,7 +105,12 @@ async def _usage(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, title, "\n".join(lines))
 
 
-register(SlashCommand(
-    "usage", "session cost & token analytics", "/usage [view]", _usage,
-    spec=ArgSpec(positionals=(
-        Arg("view", required=False, completer=_VIEWS),))))
+register(
+    SlashCommand(
+        "usage",
+        "session cost & token analytics",
+        "/usage [view]",
+        _usage,
+        spec=ArgSpec(positionals=(Arg("view", required=False, completer=_VIEWS),)),
+    )
+)

@@ -10,6 +10,7 @@ class TokenUsage:
     """One usage snapshot. The stream's `input` is uncached-only; the true
     context the model ingests is input + cache_creation + cache_read
     (canonical derivation, cf. bin/claude-usage-aggregate)."""
+
     input: int
     cache_creation: int
     cache_read: int
@@ -68,6 +69,7 @@ class ThinkingTokens:
     (resets per block); `delta` is the increment since the previous event.
     Invisible in transcripts — consumed only by metrics + the thought
     summary. Sum `delta` across a turn/session for cumulative thinking."""
+
     estimated: int = 0
     delta: int = 0
     parent_tool_use_id: str | None = None
@@ -130,9 +132,10 @@ class PlanEntry:
     """One row of an AgentPlan. Status vocabulary follows ACP's
     PlanEntry.status enum (pending / in_progress / completed) so the
     same renderer can handle both ACP and claude TodoWrite sources."""
+
     content: str
-    status: str            # pending / in_progress / completed
-    priority: str = "medium"   # high / medium / low (default for claude)
+    status: str  # pending / in_progress / completed
+    priority: str = "medium"  # high / medium / low (default for claude)
     # Stable identifier, present only for claude's Task* family. Snapshot
     # sources (TodoWrite, ACP) resend a full ordered list each time and
     # carry no identity, so this stays None for them.
@@ -148,7 +151,8 @@ class CostUsage:
     these in-band; claude has no equivalent and reports at turn end
     via Result.cost_usd. Each field optional — different sources
     populate different subsets."""
-    amount_usd:   float | None = None
+
+    amount_usd: float | None = None
     context_used: int | None = None
     context_size: int | None = None
 
@@ -161,8 +165,9 @@ class ContextUpdate:
     SessionInfoUpdate. The renderer returns None for this so the pane
     skips it; downstream subscribers receive it through the standard
     event observer surface."""
-    cost:  CostUsage | None = None
-    mode:  str | None = None
+
+    cost: CostUsage | None = None
+    mode: str | None = None
     title: str | None = None
 
 
@@ -180,6 +185,7 @@ class CompactBoundary:
     Claude-only for now; ACP has no equivalent signal.
     `trigger` is "auto" or "manual".
     """
+
     trigger: str = ""
     pre_tokens: int = 0
     post_tokens: int = 0
@@ -198,6 +204,7 @@ class AgentPlan:
     the full current plan. Pane renderers should treat a new AgentPlan
     in the same turn as a replacement for any earlier one.
     """
+
     entries: tuple[PlanEntry, ...] = ()
     parent_tool_use_id: str | None = None
 
@@ -213,6 +220,7 @@ class UserMessage:
     from, and without this the conversation reads as the agent talking to
     itself.
     """
+
     text: str
 
 
@@ -226,6 +234,7 @@ class SessionMeta:
     """First record of a user-initiated session log — the gating header that
     makes a log show up in the Ctrl+H history. Substrate ephemera (queue
     workers, workflow spawns) skip this write."""
+
     handle: str
     profile: str
     provider: str
@@ -238,21 +247,33 @@ class SessionMeta:
     # records who set it, so a late write cannot clobber a more
     # authoritative one — see ``aegis.state.titles.outranks``.
     title: str = ""
-    title_source: str = ""   # "" | auto | agent | human
+    title_source: str = ""  # "" | auto | agent | human
 
 
 @dataclass(frozen=True)
 class SessionClosed:
     """Close marker appended when a session's pane/handle is torn down. A meta
     header with no close marker is read back as an inferred crash."""
+
     closed_at: str
     reason: str
 
 
 Event = (
-    SystemInit | AssistantText | AssistantThinking | ThinkingTokens
-    | ToolUse | ToolResult | AgentPlan | ContextUpdate | CompactBoundary
-    | Result | UserMessage | Unknown | SessionMeta | SessionClosed
+    SystemInit
+    | AssistantText
+    | AssistantThinking
+    | ThinkingTokens
+    | ToolUse
+    | ToolResult
+    | AgentPlan
+    | ContextUpdate
+    | CompactBoundary
+    | Result
+    | UserMessage
+    | Unknown
+    | SessionMeta
+    | SessionClosed
 )
 
 # Tool name -> input key whose value is the one-line summary.
@@ -270,11 +291,18 @@ _TOOL_SUMMARY_KEY = {
 # something to switch on.
 _KIND_BY_NAME = {
     "Read": "read",
-    "Bash": "execute", "BashOutput": "execute", "KillShell": "execute",
-    "Edit": "edit", "Write": "edit", "NotebookEdit": "edit",
-    "Glob": "search", "Grep": "search",
-    "WebFetch": "fetch", "WebSearch": "fetch",
-    "Task": "think", "Agent": "think",
+    "Bash": "execute",
+    "BashOutput": "execute",
+    "KillShell": "execute",
+    "Edit": "edit",
+    "Write": "edit",
+    "NotebookEdit": "edit",
+    "Glob": "search",
+    "Grep": "search",
+    "WebFetch": "fetch",
+    "WebSearch": "fetch",
+    "Task": "think",
+    "Agent": "think",
 }
 
 
@@ -290,6 +318,7 @@ class ParserState:
     so the matching ToolResult can attach a diff — claude's tool_result
     body is just "ok" or error text; the diff lives on the Edit/Write
     tool_use input."""
+
     tool_kinds: dict[str, str] = field(default_factory=dict)
     tool_diffs: dict[str, tuple[str, str, str]] = field(default_factory=dict)
     # Accumulated Task* plan. claude's current task tools speak in deltas
@@ -346,8 +375,12 @@ def _rehydrate_plan(state: ParserState, text: str) -> bool:
 def _plan_entries(state: ParserState) -> tuple[PlanEntry, ...]:
     """Snapshot the accumulated Task* plan as canonical PlanEntry rows."""
     return tuple(
-        PlanEntry(content=t["subject"], status=t["status"],
-                  id=t.get("id"), active_form=t.get("active_form"))
+        PlanEntry(
+            content=t["subject"],
+            status=t["status"],
+            id=t.get("id"),
+            active_form=t.get("active_form"),
+        )
         for t in state.plan_tasks.values()
     )
 
@@ -378,16 +411,22 @@ def _user_text(content: object) -> str:
         return content.strip()
     if isinstance(content, list):
         return "\n".join(
-            b.get("text", "") for b in content
-            if isinstance(b, dict) and b.get("type") == "text").strip()
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
     return ""
 
 
 def _token_usage(d: object) -> TokenUsage | None:
     if not isinstance(d, dict):
         return None
-    keys = ("input_tokens", "cache_creation_input_tokens",
-            "cache_read_input_tokens", "output_tokens")
+    keys = (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+    )
     if not any(k in d for k in keys):
         return None
     return TokenUsage(
@@ -424,20 +463,21 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
         cmds_raw = obj.get("slash_commands") or []
         if isinstance(cmds_raw, list):
             commands = tuple(
-                c.get("name") for c in cmds_raw
+                c.get("name")
+                for c in cmds_raw
                 if isinstance(c, dict) and isinstance(c.get("name"), str)
             )
         else:
             commands = ()
         return SystemInit(
             session_id=obj.get("session_id"),
-            model=obj.get("model") if isinstance(obj.get("model"), str)
-                  else None,
+            model=obj.get("model") if isinstance(obj.get("model"), str) else None,
             permission_mode=obj.get("permissionMode")
-                  if isinstance(obj.get("permissionMode"), str) else None,
+            if isinstance(obj.get("permissionMode"), str)
+            else None,
             version=obj.get("claude_code_version")
-                  if isinstance(obj.get("claude_code_version"), str)
-                  else None,
+            if isinstance(obj.get("claude_code_version"), str)
+            else None,
             available_commands=commands,
         )
 
@@ -475,9 +515,9 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
         denials: tuple[str, ...] = ()
         if isinstance(denials_raw, list):
             denials = tuple(
-                d.get("tool_name") for d in denials_raw
-                if isinstance(d, dict) and isinstance(
-                    d.get("tool_name"), str)
+                d.get("tool_name")
+                for d in denials_raw
+                if isinstance(d, dict) and isinstance(d.get("tool_name"), str)
             )
         ttft = obj.get("ttft_ms")
         cost = obj.get("total_cost_usd")
@@ -487,14 +527,16 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
             usage=_token_usage(usage),
-            stop_reason=(obj.get("stop_reason")
-                         if isinstance(obj.get("stop_reason"), str)
-                         else None),
+            stop_reason=(
+                obj.get("stop_reason")
+                if isinstance(obj.get("stop_reason"), str)
+                else None
+            ),
             ttft_ms=int(ttft) if isinstance(ttft, (int, float)) else None,
-            num_turns=(int(obj["num_turns"])
-                       if isinstance(obj.get("num_turns"), int) else None),
-            cost_usd=(float(cost)
-                      if isinstance(cost, (int, float)) else None),
+            num_turns=(
+                int(obj["num_turns"]) if isinstance(obj.get("num_turns"), int) else None
+            ),
+            cost_usd=(float(cost) if isinstance(cost, (int, float)) else None),
             model_usage=model_usage,
             permission_denials=denials,
         )
@@ -509,14 +551,16 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
         mid = message.get("id") if isinstance(message.get("id"), str) else None
         btype = block.get("type")
         if btype == "text":
-            return AssistantText(text=block.get("text", ""),
-                                 usage=u, message_id=mid)
+            return AssistantText(text=block.get("text", ""), usage=u, message_id=mid)
         if btype == "thinking":
             est = state.thinking_estimate
             state.thinking_estimate = 0
-            return AssistantThinking(text=block.get("thinking", ""),
-                                     usage=u, message_id=mid,
-                                     token_estimate=est)
+            return AssistantThinking(
+                text=block.get("thinking", ""),
+                usage=u,
+                message_id=mid,
+                token_estimate=est,
+            )
         if btype == "tool_use":
             name = block.get("name", "?")
             tool_input = block.get("input", {}) or {}
@@ -524,8 +568,9 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             # to the canonical AgentPlan event so the renderer can show
             # a proper status block instead of a generic ⏺ TodoWrite(…).
             if name == "TodoWrite":
-                todos = tool_input.get("todos") \
-                    if isinstance(tool_input, dict) else None
+                todos = (
+                    tool_input.get("todos") if isinstance(tool_input, dict) else None
+                )
                 if not isinstance(todos, list):
                     todos = []
                 entries = tuple(
@@ -533,7 +578,8 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                         content=str(t.get("content", "")),
                         status=str(t.get("status", "pending")),
                     )
-                    for t in todos if isinstance(t, dict)
+                    for t in todos
+                    if isinstance(t, dict)
                 )
                 return AgentPlan(entries=entries)
             # The Task* family is the same channel in delta form: one call
@@ -558,16 +604,21 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                         "subject": str(tool_input.get("subject", "")),
                         "status": "pending",
                         "active_form": tool_input.get("activeForm")
-                            if isinstance(tool_input.get("activeForm"), str)
-                            else None,
+                        if isinstance(tool_input.get("activeForm"), str)
+                        else None,
                     }
                     if tcid:
                         state.plan_pending[tcid] = key
                 else:
                     task_id = str(tool_input.get("taskId", ""))
                     key = next(
-                        (k for k, t in state.plan_tasks.items()
-                         if t.get("id") == task_id), None)
+                        (
+                            k
+                            for k, t in state.plan_tasks.items()
+                            if t.get("id") == task_id
+                        ),
+                        None,
+                    )
                     # An update for a task we never saw created (resumed
                     # session, truncated log) is ignored, never fatal.
                     if key is not None:
@@ -592,12 +643,10 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
             tool_call_id = block.get("id")
             if tool_call_id:
                 state.tool_kinds[tool_call_id] = kind
-            file_path = tool_input.get("file_path") \
-                if isinstance(tool_input, dict) else None
-            locations = (
-                ((file_path, None),)
-                if isinstance(file_path, str) else ()
+            file_path = (
+                tool_input.get("file_path") if isinstance(tool_input, dict) else None
             )
+            locations = ((file_path, None),) if isinstance(file_path, str) else ()
             # Remember Edit / Write inputs so the matching ToolResult
             # can attach a diff. Edit carries old_string/new_string;
             # Write replaces the file so the "old" side is empty.
@@ -606,13 +655,11 @@ def _classify_event(obj: dict, line: str, state: ParserState) -> Event:
                     old = tool_input.get("old_string", "")
                     new = tool_input.get("new_string", "")
                     if isinstance(old, str) and isinstance(new, str):
-                        state.tool_diffs[tool_call_id] = (
-                            file_path, old, new)
+                        state.tool_diffs[tool_call_id] = (file_path, old, new)
                 elif name == "Write":
                     content = tool_input.get("content", "")
                     if isinstance(content, str):
-                        state.tool_diffs[tool_call_id] = (
-                            file_path, "", content)
+                        state.tool_diffs[tool_call_id] = (file_path, "", content)
             return ToolUse(
                 name=name,
                 summary=_summarize_tool(name, tool_input),

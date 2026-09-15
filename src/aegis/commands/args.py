@@ -8,6 +8,7 @@ positional stops flag parsing and takes the raw, un-tokenized remainder, so
 free-text (prompts) survives verbatim — including any ``--x`` inside it.
 Pure: no registry, no UI.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,14 +30,14 @@ Completer = "tuple[Choice, ...] | Callable[[object], list]"
 class Arg:
     name: str
     required: bool = True
-    greedy: bool = False          # last positional only; takes raw remainder
-    completer: "Completer | None" = None   # palette candidate source
+    greedy: bool = False  # last positional only; takes raw remainder
+    completer: "Completer | None" = None  # palette candidate source
 
 
 @dataclass(frozen=True)
 class Flag:
-    name: str                     # "effort" matches --effort
-    takes_value: bool = True      # False → boolean presence flag
+    name: str  # "effort" matches --effort
+    takes_value: bool = True  # False → boolean presence flag
     default: "str | bool | None" = None
 
 
@@ -96,8 +97,10 @@ def parse(spec: ArgSpec, argstr: str) -> Args:
     flag_values: dict = {}
     for f in spec.flags:
         flag_values[f.name] = (
-            f.default if f.default is not None
-            else (False if not f.takes_value else None))
+            f.default
+            if f.default is not None
+            else (False if not f.takes_value else None)
+        )
 
     def _consume_flag(s: str) -> "tuple[bool, str]":
         """If ``s`` starts with a recognized ``--flag``, consume it (and its

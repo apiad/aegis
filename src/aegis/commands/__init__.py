@@ -8,6 +8,7 @@ verbatim; the TUI wires it in ``ConversationPane`` and renders the result.
 
 See ``docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -18,10 +19,10 @@ from aegis.commands.args import Args, ArgError, ArgSpec, parse
 
 @dataclass(frozen=True)
 class CommandResult:
-    ok: bool          # False → rendered as an error block
-    title: str        # one-line headline, e.g. "spawned researcher-1"
-    body: str = ""    # optional multi-line detail
-    effect: dict | None = None   # frontend-applied side-effect, or None
+    ok: bool  # False → rendered as an error block
+    title: str  # one-line headline, e.g. "spawned researcher-1"
+    body: str = ""  # optional multi-line detail
+    effect: dict | None = None  # frontend-applied side-effect, or None
 
 
 @dataclass
@@ -29,6 +30,7 @@ class CommandContext:
     """What a command handler is given: the shared capability surface
     (the AegisApp, which implements AppBridge) and the calling pane's
     session handle (recorded as ``spawned_by`` etc.)."""
+
     bridge: object
     handle: str
 
@@ -43,10 +45,10 @@ class CommandCollision(ValueError):
 @dataclass(frozen=True)
 class SlashCommand:
     name: str
-    summary: str          # one line, shown by /help
-    usage: str            # e.g. "/spawn <agent> [prompt]"
+    summary: str  # one line, shown by /help
+    usage: str  # e.g. "/spawn <agent> [prompt]"
     run: Handler
-    source: str = "builtin"          # builtin | user | plugin
+    source: str = "builtin"  # builtin | user | plugin
     spec: ArgSpec = field(default_factory=ArgSpec)
     # A deferred command must not be awaited in a frontend's input
     # handler. `/btw` takes 12-17s and `@peer` up to
@@ -88,8 +90,7 @@ class SlashCommand:
         if args is None:
             return self.cancel_note
         try:
-            return self.cancel_note.format(
-                **{**args.positional, **args.flags})
+            return self.cancel_note.format(**{**args.positional, **args.flags})
         except (KeyError, IndexError, AttributeError):
             return self.cancel_note
 
@@ -113,11 +114,12 @@ def register(cmd: SlashCommand) -> None:
     new_rank = _SOURCE_RANK.get(cmd.source, 99)
     old_rank = _SOURCE_RANK.get(existing.source, 99)
     if new_rank < old_rank:
-        REGISTRY[cmd.name] = cmd            # strictly higher priority wins
+        REGISTRY[cmd.name] = cmd  # strictly higher priority wins
         return
     raise CommandCollision(
         f"/{cmd.name} is already registered by a {existing.source} command "
-        f"and cannot be overridden by a {cmd.source} command")
+        f"and cannot be overridden by a {cmd.source} command"
+    )
 
 
 async def dispatch(text: str, ctx: CommandContext) -> CommandResult:
@@ -193,10 +195,11 @@ def classify_input(text: str) -> "tuple[str, str]":
 
 # --- palette completion --------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Completion:
-    insert: str       # text spliced into the input for this choice
-    label: str        # matched text shown (e.g. "/spawn" or "opus")
+    insert: str  # text spliced into the input for this choice
+    label: str  # matched text shown (e.g. "/spawn" or "opus")
     detail: str = ""  # dim right-column (summary / agent config / "")
     source: str = "builtin"  # command origin (builtin|user|plugin) for tinting
 
@@ -227,7 +230,7 @@ def complete(text: str, bridge: object) -> Completions:
     from aegis.commands.fuzzy import fuzzy_rank
 
     if text.startswith("@@"):
-        return Completions()          # the literal-@ escape addresses nobody
+        return Completions()  # the literal-@ escape addresses nobody
     if text.startswith("@"):
         # Delegate to the `/peer` path so the handle completer, the fuzzy
         # ranking and the usage hint are all the same code. Only the
@@ -236,9 +239,9 @@ def complete(text: str, bridge: object) -> Completions:
         # insert has to carry its own `@` or the sigil is eaten.
         inner = complete("/peer " + text[1:], bridge)
         return Completions(
-            items=tuple(replace(c, insert="@" + c.insert)
-                        for c in inner.items),
-            hint=inner.hint)
+            items=tuple(replace(c, insert="@" + c.insert) for c in inner.items),
+            hint=inner.hint,
+        )
     if not text.startswith("/"):
         return Completions()
     body = text[1:]
@@ -247,9 +250,14 @@ def complete(text: str, bridge: object) -> Completions:
         ranked = fuzzy_rank(body, list(REGISTRY.values()), key=lambda c: c.name)
         ranked.sort(key=lambda c: 0 if c.source == "builtin" else 1)
         items = tuple(
-            Completion(insert=f"/{c.name} ", label=f"/{c.name}",
-                       detail=c.summary, source=c.source)
-            for c in ranked)
+            Completion(
+                insert=f"/{c.name} ",
+                label=f"/{c.name}",
+                detail=c.summary,
+                source=c.source,
+            )
+            for c in ranked
+        )
         return Completions(items=items)
 
     parts = body.split(None, 1)
@@ -272,8 +280,8 @@ def complete(text: str, bridge: object) -> Completions:
         names = [f"--{f.name}" for f in spec.flags]
         ranked = fuzzy_rank(partial[2:], names, key=lambda n: n[2:])
         return Completions(
-            items=tuple(Completion(insert=n + " ", label=n) for n in ranked),
-            hint=hint)
+            items=tuple(Completion(insert=n + " ", label=n) for n in ranked), hint=hint
+        )
 
     # positional value completion
     if positional_bound >= len(spec.positionals):
@@ -282,14 +290,14 @@ def complete(text: str, bridge: object) -> Completions:
     if arg.greedy or arg.completer is None:
         return Completions(hint=hint)
     try:
-        raw = (arg.completer if isinstance(arg.completer, tuple)
-               else arg.completer(bridge))
+        raw = (
+            arg.completer if isinstance(arg.completer, tuple) else arg.completer(bridge)
+        )
         choices = [_norm_choice(ch) for ch in raw]
-    except Exception:              # noqa: BLE001 — a bad completer must not break typing
+    except Exception:  # noqa: BLE001 — a bad completer must not break typing
         return Completions(hint=hint)
     ranked = fuzzy_rank(partial, choices, key=lambda vd: vd[0])
-    items = tuple(Completion(insert=f"{v} ", label=v, detail=d)
-                  for v, d in ranked)
+    items = tuple(Completion(insert=f"{v} ", label=v, detail=d) for v, d in ranked)
     return Completions(items=items, hint=hint)
 
 

@@ -6,6 +6,7 @@ monotonic segments and the true cost is the sum of each segment's final
 value. token_cost prices a single per-turn usage dict, splitting new
 generation from context-replay (cache reads).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -28,8 +29,10 @@ def segment_cost(costs: list[Decimal]) -> Decimal:
 
 
 def token_cost(usage: dict, prices: ProviderPrices) -> tuple[Decimal, Decimal]:
-    gen = (Decimal(usage.get("input", 0)) * prices.input
-           + Decimal(usage.get("cache_creation", 0)) * prices.cache_write
-           + Decimal(usage.get("output", 0)) * prices.output) / _M
+    gen = (
+        Decimal(usage.get("input", 0)) * prices.input
+        + Decimal(usage.get("cache_creation", 0)) * prices.cache_write
+        + Decimal(usage.get("output", 0)) * prices.output
+    ) / _M
     rep = Decimal(usage.get("cache_read", 0)) * prices.cache_hit / _M
     return gen, rep

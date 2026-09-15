@@ -1,4 +1,5 @@
 """Simple option formatter for ask_human prompts."""
+
 from __future__ import annotations
 
 

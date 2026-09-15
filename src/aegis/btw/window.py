@@ -15,12 +15,18 @@ Two properties are invariants rather than details:
   was always this short — the same principle as the ``⚠ damaged
   record(s) skipped`` marker in ``replay_blocks``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from aegis.events import (
-    AgentPlan, AssistantText, Result, ToolResult, ToolUse, UserMessage,
+    AgentPlan,
+    AssistantText,
+    Result,
+    ToolResult,
+    ToolUse,
+    UserMessage,
 )
 from aegis.render import coalesce_chunks
 
@@ -49,12 +55,13 @@ _PLAN_GLYPH = {"completed": "x", "in_progress": ">", "pending": " "}
 @dataclass(frozen=True)
 class Window:
     """A bounded slice of a conversation, plus what it cost to bound it."""
+
     text: str
     header: str
     turns_included: int
     turns_total: int
-    truncated: int          # items clipped to ITEM_CHARS
-    bound_by: str           # "turns" | "budget" | "all"
+    truncated: int  # items clipped to ITEM_CHARS
+    bound_by: str  # "turns" | "budget" | "all"
 
     @property
     def approx_tokens(self) -> int:
@@ -93,8 +100,8 @@ def _render(ev, item_chars: int) -> tuple[str, bool] | None:
         if not ev.entries:
             return None
         rows = "; ".join(
-            f"[{_PLAN_GLYPH.get(e.status, ' ')}] {e.content}"
-            for e in ev.entries)
+            f"[{_PLAN_GLYPH.get(e.status, ' ')}] {e.content}" for e in ev.entries
+        )
         return f"plan: {rows}", False
     return None
 
@@ -105,8 +112,7 @@ def _header(included: int, total: int, truncated: int) -> str:
     else:
         head = f"last {included} of {total} turns"
     if truncated:
-        head += (f" · {truncated} item"
-                 f"{'s' if truncated != 1 else ''} truncated")
+        head += f" · {truncated} item{'s' if truncated != 1 else ''} truncated"
     return head
 
 
@@ -122,9 +128,13 @@ def _count_turns(events, item_chars: int) -> int:
     return total
 
 
-def assemble(replay, *, max_turns: int = MAX_TURNS,
-             budget_tokens: int = BUDGET_TOKENS,
-             item_chars: int = ITEM_CHARS) -> Window:
+def assemble(
+    replay,
+    *,
+    max_turns: int = MAX_TURNS,
+    budget_tokens: int = BUDGET_TOKENS,
+    item_chars: int = ITEM_CHARS,
+) -> Window:
     """Fill a window backwards from the newest event until a bound trips.
 
     ``replay`` is an ``EventReplay``. The turn boundary is the ``Result``
@@ -172,7 +182,11 @@ def assemble(replay, *, max_turns: int = MAX_TURNS,
     total = _count_turns(events, item_chars)
     included = min(crossed + (1 if trailing else 0), total)
 
-    return Window(text="\n".join(lines),
-                  header=_header(included, total, truncated),
-                  turns_included=included, turns_total=total,
-                  truncated=truncated, bound_by=bound)
+    return Window(
+        text="\n".join(lines),
+        header=_header(included, total, truncated),
+        turns_included=included,
+        turns_total=total,
+        truncated=truncated,
+        bound_by=bound,
+    )

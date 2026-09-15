@@ -14,6 +14,7 @@ process-global: it installs SIGINT/SIGTERM handlers on the running loop
 writes a ``__GANGLION__`` handshake line (`:154`) that nothing in aegis
 consumes.
 """
+
 from __future__ import annotations
 
 from codecs import getincrementaldecoder
@@ -52,8 +53,14 @@ class ViewDriver(WebDriver):
     #: constructor argument for the reason above.
     _sink: Callable[[bytes], None] = staticmethod(lambda _b: None)
 
-    def __init__(self, app, *, debug: bool = False, mouse: bool = True,
-                 size: tuple[int, int] | None = None) -> None:
+    def __init__(
+        self,
+        app,
+        *,
+        debug: bool = False,
+        mouse: bool = True,
+        size: tuple[int, int] | None = None,
+    ) -> None:
         # NOT super(). WebDriver.__init__ binds this process's stdin and
         # stdout: it reads sys.__stdout__.fileno() (`:62`) and builds an
         # InputReader (`:68`) that registers sys.__stdin__ with a selector
@@ -119,6 +126,7 @@ class ViewDriver(WebDriver):
                     from traceback import format_exc
 
                     from textual import log
+
                     log(format_exc())
         for event in self._parser.tick():
             self.process_message(event)
@@ -143,10 +151,10 @@ class ViewDriver(WebDriver):
         keystrokes, and since nothing in aegis/tui handles ``Paste`` today
         that degradation would be silent.
         """
-        self.write("\x1b[?1049h")   # alt screen
+        self.write("\x1b[?1049h")  # alt screen
         self._enable_mouse_support()
-        self.write("\x1b[?25l")     # hide cursor
-        self.write("\033[?1003h")   # mouse movement reporting
+        self.write("\x1b[?25l")  # hide cursor
+        self.write("\033[?1003h")  # mouse movement reporting
         self._request_terminal_sync_mode_support()
         self._enable_bracketed_paste()
         self.flush()
@@ -174,8 +182,8 @@ class ViewDriver(WebDriver):
         """
         self._disable_bracketed_paste()
         self._disable_mouse_support()
-        self.write("\x1b[?1049l")   # leave alt screen
-        self.write("\x1b[?25h")     # show cursor
+        self.write("\x1b[?1049l")  # leave alt screen
+        self.write("\x1b[?25h")  # show cursor
         self.flush()
         super().stop_application_mode()
 
@@ -194,5 +202,4 @@ class ViewDriver(WebDriver):
 
 def view_driver_for(sink: Callable[[bytes], None]) -> type[ViewDriver]:
     """A ``ViewDriver`` subclass whose frames go to ``sink``."""
-    return type("BoundViewDriver", (ViewDriver,),
-                {"_sink": staticmethod(sink)})
+    return type("BoundViewDriver", (ViewDriver,), {"_sink": staticmethod(sink)})

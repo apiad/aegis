@@ -4,6 +4,7 @@ Translates a ``WriteResult`` into an ``InboxMessage`` per subscriber
 and delivers it through ``InboxRouter``. Suppresses self-notifications
 (writer doesn't get their own writes echoed back).
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,16 +22,15 @@ PREVIEW_LINES = 6
 
 def _format_byline(result: WriteResult) -> str:
     if result.op == "append":
-        return (f"appended by agent:{result.writer} "
-                f"(+{result.added} lines)")
-    return (f"written by agent:{result.writer} "
-            f"(+{result.added} / -{result.removed} lines)")
+        return f"appended by agent:{result.writer} (+{result.added} lines)"
+    return (
+        f"written by agent:{result.writer} (+{result.added} / -{result.removed} lines)"
+    )
 
 
 def _format_preview(result: WriteResult) -> str:
     # On append, show only the appended text; on write, show the new body.
-    body = (result.appended_text if result.op == "append"
-            else result.new_body)
+    body = result.appended_text if result.op == "append" else result.new_body
     if body is None:
         body = ""
     lines = body.splitlines()
@@ -52,7 +52,7 @@ def build_inbox_body(result: WriteResult) -> str:
         ──
         <preview>
     """
-    sender_line = (f"section \"{result.section}\" · {result.timestamp}")
+    sender_line = f'section "{result.section}" · {result.timestamp}'
     byline = _format_byline(result)
     preview = _format_preview(result)
     return f"{sender_line}\n{byline}\n──\n{preview}"
@@ -67,9 +67,9 @@ def build_inbox_message(result: WriteResult) -> InboxMessage:
     )
 
 
-async def dispatch_notifications(result: WriteResult,
-                                 subscribers: list[str],
-                                 inbox_router: "InboxRouter") -> list[str]:
+async def dispatch_notifications(
+    result: WriteResult, subscribers: list[str], inbox_router: "InboxRouter"
+) -> list[str]:
     """Deliver one InboxMessage per subscriber, suppressing the writer.
 
     Returns the list of handles that actually received a message.
@@ -91,6 +91,7 @@ def make_canvas_notifier(inbox_router: "InboxRouter"):
     The closure captures the inbox_router so the manager doesn't have to
     know about routing.
     """
+
     async def _notifier(result: WriteResult, state) -> None:
         subs = list(state.subscribers.keys())
         # Apply section filter the same way subscribers_for_section does,
@@ -101,4 +102,5 @@ def make_canvas_notifier(inbox_router: "InboxRouter"):
             if flt is None or result.section in flt:
                 targets.append(h)
         await dispatch_notifications(result, targets, inbox_router)
+
     return _notifier

@@ -8,6 +8,7 @@ produces, so the service, the renderer and the status bar stay generic.
 The endpoint is undocumented and may change or vanish. Every failure path here
 degrades to a message in the status bar; nothing raises into the render loop.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,11 @@ import urllib.request
 from pathlib import Path
 
 from aegis.usage.quota import (
-    QuotaError, QuotaProvider, QuotaSnapshot, QuotaWindow, _severity,
+    QuotaError,
+    QuotaProvider,
+    QuotaSnapshot,
+    QuotaWindow,
+    _severity,
     _timestamp,
 )
 
@@ -32,6 +37,7 @@ WINDOW_KINDS = ("rolling", "weekly", "monthly")
 def _user_agent() -> str:
     try:
         from importlib.metadata import version
+
         return f"aegis/{version('aegis-harness')}"
     except Exception:  # noqa: BLE001 — an unknown version must not block a read
         return "aegis/0"
@@ -39,8 +45,7 @@ def _user_agent() -> str:
 
 def auth_path() -> Path:
     """Where OpenCode keeps its API keys. ``OPENCODE_AUTH`` overrides."""
-    share = os.environ.get(
-        "XDG_DATA_HOME", str(Path.home() / ".local" / "share"))
+    share = os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))
     default = Path(share) / "opencode" / "auth.json"
     return Path(os.environ.get("OPENCODE_AUTH", str(default)))
 
@@ -87,33 +92,39 @@ def parse_usage(payload: dict, *, now: float) -> QuotaSnapshot:
         percent = raw.get("percent")
         if not isinstance(percent, (int, float)) or isinstance(percent, bool):
             continue
-        windows.append(QuotaWindow(
-            kind=kind,
-            percent=float(percent),
-            # ``status`` is "ok" in the healthy case, which is not one of the
-            # severities we render — so this falls through to the percent
-            # thresholds, while still honouring a real severity if one appears.
-            severity=_severity(float(percent), raw.get("status")),
-            resets_at=_timestamp(raw.get("resetsAt")),
-            is_active=True,
-        ))
+        windows.append(
+            QuotaWindow(
+                kind=kind,
+                percent=float(percent),
+                # ``status`` is "ok" in the healthy case, which is not one of the
+                # severities we render — so this falls through to the percent
+                # thresholds, while still honouring a real severity if one appears.
+                severity=_severity(float(percent), raw.get("status")),
+                resets_at=_timestamp(raw.get("resetsAt")),
+                is_active=True,
+            )
+        )
     return QuotaSnapshot(windows=tuple(windows), fetched_at=now)
 
 
-def fetch_usage(key: str, *, timeout: float = 10.0,
-                opener=None, now: float | None = None) -> QuotaSnapshot:
+def fetch_usage(
+    key: str, *, timeout: float = 10.0, opener=None, now: float | None = None
+) -> QuotaSnapshot:
     """Ask the endpoint. Blocking — callers run it off the event loop.
 
     ``opener`` is the injection seam for tests; it defaults to
     ``urllib.request.urlopen``.
     """
-    request = urllib.request.Request(URL, headers={
-        "Authorization": f"Bearer {key}",
-        # Cloudflare fronts this endpoint and rejects urllib's default agent
-        # with 403 "error code: 1010". Identify honestly instead of spoofing;
-        # any real agent string is accepted.
-        "User-Agent": _user_agent(),
-    })
+    request = urllib.request.Request(
+        URL,
+        headers={
+            "Authorization": f"Bearer {key}",
+            # Cloudflare fronts this endpoint and rejects urllib's default agent
+            # with 403 "error code: 1010". Identify honestly instead of spoofing;
+            # any real agent string is accepted.
+            "User-Agent": _user_agent(),
+        },
+    )
     open_url = opener or urllib.request.urlopen
     try:
         with open_url(request, timeout=timeout) as response:
@@ -130,8 +141,7 @@ def fetch_usage(key: str, *, timeout: float = 10.0,
         raise QuotaError("unreachable") from exc
     if not isinstance(payload, dict):
         raise QuotaError("unreachable")
-    return parse_usage(
-        payload, now=time.monotonic() if now is None else now)
+    return parse_usage(payload, now=time.monotonic() if now is None else now)
 
 
 PROVIDER = QuotaProvider(

@@ -4,6 +4,7 @@ Each process appends its own file, so no writer ever contends with another
 for the same fd. ``MarkerSeq`` is the one shared resource: several fake
 agents (one per tab) must never mint the same marker.
 """
+
 from __future__ import annotations
 
 import fcntl

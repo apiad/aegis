@@ -45,6 +45,7 @@ class _ProviderBase(BaseModel):
     """Base for provider config objects. Subclasses bind to a specific
     harness CLI (claude-code, gemini, opencode) and carry the per-provider
     fields that matter for that CLI."""
+
     model: str
     permission: Permission = Permission.auto
 
@@ -75,9 +76,9 @@ Provider = ClaudeCode | GeminiCLI | OpenCode | Lovelaice
 
 _PROVIDERS_BY_NAME: dict[str, type[_ProviderBase]] = {
     "claude-code": ClaudeCode,
-    "gemini":      GeminiCLI,
-    "opencode":    OpenCode,
-    "lovelaice":   Lovelaice,
+    "gemini": GeminiCLI,
+    "opencode": OpenCode,
+    "lovelaice": Lovelaice,
 }
 
 
@@ -91,12 +92,13 @@ class Agent(BaseModel):
         Agent(harness="claude-code", model="opus", effort="high",
               permission="auto")
     """
+
     provider: Provider | None = None
     harness: str = ""
     model: str = ""
     effort: Effort = Effort.high
     permission: Permission = Permission.auto
-    prompt: str | None = None   # optional persona system-prompt file path
+    prompt: str | None = None  # optional persona system-prompt file path
     # Optional default execution host — a `hosts:` key, or "local". Purely
     # aegis-side placement, so it is not a provider concern and does not
     # participate in the provider/flat sync below.
@@ -113,12 +115,13 @@ class Agent(BaseModel):
         if not self.harness:
             raise ValueError(
                 "Agent requires either provider=<ClaudeCode|GeminiCLI"
-                "|OpenCode> or the flat shape harness=+model=+...")
+                "|OpenCode> or the flat shape harness=+model=+..."
+            )
         klass = _PROVIDERS_BY_NAME.get(self.harness)
         if klass is None:
             raise ValueError(
-                f"unknown harness {self.harness!r}; "
-                f"known: {sorted(_PROVIDERS_BY_NAME)}")
+                f"unknown harness {self.harness!r}; known: {sorted(_PROVIDERS_BY_NAME)}"
+            )
         kw: dict = {"model": self.model, "permission": self.permission}
         if klass is ClaudeCode:
             kw["effort"] = self.effort
@@ -152,7 +155,8 @@ def _resolve_root(root: Path | None) -> Path:
     if found is None:
         raise ConfigError(
             "No .aegis.yaml found in the current directory or any "
-            "ancestor. Run `aegis init` to create one.")
+            "ancestor. Run `aegis init` to create one."
+        )
     return found
 
 
@@ -163,12 +167,13 @@ def load_config(
     discovered project root). Plain-tuple return for back-compat with
     pre-YAML call sites."""
     from aegis.config.yaml_loader import load_config as _load_yaml
+
     target = _resolve_root(root)
     cfg = _load_yaml(target)
     if not cfg.agents:
         raise ConfigError(
-            f"{target / '.aegis.yaml'} must declare a non-empty "
-            f"`agents:` section.")
+            f"{target / '.aegis.yaml'} must declare a non-empty `agents:` section."
+        )
     assert cfg.default_agent is not None  # validated in yaml_loader
     return cfg.agents, cfg.default_agent
 
@@ -189,8 +194,8 @@ def load_queues(root: Path | None = None) -> "dict[str, Queue]":
             budgets = parse_budgets(qspec.budgets)
         except BudgetConfigError as e:
             raise ConfigError(
-                f"{target / '.aegis.yaml'}: queues[{name!r}].budgets: "
-                f"{e}") from e
+                f"{target / '.aegis.yaml'}: queues[{name!r}].budgets: {e}"
+            ) from e
         out[name] = Queue(
             name=name,
             agent_profile=qspec.agent,

@@ -8,6 +8,7 @@ deleted, or moved. Uses its own ignore rules — does not parse
 Thread safety: ``_paths`` is replaced atomically (single assignment)
 after initial walk. Incremental updates append/remove under ``_lock``.
 """
+
 from __future__ import annotations
 
 import bisect
@@ -19,29 +20,58 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 from watchdog.observers import Observer
 
-_IGNORE_DIRS: frozenset[str] = frozenset({
-    ".git", ".svn", ".hg",
-    "__pycache__",
-    ".venv", "venv", "env", ".env",
-    "node_modules", ".next", ".nuxt",
-    "dist", "build", "target", "vendor",
-    ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    ".tox", ".nox",
-    ".eggs",
-    "htmlcov", "coverage",
-    ".idea", ".vscode",
-    ".aegis", ".claude",
-    "__MACOSX",
-})
+_IGNORE_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".svn",
+        ".hg",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "env",
+        ".env",
+        "node_modules",
+        ".next",
+        ".nuxt",
+        "dist",
+        "build",
+        "target",
+        "vendor",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".nox",
+        ".eggs",
+        "htmlcov",
+        "coverage",
+        ".idea",
+        ".vscode",
+        ".aegis",
+        ".claude",
+        "__MACOSX",
+    }
+)
 
-_IGNORE_EXTS: frozenset[str] = frozenset({
-    ".pyc", ".pyo", ".pyd",
-    ".class",
-    ".so", ".dll", ".dylib",
-    ".o", ".a", ".obj", ".lib",
-    ".exe", ".bin", ".wasm",
-    ".gcov",
-})
+_IGNORE_EXTS: frozenset[str] = frozenset(
+    {
+        ".pyc",
+        ".pyo",
+        ".pyd",
+        ".class",
+        ".so",
+        ".dll",
+        ".dylib",
+        ".o",
+        ".a",
+        ".obj",
+        ".lib",
+        ".exe",
+        ".bin",
+        ".wasm",
+        ".gcov",
+    }
+)
 
 _IGNORE_NAMES: frozenset[str] = frozenset({".DS_Store", ".coverage"})
 
@@ -64,7 +94,7 @@ class FileIndexer:
 
     def __init__(self) -> None:
         self._paths: list[str] = []
-        self._mtimes: dict[str, float] = {}   # rel_path -> mtime
+        self._mtimes: dict[str, float] = {}  # rel_path -> mtime
         self._cwd: Path | None = None
         self._observer: Observer | None = None
         self._ready = threading.Event()
@@ -116,7 +146,9 @@ class FileIndexer:
     #: first batch instead of waiting out the whole tree
     PUBLISH_EVERY = 2000
 
-    def _publish(self, paths: list[str], mtimes: dict[str, float] | None = None) -> None:
+    def _publish(
+        self, paths: list[str], mtimes: dict[str, float] | None = None
+    ) -> None:
         """Make a snapshot of the walk visible to readers, sorted."""
         with self._lock:
             self._paths = sorted(paths)

@@ -6,6 +6,7 @@ localStorage for browsers, per-tty for terminals -- which is why re-opening
 a live id returns the existing view rather than building a second app for
 one client.
 """
+
 from __future__ import annotations
 
 from aegis.config.roots import AegisRoots
@@ -13,8 +14,9 @@ from aegis.views.view import View, open_view
 
 
 class ViewRegistry:
-    def __init__(self, *, manager, roots: AegisRoots, mcp,
-                 on_last_quit=None, **app_kw) -> None:
+    def __init__(
+        self, *, manager, roots: AegisRoots, mcp, on_last_quit=None, **app_kw
+    ) -> None:
         # What a quitting last client is allowed to do, decided by whoever
         # built this registry rather than by the client asking. `_serve`
         # supplies it only for a daemon a client autostarted, so a daemon a
@@ -36,11 +38,15 @@ class ViewRegistry:
         existing = self._views.get(view_id)
         if existing is not None:
             return existing
-        v = await open_view(view_id, manager=self._manager,
-                            geometry=geometry, roots=self._roots,
-                            mcp=self._mcp,
-                            can_stop_daemon=self.would_grant_quit,
-                            **self._app_kw)
+        v = await open_view(
+            view_id,
+            manager=self._manager,
+            geometry=geometry,
+            roots=self._roots,
+            mcp=self._mcp,
+            can_stop_daemon=self.would_grant_quit,
+            **self._app_kw,
+        )
         self._views[view_id] = v
         return v
 

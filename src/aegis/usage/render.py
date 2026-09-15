@@ -4,6 +4,7 @@ Pure functions returning ``list[str]`` so both the CLI (``aegis usage``,
 via typer.echo) and the ``/usage`` slash command (via CommandResult.body)
 share one renderer. No Textual import — safe on the web path.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -38,13 +39,15 @@ def dashboard_lines(r, zone: ZoneInfo | None = None) -> list[str]:
     billed, gen, rep = r.total_billed(), r.total_gen(), r.total_replay()
     toks = r.total_tokens()
     tok_total = sum(toks.values())
-    out = ["═" * 60,
-           f"  AEGIS USAGE   {n} sessions · {turns:,} turns · "
-           f"{_num(tok_total)} tokens",
-           f"  window: {(r.first_ts or '?')[:10]} → {(r.last_ts or '?')[:10]}",
-           "═" * 60,
-           "", "COST",
-           f"  billed (authoritative)   {_money(billed):>12}"]
+    out = [
+        "═" * 60,
+        f"  AEGIS USAGE   {n} sessions · {turns:,} turns · {_num(tok_total)} tokens",
+        f"  window: {(r.first_ts or '?')[:10]} → {(r.last_ts or '?')[:10]}",
+        "═" * 60,
+        "",
+        "COST",
+        f"  billed (authoritative)   {_money(billed):>12}",
+    ]
     split = gen + rep
     pct = float(rep / split * 100) if split else 0
     out.append(f"    ├ generation           {_money(gen):>12}")
@@ -52,24 +55,31 @@ def dashboard_lines(r, zone: ZoneInfo | None = None) -> list[str]:
     est = [s.handle for s in r.sessions if s.est]
     if est:
         out.append(f"  ~est (no cost_usd): {len(est)} session(s)")
-    out += ["", "TOKENS",
-            f"  input                    {_num(toks.get('input', 0)):>14}",
-            f"  output                   {_num(toks.get('output', 0)):>14}",
-            f"  cache write              "
-            f"{_num(toks.get('cache_creation', 0)):>14}",
-            f"  cache read               "
-            f"{_num(toks.get('cache_read', 0)):>14}",
-            f"  {'─' * 39}",
-            f"  total                    {_num(tok_total):>14}"]
-    out += ["", "AVERAGES",
-            f"  per session   {_money(billed / n)}",
-            f"  per turn      {(_money(billed / turns) if turns else '$0')}"
-            f" · {_fmt_time(_avg_turn_secs(r))}",
-            f"  error rate    {r.total_errors()}/{turns}",
-            "", "BY MODEL"]
+    out += [
+        "",
+        "TOKENS",
+        f"  input                    {_num(toks.get('input', 0)):>14}",
+        f"  output                   {_num(toks.get('output', 0)):>14}",
+        f"  cache write              {_num(toks.get('cache_creation', 0)):>14}",
+        f"  cache read               {_num(toks.get('cache_read', 0)):>14}",
+        f"  {'─' * 39}",
+        f"  total                    {_num(tok_total):>14}",
+    ]
+    out += [
+        "",
+        "AVERAGES",
+        f"  per session   {_money(billed / n)}",
+        f"  per turn      {(_money(billed / turns) if turns else '$0')}"
+        f" · {_fmt_time(_avg_turn_secs(r))}",
+        f"  error rate    {r.total_errors()}/{turns}",
+        "",
+        "BY MODEL",
+    ]
     for mdl, a in r.by_model():
-        out.append(f"  {mdl:22} {_money(a['billed']):>10} · "
-                   f"{a['turns']:>5} turns · {a['sessions']} sess")
+        out.append(
+            f"  {mdl:22} {_money(a['billed']):>10} · "
+            f"{a['turns']:>5} turns · {a['sessions']} sess"
+        )
     out += ["", "TOOLS (top 12)"]
     tc = r.total_tools()
     mx = max(tc.values()) if tc else 1
@@ -77,8 +87,7 @@ def dashboard_lines(r, zone: ZoneInfo | None = None) -> list[str]:
         out.append(f"  {name:16} {c:>6}  {_bar(c, mx)}")
     out += ["", "TOP 5 SESSIONS (billed)"]
     for s in sorted(r.sessions, key=lambda s: -s.billed_usd)[:5]:
-        out.append(f"  {s.handle:28} {_money(s.billed_usd):>10} · "
-                   f"{s.turns} turns")
+        out.append(f"  {s.handle:28} {_money(s.billed_usd):>10} · {s.turns} turns")
     out += _sparkline_lines(r, zone)
     return out
 
@@ -89,8 +98,7 @@ def _sparkline_lines(r, zone) -> list[str]:
         return []
     mx = max(v for _, v in days) or 1
     line = "".join(_BLOCKS[min(8, int(v / mx * 8))] for _, v in days[-28:])
-    return ["", "DAILY BILLED (last 28d)",
-            f"  {line}   peak {_money(mx)}/day"]
+    return ["", "DAILY BILLED (last 28d)", f"  {line}   peak {_money(mx)}/day"]
 
 
 def temporal_lines(r, kind: str, zone: ZoneInfo | None = None) -> list[str]:
@@ -111,16 +119,21 @@ def temporal_lines(r, kind: str, zone: ZoneInfo | None = None) -> list[str]:
 
 def sessions_lines(r) -> list[str]:
     d = r.distribution()
-    out = ["COST-PER-SESSION DISTRIBUTION (billed)",
-           f"  n={d['n']}  min={_money(d['min'])}  "
-           f"p50={_money(d['p50'])}  p90={_money(d['p90'])}  "
-           f"p99={_money(d['p99'])}  max={_money(d['max'])}",
-           f"  mean={_money(d['mean'])}",
-           "", "TOP 15 SESSIONS"]
+    out = [
+        "COST-PER-SESSION DISTRIBUTION (billed)",
+        f"  n={d['n']}  min={_money(d['min'])}  "
+        f"p50={_money(d['p50'])}  p90={_money(d['p90'])}  "
+        f"p99={_money(d['p99'])}  max={_money(d['max'])}",
+        f"  mean={_money(d['mean'])}",
+        "",
+        "TOP 15 SESSIONS",
+    ]
     for s in sorted(r.sessions, key=lambda s: -s.billed_usd)[:15]:
         flag = " ~est" if s.est else ""
-        out.append(f"  {s.handle:28} {_money(s.billed_usd):>10} · "
-                   f"{s.turns:>4} turns · {sum(s.tools.values()):>4} tools{flag}")
+        out.append(
+            f"  {s.handle:28} {_money(s.billed_usd):>10} · "
+            f"{s.turns:>4} turns · {sum(s.tools.values()):>4} tools{flag}"
+        )
     return out
 
 
@@ -130,6 +143,5 @@ def tools_lines(r) -> list[str]:
     out = [f"TOOL → COST CORRELATION   baseline turn {_money(base)}"]
     for name, avg, cnt in r.tool_correlation(min_turns=1)[:15]:
         mult = (avg / base) if base else 0
-        out.append(f"  {name:16} {_money(avg):>10} ({mult:>4.1f}x) · "
-                   f"{cnt} turns")
+        out.append(f"  {name:16} {_money(avg):>10} ({mult:>4.1f}x) · {cnt} turns")
     return out

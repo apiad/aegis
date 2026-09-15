@@ -1,4 +1,5 @@
 """Read/write .aegis/plugins.lock."""
+
 from __future__ import annotations
 
 import hashlib

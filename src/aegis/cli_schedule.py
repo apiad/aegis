@@ -15,6 +15,7 @@ The ``--remote <peer>`` flag on ``list``/``show``/``logs`` routes the
 verb through the remote-plane HTTP client; ``push --to <peer>`` and
 ``remove --remote <peer>`` reach across to a peer's schedule store.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -83,8 +84,8 @@ def _print_schedule_table(schedules: list[dict]) -> None:
         fires = entry.get("fire_count", 0)
         status = "paused" if not entry.get("enabled", True) else "armed"
         table.add_row(
-            entry.get("name", "?"), str(trigger), str(nxt),
-            str(fires), status)
+            entry.get("name", "?"), str(trigger), str(nxt), str(fires), status
+        )
     console.print(table)
 
 
@@ -177,9 +178,13 @@ def run_schedule(name: str) -> None:
 
     async def _run():
         return await run_workflow(
-            entry["workflow"], dict(entry.get("args") or {}),
-            bridge=None, queue_manager=None, inbox_router=None,
-            state_dir=_state_dir(root))
+            entry["workflow"],
+            dict(entry.get("args") or {}),
+            bridge=None,
+            queue_manager=None,
+            inbox_router=None,
+            state_dir=_state_dir(root),
+        )
 
     result = asyncio.run(_run())
     console.print(Pretty(result))
@@ -212,8 +217,7 @@ def disable_schedule(name: str) -> None:
 @app.command("logs")
 def schedule_logs(
     name: str,
-    tail: int = typer.Option(20, "--tail", "-n",
-                             help="lines from end"),
+    tail: int = typer.Option(20, "--tail", "-n", help="lines from end"),
     remote: str = typer.Option(None, "--remote", help="peer name"),
 ) -> None:
     root, cfg = _cfg()
@@ -255,9 +259,14 @@ def push_schedule(
         typer.echo("--name or --file is required", err=True)
         raise typer.Exit(1)
     remote_spec = _resolve_remote(cfg, to)
-    result = asyncio.run(remote_schedule_push(
-        remote_spec, name=name, spec_body=spec_body,
-        pushed_from=f"peer:{_self_name(cfg)}"))
+    result = asyncio.run(
+        remote_schedule_push(
+            remote_spec,
+            name=name,
+            spec_body=spec_body,
+            pushed_from=f"peer:{_self_name(cfg)}",
+        )
+    )
     if "error" in result:
         typer.echo(result["error"], err=True)
         raise typer.Exit(1)

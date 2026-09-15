@@ -1,4 +1,5 @@
 """Compose multiple PreTurnResults from a single pre_turn fire."""
+
 from __future__ import annotations
 
 from aegis.hooks.contexts import PreTurnResult
@@ -18,19 +19,17 @@ def compose_pre_turn(results: list[PreTurnResult]) -> PreTurnResult:
       sibling fields are still recorded so users can introspect).
     - extend_history: tuples concatenate in declaration order.
     """
-    prepends:  list[str] = []
-    rewrite:   str | None = None
-    block:     str | None = None
-    history:   list = []
+    prepends: list[str] = []
+    rewrite: str | None = None
+    block: str | None = None
+    history: list = []
 
     for r in results:
         if r.prepend_system is not None:
             prepends.append(r.prepend_system)
         if r.rewrite_user is not None:
             if rewrite is not None:
-                raise ComposerError(
-                    "two hooks returned rewrite_user; only one allowed"
-                )
+                raise ComposerError("two hooks returned rewrite_user; only one allowed")
             rewrite = r.rewrite_user
         if r.block is not None and block is None:
             block = r.block

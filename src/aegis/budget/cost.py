@@ -1,4 +1,5 @@
 """Compute USD cost from SessionMetrics + price table."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,12 +13,13 @@ _MILLION = Decimal("1000000")
 @dataclass(frozen=True)
 class Cost:
     """A worker's finalized cost, ready to land on a task_done JSONL record."""
-    usd:                Decimal
-    input_tokens:       int
-    output_tokens:      int
-    cache_hit_tokens:   int
+
+    usd: Decimal
+    input_tokens: int
+    output_tokens: int
+    cache_hit_tokens: int
     cache_write_tokens: int
-    thinking_tokens:    int
+    thinking_tokens: int
 
     def as_dict(self) -> dict:
         """Serialize for JSONL — `usd` becomes a string to avoid float drift."""
@@ -58,16 +60,21 @@ def compute(metrics, provider: str, model: str) -> Cost:
     inp = _tok("input_tokens")
     out = _tok("output_tokens")
     hit = _tok("cache_hit_tokens")
-    wr  = _tok("cache_write_tokens")
-    th  = _tok("thinking_tokens")
+    wr = _tok("cache_write_tokens")
+    th = _tok("thinking_tokens")
 
     usd = (
-        Decimal(inp) * row.input       / _MILLION +
-        Decimal(out) * row.output      / _MILLION +
-        Decimal(hit) * row.cache_hit   / _MILLION +
-        Decimal(wr)  * row.cache_write / _MILLION +
-        Decimal(th)  * row.thinking    / _MILLION
+        Decimal(inp) * row.input / _MILLION
+        + Decimal(out) * row.output / _MILLION
+        + Decimal(hit) * row.cache_hit / _MILLION
+        + Decimal(wr) * row.cache_write / _MILLION
+        + Decimal(th) * row.thinking / _MILLION
     )
-    return Cost(usd=usd, input_tokens=inp, output_tokens=out,
-                cache_hit_tokens=hit, cache_write_tokens=wr,
-                thinking_tokens=th)
+    return Cost(
+        usd=usd,
+        input_tokens=inp,
+        output_tokens=out,
+        cache_hit_tokens=hit,
+        cache_write_tokens=wr,
+        thinking_tokens=th,
+    )

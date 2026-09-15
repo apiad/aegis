@@ -6,6 +6,7 @@ the seam sends the expansion to the agent as a normal message. Frontmatter:
 ``description`` → summary, ``argument-hint`` → usage suffix. Boot-load only;
 re-callable (idempotent).
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,15 +15,19 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from aegis.commands import (
-    REGISTRY, CommandCollision, CommandResult, SlashCommand, register)
+    REGISTRY,
+    CommandCollision,
+    CommandResult,
+    SlashCommand,
+    register,
+)
 from aegis.commands.args import Arg, ArgSpec
 from aegis.commands.expand import ExpandError, expand
 
 logger = logging.getLogger(__name__)
 _yaml = YAML(typ="safe")
 
-_GREEDY_SPEC = ArgSpec(
-    positionals=(Arg("arguments", required=False, greedy=True),))
+_GREEDY_SPEC = ArgSpec(positionals=(Arg("arguments", required=False, greedy=True),))
 
 
 def _split_frontmatter(raw: str) -> "tuple[dict, str]":
@@ -33,7 +38,7 @@ def _split_frontmatter(raw: str) -> "tuple[dict, str]":
         end = rest.find("\n---")
         if end != -1:
             head = rest[:end]
-            body = rest[end + 4:]
+            body = rest[end + 4 :]
             if body.startswith("\n"):
                 body = body[1:]
             meta = _yaml.load(head) or {}
@@ -41,8 +46,9 @@ def _split_frontmatter(raw: str) -> "tuple[dict, str]":
     return {}, raw
 
 
-def _make_command(name: str, meta: dict, template: str, root: Path,
-                  run_shell) -> SlashCommand:
+def _make_command(
+    name: str, meta: dict, template: str, root: Path, run_shell
+) -> SlashCommand:
     summary = str(meta.get("description", "") or "")
     hint = meta.get("argument-hint")
     usage = f"/{name} {hint}" if hint else f"/{name}"
@@ -53,16 +59,15 @@ def _make_command(name: str, meta: dict, template: str, root: Path,
             text = await expand(template, argstr, root, run_shell)
         except ExpandError as e:
             return CommandResult(False, f"/{name} failed", str(e))
-        return CommandResult(True, f"/{name}",
-                             effect={"kind": "deliver", "text": text})
+        return CommandResult(True, f"/{name}", effect={"kind": "deliver", "text": text})
 
-    return SlashCommand(name, summary, usage, _run,
-                        source="user", spec=_GREEDY_SPEC)
+    return SlashCommand(name, summary, usage, _run, source="user", spec=_GREEDY_SPEC)
 
 
 def load_prompt_commands(root: Path, run_shell=None) -> list[str]:
     if run_shell is None:
         from aegis.tui.shell_escape import run_shell_escape
+
         run_shell = run_shell_escape
     folder = Path(root) / ".aegis" / "commands"
     if not folder.is_dir():

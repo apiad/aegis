@@ -8,6 +8,7 @@ fire to start an agent immediately and read its final answer.
 For a capped variant (going through a queue's max_parallel cap),
 use the ``enqueue`` built-in instead.
 """
+
 from __future__ import annotations
 
 from aegis.workflow import workflow

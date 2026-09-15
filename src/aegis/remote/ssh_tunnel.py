@@ -4,6 +4,7 @@ Bind a random local port; spawn `ssh -L <local>:localhost:<remote> -N <host>`;
 probe until TCP connect succeeds; teardown terminates the subprocess.
 Fail fast — no retry — so bad SSH configs surface immediately.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,8 +49,10 @@ class SSHTunnel:
 
         argv = (
             "ssh",
-            "-L", f"{self.local_port}:localhost:{self.remote_port}",
-            "-N", self.host,
+            "-L",
+            f"{self.local_port}:localhost:{self.remote_port}",
+            "-N",
+            self.host,
         )
         self._proc = await asyncio.create_subprocess_exec(*argv)
         await self._probe()

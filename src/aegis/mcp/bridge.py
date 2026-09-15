@@ -10,7 +10,7 @@ from aegis.plan import PlanSnapshot
 class SessionInfo:
     handle: str
     agent_slug: str
-    state: str          # AgentState.value: "ready" | "working" | "error"
+    state: str  # AgentState.value: "ready" | "working" | "error"
     active: bool
     unseen: bool
     spawned_by: str | None = None
@@ -36,22 +36,32 @@ class GroupsBridge(Protocol):
     """Concrete surface for the aegis_group_* MCP tools."""
 
     def list_groups(self) -> list[dict]: ...
-    async def spawn(self, *, profile: str, group: str,
-                    handle: str | None = None) -> str: ...
-    async def broadcast(self, group: str, *, sender: str,
-                        objective: str, output_format: str,
-                        tool_guidance: str, boundaries: str) -> str: ...
-    async def wait_all(self, group: str, *, timeout: float = 600.0,
-                       reducer: str = "concat"): ...
-    async def wait_any(self, group: str, *, timeout: float = 600.0,
-                       cancel_losers: bool = True): ...
-    async def spawn_mixed(self, *, group: str,
-                          profiles: list[str]) -> list[str]: ...
+    async def spawn(
+        self, *, profile: str, group: str, handle: str | None = None
+    ) -> str: ...
+    async def broadcast(
+        self,
+        group: str,
+        *,
+        sender: str,
+        objective: str,
+        output_format: str,
+        tool_guidance: str,
+        boundaries: str,
+    ) -> str: ...
+    async def wait_all(
+        self, group: str, *, timeout: float = 600.0, reducer: str = "concat"
+    ): ...
+    async def wait_any(
+        self, group: str, *, timeout: float = 600.0, cancel_losers: bool = True
+    ): ...
+    async def spawn_mixed(self, *, group: str, profiles: list[str]) -> list[str]: ...
     async def status(self, group: str) -> dict: ...
     async def dissolve(self, group: str) -> dict: ...
     async def rename(self, old: str, new: str) -> dict: ...
-    async def move_member(self, handle: str, *, from_group: str,
-                          to_group: str) -> dict: ...
+    async def move_member(
+        self, handle: str, *, from_group: str, to_group: str
+    ) -> dict: ...
 
 
 @runtime_checkable
@@ -67,53 +77,63 @@ class AppBridge(Protocol):
     check is structural — the attributes just need to exist.
     """
 
-    queue_manager: object        # QueueManager
-    inbox_router: object         # InboxRouter
-    monitor_manager: object      # MonitorManager
-    reminder_service: object     # ReminderService
-    loop_service: object         # LoopService
-    canvas_manager: object       # CanvasManager
-    terminal_manager: object     # TerminalManager
-    groups: object               # GroupsBridge
-    locks: object                # _LocksBridge
-    remotes: object              # dict[str, RemoteSpec]; empty when none configured
-    scheduler: object            # Scheduler | None
-    state_root: object           # Path — workspace root
+    queue_manager: object  # QueueManager
+    inbox_router: object  # InboxRouter
+    monitor_manager: object  # MonitorManager
+    reminder_service: object  # ReminderService
+    loop_service: object  # LoopService
+    canvas_manager: object  # CanvasManager
+    terminal_manager: object  # TerminalManager
+    groups: object  # GroupsBridge
+    locks: object  # _LocksBridge
+    remotes: object  # dict[str, RemoteSpec]; empty when none configured
+    scheduler: object  # Scheduler | None
+    state_root: object  # Path — workspace root
     # AegisRoots — where this instance resolves .aegis.yaml, state and the
     # harness cwd. The config MCP tools bind it once in build_server rather
     # than walking up from the process cwd at call time, so an implementor
     # without it breaks every config tool on that bridge.
-    roots: object                # AegisRoots
-    workflow_registry: object    # has .get(name) -> WorkflowFn | None
+    roots: object  # AegisRoots
+    workflow_registry: object  # has .get(name) -> WorkflowFn | None
 
     def inline_schedule_names(self) -> set[str]: ...
 
     def list_sessions(self) -> list[SessionInfo]: ...
     def plan_state(self, handle: str): ...
     def list_agents(self) -> list[str]: ...
-    async def handoff(self, from_handle: str, target_handle: str,
-                      context: str) -> str: ...
-    async def spawn(self, profile: str, *,
-                    handle: str | None = None,
-                    opening_prompt: str | None = None,
-                    spawned_by: str | None = None,
-                    model: str | None = None,
-                    effort: str | None = None,
-                    prompt: str | None = None,
-                    host: str | None = None,
-                    cwd: str | None = None) -> str: ...
-    async def fork(self, target: str, *,
-                   prompt: str | None = None,
-                   slug: str | None = None,
-                   model: str | None = None,
-                   effort: str | None = None,
-                   forked_by: str | None = None) -> str:
+    async def handoff(
+        self, from_handle: str, target_handle: str, context: str
+    ) -> str: ...
+    async def spawn(
+        self,
+        profile: str,
+        *,
+        handle: str | None = None,
+        opening_prompt: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> str: ...
+    async def fork(
+        self,
+        target: str,
+        *,
+        prompt: str | None = None,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        forked_by: str | None = None,
+    ) -> str:
         """Branch ``target``'s conversation into a new session.
 
         Raises ValueError listing every refusal reason at once — no
         session id yet, driver cannot fork, or the target is mid-turn.
         """
         ...
+
     async def recap(self, handle: str, *, session_scope: bool = True):
         """Where this session stands, in one call. See ``aegis.recap``."""
         ...
@@ -131,8 +151,9 @@ class AppBridge(Protocol):
         """
         ...
 
-    async def peer_ask(self, from_handle: str, target: str, prompt: str,
-                       *, cc: bool = False):
+    async def peer_ask(
+        self, from_handle: str, target: str, prompt: str, *, cc: bool = False
+    ):
         """Ask an **idle** peer a question, from where the operator stands.
 
         The guard reads the target and never the source: asking an idle
@@ -152,11 +173,11 @@ class AppBridge(Protocol):
         that deliver their own message immediately after pass ``drain=False``
         so both go out together."""
         ...
-    async def rename_handle(self, old: str, new: str,
-                            title: str | None = None, *,
-                            by: str = "agent") -> dict: ...
-    async def set_title(self, handle: str, title: str, *,
-                        source: str) -> dict: ...
+
+    async def rename_handle(
+        self, old: str, new: str, title: str | None = None, *, by: str = "agent"
+    ) -> dict: ...
+    async def set_title(self, handle: str, title: str, *, source: str) -> dict: ...
 
     def register_agent(self, slug: str, agent: object) -> None:
         """Add a freshly-validated Agent to the live agent map. Idempotent

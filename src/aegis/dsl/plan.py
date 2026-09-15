@@ -53,8 +53,7 @@ def _visit(node, plan: PlanPreview, *, depth: int) -> int:
         plan.is_upper_bound = True
         return _visit(node.body, plan, depth=depth + 1)
     if t == "loop":
-        plan.lines.append(
-            f"{indent}- loop({node.id}) x{node.max_rounds}")
+        plan.lines.append(f"{indent}- loop({node.id}) x{node.max_rounds}")
         plan.is_upper_bound = True
         # snapshot body count without double-counting during recursion
         before = plan.projected_agents

@@ -1,5 +1,6 @@
 """`!command` shell escape: run a command locally and format its result
 for injection into the agent as a user message."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,14 +9,14 @@ from pathlib import Path
 MAX_OUTPUT = 20_000  # cap injected output; keep the tail (most recent)
 
 
-async def run_shell_escape(command: str, cwd: Path,
-                           timeout: float = 60.0) -> str:
+async def run_shell_escape(command: str, cwd: Path, timeout: float = 60.0) -> str:
     """Run *command* through the shell in *cwd*; return a formatted block
     (`$ command` + combined stdout/stderr + a non-zero exit note) suitable
     for delivery as a user message."""
     try:
         proc = await asyncio.create_subprocess_shell(
-            command, cwd=str(cwd),
+            command,
+            cwd=str(cwd),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )

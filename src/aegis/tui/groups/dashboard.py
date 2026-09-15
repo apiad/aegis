@@ -4,6 +4,7 @@ Three panels stacked: Members, Current broadcast, Recent broadcasts.
 Pure render — reads from a snapshot dataclass populated by the
 GroupTabState observer.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -41,10 +42,13 @@ def state_glyph(s: str) -> str:
 
 
 def render_dashboard(snap: DashboardSnapshot) -> str:
-    members = "\n".join(
-        f"  {state_glyph(m.state)} {m.handle:<18} {m.state:<8} · {m.detail}"
-        for m in snap.members
-    ) or "  (no members)"
+    members = (
+        "\n".join(
+            f"  {state_glyph(m.state)} {m.handle:<18} {m.state:<8} · {m.detail}"
+            for m in snap.members
+        )
+        or "  (no members)"
+    )
     if snap.current:
         c = snap.current
         current = dedent(f"""\
@@ -54,10 +58,13 @@ def render_dashboard(snap: DashboardSnapshot) -> str:
         """).rstrip()
     else:
         current = "Current broadcast\n  (no broadcast in flight)"
-    recent = "\n".join(
-        f"  {r.id} {r.status} {r.started}  {r.mode:<9} {r.summary}"
-        for r in snap.recent
-    ) or "  (no broadcasts yet)"
+    recent = (
+        "\n".join(
+            f"  {r.id} {r.status} {r.started}  {r.mode:<9} {r.summary}"
+            for r in snap.recent
+        )
+        or "  (no broadcasts yet)"
+    )
     return (
         f"▣ {snap.name} — {len(snap.members)} members\n\n"
         f"Members\n{members}\n\n"

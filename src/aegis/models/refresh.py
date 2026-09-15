@@ -11,6 +11,7 @@ NEXT process boot. This is intentional: pricing-sensitive code already
 runs against a valid registry, so there's no value in racing the fetch
 against the first lookup.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,8 +28,9 @@ import aegis.models as _models_mod
 
 _LOG = logging.getLogger("aegis.models.refresh")
 
-DEFAULT_URL = ("https://raw.githubusercontent.com/apiad/aegis/main/"
-               "src/aegis/data/models.yaml")
+DEFAULT_URL = (
+    "https://raw.githubusercontent.com/apiad/aegis/main/src/aegis/data/models.yaml"
+)
 TTL_SECONDS = 24 * 60 * 60  # 24h
 HTTP_TIMEOUT = 5.0
 
@@ -47,14 +49,14 @@ def _is_stale(path: Path, ttl_seconds: int = TTL_SECONDS) -> bool:
 def _fetch_and_write(url: str, dest: Path) -> None:
     """Run in a background thread. Best-effort: log on failure, never raise."""
     try:
-        r = httpx.get(url, timeout=HTTP_TIMEOUT,
-                       follow_redirects=True)
+        r = httpx.get(url, timeout=HTTP_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
         body = r.text
         # Parse-validate before persisting so we never corrupt the cache
         # with a 404/HTML body or a partial download.
         from io import StringIO
         from ruamel.yaml import YAML
+
         parsed = YAML(typ="safe").load(StringIO(body))
         if not isinstance(parsed, dict) or "providers" not in parsed:
             raise ValueError("upstream models.yaml: missing 'providers'")
@@ -73,8 +75,7 @@ def _fetch_and_write(url: str, dest: Path) -> None:
         _LOG.debug("models.yaml refresh failed: %s", e)
 
 
-def maybe_refresh(*, url: str = DEFAULT_URL,
-                  ttl_seconds: int = TTL_SECONDS) -> bool:
+def maybe_refresh(*, url: str = DEFAULT_URL, ttl_seconds: int = TTL_SECONDS) -> bool:
     """Spawn a background thread to refresh ~/.cache/aegis/models.yaml
     if it's missing or stale. Returns True iff a fetch was spawned.
 
@@ -92,8 +93,11 @@ def maybe_refresh(*, url: str = DEFAULT_URL,
     # Bump TTL so back-to-back boots within the same window don't refetch
     # if the previous thread is still in flight.
     t = threading.Thread(
-        target=_fetch_and_write, args=(url, dest),
-        name="aegis-models-refresh", daemon=True)
+        target=_fetch_and_write,
+        args=(url, dest),
+        name="aegis-models-refresh",
+        daemon=True,
+    )
     t.start()
     return True
 

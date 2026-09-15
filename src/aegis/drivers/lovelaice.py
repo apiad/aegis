@@ -8,6 +8,7 @@ models; set ``api_key_file`` for a direct-API key.
 
 Spec: ``docs/superpowers/specs/2026-07-10-lovelaice-native-acp-agent-design.md``
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,8 +20,9 @@ from aegis.drivers.acp import AcpDriver
 class LovelaiceDriver(AcpDriver):
     BASE_CMD = ["lovelaice-acp"]
 
-    def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str, handle: str) -> list[str]:
+    def build_argv(
+        self, agent: Agent, cwd: str, mcp_url: str, handle: str
+    ) -> list[str]:
         return list(self.BASE_CMD)
 
     def extra_env(self, agent: Agent) -> dict[str, str]:

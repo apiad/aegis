@@ -4,6 +4,7 @@ Also hosts shared read-side helpers (list/show/remove/logs payload
 builders) reused by both the HTTP plane and the MCP server, so the two
 layers stay 1:1 without one importing from the other.
 """
+
 from __future__ import annotations
 
 import io
@@ -27,6 +28,7 @@ class RemoveResult:
     ``source`` is set only when ``status == "wrong_source"`` (the actual
     classification, e.g. ``"inline"`` or ``"overlay"``).
     """
+
     status: str
     source: str | None = None
 
@@ -43,8 +45,9 @@ def validate_spec(spec: dict, *, workflow_registry) -> None:
 
     if "cron" in spec:
         try:
-            _validate_cron(spec["cron"], spec.get("timezone", "UTC"),
-                           datetime.now(timezone.utc))
+            _validate_cron(
+                spec["cron"], spec.get("timezone", "UTC"), datetime.now(timezone.utc)
+            )
         except ValueError as e:
             raise ValueError(f"invalid cron: {e}")
     elif "fire_at" in spec:
@@ -58,15 +61,17 @@ def validate_spec(spec: dict, *, workflow_registry) -> None:
     if workflow == "enqueue" and spec.get("args", {}).get("callback"):
         raise ValueError(
             "callback=true on a scheduled remote enqueue is not allowed "
-            "(scheduler has no inbox to deliver to)")
+            "(scheduler has no inbox to deliver to)"
+        )
 
     lc = spec.get("lifecycle", "forever")
     if lc not in ("forever", "once") and not isinstance(lc, dict):
         raise ValueError(f"invalid lifecycle: {lc!r}")
 
 
-def classify_source(file_path: Path | None, inline_names: set[str],
-                    name: str) -> tuple[str, str | None, str | None]:
+def classify_source(
+    file_path: Path | None, inline_names: set[str], name: str
+) -> tuple[str, str | None, str | None]:
     """Return (source, pushed_from, pushed_at) for a schedule.
 
     source ∈ {"inline", "overlay", "pushed"}.
@@ -81,20 +86,19 @@ def classify_source(file_path: Path | None, inline_names: set[str],
     pa: str | None = None
     for line in first_two:
         if line.startswith("# pushed_from:"):
-            rest = line[len("# pushed_from:"):].strip()
+            rest = line[len("# pushed_from:") :].strip()
             if " at " in rest:
                 pf, pa = rest.rsplit(" at ", 1)
             else:
                 pf = rest
         elif line.startswith("# pushed_at:"):
-            pa = line[len("# pushed_at:"):].strip()
+            pa = line[len("# pushed_at:") :].strip()
     if pf is not None:
         return ("pushed", pf.strip(), (pa or "").strip())
     return ("overlay", None, None)
 
 
-def write_atomic(state_root: Path, name: str, spec: dict,
-                 pushed_from: str) -> Path:
+def write_atomic(state_root: Path, name: str, spec: dict, pushed_from: str) -> Path:
     """Serialize spec to YAML with a provenance header; atomic rename
     into state_root/.aegis/schedules/<name>.yaml."""
     dest_dir = state_root / ".aegis" / "schedules"
@@ -112,11 +116,11 @@ def write_atomic(state_root: Path, name: str, spec: dict,
     serialized = buf.getvalue()
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    body = (f"# pushed_from: {pushed_from} at {now}\n"
-            f"{serialized}")
+    body = f"# pushed_from: {pushed_from} at {now}\n{serialized}"
 
     tmp = tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=dest_dir, delete=False, suffix=".tmp")
+        mode="w", encoding="utf-8", dir=dest_dir, delete=False, suffix=".tmp"
+    )
     try:
         tmp.write(body)
         tmp.flush()
@@ -127,6 +131,7 @@ def write_atomic(state_root: Path, name: str, spec: dict,
 
 
 # ── shared read-side helpers (HTTP plane + MCP server) ────────────────
+
 
 def _schedule_file_path(state_root: Path, name: str) -> Path:
     return state_root / ".aegis" / "schedules" / f"{name}.yaml"
@@ -141,8 +146,7 @@ def _iso(dt):
         return dt
 
 
-def list_payload(scheduler, state_root: Path,
-                 inline_names: set[str]) -> dict:
+def list_payload(scheduler, state_root: Path, inline_names: set[str]) -> dict:
     """Build the `{schedules: [...]}` payload — same shape as
     `GET /remote/v1/schedule`."""
     if scheduler is None:
@@ -150,29 +154,33 @@ def list_payload(scheduler, state_root: Path,
     rows = []
     for entry in scheduler.snapshot():
         source, _, _ = classify_source(
-            _schedule_file_path(state_root, entry.name), inline_names,
-            entry.name)
-        rows.append({
-            "name": entry.name,
-            "source": source,
-            "next_fire": _iso(entry.next_fire),
-            "fire_count": entry.fire_count,
-            "in_flight": entry.in_flight,
-            "enabled": entry.enabled,
-            "workflow": entry.spec.get("workflow"),
-            "cron": entry.spec.get("cron"),
-        })
+            _schedule_file_path(state_root, entry.name), inline_names, entry.name
+        )
+        rows.append(
+            {
+                "name": entry.name,
+                "source": source,
+                "next_fire": _iso(entry.next_fire),
+                "fire_count": entry.fire_count,
+                "in_flight": entry.in_flight,
+                "enabled": entry.enabled,
+                "workflow": entry.spec.get("workflow"),
+                "cron": entry.spec.get("cron"),
+            }
+        )
     return {"schedules": rows}
 
 
-def show_payload(scheduler, state_root: Path, inline_names: set[str],
-                 name: str) -> dict | None:
+def show_payload(
+    scheduler, state_root: Path, inline_names: set[str], name: str
+) -> dict | None:
     """Build the schedule-show payload; return None if unknown."""
     entry = scheduler.get(name) if scheduler is not None else None
     if entry is None:
         return None
     source, pf, pa = classify_source(
-        _schedule_file_path(state_root, name), inline_names, name)
+        _schedule_file_path(state_root, name), inline_names, name
+    )
     return {
         "name": name,
         "source": source,
@@ -189,8 +197,9 @@ def show_payload(scheduler, state_root: Path, inline_names: set[str],
     }
 
 
-def remove_schedule(scheduler, state_root: Path, inline_names: set[str],
-                    name: str) -> RemoveResult:
+def remove_schedule(
+    scheduler, state_root: Path, inline_names: set[str], name: str
+) -> RemoveResult:
     """Attempt to remove a pushed schedule."""
     entry = scheduler.get(name) if scheduler is not None else None
     if entry is None:
@@ -205,8 +214,7 @@ def remove_schedule(scheduler, state_root: Path, inline_names: set[str],
 
 def logs_payload(state_root: Path, name: str, *, tail: int = 50) -> dict:
     """Tail the schedule's JSONL log; empty list when the file is missing."""
-    log_path = (state_root / ".aegis" / "state" / "schedules"
-                / f"{name}.jsonl")
+    log_path = state_root / ".aegis" / "state" / "schedules" / f"{name}.jsonl"
     if not log_path.exists():
         return {"records": []}
     lines = log_path.read_text().splitlines()[-tail:]

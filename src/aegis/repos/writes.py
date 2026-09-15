@@ -10,6 +10,7 @@ as complete; a `sed -i` will not register its repo. Under-reporting is the
 right failure: a row that appeared because a heuristic misread a `>` inside
 a quoted string would make the whole section untrusted.
 """
+
 from __future__ import annotations
 
 # Claude Code's write tools, by name.
@@ -23,8 +24,12 @@ _ACP_WRITE_KINDS = {"edit", "delete", "move"}
 _PATH_KEYS = ("file_path", "notebook_path", "path", "abs_path")
 
 
-def write_target(name: str, raw_input: dict | None = None,
-                 locations: tuple = (), kind: str | None = None) -> str | None:
+def write_target(
+    name: str,
+    raw_input: dict | None = None,
+    locations: tuple = (),
+    kind: str | None = None,
+) -> str | None:
     """The path this tool call wrote to, or ``None`` if it wrote nothing.
 
     ``None`` for every read, search, and shell call — including the ones
@@ -42,8 +47,11 @@ def write_target(name: str, raw_input: dict | None = None,
 
     # ACP edits carry the path as a location rather than in raw_input.
     if locations:
-        path = locations[0][0] if isinstance(locations[0], tuple) \
+        path = (
+            locations[0][0]
+            if isinstance(locations[0], tuple)
             else getattr(locations[0], "path", "")
+        )
         if path:
             return str(path)
     return None

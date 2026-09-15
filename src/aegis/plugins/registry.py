@@ -1,4 +1,5 @@
 """Plugin registry URL parsing + resolution + fetch."""
+
 from __future__ import annotations
 
 import contextlib
@@ -13,11 +14,11 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class RegistryURL:
-    scheme: str               # "gh" or "file"
-    owner:  str = ""          # only for gh:
-    repo:   str = ""          # only for gh:
-    ref:    str = "main"      # only for gh:
-    path:   str = ""          # subpath (gh:) or filesystem path (file:)
+    scheme: str  # "gh" or "file"
+    owner: str = ""  # only for gh:
+    repo: str = ""  # only for gh:
+    ref: str = "main"  # only for gh:
+    path: str = ""  # subpath (gh:) or filesystem path (file:)
 
 
 _GH_RE = re.compile(
@@ -39,10 +40,9 @@ def parse_registry_url(url: str) -> RegistryURL:
             path=m["path"] if m["path"] is not None else "plugins/",
         )
     if url.startswith("file://"):
-        return RegistryURL(scheme="file", path=url[len("file://"):])
+        return RegistryURL(scheme="file", path=url[len("file://") :])
     raise ValueError(
-        f"unsupported registry URL {url!r}: "
-        "must start with gh: or file://"
+        f"unsupported registry URL {url!r}: must start with gh: or file://"
     )
 
 
@@ -75,25 +75,22 @@ def fetch_plugin(url: RegistryURL, *, plugin_name: str) -> Iterator[Path]:
 def _fetch_gh(url: RegistryURL, *, plugin_name: str, into: Path) -> Path:
     """git archive --remote=<repo> <ref> <path>/<plugin>/ | tar -x -C <tmp>."""
     if shutil.which("git") is None:
-        raise RuntimeError(
-            "git not available on PATH; needed for gh: registry fetch"
-        )
+        raise RuntimeError("git not available on PATH; needed for gh: registry fetch")
     repo_url = f"https://github.com/{url.owner}/{url.repo}.git"
     subpath = f"{url.path.rstrip('/')}/{plugin_name}"
-    archive_cmd = ["git", "archive", f"--remote={repo_url}",
-                   url.ref, subpath]
+    archive_cmd = ["git", "archive", f"--remote={repo_url}", url.ref, subpath]
     archive = subprocess.run(archive_cmd, capture_output=True, check=False)
     if archive.returncode != 0 or not archive.stdout:
         # Fallback: shallow clone (GitHub doesn't serve archives over HTTPS).
         return _fetch_gh_clone(url, plugin_name=plugin_name, into=into)
     subprocess.run(
-        ["tar", "-x", "-C", str(into)], input=archive.stdout, check=True,
+        ["tar", "-x", "-C", str(into)],
+        input=archive.stdout,
+        check=True,
     )
     final = into / subpath
     if not final.exists():
-        raise RuntimeError(
-            f"git archive succeeded but {subpath} not in archive"
-        )
+        raise RuntimeError(f"git archive succeeded but {subpath} not in archive")
     return final
 
 
@@ -101,15 +98,21 @@ def _fetch_gh_clone(url: RegistryURL, *, plugin_name: str, into: Path) -> Path:
     """Fallback: shallow clone the repo, then read the plugin folder out."""
     clone_dir = into / "_clone"
     subprocess.run(
-        ["git", "clone", "--depth=1", f"--branch={url.ref}",
-         f"https://github.com/{url.owner}/{url.repo}.git", str(clone_dir)],
-        check=True, capture_output=True,
+        [
+            "git",
+            "clone",
+            "--depth=1",
+            f"--branch={url.ref}",
+            f"https://github.com/{url.owner}/{url.repo}.git",
+            str(clone_dir),
+        ],
+        check=True,
+        capture_output=True,
     )
     src = clone_dir / url.path.rstrip("/") / plugin_name
     if not src.exists():
         raise RuntimeError(
-            f"plugin {plugin_name!r} not found in {url.owner}/{url.repo}"
-            f" at {url.path}"
+            f"plugin {plugin_name!r} not found in {url.owner}/{url.repo} at {url.path}"
         )
     dest = into / plugin_name
     shutil.copytree(src, dest)

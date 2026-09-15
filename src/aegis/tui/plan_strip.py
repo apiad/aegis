@@ -4,6 +4,7 @@ Sits above the status bar alongside QueueStrip and MonitorStrip, hidden
 while the session has no plan. The spinner ticks only while the session is
 mid-turn, which is the same condition under which working time accrues.
 """
+
 from __future__ import annotations
 
 from textual.widgets import Static
@@ -67,7 +68,12 @@ class PlanStrip(Static):
         # `or None` matters: a widget that has not been laid out yet reports
         # width 0, and a 0-column budget would truncate the label away
         # entirely. Unbounded until the first resize is the safe fallback.
-        self.update(render_plan_strip(
-            self._state, self._palette,
-            working=self._working, frame=self._frame,
-            width=self.size.width or None))
+        self.update(
+            render_plan_strip(
+                self._state,
+                self._palette,
+                working=self._working,
+                frame=self._frame,
+                width=self.size.width or None,
+            )
+        )

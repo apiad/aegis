@@ -1,4 +1,5 @@
 """Run scenarios × repeats against a target and write the run directory."""
+
 from __future__ import annotations
 
 import contextlib
@@ -45,12 +46,14 @@ def runs_dir() -> Path:
 def history_dir() -> Path:
     """``bench/history/<host>`` in the checkout this bench is imported from."""
     import aegis
+
     root = Path(aegis.__file__).resolve().parents[2]
     pyproject = root / "pyproject.toml"
-    if not (pyproject.exists()
-            and 'name = "aegis-harness"' in pyproject.read_text()):
-        raise BenchError("--save needs aegis installed editable from its "
-                         "checkout; bench/history lives in the repo")
+    if not (pyproject.exists() and 'name = "aegis-harness"' in pyproject.read_text()):
+        raise BenchError(
+            "--save needs aegis installed editable from its "
+            "checkout; bench/history lives in the repo"
+        )
     return root / "bench" / "history" / socket.gethostname()
 
 
@@ -65,31 +68,51 @@ def _git(aegis_file: str) -> tuple[str, bool]:
     root = Path(aegis_file).resolve().parents[2]
     if not (root / ".git").exists():
         return "", False
-    sha = subprocess.run(["git", "-C", str(root), "rev-parse", "--short",
-                          "HEAD"], capture_output=True, text=True)
-    dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain",
-                            "--", "src"], capture_output=True, text=True)
+    sha = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    dirty = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--", "src"],
+        capture_output=True,
+        text=True,
+    )
     return sha.stdout.strip(), bool(dirty.stdout.strip())
 
 
 def fingerprint(target: Target, opts: RunOptions) -> dict:
     import aegis.version
-    cpu = next((line.split(":", 1)[1].strip()
-                for line in _read("/proc/cpuinfo").splitlines()
-                if line.startswith("model name")), platform.processor())
+
+    cpu = next(
+        (
+            line.split(":", 1)[1].strip()
+            for line in _read("/proc/cpuinfo").splitlines()
+            if line.startswith("model name")
+        ),
+        platform.processor(),
+    )
     sha, dirty = _git(target.aegis_file)
     return {
-        "host": socket.gethostname(), "cpu": cpu, "cores": os.cpu_count(),
-        "governor": _read(
-            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
+        "host": socket.gethostname(),
+        "cpu": cpu,
+        "cores": os.cpu_count(),
+        "governor": _read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
         "loadavg": list(loadavg()),
         "cpu_busy_pct_start": sample_busy_pct(1.0),
-        "size": f"{opts.cols}x{opts.rows}", "speed": opts.speed,
-        "sabotage_ms": opts.sabotage_ms, "target": target.label,
-        "topology": target.topology, "aegis_version": target.version,
-        "aegis_build": target.build, "aegis_file": target.aegis_file,
-        "git_sha": sha, "git_dirty": dirty, "python": target.python_version,
-        "textual": target.textual, "rich": target.rich,
+        "size": f"{opts.cols}x{opts.rows}",
+        "speed": opts.speed,
+        "sabotage_ms": opts.sabotage_ms,
+        "target": target.label,
+        "topology": target.topology,
+        "aegis_version": target.version,
+        "aegis_build": target.build,
+        "aegis_file": target.aegis_file,
+        "git_sha": sha,
+        "git_dirty": dirty,
+        "python": target.python_version,
+        "textual": target.textual,
+        "rich": target.rich,
         "bench_build": aegis.version.BUILD,
         "created": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
     }
@@ -115,37 +138,45 @@ def run(opts: RunOptions, console: Console) -> tuple[dict, Path]:
     run_id = f"{stamp}-{target.label.replace('/', '_')}"
     run_dir = (opts.out or runs_dir()) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    console.print(f"[bold]aegis bench[/] {run_id}  target {target.build} "
-                  f"({target.topology})  -> {run_dir}")
+    console.print(
+        f"[bold]aegis bench[/] {run_id}  target {target.build} "
+        f"({target.topology})  -> {run_dir}"
+    )
     busy = fp["cpu_busy_pct_start"]
     if busy is not None and busy > BUSY_CPU_PCT:
-        console.print(f"[yellow]warning:[/] the host is busy ({busy:.0f}% "
-                      f"CPU over the last second, load "
-                      f"{fp['loadavg'][0]:.1f} on {fp['cores']} cores); "
-                      "these timings will not compare with a quiet run")
+        console.print(
+            f"[yellow]warning:[/] the host is busy ({busy:.0f}% "
+            f"CPU over the last second, load "
+            f"{fp['loadavg'][0]:.1f} on {fp['cores']} cores); "
+            "these timings will not compare with a quiet run"
+        )
     results: dict[str, dict] = {}
     for name in opts.scenarios:
         sc = SCENARIOS[name]
         res: dict = {"status": "ok", "reason": "", "repeats": [], "gates": []}
         results[name] = res
         if target.topology not in sc.topologies:
-            res.update(status="skipped",
-                       reason=f"not applicable to {target.topology}")
+            res.update(status="skipped", reason=f"not applicable to {target.topology}")
             console.print(f"  {name}: skipped ({res['reason']})")
             continue
         for r in range(opts.repeat):
             rep_dir = run_dir / name / f"r{r}"
-            ctx = ScenarioContext(rep_dir, target, cols=opts.cols,
-                                  rows=opts.rows, speed=opts.speed,
-                                  sabotage_ms=opts.sabotage_ms,
-                                  profile=opts.profile, keep=opts.keep)
+            ctx = ScenarioContext(
+                rep_dir,
+                target,
+                cols=opts.cols,
+                rows=opts.rows,
+                speed=opts.speed,
+                sabotage_ms=opts.sabotage_ms,
+                profile=opts.profile,
+                keep=opts.keep,
+            )
             try:
                 sc.fn(ctx)
             except ScenarioSkipped as skip:
                 res.update(status="skipped", reason=str(skip))
             except Exception as exc:  # noqa: BLE001 — a run reports, never crashes
-                res.update(status="failed",
-                           reason=f"{type(exc).__name__}: {exc}")
+                res.update(status="failed", reason=f"{type(exc).__name__}: {exc}")
                 (rep_dir / "error.txt").write_text(traceback.format_exc())
                 with contextlib.suppress(Exception):
                     ctx.dump_screens()
@@ -154,11 +185,11 @@ def run(opts: RunOptions, console: Console) -> tuple[dict, Path]:
                     ctx.close()
                 except Exception as exc:  # noqa: BLE001
                     if res["status"] == "ok":
-                        res.update(status="failed",
-                                   reason=f"teardown: {exc}")
+                        res.update(status="failed", reason=f"teardown: {exc}")
             if res["status"] != "ok":
-                console.print(f"  {name} r{r}: {res['status']} "
-                              f"({_one_line(res['reason'])})")
+                console.print(
+                    f"  {name} r{r}: {res['status']} ({_one_line(res['reason'])})"
+                )
                 break
             metrics, gates = repeat_metrics(rep_dir)
             res["repeats"].append(metrics)

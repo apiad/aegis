@@ -9,6 +9,7 @@ Also handles plugin auto-import from `.aegis/plugins/*.py` and
 opt-in built-in workflow registration via the top-level
 `workflows:` list.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -45,6 +46,7 @@ class QueueSpec:
     raw budget entries (parsed lazily by `load_queues` so the YAML
     layer does not depend on `aegis.budget`).
     """
+
     agent: str
     max_parallel: int = 1
     budgets: list[dict[str, Any]] | None = None
@@ -53,6 +55,7 @@ class QueueSpec:
 @dataclass
 class AegisConfig:
     """Loaded YAML config (in-memory)."""
+
     default_agent: str | None = None
     agents: dict[str, Agent] = field(default_factory=dict)
     harnesses: dict[str, HarnessRegistration] = field(default_factory=dict)
@@ -95,7 +98,8 @@ def _harness_from_dict(name: str, d: dict[str, Any]) -> HarnessRegistration:
     if driver not in _VALID_DRIVERS:
         raise ConfigError(
             f"harness {name!r}: unknown driver {driver!r}; "
-            f"known: {sorted(_VALID_DRIVERS)}")
+            f"known: {sorted(_VALID_DRIVERS)}"
+        )
     pd = d.get("permission_default")
     return HarnessRegistration(
         name=name,
@@ -118,7 +122,8 @@ def _host_from_dict(name: str, d: dict[str, Any]) -> HostSpec:
     if name == "local":
         raise ConfigError(
             "hosts: 'local' is implicit (the machine aegis runs on) and "
-            "cannot be declared.")
+            "cannot be declared."
+        )
     for key in ("ssh", "cwd"):
         if not d.get(key):
             raise ConfigError(f"hosts[{name!r}]: {key!r} is required.")
@@ -133,8 +138,7 @@ def _host_from_dict(name: str, d: dict[str, Any]) -> HostSpec:
     )
 
 
-_SECTIONS = ("agents", "harnesses", "queues", "schedules", "remotes",
-             "hosts")
+_SECTIONS = ("agents", "harnesses", "queues", "schedules", "remotes", "hosts")
 
 
 def _collect_overlays(root: Path) -> dict[str, dict[str, Any]]:
@@ -154,8 +158,7 @@ def _collect_overlays(root: Path) -> dict[str, dict[str, Any]]:
             name = path.stem
             body = yaml.load(path.read_text()) or {}
             if not isinstance(body, dict):
-                raise ConfigError(
-                    f"overlay {path} must be a mapping at top level")
+                raise ConfigError(f"overlay {path} must be a mapping at top level")
             out[section][name] = body
     return out
 
@@ -167,7 +170,8 @@ def _merge_or_die(section: str, inline: dict, overlay: dict) -> dict:
         raise ConfigError(
             f"{section}: keys appear in both .aegis.yaml and "
             f".aegis/{section}/*.yaml: {conflict}. "
-            f"One source of truth per entry.")
+            f"One source of truth per entry."
+        )
     return {**inline, **overlay}
 
 
@@ -183,8 +187,7 @@ def load_config(root: Path) -> AegisConfig:
     if base.is_file():
         raw = yaml.load(base.read_text()) or {}
         if not isinstance(raw, dict):
-            raise ConfigError(
-                f"{base}: top level must be a mapping")
+            raise ConfigError(f"{base}: top level must be a mapping")
 
     inline: dict[str, dict[str, Any]] = {
         "agents": dict(raw.get("agents") or {}),
@@ -197,19 +200,18 @@ def load_config(root: Path) -> AegisConfig:
     overlay = _collect_overlays(root)
     merged: dict[str, dict[str, Any]] = {}
     for section in _SECTIONS:
-        merged[section] = _merge_or_die(
-            section, inline[section], overlay[section])
+        merged[section] = _merge_or_die(section, inline[section], overlay[section])
 
     explicit_harnesses = {
-        k: _harness_from_dict(k, dict(v))
-        for k, v in merged["harnesses"].items()}
+        k: _harness_from_dict(k, dict(v)) for k, v in merged["harnesses"].items()
+    }
     harnesses = merge_harnesses(explicit_harnesses)
-    agents = {k: resolve_agent_entry(dict(v), harnesses)
-              for k, v in merged["agents"].items()}
+    agents = {
+        k: resolve_agent_entry(dict(v), harnesses) for k, v in merged["agents"].items()
+    }
     queues = {k: QueueSpec(**v) for k, v in merged["queues"].items()}
     remotes = {k: RemoteSpec(**v) for k, v in merged["remotes"].items()}
-    hosts = {k: _host_from_dict(k, dict(v))
-             for k, v in merged["hosts"].items()}
+    hosts = {k: _host_from_dict(k, dict(v)) for k, v in merged["hosts"].items()}
 
     rp_raw = raw.get("remote_plane")
     remote_plane = RemotePlaneSpec(**rp_raw) if rp_raw else None
@@ -224,20 +226,22 @@ def load_config(root: Path) -> AegisConfig:
         if default_agent is None:
             raise ConfigError(
                 f"{base}: `default_agent` is required when `agents:` "
-                f"is set (known: {sorted(agents)}).")
+                f"is set (known: {sorted(agents)})."
+            )
         if default_agent not in agents:
             raise ConfigError(
                 f"{base}: `default_agent`={default_agent!r} is not in "
-                f"`agents` (known: {sorted(agents)}).")
+                f"`agents` (known: {sorted(agents)})."
+            )
     if not agents and default_agent is not None:
-        raise ConfigError(
-            f"{base}: `default_agent` is set but no `agents:` declared.")
+        raise ConfigError(f"{base}: `default_agent` is set but no `agents:` declared.")
 
     text_generation = raw.get("text_generation")
     if text_generation is not None and text_generation not in agents:
         raise ConfigError(
             f"{base}: `text_generation`={text_generation!r} is not in "
-            f"`agents` (known: {sorted(agents)}).")
+            f"`agents` (known: {sorted(agents)})."
+        )
 
     # Validate queue.agent references + max_parallel sanity.
     for qname, qspec in queues.items():
@@ -245,11 +249,13 @@ def load_config(root: Path) -> AegisConfig:
             raise ConfigError(
                 f"{base}: queues[{qname!r}].agent={qspec.agent!r} does "
                 f"not reference a declared agent profile "
-                f"(known: {sorted(agents)}).")
+                f"(known: {sorted(agents)})."
+            )
         if not isinstance(qspec.max_parallel, int) or qspec.max_parallel < 1:
             raise ConfigError(
                 f"{base}: queues[{qname!r}].max_parallel must be an int "
-                f">= 1 (got {qspec.max_parallel!r}).")
+                f">= 1 (got {qspec.max_parallel!r})."
+            )
 
     # An agent profile may name a default execution host; it must exist.
     for aname, aprofile in agents.items():
@@ -257,7 +263,8 @@ def load_config(root: Path) -> AegisConfig:
         if h and h != "local" and h not in hosts:
             raise ConfigError(
                 f"{base}: agents[{aname!r}].host={h!r} does not reference "
-                f"a declared host (known: {sorted(hosts)} + 'local').")
+                f"a declared host (known: {sorted(hosts)} + 'local')."
+            )
 
     web = _build_web(raw.get("web"))
     voice = _build_voice(raw.get("voice"))
@@ -283,7 +290,8 @@ def load_config(root: Path) -> AegisConfig:
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
         dynamic_workflow_autoapprove_agents=int(
-            raw.get("dynamic_workflow_autoapprove_agents", 5)),
+            raw.get("dynamic_workflow_autoapprove_agents", 5)
+        ),
     )
 
 
@@ -343,12 +351,10 @@ def _resolve_groups(root: Path, inline: dict[str, Any]) -> dict[str, Any]:
         for path in sorted(folder.glob("*.yaml")):
             body = yaml.load(path.read_text()) or {}
             if not isinstance(body, dict):
-                raise ConfigError(
-                    f"overlay {path} must be a mapping at top level")
+                raise ConfigError(f"overlay {path} must be a mapping at top level")
             presets_overlay[path.stem] = body
 
-    presets = _merge_or_die("groups/presets", presets_inline,
-                            presets_overlay)
+    presets = _merge_or_die("groups/presets", presets_inline, presets_overlay)
     if not defaults and not presets:
         return {}
     return {"defaults": defaults, "presets": presets}
@@ -366,10 +372,9 @@ def import_plugins(cfg: AegisConfig) -> None:
         if not d.is_dir():
             continue
         for path in _iter_plugin_files(d):
-            mod_name = (
-                "aegis_plugin_"
-                + str(path.relative_to(d)).replace("/", "_").replace(".py", "")
-            )
+            mod_name = "aegis_plugin_" + str(path.relative_to(d)).replace(
+                "/", "_"
+            ).replace(".py", "")
             spec = importlib.util.spec_from_file_location(mod_name, path)
             if spec is None or spec.loader is None:
                 raise ConfigError(f"could not load plugin {path}")

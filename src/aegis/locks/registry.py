@@ -7,9 +7,9 @@ from aegis.queue.schema import new_ulid, now_iso
 
 
 class ClaimRegistry:
-    def __init__(self,
-                 live_handles: Callable[[], set[str]] | None = None,
-                 log=None) -> None:
+    def __init__(
+        self, live_handles: Callable[[], set[str]] | None = None, log=None
+    ) -> None:
         self._claims: dict[str, Claim] = {}
         self._live = live_handles or (lambda: set())
         self._log = log
@@ -22,17 +22,31 @@ class ClaimRegistry:
             if self._log is not None:
                 self._log.write(self._log.reaped(cid, c.handle, now_iso()))
 
-    def claim(self, handle: str, prefixes, files,
-              intent: str = "shared",
-              desc: str = "",
-              host: str = "local") -> tuple[Claim, bool, list[Claim]]:
+    def claim(
+        self,
+        handle: str,
+        prefixes,
+        files,
+        intent: str = "shared",
+        desc: str = "",
+        host: str = "local",
+    ) -> tuple[Claim, bool, list[Claim]]:
         self._prune_dead()
-        candidate = Claim(claim_id=new_ulid(), handle=handle,
-                          prefixes=frozenset(prefixes), files=frozenset(files),
-                          intent=intent, desc=desc, since=now_iso(),
-                          host=host)
-        overlaps = [c for c in self._claims.values()
-                    if c.handle != handle and claims_overlap(candidate, c)]
+        candidate = Claim(
+            claim_id=new_ulid(),
+            handle=handle,
+            prefixes=frozenset(prefixes),
+            files=frozenset(files),
+            intent=intent,
+            desc=desc,
+            since=now_iso(),
+            host=host,
+        )
+        overlaps = [
+            c
+            for c in self._claims.values()
+            if c.handle != handle and claims_overlap(candidate, c)
+        ]
         if intent == "exclusive":
             granted = len(overlaps) == 0
         else:  # shared
@@ -63,6 +77,7 @@ class ClaimRegistry:
         the stored claims directly (not via liveness), so it is correct even
         after the live-handle set has already flipped to ``new``."""
         from dataclasses import replace
+
         hit = [cid for cid, c in self._claims.items() if c.handle == old]
         for cid in hit:
             self._claims[cid] = replace(self._claims[cid], handle=new)

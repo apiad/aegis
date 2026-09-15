@@ -9,6 +9,7 @@ There is deliberately no replay buffer. A reattaching client is given a
 full frame by ``View.repaint()``, which is correct against a screen the
 client has never seen; replaying deltas against one is not.
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -47,8 +48,9 @@ class FrameSink:
                     from traceback import format_exc
 
                     from textual import log
+
                     log(format_exc())
             return
         self.frames.append(data)
         if len(self.frames) > self._cap:
-            del self.frames[:len(self.frames) - self._cap]
+            del self.frames[: len(self.frames) - self._cap]

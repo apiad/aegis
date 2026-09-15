@@ -7,6 +7,7 @@ onto the runtime's ``member_bus`` on every ``Result`` event. The
 "final assistant text of the turn" is the most recent ``AssistantText``
 observed before the ``Result`` — matches the queue-substrate convention.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,8 +27,9 @@ class GroupWiring:
     inbox: InboxRouter
     member_bus: asyncio.Queue
 
-    async def spawn(self, *, profile: str, group: str,
-                    handle: str | None = None) -> str:
+    async def spawn(
+        self, *, profile: str, group: str, handle: str | None = None
+    ) -> str:
         h = await self.session_manager.spawn(profile=profile, handle=handle)
         session = self.session_manager.get(h)
         self.registry.add_member(group, MemberRef(handle=h, profile=profile))
@@ -41,17 +43,16 @@ class GroupWiring:
                     last_text["text"] = ev.text
                 elif isinstance(ev, Result):
                     loop.call_soon_threadsafe(
-                        self.member_bus.put_nowait, (h, last_text["text"]))
+                        self.member_bus.put_nowait, (h, last_text["text"])
+                    )
 
             session.add_event_observer(_observe)
         return h
 
-    async def spawn_many(self, *, profile: str, n: int,
-                         group: str) -> list[str]:
+    async def spawn_many(self, *, profile: str, n: int, group: str) -> list[str]:
         if n < 1:
             raise ValueError("n must be >= 1")
-        return [await self.spawn(profile=profile, group=group)
-                for _ in range(n)]
+        return [await self.spawn(profile=profile, group=group) for _ in range(n)]
 
     async def spawn_group(self, name: str, profiles: list[str]) -> list[str]:
         if not profiles:

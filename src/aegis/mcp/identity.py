@@ -18,6 +18,7 @@ FastMCP's ``get_http_headers()`` strips ``authorization`` (and
 resolve to nothing at all — and "nothing at all" is exactly what this
 looked like before the feature, which is what makes it dangerous.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -77,8 +78,9 @@ def caller_token() -> str | None:
     """
     try:
         from fastmcp.server.dependencies import get_http_headers
+
         headers = get_http_headers() or {}
-    except Exception:      # noqa: BLE001 — identity is best-effort in v1
+    except Exception:  # noqa: BLE001 — identity is best-effort in v1
         return None
     for name, value in headers.items():
         if name.lower() == HEADER:
@@ -93,8 +95,9 @@ def resolve_caller(tokens: SessionTokens | None) -> str | None:
     return tokens.resolve(caller_token())
 
 
-def verified_handle(tokens: SessionTokens | None,
-                    claimed: str | None) -> tuple[str, bool]:
+def verified_handle(
+    tokens: SessionTokens | None, claimed: str | None
+) -> tuple[str, bool]:
     """``(handle, verified)`` for a call that also passed ``from_handle``.
 
     The token wins when it resolves — that is the whole point. Otherwise

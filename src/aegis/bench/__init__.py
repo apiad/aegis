@@ -2,6 +2,7 @@
 
 Spec: ``docs/superpowers/specs/2026-09-13-aegis-bench-design.md``.
 """
+
 from __future__ import annotations
 
 

@@ -9,6 +9,7 @@ the gathering, this decides. Every failing condition is reported, not
 just the first: an agent that has to call again for each new reason
 learns nothing about how long to wait.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,25 +19,27 @@ from dataclasses import dataclass
 class CloseFacts:
     exists: bool
     spawned_by: str | None
-    state: str                     # "ready" | "working" | "error"
-    monitors: int                  # live monitors it armed
-    reminders: int                 # pending future-time reminders
-    inbox_depth: int               # messages delivered but not yet consumed
-    worker_label: str | None       # "<queue>#<id>" while running a queue task
+    state: str  # "ready" | "working" | "error"
+    monitors: int  # live monitors it armed
+    reminders: int  # pending future-time reminders
+    inbox_depth: int  # messages delivered but not yet consumed
+    worker_label: str | None  # "<queue>#<id>" while running a queue task
     loop_armed: bool
-    claims: int                    # file claims it holds
+    claims: int  # file claims it holds
 
 
-def refuse_reasons(facts: CloseFacts, *,
-                   requester: str, target: str) -> list[str]:
+def refuse_reasons(facts: CloseFacts, *, requester: str, target: str) -> list[str]:
     """Why ``requester`` may not close ``target``. Empty list means it may."""
     if not facts.exists:
         return [f"no session {target!r}"]
     if requester == target:
         return ["an agent cannot close itself"]
     if facts.spawned_by != requester:
-        origin = (f"it was spawned by {facts.spawned_by!r}"
-                  if facts.spawned_by else "it was not spawned by an agent")
+        origin = (
+            f"it was spawned by {facts.spawned_by!r}"
+            if facts.spawned_by
+            else "it was not spawned by an agent"
+        )
         return [f"{requester!r} did not spawn {target!r} ({origin})"]
 
     reasons: list[str] = []
@@ -45,11 +48,11 @@ def refuse_reasons(facts: CloseFacts, *,
     if facts.monitors:
         reasons.append(f"{facts.monitors} live monitor(s) would be orphaned")
     if facts.reminders:
-        reasons.append(
-            f"{facts.reminders} pending reminder(s) would never fire")
+        reasons.append(f"{facts.reminders} pending reminder(s) would never fire")
     if facts.inbox_depth:
         reasons.append(
-            f"{facts.inbox_depth} undelivered inbox message(s) would be lost")
+            f"{facts.inbox_depth} undelivered inbox message(s) would be lost"
+        )
     if facts.worker_label:
         reasons.append(f"still running queue task {facts.worker_label}")
     if facts.loop_armed:
@@ -97,8 +100,7 @@ def still_working_reasons(facts: CloseFacts) -> list[str]:
     return reasons
 
 
-def gather_facts(bridge, handle: str, *, state: str | None = None
-                 ) -> CloseFacts:
+def gather_facts(bridge, handle: str, *, state: str | None = None) -> CloseFacts:
     """Read the coordination planes off ``bridge`` for one handle.
 
     Every plane is optional and every read is defended: a frontend that
@@ -118,8 +120,7 @@ def gather_facts(bridge, handle: str, *, state: str | None = None
     # waiting" for every worker — an AttributeError here, swallowed
     # there, and the fix looked like it had changed nothing.
     try:
-        info = next((s for s in bridge.list_sessions()
-                     if s.handle == handle), None)
+        info = next((s for s in bridge.list_sessions() if s.handle == handle), None)
     except Exception:  # noqa: BLE001
         info = None
 
@@ -151,8 +152,13 @@ def gather_facts(bridge, handle: str, *, state: str | None = None
     claims = 0
     if locks is not None:
         try:
-            claims = len([c for c in (locks.active() or [])
-                          if getattr(c, "handle", None) == handle])
+            claims = len(
+                [
+                    c
+                    for c in (locks.active() or [])
+                    if getattr(c, "handle", None) == handle
+                ]
+            )
         except Exception:  # noqa: BLE001
             claims = 0
 
@@ -160,10 +166,10 @@ def gather_facts(bridge, handle: str, *, state: str | None = None
         exists=info is not None,
         spawned_by=getattr(info, "spawned_by", None),
         state=state if state is not None else getattr(info, "state", "ready"),
-        monitors=(_count(mm.snapshot, for_handle=handle)
-                  if mm is not None else 0),
-        reminders=(_count(rs.list_reminders, from_handle=handle)
-                   if rs is not None else 0),
+        monitors=(_count(mm.snapshot, for_handle=handle) if mm is not None else 0),
+        reminders=(
+            _count(rs.list_reminders, from_handle=handle) if rs is not None else 0
+        ),
         inbox_depth=(_count(ib.pending, handle) if ib is not None else 0),
         worker_label=worker_label,
         loop_armed=loop_armed,

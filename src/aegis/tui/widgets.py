@@ -24,8 +24,9 @@ class GrowingInput(TextArea):
     MAX_LINES = 5
 
     class Submitted(Message):
-        def __init__(self, sender: "GrowingInput", value: str,
-                     kind: str = "enqueue") -> None:
+        def __init__(
+            self, sender: "GrowingInput", value: str, kind: str = "enqueue"
+        ) -> None:
             super().__init__()
             self.input = sender
             self.value = value
@@ -35,8 +36,7 @@ class GrowingInput(TextArea):
         def control(self) -> "GrowingInput":
             return self.input
 
-    def __init__(self, placeholder: str = "", *,
-                 id: str | None = None) -> None:
+    def __init__(self, placeholder: str = "", *, id: str | None = None) -> None:
         super().__init__(
             soft_wrap=True,
             show_line_numbers=False,
@@ -88,6 +88,7 @@ class GrowingInput(TextArea):
         # nothing left to draw.
         if not self.is_attached:
             from textual.strip import Strip
+
             return [Strip.blank(crop.width)] * crop.height
         return super().render_lines(crop)
 
@@ -178,8 +179,11 @@ class GrowingInput(TextArea):
             event.prevent_default()
             self._history_prev()
             return
-        if event.key == "down" and self.cursor_at_last_line \
-                and self._hist_idx is not None:
+        if (
+            event.key == "down"
+            and self.cursor_at_last_line
+            and self._hist_idx is not None
+        ):
             event.stop()
             event.prevent_default()
             self._history_next()
@@ -200,15 +204,17 @@ class _TabCell(Static):
         # falls through the app's bounds check as a no-op).
         self._index = -1
 
-    def render_tab(self, idx, handle, slug, state, unseen, active,
-                   suffix, colors) -> None:
+    def render_tab(
+        self, idx, handle, slug, state, unseen, active, suffix, colors
+    ) -> None:
         self._index = idx - 1
         mark = "[bold]*[/bold]" if unseen else ""
         sfx = f" [{colors.muted}]{suffix}[/]" if suffix else ""
-        label = (f"{state.dot(colors)} {idx} {handle} "
-                 f"[{colors.accent}]·{slug}·[/]{sfx}{mark}")
-        self.update(f"[reverse] {label} [/reverse]" if active
-                    else f" {label} ")
+        label = (
+            f"{state.dot(colors)} {idx} {handle} "
+            f"[{colors.accent}]·{slug}·[/]{sfx}{mark}"
+        )
+        self.update(f"[reverse] {label} [/reverse]" if active else f" {label} ")
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
@@ -234,7 +240,7 @@ class _TabCell(Static):
         bar = self._bar()
         if bar is None:
             return
-        if not event.button:            # a plain hover, not a drag
+        if not event.button:  # a plain hover, not a drag
             bar.cancel_drag()
             return
         if self._index >= 0:
@@ -305,7 +311,7 @@ class TabBar(HorizontalScroll):
     def set_palette(self, palette) -> None:
         self._palette = palette
         if self._cells:
-            self._painted = []      # colors aren't in the item tuple
+            self._painted = []  # colors aren't in the item tuple
             self._refresh_cells()
 
     def set_tabs(self, items: list) -> None:
@@ -330,10 +336,11 @@ class TabBar(HorizontalScroll):
                 painted[i] = item
             if item[5]:
                 active_cell = cell
-        self._painted = painted[:len(self._items)]
+        self._painted = painted[: len(self._items)]
         if active_cell is not None:
             self.call_after_refresh(
-                lambda c=active_cell: c.scroll_visible(animate=False))
+                lambda c=active_cell: c.scroll_visible(animate=False)
+            )
 
     def bar_text(self) -> str:
         """Combined rendered text of all tab cells (for tests/inspection)."""
@@ -343,6 +350,7 @@ class TabBar(HorizontalScroll):
 def short_model(name: str) -> str:
     """``claude-opus-4-8`` -> ``opus-4.8``; unrecognised shapes pass through."""
     import re
+
     return re.sub(r"-(\d+)-(\d+)$", r"-\1.\2", name.removeprefix("claude-"))
 
 
@@ -375,6 +383,7 @@ class StatusBar(Static):
         # (single theme); a future switch would need a set_palette that
         # rebuilds _identity (cf. pane/TabBar which do have set_palette).
         from aegis.version import BUILD
+
         eff = f"[{colors.accent}]{effort}[/]"
         self._identity: tuple[str, ...] = (
             f"[dim]aegis {BUILD}[/]  {model}  {eff}",
@@ -432,9 +441,13 @@ class StatusBar(Static):
 
     def set_loop(self, status: dict | None) -> None:
         """Loop segment (``⟳ loop 3/20``); None hides it."""
-        self._loop = () if status is None else (
-            f"⟳ loop {status['iteration']}/{status['max_iterations']}",
-            f"⟳{status['iteration']}/{status['max_iterations']}",
+        self._loop = (
+            ()
+            if status is None
+            else (
+                f"⟳ loop {status['iteration']}/{status['max_iterations']}",
+                f"⟳{status['iteration']}/{status['max_iterations']}",
+            )
         )
         self._refresh()
 
@@ -444,8 +457,9 @@ class StatusBar(Static):
         ``up=False`` renders ``⚠ disconnected — reconnecting…``; ``up=True``
         clears the indicator.  Suitable for wiring to WsClient.on_connection.
         """
-        self._connection = () if up else (
-            "⚠ disconnected — reconnecting…", "⚠ disconnected")
+        self._connection = (
+            () if up else ("⚠ disconnected — reconnecting…", "⚠ disconnected")
+        )
         self._refresh()
 
     def render_plain(self) -> str:
@@ -454,6 +468,7 @@ class StatusBar(Static):
         Used by tests to assert on visible text without a live Textual render.
         """
         from aegis.tui.fit import strip_markup
+
         return strip_markup(self._plain_content)
 
     def _available_width(self) -> int:
@@ -468,6 +483,7 @@ class StatusBar(Static):
         import contextlib
 
         from aegis.tui.fit import Segment, fit
+
         # List order is visual order; priority is independent of it.
         segments = [
             Segment("identity", self._identity, self.P_IDENTITY),

@@ -10,6 +10,7 @@ measured quiet-host latency, and two runs at load 10 measured block-stream
 p50 28 ms and 141 ms. The load average counts blocked processes and lags
 by a minute, so it is kept as context only.
 """
+
 from __future__ import annotations
 
 import os

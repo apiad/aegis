@@ -4,6 +4,7 @@ The substrate's universal-tagging principle: every inbox message and every
 queue entry carries a typed `sender` prefix (queue:<name>, agent:<handle>,
 system, plus reserved prefixes) and an ISO-8601 timestamp.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -97,8 +98,8 @@ class Queue:
     name: str
     agent_profile: str
     max_parallel: int
-    provider: str = ""   # populated from agent_profile at config-load
-    model: str = ""      # populated from agent_profile at config-load
+    provider: str = ""  # populated from agent_profile at config-load
+    model: str = ""  # populated from agent_profile at config-load
     budgets: list[Budget] = field(default_factory=list)
 
 
@@ -107,11 +108,11 @@ class Task:
     id: str
     queue: str
     payload: str
-    enqueued_by: str       # SenderTag
-    enqueued_at: str       # iso8601
+    enqueued_by: str  # SenderTag
+    enqueued_at: str  # iso8601
     callback: bool
-    status: str            # "pending" | "dispatched" | "completed"
-                           #   | "failed" | "cancelled"
+    status: str  # "pending" | "dispatched" | "completed"
+    #   | "failed" | "cancelled"
     worker_handle: str | None = None
     result: str | None = None
     error: str | None = None
@@ -126,8 +127,9 @@ class Delivery:
     immediately into a turn) or ``queued`` (buffered behind an in-flight
     turn)? ``depth`` is the 1-based queue position when queued, 0 when
     landed."""
-    disposition: str   # "landed" | "queued"
-    depth: int         # queue position; 0 when landed
+
+    disposition: str  # "landed" | "queued"
+    depth: int  # queue position; 0 when landed
 
 
 @dataclass(frozen=True)
@@ -136,7 +138,7 @@ class InboxMessage:
     timestamp: str
     body: str
     task_id: str | None = None
-    status: str | None = None   # "ok" | "error" | None
+    status: str | None = None  # "ok" | "error" | None
 
 
 def render_inbox_header(msg: InboxMessage) -> str:
@@ -150,8 +152,5 @@ def render_inbox_header(msg: InboxMessage) -> str:
         return ""
     if msg.task_id is not None:
         status = msg.status or "?"
-        return (
-            f"> from {msg.sender} · task#{msg.task_id} · "
-            f"{status} · {msg.timestamp}"
-        )
+        return f"> from {msg.sender} · task#{msg.task_id} · {status} · {msg.timestamp}"
     return f"> from {msg.sender} · {msg.timestamp}"

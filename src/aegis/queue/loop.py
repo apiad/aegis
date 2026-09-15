@@ -7,6 +7,7 @@ resolves a handle to a live session and validates arguments, nothing more.
 
 No timers and no persistence — a loop dies with its session.
 """
+
 from __future__ import annotations
 
 from aegis.core.loop import DEFAULT_MAX_ITERATIONS
@@ -20,8 +21,13 @@ class LoopService:
         get = getattr(self._sm, "get", None)
         return get(handle) if callable(get) else None
 
-    def arm(self, *, from_handle: str, text: str,
-            max_iterations: int = DEFAULT_MAX_ITERATIONS) -> dict:
+    def arm(
+        self,
+        *,
+        from_handle: str,
+        text: str,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
+    ) -> dict:
         if not text or not text.strip():
             return {"error": "loop text is empty"}
         try:
@@ -34,11 +40,11 @@ class LoopService:
         if session is None:
             return {"error": f"no live session for handle {from_handle!r}"}
         session.arm_loop(text.strip(), max_iterations)
-        return {"armed": True, "text": text.strip(),
-                "max_iterations": max_iterations}
+        return {"armed": True, "text": text.strip(), "max_iterations": max_iterations}
 
-    def stop(self, *, from_handle: str, reason: str = "stopped",
-             advisory: bool = False) -> dict:
+    def stop(
+        self, *, from_handle: str, reason: str = "stopped", advisory: bool = False
+    ) -> dict:
         """End the loop, or record a request to end it.
 
         **The default is authoritative, and that is the operator's path.**
@@ -57,10 +63,13 @@ class LoopService:
         ok = session.stop_loop(reason, advisory=advisory)
         if not advisory:
             return {"stopped": ok, "reason": reason}
-        return {"noted": ok, "reason": reason,
-                "note": "recorded — the loop judge weighs this against "
-                        "what the turn actually landed and decides "
-                        "whether the loop ends"}
+        return {
+            "noted": ok,
+            "reason": reason,
+            "note": "recorded — the loop judge weighs this against "
+            "what the turn actually landed and decides "
+            "whether the loop ends",
+        }
 
     def status(self, *, from_handle: str) -> dict:
         session = self._session_for(from_handle)

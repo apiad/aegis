@@ -7,6 +7,7 @@ established inside ``SshLauncher.spawn``, which is already async. That
 also puts connection errors where they belong — failing the session that
 asked for the host, in a pane that exists to show the message.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +25,9 @@ DEFERRED_URL = ""
 
 
 class HostRegistry:
-    def __init__(self, hosts: dict[str, HostSpec], state_dir: Path,
-                 local_root: str) -> None:
+    def __init__(
+        self, hosts: dict[str, HostSpec], state_dir: Path, local_root: str
+    ) -> None:
         self._hosts = dict(hosts)
         self._state_dir = Path(state_dir)
         self._local_root = local_root
@@ -44,8 +46,8 @@ class HostRegistry:
         spec = self._hosts.get(name)
         if spec is None:
             raise HostError(
-                f"unknown host {name!r}; known: "
-                f"{sorted(self._hosts) + ['local']}")
+                f"unknown host {name!r}; known: {sorted(self._hosts) + ['local']}"
+            )
         return spec
 
     def _connection(self, spec: HostSpec) -> HostConnection:
@@ -54,29 +56,28 @@ class HostRegistry:
             if self._mcp_port is None:
                 raise HostError(
                     "host registry has no MCP port yet — call "
-                    "set_mcp_port() before spawning a remote session.")
+                    "set_mcp_port() before spawning a remote session."
+                )
             conn = HostConnection(
                 spec,
-                control_path=str(
-                    self._state_dir / "ssh" / f"{spec.name}.sock"),
-                mcp_port=self._mcp_port)
+                control_path=str(self._state_dir / "ssh" / f"{spec.name}.sock"),
+                mcp_port=self._mcp_port,
+            )
             self._conns[spec.name] = conn
         return conn
 
-    def launcher_for(self, place: Place,
-                     mcp_url: str) -> tuple[Launcher, str]:
+    def launcher_for(self, place: Place, mcp_url: str) -> tuple[Launcher, str]:
         """The launcher for a place, plus the MCP URL its harness should
         be told about. Synchronous by contract."""
         if place.is_local:
             return LocalLauncher(local_root=self._local_root), mcp_url
         spec = self.spec(place.host)
         conn = self._connection(spec)
-        return (SshLauncher(conn, spec, local_root=self._local_root),
-                DEFERRED_URL)
+        return (SshLauncher(conn, spec, local_root=self._local_root), DEFERRED_URL)
 
     async def close_all(self) -> None:
         """Tear down every master. Called on aegis quit."""
         await asyncio.gather(
-            *(c.close() for c in self._conns.values()),
-            return_exceptions=True)
+            *(c.close() for c in self._conns.values()), return_exceptions=True
+        )
         self._conns.clear()

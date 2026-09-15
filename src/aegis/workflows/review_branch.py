@@ -4,6 +4,7 @@ Computes the diff vs a base ref via ``git_helpers.diff_vs``, spawns one
 reviewer subagent per configured profile, joins their results, and writes
 a structured markdown report under ``docs/reviews/``.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,14 +17,14 @@ _DEFAULT_REVIEWERS = ["security-reviewer", "api-reviewer", "test-reviewer"]
 
 
 def _review_prompt(profile: str, diff: str) -> str:
-    return (f"You are the {profile}. Review the following diff and report "
-            f"findings. Keep it concise.\n\n```diff\n{diff}\n```")
+    return (
+        f"You are the {profile}. Review the following diff and report "
+        f"findings. Keep it concise.\n\n```diff\n{diff}\n```"
+    )
 
 
-def _render_review_report(diff: str,
-                          results: list[tuple[str, str]]) -> str:
-    lines = [f"# Review — {branch_slug()}", "",
-             f"_Generated {today_iso()}._", ""]
+def _render_review_report(diff: str, results: list[tuple[str, str]]) -> str:
+    lines = [f"# Review — {branch_slug()}", "", f"_Generated {today_iso()}._", ""]
     for profile, body in results:
         lines += [f"## {profile}", "", body.strip(), ""]
     return "\n".join(lines)
@@ -33,6 +34,7 @@ def _resolve(engine, rel_path: str) -> Path:
     base = engine.config.get("cwd") if engine.config else None
     if base is None:
         from aegis.config import find_project_root
+
         base = str(find_project_root() or Path.cwd())
     return Path(base) / rel_path
 

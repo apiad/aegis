@@ -26,8 +26,7 @@ def build_picker_rows(
     return rows
 
 
-def build_host_rows(hosts: list[str],
-                    local_label: str) -> list[tuple[str, str]]:
+def build_host_rows(hosts: list[str], local_label: str) -> list[tuple[str, str]]:
     """(value, label) rows for the host tier of the spawn picker.
 
     `local` is always first and always present — it is the implicit host
@@ -53,8 +52,8 @@ def resolve_transient_agent(
 
 
 def filter_path_tokens(
-        tokens: list[str], cwd: Path,
-        indexed_paths: list[str]) -> list[str]:
+    tokens: list[str], cwd: Path, indexed_paths: list[str]
+) -> list[str]:
     """Keep tokens that look like paths to files; drop everything else.
 
     Absolute tokens whose resolved form lives under ``cwd`` are
@@ -93,8 +92,7 @@ def _normalize_token(raw: str, cwd: Path) -> str | None:
     return t
 
 
-def _is_path_like(
-        token: str, cwd: Path, indexed_paths: list[str]) -> bool:
+def _is_path_like(token: str, cwd: Path, indexed_paths: list[str]) -> bool:
     try:
         if (cwd / token).is_file():
             return True
@@ -107,8 +105,7 @@ def _is_path_like(
                 return True
         except OSError:
             pass
-    return any(ip == token or ip.endswith("/" + token)
-               for ip in indexed_paths)
+    return any(ip == token or ip.endswith("/" + token) for ip in indexed_paths)
 
 
 def resolve_unique_match(token: str, paths: list[str]) -> str | None:
@@ -117,8 +114,7 @@ def resolve_unique_match(token: str, paths: list[str]) -> str | None:
     A path matches when it equals the token or ends with ``"/" + token``
     — so a bare basename resolves only when unique across the index.
     """
-    candidates = [p for p in paths
-                  if p == token or p.endswith("/" + token)]
+    candidates = [p for p in paths if p == token or p.endswith("/" + token)]
     return candidates[0] if len(candidates) == 1 else None
 
 
@@ -131,20 +127,17 @@ class AgentPicker(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, slugs: list[str],
-                 harnesses: dict | None = None) -> None:
+    def __init__(self, slugs: list[str], harnesses: dict | None = None) -> None:
         super().__init__()
         self._rows = build_picker_rows(slugs, harnesses or {})
 
     def compose(self) -> ComposeResult:
-        yield OptionList(*[Option(label, id=id_)
-                           for id_, label in self._rows])
+        yield OptionList(*[Option(label, id=id_) for id_, label in self._rows])
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
 
-    def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option.id)
 
     def key_escape(self) -> None:
@@ -171,9 +164,14 @@ class _ChoicePicker(ModalScreen[str | None]):
                                border: none; background: $surface; }
     """
 
-    def __init__(self, options: list[tuple[str, str]], *,
-                 title: str = "", allow_custom: bool = False,
-                 prefill: str = "") -> None:
+    def __init__(
+        self,
+        options: list[tuple[str, str]],
+        *,
+        title: str = "",
+        allow_custom: bool = False,
+        prefill: str = "",
+    ) -> None:
         super().__init__()
         self._options = list(options)
         self._title = title
@@ -185,9 +183,13 @@ class _ChoicePicker(ModalScreen[str | None]):
             if self._title:
                 yield Label(self._title)
             yield Input(
-                placeholder=("type to filter or enter a custom id…"
-                             if self._allow_custom else "type to filter…"),
-                id="cp-input")
+                placeholder=(
+                    "type to filter or enter a custom id…"
+                    if self._allow_custom
+                    else "type to filter…"
+                ),
+                id="cp-input",
+            )
             yield OptionList(id="cp-list")
 
     def on_mount(self) -> None:
@@ -218,8 +220,7 @@ class _ChoicePicker(ModalScreen[str | None]):
         if self._allow_custom and event.value.strip():
             self.dismiss(event.value.strip())
 
-    def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option.id)
 
     def key_escape(self) -> None:
@@ -257,8 +258,7 @@ class FilePickerModal(ModalScreen):
     BINDINGS = [
         Binding("down", "highlight_next", show=False, priority=True),
         Binding("up", "highlight_prev", show=False, priority=True),
-        Binding("pagedown", "highlight_page", "page", show=False,
-                priority=True),
+        Binding("pagedown", "highlight_page", "page", show=False, priority=True),
         Binding("pageup", "highlight_page_up", show=False, priority=True),
         Binding("escape", "cancel", show=False, priority=True),
     ]
@@ -362,8 +362,7 @@ class FilePickerModal(ModalScreen):
     def on_input_submitted(self, _event: Input.Submitted) -> None:
         self._select_highlighted()
 
-    def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         opt_id = event.option.id
         if opt_id:
             self.dismiss(Path.cwd() / opt_id)
@@ -425,8 +424,7 @@ class _TokenChooser(ModalScreen):
         # Defensive dedup: OptionList raises DuplicateID on repeated ids,
         # and a repeated token has no distinct action anyway.
         seen: set[str] = set()
-        self._tokens = [t for t in tokens
-                        if not (t in seen or seen.add(t))]
+        self._tokens = [t for t in tokens if not (t in seen or seen.add(t))]
 
     def compose(self) -> ComposeResult:
         yield OptionList(*[Option(t, id=t) for t in self._tokens])
@@ -434,8 +432,7 @@ class _TokenChooser(ModalScreen):
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
 
-    def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option.id)
 
     def key_escape(self) -> None:

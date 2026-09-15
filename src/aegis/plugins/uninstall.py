@@ -1,4 +1,5 @@
 """uninstall_plugin — run _uninstall.py, delete folder, strip config."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -37,6 +38,7 @@ def uninstall_plugin(
     # 1. Read manifest (still inside plugin_dir before we delete) so we know
     # which config keys we wrote at install time.
     from aegis.plugins.manifest import load_manifest
+
     manifest_path = plugin_dir / "plugin.toml"
     default_config: dict[str, Any] = {}
     manifest = None
@@ -61,8 +63,11 @@ def uninstall_plugin(
             _invoke_uninstall(uninstall_py, ctx)
         except Exception as exc:  # noqa: BLE001 — log + continue
             import logging
+
             logging.getLogger("aegis.plugins").exception(
-                "uninstall hook for %s raised: %s", name, exc,
+                "uninstall hook for %s raised: %s",
+                name,
+                exc,
             )
 
     # 3. Delete folder
@@ -77,7 +82,8 @@ def uninstall_plugin(
 
 def _invoke_uninstall(path: Path, ctx: InstallContext) -> None:
     spec = importlib.util.spec_from_file_location(
-        f"_aegis_uninstall_{ctx.plugin_name}", path,
+        f"_aegis_uninstall_{ctx.plugin_name}",
+        path,
     )
     if spec is None or spec.loader is None:
         raise UninstallError(f"could not load {path}")
@@ -90,12 +96,15 @@ def _invoke_uninstall(path: Path, ctx: InstallContext) -> None:
 
 
 def _strip_config(
-    project_root: Path, name: str, default_config: dict[str, Any],
+    project_root: Path,
+    name: str,
+    default_config: dict[str, Any],
 ) -> None:
     yaml_path = project_root / ".aegis.yaml"
     if not yaml_path.exists():
         return
     from ruamel.yaml import YAML
+
     yaml = YAML(typ="rt")
     data = yaml.load(yaml_path)
     if not isinstance(data, dict):

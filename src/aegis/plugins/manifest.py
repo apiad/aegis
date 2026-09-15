@@ -1,4 +1,5 @@
 """plugin.toml parsing."""
+
 from __future__ import annotations
 
 import tomllib
@@ -13,12 +14,12 @@ class ManifestError(ValueError):
 
 @dataclass(frozen=True)
 class PluginManifest:
-    name:           str
-    version:        str
-    description:    str = ""
+    name: str
+    version: str
+    description: str = ""
     requires_aegis: str | None = None
     default_config: dict[str, Any] = field(default_factory=dict)
-    raw:            dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 def load_manifest(path: Path) -> PluginManifest:

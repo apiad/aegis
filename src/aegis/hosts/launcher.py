@@ -4,6 +4,7 @@ Both driver families converge on the same shape — an argv, a cwd, an
 optional env, and three pipes. ``Launcher`` is that shape as an
 interface, so remoteness lives in one place instead of once per driver.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,9 +29,9 @@ class Launcher(Protocol):
     host_key: str
     local_root: str | None
 
-    async def spawn(self, argv: list[str], *, cwd: str,
-                    env: dict[str, str] | None
-                    ) -> asyncio.subprocess.Process: ...
+    async def spawn(
+        self, argv: list[str], *, cwd: str, env: dict[str, str] | None
+    ) -> asyncio.subprocess.Process: ...
 
     def persona_root(self, cwd: str) -> str: ...
 
@@ -53,9 +54,9 @@ class LocalLauncher:
         """
         return self.local_root or cwd
 
-    async def spawn(self, argv: list[str], *, cwd: str,
-                    env: dict[str, str] | None
-                    ) -> asyncio.subprocess.Process:
+    async def spawn(
+        self, argv: list[str], *, cwd: str, env: dict[str, str] | None
+    ) -> asyncio.subprocess.Process:
         kw: dict = dict(
             cwd=cwd,
             stdin=asyncio.subprocess.PIPE,
@@ -74,8 +75,7 @@ LOCAL = LocalLauncher()
 # --- ssh transport --------------------------------------------------------
 
 
-def env_delta(env: dict[str, str] | None,
-              base: Mapping[str, str]) -> dict[str, str]:
+def env_delta(env: dict[str, str] | None, base: Mapping[str, str]) -> dict[str, str]:
     """The environment keys worth sending across the wire.
 
     A local spawn hands the driver a full copy of ``os.environ`` (that is
@@ -90,8 +90,9 @@ def env_delta(env: dict[str, str] | None,
     return {k: v for k, v in env.items() if base.get(k) != v}
 
 
-def remote_command(argv: list[str], *, cwd: str,
-                   env: dict[str, str], login_shell: bool = False) -> str:
+def remote_command(
+    argv: list[str], *, cwd: str, env: dict[str, str], login_shell: bool = False
+) -> str:
     """The single shell string ssh will run on the far side.
 
     ``exec`` matters: it replaces the shell with the harness, so signals
@@ -110,8 +111,7 @@ def remote_command(argv: list[str], *, cwd: str,
     return f"bash -lc {shlex.quote(inner)}" if login_shell else inner
 
 
-def ssh_argv(spec: HostSpec, control_path: str,
-             remote_cmd: str) -> list[str]:
+def ssh_argv(spec: HostSpec, control_path: str, remote_cmd: str) -> list[str]:
     """A session-carrying ssh invocation that multiplexes over the master.
 
     ``-T`` disables PTY allocation: stream-json and ACP JSON-RPC need a
@@ -119,8 +119,10 @@ def ssh_argv(spec: HostSpec, control_path: str,
     into the middle of the protocol.
     """
     return [
-        "ssh", "-T",
-        "-o", f"ControlPath={control_path}",
+        "ssh",
+        "-T",
+        "-o",
+        f"ControlPath={control_path}",
         *spec.ssh_opts,
         spec.ssh,
         remote_cmd,
@@ -144,7 +146,7 @@ def _filled_mcp_config(arg: str, url: str) -> str | None:
     Still narrow: a non-JSON argument, someone else's MCP config, or an
     entry that already has a url are all left alone.
     """
-    if "mcpServers" not in arg:          # cheap reject before json.loads
+    if "mcpServers" not in arg:  # cheap reject before json.loads
         return None
     try:
         blob = json.loads(arg)
@@ -174,8 +176,7 @@ def _substitute_mcp_url(argv: list[str], url: str) -> list[str]:
 class SshLauncher:
     """Runs the harness on another machine, over a shared ControlMaster."""
 
-    def __init__(self, conn, spec: HostSpec,
-                 local_root: str | None = None) -> None:
+    def __init__(self, conn, spec: HostSpec, local_root: str | None = None) -> None:
         self._conn = conn
         self._spec = spec
         self.host_key = spec.name
@@ -192,13 +193,17 @@ class SshLauncher:
         cwd."""
         return self.local_root or "."
 
-    async def spawn(self, argv: list[str], *, cwd: str,
-                    env: dict[str, str] | None
-                    ) -> asyncio.subprocess.Process:
+    async def spawn(
+        self, argv: list[str], *, cwd: str, env: dict[str, str] | None
+    ) -> asyncio.subprocess.Process:
         await self._conn.ensure_open()
         argv = _substitute_mcp_url(argv, self._conn.remote_mcp_url)
-        cmd = remote_command(argv, cwd=cwd, env=env_delta(env, os.environ),
-                             login_shell=self._spec.login_shell)
+        cmd = remote_command(
+            argv,
+            cwd=cwd,
+            env=env_delta(env, os.environ),
+            login_shell=self._spec.login_shell,
+        )
         proc = await asyncio.create_subprocess_exec(
             *ssh_argv(self._spec, self._conn.control_path, cmd),
             stdin=asyncio.subprocess.PIPE,
@@ -230,7 +235,7 @@ class SshLauncher:
             async for raw in proc.stderr:
                 self.stderr_tail.append(raw.rstrip())
                 del self.stderr_tail[:-40]
-        except Exception:                                    # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
 
     def link_failure(self):
@@ -239,6 +244,7 @@ class SshLauncher:
         rc 0 means the harness ended normally and the link was fine.
         """
         from aegis.hosts.errors import RemoteLinkLost
+
         proc = self._proc
         if proc is None or proc.returncode in (None, 0):
             return None

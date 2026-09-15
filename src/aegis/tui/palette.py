@@ -2,6 +2,7 @@
 upward above the input. A pure view over a ``Completions`` — the pane owns the
 data flow (calling ``complete()``) and the key routing (Up/Down/Tab/Enter/Esc);
 this widget only renders and tracks the highlight."""
+
 from __future__ import annotations
 
 from rich.text import Text
@@ -44,9 +45,10 @@ class CommandPalette(OptionList):
             return
         rows = []
         for c in self._items:
-            t = Text(c.label,
-                     style=_source_style(self._palette,
-                                         getattr(c, "source", "builtin")))
+            t = Text(
+                c.label,
+                style=_source_style(self._palette, getattr(c, "source", "builtin")),
+            )
             if c.detail:
                 t.append(f"   {c.detail}", style=self._palette.muted)
             rows.append(Option(t))

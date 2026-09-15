@@ -27,6 +27,7 @@ exists to protect live DOM ids and live in-memory planes, both of which die
 with the process. Across restarts the transcript is keyed by ``log_id``, not
 by handle, so nothing downstream needs the set to survive.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable

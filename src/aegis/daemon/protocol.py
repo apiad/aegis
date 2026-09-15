@@ -10,6 +10,7 @@ in either direction -- and a translation layer is precisely where
 Both transports import this module. That is what makes them byte-identical
 rather than intended to be.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,8 +38,9 @@ def hello(view_id: str, width: int, height: int) -> bytes:
     A meta frame rather than a bespoke preamble, so the stream has exactly
     one shape from the first byte. 5b's auth frame is the same trick.
     """
-    return encode_meta({"type": "hello", "view_id": view_id,
-                        "width": width, "height": height})
+    return encode_meta(
+        {"type": "hello", "view_id": view_id, "width": width, "height": height}
+    )
 
 
 def resize(width: int, height: int) -> bytes:
@@ -86,6 +88,6 @@ class FrameDecoder:
             if len(self._buf) < 5 + size:
                 return
             kind = chr(self._buf[0])
-            payload = bytes(self._buf[5:5 + size])
-            del self._buf[:5 + size]
+            payload = bytes(self._buf[5 : 5 + size])
+            del self._buf[: 5 + size]
             yield kind, payload

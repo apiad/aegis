@@ -1,4 +1,5 @@
 """Hook invocation with timeout, exception handling, and JSONL logging."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,9 +10,14 @@ from typing import Any
 
 from aegis.hooks.composer import compose_pre_turn
 from aegis.hooks.contexts import (
-    PostTurnEvent, PreSpawnContext, PreSpawnResult,
-    PreTurnContext, PreTurnResult,
-    SessionEndEvent, SessionHandle, SessionStartEvent,
+    PostTurnEvent,
+    PreSpawnContext,
+    PreSpawnResult,
+    PreTurnContext,
+    PreTurnResult,
+    SessionEndEvent,
+    SessionHandle,
+    SessionStartEvent,
 )
 from aegis.hooks.decorator import HookEntry
 
@@ -42,7 +48,10 @@ async def run_pre_turn_hooks(
             prior_results=tuple(results),
         )
         result = await _invoke_with_timeout(
-            entry, ctx_for_hook, state_dir=state_dir, timeout=timeout,
+            entry,
+            ctx_for_hook,
+            state_dir=state_dir,
+            timeout=timeout,
         )
         if result is not None:
             results.append(result)
@@ -51,13 +60,13 @@ async def run_pre_turn_hooks(
 
 async def run_pre_spawn_hooks(
     *,
-    argv:      tuple[str, ...],
-    env:       dict[str, str],
-    session:   SessionHandle,
-    cwd:       str,
-    entries:   list[HookEntry],
+    argv: tuple[str, ...],
+    env: dict[str, str],
+    session: SessionHandle,
+    cwd: str,
+    entries: list[HookEntry],
     state_dir: Path,
-    timeout:   float = DEFAULT_TIMEOUT_S,
+    timeout: float = DEFAULT_TIMEOUT_S,
 ) -> PreSpawnResult:
     """Run all pre_spawn hooks in declaration order, threading state.
 
@@ -79,14 +88,16 @@ async def run_pre_spawn_hooks(
             prior_results=tuple(results),
         )
         result = await _invoke_with_timeout(
-            entry, ctx, state_dir=state_dir, timeout=timeout,
+            entry,
+            ctx,
+            state_dir=state_dir,
+            timeout=timeout,
         )
         if result is None:
             continue
         results.append(result)
         if result.block is not None:
-            return PreSpawnResult(
-                argv=cur_argv, env=cur_env, block=result.block)
+            return PreSpawnResult(argv=cur_argv, env=cur_env, block=result.block)
         if result.argv is not None:
             cur_argv = tuple(result.argv)
         if result.env is not None:
@@ -104,7 +115,10 @@ async def run_observer_hooks(
     """Fire every observer hook for an event. Return value ignored."""
     for entry in entries:
         await _invoke_with_timeout(
-            entry, event, state_dir=state_dir, timeout=timeout,
+            entry,
+            event,
+            state_dir=state_dir,
+            timeout=timeout,
         )
 
 
@@ -131,16 +145,17 @@ async def _invoke_with_timeout(
         _log(log_path, status="timeout", entry=entry, started=started)
         return None
     except Exception as exc:  # noqa: BLE001 — log + skip semantics
-        _log(log_path, status="exception", entry=entry, started=started,
-             error=f"{type(exc).__name__}: {exc}")
+        _log(
+            log_path,
+            status="exception",
+            entry=entry,
+            started=started,
+            error=f"{type(exc).__name__}: {exc}",
+        )
         if entry.strict and entry.event == "pre_turn":
-            return PreTurnResult(
-                block=f"strict hook {entry.qualname} raised: {exc}"
-            )
+            return PreTurnResult(block=f"strict hook {entry.qualname} raised: {exc}")
         if entry.strict and entry.event == "pre_spawn":
-            return PreSpawnResult(
-                block=f"strict hook {entry.qualname} raised: {exc}"
-            )
+            return PreSpawnResult(block=f"strict hook {entry.qualname} raised: {exc}")
         return None
 
 
@@ -154,12 +169,12 @@ def _log(
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rec = {
-        "ts":       time.time(),
+        "ts": time.time(),
         "duration": time.time() - started,
-        "event":    entry.event,
+        "event": entry.event,
         "qualname": entry.qualname,
-        "strict":   entry.strict,
-        "status":   status,
+        "strict": entry.strict,
+        "status": status,
     }
     if error is not None:
         rec["error"] = error

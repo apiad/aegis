@@ -9,6 +9,7 @@ next_fire is recomputed from ``fire_at`` / ``cron``; and a
 ``backfill`` flag is raised when the next_fire is already in the past
 (so the first tick triggers a single catch-up fire).
 """
+
 from __future__ import annotations
 
 import json
@@ -18,8 +19,9 @@ from pathlib import Path
 from aegis.scheduler.cron import next_fire as compute_next_fire
 
 
-def replay_state(state_dir: Path, *, schedules: dict,
-                 now: datetime | None = None) -> dict:
+def replay_state(
+    state_dir: Path, *, schedules: dict, now: datetime | None = None
+) -> dict:
     """Returns ``{name: {fire_count, next_fire, backfill}}``."""
     now = now or datetime.now(timezone.utc)
     state: dict = {}
@@ -42,8 +44,10 @@ def replay_state(state_dir: Path, *, schedules: dict,
                     dangling = None
         if dangling:
             interrupted = {
-                "ts": now.isoformat(), "schedule": name,
-                "event": "fire_failed", "task_id": dangling,
+                "ts": now.isoformat(),
+                "schedule": name,
+                "event": "fire_failed",
+                "task_id": dangling,
                 "status": "failed:interrupted",
             }
             with log.open("a") as f:

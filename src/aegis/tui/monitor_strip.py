@@ -5,6 +5,7 @@ Sits above the status bar (mirrors QueueStrip). Two pieces:
 * ``MonitorStrip`` — Textual Static widget subscribed to a MonitorManager,
   re-rendering on each change. Hidden when no monitors are live.
 """
+
 from __future__ import annotations
 
 from rich.cells import cell_len
@@ -35,6 +36,7 @@ _DESC_FLOOR = 14
 def _tail_tiers(v: MonitorView, palette) -> list[Text]:
     """The row's fixed half, widest first. Same ladder idea as the status
     bar's segments: drop detail rather than let the row overflow."""
+
     def t(*parts: tuple[str, str]) -> Text:
         out = Text()
         for text, style in parts:
@@ -45,16 +47,21 @@ def _tail_tiers(v: MonitorView, palette) -> list[Text]:
         # The spinner already says "watching", so the word is the first
         # thing to go.
         dur = _fmt_dur(v.elapsed_s)
-        return [t((f"  ⣾ {dur} watching", palette.muted)),
-                t((f"  ⣾ {dur}", palette.muted))]
+        return [
+            t((f"  ⣾ {dur} watching", palette.muted)),
+            t((f"  ⣾ {dur}", palette.muted)),
+        ]
 
     pct = (f"{v.pct:.0f}%", palette.ink)
     bar = (f"  {_bar(v.pct)} ", palette.work)
     if v.eta_s is None:
         return [t(bar, pct), t(("  ", palette.muted), pct)]
     eta = (f" · ETA {_fmt_dur(v.eta_s)}", palette.muted)
-    return [t(bar, pct, eta), t(("  ", palette.muted), pct, eta),
-            t(("  ", palette.muted), pct)]
+    return [
+        t(bar, pct, eta),
+        t(("  ", palette.muted), pct, eta),
+        t(("  ", palette.muted), pct),
+    ]
 
 
 def format_mon(v: MonitorView, palette, width: int | None = None) -> Text:
@@ -79,12 +86,10 @@ def format_mon(v: MonitorView, palette, width: int | None = None) -> Text:
         tail, budget = tiers[0], None
     else:
         floor = min(cell_len(v.description), _DESC_FLOOR)
-        tail = next((x for x in tiers if width - x.cell_len >= floor),
-                    tiers[-1])
+        tail = next((x for x in tiers if width - x.cell_len >= floor), tiers[-1])
         budget = max(1, width - tail.cell_len)
 
-    desc = v.description if budget is None else truncate_cells(
-        v.description, budget)
+    desc = v.description if budget is None else truncate_cells(v.description, budget)
     t = Text(desc, style=palette.ink)
     t.append_text(tail)
     return t
@@ -102,8 +107,7 @@ def render_monitors(views: list[MonitorView], palette) -> Text:
     for i, v in enumerate(views):
         if i:
             out.append("\n")
-        out.append(_LABEL if i == 0 else " " * len(_LABEL),
-                   style=palette.muted)
+        out.append(_LABEL if i == 0 else " " * len(_LABEL), style=palette.muted)
         out.append_text(format_mon(v, palette))
     return out
 

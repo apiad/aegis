@@ -5,6 +5,7 @@ state dir and default-agent model. No Textual — safe on the web path.
 The root is a required argument, not resolved here: the CLI resolves it
 from the invocation, the slash command takes it from the bridge's roots.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

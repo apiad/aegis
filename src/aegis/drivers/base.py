@@ -77,30 +77,49 @@ class HarnessDriver(abc.ABC):
     supports_oneshot: bool = False
 
     @abc.abstractmethod
-    def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str, handle: str) -> list[str]: ...
+    def build_argv(
+        self, agent: Agent, cwd: str, mcp_url: str, handle: str
+    ) -> list[str]: ...
 
     @abc.abstractmethod
-    def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL,
-                token: str = "") -> HarnessSession: ...
+    def session(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> HarnessSession: ...
 
-    def resume(self, agent: Agent, cwd: str,
-               mcp_url: str, handle: str, session_id: str,
-               launcher: Launcher = LOCAL,
-               token: str = "") -> HarnessSession:
+    def resume(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        session_id: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> HarnessSession:
         """Build a session bound to an existing driver-side conversation.
 
         Default raises — only resume-capable drivers override.
         """
         raise NotImplementedError(
-            f"{type(self).__name__} does not support session resume")
+            f"{type(self).__name__} does not support session resume"
+        )
 
-    def fork(self, agent: Agent, cwd: str, mcp_url: str,
-             handle: str, session_id: str,
-             launcher: Launcher = LOCAL,
-             token: str = "") -> HarnessSession:
+    def fork(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        session_id: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> HarnessSession:
         """Build a session branching from an existing conversation.
 
         Sibling of ``resume``: same signature, same default-raises
@@ -111,11 +130,12 @@ class HarnessDriver(abc.ABC):
         Default raises — only fork-capable drivers override.
         """
         raise NotImplementedError(
-            f"{type(self).__name__} does not support session fork")
+            f"{type(self).__name__} does not support session fork"
+        )
 
-    async def generate_detailed(self, agent: Agent, cwd: str,
-                                schema: type["BaseModel"],
-                                *instructions: str) -> "Generation":
+    async def generate_detailed(
+        self, agent: Agent, cwd: str, schema: type["BaseModel"], *instructions: str
+    ) -> "Generation":
         """One-shot structured generation, with what the call cost.
 
         No session, no MCP, no tools — this is not a conversation and must
@@ -125,13 +145,13 @@ class HarnessDriver(abc.ABC):
         never be able to disturb the conversation it sits beside.
         """
         from aegis.drivers.oneshot import Generation
+
         return Generation()
 
-    async def generate(self, agent: Agent, cwd: str,
-                       schema: type["BaseModel"],
-                       *instructions: str) -> "BaseModel | None":
+    async def generate(
+        self, agent: Agent, cwd: str, schema: type["BaseModel"], *instructions: str
+    ) -> "BaseModel | None":
         """``generate_detailed`` without the telemetry — the shape the
         session-titles spec asks for, where cost and latency are not
         rendered anywhere."""
-        return (await self.generate_detailed(
-            agent, cwd, schema, *instructions)).value
+        return (await self.generate_detailed(agent, cwd, schema, *instructions)).value

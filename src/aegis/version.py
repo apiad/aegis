@@ -9,6 +9,7 @@ doesn't match a fix you know you wrote.
 
 Format: ``0.21.0+d35b07a`` from a git checkout, ``0.21.0`` otherwise.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 def _pkg_version() -> str:
     try:
         from importlib.metadata import version
+
         return version("aegis-harness")
     except Exception:  # noqa: BLE001 — not installed (rare in dev)
         return "0.0.0+unknown"
@@ -31,7 +33,10 @@ def _git_sha() -> str:
     try:
         out = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=2.0)
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
     except Exception:  # noqa: BLE001 — no git binary, slow disk, whatever
         return ""
     return out.stdout.strip() if out.returncode == 0 else ""

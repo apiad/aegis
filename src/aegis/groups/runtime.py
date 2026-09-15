@@ -1,4 +1,5 @@
 """GroupRuntime — the façade the MCP layer + workflow engine call."""
+
 from __future__ import annotations
 
 import asyncio
@@ -31,8 +32,9 @@ def _sender_group_cancel(group: str, broadcast_id: str) -> str:
     return f"group:{group}/cancel:{broadcast_id}"
 
 
-def _compose_broadcast_body(objective: str, output_format: str,
-                            tool_guidance: str, boundaries: str) -> str:
+def _compose_broadcast_body(
+    objective: str, output_format: str, tool_guidance: str, boundaries: str
+) -> str:
     return (
         f"objective: {objective}\n"
         f"output_format: {output_format}\n"
@@ -59,47 +61,79 @@ class GroupRuntime:
         if self.log is not None:
             self.log.write(group, rec)
 
-    async def broadcast(self, group: str, *, sender: str, objective: str,
-                        output_format: str, tool_guidance: str,
-                        boundaries: str) -> str:
+    async def broadcast(
+        self,
+        group: str,
+        *,
+        sender: str,
+        objective: str,
+        output_format: str,
+        tool_guidance: str,
+        boundaries: str,
+    ) -> str:
         g = self.registry.get(group)
         rec = BroadcastRecord(
-            id=self.new_id(), group=group, sender=sender,
-            objective=objective, output_format=output_format,
-            tool_guidance=tool_guidance, boundaries=boundaries,
-            started_at=self.now(), members=tuple(sorted(g.members)),
+            id=self.new_id(),
+            group=group,
+            sender=sender,
+            objective=objective,
+            output_format=output_format,
+            tool_guidance=tool_guidance,
+            boundaries=boundaries,
+            started_at=self.now(),
+            members=tuple(sorted(g.members)),
         )
         self.tracker.open(rec)
-        self._emit(group, event_broadcast_started(
-            rec.id, objective, output_format, tool_guidance, boundaries,
-            sender, rec.members))
-        body = _compose_broadcast_body(objective, output_format,
-                                       tool_guidance, boundaries)
+        self._emit(
+            group,
+            event_broadcast_started(
+                rec.id,
+                objective,
+                output_format,
+                tool_guidance,
+                boundaries,
+                sender,
+                rec.members,
+            ),
+        )
+        body = _compose_broadcast_body(
+            objective, output_format, tool_guidance, boundaries
+        )
         tag = _sender_group_broadcast(group, rec.id)
         for handle in rec.members:
             msg = InboxMessage(
-                sender=tag, body=body, timestamp=self.now(),
+                sender=tag,
+                body=body,
+                timestamp=self.now(),
             )
             await self.inbox.deliver(handle, msg)
         return rec.id
 
-    async def wait_all(self, group: str, *, timeout: float = 600.0,
-                       reducer: str = "concat") -> GroupResult:
+    async def wait_all(
+        self, group: str, *, timeout: float = 600.0, reducer: str = "concat"
+    ) -> GroupResult:
         rec = self.tracker.current(group)
         if rec is None:
             raise UnknownGroup(f"no open broadcast on {group!r}")
         return await self._collect(
-            rec, want={*rec.members}, timeout=timeout, reducer=reducer,
+            rec,
+            want={*rec.members},
+            timeout=timeout,
+            reducer=reducer,
             wait_any=False,
         )
 
-    async def wait_any(self, group: str, *, timeout: float = 600.0,
-                       cancel_losers: bool = True) -> GroupResult:
+    async def wait_any(
+        self, group: str, *, timeout: float = 600.0, cancel_losers: bool = True
+    ) -> GroupResult:
         rec = self.tracker.current(group)
         if rec is None:
             raise UnknownGroup(f"no open broadcast on {group!r}")
         result = await self._collect(
-            rec, want={*rec.members}, timeout=timeout, reducer="concat",
+            rec,
+            want={*rec.members},
+            timeout=timeout,
+            reducer="concat",
             wait_any=True,
         )
         if cancel_losers and result.by_member:
@@ -109,14 +143,25 @@ class GroupRuntime:
             for handle in rec.members:
                 if handle == winner:
                     continue
-                await self.inbox.deliver(handle, InboxMessage(
-                    sender=tag, body=body, timestamp=self.now(),
-                ))
+                await self.inbox.deliver(
+                    handle,
+                    InboxMessage(
+                        sender=tag,
+                        body=body,
+                        timestamp=self.now(),
+                    ),
+                )
         return result
 
-    async def _collect(self, rec: BroadcastRecord, *, want: set[str],
-                       timeout: float, reducer: str,
-                       wait_any: bool) -> GroupResult:
+    async def _collect(
+        self,
+        rec: BroadcastRecord,
+        *,
+        want: set[str],
+        timeout: float,
+        reducer: str,
+        wait_any: bool,
+    ) -> GroupResult:
         by_member: dict[str, MemberResult] = {}
         order: list[str] = []
         deadline = asyncio.get_event_loop().time() + timeout
@@ -126,7 +171,8 @@ class GroupRuntime:
                 break
             try:
                 handle, text = await asyncio.wait_for(
-                    self.member_bus.get(), timeout=remaining)
+                    self.member_bus.get(), timeout=remaining
+                )
             except asyncio.TimeoutError:
                 break
             if handle not in want:
@@ -134,18 +180,28 @@ class GroupRuntime:
             want.discard(handle)
             order.append(handle)
             by_member[handle] = MemberResult(
-                handle=handle, text=text, turn_ms=0,
-                tokens_in=0, tokens_out=0, status="done",
+                handle=handle,
+                text=text,
+                turn_ms=0,
+                tokens_in=0,
+                tokens_out=0,
+                status="done",
             )
-            self._emit(rec.group, event_member_result(
-                rec.id, handle, "done", text[:200], 0, 0, 0))
+            self._emit(
+                rec.group,
+                event_member_result(rec.id, handle, "done", text[:200], 0, 0, 0),
+            )
         timeouts = sorted(want)
         combined: Any = get_reducer(reducer)(by_member, order)
         self.tracker.close(rec.group, rec.id)
         mode = "wait_any" if wait_any else "wait_all"
-        self._emit(rec.group, event_broadcast_completed(
-            rec.id, mode, reducer, self.now()))
+        self._emit(
+            rec.group, event_broadcast_completed(rec.id, mode, reducer, self.now())
+        )
         return GroupResult(
-            broadcast_id=rec.id, by_member=by_member, combined=combined,
-            errors={}, timeouts=timeouts,
+            broadcast_id=rec.id,
+            by_member=by_member,
+            combined=combined,
+            errors={},
+            timeouts=timeouts,
         )

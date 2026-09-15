@@ -4,6 +4,7 @@ Every writing subcommand goes through `aegis.config.edit` helpers
 (comment-preserving ruamel.yaml round-trip + atomic write + full
 validation through yaml_loader.load_config before persisting).
 """
+
 from __future__ import annotations
 
 import json
@@ -15,8 +16,9 @@ from rich.table import Table
 
 from aegis.config import ConfigError, find_project_root
 
-app = typer.Typer(add_completion=False, no_args_is_help=True,
-                  help="Author and inspect .aegis.yaml.")
+app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="Author and inspect .aegis.yaml."
+)
 _console = Console()
 
 
@@ -26,10 +28,10 @@ def _resolve_root() -> Path:
 
 # --- top-level: show -------------------------------------------------
 
+
 @app.command("show")
 def show_cmd(
-    as_json: bool = typer.Option(
-        False, "--json", help="Emit JSON instead of YAML."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of YAML."),
 ) -> None:
     """Print the current .aegis.yaml (or a hint if none exists)."""
     root = _resolve_root()
@@ -38,11 +40,13 @@ def show_cmd(
         _console.print(
             f"[red]No .aegis.yaml at {base}.[/red]\n"
             f"[dim]Run [bold]aegis config agent add <slug> --provider "
-            f"<...> --model <...>[/bold] to create one.[/dim]")
+            f"<...> --model <...>[/bold] to create one.[/dim]"
+        )
         raise typer.Exit(1)
     if as_json:
         from aegis.config import load_queues
         from aegis.config.yaml_loader import load_config as _load_yaml
+
         cfg = _load_yaml(root)
         queues = load_queues(root)
         out = {
@@ -52,20 +56,25 @@ def show_cmd(
                     "provider": a.harness,
                     "model": a.model,
                     "permission": a.permission.value,
-                    "effort": a.effort.value if a.harness == "claude-code"
-                              else None,
-                } for name, a in cfg.agents.items()
+                    "effort": a.effort.value if a.harness == "claude-code" else None,
+                }
+                for name, a in cfg.agents.items()
             },
             "queues": {
                 name: {
                     "agent": q.agent_profile,
                     "max_parallel": q.max_parallel,
                     "budgets": [
-                        {"constraint": b.constraint,
-                         "limit": str(b.limit),
-                         "window": b.window_str} for b in q.budgets
-                    ] or None,
-                } for name, q in queues.items()
+                        {
+                            "constraint": b.constraint,
+                            "limit": str(b.limit),
+                            "window": b.window_str,
+                        }
+                        for b in q.budgets
+                    ]
+                    or None,
+                }
+                for name, q in queues.items()
             },
             "plugin_dirs": [str(p) for p in cfg.plugin_dirs],
         }
@@ -76,8 +85,9 @@ def show_cmd(
 
 # --- agent group -----------------------------------------------------
 
-agent_app = typer.Typer(add_completion=False, no_args_is_help=True,
-                        help="Manage agent profiles.")
+agent_app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="Manage agent profiles."
+)
 app.add_typer(agent_app, name="agent")
 
 
@@ -90,10 +100,12 @@ def agent_list_cmd() -> None:
         _console.print(
             "[yellow]no agents declared.[/yellow]\n"
             "[dim]Run [bold]aegis config agent add <slug> ...[/bold] to "
-            "add one.[/dim]")
+            "add one.[/dim]"
+        )
         return
     try:
         from aegis.config.yaml_loader import load_config as _load_yaml
+
         cfg = _load_yaml(root)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
@@ -113,8 +125,7 @@ def agent_list_cmd() -> None:
     for name, a in cfg.agents.items():
         is_default = "✓" if name == cfg.default_agent else ""
         effort = a.effort.value if a.harness == "claude-code" else "—"
-        table.add_row(name, a.harness, a.model, effort,
-                      a.permission.value, is_default)
+        table.add_row(name, a.harness, a.model, effort, a.permission.value, is_default)
     _console.print(table)
 
 
@@ -122,22 +133,29 @@ def agent_list_cmd() -> None:
 def agent_add_cmd(
     slug: str = typer.Argument(..., help="Agent profile slug."),
     provider: str = typer.Option(
-        ..., "--provider", "-p",
-        help="claude-code | gemini | opencode"),
+        ..., "--provider", "-p", help="claude-code | gemini | opencode"
+    ),
     model: str = typer.Option(..., "--model", "-m"),
     effort: str | None = typer.Option(
-        None, "--effort",
-        help="low|medium|high|max (claude-code only)"),
+        None, "--effort", help="low|medium|high|max (claude-code only)"
+    ),
     permission: str | None = typer.Option(
-        None, "--permission", help="read|write|full|auto"),
+        None, "--permission", help="read|write|full|auto"
+    ),
 ) -> None:
     """Add an agent profile. Creates .aegis.yaml if missing."""
     from aegis.config.edit import add_agent
+
     root = _resolve_root()
     try:
-        add_agent(root, slug,
-                  provider=provider, model=model,
-                  effort=effort, permission=permission)
+        add_agent(
+            root,
+            slug,
+            provider=provider,
+            model=model,
+            effort=effort,
+            permission=permission,
+        )
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -150,6 +168,7 @@ def agent_remove_cmd(
 ) -> None:
     """Remove an agent profile. Fails loud on cross-section references."""
     from aegis.config.edit import remove_agent
+
     root = _resolve_root()
     try:
         remove_agent(root, slug)
@@ -161,8 +180,9 @@ def agent_remove_cmd(
 
 # --- queue group -----------------------------------------------------
 
-queue_app = typer.Typer(add_completion=False, no_args_is_help=True,
-                        help="Manage queues.")
+queue_app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="Manage queues."
+)
 app.add_typer(queue_app, name="queue")
 
 
@@ -171,22 +191,24 @@ def _parse_budget(spec: str) -> dict:
     parts = spec.split(":")
     if len(parts) != 3:
         raise typer.BadParameter(
-            f"--budget {spec!r}: expected '<constraint>:<limit>:<window>'")
+            f"--budget {spec!r}: expected '<constraint>:<limit>:<window>'"
+        )
     constraint, limit_s, window = parts
     if constraint not in {"usd", "output_tokens"}:
         raise typer.BadParameter(
-            f"--budget {spec!r}: constraint must be usd or output_tokens")
+            f"--budget {spec!r}: constraint must be usd or output_tokens"
+        )
     try:
         limit = float(limit_s) if constraint == "usd" else int(limit_s)
     except ValueError:
-        raise typer.BadParameter(
-            f"--budget {spec!r}: bad limit {limit_s!r}")
+        raise typer.BadParameter(f"--budget {spec!r}: bad limit {limit_s!r}")
     return {constraint: limit, "window": window}
 
 
 @queue_app.command("list")
 def queue_list_cmd() -> None:
     from aegis.config import load_queues
+
     root = _resolve_root()
     base = root / ".aegis.yaml"
     if not base.is_file():
@@ -208,7 +230,8 @@ def queue_list_cmd() -> None:
     for name, q in queues.items():
         if q.budgets:
             budgets = ", ".join(
-                f"{b.constraint}:{b.limit}/{b.window_str}" for b in q.budgets)
+                f"{b.constraint}:{b.limit}/{b.window_str}" for b in q.budgets
+            )
         else:
             budgets = "—"
         table.add_row(name, q.agent_profile, str(q.max_parallel), budgets)
@@ -218,23 +241,24 @@ def queue_list_cmd() -> None:
 @queue_app.command("add")
 def queue_add_cmd(
     name: str = typer.Argument(..., help="Queue name."),
-    agent: str = typer.Option(..., "--agent", "-a",
-                              help="Agent profile to bind."),
+    agent: str = typer.Option(..., "--agent", "-a", help="Agent profile to bind."),
     max_parallel: int = typer.Option(
-        ..., "--max-parallel", "-n",
-        help="Max concurrent workers."),
+        ..., "--max-parallel", "-n", help="Max concurrent workers."
+    ),
     budget: list[str] = typer.Option(
-        None, "--budget",
+        None,
+        "--budget",
         help="Repeatable: '<constraint>:<limit>:<window>'. "
-             "E.g. 'usd:1.00:1h' or 'output_tokens:500000:1h'."),
+        "E.g. 'usd:1.00:1h' or 'output_tokens:500000:1h'.",
+    ),
 ) -> None:
     """Add a queue. Fails loud on unknown agent ref + bad max_parallel."""
     from aegis.config.edit import add_queue
+
     root = _resolve_root()
     budgets = [_parse_budget(b) for b in (budget or [])] or None
     try:
-        add_queue(root, name, agent=agent, max_parallel=max_parallel,
-                  budgets=budgets)
+        add_queue(root, name, agent=agent, max_parallel=max_parallel, budgets=budgets)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -247,6 +271,7 @@ def queue_remove_cmd(
 ) -> None:
     """Remove a queue."""
     from aegis.config.edit import remove_queue
+
     root = _resolve_root()
     try:
         remove_queue(root, name)
@@ -258,9 +283,11 @@ def queue_remove_cmd(
 
 # --- host group ------------------------------------------------------
 
-host_app = typer.Typer(add_completion=False, no_args_is_help=True,
-                       help="Manage execution hosts (run a harness on "
-                            "another machine over SSH).")
+host_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Manage execution hosts (run a harness on another machine over SSH).",
+)
 app.add_typer(host_app, name="host")
 
 
@@ -269,6 +296,7 @@ def host_list_cmd() -> None:
     """Show declared execution hosts. `local` is implicit and always
     available."""
     from aegis.config.yaml_loader import load_config
+
     root = _resolve_root()
     base = root / ".aegis.yaml"
     if not base.is_file():
@@ -280,8 +308,7 @@ def host_list_cmd() -> None:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     if not hosts:
-        _console.print("[yellow]no hosts declared "
-                       "(every session runs local).[/yellow]")
+        _console.print("[yellow]no hosts declared (every session runs local).[/yellow]")
         return
     table = Table(show_header=True, header_style="bold")
     table.add_column("name")
@@ -290,9 +317,13 @@ def host_list_cmd() -> None:
     table.add_column("login shell")
     table.add_column("ssh_opts")
     for name, h in hosts.items():
-        table.add_row(name, h.ssh, h.cwd,
-                      "yes" if h.login_shell else "no",
-                      " ".join(h.ssh_opts) if h.ssh_opts else "—")
+        table.add_row(
+            name,
+            h.ssh,
+            h.cwd,
+            "yes" if h.login_shell else "no",
+            " ".join(h.ssh_opts) if h.ssh_opts else "—",
+        )
     _console.print(table)
 
 
@@ -300,33 +331,48 @@ def host_list_cmd() -> None:
 def host_add_cmd(
     name: str = typer.Argument(..., help="Host name (used as @<name>)."),
     ssh: str = typer.Option(
-        ..., "--ssh", "-s",
-        help="ssh destination, e.g. vps.apiad.net or a ~/.ssh/config alias."),
+        ...,
+        "--ssh",
+        "-s",
+        help="ssh destination, e.g. vps.apiad.net or a ~/.ssh/config alias.",
+    ),
     cwd: str = typer.Option(
-        ..., "--cwd", "-C",
-        help="Default working directory on that machine."),
+        ..., "--cwd", "-C", help="Default working directory on that machine."
+    ),
     ssh_opt: list[str] = typer.Option(
-        None, "--ssh-opt",
+        None,
+        "--ssh-opt",
         help="Repeatable: extra flag passed to ssh, e.g. "
-             "--ssh-opt=-o --ssh-opt=ServerAliveInterval=15."),
+        "--ssh-opt=-o --ssh-opt=ServerAliveInterval=15.",
+    ),
     no_login_shell: bool = typer.Option(
-        False, "--no-login-shell",
+        False,
+        "--no-login-shell",
         help="Do not wrap the remote command in `bash -lc`. Only for a "
-             "host whose profile writes to stdout — without a login shell "
-             "a harness in ~/.local/bin is not on PATH."),
+        "host whose profile writes to stdout — without a login shell "
+        "a harness in ~/.local/bin is not on PATH.",
+    ),
     remote_mcp_port: int = typer.Option(
-        None, "--remote-mcp-port",
+        None,
+        "--remote-mcp-port",
         help="Pin the remote end of the MCP reverse tunnel instead of "
-             "letting sshd allocate one."),
+        "letting sshd allocate one.",
+    ),
 ) -> None:
     """Add an execution host. Fails loud on a duplicate or on 'local'."""
     from aegis.config.edit import add_host
+
     root = _resolve_root()
     try:
-        add_host(root, name, ssh=ssh, cwd=cwd,
-                 ssh_opts=list(ssh_opt or []),
-                 login_shell=not no_login_shell,
-                 remote_mcp_port=remote_mcp_port)
+        add_host(
+            root,
+            name,
+            ssh=ssh,
+            cwd=cwd,
+            ssh_opts=list(ssh_opt or []),
+            login_shell=not no_login_shell,
+            remote_mcp_port=remote_mcp_port,
+        )
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -340,6 +386,7 @@ def host_remove_cmd(
 ) -> None:
     """Remove an execution host. Persisted; takes effect on next start."""
     from aegis.config.edit import remove_host
+
     root = _resolve_root()
     try:
         remove_host(root, name)
@@ -352,14 +399,18 @@ def host_remove_cmd(
 
 # --- harness group ---------------------------------------------------
 
-harness_app = typer.Typer(add_completion=False, no_args_is_help=True,
-                          help="Manage harnesses (named provider entries).")
+harness_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Manage harnesses (named provider entries).",
+)
 app.add_typer(harness_app, name="harness")
 
 
 @harness_app.command("list")
 def harness_list_cmd() -> None:
     from aegis.config.yaml_loader import load_config
+
     root = _resolve_root()
     try:
         cfg = load_config(root)
@@ -372,35 +423,43 @@ def harness_list_cmd() -> None:
     table.add_column("base_url")
     table.add_column("default_model")
     for name, h in sorted(cfg.harnesses.items()):
-        table.add_row(name, h.driver, h.base_url or "—",
-                      h.default_model or "—")
+        table.add_row(name, h.driver, h.base_url or "—", h.default_model or "—")
     _console.print(table)
 
 
 @harness_app.command("add")
 def harness_add_cmd(
     name: str = typer.Argument(..., help="Harness name."),
-    driver: str = typer.Option(..., "--driver", "-d",
-                               help="claude-code | gemini | opencode | "
-                                    "lovelaice."),
-    base_url: str = typer.Option(None, "--base-url",
-                                 help="Endpoint (lovelaice/direct-API)."),
-    api_key_file: str = typer.Option(None, "--api-key-file",
-                                     help="Path to an API-key file."),
-    default_model: str = typer.Option(None, "--default-model",
-                                      help="Model used when an agent omits "
-                                           "one."),
+    driver: str = typer.Option(
+        ..., "--driver", "-d", help="claude-code | gemini | opencode | lovelaice."
+    ),
+    base_url: str = typer.Option(
+        None, "--base-url", help="Endpoint (lovelaice/direct-API)."
+    ),
+    api_key_file: str = typer.Option(
+        None, "--api-key-file", help="Path to an API-key file."
+    ),
+    default_model: str = typer.Option(
+        None, "--default-model", help="Model used when an agent omits one."
+    ),
     permission_default: str = typer.Option(
-        None, "--permission-default",
-        help="read | write | full | auto."),
+        None, "--permission-default", help="read | write | full | auto."
+    ),
 ) -> None:
     """Register a harness. Fails loud on unknown driver + duplicate name."""
     from aegis.config.edit import add_harness
+
     root = _resolve_root()
     try:
-        add_harness(root, name, driver=driver, base_url=base_url,
-                    api_key_file=api_key_file, default_model=default_model,
-                    permission_default=permission_default)
+        add_harness(
+            root,
+            name,
+            driver=driver,
+            base_url=base_url,
+            api_key_file=api_key_file,
+            default_model=default_model,
+            permission_default=permission_default,
+        )
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -413,6 +472,7 @@ def harness_remove_cmd(
 ) -> None:
     """Remove a harness."""
     from aegis.config.edit import remove_harness
+
     root = _resolve_root()
     try:
         remove_harness(root, name)
@@ -425,8 +485,10 @@ def harness_remove_cmd(
 # --- plugin-dir group ------------------------------------------------
 
 plugin_dir_app = typer.Typer(
-    add_completion=False, no_args_is_help=True,
-    help="Manage plugin_dirs (auto-imported for @workflow registration).")
+    add_completion=False,
+    no_args_is_help=True,
+    help="Manage plugin_dirs (auto-imported for @workflow registration).",
+)
 app.add_typer(plugin_dir_app, name="plugin-dir")
 
 
@@ -439,6 +501,7 @@ def plugin_dir_list_cmd() -> None:
         return
     try:
         from aegis.config.yaml_loader import load_config as _load_yaml
+
         cfg = _load_yaml(root)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
@@ -460,6 +523,7 @@ def plugin_dir_add_cmd(
     path: str = typer.Argument(..., help="Path (relative to project root)."),
 ) -> None:
     from aegis.config.edit import add_plugin_dir
+
     root = _resolve_root()
     try:
         add_plugin_dir(root, path)
@@ -474,6 +538,7 @@ def plugin_dir_remove_cmd(
     path: str = typer.Argument(..., help="Path to remove."),
 ) -> None:
     from aegis.config.edit import remove_plugin_dir
+
     root = _resolve_root()
     try:
         remove_plugin_dir(root, path)
@@ -485,12 +550,14 @@ def plugin_dir_remove_cmd(
 
 # --- default-agent --------------------------------------------------
 
+
 @app.command("default-agent")
 def default_agent_cmd(
     slug: str = typer.Argument(..., help="Slug to make the default."),
 ) -> None:
     """Set the default_agent (used when no --agent flag is given)."""
     from aegis.config.edit import set_default_agent
+
     root = _resolve_root()
     try:
         set_default_agent(root, slug)

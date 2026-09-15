@@ -5,6 +5,7 @@ them up into a UsageReport. Billed cost is authoritative from
 ``Result.cost_usd`` (segment-aware); a token-priced generation/replay split
 is the analytical lens.
 """
+
 from __future__ import annotations
 
 import json
@@ -116,22 +117,28 @@ def _read_session(path: Path, *, default_model, default_provider):
             for k in _TOKEN_KEYS:
                 tokens[k] += u.get(k, 0)
             prices = resolve_prices(default_provider, model or default_model)
-            gen, rep = (token_cost(u, prices) if prices
-                        else (Decimal(0), Decimal(0)))
+            gen, rep = token_cost(u, prices) if prices else (Decimal(0), Decimal(0))
             billed_delta = Decimal(0)
             c = ev.get("cost_usd")
             if c is not None:
                 c = Decimal(str(c))
                 cost_seq.append(c)
                 # per-turn increment (segment-aware): reset → whole value
-                billed_delta = c if (prev_cost is None or c < prev_cost) \
-                    else c - prev_cost
+                billed_delta = (
+                    c if (prev_cost is None or c < prev_cost) else c - prev_cost
+                )
                 prev_cost = c
-            turn_recs.append(TurnRecord(
-                ts=ts, billed_delta=billed_delta, gen_usd=gen,
-                replay_usd=rep, tools=tuple(pending_tools),
-                duration_ms=ev.get("duration_ms") or 0,
-                is_error=bool(ev.get("is_error"))))
+            turn_recs.append(
+                TurnRecord(
+                    ts=ts,
+                    billed_delta=billed_delta,
+                    gen_usd=gen,
+                    replay_usd=rep,
+                    tools=tuple(pending_tools),
+                    duration_ms=ev.get("duration_ms") or 0,
+                    is_error=bool(ev.get("is_error")),
+                )
+            )
             pending_tools = []
 
     if turns == 0 and sum(tools.values()) == 0:
@@ -143,20 +150,36 @@ def _read_session(path: Path, *, default_model, default_provider):
         billed = segment_cost(cost_seq)
         est = False
     else:
-        billed = gen_total + rep_total   # token estimate fallback
+        billed = gen_total + rep_total  # token estimate fallback
         est = True
 
     su = SessionUsage(
-        handle=path.stem, model=model, provider=default_provider,
-        turns=turns, tools=tools, tokens=dict(tokens), billed_usd=billed,
-        gen_usd=gen_total, replay_usd=rep_total, est=est,
-        duration_ms=dur, errors=errors, first_ts=first_ts, last_ts=last_ts)
+        handle=path.stem,
+        model=model,
+        provider=default_provider,
+        turns=turns,
+        tools=tools,
+        tokens=dict(tokens),
+        billed_usd=billed,
+        gen_usd=gen_total,
+        replay_usd=rep_total,
+        est=est,
+        duration_ms=dur,
+        errors=errors,
+        first_ts=first_ts,
+        last_ts=last_ts,
+    )
     return su, turn_recs
 
 
-def build_report(state_dir: Path, *, default_model: str,
-                 default_provider: str, since: str | None = None,
-                 handle: str | None = None) -> "UsageReport":
+def build_report(
+    state_dir: Path,
+    *,
+    default_model: str,
+    default_provider: str,
+    since: str | None = None,
+    handle: str | None = None,
+) -> "UsageReport":
     sess_dir = state_dir / "sessions"
     sessions: list[SessionUsage] = []
     turns: list[TurnRecord] = []
@@ -165,8 +188,8 @@ def build_report(state_dir: Path, *, default_model: str,
             if handle and p.stem != handle:
                 continue
             su, trs = _read_session(
-                p, default_model=default_model,
-                default_provider=default_provider)
+                p, default_model=default_model, default_provider=default_provider
+            )
             if su is None:
                 continue
             if since and (su.last_ts or "") < since:
@@ -175,8 +198,7 @@ def build_report(state_dir: Path, *, default_model: str,
             turns.extend(trs)
     first = min((s.first_ts for s in sessions if s.first_ts), default=None)
     last = max((s.last_ts for s in sessions if s.last_ts), default=None)
-    return UsageReport(sessions=sessions, turns=turns,
-                       first_ts=first, last_ts=last)
+    return UsageReport(sessions=sessions, turns=turns, first_ts=first, last_ts=last)
 
 
 @dataclass
@@ -221,8 +243,7 @@ class UsageReport:
         agg: dict[str, dict] = {}
         for s in self.sessions:
             k = s.model or "unknown"
-            a = agg.setdefault(k, {"billed": Decimal(0), "turns": 0,
-                                   "sessions": 0})
+            a = agg.setdefault(k, {"billed": Decimal(0), "turns": 0, "sessions": 0})
             a["billed"] += s.billed_usd
             a["turns"] += s.turns
             a["sessions"] += 1
@@ -231,22 +252,31 @@ class UsageReport:
     def distribution(self) -> dict:
         cs = sorted(float(s.billed_usd) for s in self.sessions)
         if not cs:
-            return {"n": 0, "min": 0, "p50": 0, "p90": 0, "p99": 0,
-                    "max": 0, "mean": 0}
+            return {"n": 0, "min": 0, "p50": 0, "p90": 0, "p99": 0, "max": 0, "mean": 0}
 
         def pct(p):
             return cs[min(len(cs) - 1, int(p / 100 * len(cs)))]
-        return {"n": len(cs), "min": cs[0], "p50": pct(50), "p90": pct(90),
-                "p99": pct(99), "max": cs[-1], "mean": statistics.mean(cs)}
+
+        return {
+            "n": len(cs),
+            "min": cs[0],
+            "p50": pct(50),
+            "p90": pct(90),
+            "p99": pct(99),
+            "max": cs[-1],
+            "mean": statistics.mean(cs),
+        }
 
     def tool_correlation(self, min_turns: int = 1) -> list[tuple[str, float, int]]:
         buckets: dict[str, list[float]] = {}
         for tr in self.turns:
             for name in set(tr.tools):
-                buckets.setdefault(name, []).append(
-                    float(tr.gen_usd + tr.replay_usd))
-        rows = [(n, statistics.mean(v), len(v))
-                for n, v in buckets.items() if len(v) >= min_turns]
+                buckets.setdefault(name, []).append(float(tr.gen_usd + tr.replay_usd))
+        rows = [
+            (n, statistics.mean(v), len(v))
+            for n, v in buckets.items()
+            if len(v) >= min_turns
+        ]
         return sorted(rows, key=lambda r: -r[1])
 
     # ---- temporal (local tz) ----
@@ -254,8 +284,7 @@ class UsageReport:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         return dt.astimezone(tz)  # tz=None → system local
 
-    def by_bucket(self, kind: str, tz: ZoneInfo | None = None
-                  ) -> list[tuple[str, int]]:
+    def by_bucket(self, kind: str, tz: ZoneInfo | None = None) -> list[tuple[str, int]]:
         counts: Counter = Counter()
         for tr in self.turns:
             if not tr.ts:
@@ -273,8 +302,7 @@ class UsageReport:
         if kind == "dow":
             keys = [d for d in _DOW if d in counts]
         elif kind == "hour":
-            keys = [f"{h:02d}:00" for h in range(24)
-                    if f"{h:02d}:00" in counts]
+            keys = [f"{h:02d}:00" for h in range(24) if f"{h:02d}:00" in counts]
         else:
             keys = sorted(counts)
         return [(k, counts[k]) for k in keys]

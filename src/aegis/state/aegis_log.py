@@ -24,6 +24,7 @@ Every crash write is flushed before returning. The whole point is that the
 record is on disk *before* the process gets to exit, so ordering here is not
 an optimisation detail — it is the feature.
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,9 +64,12 @@ def default_path(state_dir: Path) -> Path:
     return Path(state_dir) / LOG_NAME
 
 
-def configure(state_dir: Path, *,
-              context: Callable[[], str] | None = None,
-              install_hooks: bool = True) -> Path:
+def configure(
+    state_dir: Path,
+    *,
+    context: Callable[[], str] | None = None,
+    install_hooks: bool = True,
+) -> Path:
     """Point the aegis log at ``state_dir`` and take over the crash doors.
 
     ``context`` is called when a crash is recorded and its return value is
@@ -86,11 +90,18 @@ def configure(state_dir: Path, *,
             return target
         target.parent.mkdir(parents=True, exist_ok=True)
         handler = logging.handlers.RotatingFileHandler(
-            target, maxBytes=MAX_BYTES, backupCount=BACKUPS,
-            encoding="utf-8", delay=False)
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%SZ"))
+            target,
+            maxBytes=MAX_BYTES,
+            backupCount=BACKUPS,
+            encoding="utf-8",
+            delay=False,
+        )
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%SZ",
+            )
+        )
         handler.setLevel(logging.INFO)
 
         root = logging.getLogger("aegis")
@@ -113,11 +124,11 @@ def configure(state_dir: Path, *,
 
 def _pid() -> int:
     import os
+
     return os.getpid()
 
 
-def write(message: str, *, level: int = logging.INFO,
-          logger: str = "aegis") -> None:
+def write(message: str, *, level: int = logging.INFO, logger: str = "aegis") -> None:
     """Record one line. A no-op when nothing configured a log yet, so
     callers never have to guard."""
     if _handler is None:
@@ -131,12 +142,13 @@ def _flush() -> None:
     if h is not None:
         try:
             h.flush()
-        except Exception:                                     # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
 
 
-def crash(where: str, exc: BaseException | None = None, *,
-          tb_text: str | None = None) -> None:
+def crash(
+    where: str, exc: BaseException | None = None, *, tb_text: str | None = None
+) -> None:
     """Record a crash, with context, flushed before returning.
 
     ``where`` names the door it came through (``tui``, ``asyncio``,
@@ -163,8 +175,7 @@ def crash(where: str, exc: BaseException | None = None, *,
 
 
 def _format(exc: BaseException) -> str:
-    return "".join(traceback.format_exception(
-        type(exc), exc, exc.__traceback__))
+    return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
 
 def _payloads(exc: BaseException, limit: int = 3) -> list[BaseException]:
@@ -183,11 +194,16 @@ def _payloads(exc: BaseException, limit: int = 3) -> list[BaseException]:
     """
     found: list[BaseException] = []
     seen = {id(exc)}
-    for cand in (getattr(exc, "error", None),
-                 getattr(exc, "exception", None),
-                 *getattr(exc, "args", ())):
-        if (isinstance(cand, BaseException) and id(cand) not in seen
-                and cand.__traceback__ is not None):
+    for cand in (
+        getattr(exc, "error", None),
+        getattr(exc, "exception", None),
+        *getattr(exc, "args", ()),
+    ):
+        if (
+            isinstance(cand, BaseException)
+            and id(cand) not in seen
+            and cand.__traceback__ is not None
+        ):
             seen.add(id(cand))
             found.append(cand)
             if len(found) >= limit:
@@ -201,7 +217,7 @@ def _safe_context() -> str:
         return ""
     try:
         return fn()
-    except Exception as e:                                    # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         # The provider failing is itself worth knowing, and must never
         # displace the crash that triggered it.
         return f"<context unavailable: {type(e).__name__}: {e}>"
@@ -221,8 +237,9 @@ def _install_hooks() -> None:
     prev_excepthook = sys.excepthook
 
     def _excepthook(exc_type, exc, tb):
-        crash("main", exc, tb_text="".join(
-            traceback.format_exception(exc_type, exc, tb)))
+        crash(
+            "main", exc, tb_text="".join(traceback.format_exception(exc_type, exc, tb))
+        )
         prev_excepthook(exc_type, exc, tb)
 
     sys.excepthook = _excepthook
@@ -231,9 +248,15 @@ def _install_hooks() -> None:
 
     def _thread_hook(args):
         name = getattr(args.thread, "name", "?")
-        crash(f"thread:{name}", args.exc_value, tb_text="".join(
-            traceback.format_exception(
-                args.exc_type, args.exc_value, args.exc_traceback)))
+        crash(
+            f"thread:{name}",
+            args.exc_value,
+            tb_text="".join(
+                traceback.format_exception(
+                    args.exc_type, args.exc_value, args.exc_traceback
+                )
+            ),
+        )
         prev_thread_hook(args)
 
     threading.excepthook = _thread_hook
@@ -250,8 +273,9 @@ def install_asyncio_hook(loop) -> None:
 
     def _handler(lp, ctx):
         exc = ctx.get("exception")
-        crash("asyncio", exc,
-              tb_text=None if exc is not None else str(ctx.get("message")))
+        crash(
+            "asyncio", exc, tb_text=None if exc is not None else str(ctx.get("message"))
+        )
         if prev is not None:
             prev(lp, ctx)
         else:
@@ -262,16 +286,17 @@ def install_asyncio_hook(loop) -> None:
 
 # --- reading it back ------------------------------------------------------
 
-def tail(n: int = 200, *, crashes_only: bool = False,
-         log_path: Path | None = None) -> list[str]:
+
+def tail(
+    n: int = 200, *, crashes_only: bool = False, log_path: Path | None = None
+) -> list[str]:
     """Last ``n`` lines of the log. ``crashes_only`` keeps each crash banner
     and the block indented beneath it, which is what makes the filter useful
     rather than a list of bare headlines."""
     target = log_path or _log_path
     if target is None or not Path(target).exists():
         return []
-    lines = Path(target).read_text(
-        encoding="utf-8", errors="replace").splitlines()
+    lines = Path(target).read_text(encoding="utf-8", errors="replace").splitlines()
     if crashes_only:
         kept: list[str] = []
         in_block = False

@@ -16,6 +16,7 @@ def context_window_for(harness: str, model: str) -> int:
     ``aegis.models``); the values refresh from GitHub every 24h so new
     models land without a release."""
     from aegis.models import get_context_window
+
     return get_context_window(harness, model)
 
 
@@ -42,6 +43,7 @@ def _fmt_cost(usd) -> str:
     Sub-cent values render as ``X.Y¢`` so they're visible at a glance;
     larger values use ``$X.XX``. ``usd`` is a Decimal."""
     from decimal import Decimal
+
     cents = usd * Decimal(100)
     if cents < Decimal("1"):
         # Sub-cent: show one decimal place in cents (0.1¢ resolution).
@@ -243,8 +245,7 @@ class SessionMetrics:
         """Widest form of the status-line metrics segment."""
         return self.render_tiers(now, colors)[0]
 
-    def render_tiers(self, now: float,
-                     colors=None) -> tuple[str, str, str, str]:
+    def render_tiers(self, now: float, colors=None) -> tuple[str, str, str, str]:
         """Four progressively narrower forms of the metrics segment.
 
         T0 is everything. T1 drops the tool counter and throughput — both are
@@ -287,8 +288,7 @@ class SessionMetrics:
             # every element as a tier, so a fifth would render as a fifth
             # (narrower) variant of the whole bar. fit.plain_width strips
             # tags before measuring, so the colour costs no width budget.
-            tag = (err if ctx_pct >= 75
-                   else warn if ctx_pct >= 50 else "")
+            tag = err if ctx_pct >= 75 else warn if ctx_pct >= 50 else ""
             body = f"ctx {_fmt_tokens(live)} ({ctx_pct}%)"
             body_short = f"ctx {ctx_pct}%"
             if tag:
@@ -302,8 +302,11 @@ class SessionMetrics:
         cut = ""
         if self.compaction_count > 0:
             cut_tag = err if self.compaction_count >= 2 else warn
-            cut = (f"[{cut_tag}]✂{self.compaction_count}[/] · " if cut_tag
-                   else f"✂{self.compaction_count} · ")
+            cut = (
+                f"[{cut_tag}]✂{self.compaction_count}[/] · "
+                if cut_tag
+                else f"✂{self.compaction_count} · "
+            )
         cost = self._render_cost()
         tps = self.recent_tps()
         tps_seg = f"⚡ {round(tps)} tok/s · " if tps is not None else ""
@@ -327,6 +330,7 @@ class SessionMetrics:
             return ""
         try:
             from aegis.budget.cost import compute
+
             cost = compute(self, self.provider, self.model)
         except Exception:  # noqa: BLE001 — UnknownPriceError + anything else
             return ""

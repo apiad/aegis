@@ -1,4 +1,5 @@
 """Thin async wrapper around ptyprocess for live terminals."""
+
 from __future__ import annotations
 
 import asyncio
@@ -42,7 +43,11 @@ class AsyncPty:
         loop = asyncio.get_running_loop()
         try:
             chunk = await loop.run_in_executor(None, self._proc.read, n)
-            return chunk.encode("utf-8", errors="replace") if isinstance(chunk, str) else chunk
+            return (
+                chunk.encode("utf-8", errors="replace")
+                if isinstance(chunk, str)
+                else chunk
+            )
         except EOFError:
             return b""
 

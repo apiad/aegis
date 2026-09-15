@@ -2,6 +2,7 @@
 (``aegis.render``) and the HTML renderer (``aegis.render_html``). Pure
 functions and lookup tables only — no Rich, no HTML, no I/O.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -44,8 +45,9 @@ def _loc_tail(locations) -> str:
     return ""
 
 
-def describe_tool(name: str, raw_input: dict | None,
-                  summary: str = "", locations=()) -> str:
+def describe_tool(
+    name: str, raw_input: dict | None, summary: str = "", locations=()
+) -> str:
     """A human one-line *description* of a tool call — the collapsed line the
     transcript shows before the args are expanded. Derived from the tool's
     structured input when available, degrading to ``summary`` / location tail
@@ -87,8 +89,7 @@ def describe_tool(name: str, raw_input: dict | None,
         verb = "grep" if name == "Grep" else "glob"
         if not pat:
             return summary or verb
-        return f"{verb} {pat!r} in {where_tail}" if where_tail \
-            else f"{verb} {pat!r}"
+        return f"{verb} {pat!r} in {where_tail}" if where_tail else f"{verb} {pat!r}"
 
     if name in ("WebFetch", "WebSearch"):
         return _trunc(inp.get("url") or inp.get("query", "") or summary, 70)
@@ -109,8 +110,7 @@ def describe_tool(name: str, raw_input: dict | None,
     return summary or _loc_tail(locations) or name
 
 
-def tool_glyph(name: str, kind: str | None,
-               raw_input: dict | None = None) -> str:
+def tool_glyph(name: str, kind: str | None, raw_input: dict | None = None) -> str:
     """The leading glyph for a tool line: the aegis layer's own when the call
     is one of ours, else the native per-kind emoji.
 
@@ -119,8 +119,7 @@ def tool_glyph(name: str, kind: str | None,
     keep its own copy of ``KIND_ICON``, which is precisely the kind of
     duplicate that drifts.
     """
-    return aegis_glyph(name, raw_input or {}) or KIND_ICON.get(kind or "",
-                                                               "⏺")
+    return aegis_glyph(name, raw_input or {}) or KIND_ICON.get(kind or "", "⏺")
 
 
 @dataclass(frozen=True)
@@ -132,13 +131,15 @@ class FileTarget:
     found by looking at the file, which is I/O and therefore deferred to
     the moment someone actually asks to open it.
     """
+
     path: str
     line: int | None = None
     anchor: str | None = None
 
 
-def file_target(name: str, raw_input: dict | None,
-                locations=(), host: str = "local") -> FileTarget | None:
+def file_target(
+    name: str, raw_input: dict | None, locations=(), host: str = "local"
+) -> FileTarget | None:
     """Which file (and line) a tool call points at, if any. Pure.
 
     ``host`` is the machine the session's harness runs on. A path from a
@@ -190,8 +191,7 @@ def anchor_line(text: str, anchor: str) -> int | None:
     return None
 
 
-def format_tool_args(name: str, raw_input: dict | None,
-                     summary: str = "") -> str:
+def format_tool_args(name: str, raw_input: dict | None, summary: str = "") -> str:
     """The full-args view revealed when a collapsed tool call is expanded.
     Bash shows its command verbatim (with the description as a leading
     comment); other tools show ``key: value`` lines with long values capped.
@@ -209,8 +209,9 @@ def format_tool_args(name: str, raw_input: dict | None,
         return "\n".join(out)
     lines = []
     for k, v in inp.items():
-        val = v if isinstance(v, str) else json.dumps(
-            v, ensure_ascii=False, default=str)
+        val = (
+            v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
+        )
         if len(val) > 500:
             val = val[:500] + "…"
         lines.append(f"{k}: {val}")
@@ -230,8 +231,9 @@ def pathhint(ev) -> str:
     return ev.summary
 
 
-def diff_window(old_text: str, new_text: str,
-                max_lines: int = 6) -> tuple[list[str], list[str], int]:
+def diff_window(
+    old_text: str, new_text: str, max_lines: int = 6
+) -> tuple[list[str], list[str], int]:
     """Trim a (old_text, new_text) pair to the changed window and cap the
     visible rows. Returns ``(shown_removed, shown_added, elided)`` — removed
     rows fill the budget first, then added; ``elided`` is how many changed
@@ -240,17 +242,21 @@ def diff_window(old_text: str, new_text: str,
     old_lines = old_text.splitlines() if old_text else []
     new_lines = new_text.splitlines() if new_text else []
     head = 0
-    while (head < len(old_lines) and head < len(new_lines)
-           and old_lines[head] == new_lines[head]):
+    while (
+        head < len(old_lines)
+        and head < len(new_lines)
+        and old_lines[head] == new_lines[head]
+    ):
         head += 1
     tail = 0
-    while (tail < len(old_lines) - head
-           and tail < len(new_lines) - head
-           and old_lines[len(old_lines) - 1 - tail]
-               == new_lines[len(new_lines) - 1 - tail]):
+    while (
+        tail < len(old_lines) - head
+        and tail < len(new_lines) - head
+        and old_lines[len(old_lines) - 1 - tail] == new_lines[len(new_lines) - 1 - tail]
+    ):
         tail += 1
-    removed = old_lines[head:len(old_lines) - tail]
-    added = new_lines[head:len(new_lines) - tail]
+    removed = old_lines[head : len(old_lines) - tail]
+    added = new_lines[head : len(new_lines) - tail]
 
     shown_removed: list[str] = []
     shown_added: list[str] = []
@@ -265,8 +271,7 @@ def diff_window(old_text: str, new_text: str,
             break
         shown_added.append(line)
         budget -= 1
-    elided = (len(removed) + len(added)) \
-        - (len(shown_removed) + len(shown_added))
+    elided = (len(removed) + len(added)) - (len(shown_removed) + len(shown_added))
     return shown_removed, shown_added, elided
 
 
@@ -297,6 +302,7 @@ def result_parts(ev, *, age_s: float | None = None) -> list[str]:
     if ev.cost_usd is not None and ev.cost_usd > 0:
         from decimal import Decimal
         from aegis.tui.metrics import _fmt_cost
+
         parts.append(_fmt_cost(Decimal(str(ev.cost_usd))))
     if ev.stop_reason and ev.stop_reason != "end_turn":
         parts.append(ev.stop_reason)

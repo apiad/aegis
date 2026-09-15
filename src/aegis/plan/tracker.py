@@ -10,6 +10,7 @@ glyph is a literal rendering of the clock running.
 The tracker never reads a clock. Every method takes an explicit ``ts``,
 which is what lets a replayed transcript reproduce the live numbers.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -48,8 +49,9 @@ class PlanTracker:
         """Resume accruing if a task is in progress and we are working."""
         if not self._working:
             return
-        cur = next((k for k, r in self._tasks.items()
-                    if r["status"] == "in_progress"), None)
+        cur = next(
+            (k for k, r in self._tasks.items() if r["status"] == "in_progress"), None
+        )
         if cur is not None:
             self._accruing = cur
             self._since = ts
@@ -80,9 +82,14 @@ class PlanTracker:
             return by_pos
         # Position may have shifted (a task deleted above it), so fall
         # back to matching an as-yet-unidentified task by subject.
-        return next((r for k, r in self._tasks.items()
-                     if k.startswith(_POS) and r["subject"] == entry.content),
-                    None)
+        return next(
+            (
+                r
+                for k, r in self._tasks.items()
+                if k.startswith(_POS) and r["subject"] == entry.content
+            ),
+            None,
+        )
 
     # -- surface -----------------------------------------------------
 
@@ -92,13 +99,11 @@ class PlanTracker:
         for i, entry in enumerate(plan.entries):
             key = self._key(entry, i)
             prev = self._prior(key, entry, i)
-            started = bool(prev and prev["started"]) \
-                or entry.status == "in_progress"
+            started = bool(prev and prev["started"]) or entry.status == "in_progress"
             seen[key] = {
                 "subject": entry.content,
                 "status": entry.status,
-                "active_form": entry.active_form
-                    or (prev or {}).get("active_form"),
+                "active_form": entry.active_form or (prev or {}).get("active_form"),
                 # Carried across revisions, so a task going in_progress →
                 # completed → in_progress resumes rather than restarts.
                 "working_s": (prev or {}).get("working_s"),
@@ -112,7 +117,7 @@ class PlanTracker:
 
     def set_working(self, working: bool, ts: float) -> None:
         if working == self._working:
-            return          # redundant call, must not double-count
+            return  # redundant call, must not double-count
         self._flush(ts)
         self._working = working
         self._rearm(ts)
@@ -121,24 +126,28 @@ class PlanTracker:
         """Read-only: the live figure is computed, never banked, so
         reading repeatedly does not compound it."""
         live = ts - self._since if self._accruing is not None else 0.0
-        return PlanState(tasks=tuple(
-            PlanTask(
-                key=key,
-                subject=rec["subject"],
-                status=rec["status"],
-                active_form=rec["active_form"],
-                working_s=None if not rec["started"] else
-                    (rec["working_s"] or 0.0)
+        return PlanState(
+            tasks=tuple(
+                PlanTask(
+                    key=key,
+                    subject=rec["subject"],
+                    status=rec["status"],
+                    active_form=rec["active_form"],
+                    working_s=None
+                    if not rec["started"]
+                    else (rec["working_s"] or 0.0)
                     + (live if key == self._accruing else 0.0),
+                )
+                for key, rec in self._tasks.items()
             )
-            for key, rec in self._tasks.items()
-        ))
+        )
 
     def roll_up(self, ts: float) -> PlanSnapshot:
         st = self.snapshot(ts)
         cur = st.current
         return PlanSnapshot(
-            done=st.done, total=st.total,
+            done=st.done,
+            total=st.total,
             current=cur.subject if cur else None,
             current_working_s=cur.working_s if cur else None,
             updated_at=self._updated_at,

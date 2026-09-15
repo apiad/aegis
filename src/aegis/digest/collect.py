@@ -11,6 +11,7 @@ Known limitation, stated rather than hidden: a turn that commits without
 using a write tool (pure Bash) contributes no commits, because
 ``repos.writes.write_target`` deliberately excludes Bash.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,8 @@ def _git(root: Path, *args: str) -> str:
     """Run git, or return "". Never raises — this runs inside a turn."""
     try:
         proc = subprocess.run(
-            ("git", *args), cwd=root, capture_output=True, text=True,
-            timeout=_TIMEOUT_S)
+            ("git", *args), cwd=root, capture_output=True, text=True, timeout=_TIMEOUT_S
+        )
     except (OSError, subprocess.SubprocessError):
         return ""
     return proc.stdout.strip() if proc.returncode == 0 else ""
@@ -39,13 +40,20 @@ def read_head(root: Path) -> str:
     return _git(Path(root), "rev-parse", "HEAD")
 
 
-def commits_since(root: Path, base: str, *,
-                  max_count: int = MAX_COMMITS) -> tuple[CommitLine, ...]:
+def commits_since(
+    root: Path, base: str, *, max_count: int = MAX_COMMITS
+) -> tuple[CommitLine, ...]:
     """Commits landed since ``base``, newest first. () on any failure."""
     if not base:
         return ()
-    out = _git(Path(root), "log", "--oneline", "--no-decorate",
-               f"--max-count={max_count}", f"{base}..HEAD")
+    out = _git(
+        Path(root),
+        "log",
+        "--oneline",
+        "--no-decorate",
+        f"--max-count={max_count}",
+        f"{base}..HEAD",
+    )
     if not out:
         return ()
     lines = []
@@ -85,9 +93,15 @@ class DigestCollector:
             entry = self._tracked[key] = _Tracked(root, host)
         entry.writes += 1
 
-    async def build(self, *, plan_done: int, plan_total: int,
-                    plan_done_at_start: int, assistant_tail: str,
-                    duration_s: float) -> TurnFacts:
+    async def build(
+        self,
+        *,
+        plan_done: int,
+        plan_total: int,
+        plan_done_at_start: int,
+        assistant_tail: str,
+        duration_s: float,
+    ) -> TurnFacts:
         """Diff every tracked repo. Git runs off the event loop.
 
         **The no-write fast path is not an optimization detail.** Most
@@ -97,29 +111,33 @@ class DigestCollector:
         ``_chain_if_pending`` runs relative to the caller.
         """
         try:
-            deltas = (await asyncio.to_thread(self._diff_all)
-                      if self._tracked else ())
-        except Exception as e:                                # noqa: BLE001
-            return TurnFacts(assistant_tail=assistant_tail,
-                             duration_s=duration_s,
-                             error=f"{type(e).__name__}: {e}")
+            deltas = await asyncio.to_thread(self._diff_all) if self._tracked else ()
+        except Exception as e:  # noqa: BLE001
+            return TurnFacts(
+                assistant_tail=assistant_tail,
+                duration_s=duration_s,
+                error=f"{type(e).__name__}: {e}",
+            )
         return TurnFacts(
             repos=deltas,
             plan_done=plan_done,
             plan_total=plan_total,
             plan_done_delta=max(0, plan_done - plan_done_at_start),
             assistant_tail=assistant_tail,
-            duration_s=duration_s)
+            duration_s=duration_s,
+        )
 
     def _diff_all(self) -> tuple[RepoDelta, ...]:
         out = []
         for entry in self._tracked.values():
             local = entry.host == "local"
-            out.append(RepoDelta(
-                name=entry.root.name,
-                host=entry.host,
-                commits=(commits_since(entry.root, entry.base)
-                         if local else ()),
-                files_written=entry.writes,
-                available=local))
+            out.append(
+                RepoDelta(
+                    name=entry.root.name,
+                    host=entry.host,
+                    commits=(commits_since(entry.root, entry.base) if local else ()),
+                    files_written=entry.writes,
+                    available=local,
+                )
+            )
         return tuple(out)

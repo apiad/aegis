@@ -22,6 +22,7 @@ whole log because part of it is damaged:
   record) are salvaged. ``EventReplay`` reports both counts so the
   renderer can say so instead of silently shortening a conversation.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -34,8 +35,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from aegis.events import (
-    AssistantText, AssistantThinking, Event, Result, SessionClosed,
-    SessionMeta, SystemInit, ThinkingTokens, ToolUse,
+    AssistantText,
+    AssistantThinking,
+    Event,
+    Result,
+    SessionClosed,
+    SessionMeta,
+    SystemInit,
+    ThinkingTokens,
+    ToolUse,
 )
 from aegis.state.event_codec import decode_event, encode_event
 
@@ -59,8 +67,8 @@ _DECODER = json.JSONDecoder()
 class EventReplay:
     events: list[Event]
     interrupted: bool
-    damaged: int = 0      # lines that did not parse as a whole record
-    recovered: int = 0    # records salvaged out of those lines
+    damaged: int = 0  # lines that did not parse as a whole record
+    recovered: int = 0  # records salvaged out of those lines
     # Epoch seconds per event, positionally parallel to ``events``. The
     # PlanTracker takes an explicit ts on every method so that a replay
     # reproduces the live working times exactly; that is only true if the
@@ -72,6 +80,7 @@ class EventReplay:
 @dataclass(frozen=True)
 class LogScan:
     """Raw record dicts read off a log, plus what it cost to get them."""
+
     records: list[dict] = field(default_factory=list)
     damaged: int = 0
     recovered: int = 0
@@ -110,8 +119,7 @@ def parse_log_id(log_id: str) -> tuple[str | None, str]:
         return None, log_id
     d, t, micro, handle = m.groups()
     frac = f".{micro}" if micro else ""
-    return (f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}{frac}Z",
-            handle)
+    return (f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}{frac}Z", handle)
 
 
 def session_log_path(state_dir_path: Path, log_id: str) -> Path:
@@ -141,9 +149,13 @@ def _is_closed(path: Path) -> bool:
     return False
 
 
-def archive_old_logs(state_dir_path: Path, *, older_than_days: float = 90.0,
-                     live_handles: "set[str] | None" = None,
-                     dry_run: bool = False) -> ArchiveResult:
+def archive_old_logs(
+    state_dir_path: Path,
+    *,
+    older_than_days: float = 90.0,
+    live_handles: "set[str] | None" = None,
+    dry_run: bool = False,
+) -> ArchiveResult:
     """Gzip closed transcripts older than ``older_than_days``, in place.
 
     Nothing else prunes the state dir, and it grows ~9 MB/day — every cost
@@ -183,7 +195,7 @@ def archive_old_logs(state_dir_path: Path, *, older_than_days: float = 90.0,
         try:
             with p.open("rb") as src, gzip.open(gz, "wb") as dst:
                 shutil.copyfileobj(src, dst)
-        except Exception:      # noqa: BLE001 — never trade a good log for none
+        except Exception:  # noqa: BLE001 — never trade a good log for none
             with contextlib.suppress(OSError):
                 gz.unlink()
             result.skipped += 1
@@ -203,15 +215,14 @@ def encode_record(ev: Event) -> bytes:
     """One event → one newline-terminated record. ``ensure_ascii`` (the
     default) keeps every newline in the payload escaped, so a record can
     never span two lines."""
-    rec = {"v": SCHEMA_VERSION, "aegis_ts": _now_iso(),
-           "event": encode_event(ev)}
+    rec = {"v": SCHEMA_VERSION, "aegis_ts": _now_iso(), "event": encode_event(ev)}
     return (json.dumps(rec, separators=(",", ":")) + "\n").encode("utf-8")
 
 
 def _write_record(fd: int, blob: bytes) -> None:
     view = memoryview(blob)
     while view:
-        view = view[os.write(fd, view):]
+        view = view[os.write(fd, view) :]
 
 
 def append_event(state_dir_path: Path, log_id: str, ev: Event) -> None:
@@ -295,6 +306,7 @@ def make_session_log_observer(state_dir_path, log_id: str):
                 os.fsync(fd)
         except Exception:
             _drop()
+
     return _obs
 
 
@@ -330,11 +342,14 @@ def scan_log(path: Path) -> LogScan:
     # the rest of the transcript unreadable.
     if path.suffix == ".gz":
         import gzip
+
         opener = lambda: gzip.open(  # noqa: E731
-            path, "rt", encoding="utf-8", errors="replace")
+            path, "rt", encoding="utf-8", errors="replace"
+        )
     else:
         opener = lambda: path.open(  # noqa: E731
-            "r", encoding="utf-8", errors="replace")
+            "r", encoding="utf-8", errors="replace"
+        )
     with opener() as f:
         for line in f:
             line = line.strip()
@@ -400,6 +415,10 @@ def replay_events(state_dir_path: Path, log_id: str) -> EventReplay:
                 last_turn_evt = e
                 break
         interrupted = last_turn_evt is not None
-    return EventReplay(events=events, interrupted=interrupted,
-                       damaged=damaged, recovered=scan.recovered,
-                       stamps=stamps)
+    return EventReplay(
+        events=events,
+        interrupted=interrupted,
+        damaged=damaged,
+        recovered=scan.recovered,
+        stamps=stamps,
+    )

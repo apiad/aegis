@@ -1,4 +1,5 @@
 """Pure-function evaluator for per-queue budgets over a JSONL tail."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,20 +14,20 @@ _TERMINAL_EVENTS = ("completed", "failed")
 
 @dataclass(frozen=True)
 class BudgetCheck:
-    constraint:    str
-    limit:         Decimal
-    spent:         Decimal
-    window_str:    str
-    window_start:  datetime
-    allowed:       bool
-    headroom:      Decimal
-    unblock_at:    datetime | None
+    constraint: str
+    limit: Decimal
+    spent: Decimal
+    window_str: str
+    window_start: datetime
+    allowed: bool
+    headroom: Decimal
+    unblock_at: datetime | None
 
 
 @dataclass(frozen=True)
 class Decision:
-    allowed:    bool
-    checks:     list[BudgetCheck]
+    allowed: bool
+    checks: list[BudgetCheck]
     blocked_by: list[BudgetCheck]
     unblock_at: datetime | None
 
@@ -62,8 +63,7 @@ def _record_value(rec: dict, constraint: str) -> Decimal:
     return _ZERO
 
 
-def _evaluate_one(records: list[dict], budget: Budget,
-                  now: datetime) -> BudgetCheck:
+def _evaluate_one(records: list[dict], budget: Budget, now: datetime) -> BudgetCheck:
     window_start = now - budget.window
     inside: list[tuple[datetime, Decimal]] = []
     for rec in records:
@@ -88,15 +88,20 @@ def _evaluate_one(records: list[dict], budget: Budget,
                 break
 
     return BudgetCheck(
-        constraint=budget.constraint, limit=budget.limit, spent=spent,
-        window_str=budget.window_str, window_start=window_start,
-        allowed=allowed, headroom=headroom, unblock_at=unblock_at,
+        constraint=budget.constraint,
+        limit=budget.limit,
+        spent=spent,
+        window_str=budget.window_str,
+        window_start=window_start,
+        allowed=allowed,
+        headroom=headroom,
+        unblock_at=unblock_at,
     )
 
 
-def evaluate_budgets(jsonl_tail: Iterable[dict],
-                     budgets: list[Budget],
-                     now: datetime) -> Decision:
+def evaluate_budgets(
+    jsonl_tail: Iterable[dict], budgets: list[Budget], now: datetime
+) -> Decision:
     records = list(jsonl_tail)
     checks = [_evaluate_one(records, b, now) for b in budgets]
     blocked_by = [c for c in checks if not c.allowed]
@@ -105,6 +110,8 @@ def evaluate_budgets(jsonl_tail: Iterable[dict],
         eligible = [c.unblock_at for c in blocked_by if c.unblock_at]
         decision_unblock = max(eligible) if eligible else None
     return Decision(
-        allowed=not blocked_by, checks=checks, blocked_by=blocked_by,
+        allowed=not blocked_by,
+        checks=checks,
+        blocked_by=blocked_by,
         unblock_at=decision_unblock,
     )

@@ -8,6 +8,7 @@ Best-effort by contract, like ``titlegen``: any failure yields a
 ``TurnFacts`` with ``error`` set. A summary must never be able to disturb
 the conversation it summarises.
 """
+
 from aegis.digest.models import CommitLine, RepoDelta, TurnFacts
 from aegis.digest.render import render_facts
 

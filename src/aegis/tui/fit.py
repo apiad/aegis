@@ -10,6 +10,7 @@ Segments are rendered in *list* order and degraded in *priority* order; the two
 are deliberately independent, so visual layout does not dictate what survives a
 narrow terminal.
 """
+
 from __future__ import annotations
 
 import re
@@ -60,6 +61,7 @@ class Segment:
     segment can take before being dropped entirely. ``priority`` is compared
     across segments — higher survives longer.
     """
+
     key: str
     tiers: tuple[str, ...]
     priority: int

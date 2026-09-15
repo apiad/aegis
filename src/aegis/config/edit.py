@@ -5,6 +5,7 @@ mutations (e.g. the TUI's Space toggle, the ``aegis schedule
 enable/disable`` CLI commands). All writes go through an
 atomic-write helper so a crash mid-mutation can't corrupt the file.
 """
+
 from __future__ import annotations
 
 import os
@@ -50,8 +51,7 @@ def _validate_and_dump(root: Path, data: dict[str, Any]) -> str:
 
     # Validate in an isolated sibling directory so overlays under
     # `.aegis/*` are still discovered (some validation depends on them).
-    fd, tmp = tempfile.mkstemp(
-        dir=str(root), prefix=".aegis-validate-", suffix=".yaml")
+    fd, tmp = tempfile.mkstemp(dir=str(root), prefix=".aegis-validate-", suffix=".yaml")
     os.close(fd)
     tmp_path = Path(tmp)
     try:
@@ -59,6 +59,7 @@ def _validate_and_dump(root: Path, data: dict[str, Any]) -> str:
         # The loader expects the file to be named ".aegis.yaml" inside
         # the root. Stage a sibling root for validation.
         from tempfile import TemporaryDirectory
+
         with TemporaryDirectory(dir=str(root)) as scratch:
             scratch_path = Path(scratch)
             (scratch_path / ".aegis.yaml").write_text(payload)
@@ -67,8 +68,10 @@ def _validate_and_dump(root: Path, data: dict[str, Any]) -> str:
             overlay_src = root / ".aegis"
             if overlay_src.is_dir():
                 import shutil
-                shutil.copytree(overlay_src, scratch_path / ".aegis",
-                                dirs_exist_ok=True)
+
+                shutil.copytree(
+                    overlay_src, scratch_path / ".aegis", dirs_exist_ok=True
+                )
             try:
                 _load_yaml(scratch_path)
             except ConfigError as e:
@@ -87,7 +90,8 @@ def _validate_and_dump(root: Path, data: dict[str, Any]) -> str:
 def _atomic_write(path: Path, payload: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
     try:
         with os.fdopen(fd, "w") as f:
             f.write(payload)
@@ -111,6 +115,7 @@ def set_schedule_enabled(root: Path, name: str, value: bool) -> bool:
     overlay = root / ".aegis" / "schedules" / f"{name}.yaml"
     if overlay.exists():
         from io import StringIO
+
         data = yaml.load(overlay.read_text())
         if not isinstance(data, dict):
             raise ValueError(f"{overlay} must be a mapping")
@@ -123,8 +128,10 @@ def set_schedule_enabled(root: Path, name: str, value: bool) -> bool:
     base = root / ".aegis.yaml"
     if not base.exists():
         raise FileNotFoundError(
-            f"neither {overlay} nor {base} exists for schedule {name!r}")
+            f"neither {overlay} nor {base} exists for schedule {name!r}"
+        )
     from io import StringIO
+
     data = yaml.load(base.read_text())
     schedules = (data or {}).get("schedules") or {}
     if name not in schedules:
@@ -163,19 +170,17 @@ def add_agent(
     back (file unchanged) on validation failure.
     """
     if (provider is None) == (harness is None):
-        raise ConfigError(
-            "add_agent requires exactly one of provider= or harness=")
+        raise ConfigError("add_agent requires exactly one of provider= or harness=")
     if provider is not None and provider not in _VALID_PROVIDERS:
         raise ConfigError(
-            f"unknown provider {provider!r}; "
-            f"known: {sorted(_VALID_PROVIDERS)}")
+            f"unknown provider {provider!r}; known: {sorted(_VALID_PROVIDERS)}"
+        )
     base = root / ".aegis.yaml"
     data = _load(base)
 
     agents = data.setdefault("agents", {})
     if slug in agents:
-        raise ConfigError(
-            f"agent {slug!r} already exists in {base}")
+        raise ConfigError(f"agent {slug!r} already exists in {base}")
 
     if provider is not None:
         entry: dict[str, Any] = {"provider": provider, "model": model}
@@ -183,8 +188,7 @@ def add_agent(
         entry = {"harness": harness, "model": model}
     if effort is not None:
         if provider is not None and provider != "claude-code":
-            raise ConfigError(
-                f"effort only applies to claude-code, not {provider!r}")
+            raise ConfigError(f"effort only applies to claude-code, not {provider!r}")
         entry["effort"] = effort
     if permission is not None:
         entry["permission"] = permission
@@ -215,12 +219,16 @@ def remove_agent(root: Path, slug: str) -> None:
 
     # Reject if any queue still binds to it.
     queues = data.get("queues") or {}
-    bad = [name for name, q in queues.items()
-           if isinstance(q, dict) and q.get("agent") == slug]
+    bad = [
+        name
+        for name, q in queues.items()
+        if isinstance(q, dict) and q.get("agent") == slug
+    ]
     if bad:
         raise ConfigError(
             f"cannot remove agent {slug!r}: referenced by "
-            f"queue(s) {bad}. Remove or re-bind those queues first.")
+            f"queue(s) {bad}. Remove or re-bind those queues first."
+        )
 
     # Reject if it's the current default and there's no other agent to
     # promote — let the operator make the call explicitly via
@@ -229,7 +237,8 @@ def remove_agent(root: Path, slug: str) -> None:
         raise ConfigError(
             f"cannot remove agent {slug!r}: it is the current "
             f"default_agent. Set a different default first via "
-            f"`aegis config default-agent <slug>`.")
+            f"`aegis config default-agent <slug>`."
+        )
 
     del agents[slug]
     payload = _validate_and_dump(root, data)
@@ -237,6 +246,7 @@ def remove_agent(root: Path, slug: str) -> None:
 
 
 # --- hosts -----------------------------------------------------------
+
 
 def add_host(
     root: Path,
@@ -259,7 +269,8 @@ def add_host(
     if name == "local":
         raise ConfigError(
             "hosts: 'local' is implicit (the machine aegis runs on) and "
-            "cannot be declared.")
+            "cannot be declared."
+        )
     base = root / ".aegis.yaml"
     data = _load(base)
 
@@ -301,6 +312,7 @@ def remove_host(root: Path, name: str) -> None:
 
 
 # --- queues ----------------------------------------------------------
+
 
 def add_queue(
     root: Path,
@@ -353,18 +365,19 @@ def add_harness(
     """Register a harness (named provider entry) in .aegis.yaml. Fails loud
     on unknown driver or duplicate name."""
     if driver not in _VALID_DRIVERS:
-        raise ConfigError(
-            f"unknown driver {driver!r}; known: {sorted(_VALID_DRIVERS)}")
+        raise ConfigError(f"unknown driver {driver!r}; known: {sorted(_VALID_DRIVERS)}")
     base = root / ".aegis.yaml"
     data = _load(base)
     harnesses = data.setdefault("harnesses", {})
     if name in harnesses:
         raise ConfigError(f"harness {name!r} already exists in {base}")
     entry: dict[str, Any] = {"driver": driver}
-    for key, value in (("base_url", base_url),
-                       ("api_key_file", api_key_file),
-                       ("default_model", default_model),
-                       ("permission_default", permission_default)):
+    for key, value in (
+        ("base_url", base_url),
+        ("api_key_file", api_key_file),
+        ("default_model", default_model),
+        ("permission_default", permission_default),
+    ):
         if value is not None:
             entry[key] = value
     harnesses[name] = entry
@@ -386,8 +399,10 @@ def remove_harness(root: Path, name: str) -> None:
 
 # --- edit sentinel ---------------------------------------------------
 
+
 class _Unchanged:
     """Sentinel: distinguishes "leave alone" from "set to None / clear"."""
+
     def __repr__(self) -> str:
         return "UNCHANGED"
 
@@ -396,6 +411,7 @@ UNCHANGED = _Unchanged()
 
 
 # --- web -------------------------------------------------------------
+
 
 def set_web(
     root: Path,
@@ -435,19 +451,20 @@ def set_web(
 
 # --- default_agent ---------------------------------------------------
 
+
 def set_default_agent(root: Path, slug: str) -> None:
     base = root / ".aegis.yaml"
     data = _load(base)
     agents = data.get("agents") or {}
     if slug not in agents:
-        raise ConfigError(
-            f"agent {slug!r} not declared (known: {sorted(agents)})")
+        raise ConfigError(f"agent {slug!r} not declared (known: {sorted(agents)})")
     data["default_agent"] = slug
     payload = _validate_and_dump(root, data)
     _atomic_write(base, payload)
 
 
 # --- plugin_dirs -----------------------------------------------------
+
 
 def add_plugin_dir(root: Path, path: str) -> None:
     """Append a plugin directory. Idempotent."""
@@ -485,13 +502,13 @@ def toggle_schedule_enabled(root: Path, name: str) -> bool:
     overlay = root / ".aegis" / "schedules" / f"{name}.yaml"
     if overlay.exists():
         data = yaml.load(overlay.read_text())
-        current = bool(data.get("enabled", True)) if isinstance(
-            data, dict) else True
+        current = bool(data.get("enabled", True)) if isinstance(data, dict) else True
         return set_schedule_enabled(root, name, not current)
     base = root / ".aegis.yaml"
     if not base.exists():
         raise FileNotFoundError(
-            f"neither {overlay} nor {base} exists for schedule {name!r}")
+            f"neither {overlay} nor {base} exists for schedule {name!r}"
+        )
     data = yaml.load(base.read_text())
     schedules = (data or {}).get("schedules") or {}
     if name not in schedules:

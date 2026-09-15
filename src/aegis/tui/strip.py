@@ -5,6 +5,7 @@ Two pieces:
 * ``QueueStrip`` — Textual Static widget that subscribes to a digest
   and re-renders on each event.
 """
+
 from __future__ import annotations
 
 from rich.text import Text
@@ -71,8 +72,7 @@ def render_strip(snap: Snapshot, palette) -> Text:
     last = snap.last_started
     # Only show "last:" if there's still a running worker — once it
     # finishes we drop the cell rather than implying staleness.
-    last_running = (last is not None and last.state == "running"
-                    and last.worker_handle)
+    last_running = last is not None and last.state == "running" and last.worker_handle
     if last_running:
         line.append("    last: ", style=palette.muted)
         line.append(last.worker_handle, style=palette.work)
@@ -83,6 +83,7 @@ class QueueStrip(Static):
     """One-row strip widget. Hidden (height: 0) when there are no
     queues; one row otherwise.
     """
+
     DEFAULT_CSS = """
     QueueStrip { height: 1; padding: 0 2; margin-bottom: 1;
                  background: $panel; color: $foreground; }
@@ -100,8 +101,7 @@ class QueueStrip(Static):
         self._refresh()
 
     def on_mount(self) -> None:
-        self._unsub = self._digest._manager.subscribe(
-            lambda ev: self._refresh())
+        self._unsub = self._digest._manager.subscribe(lambda ev: self._refresh())
         self._refresh()
 
     def on_unmount(self) -> None:

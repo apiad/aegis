@@ -13,8 +13,8 @@ class RefError(Exception):
 
 class Store:
     def __init__(self) -> None:
-        self.outputs: dict[str, Any] = {}   # keyed by structural path
-        self.refs: dict[str, Any] = {}      # keyed by node id
+        self.outputs: dict[str, Any] = {}  # keyed by structural path
+        self.refs: dict[str, Any] = {}  # keyed by node id
 
     def record(self, path: str, node_id: str | None, value: Any) -> None:
         self.outputs[path] = value
@@ -66,7 +66,8 @@ def substitute(template: str, bindings: dict) -> str:
         if not name_match:
             raise RefError(
                 f"unbound template name: {{{{{body}}}}} — only bare "
-                "dotted names are allowed, no logic")
+                "dotted names are allowed, no logic"
+            )
         name = name_match.group(1)
         cur: Any = bindings
         for seg in name.split("."):
@@ -75,4 +76,5 @@ def substitute(template: str, bindings: dict) -> str:
             else:
                 raise RefError(f"unbound template name: {{{{{name}}}}}")
         return str(cur)
+
     return _BRACE.sub(_repl, template)

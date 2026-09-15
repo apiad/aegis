@@ -5,6 +5,7 @@ separate call sites glob `sessions/*.jsonl` and would read a sidecar back as
 a session log. The merge happens here, at read time, so an existing log is
 never rewritten.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,11 +16,13 @@ from aegis.corpus.extract import Exchange, extract_exchanges
 from aegis.state.session_log import parse_log_id
 
 _FROM_RE = re.compile(r"^>\s*from\s+([a-z]+)(?::([^\s·]+))?", re.I)
-_KNOWN = {"queue", "agent", "monitor", "canvas", "term",
-          "workflow", "loop", "reminder"}
+_KNOWN = {"queue", "agent", "monitor", "canvas", "term", "workflow", "loop", "reminder"}
 _HARNESS_PREFIXES = (
-    "<task-notification>", "<system-reminder>", "<command-name>",
-    "<local-command-stdout>", "<user-prompt-submit-hook>",
+    "<task-notification>",
+    "<system-reminder>",
+    "<command-name>",
+    "<local-command-stdout>",
+    "<user-prompt-submit-hook>",
     "Base directory for this skill:",
 )
 
@@ -62,15 +65,23 @@ def read_log(log_path: Path, backfill_dir: Path | None):
     # the majority of the corpus. A real record overwrites this below: a
     # rename appends one, so it is the more current name.
     _birth, birth_handle = parse_log_id(Path(log_path).stem)
-    meta: dict = {"handle": birth_handle or None, "cwd": None,
-                  "profile": None, "host": None}
+    meta: dict = {
+        "handle": birth_handle or None,
+        "cwd": None,
+        "profile": None,
+        "host": None,
+    }
     events: list[tuple[dict, str]] = []
     for r in records:
         ev = r.get("event") or {}
         ts = r.get("aegis_ts") or ""
         if ev.get("t") == "SessionMeta":
-            meta = {"handle": ev.get("handle"), "cwd": ev.get("cwd"),
-                    "profile": ev.get("profile"), "host": ev.get("host")}
+            meta = {
+                "handle": ev.get("handle"),
+                "cwd": ev.get("cwd"),
+                "profile": ev.get("profile"),
+                "host": ev.get("host"),
+            }
         if ev.get("t") == "UserMessage" and not ev.get("source"):
             src, sender = derive_source(ev.get("text", ""))
             ev = {**ev, "source": src, "sender": sender}

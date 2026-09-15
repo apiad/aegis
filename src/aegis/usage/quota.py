@@ -10,6 +10,7 @@ nothing about any particular vendor.
 provider declares, so adding a third vendor is a new module plus a registry
 entry, not a change to the service or the renderer.
 """
+
 from __future__ import annotations
 
 import time
@@ -35,9 +36,9 @@ class QuotaError(Exception):
 
 @dataclass(frozen=True)
 class QuotaWindow:
-    kind: str                    # "session", "weekly_all", "weekly_opus", ...
+    kind: str  # "session", "weekly_all", "weekly_opus", ...
     percent: float
-    severity: str                # "normal" | "warning" | "critical"
+    severity: str  # "normal" | "warning" | "critical"
     resets_at: datetime | None
     is_active: bool
 
@@ -45,7 +46,7 @@ class QuotaWindow:
 @dataclass(frozen=True)
 class QuotaSnapshot:
     windows: tuple[QuotaWindow, ...]
-    fetched_at: float            # monotonic
+    fetched_at: float  # monotonic
 
     def window(self, kind: str) -> QuotaWindow | None:
         for w in self.windows:
@@ -64,10 +65,11 @@ class QuotaProvider:
     hold credentials for is shown whether or not one of its agents is open.
     That is the point — it is what tells you which rail to launch on.
     """
-    name: str                                   # "claude" | "opencode-go"
-    label: str                                  # bar prefix when >1 is shown
-    harness: str                                # matches an Agent's harness
-    bar_windows: tuple[tuple[str, str], ...]    # (kind, label), display order
+
+    name: str  # "claude" | "opencode-go"
+    label: str  # bar prefix when >1 is shown
+    harness: str  # matches an Agent's harness
+    bar_windows: tuple[tuple[str, str], ...]  # (kind, label), display order
     fetch: Callable[..., "QuotaSnapshot"]
     read_token: Callable[..., str | None]
 
@@ -91,9 +93,9 @@ def _timestamp(raw) -> datetime | None:
         return None
 
 
-POLL_S = 60.0          # background cadence
-STALE_DROP_S = 300.0   # how long a stale value stays on screen before it goes
-BACKOFF_S = 300.0      # hands off the endpoint after it says 429
+POLL_S = 60.0  # background cadence
+STALE_DROP_S = 300.0  # how long a stale value stays on screen before it goes
+BACKOFF_S = 300.0  # hands off the endpoint after it says 429
 
 
 @dataclass(frozen=True)
@@ -105,9 +107,10 @@ class QuotaState:
     ``snapshot`` means there is nothing trustworthy to show and ``failure``
     says why.
     """
+
     snapshot: QuotaSnapshot | None = None
     age_s: float = 0.0
-    failure: str = ""   # "" | "no_credentials" | "unauthorized" | "unreachable"
+    failure: str = ""  # "" | "no_credentials" | "unauthorized" | "unreachable"
 
 
 class QuotaService:
@@ -138,10 +141,12 @@ class QuotaService:
         if self._task is not None:
             return
         import asyncio
+
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self) -> None:
         import asyncio
+
         task, self._task = self._task, None
         if task is None:
             return
@@ -153,12 +158,14 @@ class QuotaService:
 
     async def _loop(self) -> None:
         import asyncio
+
         while True:
             await self.refresh()
             await asyncio.sleep(POLL_S)
 
-    async def refresh(self, *, force: bool = False,
-                      min_interval: float | None = None) -> None:
+    async def refresh(
+        self, *, force: bool = False, min_interval: float | None = None
+    ) -> None:
         """Fetch unless we fetched recently.
 
         ``min_interval`` overrides the default floor — the turn-end trigger
@@ -185,6 +192,7 @@ class QuotaService:
 
         try:
             import asyncio
+
             snapshot = await asyncio.to_thread(self._fetch, token)
         except QuotaError as exc:
             self._note_failure(exc.kind, now)
@@ -212,8 +220,7 @@ class QuotaService:
         age = 0.0
         if self._snapshot is not None:
             age = max(0.0, self._clock() - self._snapshot.fetched_at)
-        return QuotaState(
-            snapshot=self._snapshot, age_s=age, failure=self._failure)
+        return QuotaState(snapshot=self._snapshot, age_s=age, failure=self._failure)
 
 
 _FAILURE_TEXT = {
@@ -254,8 +261,14 @@ def _paint(text: str, severity: str, colors, stale: bool) -> str:
     return f"[{tint}]{text}[/]"
 
 
-def _provider_tiers(provider: "QuotaProvider", state: QuotaState, colors,
-                    *, label: str, moment: datetime) -> tuple[str, str, str]:
+def _provider_tiers(
+    provider: "QuotaProvider",
+    state: QuotaState,
+    colors,
+    *,
+    label: str,
+    moment: datetime,
+) -> tuple[str, str, str]:
     """One provider's three forms, or ``()`` when it has nothing to say.
 
     ``label`` is empty when this provider is the only one on the bar — there is
@@ -296,7 +309,10 @@ def _provider_tiers(provider: "QuotaProvider", state: QuotaState, colors,
     mid = prefix + "/".join(shorts) + "%"
     least = _paint(
         f"{label}{worst.percent:.0f}" if label else f"{worst.percent:.0f}%",
-        worst.severity, colors, stale)
+        worst.severity,
+        colors,
+        stale,
+    )
     if stale:
         full = f"[{colors.muted}]{full} ({_age(state.age_s)} old)[/]"
         mid = f"[{colors.muted}]{mid}[/]"
@@ -304,8 +320,9 @@ def _provider_tiers(provider: "QuotaProvider", state: QuotaState, colors,
     return (full, mid, least)
 
 
-def format_quota_bar(readings, colors,
-                     *, now: datetime | None = None) -> tuple[str, ...]:
+def format_quota_bar(
+    readings, colors, *, now: datetime | None = None
+) -> tuple[str, ...]:
     """Render every provider's quota as one segment, widest form first.
 
     ``readings`` is a sequence of ``(QuotaProvider, QuotaState)``. Providers
@@ -316,15 +333,21 @@ def format_quota_bar(readings, colors,
     An empty tuple means "say nothing".
     """
     moment = now or datetime.now(timezone.utc)
-    live = [(p, s) for p, s in readings
-            if _provider_tiers(p, s, colors, label="", moment=moment)]
+    live = [
+        (p, s)
+        for p, s in readings
+        if _provider_tiers(p, s, colors, label="", moment=moment)
+    ]
     if not live:
         return ()
 
     label_them = len(live) > 1
-    tiers = [_provider_tiers(p, s, colors,
-                             label=p.label if label_them else "", moment=moment)
-             for p, s in live]
+    tiers = [
+        _provider_tiers(
+            p, s, colors, label=p.label if label_them else "", moment=moment
+        )
+        for p, s in live
+    ]
     return (
         "⧗ " + " │ ".join(t[0] for t in tiers),
         "⧗ " + " │ ".join(t[1] for t in tiers),
@@ -332,8 +355,7 @@ def format_quota_bar(readings, colors,
     )
 
 
-def quota_lines(state: QuotaState, *,
-                now: datetime | None = None) -> list[str]:
+def quota_lines(state: QuotaState, *, now: datetime | None = None) -> list[str]:
     """Full breakdown for ``/usage quota`` — every window, not just the pair
     the status bar has room for."""
     moment = now or datetime.now(timezone.utc)
@@ -350,7 +372,8 @@ def quota_lines(state: QuotaState, *,
         active = "active" if window.is_active else "idle"
         lines.append(
             f"{window.kind:<14} {window.percent:>5.0f}%  "
-            f"{window.severity:<8} {active:<6} resets {resets}")
+            f"{window.severity:<8} {active:<6} resets {resets}"
+        )
 
     footer = f"read {_age(state.age_s)} ago"
     if state.failure:
@@ -367,9 +390,11 @@ def quota_report(readings, *, now: datetime | None = None) -> list[str]:
     reasoning as the status bar. One surviving provider reports exactly as it
     did before a second existed; more than one gets a name heading each.
     """
-    live = [(p, s) for p, s in readings
-            if s.snapshot is not None or (
-                s.failure and s.failure != "no_credentials")]
+    live = [
+        (p, s)
+        for p, s in readings
+        if s.snapshot is not None or (s.failure and s.failure != "no_credentials")
+    ]
     if not live:
         return ["quota unavailable — no credentials"]
     if len(live) == 1:

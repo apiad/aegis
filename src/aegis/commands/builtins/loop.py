@@ -4,18 +4,24 @@ The instruction is re-delivered at every turn boundary where the session
 would otherwise settle idle, until the agent reaps it with aegis_loop_stop,
 the iteration cap is reached, or the operator stops it.
 """
+
 from __future__ import annotations
 
 from aegis.commands import (
-    CommandContext, CommandResult, SlashCommand, register,
+    CommandContext,
+    CommandResult,
+    SlashCommand,
+    register,
 )
 from aegis.commands.args import Arg, ArgSpec, Flag
 from aegis.core.loop import DEFAULT_MAX_ITERATIONS
 
 
 def _describe(status: dict) -> str:
-    return (f"{status['text']}\n"
-            f"  iteration {status['iteration']}/{status['max_iterations']}")
+    return (
+        f"{status['text']}\n"
+        f"  iteration {status['iteration']}/{status['max_iterations']}"
+    )
 
 
 async def _loop(ctx: CommandContext, args) -> CommandResult:
@@ -46,20 +52,28 @@ async def _loop(ctx: CommandContext, args) -> CommandResult:
 
     # Arm.
     had = svc.status(from_handle=ctx.handle).get("loop")
-    res = svc.arm(from_handle=ctx.handle, text=text,
-                  max_iterations=args.get("max") or DEFAULT_MAX_ITERATIONS)
+    res = svc.arm(
+        from_handle=ctx.handle,
+        text=text,
+        max_iterations=args.get("max") or DEFAULT_MAX_ITERATIONS,
+    )
     if "error" in res:
         return CommandResult(False, "/loop failed", res["error"])
     verb = "loop replaced" if had else "loop armed"
     return CommandResult(
-        True, f"{verb} — max {res['max_iterations']} iterations", res["text"])
+        True, f"{verb} — max {res['max_iterations']} iterations", res["text"]
+    )
 
 
-register(SlashCommand(
-    "loop",
-    "repeat an instruction until the agent says it's done",
-    "/loop [--max N] <instruction> | /loop | /loop stop",
-    _loop,
-    spec=ArgSpec(
-        positionals=(Arg("text", required=False, greedy=True),),
-        flags=(Flag("max"),))))
+register(
+    SlashCommand(
+        "loop",
+        "repeat an instruction until the agent says it's done",
+        "/loop [--max N] <instruction> | /loop | /loop stop",
+        _loop,
+        spec=ArgSpec(
+            positionals=(Arg("text", required=False, greedy=True),),
+            flags=(Flag("max"),),
+        ),
+    )
+)

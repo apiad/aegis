@@ -1,4 +1,5 @@
 """install_plugin — local-path source. Registry resolution lives in slice 4."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -80,18 +81,22 @@ def install_plugin(
             raise
 
     # 4. Lockfile
-    lockfile.upsert(project_root, {
-        "name":      name,
-        "version":   manifest.version,
-        "source":    str(source),
-        "installed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "file_hashes": lockfile.hash_dir(dest),
-    })
+    lockfile.upsert(
+        project_root,
+        {
+            "name": name,
+            "version": manifest.version,
+            "source": str(source),
+            "installed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "file_hashes": lockfile.hash_dir(dest),
+        },
+    )
 
 
 def _invoke_install_py(path: Path, ctx: InstallContext) -> None:
     spec = importlib.util.spec_from_file_location(
-        f"_aegis_install_{ctx.plugin_name}", path,
+        f"_aegis_install_{ctx.plugin_name}",
+        path,
     )
     if spec is None or spec.loader is None:
         raise InstallError(f"could not load {path}")
@@ -112,7 +117,9 @@ def _yaml() -> YAML:
 
 
 def _merge_default_config(
-    project_root: Path, name: str, default_config: dict[str, Any],
+    project_root: Path,
+    name: str,
+    default_config: dict[str, Any],
 ) -> None:
     """Merge default_config into .aegis.yaml under plugins.<name>.
 
@@ -159,8 +166,12 @@ def resolve_and_install(
         try:
             with fetch_plugin(url, plugin_name=name) as fetched:
                 install_plugin(
-                    name=name, source=fetched, project_root=project_root,
-                    yes=yes, force=force, console=console,
+                    name=name,
+                    source=fetched,
+                    project_root=project_root,
+                    yes=yes,
+                    force=force,
+                    console=console,
                 )
                 return
         except FileNotFoundError as exc:
@@ -170,8 +181,7 @@ def resolve_and_install(
             errors.append(f"{url_str}: {type(exc).__name__}: {exc}")
             continue
     raise InstallError(
-        f"could not resolve {name!r} in any registry:\n  "
-        + "\n  ".join(errors)
+        f"could not resolve {name!r} in any registry:\n  " + "\n  ".join(errors)
     )
 
 
@@ -180,14 +190,19 @@ def _load_registries(project_root: Path) -> list[str]:
     if not yaml_path.exists():
         return []
     from ruamel.yaml import YAML
+
     yaml = YAML(typ="safe")
     data = yaml.load(yaml_path) or {}
     return list(data.get("plugin_registries") or [])
 
 
 def update_plugin(
-    *, name: str, project_root: Path,
-    yes: bool = False, force: bool = False, console: Any = None,
+    *,
+    name: str,
+    project_root: Path,
+    yes: bool = False,
+    force: bool = False,
+    console: Any = None,
 ) -> None:
     """Re-fetch and replace. Refuses on local edits unless force=True."""
     installed_dir = project_root / ".aegis" / "plugins" / name
@@ -203,8 +218,7 @@ def update_plugin(
             recorded = entry.get("file_hashes") or {}
             current = lockfile.hash_dir(installed_dir)
             edited = [
-                k for k in current
-                if recorded.get(k) and recorded[k] != current[k]
+                k for k in current if recorded.get(k) and recorded[k] != current[k]
             ]
             if edited:
                 raise InstallError(
@@ -212,8 +226,11 @@ def update_plugin(
                     "(use --force to clobber)"
                 )
     resolve_and_install(
-        name=name, project_root=project_root,
-        yes=yes, force=True, console=console,
+        name=name,
+        project_root=project_root,
+        yes=yes,
+        force=True,
+        console=console,
     )
 
 
@@ -230,12 +247,14 @@ def search_plugins(*, query: str, project_root: Path) -> list[dict]:
                 query.lower() in nm.lower()
                 or query.lower() in (manifest.get("description") or "").lower()
             ):
-                hits.append({
-                    "name": nm,
-                    "version": manifest.get("version", ""),
-                    "description": manifest.get("description", ""),
-                    "registry": url_str,
-                })
+                hits.append(
+                    {
+                        "name": nm,
+                        "version": manifest.get("version", ""),
+                        "description": manifest.get("description", ""),
+                        "registry": url_str,
+                    }
+                )
     return hits
 
 

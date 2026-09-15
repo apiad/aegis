@@ -6,6 +6,7 @@ assertion is only meaningful if both transports run this same code. A
 second implementation for the second transport is exactly the divergence
 that assertion exists to catch.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +42,7 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
         loop = asyncio.get_running_loop()
         pending: list[bytes] = []
 
-        def sink_fn(data: bytes) -> None:          # noqa: F811
+        def sink_fn(data: bytes) -> None:  # noqa: F811
             # Called from Textual's render path, which is on this loop.
             # The socket write happens in the flusher below so a slow
             # client cannot block a render.
@@ -91,14 +92,12 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
             pump = asyncio.create_task(_pump(reader, decoder, view))
             stopped = asyncio.create_task(view.wait_stopped())
             try:
-                await asyncio.wait(
-                    {pump, stopped}, return_when=asyncio.FIRST_COMPLETED)
+                await asyncio.wait({pump, stopped}, return_when=asyncio.FIRST_COMPLETED)
             finally:
                 for task in (pump, stopped):
                     task.cancel()
                 for task in (pump, stopped):
-                    with contextlib.suppress(asyncio.CancelledError,
-                                             Exception):
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
                         await task
                 # The app's last bytes are the ones that matter most, and
                 # they are the ones most easily lost. `stop_application_mode`
@@ -133,8 +132,7 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
         if view is not None:
             # Read BEFORE closing: `close` stops the app, and a stopped
             # app is still the object that recorded the request.
-            asked_to_stop = bool(getattr(view.app, "quit_stops_daemon",
-                                         False))
+            asked_to_stop = bool(getattr(view.app, "quit_stops_daemon", False))
             # Closing persists the ViewState and stops the app. The brain
             # is untouched: the app's owns_brain is False, so its quit path
             # closes no panes and stops no plane.
@@ -171,7 +169,7 @@ async def _pump(reader, decoder: FrameDecoder, view) -> None:
         if not chunk:
             return
         for kind, payload in decoder.feed(chunk):
-            frame = (b"D" if kind == "D" else b"M")
+            frame = b"D" if kind == "D" else b"M"
             frame += len(payload).to_bytes(4, "big") + payload
             try:
                 driver.feed(frame)
@@ -212,7 +210,8 @@ class UnixSocketServer:
         with contextlib.suppress(FileNotFoundError):
             self.path.unlink()
         self._server = await asyncio.start_unix_server(
-            self._on_client, path=str(self.path))
+            self._on_client, path=str(self.path)
+        )
         # The socket's mode bits ARE the auth on this transport (the spec
         # says so explicitly), and the daemon runs `permission: full`.
         self.path.chmod(0o600)

@@ -8,6 +8,7 @@ Same shape conventions as the queue substrate (``aegis/queue/jsonl.py``):
   may leave a torn last line — replay tolerates that by skipping
   unparseable trailing lines.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,22 +20,31 @@ def event_created(name: str, sender: str, at: str) -> dict[str, Any]:
     return {"kind": "created", "name": name, "sender": sender, "at": at}
 
 
-def event_member_added(handle: str, profile: str, sender: str,
-                       at: str) -> dict[str, Any]:
-    return {"kind": "member_added", "handle": handle, "profile": profile,
-            "sender": sender, "at": at}
+def event_member_added(
+    handle: str, profile: str, sender: str, at: str
+) -> dict[str, Any]:
+    return {
+        "kind": "member_added",
+        "handle": handle,
+        "profile": profile,
+        "sender": sender,
+        "at": at,
+    }
 
 
-def event_member_removed(handle: str, reason: str,
-                         at: str) -> dict[str, Any]:
-    return {"kind": "member_removed", "handle": handle, "reason": reason,
-            "at": at}
+def event_member_removed(handle: str, reason: str, at: str) -> dict[str, Any]:
+    return {"kind": "member_removed", "handle": handle, "reason": reason, "at": at}
 
 
-def event_broadcast_started(broadcast_id: str, objective: str,
-                            output_format: str, tool_guidance: str,
-                            boundaries: str, sender: str,
-                            members: tuple[str, ...]) -> dict[str, Any]:
+def event_broadcast_started(
+    broadcast_id: str,
+    objective: str,
+    output_format: str,
+    tool_guidance: str,
+    boundaries: str,
+    sender: str,
+    members: tuple[str, ...],
+) -> dict[str, Any]:
     return {
         "kind": "broadcast_started",
         "broadcast_id": broadcast_id,
@@ -47,23 +57,37 @@ def event_broadcast_started(broadcast_id: str, objective: str,
     }
 
 
-def event_member_result(broadcast_id: str, handle: str, status: str,
-                        text_preview: str, tokens_in: int,
-                        tokens_out: int, turn_ms: int) -> dict[str, Any]:
+def event_member_result(
+    broadcast_id: str,
+    handle: str,
+    status: str,
+    text_preview: str,
+    tokens_in: int,
+    tokens_out: int,
+    turn_ms: int,
+) -> dict[str, Any]:
     return {
         "kind": "member_result",
         "broadcast_id": broadcast_id,
-        "handle": handle, "status": status,
+        "handle": handle,
+        "status": status,
         "text_preview": text_preview,
-        "tokens_in": tokens_in, "tokens_out": tokens_out,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
         "turn_ms": turn_ms,
     }
 
 
-def event_broadcast_completed(broadcast_id: str, mode: str, reducer: str,
-                              at: str) -> dict[str, Any]:
-    return {"kind": "broadcast_completed", "broadcast_id": broadcast_id,
-            "mode": mode, "reducer": reducer, "at": at}
+def event_broadcast_completed(
+    broadcast_id: str, mode: str, reducer: str, at: str
+) -> dict[str, Any]:
+    return {
+        "kind": "broadcast_completed",
+        "broadcast_id": broadcast_id,
+        "mode": mode,
+        "reducer": reducer,
+        "at": at,
+    }
 
 
 def event_renamed(old: str, new: str, at: str) -> dict[str, Any]:

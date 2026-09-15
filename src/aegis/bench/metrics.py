@@ -5,6 +5,7 @@ history preload never leak into a streaming number. Gates are computed
 here rather than in the scenario, so a summary cannot claim a clean run
 that its own raw files contradict.
 """
+
 from __future__ import annotations
 
 import math
@@ -24,6 +25,7 @@ class MetricSpec:
     """How to read a metric: its unit, which direction is better, the
     absolute change below which a difference is noise, and whether it is a
     timing, a resource figure, or a deterministic count."""
+
     unit: str
     better: str = "lower"
     floor: float = 0.0
@@ -44,8 +46,12 @@ METRICS: dict[str, MetricSpec] = {
     "latency.markers_undrawn_pct": _r("%", 1.0),
     "latency.markers_undrawn_b_pct": _r("%", 1.0),
     **{f"latency.echo_ms.{q}": _t(2.0) for q in ("p50", "p95", "max")},
-    **{f"{g}.{m}.{q}": _t(5.0) for g in ("resize", "sidebar")
-       for m in ("first_frame_ms", "settle_ms") for q in ("p50", "max")},
+    **{
+        f"{g}.{m}.{q}": _t(5.0)
+        for g in ("resize", "sidebar")
+        for m in ("first_frame_ms", "settle_ms")
+        for q in ("p50", "max")
+    },
     **{f"tabs.switch_ms.{q}": _t(20.0) for q in ("p50", "max")},
     **{f"render.tick_ms.{q}": _t(0.5) for q in ("p50", "p95", "p99", "max")},
     "render.layout_ms.p95": _t(0.5),
@@ -88,8 +94,7 @@ def pct(values: list[float], q: float) -> float | None:
     return s[min(len(s) - 1, max(0, math.ceil(q * len(s)) - 1))]
 
 
-def _dist(out: dict, prefix: str, values: list[float],
-          qs: tuple[str, ...]) -> None:
+def _dist(out: dict, prefix: str, values: list[float], qs: tuple[str, ...]) -> None:
     if not values:
         return
     for q in qs:
@@ -100,8 +105,16 @@ def _dist(out: dict, prefix: str, values: list[float],
         out[name] = round(float(v), 3)
 
 
-def _markers(out: dict, gates: list, client: str, *, since: float,
-             end: float, emit: list[dict], frames: list[dict]) -> None:
+def _markers(
+    out: dict,
+    gates: list,
+    client: str,
+    *,
+    since: float,
+    end: float,
+    emit: list[dict],
+    frames: list[dict],
+) -> None:
     first_seen: dict[str, int] = {}
     for f in frames:
         if f["k"] == "frame" and f["client"] == client:
@@ -118,12 +131,10 @@ def _markers(out: dict, gates: list, client: str, *, since: float,
         else:
             lat.append((seen - r["t_emit_ns"]) / NS_MS)
     suffix = "" if client == "a" else f"_{client}"
-    _dist(out, f"latency.marker{suffix}_ms", lat,
-          ("p50", "p95", "p99", "max"))
+    _dist(out, f"latency.marker{suffix}_ms", lat, ("p50", "p95", "p99", "max"))
     total = len(lat) + len(lost)
     if total:
-        out[f"latency.markers_undrawn{suffix}_pct"] = round(
-            100 * len(lost) / total, 2)
+        out[f"latency.markers_undrawn{suffix}_pct"] = round(100 * len(lost) / total, 2)
     # A marker can go undrawn for a real reason: text that scrolls past
     # between two repaints, or a reply rendered in one piece when the turn
     # ends (ACP sessions, measured 2026-09-13). That is data, reported as
@@ -132,8 +143,13 @@ def _markers(out: dict, gates: list, client: str, *, since: float,
     detail = f"{len(lat)} of {total} drawn"
     if lost:
         detail += f"; first undrawn: {lost[:5]}"
-    gates.append({"name": f"markers_seen{suffix}",
-                  "ok": total == 0 or bool(lat), "detail": detail})
+    gates.append(
+        {
+            "name": f"markers_seen{suffix}",
+            "ok": total == 0 or bool(lat),
+            "detail": detail,
+        }
+    )
 
 
 def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:
@@ -153,55 +169,68 @@ def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:
     def inside(t: float) -> bool:
         return start <= t <= end
 
-    ready = {e["client"]: e["t_ns"] for e in events
-             if e["k"] == "client_ready"}
+    ready = {e["client"]: e["t_ns"] for e in events if e["k"] == "client_ready"}
     for exp in (e for e in events if e["k"] == "expect_markers"):
         client = exp["client"]
-        _markers(out, gates, client, since=max(start, ready.get(client, 0)),
-                 end=end, emit=emit, frames=frames)
+        _markers(
+            out,
+            gates,
+            client,
+            since=max(start, ready.get(client, 0)),
+            end=end,
+            emit=emit,
+            frames=frames,
+        )
 
-    fa = [f for f in frames if f["k"] == "frame" and f["client"] == "a"
-          and inside(f["t_ns"])]
+    fa = [
+        f
+        for f in frames
+        if f["k"] == "frame" and f["client"] == "a" and inside(f["t_ns"])
+    ]
     if fa:
-        _dist(out, "render.bytes_per_frame", [f["nbytes"] for f in fa],
-              ("p50",))
+        _dist(out, "render.bytes_per_frame", [f["nbytes"] for f in fa], ("p50",))
         if span_s:
             out["render.frames_per_s"] = round(len(fa) / span_s, 3)
 
     ticks = [r for r in probe if r["k"] == "tick" and inside(r["t0"])]
     if ticks:
-        _dist(out, "render.tick_ms", [r["dur_ns"] / NS_MS for r in ticks],
-              ("p50", "p95", "p99", "max"))
+        _dist(
+            out,
+            "render.tick_ms",
+            [r["dur_ns"] / NS_MS for r in ticks],
+            ("p50", "p95", "p99", "max"),
+        )
         for part in ("layout", "compose", "display"):
-            _dist(out, f"render.{part}_ms",
-                  [r[part] / NS_MS for r in ticks], ("p95",))
+            _dist(out, f"render.{part}_ms", [r[part] / NS_MS for r in ticks], ("p95",))
         if span_s:
             out["render.ticks_per_s"] = round(len(ticks) / span_s, 3)
-    _dist(out, "render.paint_ms", [r["dur_ns"] / NS_MS for r in probe
-                                   if r["k"] == "paint" and inside(r["t0"])],
-          ("p50",))
+    _dist(
+        out,
+        "render.paint_ms",
+        [r["dur_ns"] / NS_MS for r in probe if r["k"] == "paint" and inside(r["t0"])],
+        ("p50",),
+    )
 
-    lags = [r["lag_ns"] / NS_MS for r in probe
-            if r["k"] == "lag" and inside(r["t_ns"])]
+    lags = [r["lag_ns"] / NS_MS for r in probe if r["k"] == "lag" and inside(r["t_ns"])]
     if lags:
         _dist(out, "loop.lag_ms", lags, ("p50", "p99", "max"))
         minutes = (span_s or len(lags) * 0.005) / 60
         for n in (16, 50, 100):
             out[f"loop.stalls_{n}_per_min"] = round(
-                sum(1 for v in lags if v > n) / minutes, 3)
+                sum(1 for v in lags if v > n) / minutes, 3
+            )
 
     samples = [r for r in probe if r["k"] == "sample" and inside(r["t_ns"])]
     if len(samples) >= 2:
         a, b = samples[0], samples[-1]
         dt = (b["t_ns"] - a["t_ns"]) / 1e9
         if dt > 0:
-            out["cpu.daemon_s_per_s"] = round(
-                (b["cpu_s"] - a["cpu_s"]) / dt, 4)
+            out["cpu.daemon_s_per_s"] = round((b["cpu_s"] - a["cpu_s"]) / dt, 4)
         out["render.height_calls"] = b["n_height"] - a["n_height"]
-        out["render.render_lines_calls"] = (b["n_render_lines"]
-                                            - a["n_render_lines"])
+        out["render.render_lines_calls"] = b["n_render_lines"] - a["n_render_lines"]
         out["gc.pause_total_ms"] = round(
-            (b["gc_ns_total"] - a["gc_ns_total"]) / NS_MS, 3)
+            (b["gc_ns_total"] - a["gc_ns_total"]) / NS_MS, 3
+        )
         out["gc.pause_max_ms"] = round(b["gc_ns_max"] / NS_MS, 3)
     rss = [s["rss"] for s in samples if s.get("rss")]
     if rss:
@@ -211,13 +240,17 @@ def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:
     if uss:
         out["mem.uss_peak_mb"] = round(max(uss) / MB, 2)
 
-    procs = [f for f in frames if f["k"] == "proc" and f["client"] == "a"
-             and inside(f["t_ns"])]
+    procs = [
+        f
+        for f in frames
+        if f["k"] == "proc" and f["client"] == "a" and inside(f["t_ns"])
+    ]
     if len(procs) >= 2:
         dt = (procs[-1]["t_ns"] - procs[0]["t_ns"]) / 1e9
         if dt > 0:
             out["cpu.client_s_per_s"] = round(
-                (procs[-1]["cpu_s"] - procs[0]["cpu_s"]) / dt, 4)
+                (procs[-1]["cpu_s"] - procs[0]["cpu_s"]) / dt, 4
+            )
 
     grouped: dict[str, list[float]] = {}
     for e in events:
@@ -231,36 +264,58 @@ def repeat_metrics(rep_dir: Path) -> tuple[dict[str, float], list[dict]]:
     loads = [e for e in events if e["k"] == "load"]
     if loads:
         out["host.load_per_core.max"] = round(
-            max(e["l1"] / max(1, e.get("cores") or 1) for e in loads), 3)
+            max(e["l1"] / max(1, e.get("cores") or 1) for e in loads), 3
+        )
         # The load average lags by a minute; jiffies at the window edges say
         # exactly how busy the whole machine was during the window.
         edges = [e for e in loads if e.get("cpu_total")]
         if len(edges) >= 2:
-            busy = busy_pct((edges[0]["cpu_idle"], edges[0]["cpu_total"]),
-                            (edges[-1]["cpu_idle"], edges[-1]["cpu_total"]))
+            busy = busy_pct(
+                (edges[0]["cpu_idle"], edges[0]["cpu_total"]),
+                (edges[-1]["cpu_idle"], edges[-1]["cpu_total"]),
+            )
             if busy is not None:
                 out["host.cpu_busy_pct"] = busy
 
     gate_recs = [r for r in probe if r["k"] == "gate"]
     if gate_recs:
         g = gate_recs[-1]
-        gates.append({"name": "probe_sync", "ok": bool(g["sync"]),
-                      "detail": "app._sync_available"})
-        gates.append({"name": "not_headless", "ok": not g["headless"],
-                      "detail": "app.is_headless"})
-    gates.extend({"name": e["name"], "ok": bool(e["ok"]),
-                  "detail": e.get("detail", "")}
-                 for e in events if e["k"] == "gate")
+        gates.append(
+            {
+                "name": "probe_sync",
+                "ok": bool(g["sync"]),
+                "detail": "app._sync_available",
+            }
+        )
+        gates.append(
+            {
+                "name": "not_headless",
+                "ok": not g["headless"],
+                "detail": "app.is_headless",
+            }
+        )
+    gates.extend(
+        {"name": e["name"], "ok": bool(e["ok"]), "detail": e.get("detail", "")}
+        for e in events
+        if e["k"] == "gate"
+    )
     return out, gates
 
 
-def summarize(run_id: str, fingerprint: dict,
-              results: dict[str, dict]) -> dict:
+def summarize(run_id: str, fingerprint: dict, results: dict[str, dict]) -> dict:
     scenarios = {}
     for name, res in results.items():
         keys = sorted({k for rep in res["repeats"] for k in rep})
-        median = {k: round(statistics.median(
-            [rep[k] for rep in res["repeats"] if k in rep]), 4) for k in keys}
+        median = {
+            k: round(
+                statistics.median([rep[k] for rep in res["repeats"] if k in rep]), 4
+            )
+            for k in keys
+        }
         scenarios[name] = {**res, "median": median}
-    return {"schema": 1, "run_id": run_id, "fingerprint": fingerprint,
-            "scenarios": scenarios}
+    return {
+        "schema": 1,
+        "run_id": run_id,
+        "fingerprint": fingerprint,
+        "scenarios": scenarios,
+    }

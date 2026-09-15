@@ -7,6 +7,7 @@ subset. Both OSC terminators are handled: BEL (``\\a``) and ST
 them, and mishandling ST swallows the very ``D`` marker that reports the
 exit code.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -93,7 +94,7 @@ class OSC133Parser:
             if not ends:
                 break  # incomplete OSC — hold the whole thing back
             end = min(ends)
-            body = bytes(self._buf[i + 2:end])
+            body = bytes(self._buf[i + 2 : end])
             ev = _parse_osc_body(body)
             if ev is not None:
                 flush()

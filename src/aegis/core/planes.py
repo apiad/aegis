@@ -13,6 +13,7 @@ hosts" are brain state, one copy, all views.
 This module is data. It imports nothing from `aegis.tui` so that the
 coverage test can hold both sides at once without dragging Textual in.
 """
+
 from __future__ import annotations
 
 #: Manager attributes a bridged view adopts rather than constructs. Each
@@ -43,15 +44,16 @@ CONSTRUCTED_PLANES: tuple[str, ...] = (
 NOT_VIEW_FACING: dict[str, str] = {
     "attach_persistence": (
         "a state directory, not an object; the view reads the same "
-        "directory through its own roots"),
+        "directory through its own roots"
+    ),
     "attach_locks_state": (
         "rebuilds the brain's `locks` with persistence; the view adopts "
-        "that object through CONSTRUCTED_PLANES"),
-    "attach_remotes": (
-        "peer configuration consumed by the remote plane, not rendered"),
-    "attach_remote_plane": (
-        "the inbound HTTP plane; has no UI surface"),
+        "that object through CONSTRUCTED_PLANES"
+    ),
+    "attach_remotes": ("peer configuration consumed by the remote plane, not rendered"),
+    "attach_remote_plane": ("the inbound HTTP plane; has no UI surface"),
     "attach_scheduler_context": (
         "wiring for the scheduler's own loop; the view shows schedules "
-        "through MCP tools, not through this object"),
+        "through MCP tools, not through this object"
+    ),
 }

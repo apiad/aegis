@@ -6,6 +6,7 @@ today's probe. Topology is read from the target itself: a build whose CLI
 has ``attach`` runs as daemon + client, anything older runs the TUI
 in-process.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,8 @@ _INTROSPECT = (
     "print(json.dumps({'version':m.version('aegis-harness'),'build':b,"
     "'aegis_file':aegis.__file__,'textual':m.version('textual'),"
     "'rich':m.version('rich'),'python':sys.version.split()[0],"
-    "'attach':hasattr(c,'attach')}))")
+    "'attach':hasattr(c,'attach')}))"
+)
 
 
 @dataclass(frozen=True)
@@ -54,17 +56,23 @@ def resolve_target(spec: str | None) -> Target:
         if not path.exists():
             raise BenchError(f"target {spec!r} is neither X.Y.Z nor a python")
         python, label = (str(path),), str(path)
-    proc = subprocess.run([*python, "-c", _INTROSPECT], capture_output=True,
-                          text=True, timeout=600)
+    proc = subprocess.run(
+        [*python, "-c", _INTROSPECT], capture_output=True, text=True, timeout=600
+    )
     if proc.returncode != 0:
-        raise BenchError(f"target {label}: cannot import aegis:\n"
-                         f"{proc.stderr[-2000:]}")
+        raise BenchError(f"target {label}: cannot import aegis:\n{proc.stderr[-2000:]}")
     info = json.loads(proc.stdout.strip().splitlines()[-1])
-    return Target(label=label, python=python, version=info["version"],
-                  build=info["build"], aegis_file=info["aegis_file"],
-                  textual=info["textual"], rich=info["rich"],
-                  python_version=info["python"],
-                  topology="daemon" if info["attach"] else "in-process")
+    return Target(
+        label=label,
+        python=python,
+        version=info["version"],
+        build=info["build"],
+        aegis_file=info["aegis_file"],
+        textual=info["textual"],
+        rich=info["rich"],
+        python_version=info["python"],
+        topology="daemon" if info["attach"] else "in-process",
+    )
 
 
 def stage_probe(run_dir: Path) -> Path:
@@ -72,17 +80,19 @@ def stage_probe(run_dir: Path) -> Path:
     the target imports this probe and never an ``aegis.bench`` of its own."""
     dest = Path(run_dir) / "_probe"
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(Path(__file__).with_name("probe.py"),
-                    dest / "aegis_bench_probe.py")
+    shutil.copyfile(Path(__file__).with_name("probe.py"), dest / "aegis_bench_probe.py")
     return dest
 
 
-def aegis_argv(target: Target, args: list[str], *,
-               probe_dir: Path | None) -> list[str]:
+def aegis_argv(target: Target, args: list[str], *, probe_dir: Path | None) -> list[str]:
     head = ""
     if probe_dir is not None:
-        head = (f"sys.path.insert(0,{str(probe_dir)!r});"
-                "import aegis_bench_probe;aegis_bench_probe.install();")
-    code = (f"import sys;{head}sys.argv=['aegis',*{list(args)!r}];"
-            "from aegis.cli import main;main()")
+        head = (
+            f"sys.path.insert(0,{str(probe_dir)!r});"
+            "import aegis_bench_probe;aegis_bench_probe.install();"
+        )
+    code = (
+        f"import sys;{head}sys.argv=['aegis',*{list(args)!r}];"
+        "from aegis.cli import main;main()"
+    )
     return [*target.python, "-c", code]

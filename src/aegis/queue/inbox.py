@@ -4,6 +4,7 @@ Pokes a live ``AgentSession`` when bound, otherwise buffers in-memory pending.
 JSONL writethrough (the state-dir parameter) lands in VS2; this VS1 build is
 memory-only.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,6 +49,7 @@ class InboxRouter:
             from dataclasses import asdict
 
             from aegis.queue.jsonl import append_record
+
             path = Path(self._state_dir) / "inboxes" / f"{handle}.jsonl"
             append_record(path, asdict(msg))
         session = self._sessions.get(handle)

@@ -4,6 +4,7 @@ The TUI bootstrap calls plan_resume(workspace, agents, drivers), opens
 the resumable ones via driver.resume(), and reports skipped ones in a
 single startup-banner line.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

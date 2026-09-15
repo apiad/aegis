@@ -1,4 +1,5 @@
 """TerminalManager — owns live PTY terminals and their ledgers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,11 @@ from typing import IO
 
 from aegis.terminal.pty import AsyncPty
 from aegis.terminal.parser import (
-    CommandEnd, CommandOutputStart, CommandStart, OSC133Parser, PromptStart,
+    CommandEnd,
+    CommandOutputStart,
+    CommandStart,
+    OSC133Parser,
+    PromptStart,
 )
 
 
@@ -88,7 +93,11 @@ class _TerminalState:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 class TerminalManager:
@@ -97,8 +106,7 @@ class TerminalManager:
     process cwd, which in an embedded process is some other instance's
     worktree."""
 
-    def __init__(self, state_dir: str | Path, *,
-                 default_cwd: str | Path) -> None:
+    def __init__(self, state_dir: str | Path, *, default_cwd: str | Path) -> None:
         self.state_dir = Path(state_dir)
         self.default_cwd = Path(default_cwd)
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -235,6 +243,7 @@ class TerminalManager:
                 pass
         if purge:
             import shutil
+
             shutil.rmtree(state.state_dir, ignore_errors=True)
 
     async def run(
@@ -255,7 +264,8 @@ class TerminalManager:
             # capture. Reject rather than silently mangle.
             raise ValueError(
                 "multi-line commands are not supported; join with ';' or "
-                "'&&', or write a script file and run it")
+                "'&&', or write a script file and run it"
+            )
         async with state.lock:
             loop = asyncio.get_running_loop()
             waiter: asyncio.Future = loop.create_future()
@@ -279,9 +289,12 @@ class TerminalManager:
                     writer=writer,
                     started_at=pending.started_at if pending else _now_iso(),
                     finished_at=_now_iso(),
-                    duration_s=loop.time() - (pending.started_monotonic if pending else loop.time()),
+                    duration_s=loop.time()
+                    - (pending.started_monotonic if pending else loop.time()),
                     exit=None,
-                    stdout=pending.stdout.decode("utf-8", errors="replace") if pending else "",
+                    stdout=pending.stdout.decode("utf-8", errors="replace")
+                    if pending
+                    else "",
                     stderr="",
                     timed_out=True,
                 )
@@ -339,6 +352,7 @@ class TerminalManager:
             return
         except Exception:
             import traceback
+
             traceback.print_exc()
             # Don't strand a caller: resolve any in-flight run() with an
             # error record instead of leaving its waiter to time out.
@@ -395,13 +409,13 @@ class TerminalManager:
                 cb(kind, payload)
             except Exception:
                 import traceback
+
                 traceback.print_exc()
 
     def _finalize_pending_on_eof(self, state: _TerminalState) -> None:
         self._finalize_pending_on_error(state, "pty closed")
 
-    def _finalize_pending_on_error(self, state: _TerminalState,
-                                   reason: str) -> None:
+    def _finalize_pending_on_error(self, state: _TerminalState, reason: str) -> None:
         pending = state.pending
         if pending is None or pending.waiter is None or pending.waiter.done():
             return
@@ -435,9 +449,7 @@ def _encode_command(cmd: str, osc133_ok: bool) -> bytes:
     if osc133_ok:
         return (cmd + "\n").encode("utf-8")
     line = (
-        "printf '\\033]133;B\\007'; "
-        + cmd
-        + "; printf '\\033]133;D;%d\\007' \"$?\"\n"
+        "printf '\\033]133;B\\007'; " + cmd + "; printf '\\033]133;D;%d\\007' \"$?\"\n"
     )
     return line.encode("utf-8")
 
@@ -474,65 +486,65 @@ def _write_bash_init(path: Path) -> None:
     # - We skip the initial D emission (before any user command has run)
     #   using the __aegis_in_cmd flag.
     path.write_text(
-        '# Sourced by aegis-spawned bash for OSC 133 shell integration.\n'
-        '[ -f /etc/bashrc ] && . /etc/bashrc\n'
-        '[ -f ~/.bashrc ] && . ~/.bashrc\n'
-        '__aegis_precmd() {\n'
-        '  local ec=$?\n'
+        "# Sourced by aegis-spawned bash for OSC 133 shell integration.\n"
+        "[ -f /etc/bashrc ] && . /etc/bashrc\n"
+        "[ -f ~/.bashrc ] && . ~/.bashrc\n"
+        "__aegis_precmd() {\n"
+        "  local ec=$?\n"
         '  if [ -n "${__aegis_in_cmd:-}" ]; then\n'
         '    printf "\\033]133;D;%d\\007" "$ec"\n'
-        '  fi\n'
-        '  __aegis_in_cmd=\n'
+        "  fi\n"
+        "  __aegis_in_cmd=\n"
         '  printf "\\033]133;A\\007"\n'
-        '}\n'
-        '__aegis_preexec() {\n'
+        "}\n"
+        "__aegis_preexec() {\n"
         '  case "$BASH_COMMAND" in\n'
-        '    __aegis_*) return ;;\n'
-        '  esac\n'
+        "    __aegis_*) return ;;\n"
+        "  esac\n"
         '  if [ -z "${__aegis_in_cmd:-}" ]; then\n'
-        '    __aegis_in_cmd=1\n'
+        "    __aegis_in_cmd=1\n"
         '    printf "\\033]133;B\\007"\n'
-        '  fi\n'
-        '}\n'
-        '# Prepend our precmd so it reads $? before any user PROMPT_COMMAND\n'
-        '# runs, preserving the user\'s (string OR bash array — starship /\n'
-        '# atuin / vte all register here, often as an array).\n'
+        "  fi\n"
+        "}\n"
+        "# Prepend our precmd so it reads $? before any user PROMPT_COMMAND\n"
+        "# runs, preserving the user's (string OR bash array — starship /\n"
+        "# atuin / vte all register here, often as an array).\n"
         'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then\n'
         '  PROMPT_COMMAND=(__aegis_precmd "${PROMPT_COMMAND[@]}")\n'
-        'else\n'
+        "else\n"
         '  PROMPT_COMMAND=(__aegis_precmd ${PROMPT_COMMAND:+"$PROMPT_COMMAND"})\n'
-        'fi\n'
-        '# We take the DEBUG trap for command-start detection. (Unlike\n'
-        '# PROMPT_COMMAND above, a pre-existing DEBUG trap is only used for\n'
-        '# duration timing by starship et al. — chaining it reliably is\n'
-        '# fragile and can swallow our B/D markers, so we set ours cleanly.)\n'
+        "fi\n"
+        "# We take the DEBUG trap for command-start detection. (Unlike\n"
+        "# PROMPT_COMMAND above, a pre-existing DEBUG trap is only used for\n"
+        "# duration timing by starship et al. — chaining it reliably is\n"
+        "# fragile and can swallow our B/D markers, so we set ours cleanly.)\n"
         "trap '__aegis_preexec' DEBUG\n"
     )
 
 
 def _write_zsh_init(path: Path) -> None:
     path.write_text(
-        '# Sourced by aegis-spawned zsh for OSC 133 shell integration.\n'
-        '[ -f ~/.zshrc ] && . ~/.zshrc\n'
-        '__aegis_in_cmd=\n'
-        '__aegis_precmd() {\n'
-        '  local ec=$?\n'
+        "# Sourced by aegis-spawned zsh for OSC 133 shell integration.\n"
+        "[ -f ~/.zshrc ] && . ~/.zshrc\n"
+        "__aegis_in_cmd=\n"
+        "__aegis_precmd() {\n"
+        "  local ec=$?\n"
         '  if [ -n "$__aegis_in_cmd" ]; then\n'
         '    print -n "\\033]133;D;$ec\\007"\n'
-        '  fi\n'
-        '  __aegis_in_cmd=\n'
+        "  fi\n"
+        "  __aegis_in_cmd=\n"
         '  print -n "\\033]133;A\\007"\n'
-        '}\n'
-        '__aegis_preexec() {\n'
-        '  __aegis_in_cmd=1\n'
+        "}\n"
+        "__aegis_preexec() {\n"
+        "  __aegis_in_cmd=1\n"
         '  print -n "\\033]133;B\\007"\n'
-        '}\n'
-        '# Register as hook functions (dedup, prepend precmd so it reads\n'
-        '# $? first) instead of clobbering the user\'s precmd/preexec —\n'
-        '# oh-my-zsh / p10k / starship register through these arrays too.\n'
-        'typeset -ga precmd_functions preexec_functions\n'
-        'precmd_functions=(__aegis_precmd ${precmd_functions:#__aegis_precmd})\n'
-        'preexec_functions=(${preexec_functions:#__aegis_preexec} __aegis_preexec)\n'
+        "}\n"
+        "# Register as hook functions (dedup, prepend precmd so it reads\n"
+        "# $? first) instead of clobbering the user's precmd/preexec —\n"
+        "# oh-my-zsh / p10k / starship register through these arrays too.\n"
+        "typeset -ga precmd_functions preexec_functions\n"
+        "precmd_functions=(__aegis_precmd ${precmd_functions:#__aegis_precmd})\n"
+        "preexec_functions=(${preexec_functions:#__aegis_preexec} __aegis_preexec)\n"
     )
 
 
@@ -551,7 +563,7 @@ def _decode_capped(buf: bytearray, cap: int = 64 * 1024) -> str:
     if len(buf) <= cap:
         return buf.decode("utf-8", errors="replace")
     head = buf[: cap // 2]
-    tail = buf[-cap // 2:]
+    tail = buf[-cap // 2 :]
     omitted = len(buf) - cap
     return (
         head.decode("utf-8", errors="replace")

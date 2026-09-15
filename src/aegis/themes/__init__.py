@@ -21,14 +21,14 @@ class AegisColors:
     err: str
     user: str
     user_bg: str
-    ink: str = ""        # default foreground / "ink" of the page
-    work: str = ""       # alias for working — used by queue dashboard
+    ink: str = ""  # default foreground / "ink" of the page
+    work: str = ""  # alias for working — used by queue dashboard
     # The "aside" surface: a block that is in the transcript but is not
     # the conversation — a /btw side note, an @peer answer. Both render
     # their body as Markdown, which is exactly how agent prose renders,
     # so without a surface of their own they read as the agent talking.
-    panel: str = ""      # subtle raised background
-    rule: str = ""       # subtle border on that background
+    panel: str = ""  # subtle raised background
+    rule: str = ""  # subtle border on that background
     # The aegis layer's own colour: every glyph and counterpart on a call
     # into the MCP surface. Derived from the theme's `primary`, which is the
     # one colour every theme declares and this mapping never read — so no
@@ -129,8 +129,7 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 def load_theme(name: str, user_dir: Path | None = None) -> AegisTheme:
     base_path = _DATA_DIR / f"{name}.yaml"
     if not base_path.exists():
-        raise FileNotFoundError(
-            f"no bundled theme named {name!r} at {base_path}")
+        raise FileNotFoundError(f"no bundled theme named {name!r} at {base_path}")
     data = yaml.safe_load(base_path.read_text(encoding="utf-8")) or {}
 
     overlay_dir = user_dir if user_dir is not None else _DEFAULT_USER_DIR

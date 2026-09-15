@@ -5,6 +5,7 @@ max-parallel cap + dispatch-on-event. No background loop: dispatch is
 checked synchronously on every enqueue and on every worker completion.
 Persistence + restart replay land in VS2; this build is memory-only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,7 @@ from aegis.tui.state import AgentState
 # The events that define where a task IS. Everything else a queue log
 # carries is diagnostic and must not move the task's status on replay —
 # see the comment in `start()`.
-_LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed",
-                               "failed"})
+_LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed", "failed"})
 
 # "no assistant-text run is open for this worker". Distinct from a run
 # whose message_id is None, which is a real run (the pre-slice-2 claude
@@ -53,8 +53,7 @@ _LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed",
 _NO_RUN = object()
 
 
-def _with_last_message(headline: str, last_text: str, *, none_note: str
-                       ) -> str:
+def _with_last_message(headline: str, last_text: str, *, none_note: str) -> str:
     """A callback body that carries what the worker actually said.
 
     The task result IS the worker's final assistant text — that is the
@@ -79,12 +78,14 @@ def _with_last_message(headline: str, last_text: str, *, none_note: str
 def _adapt_metrics(metrics):
     """Map SessionMetrics committed counters to cost.compute's expected
     attribute names. Returns a lightweight object — duck-typed."""
+
     class _M:
-        input_tokens     = int(getattr(metrics, "c_in", 0) or 0)
-        output_tokens    = int(getattr(metrics, "c_out", 0) or 0)
+        input_tokens = int(getattr(metrics, "c_in", 0) or 0)
+        output_tokens = int(getattr(metrics, "c_out", 0) or 0)
         cache_hit_tokens = int(getattr(metrics, "c_cached", 0) or 0)
         cache_write_tokens = 0
-        thinking_tokens  = 0
+        thinking_tokens = 0
+
     return _M
 
 
@@ -99,11 +100,16 @@ def _handle_of(sender_tag: str) -> str:
 
 
 class QueueManager:
-    def __init__(self, queues: dict[str, Queue], session_manager,
-                 inbox_router,
-                 *, state_dir: Path | None = None,
-                 now: Callable[[], str] = now_iso,
-                 handle_factory: Callable[[set[str]], str] | None = None) -> None:
+    def __init__(
+        self,
+        queues: dict[str, Queue],
+        session_manager,
+        inbox_router,
+        *,
+        state_dir: Path | None = None,
+        now: Callable[[], str] = now_iso,
+        handle_factory: Callable[[set[str]], str] | None = None,
+    ) -> None:
         self._queues = dict(queues)
         self._sm = session_manager
         self._inbox = inbox_router
@@ -115,9 +121,9 @@ class QueueManager:
         # keyboard. Fall back to the bare generator only for the handful of
         # test doubles that stand in for a session manager.
         registry = getattr(session_manager, "handles", None)
-        self._handle_factory = (handle_factory
-                                or (registry.mint if registry is not None
-                                    else generate_name))
+        self._handle_factory = handle_factory or (
+            registry.mint if registry is not None else generate_name
+        )
         # in-memory state
         self._pending: dict[str, list[Task]] = {q: [] for q in self._queues}
         self._inflight: dict[str, list[Task]] = {q: [] for q in self._queues}
@@ -144,8 +150,7 @@ class QueueManager:
         if existing is not None:
             if existing == queue:
                 return
-            raise ValueError(
-                f"queue {queue.name!r} already registered")
+            raise ValueError(f"queue {queue.name!r} already registered")
         self._queues[queue.name] = queue
         self._pending[queue.name] = []
         self._inflight[queue.name] = []
@@ -162,6 +167,7 @@ class QueueManager:
         def _unsubscribe() -> None:
             with contextlib.suppress(ValueError):
                 self._observers.remove(callback)
+
         return _unsubscribe
 
     def _emit(self, ev: QueueEvent) -> None:
@@ -170,7 +176,8 @@ class QueueManager:
                 cb(ev)
             except Exception:  # noqa: BLE001
                 logging.getLogger(__name__).exception(
-                    "queue observer raised on %s", type(ev).__name__)
+                    "queue observer raised on %s", type(ev).__name__
+                )
 
     def _log(self, queue: str, event: dict) -> None:
         """Persist one lifecycle event to the queue's JSONL log.
@@ -211,48 +218,77 @@ class QueueManager:
                 out.append(rec)
         return out
 
-    def enqueue(self, queue: str, payload: str, *,
-                enqueued_by: str, callback: bool = False,
-                callback_to: str | None = None,
-                callback_handle: str | None = None) -> tuple[str, int] | dict:
+    def enqueue(
+        self,
+        queue: str,
+        payload: str,
+        *,
+        enqueued_by: str,
+        callback: bool = False,
+        callback_to: str | None = None,
+        callback_handle: str | None = None,
+    ) -> tuple[str, int] | dict:
         if queue not in self._queues:
             raise KeyError(queue)
         q = self._queues[queue]
         if q.budgets:
             tail = self._load_recent_jsonl(
-                queue, max_age=max(b.window for b in q.budgets))
-            decision = evaluate_budgets(
-                tail, q.budgets, datetime.now(timezone.utc))
+                queue, max_age=max(b.window for b in q.budgets)
+            )
+            decision = evaluate_budgets(tail, q.budgets, datetime.now(timezone.utc))
             if not decision.allowed:
                 return {
                     "error": f"queue {queue!r} over budget",
                     "queue": queue,
                     "blocked_by": [
-                        {"constraint": c.constraint,
-                         "limit": str(c.limit),
-                         "spent": str(c.spent),
-                         "window": c.window_str,
-                         "unblock_at": c.unblock_at.isoformat().replace(
-                             "+00:00", "Z") if c.unblock_at else None}
-                        for c in decision.blocked_by],
-                    "unblock_at": decision.unblock_at.isoformat().replace(
-                        "+00:00", "Z") if decision.unblock_at else None,
+                        {
+                            "constraint": c.constraint,
+                            "limit": str(c.limit),
+                            "spent": str(c.spent),
+                            "window": c.window_str,
+                            "unblock_at": c.unblock_at.isoformat().replace(
+                                "+00:00", "Z"
+                            )
+                            if c.unblock_at
+                            else None,
+                        }
+                        for c in decision.blocked_by
+                    ],
+                    "unblock_at": decision.unblock_at.isoformat().replace("+00:00", "Z")
+                    if decision.unblock_at
+                    else None,
                 }
         task = Task(
-            id=new_ulid(), queue=queue, payload=payload,
-            enqueued_by=enqueued_by, enqueued_at=self._now(),
-            callback=callback, status="pending",
-            callback_to=callback_to, callback_handle=callback_handle)
+            id=new_ulid(),
+            queue=queue,
+            payload=payload,
+            enqueued_by=enqueued_by,
+            enqueued_at=self._now(),
+            callback=callback,
+            status="pending",
+            callback_to=callback_to,
+            callback_handle=callback_handle,
+        )
         self._pending[queue].append(task)
         self._all[task.id] = task
         position = len(self._pending[queue])
-        self._log(queue, {
-            "event": "enqueued", "task_id": task.id, "queue": queue,
-            "payload": payload, "enqueued_by": enqueued_by,
-            "enqueued_at": task.enqueued_at, "callback": callback})
-        self._emit(QueueEnqueued(
-            task_id=task.id, queue=queue,
-            payload=payload, enqueued_by=enqueued_by))
+        self._log(
+            queue,
+            {
+                "event": "enqueued",
+                "task_id": task.id,
+                "queue": queue,
+                "payload": payload,
+                "enqueued_by": enqueued_by,
+                "enqueued_at": task.enqueued_at,
+                "callback": callback,
+            },
+        )
+        self._emit(
+            QueueEnqueued(
+                task_id=task.id, queue=queue, payload=payload, enqueued_by=enqueued_by
+            )
+        )
         self._try_dispatch(queue)
         return task.id, position
 
@@ -283,7 +319,8 @@ class QueueManager:
         last_text = ""
         if t.status == "pending":
             self._pending[t.queue] = [
-                x for x in self._pending[t.queue] if x.id != task_id]
+                x for x in self._pending[t.queue] if x.id != task_id
+            ]
         else:  # dispatched / in-flight
             # Pop from _workers first so any finalize the close triggers
             # early-returns and can't overwrite the cancelled status —
@@ -292,32 +329,56 @@ class QueueManager:
             _, last_text = self._workers.pop(worker_handle, (None, ""))
             self._chunk_run.pop(worker_handle, None)
             self._inflight[t.queue] = [
-                x for x in self._inflight[t.queue] if x.id != task_id]
+                x for x in self._inflight[t.queue] if x.id != task_id
+            ]
 
         body = _with_last_message(
-            "cancelled", last_text,
-            none_note=("never dispatched" if t.status == "pending"
-                       else "the worker had not said anything yet"))
-        cancelled = Task(**{**t.__dict__,
-                            "status": "cancelled",
-                            "result": last_text or None,
-                            "completed_at": self._now()})
+            "cancelled",
+            last_text,
+            none_note=(
+                "never dispatched"
+                if t.status == "pending"
+                else "the worker had not said anything yet"
+            ),
+        )
+        cancelled = Task(
+            **{
+                **t.__dict__,
+                "status": "cancelled",
+                "result": last_text or None,
+                "completed_at": self._now(),
+            }
+        )
         self._all[task_id] = cancelled
-        self._log(t.queue, {
-            "event": "failed", "task_id": task_id,
-            "result": cancelled.result, "error": "cancelled",
-            "completed_at": cancelled.completed_at, "cost": {}})
-        self._emit(QueueCompleted(
-            task_id=task_id, queue=t.queue, outcome="interrupted",
-            result=cancelled.result, error="cancelled",
-            completed_at=cancelled.completed_at))
+        self._log(
+            t.queue,
+            {
+                "event": "failed",
+                "task_id": task_id,
+                "result": cancelled.result,
+                "error": "cancelled",
+                "completed_at": cancelled.completed_at,
+                "cost": {},
+            },
+        )
+        self._emit(
+            QueueCompleted(
+                task_id=task_id,
+                queue=t.queue,
+                outcome="interrupted",
+                result=cancelled.result,
+                error="cancelled",
+                completed_at=cancelled.completed_at,
+            )
+        )
         if t.callback:
             msg = InboxMessage(
                 sender=sender_queue(t.queue),
                 timestamp=self._now(),
                 body=body,
                 task_id=task_id,
-                status="error")
+                status="error",
+            )
             await self._inbox.deliver(_handle_of(t.enqueued_by), msg)
 
         if worker_handle is not None and t.status != "pending":
@@ -328,12 +389,20 @@ class QueueManager:
             with contextlib.suppress(Exception):
                 await self._sm.close(worker_handle)
             self._try_dispatch(t.queue)
-        return {"ok": True, "status": "cancelled",
-                "was": ("pending" if t.status == "pending" else "in_flight")}
+        return {
+            "ok": True,
+            "status": "cancelled",
+            "was": ("pending" if t.status == "pending" else "in_flight"),
+        }
 
-    async def run(self, queue: str, payload: str, *,
-                  enqueued_by: str,
-                  timeout: float | None = None) -> dict:
+    async def run(
+        self,
+        queue: str,
+        payload: str,
+        *,
+        enqueued_by: str,
+        timeout: float | None = None,
+    ) -> dict:
         """Enqueue a task and await its terminal result — the synchronous
         shape of ``enqueue`` + wait, for callers that want the result
         returned directly rather than as an inbox callback.
@@ -355,16 +424,19 @@ class QueueManager:
         target = {"id": None}
 
         def _obs(ev: QueueEvent) -> None:
-            if (isinstance(ev, QueueCompleted)
-                    and ev.task_id == target["id"]
-                    and not fut.done()):
+            if (
+                isinstance(ev, QueueCompleted)
+                and ev.task_id == target["id"]
+                and not fut.done()
+            ):
                 fut.set_result(ev)
 
         unsub = self.subscribe(_obs)
         try:
-            result = self.enqueue(queue, payload,
-                                  enqueued_by=enqueued_by, callback=False)
-            if isinstance(result, dict):   # budget rejection etc.
+            result = self.enqueue(
+                queue, payload, enqueued_by=enqueued_by, callback=False
+            )
+            if isinstance(result, dict):  # budget rejection etc.
                 return result
             tid, _pos = result
             target["id"] = tid
@@ -376,8 +448,12 @@ class QueueManager:
             except asyncio.TimeoutError:
                 return {"task_id": tid, "status": "timeout"}
             status = "completed" if ev.outcome == "completed" else "failed"
-            return {"task_id": tid, "status": status,
-                    "result": ev.result, "error": ev.error}
+            return {
+                "task_id": tid,
+                "status": status,
+                "result": ev.result,
+                "error": ev.error,
+            }
         finally:
             unsub()
 
@@ -402,32 +478,44 @@ class QueueManager:
 
     def _try_dispatch(self, queue: str) -> None:
         q = self._queues[queue]
-        while (len(self._inflight[queue]) < q.max_parallel
-               and self._pending[queue]):
+        while len(self._inflight[queue]) < q.max_parallel and self._pending[queue]:
             task = self._pending[queue].pop(0)
-            used = (set(self._workers)
-                    | {s.handle for s in getattr(self._sm,
-                                                  "_sessions", [])})
+            used = set(self._workers) | {
+                s.handle for s in getattr(self._sm, "_sessions", [])
+            }
             worker_handle = self._handle_factory(used)
-            dispatched = Task(**{**task.__dict__,
-                                 "status": "dispatched",
-                                 "worker_handle": worker_handle})
+            dispatched = Task(
+                **{
+                    **task.__dict__,
+                    "status": "dispatched",
+                    "worker_handle": worker_handle,
+                }
+            )
             self._all[task.id] = dispatched
             self._inflight[queue].append(dispatched)
             self._workers[worker_handle] = (dispatched, "")
-            self._log(queue, {
-                "event": "dispatched", "task_id": task.id,
-                "worker_handle": worker_handle})
-            self._emit(QueueDispatched(
-                task_id=task.id, queue=queue,
-                worker_handle=worker_handle,
-                agent_slug=q.agent_profile))
+            self._log(
+                queue,
+                {
+                    "event": "dispatched",
+                    "task_id": task.id,
+                    "worker_handle": worker_handle,
+                },
+            )
+            self._emit(
+                QueueDispatched(
+                    task_id=task.id,
+                    queue=queue,
+                    worker_handle=worker_handle,
+                    agent_slug=q.agent_profile,
+                )
+            )
             self._emit(QueueStarted(task_id=task.id, queue=queue))
             # Use the sync seam — async AppBridge.spawn is for workflow.
             sync_spawn = getattr(self._sm, "_sync_spawn", self._sm.spawn)
-            session = sync_spawn(q.agent_profile,
-                                 opening_prompt=task.payload,
-                                 handle=worker_handle)
+            session = sync_spawn(
+                q.agent_profile, opening_prompt=task.payload, handle=worker_handle
+            )
             self._attach_observers(session, dispatched)
 
     def _attach_observers(self, session, task: Task) -> None:
@@ -508,9 +596,9 @@ class QueueManager:
         that has been refusing exactly this since it shipped.
         """
         from aegis.core.close_guard import gather_facts, still_working_reasons
+
         try:
-            facts = gather_facts(self._sm, handle,
-                                 state=getattr(st, "value", str(st)))
+            facts = gather_facts(self._sm, handle, state=getattr(st, "value", str(st)))
         except Exception as e:  # noqa: BLE001 — never strand a task on a probe
             # Logged, not swallowed. This handler already hid the fix
             # once: `gather_facts` raised AttributeError on a bridge with
@@ -518,10 +606,16 @@ class QueueManager:
             # the change looked inert against its own failing tests.
             task = self._workers.get(handle, (None, ""))[0]
             if task is not None:
-                self._log(task.queue, {
-                    "event": "waiting_probe_failed", "task_id": task.id,
-                    "worker_handle": handle,
-                    "error": f"{type(e).__name__}: {e}", "at": self._now()})
+                self._log(
+                    task.queue,
+                    {
+                        "event": "waiting_probe_failed",
+                        "task_id": task.id,
+                        "worker_handle": handle,
+                        "error": f"{type(e).__name__}: {e}",
+                        "at": self._now(),
+                    },
+                )
             return []
         return still_working_reasons(facts)
 
@@ -535,64 +629,91 @@ class QueueManager:
             # — every deferring condition is self-terminating, which is
             # why `claims` is deliberately not one of them.
             task, said = self._workers[session.handle]
-            self._log(task.queue, {
-                "event": "deferred", "task_id": task.id,
-                "worker_handle": session.handle,
-                "waiting_on": waiting, "at": self._now(),
-                # The only point at which a live worker's words reach
-                # disk. If the process dies while it is waiting, this is
-                # all `_mark_interrupted` will have to hand the producer.
-                "last_text": said})
+            self._log(
+                task.queue,
+                {
+                    "event": "deferred",
+                    "task_id": task.id,
+                    "worker_handle": session.handle,
+                    "waiting_on": waiting,
+                    "at": self._now(),
+                    # The only point at which a live worker's words reach
+                    # disk. If the process dies while it is waiting, this is
+                    # all `_mark_interrupted` will have to hand the producer.
+                    "last_text": said,
+                },
+            )
             return
         task, last_text = self._workers.pop(session.handle)
         self._chunk_run.pop(session.handle, None)
-        ok = (st is AgentState.ready)
+        ok = st is AgentState.ready
         status = "completed" if ok else "failed"
         result = last_text if ok else None
         error = None if ok else (last_text or "worker exited with error")
-        completed = Task(**{**task.__dict__,
-                            "status": status,
-                            "result": result,
-                            "error": error,
-                            "completed_at": self._now()})
+        completed = Task(
+            **{
+                **task.__dict__,
+                "status": status,
+                "result": result,
+                "error": error,
+                "completed_at": self._now(),
+            }
+        )
         self._all[task.id] = completed
         self._inflight[task.queue] = [
-            t for t in self._inflight[task.queue] if t.id != task.id]
+            t for t in self._inflight[task.queue] if t.id != task.id
+        ]
         q = self._queues[task.queue]
         try:
             metrics = getattr(session, "metrics", None)
             cost_dict = _compute_cost(
                 _adapt_metrics(metrics),
-                provider=q.provider, model=q.model,
+                provider=q.provider,
+                model=q.model,
             ).as_dict()
         except UnknownPriceError as e:
             cost_dict = {"error": "unknown_model", "detail": str(e)}
         except Exception as e:  # noqa: BLE001 — don't let cost break finalizer
             cost_dict = {"error": "compute_failed", "detail": str(e)}
-        self._log(task.queue, {
-            "event": status, "task_id": task.id,
-            "result": result, "error": error,
-            "completed_at": completed.completed_at,
-            "cost": cost_dict})
-        self._emit(QueueCompleted(
-            task_id=task.id, queue=task.queue,
-            outcome="completed" if ok else "failed",
-            result=result, error=error,
-            completed_at=completed.completed_at))
+        self._log(
+            task.queue,
+            {
+                "event": status,
+                "task_id": task.id,
+                "result": result,
+                "error": error,
+                "completed_at": completed.completed_at,
+                "cost": cost_dict,
+            },
+        )
+        self._emit(
+            QueueCompleted(
+                task_id=task.id,
+                queue=task.queue,
+                outcome="completed" if ok else "failed",
+                result=result,
+                error=error,
+                completed_at=completed.completed_at,
+            )
+        )
         if task.callback:
             # A worker can finish cleanly having emitted only tool calls.
             # An empty body in an inbox reads as a message that failed to
             # render, so say what happened rather than nothing.
             body = (result or "") if ok else (error or "")
             if not body.strip():
-                body = ("the worker finished without a final message"
-                        if ok else "the worker exited with no message")
+                body = (
+                    "the worker finished without a final message"
+                    if ok
+                    else "the worker exited with no message"
+                )
             msg = InboxMessage(
                 sender=sender_queue(task.queue),
                 timestamp=self._now(),
                 body=body,
                 task_id=task.id,
-                status=("ok" if ok else "error"))
+                status=("ok" if ok else "error"),
+            )
             await self._inbox.deliver(_handle_of(task.enqueued_by), msg)
         try:
             await self._sm.close(session.handle)
@@ -610,6 +731,7 @@ class QueueManager:
         if self._state_dir is None:
             return
         from aegis.queue.jsonl import read_records
+
         qdir = Path(self._state_dir) / "queues"
         if not qdir.exists():
             return
@@ -643,7 +765,8 @@ class QueueManager:
                     await self._mark_interrupted(queue_name, tid, r)
                 elif r["status"] in ("completed", "failed"):
                     self._all[tid] = Task(
-                        id=tid, queue=queue_name,
+                        id=tid,
+                        queue=queue_name,
                         payload=r.get("payload", ""),
                         enqueued_by=r.get("enqueued_by", "system"),
                         enqueued_at=r.get("enqueued_at", self._now()),
@@ -652,15 +775,18 @@ class QueueManager:
                         worker_handle=r.get("worker_handle"),
                         result=r.get("result"),
                         error=r.get("error"),
-                        completed_at=r.get("completed_at"))
+                        completed_at=r.get("completed_at"),
+                    )
                 elif r["status"] == "enqueued":
                     t = Task(
-                        id=tid, queue=queue_name,
+                        id=tid,
+                        queue=queue_name,
                         payload=r.get("payload", ""),
                         enqueued_by=r.get("enqueued_by", "system"),
                         enqueued_at=r.get("enqueued_at", self._now()),
                         callback=bool(r.get("callback", False)),
-                        status="pending")
+                        status="pending",
+                    )
                     self._all[tid] = t
                     self._pending[queue_name].append(t)
         # Kick dispatch on every queue we just rehydrated.
@@ -672,10 +798,10 @@ class QueueManager:
         # synchronous on each transition).
         return
 
-    async def _mark_interrupted(self, queue: str, tid: str,
-                                last: dict) -> None:
+    async def _mark_interrupted(self, queue: str, tid: str, last: dict) -> None:
         completed = Task(
-            id=tid, queue=queue,
+            id=tid,
+            queue=queue,
             payload=last.get("payload", ""),
             enqueued_by=last.get("enqueued_by", "system"),
             enqueued_at=last.get("enqueued_at", self._now()),
@@ -684,17 +810,29 @@ class QueueManager:
             worker_handle=last.get("worker_handle"),
             result=last.get("last_text") or None,
             error="interrupted: aegis restarted mid-flight",
-            completed_at=self._now())
+            completed_at=self._now(),
+        )
         self._all[tid] = completed
-        self._log(queue, {
-            "event": "failed", "task_id": tid,
-            "result": None, "error": completed.error,
-            "completed_at": completed.completed_at})
-        self._emit(QueueCompleted(
-            task_id=tid, queue=queue,
-            outcome="interrupted",
-            result=None, error=completed.error,
-            completed_at=completed.completed_at))
+        self._log(
+            queue,
+            {
+                "event": "failed",
+                "task_id": tid,
+                "result": None,
+                "error": completed.error,
+                "completed_at": completed.completed_at,
+            },
+        )
+        self._emit(
+            QueueCompleted(
+                task_id=tid,
+                queue=queue,
+                outcome="interrupted",
+                result=None,
+                error=completed.error,
+                completed_at=completed.completed_at,
+            )
+        )
         if completed.callback:
             msg = InboxMessage(
                 sender=sender_queue(queue),
@@ -704,9 +842,11 @@ class QueueManager:
                 # that was waiting has words here and one that never
                 # reached a turn boundary honestly has none.
                 body=_with_last_message(
-                    completed.error or "interrupted", last.get("last_text", ""),
-                    none_note="nothing of the worker survived the restart"),
+                    completed.error or "interrupted",
+                    last.get("last_text", ""),
+                    none_note="nothing of the worker survived the restart",
+                ),
                 task_id=tid,
-                status="error")
-            await self._inbox.deliver(
-                _handle_of(completed.enqueued_by), msg)
+                status="error",
+            )
+            await self._inbox.deliver(_handle_of(completed.enqueued_by), msg)

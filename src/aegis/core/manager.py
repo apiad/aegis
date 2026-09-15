@@ -21,8 +21,9 @@ SessionFactory = Callable[[object, str, str], object]
 SessionCb = Callable[[str, AgentSession], None]
 
 
-def _overlay_agent(base: Agent, *, model: str | None,
-                   effort: str | None, prompt: str | None) -> Agent:
+def _overlay_agent(
+    base: Agent, *, model: str | None, effort: str | None, prompt: str | None
+) -> Agent:
     """Return a copy of ``base`` with per-session overrides applied. The
     driver (``harness``) is preserved; only model/effort/prompt change. Used
     by interactive picks and ``aegis_spawn`` overrides — never persisted."""
@@ -41,6 +42,7 @@ def _overlay_agent(base: Agent, *, model: str | None,
         data["prompt"] = prompt
     return Agent(**data)
 
+
 # 2 or 3 hyphen-separated alnum segments. First char must be a letter
 # (so the handle doesn't read like a version string). Keeps handles
 # greppable and URL-safe; rules out empties, uppercase, whitespace, and
@@ -55,10 +57,17 @@ def is_valid_handle(s: str) -> bool:
 class SessionManager:
     """Frontend-agnostic owner of live AgentSessions. Is an AppBridge."""
 
-    def __init__(self, agents: dict, default_agent: str,
-                 make_session: SessionFactory, mcp,
-                 *, inbox=None, hosts: dict | None = None,
-                 roots: "AegisRoots") -> None:
+    def __init__(
+        self,
+        agents: dict,
+        default_agent: str,
+        make_session: SessionFactory,
+        mcp,
+        *,
+        inbox=None,
+        hosts: dict | None = None,
+        roots: "AegisRoots",
+    ) -> None:
         self._agents = agents
         self._default_agent = default_agent
         self._make_session = make_session
@@ -99,13 +108,15 @@ class SessionManager:
         # available again.
         self.handles = HandleRegistry()
         from aegis.groups.bridge import make_groups_bridge
-        self.groups = make_groups_bridge(
-            session_manager=self, inbox_router=inbox)
+
+        self.groups = make_groups_bridge(session_manager=self, inbox_router=inbox)
         from aegis.locks.bridge import make_locks_bridge
+
         self.locks = make_locks_bridge(
             live_handles=self.live_handles,
             root_fn=lambda: self.state_root,
-            state_dir=None)  # in-memory v1; live-handle filter reaps dead holders
+            state_dir=None,
+        )  # in-memory v1; live-handle filter reaps dead holders
 
     @property
     def mcp(self):
@@ -140,10 +151,12 @@ class SessionManager:
         claims survive a `serve` restart, matching the TUI which persists by
         default."""
         from aegis.locks.bridge import make_locks_bridge
+
         self.locks = make_locks_bridge(
             live_handles=self.live_handles,
             root_fn=lambda: self.state_root,
-            state_dir=state_dir)
+            state_dir=state_dir,
+        )
 
     def attach_remotes(self, remotes: dict) -> None:
         self.remotes = remotes
@@ -157,14 +170,20 @@ class SessionManager:
     def attach_terminal_manager(self, tm) -> None:
         self.terminal_manager = tm
 
-    def attach_scheduler_context(self, *, scheduler, state_root,
-                                 workflow_registry,
-                                 inline_schedule_names: set[str]) -> None:
+    def attach_scheduler_context(
+        self,
+        *,
+        scheduler,
+        state_root,
+        workflow_registry,
+        inline_schedule_names: set[str],
+    ) -> None:
         self.scheduler = scheduler
         if Path(state_root) != self.state_root:
             raise ValueError(
                 f"scheduler state_root {state_root} disagrees with "
-                f"manager roots {self.state_root}")
+                f"manager roots {self.state_root}"
+            )
         self.workflow_registry = workflow_registry
         self._inline_schedule_names = set(inline_schedule_names)
 
@@ -187,31 +206,35 @@ class SessionManager:
 
     def register_queue(self, queue) -> None:
         if self.queue_manager is None:
-            raise RuntimeError(
-                "no queue_manager attached; cannot register queue")
+            raise RuntimeError("no queue_manager attached; cannot register queue")
         self.queue_manager.register_queue(queue)
 
     def reload_plugins(self) -> None:
         from aegis.config import yaml_loader
+
         root = self.roots.config_root
         cfg = yaml_loader.load_config(root)
         yaml_loader.import_plugins(cfg)
 
-    def _sync_spawn(self, slug: str | None = None, *,
-                    opening_prompt: str | None = None,
-                    handle: str | None = None,
-                    spawned_by: str | None = None,
-                    model: str | None = None,
-                    effort: str | None = None,
-                    prompt: str | None = None,
-                    host: str | None = None,
-                    cwd: str | None = None,
-                    fork_from: str | None = None,
-                    forked_from: dict | None = None,
-                    place: Place | None = None,
-                    agent: "Agent | None" = None,
-                    resume_from: str | None = None,
-                    log_id: str | None = None) -> AgentSession:
+    def _sync_spawn(
+        self,
+        slug: str | None = None,
+        *,
+        opening_prompt: str | None = None,
+        handle: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+        fork_from: str | None = None,
+        forked_from: dict | None = None,
+        place: Place | None = None,
+        agent: "Agent | None" = None,
+        resume_from: str | None = None,
+        log_id: str | None = None,
+    ) -> AgentSession:
         # ``resume_from`` and ``log_id`` reopen a conversation that already
         # has a log: a tab restored at boot or reopened from history. It is
         # a brain session like any other, so it goes through here and gets
@@ -227,14 +250,16 @@ class SessionManager:
         # agent directly is what lets that tab be brain-owned like any other
         # -- exempting it instead would mean custom tabs alone never crossed
         # to a second view.
-        agent = _overlay_agent(agent, model=model,
-                               effort=effort, prompt=prompt)
+        agent = _overlay_agent(agent, model=model, effort=effort, prompt=prompt)
         # Resolve placement BEFORE minting a handle or building a session:
         # an unknown host must fail without leaving a half-built tab behind.
         place = place or resolve_place(
-            host=host, cwd=cwd,
+            host=host,
+            cwd=cwd,
             agent_host=getattr(agent, "host", None),
-            hosts=self._hosts, local_root=str(self.roots.harness_cwd))
+            hosts=self._hosts,
+            local_root=str(self.roots.harness_cwd),
+        )
         if handle is None:
             h = self.handles.mint({s.handle for s in self._sessions})
         else:
@@ -259,13 +284,18 @@ class SessionManager:
         if self._mcp is not None:
             extra["token"] = self._mcp.tokens.mint(h)
         raw = self._make_session(agent, url, h, **extra)
-        s = AgentSession(raw, agent, slug, h,
-                         inbox=self._inbox,
-                         opening_prompt=opening_prompt,
-                         project_root=self.roots.harness_cwd,
-                         state_dir=self.roots.state_dir,
-                         log_id=log_id,
-                         place=place)
+        s = AgentSession(
+            raw,
+            agent,
+            slug,
+            h,
+            inbox=self._inbox,
+            opening_prompt=opening_prompt,
+            project_root=self.roots.harness_cwd,
+            state_dir=self.roots.state_dir,
+            log_id=log_id,
+            place=place,
+        )
         s.spawned_by = spawned_by
         s.forked_from = forked_from
         if self._inbox is not None:
@@ -273,8 +303,8 @@ class SessionManager:
         self._sessions.append(s)
         if self._persist_dir is not None:
             from aegis.state.session_log import make_session_log_observer
-            s.add_event_observer(
-                make_session_log_observer(self._persist_dir, s.log_id))
+
+            s.add_event_observer(make_session_log_observer(self._persist_dir, s.log_id))
         self._touch(h)
         # After the append and the log observer, before the opening turn: a
         # view must be able to mount its pane and see the first event.
@@ -283,15 +313,19 @@ class SessionManager:
             asyncio.create_task(s.send(opening_prompt))
         return s
 
-    async def spawn(self, profile: str, *,
-                    handle: str | None = None,
-                    opening_prompt: str | None = None,
-                    spawned_by: str | None = None,
-                    model: str | None = None,
-                    effort: str | None = None,
-                    prompt: str | None = None,
-                    host: str | None = None,
-                    cwd: str | None = None) -> str:
+    async def spawn(
+        self,
+        profile: str,
+        *,
+        handle: str | None = None,
+        opening_prompt: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
         """AppBridge-shaped async spawn. Returns the new handle.
 
         ``model`` / ``effort`` / ``prompt`` are optional per-session
@@ -299,27 +333,38 @@ class SessionManager:
         ``host`` / ``cwd`` place the harness process on another machine —
         see ``aegis.hosts``. Both are equally per-session and equally
         unpersisted."""
-        sess = self._sync_spawn(profile, handle=handle,
-                                opening_prompt=opening_prompt,
-                                spawned_by=spawned_by,
-                                model=model, effort=effort, prompt=prompt,
-                                host=host, cwd=cwd)
+        sess = self._sync_spawn(
+            profile,
+            handle=handle,
+            opening_prompt=opening_prompt,
+            spawned_by=spawned_by,
+            model=model,
+            effort=effort,
+            prompt=prompt,
+            host=host,
+            cwd=cwd,
+        )
         return sess.handle
 
     def _fork_capability(self, harness: str) -> bool:
         """Whether the driver behind ``harness`` can branch a session."""
         from aegis.drivers import get_driver
+
         try:
             return bool(get_driver(harness).supports_fork)
         except Exception:  # noqa: BLE001 — unknown harness is a refusal
             return False
 
-    async def fork(self, target: str, *,
-                   prompt: str | None = None,
-                   slug: str | None = None,
-                   model: str | None = None,
-                   effort: str | None = None,
-                   forked_by: str | None = None) -> str:
+    async def fork(
+        self,
+        target: str,
+        *,
+        prompt: str | None = None,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        forked_by: str | None = None,
+    ) -> str:
         """Branch ``target``'s conversation into a new session.
 
         The parent is left entirely alone — same session id, same log,
@@ -332,6 +377,7 @@ class SessionManager:
         Raises ValueError listing every refusal reason at once.
         """
         from aegis.core.fork_guard import facts_for, refuse_reasons
+
         s = self.get(target)
         facts = facts_for(s, capability=self._fork_capability)
         reasons = refuse_reasons(facts, target=target)
@@ -342,14 +388,17 @@ class SessionManager:
         # not from wherever the parent has drifted to since.
         sid = s.session_id
         child = self._sync_spawn(
-            s.agent_slug, handle=slug, opening_prompt=prompt,
-            model=model, effort=effort,
+            s.agent_slug,
+            handle=slug,
+            opening_prompt=prompt,
+            model=model,
+            effort=effort,
             # A fork inherits its parent's machine: branching a
             # conversation must never silently relocate it.
             place=s.place,
             fork_from=sid,
-            forked_from={"handle": target, "log_id": s.log_id,
-                         "session_id": sid})
+            forked_from={"handle": target, "log_id": s.log_id, "session_id": sid},
+        )
         child.spawned_by = forked_by
         return child.handle
 
@@ -371,8 +420,7 @@ class SessionManager:
             raise ValueError(f"unknown session {handle!r}")
         reasons: list[str] = []
         if s.place.is_local:
-            reasons.append(
-                f"{handle} runs local — reconnect is for remote sessions")
+            reasons.append(f"{handle} runs local — reconnect is for remote sessions")
         sid = s.session_id
         if not sid:
             reasons.append(f"{handle} has no session id to resume from")
@@ -387,8 +435,9 @@ class SessionManager:
         # before the factory builds the argv it goes into.
         if self._mcp is not None:
             extra["token"] = self._mcp.tokens.mint(handle)
-        raw = self._make_session(s.agent, url, handle,
-                                 place=s.place, resume_from=sid, **extra)
+        raw = self._make_session(
+            s.agent, url, handle, place=s.place, resume_from=sid, **extra
+        )
         s.adopt(raw)
         return f"reconnected {handle} on {s.place.host}"
 
@@ -396,41 +445,55 @@ class SessionManager:
         """AppBridge-shaped: where this session stands."""
         from aegis.digest.models import TurnFacts
         from aegis.recap import Recap, recap_for
+
         s = self.get(handle)
         if s is None:
             return Recap(error=f"unknown session: {handle}")
         state_dir = self._persist_dir or self.state_root
         if state_dir is None:
-            return Recap(
-                error="this session has no persisted transcript to read")
+            return Recap(error="this session has no persisted transcript to read")
         return await recap_for(
-            state_dir=state_dir, log_id=s.log_id,
-            facts=s.last_facts or TurnFacts(), agent=s.agent,
-            agents=self._agents, cwd=str(s.project_root),
-            session_scope=session_scope)
+            state_dir=state_dir,
+            log_id=s.log_id,
+            facts=s.last_facts or TurnFacts(),
+            agent=s.agent,
+            agents=self._agents,
+            cwd=str(s.project_root),
+            session_scope=session_scope,
+        )
 
     async def side_note(self, handle: str, prompt: str):
         """AppBridge-shaped: a side note off this session's transcript."""
         from aegis.btw import SideNote, side_note_for
+
         s = self.get(handle)
         if s is None:
             return SideNote(error=f"unknown session: {handle}")
         state_dir = self._persist_dir or self.state_root
         if state_dir is None:
-            return SideNote(
-                error="this session has no persisted transcript to read")
+            return SideNote(error="this session has no persisted transcript to read")
         return await side_note_for(
-            prompt, state_dir=state_dir, log_id=s.log_id, agent=s.agent,
-            agents=self._agents, cwd=str(s.project_root),
-            facts=s.last_facts)
+            prompt,
+            state_dir=state_dir,
+            log_id=s.log_id,
+            agent=s.agent,
+            agents=self._agents,
+            cwd=str(s.project_root),
+            facts=s.last_facts,
+        )
 
-    async def session_send_and_await(self, *, handle: str, prompt: str,
-                                     workflow_id: str = "",
-                                     workflow_name: str = "",
-                                     sender: str | None = None,
-                                     timeout: float | None = None,
-                                     require_landed: bool = False,
-                                     sink: list | None = None) -> str:
+    async def session_send_and_await(
+        self,
+        *,
+        handle: str,
+        prompt: str,
+        workflow_id: str = "",
+        workflow_name: str = "",
+        sender: str | None = None,
+        timeout: float | None = None,
+        require_landed: bool = False,
+        sink: list | None = None,
+    ) -> str:
         """Deliver ``prompt`` to a live session and await its next reply.
 
         The keyword shape is dictated by ``workflow/runner.py``, which has
@@ -446,40 +509,63 @@ class SessionManager:
         if s is None:
             raise ValueError(f"unknown session: {handle}")
         if sender is None:
-            sender = (f"workflow:{workflow_name}" if workflow_name
-                      else sender_user())
+            sender = f"workflow:{workflow_name}" if workflow_name else sender_user()
         return await send_and_await(
-            s, prompt=prompt, sender=sender, timeout=timeout,
-            require_landed=require_landed, sink=sink)
+            s,
+            prompt=prompt,
+            sender=sender,
+            timeout=timeout,
+            require_landed=require_landed,
+            sink=sink,
+        )
 
-    async def peer_ask(self, from_handle: str, target: str, prompt: str,
-                       *, cc: bool = False):
+    async def peer_ask(
+        self, from_handle: str, target: str, prompt: str, *, cc: bool = False
+    ):
         """AppBridge-shaped: ask an idle peer, from where you're standing."""
         from aegis.peer import ask
+
         source = self.get(from_handle)
         return await ask(
-            from_handle=from_handle, target=target,
+            from_handle=from_handle,
+            target=target,
             source_slug=getattr(source, "agent_slug", ""),
-            target_session=self.get(target), prompt=prompt,
+            target_session=self.get(target),
+            prompt=prompt,
             state_dir=self._persist_dir or self.state_root,
             source_log_id=getattr(source, "log_id", None),
-            source_session=source, cc=cc,
+            source_session=source,
+            cc=cc,
             # So an unknown handle can name the real ones instead of a bare
             # "unknown session: peer".
-            live=self.list_sessions())
+            live=self.list_sessions(),
+        )
 
-    async def read_peer(self, handle: str, turns: int = 12,
-                        budget_tokens: int | None = None,
-                        item_chars: int | None = None) -> dict:
+    async def read_peer(
+        self,
+        handle: str,
+        turns: int = 12,
+        budget_tokens: int | None = None,
+        item_chars: int | None = None,
+    ) -> dict:
         """AppBridge-shaped: window a live peer's transcript."""
         from aegis.peer import read_window
+
         s = self.get(handle)
         if s is None:
-            return {"ok": False, "text": "", "header": "",
-                    "error": f"unknown session: {handle}"}
-        return await read_window(self._persist_dir or self.state_root,
-                                 getattr(s, "log_id", None), turns,
-                                 budget_tokens, item_chars)
+            return {
+                "ok": False,
+                "text": "",
+                "header": "",
+                "error": f"unknown session: {handle}",
+            }
+        return await read_window(
+            self._persist_dir or self.state_root,
+            getattr(s, "log_id", None),
+            turns,
+            budget_tokens,
+            item_chars,
+        )
 
     def _touch(self, handle: str) -> None:
         if handle in self._mru:
@@ -542,8 +628,7 @@ class SessionManager:
         """None when the session has no plan at all — a peer reading 0/0
         would think the agent had planned nothing, not that it had not
         planned yet."""
-        roll = session.plan_roll_up() if hasattr(session, "plan_roll_up") \
-            else None
+        roll = session.plan_roll_up() if hasattr(session, "plan_roll_up") else None
         return roll if roll is not None and roll.total else None
 
     def plan_state(self, handle: str):
@@ -556,15 +641,20 @@ class SessionManager:
     def list_sessions(self) -> list[SessionInfo]:
         top = self._mru[0] if self._mru else None
         return [
-            SessionInfo(handle=s.handle, agent_slug=s.agent_slug,
-                        state=s.state.value, active=(s.handle == top),
-                        unseen=False,
-                        spawned_by=getattr(s, "spawned_by", None),
-                        unsolicited=getattr(s, "unsolicited_turn", False),
-                        host=getattr(s, "place", None).host
-                        if getattr(s, "place", None) else "local",
-                        plan=self._plan_roll_up(s),
-                        title=getattr(s, "title", ""))
+            SessionInfo(
+                handle=s.handle,
+                agent_slug=s.agent_slug,
+                state=s.state.value,
+                active=(s.handle == top),
+                unseen=False,
+                spawned_by=getattr(s, "spawned_by", None),
+                unsolicited=getattr(s, "unsolicited_turn", False),
+                host=getattr(s, "place", None).host
+                if getattr(s, "place", None)
+                else "local",
+                plan=self._plan_roll_up(s),
+                title=getattr(s, "title", ""),
+            )
             for s in self._sessions
         ]
 
@@ -574,8 +664,7 @@ class SessionManager:
     def live_handles(self) -> set[str]:
         return {s.handle for s in self._sessions}
 
-    async def set_title(self, handle: str, title: str, *,
-                        source: str) -> dict:
+    async def set_title(self, handle: str, title: str, *, source: str) -> dict:
         """Set a session's display title, subject to source precedence.
 
         An empty ``title`` clears it, and clears the source with it —
@@ -584,21 +673,25 @@ class SessionManager:
         """
         session = self.get(handle)
         if session is None:
-            return {"error":
-                    f"no session {handle!r} (use aegis_list_sessions)"}
+            return {"error": f"no session {handle!r} (use aegis_list_sessions)"}
         if not outranks(source, session.title_source):
-            return {"error":
-                    f"title is set by {session.title_source!r} and "
-                    f"{source!r} cannot overwrite it"}
+            return {
+                "error": f"title is set by {session.title_source!r} and "
+                f"{source!r} cannot overwrite it"
+            }
         clean = sanitize_title(title)
         session.title = clean
         session.title_source = source if clean else ""
-        return {"ok": True, "handle": handle, "title": clean,
-                "source": session.title_source}
+        return {
+            "ok": True,
+            "handle": handle,
+            "title": clean,
+            "source": session.title_source,
+        }
 
-    async def rename_handle(self, old: str, new: str,
-                            title: str | None = None, *,
-                            by: str = "agent") -> dict:
+    async def rename_handle(
+        self, old: str, new: str, title: str | None = None, *, by: str = "agent"
+    ) -> dict:
         """Swap a live session's handle. Used by the ``aegis_rename`` MCP
         tool so an agent can give itself a more meaningful name once the
         session's purpose has settled.
@@ -624,20 +717,19 @@ class SessionManager:
                 await self.set_title(old, title, source="agent")
             return {"ok": True, "old": old, "new": new}
         if not is_valid_handle(new):
-            return {"error":
-                    f"new handle {new!r} fails format: must be 2-3 "
-                    f"kebab-case alphanumeric segments, starting with a "
-                    f"letter (e.g. 'lucid-river-runs')"}
+            return {
+                "error": f"new handle {new!r} fails format: must be 2-3 "
+                f"kebab-case alphanumeric segments, starting with a "
+                f"letter (e.g. 'lucid-river-runs')"
+            }
         session = self.get(old)
         if session is None:
-            return {"error":
-                    f"no session {old!r} (use aegis_list_sessions)"}
+            return {"error": f"no session {old!r} (use aegis_list_sessions)"}
         # Not just "is anyone answering to it" — a name another session was
         # born with stays that session's for the life of the process, because
         # its pane's DOM id and its planes are still keyed on it.
         if not self.handles.claimable_by(new, old):
-            return {"error":
-                    f"handle {new!r} already in use by another session"}
+            return {"error": f"handle {new!r} already in use by another session"}
         self.handles.rename(old, new)
         session.handle = new
         if old in self._mru:
@@ -675,16 +767,16 @@ class SessionManager:
         self._announce("renamed", session)
         return {"ok": True, "old": old, "new": new}
 
-    async def handoff(self, from_handle: str, target_handle: str,
-                      context: str) -> str:
+    async def handoff(self, from_handle: str, target_handle: str, context: str) -> str:
         if from_handle == target_handle:
             return "handoff rejected: cannot hand off to yourself"
         target = self.get(target_handle)
         if target is None:
-            return (f"handoff rejected: no session {target_handle!r} "
-                    f"(use aegis_list_sessions)")
+            return (
+                f"handoff rejected: no session {target_handle!r} "
+                f"(use aegis_list_sessions)"
+            )
         if target.state is AgentState.working:
-            return (f"handoff rejected: {target_handle!r} is busy, "
-                    f"retry shortly")
+            return f"handoff rejected: {target_handle!r} is busy, retry shortly"
         await target.send(f"[handoff from {from_handle}] {context}")
         return f"delivered to {target_handle}"

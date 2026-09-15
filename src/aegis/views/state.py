@@ -4,6 +4,7 @@ Opening a tab opens it for everyone; what you have focused, scrolled to and
 half-typed is yours. ``state/workspace.py`` holds the brain half — which
 tabs exist and in what order.
 """
+
 from __future__ import annotations
 
 import json
@@ -55,7 +56,7 @@ def save_view(state_dir: Path, vs: ViewState) -> None:
     }
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp.replace(p)          # atomic; a torn view file costs a scroll position
+    tmp.replace(p)  # atomic; a torn view file costs a scroll position
 
 
 def load_view(state_dir: Path, view_id: str) -> ViewState | None:

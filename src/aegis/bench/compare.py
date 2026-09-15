@@ -6,6 +6,7 @@ overlap. All three, because each alone is fooled by something ordinary:
 a relative threshold by tiny baselines, a floor by large ones, and range
 separation by a single noisy repeat.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,17 +59,23 @@ def min_repeats(a: dict, b: dict) -> int:
     overlaps the other, so the separation test rejects nothing.
     """
     shared = set(a["scenarios"]) & set(b["scenarios"])
-    return min((min(len(a["scenarios"][n]["repeats"]),
-                    len(b["scenarios"][n]["repeats"])) for n in shared),
-               default=0)
+    return min(
+        (
+            min(len(a["scenarios"][n]["repeats"]), len(b["scenarios"][n]["repeats"]))
+            for n in shared
+        ),
+        default=0,
+    )
 
 
 def compare(a: dict, b: dict, *, force: bool = False) -> dict[str, list[Row]]:
     fa, fb = a["fingerprint"], b["fingerprint"]
     for key in ("host", "size"):
         if fa.get(key) != fb.get(key) and not force:
-            raise CompareError(f"{key} differs ({fa.get(key)} vs "
-                               f"{fb.get(key)}); pass --force to compare")
+            raise CompareError(
+                f"{key} differs ({fa.get(key)} vs "
+                f"{fb.get(key)}); pass --force to compare"
+            )
     out: dict[str, list[Row]] = {}
     for name in sorted(set(a["scenarios"]) & set(b["scenarios"])):
         ra = a["scenarios"][name]["repeats"]
@@ -78,9 +85,15 @@ def compare(a: dict, b: dict, *, force: bool = False) -> dict[str, list[Row]]:
             va = [rep[m] for rep in ra if m in rep]
             vb = [rep[m] for rep in rb if m in rep]
             if not va or not vb:
-                rows.append(Row(m, statistics.median(va) if va else None,
-                                statistics.median(vb) if vb else None, None,
-                                "new" if vb else "gone"))
+                rows.append(
+                    Row(
+                        m,
+                        statistics.median(va) if va else None,
+                        statistics.median(vb) if vb else None,
+                        None,
+                        "new" if vb else "gone",
+                    )
+                )
                 continue
             ma, mb = statistics.median(va), statistics.median(vb)
             delta = (mb - ma) / ma * 100 if ma else None

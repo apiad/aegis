@@ -10,6 +10,7 @@ keep the old state intact.
 The watcher itself never crashes — exceptions raised by ``on_reload``
 are caught + logged to ``aegis_events.jsonl`` (best-effort).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,8 +29,7 @@ ReloadFn = Callable[[], Awaitable[None] | None]
 
 
 class _Handler(FileSystemEventHandler):
-    def __init__(self, queue: asyncio.Queue,
-                 loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
         self.queue = queue
         self.loop = loop
 
@@ -39,8 +39,7 @@ class _Handler(FileSystemEventHandler):
             return
         # Bounce into the loop's queue from the watchdog thread.
         try:
-            asyncio.run_coroutine_threadsafe(
-                self.queue.put(event), self.loop)
+            asyncio.run_coroutine_threadsafe(self.queue.put(event), self.loop)
         except RuntimeError:
             # Loop was already closed — drop the event.
             pass
@@ -55,7 +54,9 @@ class ReloadWatcher:
     """
 
     def __init__(
-        self, root: Path, *,
+        self,
+        root: Path,
+        *,
         on_reload: ReloadFn,
         debounce_seconds: float = 0.5,
         events_log: Path | None = None,
@@ -96,8 +97,8 @@ class ReloadWatcher:
             try:
                 while True:
                     await asyncio.wait_for(
-                        self._queue.get(),
-                        timeout=self.debounce_seconds)
+                        self._queue.get(), timeout=self.debounce_seconds
+                    )
             except asyncio.TimeoutError:
                 pass
             await self._invoke()

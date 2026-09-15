@@ -1,4 +1,5 @@
 """What the REPOS section renders."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -27,7 +28,7 @@ class RepoState:
     added: int = 0
     deleted: int = 0
     detached: bool = False
-    op: str = ""            # "" | "merge" | "rebase" | "cherry-pick" | "bisect"
+    op: str = ""  # "" | "merge" | "rebase" | "cherry-pick" | "bisect"
     stale: bool = False
 
     @property
@@ -47,8 +48,8 @@ class RepoView:
     """
 
     state: RepoState
-    writers: tuple[str, ...] = ()      # live handles, most recent first
-    mine: bool = False                 # is the asking pane's agent a writer
+    writers: tuple[str, ...] = ()  # live handles, most recent first
+    mine: bool = False  # is the asking pane's agent a writer
     host: str = "local"
 
     @property

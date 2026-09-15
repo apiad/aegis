@@ -10,6 +10,7 @@ truncated trailing record, which is right for queue replay (a corrupt
 lifecycle log should stop the boot) and wrong here, where a torn line must
 cost one record and nothing else.
 """
+
 from __future__ import annotations
 
 import json

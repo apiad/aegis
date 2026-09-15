@@ -6,6 +6,7 @@ rest of the codebase already imports (``ProviderPrices``, ``lookup``,
 ``UnknownPriceError``) so callers don't need to change. The ``PRICES``
 dict is built lazily from the registry on first access.
 """
+
 from __future__ import annotations
 
 from aegis.models import (

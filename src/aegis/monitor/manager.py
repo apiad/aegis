@@ -9,6 +9,7 @@ is woken via an inbox callback: immediately when it is idle, otherwise buffered
 and chained at its next turn boundary. Pass ``interrupt=True`` to cut a busy
 agent's turn instead of waiting for it.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,18 +39,22 @@ RunBash = Callable[[str, "str | None"], Awaitable[tuple[int, str]]]
 
 async def _default_run_bash(cmd: str, cwd: str | None) -> tuple[int, str]:
     proc = await asyncio.create_subprocess_shell(
-        cmd, cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
+        cmd, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+    )
     out, _ = await proc.communicate()
     return (proc.returncode or 0), out.decode(errors="replace")
 
 
 class MonitorManager:
-    def __init__(self, inbox_router, session_manager=None, *,
-                 run_bash: RunBash | None = None,
-                 clock: Callable[[], float] | None = None,
-                 now: Callable[[], str] = now_iso) -> None:
+    def __init__(
+        self,
+        inbox_router,
+        session_manager=None,
+        *,
+        run_bash: RunBash | None = None,
+        clock: Callable[[], float] | None = None,
+        now: Callable[[], str] = now_iso,
+    ) -> None:
         self._inbox = inbox_router
         self._sm = session_manager
         self._run_bash = run_bash or _default_run_bash
@@ -66,6 +71,7 @@ class MonitorManager:
         def _unsub() -> None:
             with contextlib.suppress(ValueError):
                 self._subs.remove(cb)
+
         return _unsub
 
     def _notify(self) -> None:
@@ -83,8 +89,13 @@ class MonitorManager:
         now = self._clock()
         return [
             MonitorView(
-                id=m.id, description=m.description, state=m.state,
-                pct=m.pct, eta_s=m.eta_s, elapsed_s=now - m.started_at)
+                id=m.id,
+                description=m.description,
+                state=m.state,
+                pct=m.pct,
+                eta_s=m.eta_s,
+                elapsed_s=now - m.started_at,
+            )
             for m in self._monitors.values()
             if m.state == WATCHING
             and (for_handle is None or m.from_handle == for_handle)
@@ -94,12 +105,20 @@ class MonitorManager:
         m = self._monitors.get(monitor_id)
         if m is None:
             return None
-        return {"id": m.id, "description": m.description, "state": m.state,
-                "pct": m.pct, "eta_s": m.eta_s}
+        return {
+            "id": m.id,
+            "description": m.description,
+            "state": m.state,
+            "pct": m.pct,
+            "eta_s": m.eta_s,
+        }
 
     def list_monitors(self, *, for_handle: str | None = None) -> list[dict]:
-        return [self.status(m.id) for m in self._monitors.values()
-                if for_handle is None or m.from_handle == for_handle]
+        return [
+            self.status(m.id)
+            for m in self._monitors.values()
+            if for_handle is None or m.from_handle == for_handle
+        ]
 
     def roster(self, handle: str, *, exclude: str | None = None) -> list[dict]:
         """The live monitors ``handle`` still owns — the anti-stale roster.
@@ -115,19 +134,31 @@ class MonitorManager:
         """
         now = self._clock()
         return [
-            {"id": m.id, "description": m.description, "pct": m.pct,
-             "elapsed_s": int(now - m.started_at)}
+            {
+                "id": m.id,
+                "description": m.description,
+                "pct": m.pct,
+                "elapsed_s": int(now - m.started_at),
+            }
             for m in self._monitors.values()
-            if m.state == WATCHING and m.from_handle == handle
-            and m.id != exclude
+            if m.state == WATCHING and m.from_handle == handle and m.id != exclude
         ]
 
     # ----- lifecycle -------------------------------------------------
-    def start_monitor(self, *, from_handle: str, description: str, done: str,
-                      fail: str | None = None, progress: str | None = None,
-                      cwd: str | None = None, interval_s: float = 2.0,
-                      timeout_s: float = 3600.0, interrupt: bool = False,
-                      autorun: bool = True) -> str:
+    def start_monitor(
+        self,
+        *,
+        from_handle: str,
+        description: str,
+        done: str,
+        fail: str | None = None,
+        progress: str | None = None,
+        cwd: str | None = None,
+        interval_s: float = 2.0,
+        timeout_s: float = 3600.0,
+        interrupt: bool = False,
+        autorun: bool = True,
+    ) -> str:
         # Refuse a condition that can never trip. Checked here, not only at
         # the MCP surface, so no caller can route around it.
         for cond in (done, fail, progress):
@@ -151,13 +182,22 @@ class MonitorManager:
                 f"no live session {from_handle!r} to wake — the monitor "
                 f"would watch, trip, and deliver to nobody. Live handles: "
                 f"{', '.join(sorted(live))}. If you were renamed, "
-                f"aegis_list_sessions carries your current handle.")
+                f"aegis_list_sessions carries your current handle."
+            )
         mid = new_ulid()
         self._monitors[mid] = Monitor(
-            id=mid, from_handle=from_handle, description=description,
-            done=done, fail=fail, progress=progress, cwd=cwd,
-            interval_s=interval_s, timeout_s=timeout_s, interrupt=interrupt,
-            started_at=self._clock())
+            id=mid,
+            from_handle=from_handle,
+            description=description,
+            done=done,
+            fail=fail,
+            progress=progress,
+            cwd=cwd,
+            interval_s=interval_s,
+            timeout_s=timeout_s,
+            interrupt=interrupt,
+            started_at=self._clock(),
+        )
         self._notify()
         # The monitor is now the authoritative waker for this handle: hold
         # back the harness's own spontaneous-event promotion so it can't
@@ -178,10 +218,13 @@ class MonitorManager:
         if self._sm is None:
             return set()
         try:
-            return {h for s in self._sm.list_sessions()
-                    if (h := getattr(s, "handle", None)) is not None}
+            return {
+                h
+                for s in self._sm.list_sessions()
+                if (h := getattr(s, "handle", None)) is not None
+            }
         except Exception:  # noqa: BLE001 — a manager that cannot answer
-            return set()   # must not veto the monitor
+            return set()  # must not veto the monitor
 
     def _session_for(self, handle: str):
         get = getattr(self._sm, "get", None)
@@ -254,22 +297,30 @@ class MonitorManager:
         if mon is None:
             return {"ok": False, "error": f"unknown monitor {mid!r}"}
         if mon.state != WATCHING:
-            return {"ok": True, "state": mon.state,
-                    "description": mon.description,
-                    "note": f"already terminal ({terminal_label(mon.state)}) "
-                            "— nothing to cancel"}
+            return {
+                "ok": True,
+                "state": mon.state,
+                "description": mon.description,
+                "note": f"already terminal ({terminal_label(mon.state)}) "
+                "— nothing to cancel",
+            }
         await self._finalize(mid, CANCELLED, notify_agent=False)
         task = self._tasks.pop(mid, None)
         if task is not None:
             task.cancel()
         rest = self.roster(mon.from_handle)
-        return {"ok": True, "state": CANCELLED,
-                "description": mon.description,
-                "still_watching": rest,
-                "note": (f"cancelled — you have {len(rest)} live monitor"
-                         f"{'' if len(rest) == 1 else 's'} left"
-                         if rest else
-                         "cancelled — you now have no monitors running")}
+        return {
+            "ok": True,
+            "state": CANCELLED,
+            "description": mon.description,
+            "still_watching": rest,
+            "note": (
+                f"cancelled — you have {len(rest)} live monitor"
+                f"{'' if len(rest) == 1 else 's'} left"
+                if rest
+                else "cancelled — you now have no monitors running"
+            ),
+        }
 
     def rename(self, handle: str, new_handle: str) -> None:
         """Follow a session that renamed itself.
@@ -300,8 +351,9 @@ class MonitorManager:
                     task.cancel()
         self._notify()
 
-    async def _finalize(self, mid: str, state: str, *,
-                        notify_agent: bool = True) -> None:
+    async def _finalize(
+        self, mid: str, state: str, *, notify_agent: bool = True
+    ) -> None:
         mon = self._monitors[mid]
         mon.state = state
         mon.ended_at = self._clock()
@@ -320,14 +372,17 @@ class MonitorManager:
         elapsed = int((mon.ended_at or self._clock()) - mon.started_at)
         # _finalize() has already marked this one terminal, so it drops out of
         # its own roster.
-        body = (f"{mon.description} — {terminal_label(mon.state)} ({elapsed}s)"
-                + roster_block(self.roster(mon.from_handle)))
+        body = (
+            f"{mon.description} — {terminal_label(mon.state)} ({elapsed}s)"
+            + roster_block(self.roster(mon.from_handle))
+        )
         msg = InboxMessage(
             sender=sender_monitor(mon.id[-4:]),
             timestamp=self._now(),
             body=body,
             task_id=mon.id,
-            status=("ok" if mon.state == DONE else "error"))
+            status=("ok" if mon.state == DONE else "error"),
+        )
         # Default: deliver only. A busy agent is very often still finishing
         # the very turn that armed this monitor, and cutting that turn throws
         # its tail away to buy nothing — the notice is buffered and chained at

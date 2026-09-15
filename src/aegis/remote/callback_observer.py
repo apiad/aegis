@@ -1,4 +1,5 @@
 """Subscribe to QueueManager completion events and fire remote callbacks."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,31 +41,36 @@ def install_callback_observer(
             return
         spec = remotes.get(task.callback_to)
         if spec is None:
-            qm._log(task.queue, {
-                "event": "callback_dropped",
-                "task_id": task.id,
-                "reason": "unknown_peer",
-                "callback_to": task.callback_to,
-            })
+            qm._log(
+                task.queue,
+                {
+                    "event": "callback_dropped",
+                    "task_id": task.id,
+                    "reason": "unknown_peer",
+                    "callback_to": task.callback_to,
+                },
+            )
             return
-        status_wire = {"completed": "ok",
-                       "failed": "failed",
-                       "interrupted": "interrupted"}[ev.outcome]
+        status_wire = {
+            "completed": "ok",
+            "failed": "failed",
+            "interrupted": "interrupted",
+        }[ev.outcome]
         # Task dataclass has `result` (for completed) and `error` (for failed),
         # NOT result_text. Use whichever is populated.
         result_text = ev.result if ev.outcome == "completed" else (ev.error or "")
         body = {
-            "task_id":     task.id,
-            "queue":       task.queue,
-            "from_peer":   self_peer_name,
-            "to_handle":   task.callback_handle,
-            "status":      status_wire,
+            "task_id": task.id,
+            "queue": task.queue,
+            "from_peer": self_peer_name,
+            "to_handle": task.callback_handle,
+            "status": status_wire,
             "result_text": result_text or "",
             # Task has no `started_at` field; use enqueued_at as the closest
             # analog for now (this is the spec's intent — when the task
             # entered the system).
-            "started_at":  task.enqueued_at or "",
-            "ended_at":    ev.completed_at or "",
+            "started_at": task.enqueued_at or "",
+            "ended_at": ev.completed_at or "",
         }
         # Fire-and-forget — observer must not block QueueManager.
         t = asyncio.create_task(_fire(qm, task.queue, task.id, spec, body))
@@ -74,11 +80,15 @@ def install_callback_observer(
     qm.subscribe(_observer)
 
 
-async def _fire(qm: QueueManager, queue: str, task_id: str,
-                spec: RemoteSpec, body: dict) -> None:
+async def _fire(
+    qm: QueueManager, queue: str, task_id: str, spec: RemoteSpec, body: dict
+) -> None:
     result = await remote_callback(spec, body)
-    qm._log(queue, {
-        "event": "callback_attempted",
-        "task_id": task_id,
-        "outcome": "delivered" if result.get("ok") else result.get("error"),
-    })
+    qm._log(
+        queue,
+        {
+            "event": "callback_attempted",
+            "task_id": task_id,
+            "outcome": "delivered" if result.get("ok") else result.get("error"),
+        },
+    )

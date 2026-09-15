@@ -35,8 +35,7 @@ class _NullBridge:
     def list_agents(self) -> list[str]:
         return []
 
-    async def handoff(self, from_handle: str, target_handle: str,
-                      context: str) -> str:
+    async def handoff(self, from_handle: str, target_handle: str, context: str) -> str:
         return "aegis bridge unavailable"
 
 
@@ -75,18 +74,18 @@ class AegisMCP:
         self._server = build_server(bridge, tokens=self.tokens)
         self._task = asyncio.create_task(
             self._server.run_http_async(
-                host=self.host, port=self.port, show_banner=False))
+                host=self.host, port=self.port, show_banner=False
+            )
+        )
         # wait until the port accepts (server ready) or time out
         for _ in range(100):  # ~5s max
             try:
-                with socket.create_connection(
-                        (self.host, self.port), timeout=0.2):
+                with socket.create_connection((self.host, self.port), timeout=0.2):
                     return
             except OSError:
                 await asyncio.sleep(0.05)
         await self.stop()
-        raise RuntimeError(
-            f"aegis MCP server did not start on {self.host}:{self.port}")
+        raise RuntimeError(f"aegis MCP server did not start on {self.host}:{self.port}")
 
     async def stop(self) -> None:
         if self._task is None:

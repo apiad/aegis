@@ -4,6 +4,7 @@ Browse mode (default): recency-sorted file list + fuzzy filter.
 View mode: embedded FileTab editor.
 Right sidebar: DirectoryTree, toggled by F3 (set_task_dock).
 """
+
 from __future__ import annotations
 
 import itertools
@@ -110,9 +111,9 @@ class FileBrowserTab(Widget, can_focus=True):
         with Horizontal():
             with Vertical(id="fb-main"):
                 with Vertical(id="fb-browse"):
-                    yield Input(value=self._prefill,
-                                placeholder="filter files…",
-                                id="fb-filter")
+                    yield Input(
+                        value=self._prefill, placeholder="filter files…", id="fb-filter"
+                    )
                     yield OptionList(id="fb-list")
                 with Vertical(id="fb-view"):
                     yield Static("", id="fb-view-placeholder")
@@ -136,6 +137,7 @@ class FileBrowserTab(Widget, can_focus=True):
     def focus_input(self) -> None:
         import contextlib
         from textual.widgets import TextArea
+
         if self._current_file is not None:
             with contextlib.suppress(Exception):
                 self.query_one(TextArea).focus()
@@ -145,6 +147,7 @@ class FileBrowserTab(Widget, can_focus=True):
 
     def set_task_dock(self, opened: bool) -> bool:
         import contextlib
+
         with contextlib.suppress(Exception):
             sidebar = self.query_one("#fb-sidebar")
             sidebar.display = opened
@@ -162,7 +165,8 @@ class FileBrowserTab(Widget, can_focus=True):
             self._refresh_list()
 
     async def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+        self, event: OptionList.OptionSelected
+    ) -> None:
         rel = event.option.id
         if rel is None:
             return
@@ -171,7 +175,8 @@ class FileBrowserTab(Widget, can_focus=True):
             await self._switch_to_view(path)
 
     async def on_directory_tree_file_selected(
-            self, event: DirectoryTree.FileSelected) -> None:
+        self, event: DirectoryTree.FileSelected
+    ) -> None:
         event.stop()
         if event.path.is_file():
             await self._switch_to_view(event.path.resolve())
@@ -181,6 +186,7 @@ class FileBrowserTab(Widget, can_focus=True):
     def _refresh_list(self) -> None:
         import contextlib
         import time
+
         # The poll keeps firing in view mode, where the list is hidden.
         # Rebuilding it there is wasted work and throws away the highlight
         # that returning to browse is about to restore.
@@ -204,8 +210,9 @@ class FileBrowserTab(Widget, can_focus=True):
         dropped = len(paths) - len(options)
         if dropped > 0:
             # A silent cap reads as a complete listing.
-            options.append(Option(
-                f"       … {dropped} more — narrow the filter", disabled=True))
+            options.append(
+                Option(f"       … {dropped} more — narrow the filter", disabled=True)
+            )
         with contextlib.suppress(Exception):
             ol = self.query_one("#fb-list", OptionList)
             want = self._pending_highlight or self._highlighted_id(ol)
@@ -229,6 +236,7 @@ class FileBrowserTab(Widget, can_focus=True):
     async def _switch_to_view(self, path: Path) -> None:
         import contextlib
         from aegis.tui.file_tab import FileTab
+
         self._current_file = path
         # Remove previously mounted FileTab if any
         with contextlib.suppress(Exception):
@@ -243,12 +251,14 @@ class FileBrowserTab(Widget, can_focus=True):
 
     def _show_view(self) -> None:
         import contextlib
+
         with contextlib.suppress(Exception):
             self.query_one("#fb-view").add_class("active")
             self.query_one("#fb-browse").add_class("hidden")
 
     def _show_browse(self) -> None:
         import contextlib
+
         with contextlib.suppress(Exception):
             self.query_one("#fb-view").remove_class("active")
             self.query_one("#fb-browse").remove_class("hidden")
@@ -269,6 +279,7 @@ class FileBrowserTab(Widget, can_focus=True):
         """
         import contextlib
         from aegis.tui.file_tab import FileTab
+
         if self._current_file is None:
             return False
         # An editing or previewing editor owns escape first — leaving edit
@@ -281,6 +292,7 @@ class FileBrowserTab(Widget, can_focus=True):
 
     def _back_to_browse(self) -> None:
         import contextlib
+
         path = self._current_file
         if path is None:
             return

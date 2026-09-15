@@ -8,6 +8,7 @@ strings auto-register as implicit harnesses so legacy configs keep working.
 Resolution rewrites an agent's `harness` to the underlying **driver string**
 so every `get_driver(agent.harness)` call site works unchanged.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -62,7 +63,8 @@ def merge_harnesses(
 
 
 def resolve_agent_entry(
-    body: dict, harnesses: dict[str, HarnessRegistration],
+    body: dict,
+    harnesses: dict[str, HarnessRegistration],
 ) -> Agent:
     """Build a fully-resolved `Agent` from a raw agent YAML mapping.
 
@@ -91,22 +93,24 @@ def resolve_agent_entry(
         if cls is None:
             raise ConfigError(
                 f"unknown provider {provider_name!r}; "
-                f"known: {sorted(_PROVIDER_BY_NAME)}")
+                f"known: {sorted(_PROVIDER_BY_NAME)}"
+            )
         return Agent(provider=cls(**d), prompt=prompt, host=host)
     # New `harness:` ref shape — credentials come from the registration.
     reg = harnesses.get(reg_key)
     if reg is None:
-        raise ConfigError(
-            f"unknown harness {reg_key!r}; known: {sorted(harnesses)}")
+        raise ConfigError(f"unknown harness {reg_key!r}; known: {sorted(harnesses)}")
     cls = _PROVIDER_BY_DRIVER[reg.driver]
     model = d.get("model") or reg.default_model
     if not model:
         raise ConfigError(
             f"agent on harness {reg_key!r} has no model and the harness "
-            f"declares no default_model")
+            f"declares no default_model"
+        )
     kw: dict = {"model": model}
     perm = d.get("permission") or (
-        reg.permission_default.value if reg.permission_default else None)
+        reg.permission_default.value if reg.permission_default else None
+    )
     if perm is not None:
         kw["permission"] = perm
     if cls is ClaudeCode and d.get("effort") is not None:

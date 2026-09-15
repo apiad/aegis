@@ -14,12 +14,18 @@ class _LocksBridge:
     registry: ClaimRegistry
     root_fn: Callable[[], Path]
 
-    def claim(self, handle: str, paths: list[str],
-              intent: str = "shared", desc: str = "",
-              host: str = "local"):
+    def claim(
+        self,
+        handle: str,
+        paths: list[str],
+        intent: str = "shared",
+        desc: str = "",
+        host: str = "local",
+    ):
         prefixes, files = resolve_paths(paths, self.root_fn())
-        return self.registry.claim(handle, prefixes, files,
-                                   intent=intent, desc=desc, host=host)
+        return self.registry.claim(
+            handle, prefixes, files, intent=intent, desc=desc, host=host
+        )
 
     def release(self, claim_id: str, handle: str) -> bool:
         return self.registry.release(claim_id, handle)
@@ -31,9 +37,12 @@ class _LocksBridge:
         return self.registry.active()
 
 
-def make_locks_bridge(*, live_handles: Callable[[], set[str]],
-                      root_fn: Callable[[], Path],
-                      state_dir: Path | None = None) -> _LocksBridge:
+def make_locks_bridge(
+    *,
+    live_handles: Callable[[], set[str]],
+    root_fn: Callable[[], Path],
+    state_dir: Path | None = None,
+) -> _LocksBridge:
     log = PersistedClaimLog(state_dir) if state_dir is not None else None
     registry = ClaimRegistry(live_handles=live_handles, log=log)
     if log is not None:

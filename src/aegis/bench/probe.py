@@ -18,6 +18,7 @@ second, so the event loop never does file I/O. The cost that remains is
 the sampler's JSON encoding, which holds the GIL for about a millisecond
 per second of busy streaming.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -83,14 +84,23 @@ def _span(name: str, fn):
         global _CUR
         t0 = time.monotonic_ns()
         if name == "tick":
-            outer, _CUR = _CUR, {"layout": 0, "compose": 0, "display": 0,
-                                 "n_height": 0, "n_render_lines": 0}
+            outer, _CUR = (
+                _CUR,
+                {
+                    "layout": 0,
+                    "compose": 0,
+                    "display": 0,
+                    "n_height": 0,
+                    "n_render_lines": 0,
+                },
+            )
             try:
                 return fn(*args, **kwargs)
             finally:
                 cur, _CUR = _CUR, outer
-                _SINK.write({"k": "tick", "t0": t0,
-                             "dur_ns": time.monotonic_ns() - t0, **cur})
+                _SINK.write(
+                    {"k": "tick", "t0": t0, "dur_ns": time.monotonic_ns() - t0, **cur}
+                )
         if name == "display" and args:
             _observe_app(args[0])
         try:
@@ -101,6 +111,7 @@ def _span(name: str, fn):
                 _CUR[name] += dur
             else:
                 _SINK.write({"k": name, "t0": t0, "dur_ns": dur})
+
     wrapper.__wrapped__ = fn
     return wrapper
 
@@ -111,6 +122,7 @@ def _counter(name: str, fn):
         if _CUR is not None:
             _CUR[name] += 1
         return fn(*args, **kwargs)
+
     wrapper.__wrapped__ = fn
     return wrapper
 
@@ -119,6 +131,7 @@ def _sabotaged(ms: float, fn):
     def wrapper(*args, **kwargs):
         time.sleep(ms / 1000.0)
         return fn(*args, **kwargs)
+
     wrapper.__wrapped__ = fn
     return wrapper
 
@@ -126,10 +139,12 @@ def _sabotaged(ms: float, fn):
 def _observe_app(app) -> None:
     global _GATE, _LAG_TASK
     aegis = sys.modules.get("aegis")
-    gate = {"k": "gate",
-            "sync": bool(getattr(app, "_sync_available", False)),
-            "headless": bool(getattr(app, "is_headless", False)),
-            "aegis_file": getattr(aegis, "__file__", "") or ""}
+    gate = {
+        "k": "gate",
+        "sync": bool(getattr(app, "_sync_available", False)),
+        "headless": bool(getattr(app, "is_headless", False)),
+        "aegis_file": getattr(aegis, "__file__", "") or "",
+    }
     if gate != _GATE:
         _GATE = gate
         _SINK.write(dict(gate, t_ns=time.monotonic_ns()))
@@ -147,8 +162,13 @@ async def _lag() -> None:
     while True:
         t = time.monotonic_ns()
         await asyncio.sleep(interval / 1e9)
-        _SINK.write({"k": "lag", "t_ns": t,
-                     "lag_ns": max(0, time.monotonic_ns() - t - interval)})
+        _SINK.write(
+            {
+                "k": "lag",
+                "t_ns": t,
+                "lag_ns": max(0, time.monotonic_ns() - t - interval),
+            }
+        )
 
 
 def _gc_cb(phase: str, info: dict) -> None:
@@ -163,21 +183,33 @@ def _gc_cb(phase: str, info: dict) -> None:
 def _sampler() -> None:
     try:
         import psutil
+
         proc = psutil.Process()
     except Exception:  # noqa: BLE001 — memory fields stay null
         proc = None
     while True:
-        rec = {"k": "sample", "t_ns": time.monotonic_ns(),
-               "cpu_s": time.process_time(), "rss": None, "uss": None,
-               "threads": threading.active_count(), "fds": None,
-               "n_height": _COUNTS["n_height"],
-               "n_render_lines": _COUNTS["n_render_lines"],
-               "gc_ns_total": _GC["total"], "gc_ns_max": _GC["max"]}
+        rec = {
+            "k": "sample",
+            "t_ns": time.monotonic_ns(),
+            "cpu_s": time.process_time(),
+            "rss": None,
+            "uss": None,
+            "threads": threading.active_count(),
+            "fds": None,
+            "n_height": _COUNTS["n_height"],
+            "n_render_lines": _COUNTS["n_render_lines"],
+            "gc_ns_total": _GC["total"],
+            "gc_ns_max": _GC["max"],
+        }
         if proc is not None:
             try:
                 mem = proc.memory_full_info()
-                rec.update(rss=mem.rss, uss=mem.uss,
-                           threads=proc.num_threads(), fds=proc.num_fds())
+                rec.update(
+                    rss=mem.rss,
+                    uss=mem.uss,
+                    threads=proc.num_threads(),
+                    fds=proc.num_fds(),
+                )
             except Exception:  # noqa: BLE001
                 pass
         _SINK.write(rec)
@@ -206,27 +238,36 @@ def install() -> None:
     _SINK = _Sink(path)
     installed = []
     for mod, cls, meth, name in REQUIRED:
-        installed.append(_patch(mod, cls, meth,
-                                lambda f, n=name: _span(n, f)))
+        installed.append(_patch(mod, cls, meth, lambda f, n=name: _span(n, f)))
     for mod, cls, meth, name in COUNTED:
-        installed.append(_patch(mod, cls, meth,
-                                lambda f, n=name: _counter(n, f)))
+        installed.append(_patch(mod, cls, meth, lambda f, n=name: _counter(n, f)))
     optional_missing = []
     sabotage = float(os.environ.get("AEGIS_BENCH_SABOTAGE_MS") or 0)
     mod, cls, meth, name = PAINT
     try:
         # Importing the pane here is the same module the CLI imports next,
         # so the class patched is the class the app uses.
-        installed.append(_patch(mod, cls, meth, lambda f: _span(
-            name, _sabotaged(sabotage, f) if sabotage else f)))
+        installed.append(
+            _patch(
+                mod,
+                cls,
+                meth,
+                lambda f: _span(name, _sabotaged(sabotage, f) if sabotage else f),
+            )
+        )
     except ProbeError:
         if sabotage:
             raise
         optional_missing.append(f"{cls}.{meth}")
-    _SINK.write({"k": "hooks", "pid": os.getpid(), "installed": installed,
-                 "optional_missing": optional_missing,
-                 "sabotage_ms": sabotage})
+    _SINK.write(
+        {
+            "k": "hooks",
+            "pid": os.getpid(),
+            "installed": installed,
+            "optional_missing": optional_missing,
+            "sabotage_ms": sabotage,
+        }
+    )
     gc.callbacks.append(_gc_cb)
     atexit.register(_SINK.flush)
-    threading.Thread(target=_sampler, name="aegis-bench-probe",
-                     daemon=True).start()
+    threading.Thread(target=_sampler, name="aegis-bench-probe", daemon=True).start()

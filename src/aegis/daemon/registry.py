@@ -8,6 +8,7 @@ The file is a hint; the pid is the truth. A record survives SIGKILL, a
 process does not, and a stale file that made ``aegis`` refuse to autostart
 would be the worst possible failure of this module.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,8 +45,7 @@ def registry_dir() -> Path:
 
 
 def _key(root: Path) -> str:
-    return hashlib.sha256(
-        str(Path(root).resolve()).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:16]
 
 
 def _file(root: Path) -> Path:
@@ -58,7 +58,7 @@ def is_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True          # exists, owned by someone else
+        return True  # exists, owned by someone else
     return True
 
 
@@ -91,10 +91,13 @@ def _read(p: Path) -> DaemonRecord | None:
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
         return DaemonRecord(
-            root=Path(raw["root"]), pid=int(raw["pid"]),
-            socket=Path(raw["socket"]), started=float(raw["started"]),
+            root=Path(raw["root"]),
+            pid=int(raw["pid"]),
+            socket=Path(raw["socket"]),
+            started=float(raw["started"]),
             version=str(raw.get("version", "0")),
-            autostarted=bool(raw.get("autostarted", False)))
+            autostarted=bool(raw.get("autostarted", False)),
+        )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         # One damaged file must not make `aegis ls` unusable everywhere.
         return None

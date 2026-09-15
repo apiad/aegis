@@ -1,4 +1,5 @@
 """Named reducers for ``GroupResult.combined``."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -26,8 +27,7 @@ _REGISTRY: dict[str, Reducer] = {
 
 def get_reducer(name: str) -> Reducer:
     if name not in _REGISTRY:
-        raise KeyError(
-            f"unknown reducer {name!r}; known: {sorted(_REGISTRY)}")
+        raise KeyError(f"unknown reducer {name!r}; known: {sorted(_REGISTRY)}")
     return _REGISTRY[name]
 
 
@@ -35,21 +35,21 @@ def register_reducer(name: str, fn: Reducer) -> None:
     _REGISTRY[name] = fn
 
 
-def join_by_handle(by_member: dict[str, MemberResult],
-                   order: list[str]) -> dict[str, str]:
+def join_by_handle(
+    by_member: dict[str, MemberResult], order: list[str]
+) -> dict[str, str]:
     return {h: by_member[h].text for h in order if h in by_member}
 
 
-def last_wins(by_member: dict[str, MemberResult],
-              order: list[str]) -> str:
+def last_wins(by_member: dict[str, MemberResult], order: list[str]) -> str:
     if not order:
         return ""
     return by_member[order[-1]].text
 
 
-def majority_vote(by_member: dict[str, MemberResult],
-                  order: list[str]) -> str:
+def majority_vote(by_member: dict[str, MemberResult], order: list[str]) -> str:
     from collections import Counter
+
     counts: Counter[str] = Counter()
     first_seen: dict[str, int] = {}
     for i, h in enumerate(order):
@@ -58,8 +58,7 @@ def majority_vote(by_member: dict[str, MemberResult],
         first_seen.setdefault(text, i)
     if not counts:
         return ""
-    top = max(counts.items(),
-              key=lambda kv: (kv[1], -first_seen[kv[0]]))
+    top = max(counts.items(), key=lambda kv: (kv[1], -first_seen[kv[0]]))
     return top[0]
 
 

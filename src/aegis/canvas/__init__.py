@@ -6,6 +6,7 @@ delivered via the existing inbox substrate.
 
 Spec: docs/superpowers/specs/2026-05-21-shared-canvas-design.md
 """
+
 from aegis.canvas.parser import (
     BODY,
     PREAMBLE,

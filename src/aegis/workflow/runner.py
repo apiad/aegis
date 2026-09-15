@@ -9,7 +9,9 @@ from typing import Any
 
 from aegis.queue.schema import new_ulid
 from aegis.workflow.decorator import (
-    WorkflowError, get_workflow, list_workflows,
+    WorkflowError,
+    get_workflow,
+    list_workflows,
 )
 from aegis.workflow.engine import WorkflowEngine
 
@@ -18,6 +20,7 @@ def _jsonable(value):
     """Coerce ``value`` to something json.dumps can handle; fall back to
     ``str()`` if it isn't natively serializable."""
     import json
+
     try:
         json.dumps(value)
         return value
@@ -26,8 +29,12 @@ def _jsonable(value):
 
 
 async def run_workflow(
-    name: str, kwargs: dict, *,
-    bridge: Any, queue_manager: Any, inbox_router: Any,
+    name: str,
+    kwargs: dict,
+    *,
+    bridge: Any,
+    queue_manager: Any,
+    inbox_router: Any,
     caller_handle: str | None = None,
     state_dir: Path | None = None,
     workflow_run_id: str | None = None,
@@ -45,23 +52,26 @@ async def run_workflow(
     if fn is None:
         return {
             "status": "error",
-            "error": (f"unknown workflow: {name!r}. "
-                      f"Available: {list_workflows()}"),
+            "error": (f"unknown workflow: {name!r}. Available: {list_workflows()}"),
             "workflow_run_id": run_id,
         }
     engine = WorkflowEngine(
-        workflow_name=name, workflow_run_id=run_id,
-        bridge=bridge, queue_manager=queue_manager,
+        workflow_name=name,
+        workflow_run_id=run_id,
+        bridge=bridge,
+        queue_manager=queue_manager,
         inbox_router=inbox_router,
-        caller_handle=caller_handle, state_dir=state_dir)
+        caller_handle=caller_handle,
+        state_dir=state_dir,
+    )
     try:
         result = await fn(engine, **kwargs)
         return {"status": "ok", "result": result, "workflow_run_id": run_id}
     except WorkflowError as e:
-        return {"status": "error", "error": str(e),
-                "workflow_run_id": run_id}
+        return {"status": "error", "error": str(e), "workflow_run_id": run_id}
     except Exception as e:  # noqa: BLE001 — unexpected crash → tagged
         import traceback
+
         traceback.print_exc()
         return {
             "status": "error",
@@ -85,8 +95,8 @@ async def _runner_cleanup(engine: WorkflowEngine) -> None:
             await engine.close(handle)
         except Exception as e:  # noqa: BLE001 — close is best-effort
             engine.log(
-                f"runner cleanup: close({handle!r}) raised "
-                f"{type(e).__name__}: {e}")
+                f"runner cleanup: close({handle!r}) raised {type(e).__name__}: {e}"
+            )
 
 
 @dataclass
@@ -117,10 +127,11 @@ class WorkflowRow:
     """Read-only snapshot of one workflow for observability surfaces
     (the TUI Ctrl+D dashboard, MCP introspection). Computed via
     :meth:`WorkflowRunner.snapshot`."""
+
     id: str
     name: str
     host: str | None
-    status: str            # running / ok / error / cancelled
+    status: str  # running / ok / error / cancelled
     elapsed_s: float
     awaiting_human: bool
     result_summary: str | None = None
@@ -162,7 +173,8 @@ class WorkflowRunner:
         if root is None:
             raise RuntimeError(
                 "WorkflowRunner: state_dir not set (call set_state_dir "
-                "first, or attach via the bridge)")
+                "first, or attach via the bridge)"
+            )
         return root / wid
 
     def _ledger_path(self, wid: str) -> Path:
@@ -173,6 +185,7 @@ class WorkflowRunner:
 
     def append_ledger(self, wid: str, record: dict) -> None:
         import json
+
         path = self._ledger_path(wid)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
@@ -180,26 +193,37 @@ class WorkflowRunner:
 
     def read_ledger(self, wid: str) -> list[dict]:
         import json
+
         path = self._ledger_path(wid)
         if not path.exists():
             return []
-        return [json.loads(line) for line in path.read_text().splitlines()
-                if line.strip()]
+        return [
+            json.loads(line) for line in path.read_text().splitlines() if line.strip()
+        ]
 
-    def _write_meta(self, wid: str, *, name: str, host: str | None,
-                    kwargs: dict) -> None:
+    def _write_meta(
+        self, wid: str, *, name: str, host: str | None, kwargs: dict
+    ) -> None:
         import json
+
         try:
             path = self._meta_path(wid)
         except RuntimeError:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "name": name, "host": host, "kwargs": kwargs,
-        }))
+        path.write_text(
+            json.dumps(
+                {
+                    "name": name,
+                    "host": host,
+                    "kwargs": kwargs,
+                }
+            )
+        )
 
     def _read_meta(self, wid: str) -> dict | None:
         import json
+
         try:
             path = self._meta_path(wid)
         except RuntimeError:
@@ -209,12 +233,17 @@ class WorkflowRunner:
         return json.loads(path.read_text())
 
     # ── lifecycle ─────────────────────────────────────────────────────
-    async def start(self, name: str, kwargs: dict | None = None, *,
-                    host: str | None = None,
-                    state_dir: Path | None = None,
-                    workflow_id: str | None = None,
-                    scheduler=None,
-                    done_callback=None) -> str:
+    async def start(
+        self,
+        name: str,
+        kwargs: dict | None = None,
+        *,
+        host: str | None = None,
+        state_dir: Path | None = None,
+        workflow_id: str | None = None,
+        scheduler=None,
+        done_callback=None,
+    ) -> str:
         """Schedule a workflow run; return its workflow_id.
 
         ``scheduler`` (optional) is a callable ``(coro, *, name) -> Task``
@@ -228,28 +257,32 @@ class WorkflowRunner:
         fn = get_workflow(name)
         if fn is None:
             raise WorkflowError(
-                f"unknown workflow: {name!r}. "
-                f"Available: {list_workflows()}")
+                f"unknown workflow: {name!r}. Available: {list_workflows()}"
+            )
         engine = WorkflowEngine(
-            name=name, workflow_id=wid,
-            host=host, config=dict(getattr(fn, "_config", {}) or {}),
+            name=name,
+            workflow_id=wid,
+            host=host,
+            config=dict(getattr(fn, "_config", {}) or {}),
             bridge=self._bridge,
             queue_manager=getattr(self._bridge, "queue_manager", None),
             inbox_router=getattr(self._bridge, "inbox_router", None),
-            state_dir=state_dir)
+            state_dir=state_dir,
+        )
         self._write_meta(wid, name=name, host=host, kwargs=kwargs or {})
         coro = self._run(engine, fn, kwargs or {}, done_callback)
         if scheduler is not None:
             task = scheduler(coro, name=f"workflow:{name}:{wid}")
         else:
-            task = asyncio.create_task(
-                coro, name=f"workflow:{name}:{wid}")
+            task = asyncio.create_task(coro, name=f"workflow:{name}:{wid}")
         self._running[wid] = _RunningWorkflow(
-            id=wid, name=name, host=host, task=task, engine=engine)
+            id=wid, name=name, host=host, task=task, engine=engine
+        )
         return wid
 
-    async def _run(self, engine: WorkflowEngine, fn, kwargs: dict,
-                   done_callback) -> None:
+    async def _run(
+        self, engine: WorkflowEngine, fn, kwargs: dict, done_callback
+    ) -> None:
         wid = engine.workflow_id
         record = self._running.get(wid)
         try:
@@ -257,14 +290,12 @@ class WorkflowRunner:
             if record is not None:
                 record.status = "ok"
                 record.result = result
-            self._safe_append(wid, {"kind": "finished",
-                                    "result": _jsonable(result)})
+            self._safe_append(wid, {"kind": "finished", "result": _jsonable(result)})
         except asyncio.CancelledError:
             if record is not None:
                 record.status = "cancelled"
                 record.error = "cancelled_by_user"
-            self._safe_append(wid, {"kind": "errored",
-                                    "error": "cancelled_by_user"})
+            self._safe_append(wid, {"kind": "errored", "error": "cancelled_by_user"})
             raise
         except WorkflowError as e:
             if record is not None:
@@ -273,12 +304,14 @@ class WorkflowRunner:
             self._safe_append(wid, {"kind": "errored", "error": str(e)})
         except Exception as e:  # noqa: BLE001
             import traceback
+
             traceback.print_exc()
             if record is not None:
                 record.status = "error"
                 record.error = f"unexpected: {type(e).__name__}: {e}"
-            self._safe_append(wid, {"kind": "errored",
-                                    "error": f"{type(e).__name__}: {e}"})
+            self._safe_append(
+                wid, {"kind": "errored", "error": f"{type(e).__name__}: {e}"}
+            )
         finally:
             if record is not None and record.finished_at is None:
                 record.finished_at = time.monotonic()
@@ -306,9 +339,12 @@ class WorkflowRunner:
         if meta is None:
             raise KeyError(f"unknown workflow_id: {workflow_id!r}")
         records = self.read_ledger(workflow_id)
-        if any(r.get("kind") in {"finished", "errored"}
-               and r.get("error") != "cancelled_by_user"
-               and not r.get("_resumed") for r in records):
+        if any(
+            r.get("kind") in {"finished", "errored"}
+            and r.get("error") != "cancelled_by_user"
+            and not r.get("_resumed")
+            for r in records
+        ):
             # Workflow has a terminal record — but we accept re-running
             # after an errored entry (the resume case). Reject only on
             # 'finished'.
@@ -318,9 +354,11 @@ class WorkflowRunner:
         # Mark resume in the ledger for forensics.
         self._safe_append(workflow_id, {"kind": "resumed"})
         await self.start(
-            meta["name"], meta.get("kwargs", {}),
+            meta["name"],
+            meta.get("kwargs", {}),
             host=meta.get("host"),
-            workflow_id=workflow_id)
+            workflow_id=workflow_id,
+        )
         return workflow_id
 
     def snapshot(self) -> list[WorkflowRow]:
@@ -331,32 +369,40 @@ class WorkflowRunner:
         now = time.monotonic()
         rows: list[WorkflowRow] = []
         for wid, r in self._running.items():
-            elapsed = ((r.finished_at or now) - r.started_at)
+            elapsed = (r.finished_at or now) - r.started_at
             awaiting = (
                 r.status == "running"
                 and r.host is not None
-                and any(pq.workflow_id == wid
-                        for pq in self._questions.get(r.host, deque()))
+                and any(
+                    pq.workflow_id == wid for pq in self._questions.get(r.host, deque())
+                )
             )
             res_sum = None
             if r.result is not None:
-                res_sum = str(r.result).splitlines()[0][:80] \
-                    if str(r.result) else None
-            err_sum = (r.error[:80] if r.error else None)
-            rows.append(WorkflowRow(
-                id=wid, name=r.name, host=r.host, status=r.status,
-                elapsed_s=elapsed, awaiting_human=awaiting,
-                result_summary=res_sum, error_summary=err_sum,
-            ))
+                res_sum = str(r.result).splitlines()[0][:80] if str(r.result) else None
+            err_sum = r.error[:80] if r.error else None
+            rows.append(
+                WorkflowRow(
+                    id=wid,
+                    name=r.name,
+                    host=r.host,
+                    status=r.status,
+                    elapsed_s=elapsed,
+                    awaiting_human=awaiting,
+                    result_summary=res_sum,
+                    error_summary=err_sum,
+                )
+            )
         # Running first (preserving insertion order), then terminal by
         # most-recently-finished first.
         running = [x for x in rows if x.status == "running"]
         terminal = [x for x in rows if x.status != "running"]
+
         # finished_at lookup via the underlying _running map
         def _fa(row: WorkflowRow) -> float:
             r = self._running.get(row.id)
-            return (r.finished_at if r and r.finished_at is not None
-                    else float("inf"))
+            return r.finished_at if r and r.finished_at is not None else float("inf")
+
         terminal.sort(key=_fa, reverse=True)
         return running + terminal
 
@@ -390,22 +436,31 @@ class WorkflowRunner:
         return {"ok": True, "status": r.status}
 
     # ── human questions ───────────────────────────────────────────────
-    async def register_human_question(self, *, host: str | None,
-                                      workflow_id: str,
-                                      question: str,
-                                      options: list[str] | None,
-                                      fut: asyncio.Future) -> None:
+    async def register_human_question(
+        self,
+        *,
+        host: str | None,
+        workflow_id: str,
+        question: str,
+        options: list[str] | None,
+        fut: asyncio.Future,
+    ) -> None:
         """Record a pending question for ``host``. Tests / the TUI input
         bar should call ``deliver_human_reply(host, reply)`` to resolve
         the future."""
         if host is None:
             if not fut.done():
-                fut.set_exception(RuntimeError(
-                    "ask_human: workflow has no host to ask"))
+                fut.set_exception(
+                    RuntimeError("ask_human: workflow has no host to ask")
+                )
             return
         pq = _PendingQuestion(
-            workflow_id=workflow_id, host=host,
-            question=question, options=options, fut=fut)
+            workflow_id=workflow_id,
+            host=host,
+            question=question,
+            options=options,
+            fut=fut,
+        )
         self._last_options[host] = options
         self._questions.setdefault(host, deque()).append(pq)
 
@@ -430,9 +485,15 @@ class WorkflowRunner:
         return True
 
     # ── runner-mediated session bridges ───────────────────────────────
-    async def send_and_await_reply(self, *, handle: str, prompt: str,
-                                   workflow_id: str, workflow_name: str,
-                                   timeout: float | None = None) -> str:
+    async def send_and_await_reply(
+        self,
+        *,
+        handle: str,
+        prompt: str,
+        workflow_id: str,
+        workflow_name: str,
+        timeout: float | None = None,
+    ) -> str:
         """Forward a user-turn to ``handle`` via the bridge's session
         machinery; await the next complete assistant message.
 
@@ -442,21 +503,32 @@ class WorkflowRunner:
         impl = getattr(self._bridge, "session_send_and_await", None)
         if impl is not None:
             return await impl(
-                handle=handle, prompt=prompt,
-                workflow_id=workflow_id, workflow_name=workflow_name,
-                timeout=timeout)
+                handle=handle,
+                prompt=prompt,
+                workflow_id=workflow_id,
+                workflow_name=workflow_name,
+                timeout=timeout,
+            )
         inbox = getattr(self._bridge, "inbox_router", None)
         if inbox is not None:
             from aegis.queue.schema import InboxMessage, now_iso
-            await inbox.deliver(handle, InboxMessage(
-                sender=f"workflow:{workflow_name}",
-                timestamp=now_iso(), body=prompt))
+
+            await inbox.deliver(
+                handle,
+                InboxMessage(
+                    sender=f"workflow:{workflow_name}", timestamp=now_iso(), body=prompt
+                ),
+            )
         return ""
 
-    async def spawn_subagent(self, profile: str, *,
-                             alias: str | None = None,
-                             host: str | None = None,
-                             cwd: str | None = None) -> str:
+    async def spawn_subagent(
+        self,
+        profile: str,
+        *,
+        alias: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
         place: dict = {}
         if host is not None:
             place["host"] = host

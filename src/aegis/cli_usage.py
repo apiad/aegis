@@ -4,6 +4,7 @@ Thin typer surface over the shared aggregation engine (``aegis.usage``) and
 renderer (``aegis.usage.render``); the ``/usage`` slash command reuses the
 same two.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,7 +18,10 @@ from aegis.usage.env import default_agent, state_dir
 from aegis.usage.quota import quota_report
 from aegis.usage.quota_providers import build_services, read_all
 from aegis.usage.render import (
-    dashboard_lines, sessions_lines, temporal_lines, tools_lines,
+    dashboard_lines,
+    sessions_lines,
+    temporal_lines,
+    tools_lines,
 )
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -27,6 +31,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=False)
 def quota() -> None:
     """Live subscription quota for every provider you have credentials for."""
     import asyncio
+
     readings = asyncio.run(read_all(build_services()))
     typer.echo("\n".join(quota_report(readings)))
 
@@ -35,10 +40,10 @@ def quota() -> None:
 def usage(
     ctx: typer.Context,
     by: str = typer.Option(None, "--by", help="month|dow|hour"),
-    sessions: bool = typer.Option(False, "--sessions",
-                                  help="cost distribution + top sessions"),
-    tools: bool = typer.Option(False, "--tools",
-                               help="tool→cost correlation"),
+    sessions: bool = typer.Option(
+        False, "--sessions", help="cost distribution + top sessions"
+    ),
+    tools: bool = typer.Option(False, "--tools", help="tool→cost correlation"),
     since: str = typer.Option(None, "--since", help="ISO date lower bound"),
     session: str = typer.Option(None, "--session", help="single handle"),
     model: str = typer.Option(None, "--model", help="filter to one model"),
@@ -54,9 +59,13 @@ def usage(
     # exactly what the rest of `aegis` does at its command boundaries.
     root = find_project_root() or Path.cwd()
     dmodel, dprovider = default_agent(root)
-    report = build_report(state_dir(root), default_model=dmodel,
-                          default_provider=dprovider, since=since,
-                          handle=session)
+    report = build_report(
+        state_dir(root),
+        default_model=dmodel,
+        default_provider=dprovider,
+        since=since,
+        handle=session,
+    )
     if model:
         report.sessions = [s for s in report.sessions if s.model == model]
     if not report.sessions:

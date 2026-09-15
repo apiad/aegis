@@ -4,31 +4,52 @@ Used by session_log to persist a tab's event stream for local
 transcript redraw on resume. Type tag is the dataclass name under
 ``t``; field names mirror the dataclass.
 """
+
 from __future__ import annotations
 
 from dataclasses import replace
 
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, ContextUpdate,
-    CostUsage, Event, PlanEntry, Result, SessionClosed, SessionMeta,
-    SystemInit, TokenUsage, ToolResult, ToolUse, Unknown, UserMessage, parse,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    ContextUpdate,
+    CostUsage,
+    Event,
+    PlanEntry,
+    Result,
+    SessionClosed,
+    SessionMeta,
+    SystemInit,
+    TokenUsage,
+    ToolResult,
+    ToolUse,
+    Unknown,
+    UserMessage,
+    parse,
 )
 
 
 def _encode_usage(u: TokenUsage | None) -> dict | None:
     if u is None:
         return None
-    return {"input": u.input, "cache_creation": u.cache_creation,
-            "cache_read": u.cache_read, "output": u.output}
+    return {
+        "input": u.input,
+        "cache_creation": u.cache_creation,
+        "cache_read": u.cache_read,
+        "output": u.output,
+    }
 
 
 def _decode_usage(d: dict | None) -> TokenUsage | None:
     if d is None:
         return None
-    return TokenUsage(input=d["input"],
-                      cache_creation=d["cache_creation"],
-                      cache_read=d["cache_read"],
-                      output=d["output"])
+    return TokenUsage(
+        input=d["input"],
+        cache_creation=d["cache_creation"],
+        cache_read=d["cache_read"],
+        output=d["output"],
+    )
 
 
 def encode_event(ev: Event) -> dict:
@@ -54,22 +75,28 @@ def _encode_inner(ev: Event) -> dict:
             out["available_commands"] = list(ev.available_commands)
         return out
     if isinstance(ev, AssistantText):
-        out = {"t": "AssistantText", "text": ev.text,
-               "usage": _encode_usage(ev.usage)}
+        out = {"t": "AssistantText", "text": ev.text, "usage": _encode_usage(ev.usage)}
         if ev.message_id is not None:
             out["message_id"] = ev.message_id
         return out
     if isinstance(ev, AssistantThinking):
-        out = {"t": "AssistantThinking", "text": ev.text,
-               "usage": _encode_usage(ev.usage)}
+        out = {
+            "t": "AssistantThinking",
+            "text": ev.text,
+            "usage": _encode_usage(ev.usage),
+        }
         if ev.message_id is not None:
             out["message_id"] = ev.message_id
         if ev.token_estimate:
             out["token_estimate"] = ev.token_estimate
         return out
     if isinstance(ev, ToolUse):
-        out = {"t": "ToolUse", "name": ev.name, "summary": ev.summary,
-               "usage": _encode_usage(ev.usage)}
+        out = {
+            "t": "ToolUse",
+            "name": ev.name,
+            "summary": ev.summary,
+            "usage": _encode_usage(ev.usage),
+        }
         if ev.kind is not None:
             out["kind"] = ev.kind
         if ev.tool_call_id is not None:
@@ -82,8 +109,7 @@ def _encode_inner(ev: Event) -> dict:
             out["status"] = ev.status
         return out
     if isinstance(ev, ToolResult):
-        out = {"t": "ToolResult", "text": ev.text,
-               "is_error": ev.is_error}
+        out = {"t": "ToolResult", "text": ev.text, "is_error": ev.is_error}
         if ev.tool_call_id is not None:
             out["tool_call_id"] = ev.tool_call_id
         if ev.kind is not None:
@@ -93,11 +119,14 @@ def _encode_inner(ev: Event) -> dict:
             out["diff"] = {"path": path, "old": old, "new": new}
         return out
     if isinstance(ev, Result):
-        out = {"t": "Result", "duration_ms": ev.duration_ms,
-               "is_error": ev.is_error,
-               "input_tokens": ev.input_tokens,
-               "output_tokens": ev.output_tokens,
-               "usage": _encode_usage(ev.usage)}
+        out = {
+            "t": "Result",
+            "duration_ms": ev.duration_ms,
+            "is_error": ev.is_error,
+            "input_tokens": ev.input_tokens,
+            "output_tokens": ev.output_tokens,
+            "usage": _encode_usage(ev.usage),
+        }
         if ev.stop_reason is not None:
             out["stop_reason"] = ev.stop_reason
         if ev.ttft_ms is not None:
@@ -108,18 +137,25 @@ def _encode_inner(ev: Event) -> dict:
             out["cost_usd"] = ev.cost_usd
         if ev.model_usage:
             out["model_usage"] = [
-                [name, _encode_usage(u)] for name, u in ev.model_usage]
+                [name, _encode_usage(u)] for name, u in ev.model_usage
+            ]
         if ev.permission_denials:
             out["permission_denials"] = list(ev.permission_denials)
         return out
     if isinstance(ev, AgentPlan):
-        return {"t": "AgentPlan",
-                "entries": [
-                    {"content": e.content, "status": e.status,
-                     "priority": e.priority, "id": e.id,
-                     "active_form": e.active_form}
-                    for e in ev.entries
-                ]}
+        return {
+            "t": "AgentPlan",
+            "entries": [
+                {
+                    "content": e.content,
+                    "status": e.status,
+                    "priority": e.priority,
+                    "id": e.id,
+                    "active_form": e.active_form,
+                }
+                for e in ev.entries
+            ],
+        }
     if isinstance(ev, ContextUpdate):
         out: dict = {"t": "ContextUpdate"}
         if ev.cost is not None:
@@ -138,15 +174,20 @@ def _encode_inner(ev: Event) -> dict:
     if isinstance(ev, Unknown):
         return {"t": "Unknown", "raw": ev.raw}
     if isinstance(ev, SessionMeta):
-        return {"t": "SessionMeta",
-                "handle": ev.handle, "profile": ev.profile,
-                "provider": ev.provider, "cwd": ev.cwd,
-                "created_at": ev.created_at, "origin": ev.origin,
-                "preview": ev.preview,
-                "title": ev.title, "title_source": ev.title_source}
+        return {
+            "t": "SessionMeta",
+            "handle": ev.handle,
+            "profile": ev.profile,
+            "provider": ev.provider,
+            "cwd": ev.cwd,
+            "created_at": ev.created_at,
+            "origin": ev.origin,
+            "preview": ev.preview,
+            "title": ev.title,
+            "title_source": ev.title_source,
+        }
     if isinstance(ev, SessionClosed):
-        return {"t": "SessionClosed",
-                "closed_at": ev.closed_at, "reason": ev.reason}
+        return {"t": "SessionClosed", "closed_at": ev.closed_at, "reason": ev.reason}
     raise ValueError(f"unknown event type: {type(ev).__name__}")
 
 
@@ -171,63 +212,84 @@ def _decode_inner(d: dict) -> Event:
             available_commands=tuple(d.get("available_commands") or ()),
         )
     if t == "AssistantText":
-        return AssistantText(text=d["text"],
-                             usage=_decode_usage(d.get("usage")),
-                             message_id=d.get("message_id"))
+        return AssistantText(
+            text=d["text"],
+            usage=_decode_usage(d.get("usage")),
+            message_id=d.get("message_id"),
+        )
     if t == "AssistantThinking":
-        return AssistantThinking(text=d["text"],
-                                 usage=_decode_usage(d.get("usage")),
-                                 message_id=d.get("message_id"),
-                                 token_estimate=d.get("token_estimate", 0))
+        return AssistantThinking(
+            text=d["text"],
+            usage=_decode_usage(d.get("usage")),
+            message_id=d.get("message_id"),
+            token_estimate=d.get("token_estimate", 0),
+        )
     if t == "ToolUse":
         locs = tuple((p, ln) for p, ln in d.get("locations", []))
-        return ToolUse(name=d["name"], summary=d["summary"],
-                       usage=_decode_usage(d.get("usage")),
-                       kind=d.get("kind"),
-                       raw_input=d.get("raw_input"),
-                       tool_call_id=d.get("tool_call_id"),
-                       locations=locs,
-                       status=d.get("status"))
+        return ToolUse(
+            name=d["name"],
+            summary=d["summary"],
+            usage=_decode_usage(d.get("usage")),
+            kind=d.get("kind"),
+            raw_input=d.get("raw_input"),
+            tool_call_id=d.get("tool_call_id"),
+            locations=locs,
+            status=d.get("status"),
+        )
     if t == "ToolResult":
         diff_d = d.get("diff")
-        diff = ((diff_d["path"], diff_d["old"], diff_d["new"])
-                if isinstance(diff_d, dict) else None)
-        return ToolResult(text=d["text"], is_error=d["is_error"],
-                          tool_call_id=d.get("tool_call_id"),
-                          kind=d.get("kind"),
-                          diff=diff)
+        diff = (
+            (diff_d["path"], diff_d["old"], diff_d["new"])
+            if isinstance(diff_d, dict)
+            else None
+        )
+        return ToolResult(
+            text=d["text"],
+            is_error=d["is_error"],
+            tool_call_id=d.get("tool_call_id"),
+            kind=d.get("kind"),
+            diff=diff,
+        )
     if t == "Result":
         mu_raw = d.get("model_usage") or []
         mu = tuple((name, _decode_usage(u)) for name, u in mu_raw)
-        return Result(duration_ms=d.get("duration_ms"),
-                      is_error=d["is_error"],
-                      input_tokens=d.get("input_tokens"),
-                      output_tokens=d.get("output_tokens"),
-                      usage=_decode_usage(d.get("usage")),
-                      stop_reason=d.get("stop_reason"),
-                      ttft_ms=d.get("ttft_ms"),
-                      num_turns=d.get("num_turns"),
-                      cost_usd=d.get("cost_usd"),
-                      model_usage=mu,
-                      permission_denials=tuple(
-                          d.get("permission_denials") or ()))
+        return Result(
+            duration_ms=d.get("duration_ms"),
+            is_error=d["is_error"],
+            input_tokens=d.get("input_tokens"),
+            output_tokens=d.get("output_tokens"),
+            usage=_decode_usage(d.get("usage")),
+            stop_reason=d.get("stop_reason"),
+            ttft_ms=d.get("ttft_ms"),
+            num_turns=d.get("num_turns"),
+            cost_usd=d.get("cost_usd"),
+            model_usage=mu,
+            permission_denials=tuple(d.get("permission_denials") or ()),
+        )
     if t == "AgentPlan":
         entries = tuple(
-            PlanEntry(content=e["content"], status=e["status"],
-                      priority=e.get("priority", "medium"),
-                      id=e.get("id"), active_form=e.get("active_form"))
+            PlanEntry(
+                content=e["content"],
+                status=e["status"],
+                priority=e.get("priority", "medium"),
+                id=e.get("id"),
+                active_form=e.get("active_form"),
+            )
             for e in d.get("entries", [])
         )
         return AgentPlan(entries=entries)
     if t == "ContextUpdate":
         cost_d = d.get("cost")
-        cost = (CostUsage(
-            amount_usd=cost_d.get("amount_usd"),
-            context_used=cost_d.get("context_used"),
-            context_size=cost_d.get("context_size"),
-        ) if isinstance(cost_d, dict) else None)
-        return ContextUpdate(
-            cost=cost, mode=d.get("mode"), title=d.get("title"))
+        cost = (
+            CostUsage(
+                amount_usd=cost_d.get("amount_usd"),
+                context_used=cost_d.get("context_used"),
+                context_size=cost_d.get("context_size"),
+            )
+            if isinstance(cost_d, dict)
+            else None
+        )
+        return ContextUpdate(cost=cost, mode=d.get("mode"), title=d.get("title"))
     if t == "UserMessage":
         return UserMessage(text=d["text"])
     if t == "Unknown":
@@ -245,13 +307,16 @@ def _decode_inner(d: dict) -> Event:
         return Unknown(raw=raw)
     if t == "SessionMeta":
         return SessionMeta(
-            handle=d["handle"], profile=d["profile"],
-            provider=d["provider"], cwd=d["cwd"],
-            created_at=d["created_at"], origin=d["origin"],
+            handle=d["handle"],
+            profile=d["profile"],
+            provider=d["provider"],
+            cwd=d["cwd"],
+            created_at=d["created_at"],
+            origin=d["origin"],
             preview=d.get("preview", ""),
             title=d.get("title", ""),
-            title_source=d.get("title_source", ""))
+            title_source=d.get("title_source", ""),
+        )
     if t == "SessionClosed":
-        return SessionClosed(closed_at=d["closed_at"],
-                             reason=d["reason"])
+        return SessionClosed(closed_at=d["closed_at"], reason=d["reason"])
     raise ValueError(f"unknown event type tag: {t!r}")

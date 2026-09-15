@@ -4,14 +4,14 @@ the caller). One ``SubscriptionRegistry`` is shared across all connections;
 each WebSocket connection runs its own ``WSSession`` over a thin adapter from
 Starlette's ``WebSocket`` to the ``WSTransport`` protocol.
 """
+
 from __future__ import annotations
 
 import contextlib
 from pathlib import Path
 
 from starlette.applications import Starlette
-from starlette.responses import (
-    FileResponse, HTMLResponse, JSONResponse, Response)
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -63,10 +63,15 @@ class _StarletteTransport:
             await self._ws.close(code=code)
 
 
-def build_web_app(manager, web_cfg, state_dir, *,
-                  static_dir: Path | None = None,
-                  files_root: Path | None = None,
-                  server_version: str = "0") -> Starlette:
+def build_web_app(
+    manager,
+    web_cfg,
+    state_dir,
+    *,
+    static_dir: Path | None = None,
+    files_root: Path | None = None,
+    server_version: str = "0",
+) -> Starlette:
     registry = SubscriptionRegistry(manager, Path(state_dir))
     constants = _constants()
 
@@ -76,6 +81,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
     qm = getattr(manager, "queue_manager", None)
     if qm is not None:
         from aegis.queue import QueueDigest
+
         digest = QueueDigest(qm)
         digest.start()
         registry.set_digest(digest)
@@ -84,6 +90,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
     # File picker + viewer: index the served project tree.
     if files_root is not None:
         from aegis.tui.file_index import FileIndexer
+
         indexer = FileIndexer()
         indexer.start(Path(files_root))
         registry.set_files(indexer, Path(files_root).resolve())
@@ -109,8 +116,7 @@ def build_web_app(manager, web_cfg, state_dir, *,
         try:
             target.relative_to(root)
         except ValueError:
-            return JSONResponse({"error": "path outside project"},
-                                status_code=403)
+            return JSONResponse({"error": "path outside project"}, status_code=403)
         if not target.is_file():
             return JSONResponse({"error": "not a file"}, status_code=404)
         return FileResponse(target, filename=target.name)
@@ -120,9 +126,11 @@ def build_web_app(manager, web_cfg, state_dir, *,
 
     async def service_worker(request):
         body = sw_src.replace("__SW_VERSION__", server_version)
-        return Response(body, media_type="application/javascript",
-                        headers={"Service-Worker-Allowed": "/",
-                                 "Cache-Control": "no-cache"})
+        return Response(
+            body,
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
 
     async def theme_css(request):
         name = request.query_params.get("name") or WEB_THEME
@@ -134,8 +142,14 @@ def build_web_app(manager, web_cfg, state_dir, *,
     async def ws_endpoint(ws: WebSocket) -> None:
         await ws.accept()
         transport = _StarletteTransport(ws)
-        session = WSSession(transport, manager, registry, web_cfg,
-                            constants, server_version=server_version)
+        session = WSSession(
+            transport,
+            manager,
+            registry,
+            web_cfg,
+            constants,
+            server_version=server_version,
+        )
         await session.run()
 
     routes = [

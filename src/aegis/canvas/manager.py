@@ -8,6 +8,7 @@ Notifications are decoupled: write operations return a ``WriteResult``
 the caller (the MCP layer in slice 4) feeds to the notify module
 (slice 3) to dispatch ``InboxMessage`` deliveries.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -67,11 +68,11 @@ class CanvasInfo:
 class WriteResult:
     canvas: str
     section: str
-    op: str            # "write" | "append"
+    op: str  # "write" | "append"
     writer: str
-    added: int         # new line count after the op
-    removed: int       # old line count before the op
-    new_body: str      # content of the section after the op
+    added: int  # new line count after the op
+    removed: int  # old line count before the op
+    new_body: str  # content of the section after the op
     appended_text: str | None  # only for op=="append"
     timestamp: str
 
@@ -113,8 +114,7 @@ class CanvasManager:
         only care about state.
     """
 
-    def __init__(self, state_dir: Path,
-                 notifier: Notifier | None = None) -> None:
+    def __init__(self, state_dir: Path, notifier: Notifier | None = None) -> None:
         self._root = state_dir / "canvases"
         self._canvases: dict[str, _CanvasState] = {}
         self._notifier = notifier
@@ -138,8 +138,11 @@ class CanvasManager:
                 if not name or not file_path or not created_at:
                     continue
                 self._canvases[name] = _CanvasState(
-                    name=name, file_path=Path(file_path),
-                    state_path=d, created_at=created_at)
+                    name=name,
+                    file_path=Path(file_path),
+                    state_path=d,
+                    created_at=created_at,
+                )
                 # Replay ledger to recover last_writer + last_updated
                 ledger = d / "ledger.jsonl"
                 if ledger.exists():
@@ -154,10 +157,8 @@ class CanvasManager:
                         sec = rec.get("section")
                         if sec is None:
                             continue
-                        self._canvases[name].last_writer[sec] = \
-                            rec.get("writer", "")
-                        self._canvases[name].last_updated[sec] = \
-                            rec.get("ts", "")
+                        self._canvases[name].last_writer[sec] = rec.get("writer", "")
+                        self._canvases[name].last_updated[sec] = rec.get("ts", "")
 
     # ------------------------------------------------------------------
     # opening / inspection
@@ -167,11 +168,13 @@ class CanvasManager:
         if existing is not None:
             if file is not None and Path(file) != existing.file_path:
                 raise CanvasNameBound(
-                    f"canvas {name!r} already bound to {existing.file_path}")
+                    f"canvas {name!r} already bound to {existing.file_path}"
+                )
             return await self._info(existing)
         if file is None:
             raise CanvasNotOpen(
-                f"canvas {name!r} not opened; pass 'file' on first open")
+                f"canvas {name!r} not opened; pass 'file' on first open"
+            )
         file_path = Path(file)
         state_path = self._root / name
         state_path.mkdir(parents=True, exist_ok=True)
@@ -179,12 +182,13 @@ class CanvasManager:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text("", encoding="utf-8")
         created_at = _now_iso()
-        meta = {"name": name, "file": str(file_path),
-                "created_at": created_at}
+        meta = {"name": name, "file": str(file_path), "created_at": created_at}
         (state_path / "meta.json").write_text(
-            json.dumps(meta, separators=(",", ":")), encoding="utf-8")
-        st = _CanvasState(name=name, file_path=file_path,
-                          state_path=state_path, created_at=created_at)
+            json.dumps(meta, separators=(",", ":")), encoding="utf-8"
+        )
+        st = _CanvasState(
+            name=name, file_path=file_path, state_path=state_path, created_at=created_at
+        )
         self._canvases[name] = st
         return await self._info(st)
 
@@ -220,8 +224,9 @@ class CanvasManager:
     # ------------------------------------------------------------------
     # writes
     # ------------------------------------------------------------------
-    async def write_section(self, name: str, section: str, content: str,
-                            writer: str) -> WriteResult:
+    async def write_section(
+        self, name: str, section: str, content: str, writer: str
+    ) -> WriteResult:
         if not valid_section_name(section):
             raise CanvasError(f"invalid section name: {section!r}")
         st = self._require_open(name)
@@ -233,19 +238,25 @@ class CanvasManager:
             new_secs = write_section(secs, section, content)
             self._render_and_write(st, new_secs)
             result = WriteResult(
-                canvas=name, section=section, op="write", writer=writer,
+                canvas=name,
+                section=section,
+                op="write",
+                writer=writer,
                 added=section_line_count(content),
                 removed=section_line_count(old_body),
-                new_body=content, appended_text=None,
-                timestamp=_now_iso())
+                new_body=content,
+                appended_text=None,
+                timestamp=_now_iso(),
+            )
             self._append_ledger(st, result)
             st.last_writer[section] = writer
             st.last_updated[section] = result.timestamp
         await self._fire_notifier(result, st)
         return result
 
-    async def append_to_section(self, name: str, section: str, text: str,
-                                writer: str) -> WriteResult:
+    async def append_to_section(
+        self, name: str, section: str, text: str, writer: str
+    ) -> WriteResult:
         if not valid_section_name(section):
             raise CanvasError(f"invalid section name: {section!r}")
         st = self._require_open(name)
@@ -258,11 +269,16 @@ class CanvasManager:
             self._render_and_write(st, new_secs)
             new_body = find_section(new_secs, section).body
             result = WriteResult(
-                canvas=name, section=section, op="append", writer=writer,
+                canvas=name,
+                section=section,
+                op="append",
+                writer=writer,
                 added=section_line_count(text),
                 removed=0,  # append never removes
-                new_body=new_body, appended_text=text,
-                timestamp=_now_iso())
+                new_body=new_body,
+                appended_text=text,
+                timestamp=_now_iso(),
+            )
             # On append, "removed" stays 0 but we still know prior line count
             # via old_body — kept implicit (not in the InboxMessage math).
             _ = old_body
@@ -275,8 +291,9 @@ class CanvasManager:
     # ------------------------------------------------------------------
     # subscriptions
     # ------------------------------------------------------------------
-    def subscribe(self, name: str, handle: str,
-                  sections: list[str] | None = None) -> list[str]:
+    def subscribe(
+        self, name: str, handle: str, sections: list[str] | None = None
+    ) -> list[str]:
         st = self._require_open(name)
         if sections is None:
             st.subscribers[handle] = None
@@ -295,8 +312,7 @@ class CanvasManager:
         st = self._require_open(name)
         return dict(st.subscribers)
 
-    def subscribers_for_section(self, name: str,
-                                section: str) -> list[str]:
+    def subscribers_for_section(self, name: str, section: str) -> list[str]:
         """Subscribers that should be notified for a write to ``section``."""
         st = self._require_open(name)
         out: list[str] = []
@@ -316,13 +332,11 @@ class CanvasManager:
 
     def _parse_file(self, st: _CanvasState) -> list[Section]:
         if not st.file_path.exists():
-            raise CanvasFileMissing(
-                f"canvas file vanished: {st.file_path}")
+            raise CanvasFileMissing(f"canvas file vanished: {st.file_path}")
         text = st.file_path.read_text(encoding="utf-8")
         return parse_sections(text)
 
-    def _render_and_write(self, st: _CanvasState,
-                          sections: list[Section]) -> None:
+    def _render_and_write(self, st: _CanvasState, sections: list[Section]) -> None:
         out = render_sections(sections)
         # Keep a trailing newline for editor friendliness when non-empty.
         if out and not out.endswith("\n"):
@@ -341,15 +355,14 @@ class CanvasManager:
         with (st.state_path / "ledger.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
-    def _guard_body_section(self, section: str,
-                            secs: list[Section]) -> None:
+    def _guard_body_section(self, section: str, secs: list[Section]) -> None:
         # BODY is only valid for files with no ## headings.
         if section == BODY:
-            has_headings = any(
-                s.name not in (BODY, PREAMBLE) for s in secs)
+            has_headings = any(s.name not in (BODY, PREAMBLE) for s in secs)
             if has_headings:
                 raise CanvasError(
-                    "cannot write to 'body' in a file that has ## sections")
+                    "cannot write to 'body' in a file that has ## sections"
+                )
 
     async def _info(self, st: _CanvasState) -> CanvasInfo:
         async with st.lock:
@@ -359,8 +372,7 @@ class CanvasManager:
                 secs = []
         return self._info_sync(st, secs)
 
-    def _info_sync(self, st: _CanvasState,
-                   secs: list[Section]) -> CanvasInfo:
+    def _info_sync(self, st: _CanvasState, secs: list[Section]) -> CanvasInfo:
         sec_infos = [
             SectionInfo(
                 name=s.name,
@@ -370,11 +382,14 @@ class CanvasManager:
             )
             for s in secs
         ]
-        return CanvasInfo(name=st.name, file=str(st.file_path),
-                          sections=sec_infos, created_at=st.created_at)
+        return CanvasInfo(
+            name=st.name,
+            file=str(st.file_path),
+            sections=sec_infos,
+            created_at=st.created_at,
+        )
 
-    async def _fire_notifier(self, result: WriteResult,
-                             st: _CanvasState) -> None:
+    async def _fire_notifier(self, result: WriteResult, st: _CanvasState) -> None:
         if self._notifier is None:
             return
         await self._notifier(result, st)

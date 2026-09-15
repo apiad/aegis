@@ -13,6 +13,7 @@ Textual's MarkdownViewer. Lazy-mounted on first toggle so opening a .md
 file stays fast; subsequent toggles just flip visibility. Esc returns
 to VIEW.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -27,11 +28,22 @@ from textual.widgets import MarkdownViewer, Static, TextArea
 from aegis.tui.state import AgentState
 
 _EXT_LANGUAGE: dict[str, str] = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript",
-    ".md": "markdown", ".yaml": "yaml", ".yml": "yaml",
-    ".json": "json", ".toml": "toml", ".sh": "bash",
-    ".html": "html", ".css": "css", ".rs": "rust",
-    ".go": "go", ".c": "c", ".cpp": "cpp", ".rb": "ruby",
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".md": "markdown",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".toml": "toml",
+    ".sh": "bash",
+    ".html": "html",
+    ".css": "css",
+    ".rs": "rust",
+    ".go": "go",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".rb": "ruby",
 }
 
 _MTIME_POLL_S: float = 2.0
@@ -89,12 +101,15 @@ class FileTab(Widget, can_focus=True):
     def compose(self) -> ComposeResult:
         yield Static("", id="ft-status", markup=False)
         yield Static(
-            "⚠ file changed on disk — [r] reload (discard edits)  "
-            "[k] keep mine",
-            id="ft-warn", markup=False)
+            "⚠ file changed on disk — [r] reload (discard edits)  [k] keep mine",
+            id="ft-warn",
+            markup=False,
+        )
         yield Static(
             "⚠ unsaved edits — [d] discard  [esc] keep editing",
-            id="ft-cancel", markup=False)
+            id="ft-cancel",
+            markup=False,
+        )
         lang = _EXT_LANGUAGE.get(self._path.suffix.lower())
         yield TextArea(language=lang, read_only=True, id="ft-editor")
 
@@ -201,8 +216,7 @@ class FileTab(Widget, can_focus=True):
         except OSError:
             return
         if self._md_viewer is None:
-            self._md_viewer = MarkdownViewer(
-                content, show_table_of_contents=False)
+            self._md_viewer = MarkdownViewer(content, show_table_of_contents=False)
             await self.mount(self._md_viewer)
         else:
             with contextlib.suppress(Exception):
@@ -328,13 +342,10 @@ class FileTab(Widget, can_focus=True):
                 start_new_session=True,
             )
             with contextlib.suppress(Exception):
-                self.app.notify(
-                    f"xdg-open {self._path.name}", timeout=1.5)
+                self.app.notify(f"xdg-open {self._path.name}", timeout=1.5)
         except OSError as e:
             with contextlib.suppress(Exception):
-                self.app.notify(
-                    f"xdg-open failed: {e}",
-                    severity="error", timeout=3.0)
+                self.app.notify(f"xdg-open failed: {e}", severity="error", timeout=3.0)
 
     async def action_save(self) -> None:
         if not self._edit_mode:
@@ -348,8 +359,7 @@ class FileTab(Widget, can_focus=True):
                 self.app.notify(f"saved {self._path.name}", timeout=1.5)
         except OSError as e:
             with contextlib.suppress(Exception):
-                self.app.notify(f"save failed: {e}",
-                                severity="error", timeout=3.0)
+                self.app.notify(f"save failed: {e}", severity="error", timeout=3.0)
         self._refresh_status()
 
     # --- AppBridge-compatible interface ----------------------------

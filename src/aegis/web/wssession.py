@@ -10,6 +10,7 @@ request responses share one FIFO ordering. Overflowing the queue closes the
 socket with reason ``backpressure`` — the client reconnects and resumes from
 JSONL, which is the durable source of truth.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,11 +52,18 @@ def _tail_lower_seq(history: list[tuple[int, object]], tail: int) -> int:
     if len(starts) <= tail:
         return 0
     return starts[-tail] - 1
+
+
 AUTH_TIMEOUT_S = 5.0
 DEFAULT_SEND_CAP = 10_000
 SUPPORTED_KINDS = [
-    "event", "state", "inbox", "session_list", "queue_digest",
-    "history_complete", "window_reset",
+    "event",
+    "state",
+    "inbox",
+    "session_list",
+    "queue_digest",
+    "history_complete",
+    "window_reset",
 ]
 
 
@@ -70,10 +78,17 @@ class WSTransport(Protocol):
 
 
 class WSSession:
-    def __init__(self, transport: WSTransport, manager,
-                 registry: SubscriptionRegistry, web_cfg, constants: dict,
-                 *, server_version: str = "0",
-                 send_cap: int = DEFAULT_SEND_CAP) -> None:
+    def __init__(
+        self,
+        transport: WSTransport,
+        manager,
+        registry: SubscriptionRegistry,
+        web_cfg,
+        constants: dict,
+        *,
+        server_version: str = "0",
+        send_cap: int = DEFAULT_SEND_CAP,
+    ) -> None:
         self._t = transport
         self._m = manager
         self._reg = registry
@@ -82,7 +97,7 @@ class WSSession:
         self._server_version = server_version
         self._out: asyncio.Queue = asyncio.Queue(maxsize=send_cap)
         self._overflow = asyncio.Event()
-        self._subs: dict[str, dict] = {}   # handle -> {sink, buffering, buffer}
+        self._subs: dict[str, dict] = {}  # handle -> {sink, buffering, buffer}
         self._global_sink = lambda fr: self._emit(fr)
         self._global_on = False
         self._queue_sink = lambda fr: self._emit(fr)
@@ -98,8 +113,7 @@ class WSSession:
         watcher = asyncio.ensure_future(self._watch_overflow())
         reader = asyncio.ensure_future(self._read_loop())
         try:
-            await asyncio.wait({reader, watcher},
-                               return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait({reader, watcher}, return_when=asyncio.FIRST_COMPLETED)
         finally:
             for task in (reader, watcher, sender):
                 task.cancel()
@@ -129,12 +143,16 @@ class WSSession:
     async def _authenticate(self) -> bool:
         try:
             first = await asyncio.wait_for(
-                self._t.receive_json(), timeout=AUTH_TIMEOUT_S)
+                self._t.receive_json(), timeout=AUTH_TIMEOUT_S
+            )
         except (asyncio.TimeoutError, WSDisconnect):
             await self._t.close(4401, "auth timeout")
             return False
-        if (not isinstance(first, dict) or first.get("type") != "auth"
-                or first.get("token") != self._token):
+        if (
+            not isinstance(first, dict)
+            or first.get("type") != "auth"
+            or first.get("token") != self._token
+        ):
             await self._t.close(4401, "unauthorized")
             return False
         return True
@@ -173,46 +191,63 @@ class WSSession:
         agent); ``//x`` unescapes to a literal ``/x`` message; anything else
         is delivered normally."""
         from aegis.commands import CommandContext, classify_input, dispatch
+
         kind, payload = classify_input(message)
         core = self._m.get(handle)
         if kind == "command":
             result = await dispatch(
-                payload, CommandContext(bridge=self._m, handle=handle))
+                payload, CommandContext(bridge=self._m, handle=handle)
+            )
             eff = result.effect or {}
             if eff.get("kind") == "deliver":
                 # Prompt command: deliver the expansion to the agent like a
                 # normal message (renders via the inbox stream frame).
                 if core is None:
                     raise ValueError("unknown handle")
-                msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
-                                   body=eff["text"])
+                msg = InboxMessage(
+                    sender=sender_user(), timestamp=now_iso(), body=eff["text"]
+                )
                 receipt = await core.deliver(msg)
                 return {"delivery": receipt.disposition, "depth": receipt.depth}
-            return {"command_result": {
-                "ok": result.ok, "title": result.title,
-                "body": result.body, "effect": result.effect}}
+            return {
+                "command_result": {
+                    "ok": result.ok,
+                    "title": result.title,
+                    "body": result.body,
+                    "effect": result.effect,
+                }
+            }
         if core is None:
             raise ValueError("unknown handle")
-        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(),
-                           body=payload)
+        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(), body=payload)
         receipt = await core.deliver(msg)
         return {"delivery": receipt.disposition, "depth": receipt.depth}
 
     async def _complete(self, message: str) -> dict:
         """Palette completions for a web input line (mirrors the TUI panel)."""
         from aegis.commands import complete
+
         c = complete(message, self._m)
-        return {"items": [{"insert": it.insert, "label": it.label,
-                           "detail": it.detail, "source": it.source}
-                          for it in c.items],
-                "hint": c.hint}
+        return {
+            "items": [
+                {
+                    "insert": it.insert,
+                    "label": it.label,
+                    "detail": it.detail,
+                    "source": it.source,
+                }
+                for it in c.items
+            ],
+            "hint": c.hint,
+        }
 
     # -- dispatch ---------------------------------------------------------
 
     async def _dispatch(self, frame: dict) -> None:
         if not isinstance(frame, dict) or "type" not in frame:
-            self._emit({"type": "error", "code": "bad_frame",
-                        "message": "missing type"})
+            self._emit(
+                {"type": "error", "code": "bad_frame", "message": "missing type"}
+            )
             return
         kind = frame["type"]
         if kind == "rpc":
@@ -224,9 +259,14 @@ class WSSession:
         elif kind == "resume":
             await self._resume(frame)
         else:
-            self._emit({"type": "error", "code": "bad_frame",
-                        "message": f"unknown frame type {kind!r}",
-                        "id": frame.get("id")})
+            self._emit(
+                {
+                    "type": "error",
+                    "code": "bad_frame",
+                    "message": f"unknown frame type {kind!r}",
+                    "id": frame.get("id"),
+                }
+            )
 
     # -- rpc --------------------------------------------------------------
 
@@ -237,15 +277,21 @@ class WSSession:
         try:
             result = await self._call(method, params)
         except _RpcUnknown:
-            self._emit({"type": "error", "code": "unknown_method",
-                        "message": f"unknown method {method!r}", "id": rid})
+            self._emit(
+                {
+                    "type": "error",
+                    "code": "unknown_method",
+                    "message": f"unknown method {method!r}",
+                    "id": rid,
+                }
+            )
             return
         except Exception as exc:  # surfaced to the client, not fatal
-            self._emit({"type": "rpc_response", "id": rid, "ok": False,
-                        "error": str(exc)})
+            self._emit(
+                {"type": "rpc_response", "id": rid, "ok": False, "error": str(exc)}
+            )
             return
-        self._emit({"type": "rpc_response", "id": rid, "ok": True,
-                    "result": result})
+        self._emit({"type": "rpc_response", "id": rid, "ok": True, "result": result})
 
     async def _call(self, method: str, params: dict) -> dict:
         if method == "list_agents":
@@ -261,8 +307,7 @@ class WSSession:
             self._reg.broadcast_session_list()
             return {"ok": True}
         if method == "interrupt_session":
-            await self._m.interrupt(params["handle"],
-                                    drain=params.get("drain", True))
+            await self._m.interrupt(params["handle"], drain=params.get("drain", True))
             return {"ok": True}
         if method == "queue_tail":
             return {"lines": self._reg.queue_tail(params["task_id"])}
@@ -276,60 +321,66 @@ class WSSession:
             return self._reg.config_show()
         if method == "list_themes":
             from aegis.themes import list_theme_names
+
             return {"names": list_theme_names()}
         if method == "config_add_agent":
             return await self._reg.config_add_agent(
-                params["slug"], provider=params["provider"],
-                model=params["model"], effort=params.get("effort"),
-                permission=params.get("permission"))
+                params["slug"],
+                provider=params["provider"],
+                model=params["model"],
+                effort=params.get("effort"),
+                permission=params.get("permission"),
+            )
         if method == "config_remove_agent":
             return await self._reg.config_remove_agent(params["slug"])
         if method == "config_add_queue":
             return await self._reg.config_add_queue(
-                params["name"], agent=params["agent"],
-                max_parallel=params["max_parallel"])
+                params["name"],
+                agent=params["agent"],
+                max_parallel=params["max_parallel"],
+            )
         if method == "config_remove_queue":
             return await self._reg.config_remove_queue(params["name"])
         if method == "deliver":
-            return await self._deliver_or_command(
-                params["handle"], params["message"])
+            return await self._deliver_or_command(params["handle"], params["message"])
         if method == "complete":
             return await self._complete(params["message"])
         if method == "get_event":
             return self._reg.get_event(params["handle"], int(params["seq"]))
         if method == "handoff":
             result = await self._m.handoff(
-                params["from_handle"], params["target_handle"],
-                params["context"])
+                params["from_handle"], params["target_handle"], params["context"]
+            )
             return {"result": result}
         if method == "rename_handle":
             # Defaults to "operator" because this RPC is how the operator's
             # frontends rename; a remote TUI forwarding an agent's rename
             # says so explicitly and is honoured.
             return await self._m.rename_handle(
-                params["old"], params["new"], params.get("title"),
-                by=params.get("by", "operator"))
+                params["old"],
+                params["new"],
+                params.get("title"),
+                by=params.get("by", "operator"),
+            )
         if method == "set_title":
             return await self._m.set_title(
-                params["handle"], params["title"],
-                source=params.get("source", "human"))
+                params["handle"], params["title"], source=params.get("source", "human")
+            )
         raise _RpcUnknown(method)
 
     # -- subscribe / resume ----------------------------------------------
 
     async def _subscribe(self, frame: dict) -> None:
         target = frame.get("target") or {}
-        tail = frame.get("tail")           # optional per-subscription override
+        tail = frame.get("tail")  # optional per-subscription override
         if target.get("kind") == "session":
             await self._open_session(target["handle"], from_seq=0, tail=tail)
-        elif (target.get("kind") == "global"
-              and target.get("stream") == "session_list"):
+        elif target.get("kind") == "global" and target.get("stream") == "session_list":
             if not self._global_on:
                 self._reg.subscribe_global(self._global_sink)
                 self._global_on = True
             self._emit(self._reg.session_list_frame())
-        elif (target.get("kind") == "global"
-              and target.get("stream") == "queue_digest"):
+        elif target.get("kind") == "global" and target.get("stream") == "queue_digest":
             if not self._queue_on:
                 self._reg.subscribe_queue(self._queue_sink)
                 self._queue_on = True
@@ -338,15 +389,24 @@ class WSSession:
     async def _resume(self, frame: dict) -> None:
         for sub in frame.get("subscriptions") or []:
             await self._open_session(
-                sub["handle"], from_seq=int(sub.get("last_seq", 0)),
-                resume=True, tail=sub.get("tail"))
+                sub["handle"],
+                from_seq=int(sub.get("last_seq", 0)),
+                resume=True,
+                tail=sub.get("tail"),
+            )
         if "session_list" in (frame.get("globals") or []):
             await self._subscribe(
-                {"target": {"kind": "global", "stream": "session_list"}})
+                {"target": {"kind": "global", "stream": "session_list"}}
+            )
 
-    async def _open_session(self, handle: str, *, from_seq: int,
-                            resume: bool = False,
-                            tail: int | None = None) -> None:
+    async def _open_session(
+        self,
+        handle: str,
+        *,
+        from_seq: int,
+        resume: bool = False,
+        tail: int | None = None,
+    ) -> None:
         """Attach a sink, then stream history (sliced for resume) and go
         live. Live frames that fire during setup are buffered, then flushed
         with seq-dedup so history and live never overlap or gap."""
@@ -366,14 +426,21 @@ class WSSession:
         gap_cap = self._constants.get("RESUME_GAP_CAP", 1000)
         large_gap = resume and (current - from_seq > gap_cap or from_seq > current)
         if resume and large_gap:
-            self._emit({"type": "stream", "kind": "window_reset",
-                        "handle": handle, "dropped_through_seq": from_seq})
+            self._emit(
+                {
+                    "type": "stream",
+                    "kind": "window_reset",
+                    "handle": handle,
+                    "dropped_through_seq": from_seq,
+                }
+            )
             # Apply per-subscription tail on the fresh-history replay after window_reset
             if tail == 0:
                 lower = hist[-1][0] if hist else 0  # skip all history
             else:
-                effective_tail = (tail if tail is not None
-                                  else self._constants.get("REPLAY_TAIL", 0))
+                effective_tail = (
+                    tail if tail is not None else self._constants.get("REPLAY_TAIL", 0)
+                )
                 lower = _tail_lower_seq(hist, effective_tail)
         elif resume:
             lower = from_seq
@@ -384,15 +451,22 @@ class WSSession:
             if tail == 0:
                 lower = hist[-1][0] if hist else 0  # skip all history
             else:
-                effective_tail = (tail if tail is not None
-                                  else self._constants.get("REPLAY_TAIL", 0))
+                effective_tail = (
+                    tail if tail is not None else self._constants.get("REPLAY_TAIL", 0)
+                )
                 lower = _tail_lower_seq(hist, effective_tail)
 
         for seq, ev in hist:
             if lower < seq <= current:
                 self._emit(event_frame(handle, seq, ev))
-        self._emit({"type": "stream", "kind": "history_complete",
-                    "handle": handle, "current_seq": current})
+        self._emit(
+            {
+                "type": "stream",
+                "kind": "history_complete",
+                "handle": handle,
+                "current_seq": current,
+            }
+        )
 
         hstate["buffering"] = False
         for fr in hstate["buffer"]:

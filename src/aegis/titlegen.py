@@ -11,6 +11,7 @@ that returns prose, an empty result — comes back as ``""``. A title is a
 convenience and the conversation it labels is not, so generation must never
 be able to disturb a turn.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -19,8 +20,7 @@ from aegis.state.titles import sanitize_title
 
 
 class TitleSuggestion(BaseModel):
-    title: str = Field(description="3-8 words, no quotes, no trailing "
-                                   "punctuation")
+    title: str = Field(description="3-8 words, no quotes, no trailing punctuation")
 
 
 # t3code's, which is well-tuned; reproduced rather than reinvented.
@@ -43,29 +43,31 @@ _AGAIN = (
 )
 
 
-async def suggest_title(*, opening: str, driver, agent, cwd: str,
-                        previous: str | None = None) -> str:
+async def suggest_title(
+    *, opening: str, driver, agent, cwd: str, previous: str | None = None
+) -> str:
     """One call, sanitized. ``""`` on anything at all going wrong.
 
     ``opening`` is the first operator message on the first-turn path, or a
     window onto the recent transcript when regenerating.
     """
     if not opening or not opening.strip():
-        return ""          # nothing to summarize; don't pay for the call
+        return ""  # nothing to summarize; don't pay for the call
     lead = _AGAIN.format(previous=previous) if previous else _FIRST
     try:
         gen = await driver.generate_detailed(
-            agent, cwd, TitleSuggestion,
-            _SYSTEM, lead, opening)
-    except Exception:                                         # noqa: BLE001
+            agent, cwd, TitleSuggestion, _SYSTEM, lead, opening
+        )
+    except Exception:  # noqa: BLE001
         return ""
     if gen is None or gen.value is None:
         return ""
     return sanitize_title(gen.value.title)
 
 
-async def title_for(*, opening: str, agent, agents: dict, cwd: str,
-                    previous: str | None = None) -> str:
+async def title_for(
+    *, opening: str, agent, agents: dict, cwd: str, previous: str | None = None
+) -> str:
     """``suggest_title`` with the driver and billing profile resolved.
 
     The half both call sites share. Mirrors ``btw.side_note_for``: pick the
@@ -76,6 +78,7 @@ async def title_for(*, opening: str, agent, agents: dict, cwd: str,
     """
     from aegis.btw import generation_agent
     from aegis.drivers import get_driver
+
     gen_agent, _unset = generation_agent(agent, agents)
     try:
         driver = get_driver(gen_agent.harness)
@@ -83,5 +86,6 @@ async def title_for(*, opening: str, agent, agents: dict, cwd: str,
         return ""
     if not getattr(driver, "supports_oneshot", False):
         return ""
-    return await suggest_title(opening=opening, driver=driver,
-                               agent=gen_agent, cwd=cwd, previous=previous)
+    return await suggest_title(
+        opening=opening, driver=driver, agent=gen_agent, cwd=cwd, previous=previous
+    )

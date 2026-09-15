@@ -11,13 +11,13 @@ This is a cost requirement, not a nicety. Measured 2026-08-26, one recap
 is ~6,900 input tokens; without the gate that is every turn rather than
 every productive turn.
 """
+
 from __future__ import annotations
 
 from aegis.digest.models import TurnFacts
 
 
-def should_recap(facts: TurnFacts, *, last_line: str,
-                 enabled: bool) -> bool:
+def should_recap(facts: TurnFacts, *, last_line: str, enabled: bool) -> bool:
     """True when this turn earned a recap.
 
     ``last_line`` is the previous recap's text. It cannot be compared here

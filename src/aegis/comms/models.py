@@ -1,4 +1,5 @@
 """One record per call into the aegis MCP surface."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,8 +28,11 @@ class Envelope:
             "call_id": self.call_id,
             "ts": self.ts,
             "from": self.from_handle,
-            "to": ({"kind": self.to.kind, "id": self.to.id}
-                   if self.to is not None else None),
+            "to": (
+                {"kind": self.to.kind, "id": self.to.id}
+                if self.to is not None
+                else None
+            ),
             "family": self.family,
             "verb": self.verb,
             "thread": self.thread,

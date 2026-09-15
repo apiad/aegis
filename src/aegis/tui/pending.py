@@ -5,6 +5,7 @@ blocked. Each buffered user message shows here as a ``Chip``; clicking a chip
 cancels that message before it ever reaches the agent. The strip drains
 itself (via the pane) when the messages dispatch at the turn boundary.
 """
+
 from __future__ import annotations
 
 from textual.containers import HorizontalScroll

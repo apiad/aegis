@@ -5,6 +5,7 @@ The app holds the brain by direct Python reference through ``bridge=``
 there is no protocol that can fall behind. What crosses a view's boundary
 is bytes out and key events in — nothing that knows what a session is.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,29 +66,30 @@ class View:
             ready.set()
 
         self._task = asyncio.create_task(
-            self.app.run_async(size=self.state.geometry,
-                               auto_pilot=_signal_ready))
+            self.app.run_async(size=self.state.geometry, auto_pilot=_signal_ready)
+        )
         # Race the readiness signal against the app dying during boot, so a
         # view that cannot start fails its client instead of hanging it.
         waiter = asyncio.create_task(ready.wait())
         done, _ = await asyncio.wait(
-            {waiter, self._task}, timeout=ready_timeout,
-            return_when=asyncio.FIRST_COMPLETED)
+            {waiter, self._task},
+            timeout=ready_timeout,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
         if waiter not in done:
             waiter.cancel()
             if self._task in done:
-                self._task.result()      # re-raise the boot failure
+                self._task.result()  # re-raise the boot failure
             raise TimeoutError(
-                f"view {self.view_id} was not ready in {ready_timeout:.0f}s")
+                f"view {self.view_id} was not ready in {ready_timeout:.0f}s"
+            )
         deadline = asyncio.get_running_loop().time() + ready_timeout
         while not self.app.screen_stack:
             if self._task.done():
                 self._task.result()
-                raise RuntimeError(
-                    f"view {self.view_id} exited before it had a screen")
+                raise RuntimeError(f"view {self.view_id} exited before it had a screen")
             if asyncio.get_running_loop().time() > deadline:
-                raise TimeoutError(
-                    f"view {self.view_id} never pushed a screen")
+                raise TimeoutError(f"view {self.view_id} never pushed a screen")
             await asyncio.sleep(0.005)
 
     async def wait_stopped(self) -> None:
@@ -142,9 +144,16 @@ class View:
         save_view(state_dir, self.state)
 
 
-async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
-                    roots: AegisRoots, mcp, can_stop_daemon=None,
-                    **app_kw) -> View:
+async def open_view(
+    view_id: str,
+    *,
+    manager,
+    geometry: tuple[int, int],
+    roots: AegisRoots,
+    mcp,
+    can_stop_daemon=None,
+    **app_kw,
+) -> View:
     """Build a view, restoring its persisted state if it has any.
 
     ``mcp`` is required, not defaulted. The local plane binds and starts it
@@ -178,5 +187,6 @@ async def open_view(view_id: str, *, manager, geometry: tuple[int, int],
         # change while a view sits open: another client attaches, or the
         # last one leaves.
         can_stop_daemon=can_stop_daemon,
-        **app_kw)
+        **app_kw,
+    )
     return View(view_id=view_id, app=app, state=state, sink=sink)

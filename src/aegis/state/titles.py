@@ -6,6 +6,7 @@ source outranks (or equals) the current one, so a slow auto-generation
 landing after the operator typed ``/title`` is discarded on arrival
 rather than winning the race. No request ids, no in-flight bookkeeping.
 """
+
 from __future__ import annotations
 
 TITLE_RANK: dict[str, int] = {"": 0, "auto": 1, "agent": 2, "human": 3}
@@ -46,6 +47,6 @@ def sanitize_title(text: str, *, cap: int = DEFAULT_CAP) -> str:
         return ""
     if len(line) <= cap:
         return line
-    head = line[:cap - 1]
+    head = line[: cap - 1]
     cut = head.rsplit(" ", 1)[0] if " " in head else head
     return f"{cut}…"

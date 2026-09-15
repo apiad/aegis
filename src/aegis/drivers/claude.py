@@ -8,8 +8,15 @@ from pathlib import Path
 
 from aegis.config import Agent, Effort, Permission
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Event, ParserState, Result,
-    ToolResult, ToolUse, parse,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    Event,
+    ParserState,
+    Result,
+    ToolResult,
+    ToolUse,
+    parse,
 )
 from aegis.drivers.base import HarnessDriver, HarnessSession
 from aegis.hooks import SessionHandle
@@ -56,7 +63,12 @@ _ONESHOT_SYSTEM = (
 # ContextUpdate) is deliberately absent: it cannot start a turn on its own,
 # and the real turn's events arrive right behind it.
 _TURN_BEARING = (
-    AssistantText, AssistantThinking, ToolUse, ToolResult, AgentPlan, Result,
+    AssistantText,
+    AssistantThinking,
+    ToolUse,
+    ToolResult,
+    AgentPlan,
+    Result,
 )
 
 
@@ -85,10 +97,16 @@ class ClaudeSession(HarnessSession):
     # an idle watcher for these.
     supports_idle_events = True
 
-    def __init__(self, argv: list[str], cwd: str, *,
-                 handle: str = "", harness: str = "claude-code",
-                 agent_profile: str = "",
-                 launcher: Launcher = LOCAL) -> None:
+    def __init__(
+        self,
+        argv: list[str],
+        cwd: str,
+        *,
+        handle: str = "",
+        harness: str = "claude-code",
+        agent_profile: str = "",
+        launcher: Launcher = LOCAL,
+    ) -> None:
         self._argv = argv
         self._cwd = cwd
         self._handle = handle
@@ -137,9 +155,8 @@ class ClaudeSession(HarnessSession):
     def _latch_session_id(self, ev: Event) -> None:
         """Latch session_id on first SystemInit with a non-empty session_id."""
         from aegis.events import SystemInit
-        if (self._session_id is None
-                and isinstance(ev, SystemInit)
-                and ev.session_id):
+
+        if self._session_id is None and isinstance(ev, SystemInit) and ev.session_id:
             self._session_id = ev.session_id
 
     async def start(self) -> None:
@@ -182,8 +199,7 @@ class ClaudeSession(HarnessSession):
             state_dir=Path(self._cwd) / ".aegis" / "state",
         )
         if composed.block is not None:
-            raise RuntimeError(
-                f"pre_spawn hook blocked spawn: {composed.block}")
+            raise RuntimeError(f"pre_spawn hook blocked spawn: {composed.block}")
         return list(composed.argv or self._argv), composed.env
 
     async def _pump_stdout(self) -> None:
@@ -213,14 +229,14 @@ class ClaudeSession(HarnessSession):
             failure = getattr(self._launcher, "link_failure", lambda: None)()
             if failure is not None:
                 self._put(AssistantText(text=str(failure)))
-                self._put(Result(duration_ms=None, is_error=True,
-                                 stop_reason="link_lost"))
+                self._put(
+                    Result(duration_ms=None, is_error=True, stop_reason="link_lost")
+                )
             self._put(None)  # always signal stream end
 
     async def send(self, text: str) -> None:
         assert self._proc and self._proc.stdin
-        msg = {"type": "user",
-               "message": {"role": "user", "content": text}}
+        msg = {"type": "user", "message": {"role": "user", "content": text}}
         self._proc.stdin.write((json.dumps(msg) + "\n").encode())
         await self._proc.stdin.drain()
 
@@ -248,9 +264,11 @@ class ClaudeSession(HarnessSession):
         if not (proc and proc.stdin and proc.returncode is None):
             return
         self._control_seq += 1
-        msg = {"type": "control_request",
-               "request_id": f"aegis_interrupt_{self._control_seq}",
-               "request": {"subtype": "interrupt"}}
+        msg = {
+            "type": "control_request",
+            "request_id": f"aegis_interrupt_{self._control_seq}",
+            "request": {"subtype": "interrupt"},
+        }
         try:
             proc.stdin.write((json.dumps(msg) + "\n").encode())
             await proc.stdin.drain()
@@ -282,22 +300,35 @@ class ClaudeDriver(HarnessDriver):
     supports_fork = True
     supports_oneshot = True
 
-    def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str, handle: str,
-                   launcher: Launcher = LOCAL,
-                   token: str = "") -> list[str]:
+    def build_argv(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> list[str]:
         argv = [
-            "claude", "-p",
-            "--input-format", "stream-json",
-            "--output-format", "stream-json",
+            "claude",
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
             "--replay-user-messages",
             "--verbose",  # required by claude with -p + stream-json output
-            "--model", agent.model,
-            "--effort", _EFFORT[agent.effort],
-            "--permission-mode", _PERMISSION_MODE[agent.permission],
-            "--mcp-config", mcp_config_json(mcp_url, token),
+            "--model",
+            agent.model,
+            "--effort",
+            _EFFORT[agent.effort],
+            "--permission-mode",
+            _PERMISSION_MODE[agent.permission],
+            "--mcp-config",
+            mcp_config_json(mcp_url, token),
             "--strict-mcp-config",
-            "--append-system-prompt", PRIMING.format(handle=handle),
+            "--append-system-prompt",
+            PRIMING.format(handle=handle),
         ]
         # Persona composes AFTER the primer so the agent still knows its
         # handle and can call back. It is read from the LOCAL project even
@@ -307,8 +338,9 @@ class ClaudeDriver(HarnessDriver):
             argv += ["--append-system-prompt", persona]
         return argv
 
-    def _oneshot_argv(self, agent: Agent, schema, instructions: list[str],
-                      *, system: str = "") -> list[str]:
+    def _oneshot_argv(
+        self, agent: Agent, schema, instructions: list[str], *, system: str = ""
+    ) -> list[str]:
         """A `claude` invocation that generates rather than agents.
 
         Every flag here is load-shedding, and the two that matter were
@@ -343,32 +375,45 @@ class ClaudeDriver(HarnessDriver):
         without removing them (21,445 either way).
         """
         return [
-            "claude", "-p", "\n\n".join(instructions),
-            "--model", agent.model,
-            "--output-format", "json",
-            "--json-schema", json.dumps(schema.model_json_schema()),
-            "--system-prompt", system or _ONESHOT_SYSTEM,
-            "--tools", "",
-            "--setting-sources", "",
-            "--mcp-config", json.dumps({"mcpServers": {}}),
+            "claude",
+            "-p",
+            "\n\n".join(instructions),
+            "--model",
+            agent.model,
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema.model_json_schema()),
+            "--system-prompt",
+            system or _ONESHOT_SYSTEM,
+            "--tools",
+            "",
+            "--setting-sources",
+            "",
+            "--mcp-config",
+            json.dumps({"mcpServers": {}}),
             "--strict-mcp-config",
         ]
 
-    async def generate_detailed(self, agent: Agent, cwd: str, schema,
-                                *instructions: str):
+    async def generate_detailed(
+        self, agent: Agent, cwd: str, schema, *instructions: str
+    ):
         from aegis.drivers.oneshot import Generation, parse_structured
+
         argv = self._oneshot_argv(agent, schema, list(instructions))
         try:
             proc = await asyncio.create_subprocess_exec(
-                *argv, cwd=cwd,
+                *argv,
+                cwd=cwd,
                 # DEVNULL, not inherited: claude waits 3s for stdin it will
                 # never get, and that wait is a third of the whole call.
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
-                limit=_STREAM_LIMIT)
+                limit=_STREAM_LIMIT,
+            )
             out, _ = await proc.communicate()
-        except Exception:                                     # noqa: BLE001
+        except Exception:  # noqa: BLE001
             return Generation()
         try:
             envelope = json.loads(out)
@@ -383,35 +428,55 @@ class ClaudeDriver(HarnessDriver):
             cost_usd=float(envelope.get("total_cost_usd") or 0.0),
         )
 
-    def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL,
-                token: str = "") -> ClaudeSession:
+    def session(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> ClaudeSession:
         return ClaudeSession(
             self.build_argv(agent, cwd, mcp_url, handle, launcher, token),
             cwd,
-            handle=handle, harness=agent.harness or "claude-code",
-            launcher=launcher)
+            handle=handle,
+            harness=agent.harness or "claude-code",
+            launcher=launcher,
+        )
 
-    def resume(self, agent: Agent, cwd: str,
-               mcp_url: str, handle: str,
-               session_id: str,
-               launcher: Launcher = LOCAL,
-               token: str = "") -> ClaudeSession:
+    def resume(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        session_id: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> ClaudeSession:
         """Build a ClaudeSession that resumes an existing conversation."""
         argv = self.build_argv(agent, cwd, mcp_url, handle, launcher, token)
         # Insert --resume <session_id> right after the "claude -p" prefix
         resumed_argv = argv[:2] + ["--resume", session_id] + argv[2:]
-        return ClaudeSession(resumed_argv, cwd,
-                             handle=handle,
-                             harness=agent.harness or "claude-code",
-                             launcher=launcher)
+        return ClaudeSession(
+            resumed_argv,
+            cwd,
+            handle=handle,
+            harness=agent.harness or "claude-code",
+            launcher=launcher,
+        )
 
-    def fork(self, agent: Agent, cwd: str,
-             mcp_url: str, handle: str,
-             session_id: str,
-             launcher: Launcher = LOCAL,
-             token: str = "") -> ClaudeSession:
+    def fork(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        session_id: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> ClaudeSession:
         """Build a ClaudeSession branching from an existing conversation.
 
         `--fork-session` is what keeps this from being a plain resume:
@@ -419,9 +484,11 @@ class ClaudeDriver(HarnessDriver):
         stays where it was, so the two conversations never share a log.
         """
         argv = self.build_argv(agent, cwd, mcp_url, handle, launcher, token)
-        forked_argv = (argv[:2] + ["--fork-session", "--resume", session_id]
-                       + argv[2:])
-        return ClaudeSession(forked_argv, cwd,
-                             handle=handle,
-                             harness=agent.harness or "claude-code",
-                             launcher=launcher)
+        forked_argv = argv[:2] + ["--fork-session", "--resume", session_id] + argv[2:]
+        return ClaudeSession(
+            forked_argv,
+            cwd,
+            handle=handle,
+            harness=agent.harness or "claude-code",
+            launcher=launcher,
+        )

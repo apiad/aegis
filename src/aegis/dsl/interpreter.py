@@ -12,7 +12,8 @@ from aegis.workflow.decorator import WorkflowError
 DEFAULT_CONCURRENCY = 8
 
 _SCHEMA_HINT = (
-    "\n\nReturn ONLY a JSON object matching this JSON Schema, no prose:\n{schema}")
+    "\n\nReturn ONLY a JSON object matching this JSON Schema, no prose:\n{schema}"
+)
 
 
 class Interpreter:
@@ -24,7 +25,7 @@ class Interpreter:
 
     async def run_node(self, node, *, path: str, scope: dict) -> Any:
         if path in self.store.outputs:
-            return self.store.outputs[path]           # replay — do not re-run
+            return self.store.outputs[path]  # replay — do not re-run
         if node.type == "sequence":
             return await self._run_sequence(node, path=path, scope=scope)
         if node.type == "parallel":
@@ -63,26 +64,25 @@ class Interpreter:
 
     async def _run_parallel(self, node, *, path, scope) -> dict:
         idx_children = list(enumerate(node.children))
-        results = await self.engine.parallel([
-            self.run_node(c, path=f"{path}.{i}", scope=scope)
-            for i, c in idx_children])
+        results = await self.engine.parallel(
+            [self.run_node(c, path=f"{path}.{i}", scope=scope) for i, c in idx_children]
+        )
         return {c.id: r for (i, c), r in zip(idx_children, results) if c.id}
 
     async def _run_map(self, node, *, path, scope) -> list:
         items = resolve_selector(node.over, self.store)
         if not isinstance(items, list):
-            raise WorkflowError(
-                f"map.over {node.over!r} did not resolve to a list")
+            raise WorkflowError(f"map.over {node.over!r} did not resolve to a list")
         sem = asyncio.Semaphore(node.concurrency or DEFAULT_CONCURRENCY)
 
         async def _one(i, item):
             async with sem:
                 child_scope = {**scope, "item": item, "index": i}
                 return await self.run_node(
-                    node.body, path=f"{path}#{i}", scope=child_scope)
+                    node.body, path=f"{path}#{i}", scope=child_scope
+                )
 
-        return list(await asyncio.gather(
-            *[_one(i, it) for i, it in enumerate(items)]))
+        return list(await asyncio.gather(*[_one(i, it) for i, it in enumerate(items)]))
 
     async def _checkpoint(self) -> None:
         try:
@@ -93,8 +93,7 @@ class Interpreter:
     async def _run_sequence(self, node, *, path, scope) -> dict:
         out: dict[str, Any] = {}
         for i, child in enumerate(node.children):
-            cout = await self.run_node(
-                child, path=f"{path}.{i}", scope=scope)
+            cout = await self.run_node(child, path=f"{path}.{i}", scope=scope)
             if child.id:
                 out[child.id] = cout
         return out
@@ -103,8 +102,7 @@ class Interpreter:
         bindings = self._bindings(node, scope)
         prompt = substitute(node.prompt, bindings)
         if node.schema_ is not None:
-            prompt = prompt + _SCHEMA_HINT.format(
-                schema=json.dumps(node.schema_))
+            prompt = prompt + _SCHEMA_HINT.format(schema=json.dumps(node.schema_))
         profile = self._profile_of(node)
         handle = await self.engine.spawn(profile)
         try:
@@ -126,6 +124,7 @@ class Interpreter:
         if node.schema_ is None:
             return reply
         from jsonschema import Draft202012Validator
+
         validator = Draft202012Validator(node.schema_)
         last_err: Exception | None = None
         for attempt in range(2):
@@ -140,10 +139,12 @@ class Interpreter:
                 reply = await self.engine.send(
                     handle,
                     "Your last reply was not valid JSON for the schema. "
-                    f"Return ONLY the JSON object. Error: {e}")
+                    f"Return ONLY the JSON object. Error: {e}",
+                )
         raise WorkflowError(
             f"agent {node.id!r} did not return schema-valid JSON "
-            f"after retry: {last_err}")
+            f"after retry: {last_err}"
+        )
 
     async def _run_human(self, node, *, path, scope) -> Any:
         bindings: dict[str, Any] = {"args": self.args}
@@ -159,9 +160,11 @@ class Interpreter:
         if options is not None:
             if reply not in options:
                 raise WorkflowError(
-                    f"human {node.id!r} reply {reply!r} not in enum {options}")
+                    f"human {node.id!r} reply {reply!r} not in enum {options}"
+                )
             return reply
         from jsonschema import Draft202012Validator
+
         parsed = json.loads(_extract_json(reply))
         Draft202012Validator(schema).validate(parsed)
         return parsed
@@ -170,15 +173,15 @@ class Interpreter:
         rounds: list[Any] = []
         for n in range(node.max_rounds):
             round_path = f"{path}#round{n}"
-            body_out = await self.run_node(
-                node.body, path=round_path, scope=scope)
+            body_out = await self.run_node(node.body, path=round_path, scope=scope)
             rounds.append(body_out)
             pred_key = f"{round_path}::pred"
             if pred_key in self.store.outputs:
                 stop = bool(self.store.outputs[pred_key])
             else:
                 stop = await self._eval_predicate(
-                    node.until, path=round_path, scope=scope, last=body_out)
+                    node.until, path=round_path, scope=scope, last=body_out
+                )
                 self.store.outputs[pred_key] = stop
             await self._checkpoint()
             if stop:
@@ -191,21 +194,19 @@ class Interpreter:
             taken = bool(self.store.outputs[cond_key])
         else:
             taken = await self._eval_predicate(
-                node.cond, path=path, scope=scope, last=None)
+                node.cond, path=path, scope=scope, last=None
+            )
             self.store.outputs[cond_key] = taken
         await self._checkpoint()
         if taken:
-            return await self.run_node(
-                node.then, path=f"{path}.then", scope=scope)
+            return await self.run_node(node.then, path=f"{path}.then", scope=scope)
         if node.else_ is not None:
-            return await self.run_node(
-                node.else_, path=f"{path}.else", scope=scope)
+            return await self.run_node(node.else_, path=f"{path}.else", scope=scope)
         return None
 
     async def _eval_predicate(self, pred, *, path, scope, last) -> bool:
         if pred.kind == "shell":
-            res = await self.engine.bash(
-                pred.cmd, cwd=pred.cwd, timeout=pred.timeout)
+            res = await self.engine.bash(pred.cmd, cwd=pred.cwd, timeout=pred.timeout)
             return res["exit"] == 0
         if pred.kind == "judge":
             return await self._run_judge(pred, path=path, scope=scope, last=last)
@@ -217,12 +218,14 @@ class Interpreter:
         for selector in pred.inputs:
             head = selector.split(".")[0]
             bindings[head] = resolve_selector(selector, self.store)
-        rendered_inputs = {k: bindings[k] for k in
-                           ({s.split(".")[0] for s in pred.inputs} or {"last"})}
+        rendered_inputs = {
+            k: bindings[k] for k in ({s.split(".")[0] for s in pred.inputs} or {"last"})
+        }
         prompt = (
             f"Decide: {pred.condition}\n\n"
             f"Context: {json.dumps(rendered_inputs, default=str)}\n\n"
-            'Return ONLY JSON: {"decision": true|false, "reason": "..."}')
+            'Return ONLY JSON: {"decision": true|false, "reason": "..."}'
+        )
         handle = await self.engine.spawn(self.default_profile)
         try:
             reply = await self.engine.send(handle, prompt)
@@ -239,7 +242,8 @@ class Interpreter:
         if self.default_profile is None:
             raise ValueError(
                 f"agent node {node.id!r} has no target and no "
-                "default_profile is configured")
+                "default_profile is configured"
+            )
         return self.default_profile
 
 
@@ -249,15 +253,14 @@ def _extract_json(text: str) -> str:
         start = text.find(opener)
         end = text.rfind(closer)
         if start != -1 and end > start:
-            return text[start:end + 1]
+            return text[start : end + 1]
     return text
 
 
 @workflow("dynamic")
 async def dynamic(engine, *, spec, kwargs=None, default_profile=None):
     model = spec if isinstance(spec, Spec) else Spec.model_validate(spec)
-    interp = Interpreter(
-        engine, args=kwargs or {}, default_profile=default_profile)
+    interp = Interpreter(engine, args=kwargs or {}, default_profile=default_profile)
     try:
         snap = await engine.resume_state()
     except RuntimeError:

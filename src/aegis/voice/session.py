@@ -1,6 +1,7 @@
 """VoiceSession: drives a harp DictationSession and delivers the final
 transcript through a callback. Textual-free and unit-testable with a fake
 DictationSession (no model, no mic)."""
+
 from __future__ import annotations
 
 import threading
@@ -22,6 +23,7 @@ def _get_engine(cfg: VoiceConfig):
         import logging as _logging
 
         import ctranslate2
+
         ctranslate2.set_log_level(_logging.ERROR)
     except Exception:
         pass
@@ -37,8 +39,8 @@ def _get_engine(cfg: VoiceConfig):
         # dormant (its guard is `device != "cpu" or compute != "default"`),
         # so no stray prints ever reach the screen.
         engine = LocalWhisperEngine(
-            model_size=cfg.model, device="cpu",
-            compute_type="default", beam_size=1)
+            model_size=cfg.model, device="cpu", compute_type="default", beam_size=1
+        )
         _ENGINE_CACHE[cfg.model] = engine
     return engine
 
@@ -55,6 +57,7 @@ def prewarm(cfg: VoiceConfig) -> None:
         import numpy as np
 
         from harp.vad import SileroDetector
+
         engine = _get_engine(cfg)
         engine.load_model()
         # Warm Silero VAD (faster-whisper caches its model process-wide).
@@ -122,5 +125,4 @@ class VoiceSession:
                 text = ""
             self._on_final(text or "")
 
-        threading.Thread(
-            target=_finish, name="voice-decode", daemon=True).start()
+        threading.Thread(target=_finish, name="voice-decode", daemon=True).start()

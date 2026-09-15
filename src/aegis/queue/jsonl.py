@@ -5,6 +5,7 @@ One JSON object per line; lazily parsed on replay. Each record carries a
 preserve unknown ``v`` values rather than failing, so a v1 reader can
 silently skip-or-pass unknown fields from a v2 producer.
 """
+
 from __future__ import annotations
 
 import json

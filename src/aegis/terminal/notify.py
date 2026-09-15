@@ -1,4 +1,5 @@
 """Inbox notifications for terminal command-finish events."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -55,4 +56,5 @@ def make_terminal_notifier(router: InboxRouterLike) -> Notifier:
             if handle == rec.writer:
                 continue
             await router.deliver(handle, msg)
+
     return notifier

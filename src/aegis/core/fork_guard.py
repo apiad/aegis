@@ -16,6 +16,7 @@ mid-turn fork is torn, not merely stale.
 The policy is a pure function over gathered facts — the caller does the
 gathering, this decides.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,10 +25,10 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ForkFacts:
     exists: bool
-    session_id: str | None         # driver-side conversation id, once known
-    supports_fork: bool            # the target's driver capability
-    state: str                     # "ready" | "working" | "error"
-    driver: str                    # harness slug, for the refusal message
+    session_id: str | None  # driver-side conversation id, once known
+    supports_fork: bool  # the target's driver capability
+    state: str  # "ready" | "working" | "error"
+    driver: str  # harness slug, for the refusal message
 
 
 def facts_for(sess, *, capability) -> ForkFacts:
@@ -40,15 +41,21 @@ def facts_for(sess, *, capability) -> ForkFacts:
     ``capability`` maps a harness slug to whether its driver can fork.
     """
     if sess is None:
-        return ForkFacts(exists=False, session_id=None, supports_fork=False,
-                         state="", driver="unknown")
+        return ForkFacts(
+            exists=False,
+            session_id=None,
+            supports_fork=False,
+            state="",
+            driver="unknown",
+        )
     harness = getattr(sess.agent, "harness", "") or ""
     return ForkFacts(
         exists=True,
         session_id=sess.session_id,
         supports_fork=capability(harness),
         state=sess.state.value,
-        driver=harness or "unknown")
+        driver=harness or "unknown",
+    )
 
 
 def refuse_reasons(facts: ForkFacts, *, target: str) -> list[str]:
@@ -60,12 +67,13 @@ def refuse_reasons(facts: ForkFacts, *, target: str) -> list[str]:
     if facts.session_id is None:
         reasons.append(
             f"{target!r} has no session id yet (nothing to fork from — "
-            "it has not produced its first SystemInit)")
+            "it has not produced its first SystemInit)"
+        )
     if not facts.supports_fork:
-        reasons.append(
-            f"driver {facts.driver!r} does not support session fork")
+        reasons.append(f"driver {facts.driver!r} does not support session fork")
     if facts.state == "working":
         reasons.append(
             f"{target!r} is mid-turn (a fork would branch from a dangling "
-            "tool call — wait for the turn to finish)")
+            "tool call — wait for the turn to finish)"
+        )
     return reasons

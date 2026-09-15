@@ -3,6 +3,7 @@
 Its own module rather than a table in ``quota.py`` because the provider modules
 import the core, so the core cannot import them back.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -42,6 +43,5 @@ async def read_all(services: dict[str, QuotaService]):
     the two surfaces cannot drift.
     """
     providers = [p for p in PROVIDERS if p.name in services]
-    await asyncio.gather(*(services[p.name].refresh(force=True)
-                           for p in providers))
+    await asyncio.gather(*(services[p.name].refresh(force=True) for p in providers))
     return [(p, services[p.name].current()) for p in providers]

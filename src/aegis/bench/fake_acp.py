@@ -5,6 +5,7 @@ so it is where per-delta rendering cost shows up. Steps without a
 ``chunk`` (claude-shaped fallbacks) are skipped, so an unknown prompt ends
 its turn with no text rather than an error.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +25,7 @@ from aegis.bench.script import route
 class BenchAgent(acp.Agent):
     def __init__(self) -> None:
         emit = Path(os.environ["AEGIS_BENCH_EMIT"])
-        self._script = json.loads(
-            Path(os.environ["AEGIS_BENCH_SCRIPT"]).read_text())
+        self._script = json.loads(Path(os.environ["AEGIS_BENCH_SCRIPT"]).read_text())
         self._emit = Recorder(emit)
         self._seq = MarkerSeq(emit.parent / "marker.seq")
         self._pid = os.getpid()
@@ -34,23 +34,30 @@ class BenchAgent(acp.Agent):
     def on_connect(self, conn) -> None:
         self._conn = conn
 
-    async def initialize(self, protocol_version, client_capabilities=None,
-                         client_info=None, **kw):
+    async def initialize(
+        self, protocol_version, client_capabilities=None, client_info=None, **kw
+    ):
         return acp.InitializeResponse(
             protocolVersion=1,
-            agentCapabilities={"loadSession": False,
-                               "mcpCapabilities": {"http": True}},
-            agentInfo={"name": "aegis-bench", "version": "1"})
+            agentCapabilities={"loadSession": False, "mcpCapabilities": {"http": True}},
+            agentInfo={"name": "aegis-bench", "version": "1"},
+        )
 
-    async def new_session(self, cwd, mcp_servers=None,
-                          additional_directories=None, **kw):
+    async def new_session(
+        self, cwd, mcp_servers=None, additional_directories=None, **kw
+    ):
         return acp.NewSessionResponse(sessionId=f"bench-{self._pid}")
 
     async def prompt(self, session_id, prompt, message_id=None, **kw):
         text = " ".join(getattr(b, "text", "") or "" for b in prompt)
-        self._emit.write({"k": "prompt", "pid": self._pid,
-                          "t_ns": time.monotonic_ns(),
-                          "word": (text.split() or [""])[0].lower()})
+        self._emit.write(
+            {
+                "k": "prompt",
+                "pid": self._pid,
+                "t_ns": time.monotonic_ns(),
+                "word": (text.split() or [""])[0].lower(),
+            }
+        )
         speed = float(self._script.get("speed") or 1.0)
         n = 0
         for step in route(self._script, text):
@@ -68,13 +75,17 @@ class BenchAgent(acp.Agent):
                 session_id=session_id,
                 update=AgentMessageChunk(
                     content=TextContentBlock(text=chunk, type="text"),
-                    sessionUpdate="agent_message_chunk"))
+                    sessionUpdate="agent_message_chunk",
+                ),
+            )
             n += 1
             if m is not None:
-                self._emit.write({"k": "marker", "pid": self._pid,
-                                  "marker": m, "t_emit_ns": t})
-        self._emit.write({"k": "turn_end", "pid": self._pid,
-                          "t_ns": time.monotonic_ns(), "lines": n})
+                self._emit.write(
+                    {"k": "marker", "pid": self._pid, "marker": m, "t_emit_ns": t}
+                )
+        self._emit.write(
+            {"k": "turn_end", "pid": self._pid, "t_ns": time.monotonic_ns(), "lines": n}
+        )
         return acp.PromptResponse(stopReason="end_turn")
 
     async def cancel(self, session_id, **kw):

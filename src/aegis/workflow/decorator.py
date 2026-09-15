@@ -19,7 +19,8 @@ class PredicateFailed(WorkflowError):
     def __init__(self, cmd: str, result: dict, *, attempts: int) -> None:
         super().__init__(
             f"predicate failed after {attempts} attempt(s): {cmd} "
-            f"(exit={result.get('exit')})")
+            f"(exit={result.get('exit')})"
+        )
         self.cmd = cmd
         self.result = result
         self.attempts = attempts
@@ -35,21 +36,18 @@ _REGISTRY: dict[str, WorkflowFn] = {}
 
 def _register(fn: WorkflowFn, name: str) -> WorkflowFn:
     if not inspect.iscoroutinefunction(fn):
-        raise TypeError(
-            f"@workflow on {fn.__name__}: must be async def")
+        raise TypeError(f"@workflow on {fn.__name__}: must be async def")
     sig = inspect.signature(fn)
     params = list(sig.parameters.values())
     if not params or params[0].name != "engine":
-        raise TypeError(
-            f"@workflow on {fn.__name__}: first parameter must be 'engine'")
+        raise TypeError(f"@workflow on {fn.__name__}: first parameter must be 'engine'")
     existing = _REGISTRY.get(name)
     if existing is not None:
         # Idempotent re-registration: same source location → same workflow,
         # just a plugin module being reloaded. Different source location →
         # real collision.
         ec, nc = existing.__code__, fn.__code__
-        if (ec.co_filename == nc.co_filename
-                and ec.co_firstlineno == nc.co_firstlineno):
+        if ec.co_filename == nc.co_filename and ec.co_firstlineno == nc.co_firstlineno:
             _REGISTRY[name] = fn
             fn._workflow_name = name  # type: ignore[attr-defined]
             if not hasattr(fn, "_config"):
@@ -58,7 +56,8 @@ def _register(fn: WorkflowFn, name: str) -> WorkflowFn:
         raise ConfigError(
             f"workflow name collision: {name!r} already registered "
             f"(from {existing.__module__}); cannot re-register "
-            f"from {fn.__module__}")
+            f"from {fn.__module__}"
+        )
     _REGISTRY[name] = fn
     fn._workflow_name = name  # type: ignore[attr-defined]
     fn._config = {}  # type: ignore[attr-defined]
@@ -90,6 +89,7 @@ def workflow(arg: WorkflowFn | str) -> Any:
 
         def deco(fn: WorkflowFn) -> WorkflowFn:
             return _register(fn, name)
+
         return deco
     return _register(arg, arg.__name__)
 

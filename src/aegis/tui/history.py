@@ -11,6 +11,7 @@ Enter performs the *smart* primary action for the highlighted row (jump if
 live, resume if resumable, else open fresh). A row whose profile is missing
 from the current agents map is shown dimmed and is non-actionable.
 """
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -28,13 +29,16 @@ from aegis.state.history import SessionHistoryRow
 def _relative_time(iso_ts: str, now_iso: str | None = None) -> str:
     """Best-effort relative-time formatter ('2m ago', '3h ago')."""
     from datetime import datetime, timezone
+
     try:
-        ts = datetime.fromisoformat(iso_ts.rstrip("Z")).replace(
-            tzinfo=timezone.utc)
+        ts = datetime.fromisoformat(iso_ts.rstrip("Z")).replace(tzinfo=timezone.utc)
     except ValueError:
         return iso_ts
-    now = (datetime.fromisoformat(now_iso.rstrip("Z")).replace(
-        tzinfo=timezone.utc) if now_iso else datetime.now(timezone.utc))
+    now = (
+        datetime.fromisoformat(now_iso.rstrip("Z")).replace(tzinfo=timezone.utc)
+        if now_iso
+        else datetime.now(timezone.utc)
+    )
     delta = (now - ts).total_seconds()
     if delta < 60:
         return f"{int(delta)}s ago"
@@ -45,15 +49,18 @@ def _relative_time(iso_ts: str, now_iso: str | None = None) -> str:
     return f"{int(delta // 86400)}d ago"
 
 
-def _is_resumable(row: SessionHistoryRow, agents: set[str],
-                  resume_capable: set[str]) -> bool:
-    return (row.profile in agents and not row.is_open
-            and row.session_id is not None
-            and row.provider in resume_capable)
+def _is_resumable(
+    row: SessionHistoryRow, agents: set[str], resume_capable: set[str]
+) -> bool:
+    return (
+        row.profile in agents
+        and not row.is_open
+        and row.session_id is not None
+        and row.provider in resume_capable
+    )
 
 
-def _glyph(row: SessionHistoryRow, agents: set[str],
-           resume_capable: set[str]) -> str:
+def _glyph(row: SessionHistoryRow, agents: set[str], resume_capable: set[str]) -> str:
     if row.profile not in agents:
         return "⊘"
     if row.is_open:
@@ -63,8 +70,9 @@ def _glyph(row: SessionHistoryRow, agents: set[str],
     return "○"
 
 
-def _row_label(row: SessionHistoryRow, agents: set[str],
-               resume_capable: set[str]) -> str:
+def _row_label(
+    row: SessionHistoryRow, agents: set[str], resume_capable: set[str]
+) -> str:
     glyph = _glyph(row, agents, resume_capable)
     rel = _relative_time(row.last_activity_at)
     # The title says what the session was about; the preview is only the
@@ -104,9 +112,13 @@ class HistoryModal(ModalScreen):
                               content-align: center middle; }
     """
 
-    def __init__(self, rows: Iterable[SessionHistoryRow], *,
-                 agents: set[str],
-                 resume_capable_providers: set[str]) -> None:
+    def __init__(
+        self,
+        rows: Iterable[SessionHistoryRow],
+        *,
+        agents: set[str],
+        resume_capable_providers: set[str],
+    ) -> None:
         super().__init__()
         self._rows = list(rows)
         self._agents = agents
@@ -134,8 +146,8 @@ class HistoryModal(ModalScreen):
             return True
         needle = needle.lower()
         haystack = " ".join(
-            [row.handle, row.title, row.profile, row.cwd,
-             row.preview]).lower()
+            [row.handle, row.title, row.profile, row.cwd, row.preview]
+        ).lower()
         return needle in haystack
 
     def _refresh(self, needle: str) -> None:
@@ -145,10 +157,13 @@ class HistoryModal(ModalScreen):
         # get reused, so two logs can share one. As a duplicate option id that
         # raised DuplicateID out of on_mount — truncating the listing at the
         # first collision and taking the app down with it.
-        ol.add_options([
-            Option(_row_label(r, self._agents, self._resume_capable),
-                   id=r.log_id)
-            for r in self._rows if self._matches(r, needle)])
+        ol.add_options(
+            [
+                Option(_row_label(r, self._agents, self._resume_capable), id=r.log_id)
+                for r in self._rows
+                if self._matches(r, needle)
+            ]
+        )
         if ol.option_count > 0:
             ol.highlighted = 0
 
@@ -183,8 +198,7 @@ class HistoryModal(ModalScreen):
     def on_input_submitted(self, _event: Input.Submitted) -> None:
         self._select(self._highlighted_log_id())
 
-    def on_option_list_option_selected(
-            self, event: OptionList.OptionSelected) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self._select(event.option.id)
 
     def action_cursor_down(self) -> None:

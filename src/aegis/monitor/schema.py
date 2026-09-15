@@ -5,6 +5,7 @@ agent-supplied bash: ``done`` (exit 0 ⇒ complete), optional ``fail`` (exit 0 �
 failed), optional ``progress`` (echoes 0–100). On any terminal state the agent
 is woken via an inbox callback.
 """
+
 from __future__ import annotations
 
 import re
@@ -34,14 +35,15 @@ _NUM = re.compile(r"[-+]?\d*\.?\d+")
 _SELF_MATCH = re.compile(
     r"(?:^|[;&|(]|\b(?:then|do|while|until|if|elif)\b)\s*(?:!\s*)?"
     r"(?:pgrep|pkill)\b[^;&|]*?(?:\s--full\b|\s-[a-z]*f\b)",
-    re.IGNORECASE)
+    re.IGNORECASE,
+)
 
 _SELF_MATCH_HELP = (
     "`pgrep -f` / `pkill -f` cannot be used in a monitor condition: the "
     "condition runs in a shell whose own command line contains the pattern, "
     "so the pattern matches itself. `pgrep -f 'pytest -q'` is true even when "
     "nothing is running, which makes the `! pgrep -f ...` spelling of "
-    "\"it finished\" false forever — the monitor never trips and just times "
+    '"it finished" false forever — the monitor never trips and just times '
     "out, looking like a hang that never happened.\n"
     "Use a completion marker instead: launch as "
     "`nohup bash -c 'mycmd > run.log 2>&1; echo \"DONE rc=$?\" >> run.log' &` "
@@ -96,11 +98,15 @@ def roster_block(rows: list[dict]) -> str:
     lines = [f"\n\nStill watching ({len(rows)}):"]
     for r in rows:
         pct = f" · {r['pct']:.0f}%" if r.get("pct") is not None else ""
-        lines.append(f"  · {r['id']} — {r['description']}"
-                     f"{pct} · {format_elapsed(r['elapsed_s'])}")
-    lines.append("Cancel any whose process you already killed or superseded "
-                 "— aegis_monitor_cancel(monitor_id) — or it will sit there "
-                 "until it times out.")
+        lines.append(
+            f"  · {r['id']} — {r['description']}"
+            f"{pct} · {format_elapsed(r['elapsed_s'])}"
+        )
+    lines.append(
+        "Cancel any whose process you already killed or superseded "
+        "— aegis_monitor_cancel(monitor_id) — or it will sit there "
+        "until it times out."
+    )
     return "\n".join(lines)
 
 
@@ -128,7 +134,7 @@ class Monitor:
     from_handle: str
     description: str
     done: str
-    started_at: float             # monotonic seconds
+    started_at: float  # monotonic seconds
     fail: str | None = None
     progress: str | None = None
     cwd: str | None = None
@@ -144,6 +150,7 @@ class Monitor:
 @dataclass(frozen=True)
 class MonitorView:
     """Immutable snapshot item the TUI strip renders."""
+
     id: str
     description: str
     state: str

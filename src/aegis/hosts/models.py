@@ -1,4 +1,5 @@
 """Config and resolved-place data for SSH execution hosts. Pure data."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ class HostSpec:
     jump hosts and non-standard ports all work without aegis
     reimplementing any of it.
     """
+
     name: str
     ssh: str
     cwd: str
@@ -35,7 +37,8 @@ class HostSpec:
 class Place:
     """Where a session's harness process runs. Resolved per spawn,
     never persisted — the same shape as the model/effort overrides."""
-    host: str   # "local" or a `hosts:` key
+
+    host: str  # "local" or a `hosts:` key
     cwd: str
 
     @property

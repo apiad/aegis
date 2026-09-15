@@ -6,6 +6,7 @@ arrival pattern: a burst of tool calls, a pause, then text. The pure half
 (``sanitize``, ``steps_from``) is what the tests cover; ``record_fixture``
 is the part that talks to the real CLI.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,11 +22,14 @@ RECORD_PROMPT = (
     "Read notes.md in this directory. Then write a detailed markdown "
     "explanation, about 700 words, of how a terminal user interface decides "
     "what to redraw on each frame. Use headings, a bulleted list, a table "
-    "and one python code block.")
+    "and one python code block."
+)
 
-_NOTES = ("Terminal UIs keep a model of the screen and diff it against the "
-          "previous frame. Synchronized output (DEC mode 2026) lets the "
-          "terminal present a frame atomically.\n")
+_NOTES = (
+    "Terminal UIs keep a model of the screen and diff it against the "
+    "previous frame. Synchronized output (DEC mode 2026) lets the "
+    "terminal present a frame atomically.\n"
+)
 
 # Only the line types a replay feeds aegis. The fake writes system/init
 # and result itself, per turn; anything else (a recorded rate_limit_event,
@@ -52,8 +56,9 @@ def sanitize(line: dict, work: str, home: str | None = None) -> dict | None:
     return json.loads(text)
 
 
-def steps_from(timed: list[tuple[float, dict]], work: str,
-               home: str | None = None) -> list[dict]:
+def steps_from(
+    timed: list[tuple[float, dict]], work: str, home: str | None = None
+) -> list[dict]:
     """Replay steps from ``(delay_ms, line)`` pairs.
 
     A dropped line's delay is carried into the next kept step, so the gap
@@ -69,15 +74,22 @@ def steps_from(timed: list[tuple[float, dict]], work: str,
         if clean is None:
             continue
         cap = CAP_MS if steps else FIRST_CAP_MS
-        steps.append({"dt_ms": round(min(carried, cap), 1), "mark": True,
-                      "line": clean})
+        steps.append(
+            {"dt_ms": round(min(carried, cap), 1), "mark": True, "line": clean}
+        )
         carried = 0.0
     return steps
 
 
-def record_fixture(out: Path, *, partial: bool, prompt: str = RECORD_PROMPT,
-                   model: str = "sonnet", claude: str = "claude",
-                   timeout_s: float = 600) -> int:
+def record_fixture(
+    out: Path,
+    *,
+    partial: bool,
+    prompt: str = RECORD_PROMPT,
+    model: str = "sonnet",
+    claude: str = "claude",
+    timeout_s: float = 600,
+) -> int:
     """Run the real ``claude`` once on ``prompt`` and write ``out``.
 
     Raises ``BenchError`` rather than writing a fixture when the session
@@ -87,18 +99,34 @@ def record_fixture(out: Path, *, partial: bool, prompt: str = RECORD_PROMPT,
     work = tempfile.mkdtemp(prefix="aegis-bench-record-")
     try:
         Path(work, "notes.md").write_text(_NOTES)
-        argv = [claude, "-p", "--input-format", "stream-json",
-                "--output-format", "stream-json", "--verbose",
-                "--model", model, "--permission-mode", "bypassPermissions",
-                "--setting-sources", "", "--strict-mcp-config",
-                "--mcp-config", json.dumps({"mcpServers": {}})]
+        argv = [
+            claude,
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--model",
+            model,
+            "--permission-mode",
+            "bypassPermissions",
+            "--setting-sources",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            json.dumps({"mcpServers": {}}),
+        ]
         if partial:
             argv.append("--include-partial-messages")
-        proc = subprocess.Popen(argv, cwd=work, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            argv, cwd=work, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+        )
         assert proc.stdin is not None and proc.stdout is not None
-        proc.stdin.write(json.dumps({"type": "user", "message": {
-            "role": "user", "content": prompt}}) + "\n")
+        proc.stdin.write(
+            json.dumps({"type": "user", "message": {"role": "user", "content": prompt}})
+            + "\n"
+        )
         proc.stdin.flush()
         timed: list[tuple[float, dict]] = []
         result: dict | None = None
@@ -124,16 +152,15 @@ def record_fixture(out: Path, *, partial: bool, prompt: str = RECORD_PROMPT,
             proc.kill()
             proc.wait()
         if result is None:
-            raise BenchError("claude ended without a result; no fixture "
-                             "written")
+            raise BenchError("claude ended without a result; no fixture written")
         if result.get("is_error"):
-            raise BenchError(f"claude reported an error: "
-                             f"{str(result.get('result'))[:300]}")
+            raise BenchError(
+                f"claude reported an error: {str(result.get('result'))[:300]}"
+            )
         steps = steps_from(timed, work, home=str(Path.home()))
         out = Path(out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("".join(json.dumps(s, ensure_ascii=False) + "\n"
-                               for s in steps))
+        out.write_text("".join(json.dumps(s, ensure_ascii=False) + "\n" for s in steps))
         return len(steps)
     finally:
         shutil.rmtree(work, ignore_errors=True)

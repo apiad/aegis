@@ -1,4 +1,5 @@
 """Feature detection for the optional voice extra (`aegis[voice]`)."""
+
 from __future__ import annotations
 
 import importlib
@@ -33,5 +34,7 @@ def unavailable_reason() -> str:
     missing = _missing()
     if not missing:
         return ""
-    return (f"voice input needs {', '.join(missing)} — "
-            f"install with `pip install aegis-harness[voice]`")
+    return (
+        f"voice input needs {', '.join(missing)} — "
+        f"install with `pip install aegis-harness[voice]`"
+    )

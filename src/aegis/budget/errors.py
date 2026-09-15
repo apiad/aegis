@@ -1,4 +1,5 @@
 """Typed exceptions for budget rejection."""
+
 from __future__ import annotations
 
 from aegis.budget.evaluator import Decision
@@ -16,5 +17,6 @@ class BudgetExceeded(Exception):
         self.decision = decision
         binding = ", ".join(
             f"{c.spent}/{c.limit} {c.constraint} in {c.window_str}"
-            for c in decision.blocked_by)
+            for c in decision.blocked_by
+        )
         super().__init__(f"queue {queue!r} over budget: {binding}")

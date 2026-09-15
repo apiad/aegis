@@ -3,16 +3,21 @@
 Pure: no I/O, no connection, no side effects. The precedence rules are
 the whole content of this module and they are tested exhaustively.
 """
+
 from __future__ import annotations
 
 from aegis.hosts.errors import HostError
 from aegis.hosts.models import HostSpec, Place
 
 
-def resolve_place(*, host: str | None, cwd: str | None,
-                  agent_host: str | None,
-                  hosts: dict[str, HostSpec],
-                  local_root: str) -> Place:
+def resolve_place(
+    *,
+    host: str | None,
+    cwd: str | None,
+    agent_host: str | None,
+    hosts: dict[str, HostSpec],
+    local_root: str,
+) -> Place:
     """Resolve where a session's harness will run.
 
     host: explicit spawn argument > agent profile default > "local".

@@ -3,6 +3,7 @@
 Single file at ``.aegis/state/workspace.json`` rewritten atomically on
 every tab change. Crash-survivable single source of truth.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,7 @@ class WorkspaceTab:
     profile: str
     order: int
     provider: str
-    session_id: str | None   # the harness's own conversation id
+    session_id: str | None  # the harness's own conversation id
     created_at: str
     # Identity of this tab's transcript on disk. Absent in workspaces
     # written before log ids existed, where the handle was the filename.
@@ -97,8 +98,9 @@ def save(state_dir_path: Path, ws: Workspace) -> None:
     target = state_dir_path / "workspace.json"
     # Atomic write: tmp file + rename, so a crash mid-write never leaves
     # a half-written workspace.json behind.
-    fd, tmp = tempfile.mkstemp(prefix=".workspace.", suffix=".tmp",
-                               dir=str(state_dir_path))
+    fd, tmp = tempfile.mkstemp(
+        prefix=".workspace.", suffix=".tmp", dir=str(state_dir_path)
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, separators=(",", ":"))
@@ -120,7 +122,8 @@ def load(state_dir_path: Path) -> Workspace | None:
     if not isinstance(raw, dict) or raw.get("version") != WORKSPACE_VERSION:
         raise WorkspaceVersionMismatch(
             f"workspace.json version mismatch (expected {WORKSPACE_VERSION}, "
-            f"got {raw.get('version') if isinstance(raw, dict) else '?'})")
+            f"got {raw.get('version') if isinstance(raw, dict) else '?'})"
+        )
     try:
         tabs = [
             WorkspaceTab(
@@ -164,8 +167,7 @@ def load(state_dir_path: Path) -> Workspace | None:
     return Workspace(tabs=tabs, terminals=terminals, files=files)
 
 
-def load_or_quarantine(
-        state_dir_path: Path) -> "tuple[Workspace | None, Path | None]":
+def load_or_quarantine(state_dir_path: Path) -> "tuple[Workspace | None, Path | None]":
     """Load the snapshot, surviving the two ways it can be unreadable.
 
     Returns the workspace and, when one was moved aside, the path it was

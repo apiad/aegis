@@ -5,6 +5,7 @@ cannot (gemini, opencode) and have to be asked politely and parsed
 tolerantly. ``parse_structured`` is that tolerant parse, shared rather than
 written four times.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,6 +30,7 @@ class Generation:
     rides along because ``/btw`` renders it: a side note is a paid call and
     the price should be visible.
     """
+
     value: BaseModel | None = None
     model: str = ""
     duration_ms: int = 0

@@ -17,19 +17,23 @@ class PersistedClaimLog:
 
     # --- record builders -------------------------------------------------
     def claimed(self, claim: Claim) -> dict[str, Any]:
-        return {"kind": "claimed", "claim_id": claim.claim_id,
-                "handle": claim.handle, "prefixes": sorted(claim.prefixes),
-                "files": sorted(claim.files), "intent": claim.intent,
-                "desc": claim.desc, "since": claim.since,
-                "host": claim.host}
+        return {
+            "kind": "claimed",
+            "claim_id": claim.claim_id,
+            "handle": claim.handle,
+            "prefixes": sorted(claim.prefixes),
+            "files": sorted(claim.files),
+            "intent": claim.intent,
+            "desc": claim.desc,
+            "since": claim.since,
+            "host": claim.host,
+        }
 
     def released(self, claim_id: str, handle: str, at: str) -> dict[str, Any]:
-        return {"kind": "released", "claim_id": claim_id,
-                "handle": handle, "at": at}
+        return {"kind": "released", "claim_id": claim_id, "handle": handle, "at": at}
 
     def reaped(self, claim_id: str, handle: str, at: str) -> dict[str, Any]:
-        return {"kind": "reaped", "claim_id": claim_id,
-                "handle": handle, "at": at}
+        return {"kind": "reaped", "claim_id": claim_id, "handle": handle, "at": at}
 
     def renamed(self, old: str, new: str, at: str) -> dict[str, Any]:
         return {"kind": "renamed", "old": old, "new": new, "at": at}
@@ -59,18 +63,22 @@ class PersistedClaimLog:
             if kind == "claimed":
                 cid = rec["claim_id"]
                 live[cid] = Claim(
-                    claim_id=cid, handle=rec["handle"],
+                    claim_id=cid,
+                    handle=rec["handle"],
                     prefixes=frozenset(rec.get("prefixes", [])),
                     files=frozenset(rec.get("files", [])),
                     intent=rec.get("intent", "shared"),
-                    desc=rec.get("desc", ""), since=rec.get("since", ""),
+                    desc=rec.get("desc", ""),
+                    since=rec.get("since", ""),
                     # A record with no host predates hosts entirely, which
                     # is to say: it was local.
-                    host=rec.get("host", "local"))
+                    host=rec.get("host", "local"),
+                )
             elif kind in ("released", "reaped"):
                 live.pop(rec.get("claim_id"), None)
             elif kind == "renamed":
                 from dataclasses import replace
+
                 old, new = rec.get("old"), rec.get("new")
                 for cid, c in list(live.items()):
                     if c.handle == old:

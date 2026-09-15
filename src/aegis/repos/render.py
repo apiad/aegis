@@ -8,6 +8,7 @@ own: **the narrowest tier truncates rather than being dropped.** ``fit_rows``
 answers "no tier fits" by omitting the segment, and a repo that vanished
 because its name was long reads exactly like a repo nobody has touched.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -79,8 +80,10 @@ def _churn(v: RepoView) -> tuple[str, str]:
     """
     if v.host != "local":
         return "", ""
-    return (f"+{v.state.added}" if v.state.added else "",
-            f"-{v.state.deleted}" if v.state.deleted else "")
+    return (
+        f"+{v.state.added}" if v.state.added else "",
+        f"-{v.state.deleted}" if v.state.deleted else "",
+    )
 
 
 def _peers(v: RepoView) -> tuple[str, ...]:
@@ -104,14 +107,15 @@ def row_tiers(v: RepoView, palette, namew: int, width: int) -> tuple[str, ...]:
     branch_part = f" [{b_style}]{branch}[/]" if branch else ""
 
     counts = _counts(v)
-    counts_part = f" [{dim if v.state.stale else palette.accent}]{counts}[/]" \
-        if counts else ""
+    counts_part = (
+        f" [{dim if v.state.stale else palette.accent}]{counts}[/]" if counts else ""
+    )
 
     added, deleted = _churn(v)
-    a_style, d_style = (dim, dim) if v.state.stale else (palette.ok,
-                                                         palette.err)
-    churn_part = (f" [{a_style}]{added}[/]" if added else "") + \
-        (f" [{d_style}]{deleted}[/]" if deleted else "")
+    a_style, d_style = (dim, dim) if v.state.stale else (palette.ok, palette.err)
+    churn_part = (f" [{a_style}]{added}[/]" if added else "") + (
+        f" [{d_style}]{deleted}[/]" if deleted else ""
+    )
 
     peers = _peers(v)
     peers_part = f"  [{dim}]{' '.join(peers)}[/]" if peers else ""
@@ -134,10 +138,11 @@ def row_tiers(v: RepoView, palette, namew: int, width: int) -> tuple[str, ...]:
     # truncating to nothing.
     if width > 0:
         floor_name = truncate_cells(label, max(width - 2, 1))
-        tiers.append(f"[{style}]{MINE if v.mine else THEIRS}[/] "
-                     f"[{name_style}]{floor_name}[/]" if name_style
-                     else f"[{style}]{MINE if v.mine else THEIRS}[/] "
-                          f"{floor_name}")
+        tiers.append(
+            f"[{style}]{MINE if v.mine else THEIRS}[/] [{name_style}]{floor_name}[/]"
+            if name_style
+            else f"[{style}]{MINE if v.mine else THEIRS}[/] {floor_name}"
+        )
     # Consecutive duplicates (no peers, no counts, no branch) buy nothing.
     out: list[str] = []
     for t in tiers:
@@ -146,18 +151,19 @@ def row_tiers(v: RepoView, palette, namew: int, width: int) -> tuple[str, ...]:
     return tuple(out)
 
 
-def render_repos(views: Sequence[RepoView], palette,
-                 width: int) -> Text | None:
+def render_repos(views: Sequence[RepoView], palette, width: int) -> Text | None:
     """The rows of the REPOS section, or ``None`` when nothing is on the
     list. The heading is the caller's — composed in ``tui/sidebar.py``
     alongside every other section's."""
     if not views:
         return None
     namew = min(max(cell_len(v.label) for v in views), _NAME_CAP)
-    segs = [Segment(key=str(v.state.root),
-                    tiers=row_tiers(v, palette, namew, width),
-                    priority=0)
-            for v in views]
+    segs = [
+        Segment(
+            key=str(v.state.root), tiers=row_tiers(v, palette, namew, width), priority=0
+        )
+        for v in views
+    ]
     rows = fit_rows(segs, width)
     if not rows:
         return None

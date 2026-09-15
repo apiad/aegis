@@ -4,6 +4,7 @@ resume with per-subscription tail, and reconnect with exponential backoff.
 This module is pure (no Textual imports); the TUI wires callbacks through
 ``on_connection`` / observer registration on RemoteAgentSession.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,11 +17,15 @@ from websockets.exceptions import ConnectionClosed
 
 
 class AuthFailed(Exception): ...
+
+
 class RpcError(Exception): ...
+
+
 class ProtocolMismatch(Exception): ...
 
 
-PROTOCOL_MAJOR = 2   # bump in lockstep with wssession.PROTOCOL_VERSION
+PROTOCOL_MAJOR = 2  # bump in lockstep with wssession.PROTOCOL_VERSION
 
 
 class WsClient:
@@ -38,7 +43,7 @@ class WsClient:
         self._authed_once = False
         self._handlers: dict[str, list[Callable[[dict], None]]] = {}
         self._connection_handlers: list[Callable[[bool], None]] = []
-        self._subs: dict[str, int] = {}       # handle -> last_seq
+        self._subs: dict[str, int] = {}  # handle -> last_seq
         self._globals: set[str] = set()
 
     @property
@@ -62,7 +67,8 @@ class WsClient:
         if hello.get("protocol_version", 0) != PROTOCOL_MAJOR:
             raise ProtocolMismatch(
                 f"server protocol {hello.get('protocol_version')} "
-                f"!= client {PROTOCOL_MAJOR}")
+                f"!= client {PROTOCOL_MAJOR}"
+            )
         self._constants = hello.get("constants", {})
         self._authed_once = True
         self._reader = asyncio.create_task(self._read_loop())
@@ -75,9 +81,16 @@ class WsClient:
         rid = self._next_id = self._next_id + 1
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
-        await self._ws.send(json.dumps({
-            "type": "rpc", "id": rid, "method": method, "params": params or {},
-        }))
+        await self._ws.send(
+            json.dumps(
+                {
+                    "type": "rpc",
+                    "id": rid,
+                    "method": method,
+                    "params": params or {},
+                }
+            )
+        )
         return await fut
 
     def on_connection(self, fn: Callable[[bool], None]) -> None:
@@ -97,12 +110,13 @@ class WsClient:
     def last_seq(self, handle: str) -> int:
         return self._subs.get(handle, 0)
 
-    async def subscribe_session(self, handle: str, *,
-                                tail: int | None = None) -> None:
+    async def subscribe_session(self, handle: str, *, tail: int | None = None) -> None:
         assert self._ws is not None
         self._subs.setdefault(handle, 0)
-        frame: dict = {"type": "subscribe",
-                       "target": {"kind": "session", "handle": handle}}
+        frame: dict = {
+            "type": "subscribe",
+            "target": {"kind": "session", "handle": handle},
+        }
         if tail is not None:
             frame["tail"] = tail
         await self._ws.send(json.dumps(frame))
@@ -110,16 +124,20 @@ class WsClient:
     async def subscribe_global(self, stream: str) -> None:
         assert self._ws is not None
         self._globals.add(stream)
-        await self._ws.send(json.dumps({
-            "type": "subscribe",
-            "target": {"kind": "global", "stream": stream}}))
+        await self._ws.send(
+            json.dumps(
+                {"type": "subscribe", "target": {"kind": "global", "stream": stream}}
+            )
+        )
 
     async def unsubscribe_session(self, handle: str) -> None:
         assert self._ws is not None
         self._subs.pop(handle, None)
-        await self._ws.send(json.dumps({
-            "type": "unsubscribe",
-            "target": {"kind": "session", "handle": handle}}))
+        await self._ws.send(
+            json.dumps(
+                {"type": "unsubscribe", "target": {"kind": "session", "handle": handle}}
+            )
+        )
 
     async def close(self) -> None:
         self._closed = True
@@ -153,8 +171,7 @@ class WsClient:
             except OSError:
                 continue
             try:
-                await self._ws.send(json.dumps({"type": "auth",
-                                                "token": self._token}))
+                await self._ws.send(json.dumps({"type": "auth", "token": self._token}))
                 hello = json.loads(await self._ws.recv())
                 if hello.get("type") != "hello":
                     await self._ws.close()
@@ -163,13 +180,18 @@ class WsClient:
                 continue
             self._constants = hello.get("constants", self._constants)
             # Send resume with recorded subscriptions + tail
-            await self._ws.send(json.dumps({
-                "type": "resume",
-                "subscriptions": [
-                    {"handle": h, "last_seq": s, "tail": self._default_tail}
-                    for h, s in self._subs.items()],
-                "globals": list(self._globals),
-            }))
+            await self._ws.send(
+                json.dumps(
+                    {
+                        "type": "resume",
+                        "subscriptions": [
+                            {"handle": h, "last_seq": s, "tail": self._default_tail}
+                            for h, s in self._subs.items()
+                        ],
+                        "globals": list(self._globals),
+                    }
+                )
+            )
             self._emit_connection(True)
             self._reader = asyncio.create_task(self._read_loop())
             return
@@ -189,8 +211,9 @@ class WsClient:
             if rid is not None:
                 fut = self._pending.pop(rid, None)
                 if fut and not fut.done():
-                    fut.set_exception(RpcError(
-                        msg.get("message") or msg.get("code") or "error"))
+                    fut.set_exception(
+                        RpcError(msg.get("message") or msg.get("code") or "error")
+                    )
         elif t == "stream":
             handle = msg.get("handle")
             seq = msg.get("seq")
@@ -200,7 +223,7 @@ class WsClient:
                 try:
                     fn(msg)
                 except Exception:
-                    pass    # observer errors never break the read loop
+                    pass  # observer errors never break the read loop
 
     def _fail_pending(self, reason: str) -> None:
         for fut in self._pending.values():

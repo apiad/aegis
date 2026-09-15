@@ -8,6 +8,7 @@ Auxiliary planes (queues, canvas, terminals, groups, workflow, scheduler)
 are not yet exposed over the WS protocol; accessing them raises
 ``RemoteUnsupportedError``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,8 +68,7 @@ class RemoteAgentSession:
         self._inbox_obs.append(cb)
 
     async def deliver(self, msg) -> _Delivery:
-        r = await self._ws.rpc("deliver", {"handle": self.handle,
-                                            "message": msg.body})
+        r = await self._ws.rpc("deliver", {"handle": self.handle, "message": msg.body})
         return _Delivery(disposition=r["delivery"], depth=r["depth"])
 
 
@@ -85,9 +85,11 @@ class RemotePaneCore:
     stream frames arrive via the registered state observer.
     """
 
-    def __init__(self, remote_session: RemoteAgentSession, ws: WsClient,
-                 agent_slug: str) -> None:
+    def __init__(
+        self, remote_session: RemoteAgentSession, ws: WsClient, agent_slug: str
+    ) -> None:
         from aegis.tui.state import AgentState
+
         self._remote = remote_session
         self._ws = ws
         self.handle = remote_session.handle
@@ -96,6 +98,7 @@ class RemotePaneCore:
         self.spawned_by: str | None = None
         # Minimal metrics stub so refresh_metrics() doesn't crash.
         from types import SimpleNamespace
+
         self.metrics = SimpleNamespace(render=lambda _t: "")
         # Dispatch observer list (no-op — remote has no local queue dispatch).
         self._dispatch_obs: list[Callable] = []
@@ -113,11 +116,13 @@ class RemotePaneCore:
         # We also update self.state so ConversationPane.state property stays live.
         def _wrapped(state_str, metrics):
             from aegis.tui.state import AgentState
+
             try:
                 self.state = AgentState(state_str)
             except (ValueError, TypeError):
                 pass
             cb(state_str, metrics)
+
         self._remote.add_state_observer(_wrapped)
 
     def add_inbox_observer(self, cb: Callable) -> None:
@@ -136,8 +141,9 @@ class RemotePaneCore:
 
     async def interrupt(self, *, drain: bool = True) -> None:
         try:
-            await self._ws.rpc("interrupt_session",
-                               {"handle": self.handle, "drain": drain})
+            await self._ws.rpc(
+                "interrupt_session", {"handle": self.handle, "drain": drain}
+            )
         except Exception:  # noqa: BLE001
             pass
 
@@ -145,6 +151,7 @@ class RemotePaneCore:
         """Direct send (opening prompt path). Not used for remote — all
         messages flow through deliver(). No-op guard so _submit doesn't crash."""
         from aegis.queue import InboxMessage, now_iso, sender_user
+
         msg = InboxMessage(sender=sender_user(), timestamp=now_iso(), body=text)
         await self.deliver(msg)
 
@@ -214,15 +221,19 @@ class RemoteSessionManager:
     # AppBridge conversation-loop methods
     # ------------------------------------------------------------------
 
-    async def spawn(self, profile: str, *,
-                    handle: str | None = None,
-                    opening_prompt: str | None = None,
-                    spawned_by: str | None = None,
-                    model: str | None = None,
-                    effort: str | None = None,
-                    prompt: str | None = None,
-                    host: str | None = None,
-                    cwd: str | None = None) -> str:
+    async def spawn(
+        self,
+        profile: str,
+        *,
+        handle: str | None = None,
+        opening_prompt: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
         # Execution hosts are resolved by whoever owns the sessions, and in
         # remote mode that is the serve we are attached to, not us. Its
         # `hosts:` config is the one that counts, and the WS protocol has
@@ -231,7 +242,8 @@ class RemoteSessionManager:
         if host is not None or cwd is not None:
             raise RemoteUnsupportedError(
                 f"host/cwd placement: {_MSG} Configure `hosts:` on the "
-                f"remote aegis and spawn there instead.")
+                f"remote aegis and spawn there instead."
+            )
         params: dict = {"agent_profile": profile}
         if handle is not None:
             params["handle"] = handle
@@ -242,12 +254,16 @@ class RemoteSessionManager:
         r = await self._ws.rpc("spawn_session", params)
         return r["handle"]
 
-    async def fork(self, target: str, *,
-                   prompt: str | None = None,
-                   slug: str | None = None,
-                   model: str | None = None,
-                   effort: str | None = None,
-                   forked_by: str | None = None) -> str:
+    async def fork(
+        self,
+        target: str,
+        *,
+        prompt: str | None = None,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        forked_by: str | None = None,
+    ) -> str:
         """Not in the WS protocol yet — a fork needs the server to reach
         its own driver, which v1 does not expose."""
         raise RemoteUnsupportedError(f"fork: {_MSG}")
@@ -260,8 +276,9 @@ class RemoteSessionManager:
         # needs an RPC, not a local read of a log this host does not have.
         raise RemoteUnsupportedError(f"side_note: {_MSG}")
 
-    async def peer_ask(self, from_handle: str, target: str, prompt: str,
-                       *, cc: bool = False):
+    async def peer_ask(
+        self, from_handle: str, target: str, prompt: str, *, cc: bool = False
+    ):
         # The peer's session lives on the server, not here — its turn has
         # to be armed and awaited where the session actually runs, so a
         # remote @peer needs an RPC, not a local deliver to a session this
@@ -274,32 +291,32 @@ class RemoteSessionManager:
         self._infos.pop(handle, None)
 
     async def interrupt(self, handle: str, *, drain: bool = True) -> None:
-        await self._ws.rpc("interrupt_session",
-                           {"handle": handle, "drain": drain})
+        await self._ws.rpc("interrupt_session", {"handle": handle, "drain": drain})
 
-    async def handoff(self, from_handle: str, target_handle: str,
-                      context: str) -> str:
-        r = await self._ws.rpc("handoff", {
-            "from_handle": from_handle,
-            "target_handle": target_handle,
-            "context": context,
-        })
+    async def handoff(self, from_handle: str, target_handle: str, context: str) -> str:
+        r = await self._ws.rpc(
+            "handoff",
+            {
+                "from_handle": from_handle,
+                "target_handle": target_handle,
+                "context": context,
+            },
+        )
         return r["result"]
 
-    async def rename_handle(self, old: str, new: str,
-                            title: str | None = None, *,
-                            by: str = "agent") -> dict:
+    async def rename_handle(
+        self, old: str, new: str, title: str | None = None, *, by: str = "agent"
+    ) -> dict:
         # `by` rides the wire: the far side is what owns the session, so it
         # is the far side that has to raise the rename notice.
-        return await self._ws.rpc("rename_handle", {"old": old, "new": new,
-                                                    "title": title,
-                                                    "by": by})
+        return await self._ws.rpc(
+            "rename_handle", {"old": old, "new": new, "title": title, "by": by}
+        )
 
-    async def set_title(self, handle: str, title: str, *,
-                        source: str) -> dict:
-        return await self._ws.rpc("set_title", {"handle": handle,
-                                                "title": title,
-                                                "source": source})
+    async def set_title(self, handle: str, title: str, *, source: str) -> dict:
+        return await self._ws.rpc(
+            "set_title", {"handle": handle, "title": title, "source": source}
+        )
 
     def list_sessions(self) -> list[SessionInfo]:
         return list(self._infos.values())
@@ -348,8 +365,9 @@ class RemoteSessionManager:
             title=si.get("title", ""),
         )
         self._infos[info.handle] = info
-        self._sessions.setdefault(info.handle,
-                                   RemoteAgentSession(info.handle, self._ws))
+        self._sessions.setdefault(
+            info.handle, RemoteAgentSession(info.handle, self._ws)
+        )
 
     def _on_event(self, fr: dict) -> None:
         sess = self._sessions.get(fr.get("handle", ""))

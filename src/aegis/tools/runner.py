@@ -1,4 +1,5 @@
 """Tool invocation wrapper with timeout + JSONL logging."""
+
 from __future__ import annotations
 
 import asyncio
@@ -43,20 +44,34 @@ async def invoke_tool(
         _log(log_path, status="timeout", entry=entry, started=started, kwargs=kwargs)
         raise ToolTimeout(f"tool {entry.name!r} exceeded {entry.timeout}s")
     except Exception as exc:
-        _log(log_path, status="exception", entry=entry, started=started,
-             kwargs=kwargs, error=f"{type(exc).__name__}: {exc}")
+        _log(
+            log_path,
+            status="exception",
+            entry=entry,
+            started=started,
+            kwargs=kwargs,
+            error=f"{type(exc).__name__}: {exc}",
+        )
         raise
 
 
 def _log(
-    path: Path, *, status: str, entry: ToolEntry, started: float,
-    kwargs: dict[str, Any], error: str | None = None,
+    path: Path,
+    *,
+    status: str,
+    entry: ToolEntry,
+    started: float,
+    kwargs: dict[str, Any],
+    error: str | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rec = {
-        "ts": time.time(), "duration": time.time() - started,
-        "tool": entry.name, "qualname": entry.qualname,
-        "status": status, "kwargs": _safe_repr(kwargs),
+        "ts": time.time(),
+        "duration": time.time() - started,
+        "tool": entry.name,
+        "qualname": entry.qualname,
+        "status": status,
+        "kwargs": _safe_repr(kwargs),
     }
     if error is not None:
         rec["error"] = error

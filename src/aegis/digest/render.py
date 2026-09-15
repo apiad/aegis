@@ -1,4 +1,5 @@
 """TurnFacts as the text block a prompt embeds. Pure."""
+
 from __future__ import annotations
 
 from aegis.digest.models import TurnFacts
@@ -18,23 +19,27 @@ def render_facts(facts: TurnFacts) -> str:
         lines.append(f"(facts incomplete: {facts.error})")
     for repo in facts.repos:
         if not repo.available:
-            lines.append(f"{repo.name}@{repo.host}: not inspected "
-                         f"(off-host)")
+            lines.append(f"{repo.name}@{repo.host}: not inspected (off-host)")
             continue
-        head = (f"{repo.name}: {len(repo.commits)} commit"
-                f"{'' if len(repo.commits) == 1 else 's'}")
+        head = (
+            f"{repo.name}: {len(repo.commits)} commit"
+            f"{'' if len(repo.commits) == 1 else 's'}"
+        )
         if repo.files_written:
-            head += (f", {repo.files_written} file"
-                     f"{'' if repo.files_written == 1 else 's'} written")
+            head += (
+                f", {repo.files_written} file"
+                f"{'' if repo.files_written == 1 else 's'} written"
+            )
         lines.append(head)
         for c in repo.commits[:MAX_COMMITS_SHOWN]:
             lines.append(f"  {c.sha} {c.subject}")
         if len(repo.commits) > MAX_COMMITS_SHOWN:
-            lines.append(f"  … and {len(repo.commits) - MAX_COMMITS_SHOWN}"
-                         f" more")
+            lines.append(f"  … and {len(repo.commits) - MAX_COMMITS_SHOWN} more")
     if facts.plan_total:
-        lines.append(f"plan: {facts.plan_done}/{facts.plan_total} done "
-                     f"(+{facts.plan_done_delta} this turn)")
+        lines.append(
+            f"plan: {facts.plan_done}/{facts.plan_total} done "
+            f"(+{facts.plan_done_delta} this turn)"
+        )
     if len(lines) == 1:
         lines.append("no commits, no files written, no plan movement")
     lines.append("--- end ---")

@@ -6,6 +6,7 @@ vocabulary — and are ALWAYS space-separated. They are East Asian
 Ambiguous width: Rich measures them as one cell, many terminals draw the
 glyph wider, and adjacent circles visibly overlap.
 """
+
 from __future__ import annotations
 
 from rich.cells import cell_len, set_cell_size
@@ -25,7 +26,7 @@ _STRIP_LABEL = "tasks: "
 # is what every row lines its right edge up on, so it is a constant and
 # the label gets whatever is left.
 _CLOCK_W = 6
-_ROW_CHROME = 3 + _CLOCK_W      # glyph, the two spaces, the clock
+_ROW_CHROME = 3 + _CLOCK_W  # glyph, the two spaces, the clock
 
 
 def _fit(text: str, cells: int) -> str:
@@ -67,9 +68,13 @@ def _glyph(task, working: bool, frame: int) -> str:
 
 
 def _style(task, colors):
-    return (colors.ok if task.status == "completed"
-            else colors.accent if task.status == "in_progress"
-            else colors.muted)
+    return (
+        colors.ok
+        if task.status == "completed"
+        else colors.accent
+        if task.status == "in_progress"
+        else colors.muted
+    )
 
 
 def _window(state: PlanState, cap: int) -> tuple[list, bool, bool]:
@@ -78,15 +83,20 @@ def _window(state: PlanState, cap: int) -> tuple[list, bool, bool]:
     tasks = list(state.tasks)
     if len(tasks) <= cap:
         return tasks, False, False
-    cur = next((i for i, t in enumerate(tasks)
-                if t.status == "in_progress"), 0)
+    cur = next((i for i, t in enumerate(tasks) if t.status == "in_progress"), 0)
     start = max(0, min(cur - cap // 2, len(tasks) - cap))
-    return tasks[start:start + cap], start > 0, start + cap < len(tasks)
+    return tasks[start : start + cap], start > 0, start + cap < len(tasks)
 
 
-def render_plan_strip(state: PlanState, colors, *, working: bool = False,
-                      frame: int = 0, cap: int = 12,
-                      width: int | None = None) -> Text:
+def render_plan_strip(
+    state: PlanState,
+    colors,
+    *,
+    working: bool = False,
+    frame: int = 0,
+    cap: int = 12,
+    width: int | None = None,
+) -> Text:
     """One line: circle strip, count, current task, working clock.
 
     One circle per task rather than a fixed-width bar, because a plan is a
@@ -109,7 +119,7 @@ def render_plan_strip(state: PlanState, colors, *, working: bool = False,
         out.append("…", style=colors.muted)
     for i, task in enumerate(window):
         if i:
-            out.append(" ")     # never adjacent — see the module docstring
+            out.append(" ")  # never adjacent — see the module docstring
         out.append(_glyph(task, working, frame), style=_style(task, colors))
     if right:
         out.append("…", style=colors.muted)
@@ -121,8 +131,10 @@ def render_plan_strip(state: PlanState, colors, *, working: bool = False,
             # Everything ahead of the label is already in `out`, so measure
             # it rather than re-deriving it — the separator and the clock
             # are all that still have to fit.
-            label = _fit(label, width - cell_len(out.plain)
-                         - cell_len(" · ") - 1 - cell_len(clock))
+            label = _fit(
+                label,
+                width - cell_len(out.plain) - cell_len(" · ") - 1 - cell_len(clock),
+            )
         if label:
             out.append(" · ", style=colors.muted)
             out.append(label, style=colors.ink)
@@ -130,38 +142,43 @@ def render_plan_strip(state: PlanState, colors, *, working: bool = False,
     return out
 
 
-def _dock_row(out: Text, task, colors, working: bool, frame: int,
-              label_w: int, indent: str) -> None:
+def _dock_row(
+    out: Text, task, colors, working: bool, frame: int, label_w: int, indent: str
+) -> None:
     out.append(indent)
     out.append(_glyph(task, working, frame), style=_style(task, colors))
     label = set_cell_size(_fit(task.label, label_w), label_w)
     out.append(f" {label} ", style=colors.ink)
-    out.append(f"{fmt_working(task.working_s):>{_CLOCK_W}}\n",
-               style=colors.muted)
+    out.append(f"{fmt_working(task.working_s):>{_CLOCK_W}}\n", style=colors.muted)
 
 
-def render_plan_dock(state: PlanState, colors, *, working: bool = False,
-                     frame: int = 0, width: int = 24,
-                     subplans: dict | None = None) -> Text:
+def render_plan_dock(
+    state: PlanState,
+    colors,
+    *,
+    working: bool = False,
+    frame: int = 0,
+    width: int = 24,
+    subplans: dict | None = None,
+) -> Text:
     """One row per task: glyph, label, working time. Subagent plans nest
     beneath their own header — that is what makes a fan-out legible, since
     it shows which of several parallel agents is still grinding."""
     if not state and not subplans:
         return Text("(no plan)", style=colors.muted)
     out = Text()
-    out.append(f"tasks {state.done}/{state.total}\n",
-               style=f"bold {colors.accent}")
+    out.append(f"tasks {state.done}/{state.total}\n", style=f"bold {colors.accent}")
     label_w = max(8, width - _ROW_CHROME)
     for task in state.tasks:
         _dock_row(out, task, colors, working, frame, label_w, indent="")
     for sub in (subplans or {}).values():
         if not sub:
             continue
-        out.append(f"  └ subagent {sub.done}/{sub.total}\n",
-                   style=colors.muted)
+        out.append(f"  └ subagent {sub.done}/{sub.total}\n", style=colors.muted)
         for task in sub.tasks:
             # The four indent columns come out of the label, so a nested
             # row lands on the same right edge as a top-level one.
-            _dock_row(out, task, colors, working, frame,
-                      max(6, label_w - 4), indent="    ")
+            _dock_row(
+                out, task, colors, working, frame, max(6, label_w - 4), indent="    "
+            )
     return out

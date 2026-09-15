@@ -4,6 +4,7 @@ Slice 6: read-only render. Slice 7 adds add/remove modals. Slice 8
 wires reload-on-disk-change so a side-terminal `aegis config` write
 reflects here in real time.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -66,6 +67,7 @@ class AddAgentModal(ModalScreen[bool]):
     @staticmethod
     def _load_harnesses(root: Path) -> dict:
         from aegis.config.harnesses import merge_harnesses
+
         try:
             return _load_yaml_config(root).harnesses
         except Exception:  # noqa: BLE001
@@ -79,35 +81,53 @@ class AddAgentModal(ModalScreen[bool]):
         first_harness = next(iter(sorted(self._harnesses)), "claude-code")
         first_driver = self._driver_for(first_harness)
         with Vertical(id="agm-box"):
-            yield Label("Add agent — Ctrl+S save, Esc cancel",
-                        markup=False)
+            yield Label("Add agent — Ctrl+S save, Esc cancel", markup=False)
             yield Label("slug")
             yield Input(placeholder="e.g. main", id="agm-slug")
             yield Label("harness")
             yield Select(
                 _harness_options(self._harnesses),
-                value=first_harness, allow_blank=False, id="agm-provider")
+                value=first_harness,
+                allow_blank=False,
+                id="agm-provider",
+            )
             yield Label("model")
             yield Select(
                 _model_options(first_driver),
                 value=_default_model_value(first_driver),
-                allow_blank=False, id="agm-model")
-            yield Input(placeholder="custom model name "
-                        "(e.g. claude-opus-4-7 or vendor/model)",
-                        id="agm-model-custom")
+                allow_blank=False,
+                id="agm-model",
+            )
+            yield Input(
+                placeholder="custom model name (e.g. claude-opus-4-7 or vendor/model)",
+                id="agm-model-custom",
+            )
             yield Label("effort (claude-code only)")
             yield Select(
-                [("low", "low"), ("medium", "medium"),
-                 ("high", "high"), ("max", "max")],
-                value="high", allow_blank=False, id="agm-effort")
+                [
+                    ("low", "low"),
+                    ("medium", "medium"),
+                    ("high", "high"),
+                    ("max", "max"),
+                ],
+                value="high",
+                allow_blank=False,
+                id="agm-effort",
+            )
             yield Label("permission")
             yield Select(
-                [("read", "read"), ("write", "write"),
-                 ("full", "full"), ("auto", "auto")],
-                value="auto", allow_blank=False, id="agm-permission")
+                [
+                    ("read", "read"),
+                    ("write", "write"),
+                    ("full", "full"),
+                    ("auto", "auto"),
+                ],
+                value="auto",
+                allow_blank=False,
+                id="agm-permission",
+            )
             yield Label("persona prompt (optional path)")
-            yield Input(placeholder=".aegis/personas/reviewer.md",
-                        id="agm-prompt")
+            yield Input(placeholder=".aegis/personas/reviewer.md", id="agm-prompt")
             yield Static("", id="agm-err", markup=False)
 
     def on_mount(self) -> None:
@@ -150,18 +170,25 @@ class AddAgentModal(ModalScreen[bool]):
             return
         model = custom if model_choice == CUSTOM_MODEL_OPTION else str(model_choice)
         if not model:
-            err.update("model is required (pick from the list or "
-                       "select <custom> and enter a model name)")
+            err.update(
+                "model is required (pick from the list or "
+                "select <custom> and enter a model name)"
+            )
             return
         # effort only applies to claude-code driver.
-        effort_arg = effort if self._driver_for(harness) == "claude-code" \
-            else None
+        effort_arg = effort if self._driver_for(harness) == "claude-code" else None
         try:
             from aegis.config.edit import add_agent
-            add_agent(self._root, slug,
-                      harness=harness, model=model,
-                      effort=effort_arg, permission=str(permission),
-                      prompt=prompt or None)
+
+            add_agent(
+                self._root,
+                slug,
+                harness=harness,
+                model=model,
+                effort=effort_arg,
+                permission=str(permission),
+                prompt=prompt or None,
+            )
         except ConfigError as e:
             err.update(str(e))
             return
@@ -171,8 +198,7 @@ class AddAgentModal(ModalScreen[bool]):
 def _harness_options(harnesses: dict) -> list[tuple[str, str]]:
     """Select options for the harness picker: ``(label, name)`` where the
     value is the harness name written to ``.aegis.yaml`` as ``harness:``."""
-    return [(f"{name} ({reg.driver})", name)
-            for name, reg in sorted(harnesses.items())]
+    return [(f"{name} ({reg.driver})", name) for name, reg in sorted(harnesses.items())]
 
 
 def _model_options(provider: str) -> list[tuple[str, str]]:
@@ -181,9 +207,8 @@ def _model_options(provider: str) -> list[tuple[str, str]]:
     is what ``Select.value`` returns and is also what gets written to
     ``.aegis.yaml``."""
     from aegis.models import models_for
-    out: list[tuple[str, str]] = [
-        (label, name) for name, label in models_for(provider)
-    ]
+
+    out: list[tuple[str, str]] = [(label, name) for name, label in models_for(provider)]
     out.append((CUSTOM_MODEL_OPTION, CUSTOM_MODEL_OPTION))
     return out
 
@@ -193,6 +218,7 @@ def _default_model_value(provider: str) -> str:
     for the provider, or ``<custom>`` if the provider has no registry
     entries yet."""
     from aegis.models import models_for
+
     entries = models_for(provider)
     if entries:
         return entries[0][0]
@@ -247,14 +273,14 @@ class ConfigPanel(Widget):
                 "    aegis config agent add main --provider claude-code "
                 "--model opus --effort high\n\n"
                 "or use the [+ Add agent] button below (slice 7).",
-                style="dim")
+                style="dim",
+            )
             return out
 
         try:
             cfg = _load_yaml_config(self._root)
         except ConfigError as e:
-            out.append(f"⚠ .aegis.yaml does not parse: {e}\n",
-                       style="bold red")
+            out.append(f"⚠ .aegis.yaml does not parse: {e}\n", style="bold red")
             return out
 
         out.append(self._render_summary_line(cfg))
@@ -274,11 +300,16 @@ class ConfigPanel(Widget):
 
     def _render_agents_panel(self, cfg) -> Text:
         if not cfg.agents:
-            return Text("AGENTS\n  (none — run `aegis config agent add …`)",
-                        style="dim")
-        table = Table(title="AGENTS", title_justify="left",
-                      title_style="bold",
-                      show_header=True, header_style="bold")
+            return Text(
+                "AGENTS\n  (none — run `aegis config agent add …`)", style="dim"
+            )
+        table = Table(
+            title="AGENTS",
+            title_justify="left",
+            title_style="bold",
+            show_header=True,
+            header_style="bold",
+        )
         table.add_column("slug")
         table.add_column("provider")
         table.add_column("model")
@@ -288,8 +319,9 @@ class ConfigPanel(Widget):
         for name, a in cfg.agents.items():
             is_default = "✓" if name == cfg.default_agent else ""
             effort = a.effort.value if a.harness == "claude-code" else "—"
-            table.add_row(name, a.harness, a.model, effort,
-                          a.permission.value, is_default)
+            table.add_row(
+                name, a.harness, a.model, effort, a.permission.value, is_default
+            )
         return _rich_to_text(table)
 
     def _render_queues_panel(self) -> Text:
@@ -299,9 +331,13 @@ class ConfigPanel(Widget):
             return Text(f"QUEUES\n  ⚠ {e}", style="red")
         if not queues:
             return Text("QUEUES\n  (none)", style="dim")
-        table = Table(title="QUEUES", title_justify="left",
-                      title_style="bold",
-                      show_header=True, header_style="bold")
+        table = Table(
+            title="QUEUES",
+            title_justify="left",
+            title_style="bold",
+            show_header=True,
+            header_style="bold",
+        )
         table.add_column("name")
         table.add_column("agent")
         table.add_column("max_parallel", justify="right")
@@ -309,12 +345,11 @@ class ConfigPanel(Widget):
         for name, q in queues.items():
             if q.budgets:
                 budgets = ", ".join(
-                    f"{b.constraint}:{b.limit}/{b.window_str}"
-                    for b in q.budgets)
+                    f"{b.constraint}:{b.limit}/{b.window_str}" for b in q.budgets
+                )
             else:
                 budgets = "—"
-            table.add_row(name, q.agent_profile,
-                          str(q.max_parallel), budgets)
+            table.add_row(name, q.agent_profile, str(q.max_parallel), budgets)
         return _rich_to_text(table)
 
     def _render_plugin_dirs_panel(self, cfg) -> Text:

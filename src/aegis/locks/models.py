@@ -7,12 +7,12 @@ from dataclasses import dataclass
 class Claim:
     claim_id: str
     handle: str
-    prefixes: frozenset[str]   # each ends with "/"
-    files: frozenset[str]      # exact paths, no trailing "/"
-    intent: str                # "shared" | "exclusive"
+    prefixes: frozenset[str]  # each ends with "/"
+    files: frozenset[str]  # exact paths, no trailing "/"
+    intent: str  # "shared" | "exclusive"
     desc: str
-    since: str                 # ISO-8601
-    host: str = "local"        # which machine these paths are on
+    since: str  # ISO-8601
+    host: str = "local"  # which machine these paths are on
 
 
 def _file_under_prefix(path: str, prefix: str) -> bool:

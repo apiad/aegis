@@ -12,6 +12,7 @@ fork inherits that dangling call.
 
 Spec: ``docs/superpowers/specs/2026-07-31-aegis-btw-side-note-design.md``
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -28,6 +29,7 @@ class BtwAnswer(BaseModel):
     signal instead of a guess: the model saying "the window did not contain
     this" beats it answering fluently from a window that did not.
     """
+
     answer: str
     needs_more: bool = False
 
@@ -35,9 +37,10 @@ class BtwAnswer(BaseModel):
 @dataclass(frozen=True)
 class SideNote:
     """One answered side question, and what it cost to answer."""
+
     answer: str = ""
     needs_more: bool = False
-    header: str = ""            # the window's own honest header
+    header: str = ""  # the window's own honest header
     model: str = ""
     duration_ms: int = 0
     cost_usd: float = 0.0
@@ -50,12 +53,16 @@ class SideNote:
     @property
     def footer(self) -> str:
         """The price, shown because a side note is a paid call."""
-        bits = [b for b in (
-            self.model,
-            f"{self.duration_ms / 1000:.1f}s" if self.duration_ms else "",
-            f"${self.cost_usd:.4f}" if self.cost_usd else "",
-            self.header,
-        ) if b]
+        bits = [
+            b
+            for b in (
+                self.model,
+                f"{self.duration_ms / 1000:.1f}s" if self.duration_ms else "",
+                f"${self.cost_usd:.4f}" if self.cost_usd else "",
+                self.header,
+            )
+            if b
+        ]
         return " · ".join(bits)
 
 
@@ -75,14 +82,15 @@ def generation_agent(fallback, agents: dict, root=None):
     # text_generation on it at all.
     from aegis.config import find_project_root
     from aegis.config.yaml_loader import load_config
+
     try:
         root = root or find_project_root()
         if root is not None:
             name = getattr(load_config(root), "text_generation", None)
             if name and name in agents:
                 return agents[name], False
-    except Exception:                                         # noqa: BLE001
-        pass          # a broken config must not cost you the side note
+    except Exception:  # noqa: BLE001
+        pass  # a broken config must not cost you the side note
     return fallback, True
 
 
@@ -95,8 +103,9 @@ _PREAMBLE = (
 )
 
 
-async def side_note(prompt: str, *, replay, driver, agent, cwd: str,
-                    facts=None, **window_opts) -> SideNote:
+async def side_note(
+    prompt: str, *, replay, driver, agent, cwd: str, facts=None, **window_opts
+) -> SideNote:
     """Answer ``prompt`` from ``replay``'s tail, in one call.
 
     ``facts`` is the turn's ``TurnFacts`` when the caller has them. The
@@ -124,21 +133,30 @@ async def side_note(prompt: str, *, replay, driver, agent, cwd: str,
     parts.append(f"The operator's side question: {prompt}")
     try:
         gen = await driver.generate_detailed(agent, cwd, BtwAnswer, *parts)
-    except Exception as e:                                    # noqa: BLE001
-        return SideNote(header=window.header,
-                        error=f"{type(e).__name__}: {e}")
+    except Exception as e:  # noqa: BLE001
+        return SideNote(header=window.header, error=f"{type(e).__name__}: {e}")
     if gen.value is None:
-        return SideNote(header=window.header, model=gen.model,
-                        duration_ms=gen.duration_ms, cost_usd=gen.cost_usd,
-                        error="the model returned nothing usable")
-    return SideNote(answer=gen.value.answer, needs_more=gen.value.needs_more,
-                    header=window.header, model=gen.model,
-                    duration_ms=gen.duration_ms, cost_usd=gen.cost_usd,
-                    ok=True)
+        return SideNote(
+            header=window.header,
+            model=gen.model,
+            duration_ms=gen.duration_ms,
+            cost_usd=gen.cost_usd,
+            error="the model returned nothing usable",
+        )
+    return SideNote(
+        answer=gen.value.answer,
+        needs_more=gen.value.needs_more,
+        header=window.header,
+        model=gen.model,
+        duration_ms=gen.duration_ms,
+        cost_usd=gen.cost_usd,
+        ok=True,
+    )
 
 
-async def side_note_for(prompt: str, *, state_dir, log_id: str, agent,
-                        agents: dict, cwd: str, facts=None) -> SideNote:
+async def side_note_for(
+    prompt: str, *, state_dir, log_id: str, agent, agents: dict, cwd: str, facts=None
+) -> SideNote:
     """Resolve a live session's transcript into an answered side note.
 
     The half both AppBridge implementations share: pick the billing
@@ -159,11 +177,13 @@ async def side_note_for(prompt: str, *, state_dir, log_id: str, agent,
     if not driver.supports_oneshot:
         return SideNote(
             error=f"the {gen_agent.harness} driver cannot do one-shot "
-                  f"generation — point `text_generation:` at one that can")
+            f"generation — point `text_generation:` at one that can"
+        )
     try:
         replay = await asyncio.to_thread(replay_events, state_dir, log_id)
-    except Exception as e:                                    # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         return SideNote(error=f"could not read the transcript: {e}")
-    note = await side_note(prompt, replay=replay, driver=driver,
-                           agent=gen_agent, cwd=cwd, facts=facts)
+    note = await side_note(
+        prompt, replay=replay, driver=driver, agent=gen_agent, cwd=cwd, facts=facts
+    )
     return replace(note, billed_to_session_profile=unset)

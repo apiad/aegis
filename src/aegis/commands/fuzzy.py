@@ -1,6 +1,7 @@
 """Pure fuzzy subsequence matcher for the command palette. Case-insensitive;
 scores contiguity and start-of-word matches higher; returns matched positions
 so the UI can bold them. No registry, no bridge, no UI."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -24,17 +25,19 @@ def fuzzy_match(query: str, candidate: str) -> tuple[float, tuple[int, ...]] | N
         if idx == -1:
             return None
         if idx == prev + 1:
-            score += 2.0                      # contiguous run
+            score += 2.0  # contiguous run
         if idx == 0 or not c[idx - 1].isalnum():
-            score += 3.0                      # start-of-word
+            score += 3.0  # start-of-word
         positions.append(idx)
         prev = idx
         ci = idx + 1
-    score -= len(candidate) * 0.01            # prefer shorter candidates
+    score -= len(candidate) * 0.01  # prefer shorter candidates
     return score, tuple(positions)
 
 
-def fuzzy_rank(query: str, items: list, key: Callable[[Any], str] = lambda x: x) -> list:
+def fuzzy_rank(
+    query: str, items: list, key: Callable[[Any], str] = lambda x: x
+) -> list:
     """Keep items whose ``key`` fuzzy-matches ``query``, sorted by score desc.
     Stable: equal scores preserve input order."""
     scored: list[tuple[float, int, Any]] = []

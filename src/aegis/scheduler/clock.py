@@ -4,6 +4,7 @@
 mutable "now" that tests advance with ``clock.advance(seconds=…)``
 or ``clock.advance(minutes=…)``.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone

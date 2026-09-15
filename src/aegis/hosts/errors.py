@@ -16,5 +16,4 @@ class RemoteLinkLost(HostError):
     def __init__(self, host: str, detail: str) -> None:
         self.host = host
         self.detail = detail
-        super().__init__(
-            f"link to {host} lost — {detail or 'no diagnostic output'}")
+        super().__init__(f"link to {host} lost — {detail or 'no diagnostic output'}")

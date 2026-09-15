@@ -15,6 +15,7 @@ filled from the caller's fallback, since a wrong guess only costs a
 failed ``drv.resume`` that the modal already reports, while dropping the
 row costs the conversation.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -23,7 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.events import (
-    AssistantText, AssistantThinking, SessionClosed, SessionMeta, SystemInit,
+    AssistantText,
+    AssistantThinking,
+    SessionClosed,
+    SessionMeta,
+    SystemInit,
     ToolUse,
 )
 from aegis.state.event_codec import decode_event
@@ -32,8 +37,8 @@ from aegis.state.session_log import parse_log_id
 
 @dataclass(frozen=True)
 class SessionHistoryRow:
-    log_id: str              # identity on disk; never changes
-    handle: str              # current display name; a rename moves this
+    log_id: str  # identity on disk; never changes
+    handle: str  # current display name; a rename moves this
     profile: str
     provider: str
     cwd: str
@@ -44,9 +49,9 @@ class SessionHistoryRow:
     session_id: str | None
     is_open: bool
     crash_inferred: bool
-    inferred: bool = False   # rebuilt from the log; had no SessionMeta
-    title: str = ""          # display label; "" when never set
-    title_source: str = ""   # "" | auto | agent | human
+    inferred: bool = False  # rebuilt from the log; had no SessionMeta
+    title: str = ""  # display label; "" when never set
+    title_source: str = ""  # "" | auto | agent | human
 
 
 @dataclass(frozen=True)
@@ -111,7 +116,7 @@ def _fold_file(path: Path) -> _Fold | None:
                     last_handle = ev.handle
                     if ev.preview and not preview:
                         preview = ev.preview
-                        has_content = True   # the user said something
+                        has_content = True  # the user said something
                     # Last *non-empty* wins, not simply last: a rename
                     # appends a header that re-derives every field, so a
                     # plain last-wins would blank a title the operator set
@@ -134,10 +139,18 @@ def _fold_file(path: Path) -> _Fold | None:
         return None
     if not saw_record:
         return None
-    return _Fold(meta=meta, last_handle=last_handle, first_ts=first_ts,
-                 last_ts=last_ts, closed_at=closed_at, session_id=session_id,
-                 preview=preview, has_content=has_content,
-                 title=title, title_source=title_source)
+    return _Fold(
+        meta=meta,
+        last_handle=last_handle,
+        first_ts=first_ts,
+        last_ts=last_ts,
+        closed_at=closed_at,
+        session_id=session_id,
+        preview=preview,
+        has_content=has_content,
+        title=title,
+        title_source=title_source,
+    )
 
 
 INDEX_NAME = "history_index.json"
@@ -182,49 +195,77 @@ def _load_index(state_dir_path: Path) -> dict:
 def _save_index(state_dir_path: Path, entries: dict) -> None:
     tmp = _index_path(state_dir_path).with_suffix(".json.tmp")
     tmp.write_text(
-        json.dumps({"version": INDEX_VERSION, "entries": entries}),
-        encoding="utf-8")
+        json.dumps({"version": INDEX_VERSION, "entries": entries}), encoding="utf-8"
+    )
     tmp.replace(_index_path(state_dir_path))
 
 
 def _fold_to_entry(fold: _Fold) -> dict:
     meta = fold.meta
     return {
-        "meta": None if meta is None else {
-            "handle": meta.handle, "profile": meta.profile,
-            "provider": meta.provider, "cwd": meta.cwd,
-            "created_at": meta.created_at, "origin": meta.origin,
+        "meta": None
+        if meta is None
+        else {
+            "handle": meta.handle,
+            "profile": meta.profile,
+            "provider": meta.provider,
+            "cwd": meta.cwd,
+            "created_at": meta.created_at,
+            "origin": meta.origin,
             "preview": meta.preview,
         },
         "last_handle": fold.last_handle,
-        "title": fold.title, "title_source": fold.title_source,
-        "first_ts": fold.first_ts, "last_ts": fold.last_ts,
-        "closed_at": fold.closed_at, "session_id": fold.session_id,
-        "preview": fold.preview, "has_content": fold.has_content,
+        "title": fold.title,
+        "title_source": fold.title_source,
+        "first_ts": fold.first_ts,
+        "last_ts": fold.last_ts,
+        "closed_at": fold.closed_at,
+        "session_id": fold.session_id,
+        "preview": fold.preview,
+        "has_content": fold.has_content,
     }
 
 
 def _entry_to_fold(entry: dict) -> "_Fold | None":
     try:
         m = entry.get("meta")
-        meta = None if m is None else SessionMeta(
-            handle=m["handle"], profile=m["profile"], provider=m["provider"],
-            cwd=m["cwd"], created_at=m["created_at"], origin=m["origin"],
-            preview=m.get("preview", ""))
+        meta = (
+            None
+            if m is None
+            else SessionMeta(
+                handle=m["handle"],
+                profile=m["profile"],
+                provider=m["provider"],
+                cwd=m["cwd"],
+                created_at=m["created_at"],
+                origin=m["origin"],
+                preview=m.get("preview", ""),
+            )
+        )
         return _Fold(
-            meta=meta, last_handle=entry["last_handle"],
-            first_ts=entry["first_ts"], last_ts=entry["last_ts"],
-            closed_at=entry["closed_at"], session_id=entry["session_id"],
-            preview=entry["preview"], has_content=entry["has_content"],
+            meta=meta,
+            last_handle=entry["last_handle"],
+            first_ts=entry["first_ts"],
+            last_ts=entry["last_ts"],
+            closed_at=entry["closed_at"],
+            session_id=entry["session_id"],
+            preview=entry["preview"],
+            has_content=entry["has_content"],
             title=entry.get("title", ""),
-            title_source=entry.get("title_source", ""))
+            title_source=entry.get("title_source", ""),
+        )
     except (KeyError, TypeError):
         return None
 
 
-def list_history(state_dir_path: Path, *, live_handles: set[str],
-                 limit: int = 500, fallback_profile: str = "",
-                 fallback_provider: str = "") -> list[SessionHistoryRow]:
+def list_history(
+    state_dir_path: Path,
+    *,
+    live_handles: set[str],
+    limit: int = 500,
+    fallback_profile: str = "",
+    fallback_provider: str = "",
+) -> list[SessionHistoryRow]:
     sessions_dir = state_dir_path / "sessions"
     if not sessions_dir.is_dir():
         return []
@@ -248,16 +289,21 @@ def list_history(state_dir_path: Path, *, live_handles: set[str],
         if fold is None:
             fold = _fold_file(p)
             dirty = True
-        fresh[p.name] = ({"stamp": stamp, **_fold_to_entry(fold)}
-                         if fold is not None else {"stamp": stamp,
-                                                   "meta": None,
-                                                   "last_handle": None,
-                                                   "first_ts": "",
-                                                   "last_ts": "",
-                                                   "closed_at": None,
-                                                   "session_id": None,
-                                                   "preview": "",
-                                                   "has_content": False})
+        fresh[p.name] = (
+            {"stamp": stamp, **_fold_to_entry(fold)}
+            if fold is not None
+            else {
+                "stamp": stamp,
+                "meta": None,
+                "last_handle": None,
+                "first_ts": "",
+                "last_ts": "",
+                "closed_at": None,
+                "session_id": None,
+                "preview": "",
+                "has_content": False,
+            }
+        )
         if fold is None or not fold.has_content:
             # A tab that was spawned and closed without a word is not a
             # conversation. Every boot opens a default tab, so without this
@@ -269,25 +315,27 @@ def list_history(state_dir_path: Path, *, live_handles: set[str],
         # Display the session's *current* name (the last header wins, and a
         # rename appends one), falling back to the name it was born with.
         handle = fold.last_handle or born_handle
-        created_at = (born_at or (meta.created_at if meta else fold.first_ts))
+        created_at = born_at or (meta.created_at if meta else fold.first_ts)
         is_open = handle in live_handles
-        rows.append(SessionHistoryRow(
-            log_id=log_id,
-            handle=handle,
-            profile=meta.profile if meta else fallback_profile,
-            provider=meta.provider if meta else fallback_provider,
-            cwd=meta.cwd if meta else "",
-            created_at=created_at,
-            closed_at=fold.closed_at,
-            last_activity_at=fold.last_ts or created_at,
-            preview=fold.preview,
-            session_id=fold.session_id,
-            is_open=is_open,
-            crash_inferred=(fold.closed_at is None and not is_open),
-            inferred=meta is None,
-            title=fold.title,
-            title_source=fold.title_source,
-        ))
+        rows.append(
+            SessionHistoryRow(
+                log_id=log_id,
+                handle=handle,
+                profile=meta.profile if meta else fallback_profile,
+                provider=meta.provider if meta else fallback_provider,
+                cwd=meta.cwd if meta else "",
+                created_at=created_at,
+                closed_at=fold.closed_at,
+                last_activity_at=fold.last_ts or created_at,
+                preview=fold.preview,
+                session_id=fold.session_id,
+                is_open=is_open,
+                crash_inferred=(fold.closed_at is None and not is_open),
+                inferred=meta is None,
+                title=fold.title,
+                title_source=fold.title_source,
+            )
+        )
     if dirty or len(fresh) != len(cached):
         # Best-effort: a read-only state dir must not break the listing.
         with contextlib.suppress(Exception):

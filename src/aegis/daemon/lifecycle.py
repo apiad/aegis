@@ -1,4 +1,5 @@
 """Starting a daemon, finding one, and reaping an idle one."""
+
 from __future__ import annotations
 
 import asyncio
@@ -108,8 +109,7 @@ class DaemonLock:
             self._fd = None
 
 
-def acquire_daemon_lock(roots: AegisRoots, *,
-                        wait_s: float = 0.0) -> DaemonLock | None:
+def acquire_daemon_lock(roots: AegisRoots, *, wait_s: float = 0.0) -> DaemonLock | None:
     """Take this root's daemon lock, or None when another process holds it.
 
     ``wait_s`` is for the daemon, which retries briefly: a client's
@@ -179,8 +179,15 @@ class IdleReaper:
     mid-use.
     """
 
-    def __init__(self, registry, manager, *, timeout_s: float,
-                 stop: asyncio.Event, interval_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        registry,
+        manager,
+        *,
+        timeout_s: float,
+        stop: asyncio.Event,
+        interval_s: float = 5.0,
+    ) -> None:
         self._registry = registry
         self._manager = manager
         self._timeout = timeout_s
@@ -193,7 +200,7 @@ class IdleReaper:
         try:
             return not self._manager.list_sessions()
         except Exception:  # noqa: BLE001
-            return False   # cannot tell => not idle; never reap on a guess
+            return False  # cannot tell => not idle; never reap on a guess
 
     async def run(self) -> None:
         if self._timeout <= 0:
@@ -224,11 +231,13 @@ def _spawn_detached(root: Path) -> None:
     # it. A daemon a person or systemd starts carries no such mark and is
     # therefore unstoppable from any TUI.
     subprocess.Popen(
-        [sys.executable, "-m", "aegis", "serve", "--cwd", str(root),
-         "--autostarted"],
-        cwd=str(root), start_new_session=True,
+        [sys.executable, "-m", "aegis", "serve", "--cwd", str(root), "--autostarted"],
+        cwd=str(root),
+        start_new_session=True,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 async def _connectable(path: Path) -> bool:
@@ -242,8 +251,7 @@ async def _connectable(path: Path) -> bool:
     return True
 
 
-async def ensure_daemon(root: Path, *, timeout_s: float = 20.0,
-                        preflight=None) -> Path:
+async def ensure_daemon(root: Path, *, timeout_s: float = 20.0, preflight=None) -> Path:
     """Return a connectable socket for ``root``, starting one if needed.
 
     Liveness is "the socket accepts a connection", not "the file exists":
@@ -286,4 +294,5 @@ async def ensure_daemon(root: Path, *, timeout_s: float = 20.0,
             return path
     raise SpawnFailed(
         f"daemon for {root} did not come up within {timeout_s:.0f}s; "
-        f"try `aegis serve --cwd {root}` in a terminal to see why")
+        f"try `aegis serve --cwd {root}` in a terminal to see why"
+    )

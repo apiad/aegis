@@ -17,6 +17,7 @@ When all three are tied we pick randomly among the equally-best
 options. If every alliterating pair is genuinely taken we fall back
 to ``<base>-2``, ``<base>-3``, ….
 """
+
 from __future__ import annotations
 
 import collections
@@ -28,21 +29,42 @@ import random
 # so we can always alliterate.
 LAUREATES: tuple[str, ...] = (
     "adleman",
-    "backus", "blum",
-    "cerf", "cook", "codd",
-    "diffie", "dijkstra",
+    "backus",
+    "blum",
+    "cerf",
+    "cook",
+    "codd",
+    "diffie",
+    "dijkstra",
     "engelbart",
     "floyd",
     "goldwasser",
-    "hopper", "hamming", "hellman", "hoare",
-    "knuth", "kahn", "karp", "kay",
-    "lamport", "liskov",
-    "milner", "mccarthy", "minsky", "micali",
-    "naur", "newell",
-    "pearl", "perlis",
-    "rivest", "ritchie", "rabin",
-    "shamir", "sutherland", "scott",
-    "tarjan", "thompson",
+    "hopper",
+    "hamming",
+    "hellman",
+    "hoare",
+    "knuth",
+    "kahn",
+    "karp",
+    "kay",
+    "lamport",
+    "liskov",
+    "milner",
+    "mccarthy",
+    "minsky",
+    "micali",
+    "naur",
+    "newell",
+    "pearl",
+    "perlis",
+    "rivest",
+    "ritchie",
+    "rabin",
+    "shamir",
+    "sutherland",
+    "scott",
+    "tarjan",
+    "thompson",
     "valiant",
     "wirth",
     "yao",
@@ -76,7 +98,8 @@ ADJECTIVES_BY_LETTER: dict[str, tuple[str, ...]] = {
 
 # Backward-compat flat union (some tests / external code may import).
 ADJECTIVES: tuple[str, ...] = tuple(
-    a for pool in ADJECTIVES_BY_LETTER.values() for a in pool)
+    a for pool in ADJECTIVES_BY_LETTER.values() for a in pool
+)
 
 
 def _split(handle: str) -> tuple[str, str] | None:
@@ -87,7 +110,8 @@ def _split(handle: str) -> tuple[str, str] | None:
 
 
 def generate_name(
-    taken: set[str], rng: random.Random | None = None,
+    taken: set[str],
+    rng: random.Random | None = None,
 ) -> str:
     """Return an unused ``adjective-laureate`` handle.
 
@@ -120,9 +144,9 @@ def generate_name(
             if pair in taken:
                 continue
             score = (
-                1 if adj not in used_adj else 0,    # +1 fresh adjective
+                1 if adj not in used_adj else 0,  # +1 fresh adjective
                 1 if last not in used_last else 0,  # +1 fresh laureate
-                -letter_count[letter],              # less-used letter > more
+                -letter_count[letter],  # less-used letter > more
             )
             scored.append((score, pair))
 

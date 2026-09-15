@@ -1,4 +1,5 @@
 """Group, member, broadcast, and result records."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ class GroupResult:
 @dataclass
 class Group:
     """A live group. Mutable: members come and go through the registry."""
+
     name: str
     members: dict[str, MemberRef] = field(default_factory=dict)
 

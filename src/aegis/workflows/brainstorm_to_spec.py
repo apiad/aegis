@@ -4,13 +4,16 @@ Walks the user through five clarifying questions (or resumes from the
 last checkpoint), then spawns a ``spec_writer`` subagent to synthesise
 the answers into a markdown spec under ``docs/superpowers/specs/``.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from aegis.workflow import workflow
 from aegis.workflows._lib.spec_renderer import (
-    render_spec_prompt, slugify, today_iso,
+    render_spec_prompt,
+    slugify,
+    today_iso,
 )
 
 _QUESTIONS = [
@@ -24,14 +27,11 @@ _QUESTIONS = [
 
 @workflow("brainstorm_to_spec")
 async def brainstorm_to_spec(engine, *, topic: str | None = None) -> str:
-    state = await engine.resume_state() or {
-        "phase": "topic", "answers": {}, "idx": 0}
+    state = await engine.resume_state() or {"phase": "topic", "answers": {}, "idx": 0}
 
     if state["phase"] == "topic":
-        topic = topic or await engine.ask_human(
-            "What are we brainstorming about?")
-        state = {"phase": "questions", "topic": topic,
-                 "answers": {}, "idx": 0}
+        topic = topic or await engine.ask_human("What are we brainstorming about?")
+        state = {"phase": "questions", "topic": topic, "answers": {}, "idx": 0}
         await engine.checkpoint("topic_set", state)
 
     while state["idx"] < len(_QUESTIONS):
@@ -44,8 +44,10 @@ async def brainstorm_to_spec(engine, *, topic: str | None = None) -> str:
     if state.get("spec_path") is None:
         writer = await engine.spawn("spec_writer")
         try:
-            spec_text = await engine.send(writer, render_spec_prompt(
-                topic=state["topic"], answers=state["answers"]))
+            spec_text = await engine.send(
+                writer,
+                render_spec_prompt(topic=state["topic"], answers=state["answers"]),
+            )
         finally:
             await engine.close(writer)
         slug = slugify(state["topic"])
@@ -64,5 +66,6 @@ def _resolve(engine, rel_path: str) -> Path:
     base = engine.config.get("cwd") if engine.config else None
     if base is None:
         from aegis.config import find_project_root
+
         base = str(find_project_root() or Path.cwd())
     return Path(base) / rel_path

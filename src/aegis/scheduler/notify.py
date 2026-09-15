@@ -5,6 +5,7 @@ dict. ``maybe_notify`` consults that dict against the terminal status
 of a fire and invokes ``notifier.send(msg)`` if applicable. The
 notifier is supplied by the substrate (a send-message wrapper).
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -24,8 +25,9 @@ class Notifier:
         return self._send(msg)
 
 
-def maybe_notify(notifier: Notifier | None, entry: dict, *,
-                 schedule: str, status: str) -> None:
+def maybe_notify(
+    notifier: Notifier | None, entry: dict, *, schedule: str, status: str
+) -> None:
     if notifier is None:
         return
     nf = entry.get("notify") or {}

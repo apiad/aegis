@@ -8,6 +8,7 @@ its sink. Live events are turned into ``stream/*`` frames and pushed to every
 sink. ``seq`` is the per-handle monotonic counter, initialised to the
 persisted line count at attach time so it continues the JSONL line index.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,8 +32,10 @@ def event_frame(handle: str, seq: int, ev) -> dict:
     the ``get_event`` RPC and rendered client-side."""
     compact, truncated = compact_encoded(encode_event(ev))
     return {
-        "type": "stream", "kind": "event",
-        "handle": handle, "seq": seq,
+        "type": "stream",
+        "kind": "event",
+        "handle": handle,
+        "seq": seq,
         "event_type": type(ev).__name__,
         "event": compact,
         "truncated": truncated,
@@ -67,7 +70,8 @@ class SubscriptionRegistry:
 
     def session_list_frame(self) -> dict:
         return {
-            "type": "stream", "kind": "session_list",
+            "type": "stream",
+            "kind": "session_list",
             "sessions": [asdict(si) for si in self._m.list_sessions()],
         }
 
@@ -89,15 +93,20 @@ class SubscriptionRegistry:
 
     def queue_digest_frame(self) -> dict:
         if self._digest is None:
-            return {"type": "stream", "kind": "queue_digest",
-                    "queues": [], "tasks": [], "last_started": None}
+            return {
+                "type": "stream",
+                "kind": "queue_digest",
+                "queues": [],
+                "tasks": [],
+                "last_started": None,
+            }
         snap = self._digest.snapshot()
         return {
-            "type": "stream", "kind": "queue_digest",
+            "type": "stream",
+            "kind": "queue_digest",
             "queues": [asdict(q) for q in snap.queues],
             "tasks": [asdict(t) for t in snap.tasks],
-            "last_started": (asdict(snap.last_started)
-                             if snap.last_started else None),
+            "last_started": (asdict(snap.last_started) if snap.last_started else None),
         }
 
     def queue_tail(self, task_id: str) -> list[str]:
@@ -135,9 +144,13 @@ class SubscriptionRegistry:
         except OSError as exc:
             return {"error": str(exc)}
         ext = target.suffix.lower()
-        kind = ("markdown" if ext in (".md", ".markdown")
-                else "html" if ext in (".html", ".htm")
-                else "source")
+        kind = (
+            "markdown"
+            if ext in (".md", ".markdown")
+            else "html"
+            if ext in (".html", ".htm")
+            else "source"
+        )
         return {"path": path, "kind": kind, "content": content}
 
     # -- config panel (read-only) ----------------------------------------
@@ -148,6 +161,7 @@ class SubscriptionRegistry:
         empty = {"agents": [], "queues": [], "schedules": []}
         from aegis.config import ConfigError, find_project_root
         from aegis.config.yaml_loader import load_config as _load_yaml
+
         root = self._files_root or find_project_root()
         if root is None:
             return empty
@@ -157,20 +171,26 @@ class SubscriptionRegistry:
             return empty
         return {
             "agents": [
-                {"slug": slug, "harness": a.harness, "model": a.model,
-                 "effort": a.effort.value if a.effort else None,
-                 "permission": a.permission.value}
+                {
+                    "slug": slug,
+                    "harness": a.harness,
+                    "model": a.model,
+                    "effort": a.effort.value if a.effort else None,
+                    "permission": a.permission.value,
+                }
                 for slug, a in cfg.agents.items()
             ],
             "queues": [
-                {"name": name, "agent": q.agent,
-                 "max_parallel": q.max_parallel}
+                {"name": name, "agent": q.agent, "max_parallel": q.max_parallel}
                 for name, q in (cfg.queues or {}).items()
             ],
             "schedules": [
-                {"name": name, "cron": s.get("cron"),
-                 "enabled": s.get("enabled", True),
-                 "workflow": s.get("workflow")}
+                {
+                    "name": name,
+                    "cron": s.get("cron"),
+                    "enabled": s.get("enabled", True),
+                    "workflow": s.get("workflow"),
+                }
                 for name, s in (cfg.schedules or {}).items()
             ],
         }
@@ -179,19 +199,28 @@ class SubscriptionRegistry:
 
     def _config_root(self):
         from aegis.config import find_project_root
+
         return self._files_root or find_project_root()
 
-    async def config_add_agent(self, slug, *, provider, model,
-                               effort=None, permission=None) -> dict:
+    async def config_add_agent(
+        self, slug, *, provider, model, effort=None, permission=None
+    ) -> dict:
         from aegis.config import Agent, ConfigError
         from aegis.config.edit import add_agent as _add
+
         root = self._config_root()
         if root is None:
             return {"error": "no project root"}
         async with self._config_lock:
             try:
-                _add(root, slug, provider=provider, model=model,
-                     effort=effort, permission=permission)
+                _add(
+                    root,
+                    slug,
+                    provider=provider,
+                    model=model,
+                    effort=effort,
+                    permission=permission,
+                )
             except ConfigError as e:
                 return {"error": str(e)}
             try:
@@ -209,6 +238,7 @@ class SubscriptionRegistry:
     async def config_remove_agent(self, slug: str) -> dict:
         from aegis.config import ConfigError
         from aegis.config.edit import remove_agent as _rm
+
         root = self._config_root()
         if root is None:
             return {"error": "no project root"}
@@ -222,6 +252,7 @@ class SubscriptionRegistry:
     async def config_add_queue(self, name, *, agent, max_parallel) -> dict:
         from aegis.config import ConfigError, load_queues
         from aegis.config.edit import add_queue as _add
+
         root = self._config_root()
         if root is None:
             return {"error": "no project root"}
@@ -240,6 +271,7 @@ class SubscriptionRegistry:
     async def config_remove_queue(self, name: str) -> dict:
         from aegis.config import ConfigError
         from aegis.config.edit import remove_queue as _rm
+
         root = self._config_root()
         if root is None:
             return {"error": "no project root"}
@@ -286,7 +318,8 @@ class SubscriptionRegistry:
         first = hs is None
         if hs is None:
             hs = _HandleState(
-                seq=len(read_history(self._state_dir, self._log_id(handle))))
+                seq=len(read_history(self._state_dir, self._log_id(handle)))
+            )
             self._handles[handle] = hs
         hs.sinks.add(sink)
         if first:
@@ -337,22 +370,31 @@ class SubscriptionRegistry:
             _fanout(hs, event_frame(handle, hs.seq, ev))
 
         def on_state(c, state, finished):
-            _fanout(hs, {
-                "type": "stream", "kind": "state",
-                "handle": handle, "state": state.value,
-                "metrics": _metrics_str(c),
-            })
+            _fanout(
+                hs,
+                {
+                    "type": "stream",
+                    "kind": "state",
+                    "handle": handle,
+                    "state": state.value,
+                    "metrics": _metrics_str(c),
+                },
+            )
 
         def on_inbox(c, msg):
             # Inbox messages are rendered but not persisted to the session log,
             # so they must NOT consume an event seq — otherwise every event
             # after a delivered message drifts one ahead of its JSONL line
             # index, which is what get_event resolves against.
-            _fanout(hs, {
-                "type": "stream", "kind": "inbox",
-                "handle": handle,
-                "msg": _inbox_dict(msg),
-            })
+            _fanout(
+                hs,
+                {
+                    "type": "stream",
+                    "kind": "inbox",
+                    "handle": handle,
+                    "msg": _inbox_dict(msg),
+                },
+            )
 
         core.add_event_observer(on_event)
         core.add_state_observer(on_state)

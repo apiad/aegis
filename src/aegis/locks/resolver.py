@@ -5,8 +5,9 @@ from pathlib import Path
 _GLOB_CHARS = "*?["
 
 
-def resolve_paths(paths: list[str],
-                  root: Path) -> tuple[frozenset[str], frozenset[str]]:
+def resolve_paths(
+    paths: list[str], root: Path
+) -> tuple[frozenset[str], frozenset[str]]:
     prefixes: set[str] = set()
     files: set[str] = set()
     for raw in paths:

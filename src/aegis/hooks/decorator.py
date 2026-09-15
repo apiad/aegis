@@ -1,20 +1,20 @@
 """@hook decorator + per-event registry."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-VALID_EVENTS = ("pre_turn", "pre_spawn", "post_turn",
-                "session_start", "session_end")
+VALID_EVENTS = ("pre_turn", "pre_spawn", "post_turn", "session_start", "session_end")
 
 
 @dataclass(frozen=True)
 class HookEntry:
-    event:    str
-    func:     Callable[..., Any]
-    strict:   bool
-    qualname: str   # for duplicate detection + log messages
+    event: str
+    func: Callable[..., Any]
+    strict: bool
+    qualname: str  # for duplicate detection + log messages
 
 
 _REGISTRY: dict[str, list[HookEntry]] = {ev: [] for ev in VALID_EVENTS}
@@ -30,9 +30,7 @@ def hook(event: str, *, strict: bool = False) -> Callable[[Callable], Callable]:
                 False (log-and-skip; turn proceeds).
     """
     if event not in VALID_EVENTS:
-        raise ValueError(
-            f"unknown hook event {event!r}; valid: {VALID_EVENTS}"
-        )
+        raise ValueError(f"unknown hook event {event!r}; valid: {VALID_EVENTS}")
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
         qualname = f"{fn.__module__}.{fn.__qualname__}"

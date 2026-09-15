@@ -8,6 +8,7 @@ sidebar.
 
 Design: ``docs/superpowers/specs/2026-08-10-aegis-sidebar-repos-section-design.md``
 """
+
 from aegis.repos.models import RepoState, RepoView
 
 __all__ = ["RepoState", "RepoView"]

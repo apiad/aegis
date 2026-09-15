@@ -17,6 +17,7 @@ Public surface:
 - ``load_registry()`` — returns the in-memory ``Registry`` dataclass.
   Cached per process; pass ``force=True`` to re-read after a refresh.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -36,16 +37,17 @@ class UnknownPriceError(KeyError):
 @dataclass(frozen=True)
 class ProviderPrices:
     """Per-million-token rates in USD. Decimal to avoid float drift."""
-    input:       Decimal
-    output:      Decimal
-    cache_hit:   Decimal
+
+    input: Decimal
+    output: Decimal
+    cache_hit: Decimal
     cache_write: Decimal
-    thinking:    Decimal
+    thinking: Decimal
 
 
 @dataclass(frozen=True)
 class ContextWindowPattern:
-    match: str           # lowercase substring matched against the model name
+    match: str  # lowercase substring matched against the model name
     context_window: int
 
 
@@ -95,8 +97,8 @@ class Registry:
             if resolved is not None and resolved[1].prices is not None:
                 return resolved[1].prices
         raise UnknownPriceError(
-            f"no price for {(provider, model)!r}; "
-            f"add to src/aegis/data/models.yaml")
+            f"no price for {(provider, model)!r}; add to src/aegis/data/models.yaml"
+        )
 
     def get_context_window(self, harness: str, model: str) -> int:
         prov = self.providers.get(harness)
@@ -124,7 +126,7 @@ class Registry:
             return []
         out: list[tuple[str, str]] = []
         for name, entry in prov.models.items():
-            label = (f"{name} → {entry.label}" if entry.label else name)
+            label = f"{name} → {entry.label}" if entry.label else name
             out.append((name, label))
         return out
 
@@ -136,8 +138,11 @@ def cache_path() -> Path:
 
 
 def _bundled_yaml_text() -> str:
-    return resources.files("aegis.data").joinpath("models.yaml").read_text(
-        encoding="utf-8")
+    return (
+        resources.files("aegis.data")
+        .joinpath("models.yaml")
+        .read_text(encoding="utf-8")
+    )
 
 
 def _read_source() -> str:
@@ -171,8 +176,8 @@ def _parse(text: str) -> Registry:
         prov_raw = prov_raw or {}
         patterns = [
             ContextWindowPattern(
-                match=str(p["match"]),
-                context_window=int(p["context_window"]))
+                match=str(p["match"]), context_window=int(p["context_window"])
+            )
             for p in (prov_raw.get("context_window_patterns") or [])
         ]
         models: dict[str, ModelEntry] = {}
@@ -192,12 +197,10 @@ def _parse(text: str) -> Registry:
                     output=Decimal(str(pr.get("output", _z))),
                     cache_hit=Decimal(str(pr.get("cache_hit", _z))),
                     cache_write=Decimal(str(pr.get("cache_write", _z))),
-                    thinking=Decimal(str(pr.get("thinking",
-                                                pr.get("output", _z)))),
+                    thinking=Decimal(str(pr.get("thinking", pr.get("output", _z)))),
                 )
             cw = model_raw.get("context_window")
-            aliases = tuple(
-                str(a) for a in (model_raw.get("aliases") or []))
+            aliases = tuple(str(a) for a in (model_raw.get("aliases") or []))
             label = str(model_raw.get("label") or "")
             models[str(model_name)] = ModelEntry(
                 context_window=int(cw) if cw is not None else None,
@@ -206,8 +209,7 @@ def _parse(text: str) -> Registry:
                 label=label,
             )
         providers[str(prov_name)] = ProviderEntry(
-            default_context_window=int(
-                prov_raw.get("default_context_window") or 0),
+            default_context_window=int(prov_raw.get("default_context_window") or 0),
             context_window_patterns=patterns,
             models=models,
         )
@@ -246,11 +248,13 @@ def _run_opencode_models() -> str | None:
     `opencode models` is a local, fast lookup — no caching needed."""
     import shutil
     import subprocess
+
     if shutil.which("opencode") is None:
         return None
     try:
-        out = subprocess.run(["opencode", "models"], capture_output=True,
-                             text=True, timeout=15)
+        out = subprocess.run(
+            ["opencode", "models"], capture_output=True, text=True, timeout=15
+        )
     except Exception:  # noqa: BLE001
         return None
     return out.stdout if out.returncode == 0 else None
@@ -278,7 +282,8 @@ def models_for(provider: str) -> list[tuple[str, str]]:
         return registry
     seen = set(live)
     return [(m, m) for m in live] + [
-        (name, label) for name, label in registry if name not in seen]
+        (name, label) for name, label in registry if name not in seen
+    ]
 
 
 __all__ = [

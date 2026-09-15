@@ -3,6 +3,7 @@
 No Textual, no I/O, no clock reads: the tracker is handed every timestamp
 so a replayed log reproduces the live numbers exactly.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ class PlanTask:
     renders as an em dash. That is deliberately distinct from 0.0, which
     would claim the task ran and took no time.
     """
+
     key: str
     subject: str
     status: str
@@ -55,6 +57,7 @@ class PlanSnapshot:
     """The small roll-up the coordination plane carries on SessionInfo, so
     a peer deciding who to hand work to also learns how far along everyone
     is without pulling a full task list."""
+
     done: int = 0
     total: int = 0
     current: str | None = None

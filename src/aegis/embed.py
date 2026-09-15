@@ -3,6 +3,7 @@
 The library seam sindri drives. Unlike the CLI entry points this installs no
 signal handlers and never calls asyncio.run — the host owns both.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,7 +47,7 @@ class EmbeddedAegis:
     manager: object
     queues: object
     roots: AegisRoots
-    mcp: object             # the instance's AegisMCP; .server is its FastMCP
+    mcp: object  # the instance's AegisMCP; .server is its FastMCP
 
 
 @asynccontextmanager
@@ -55,8 +56,7 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
     from aegis.cli import _serve, resolve_boot
     from aegis.mcp import AegisMCP
 
-    resolved = resolve_boot(Path(root),
-                            str(harness_cwd) if harness_cwd else ".")
+    resolved = resolve_boot(Path(root), str(harness_cwd) if harness_cwd else ".")
     roots = resolved.roots
     stop = asyncio.Event()
     holder: dict = {}
@@ -81,16 +81,16 @@ async def embed(root: Path | str, *, harness_cwd: Path | str | None = None):
             holder["manager"] = manager
             await stop.wait()
 
-    task = asyncio.create_task(_serve(
-        **resolved.serve_kwargs, mcp=mcp, stop=stop, ui=_Capture()))
+    task = asyncio.create_task(
+        _serve(**resolved.serve_kwargs, mcp=mcp, stop=stop, ui=_Capture())
+    )
     try:
         while "manager" not in holder and not task.done():
             await asyncio.sleep(0.01)
         if task.done():
-            task.result()          # re-raise a boot failure
+            task.result()  # re-raise a boot failure
         mgr = holder["manager"]
-        yield EmbeddedAegis(manager=mgr, queues=mgr.queue_manager,
-                            roots=roots, mcp=mcp)
+        yield EmbeddedAegis(manager=mgr, queues=mgr.queue_manager, roots=roots, mcp=mcp)
     finally:
         stop.set()
         await asyncio.wait_for(task, timeout=10)
