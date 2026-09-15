@@ -21,6 +21,7 @@ The TerminalTab is shaped to coexist with ConversationPane in the
 AegisApp tab roster: it exposes ``handle``, ``agent_slug`` (= "term"),
 ``state``, ``unseen``, ``id`` and an async ``close()``.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -63,8 +64,7 @@ class _CmdHeader(Static):
     """
 
     def __init__(self, cmd: str, writer: str, started_at: str) -> None:
-        super().__init__(self._build_text(cmd, writer, started_at),
-                         markup=False)
+        super().__init__(self._build_text(cmd, writer, started_at), markup=False)
         self._cmd = cmd
         self.tooltip = "click to copy command"
 
@@ -82,8 +82,7 @@ class _CmdHeader(Static):
         event.stop()
         try:
             self.app.copy_to_clipboard(self._cmd)
-            self.app.notify(f"copied command ({len(self._cmd)} chars)",
-                            timeout=1.2)
+            self.app.notify(f"copied command ({len(self._cmd)} chars)", timeout=1.2)
         except Exception:
             pass
 
@@ -113,8 +112,9 @@ class _OutputBox(Static):
     def _compose_body(stdout: str, stderr: str) -> str:
         body = (stdout or "").rstrip("\n")
         if stderr:
-            body = (body + ("\n" if body else "")
-                    + "── stderr ──\n" + stderr.rstrip("\n"))
+            body = (
+                body + ("\n" if body else "") + "── stderr ──\n" + stderr.rstrip("\n")
+            )
         return body
 
     def set_text(self, stdout: str, stderr: str = "") -> None:
@@ -134,14 +134,14 @@ class _OutputBox(Static):
         event.stop()
         payload = self._stdout
         if self._stderr:
-            payload = (payload + ("\n" if payload else "")
-                       + "── stderr ──\n" + self._stderr)
+            payload = (
+                payload + ("\n" if payload else "") + "── stderr ──\n" + self._stderr
+            )
         if not payload:
             return
         try:
             self.app.copy_to_clipboard(payload)
-            self.app.notify(f"copied output ({len(payload)} chars)",
-                            timeout=1.2)
+            self.app.notify(f"copied output ({len(payload)} chars)", timeout=1.2)
         except Exception:
             pass
 
@@ -154,8 +154,7 @@ class _FooterChip(Static):
     """
 
     def __init__(self, initial: Text | None = None) -> None:
-        super().__init__(initial or Text("↳ pending", style="dim"),
-                         markup=False)
+        super().__init__(initial or Text("↳ pending", style="dim"), markup=False)
 
     @staticmethod
     def _running_text(elapsed_s: float) -> Text:
@@ -166,9 +165,13 @@ class _FooterChip(Static):
         return t
 
     @staticmethod
-    def _finished_text(exit_code: int | None, duration_s: float | None,
-                       *, timed_out: bool = False,
-                       killed_by_restart: bool = False) -> Text:
+    def _finished_text(
+        exit_code: int | None,
+        duration_s: float | None,
+        *,
+        timed_out: bool = False,
+        killed_by_restart: bool = False,
+    ) -> Text:
         t = Text()
         t.append("↳ ", style="dim")
         if killed_by_restart:
@@ -189,14 +192,23 @@ class _FooterChip(Static):
         """Post-mount update."""
         self.update(self._running_text(elapsed_s))
 
-    def set_finished(self, exit_code: int | None, duration_s: float | None,
-                     *, timed_out: bool = False,
-                     killed_by_restart: bool = False) -> None:
+    def set_finished(
+        self,
+        exit_code: int | None,
+        duration_s: float | None,
+        *,
+        timed_out: bool = False,
+        killed_by_restart: bool = False,
+    ) -> None:
         """Post-mount update."""
-        self.update(self._finished_text(
-            exit_code, duration_s,
-            timed_out=timed_out, killed_by_restart=killed_by_restart,
-        ))
+        self.update(
+            self._finished_text(
+                exit_code,
+                duration_s,
+                timed_out=timed_out,
+                killed_by_restart=killed_by_restart,
+            )
+        )
 
 
 class _Block(Widget):
@@ -217,9 +229,16 @@ class _Block(Widget):
     _Block.past { color: $foreground 50%; }
     """
 
-    def __init__(self, cmd: str, writer: str, started_at: str,
-                 *, stdout: str = "", stderr: str = "",
-                 footer: Text | None = None) -> None:
+    def __init__(
+        self,
+        cmd: str,
+        writer: str,
+        started_at: str,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        footer: Text | None = None,
+    ) -> None:
         super().__init__()
         self._header = _CmdHeader(cmd, writer, started_at)
         self._output = _OutputBox(stdout, stderr)
@@ -244,16 +263,19 @@ class _Block(Widget):
 
     @classmethod
     def running(cls, cmd: str, writer: str, started_at: str) -> "_Block":
-        return cls(cmd, writer, started_at,
-                   footer=_FooterChip._running_text(0.0))
+        return cls(cmd, writer, started_at, footer=_FooterChip._running_text(0.0))
 
     @classmethod
     def finished(cls, rec: CommandRecord) -> "_Block":
         return cls(
-            rec.cmd, rec.writer, rec.started_at,
-            stdout=rec.stdout or "", stderr=rec.stderr or "",
+            rec.cmd,
+            rec.writer,
+            rec.started_at,
+            stdout=rec.stdout or "",
+            stderr=rec.stderr or "",
             footer=_FooterChip._finished_text(
-                rec.exit, rec.duration_s,
+                rec.exit,
+                rec.duration_s,
                 timed_out=rec.timed_out,
                 killed_by_restart=rec.killed_by_restart,
             ),
@@ -287,8 +309,9 @@ class TerminalTab(Widget):
     # Live timer refresh interval for the running footer chip.
     _TIMER_INTERVAL_S: float = 0.5
 
-    def __init__(self, manager: TerminalManager, info: TerminalInfo,
-                 *, palette=None) -> None:
+    def __init__(
+        self, manager: TerminalManager, info: TerminalInfo, *, palette=None
+    ) -> None:
         super().__init__(id=f"term-{info.name}")
         self._manager = manager
         self._info = info
@@ -297,8 +320,9 @@ class TerminalTab(Widget):
         self.unseen = False
         self.state = AgentState.ready
         self._mode = "run"  # or "raw"
-        self._created_at: str = (
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        self._created_at: str = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         self._palette = palette
         self._running_block: _Block | None = None
         self._running_started_monotonic: float | None = None
@@ -310,13 +334,14 @@ class TerminalTab(Widget):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield VerticalScroll(id="term-transcript")
-            yield Static("", classes="status-strip", id="term-status",
-                         markup=False)
-            yield Static("[run] · Ctrl+K → raw mode",
-                         classes="mode-strip", id="term-mode",
-                         markup=False)
-            yield Input(placeholder="type a command and press Enter…",
-                        id="term-input")
+            yield Static("", classes="status-strip", id="term-status", markup=False)
+            yield Static(
+                "[run] · Ctrl+K → raw mode",
+                classes="mode-strip",
+                id="term-mode",
+                markup=False,
+            )
+            yield Input(placeholder="type a command and press Enter…", id="term-input")
 
     async def on_mount(self) -> None:
         self._refresh_status()
@@ -348,16 +373,23 @@ class TerminalTab(Widget):
             sub_n = len(self._manager.subscribers(info.name))
         except Exception:
             sub_n = 0
-        exit_str = (f"last exit {info.last_exit}"
-                    if info.last_exit is not None else "no commands yet")
-        text = (f"{info.cwd} · pid {info.pid} · {info.shell} · "
-                f"{exit_str} · subs: {sub_n}")
+        exit_str = (
+            f"last exit {info.last_exit}"
+            if info.last_exit is not None
+            else "no commands yet"
+        )
+        text = (
+            f"{info.cwd} · pid {info.pid} · {info.shell} · {exit_str} · subs: {sub_n}"
+        )
         with contextlib.suppress(Exception):
             self.query_one("#term-status", Static).update(text)
 
     def _refresh_mode_strip(self) -> None:
-        label = ("[raw] · Ctrl+K → run mode" if self._mode == "raw"
-                 else "[run] · Ctrl+K → raw mode")
+        label = (
+            "[raw] · Ctrl+K → run mode"
+            if self._mode == "raw"
+            else "[run] · Ctrl+K → raw mode"
+        )
         with contextlib.suppress(Exception):
             self.query_one("#term-mode", Static).update(label)
 
@@ -396,7 +428,8 @@ class TerminalTab(Widget):
     def _restart_timer(self) -> None:
         self._stop_timer()
         self._timer = self.set_interval(
-            self._TIMER_INTERVAL_S, self._tick_running_footer)
+            self._TIMER_INTERVAL_S, self._tick_running_footer
+        )
 
     def on_hide(self) -> None:
         """Tab sent to the background: freeze the footer ticker. It only
@@ -424,7 +457,8 @@ class TerminalTab(Widget):
         if block is not None:
             block.output.set_text(rec.stdout or "", rec.stderr or "")
             block.footer.set_finished(
-                rec.exit, rec.duration_s,
+                rec.exit,
+                rec.duration_s,
                 timed_out=rec.timed_out,
                 killed_by_restart=rec.killed_by_restart,
             )
@@ -453,8 +487,7 @@ class TerminalTab(Widget):
         inp = self.query_one(Input)
         inp.value = ""
         if self._mode == "raw":
-            await self._manager.send_keys(self.handle, text + "\n",
-                                          writer="human")
+            await self._manager.send_keys(self.handle, text + "\n", writer="human")
             return
         cmd = text.strip()
         if not cmd:
@@ -465,7 +498,9 @@ class TerminalTab(Widget):
     def _begin_running(self, cmd: str, writer: str) -> None:
         started_at = (
             datetime.now(timezone.utc)
-            .isoformat(timespec="seconds").replace("+00:00", "Z"))
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
         self._running_started_monotonic = time.monotonic()
         self._running_stdout = ""
         block = _Block.running(cmd, writer, started_at)
@@ -499,7 +534,6 @@ class TerminalTab(Widget):
     async def close(self) -> None:
         self._stop_timer()
         with contextlib.suppress(Exception):
-            self._manager.remove_render_observer(
-                self.handle, self._on_render_event)
+            self._manager.remove_render_observer(self.handle, self._on_render_event)
         with contextlib.suppress(Exception):
             await self._manager.close(self.handle)

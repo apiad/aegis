@@ -14,6 +14,7 @@ VS3 covers: ``cron`` triggers, ``lifecycle: forever``,
 forms, ``on_overlap: queue|kill``, timeouts, notify, and boot
 replay/backfill.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -45,6 +46,7 @@ class SchedulerConfig:
 class _SchedState:
     """Per-schedule runtime state. Lives in memory; snapshot is its
     serialized form."""
+
     next_fire: datetime
     fire_count: int = 0
     in_flight: bool = False
@@ -91,12 +93,11 @@ class Scheduler:
     def _init_state(self) -> None:
         """Replay JSONL logs to rebuild fire_count + next_fire."""
         now = self.clock.now()
-        replay = replay_state(self.state_dir, schedules=self.schedules,
-                              now=now)
+        replay = replay_state(self.state_dir, schedules=self.schedules, now=now)
         for name, slot in replay.items():
             self._state[name] = _SchedState(
-                next_fire=slot["next_fire"],
-                fire_count=slot["fire_count"])
+                next_fire=slot["next_fire"], fire_count=slot["fire_count"]
+            )
 
     def _compute_next(self, entry: dict, after: datetime) -> datetime:
         tz = entry.get("timezone", self.cfg.default_timezone)
@@ -112,8 +113,9 @@ class Scheduler:
                 continue
             if not entry.get("enabled", True):
                 continue
-            if is_exhausted(entry.get("lifecycle", "forever"),
-                            fire_count=st.fire_count, now=now):
+            if is_exhausted(
+                entry.get("lifecycle", "forever"), fire_count=st.fire_count, now=now
+            ):
                 continue
             if st.next_fire > now:
                 continue
@@ -157,7 +159,8 @@ class Scheduler:
         return datetime.max.replace(tzinfo=now.tzinfo)
 
     def replace_schedules(
-        self, new_schedules: dict[str, dict[str, Any]],
+        self,
+        new_schedules: dict[str, dict[str, Any]],
     ) -> None:
         """Atomic-swap the loaded schedule table.
 
@@ -187,8 +190,7 @@ class Scheduler:
             else:
                 nxt = datetime.max.replace(tzinfo=now.tzinfo)
             fire_count = prior.fire_count if prior is not None else 0
-            new_state[name] = _SchedState(
-                next_fire=nxt, fire_count=fire_count)
+            new_state[name] = _SchedState(next_fire=nxt, fire_count=fire_count)
         self.schedules = dict(new_schedules)
         self._state = new_state
         # Drop deferred queues for removed entries.
@@ -209,58 +211,71 @@ class Scheduler:
             raise KeyError(f"unknown schedule: {name!r}")
         asyncio.create_task(self._fire(name, entry, manual=True))
 
-    async def _fire(self, name: str, entry: dict, *,
-                    manual: bool = False) -> None:
+    async def _fire(self, name: str, entry: dict, *, manual: bool = False) -> None:
         st = self._state[name]
         st.in_flight = True
         task_id = uuid.uuid4().hex
-        self._append_jsonl(name, {
-            "ts": self.clock.now().isoformat(),
-            "schedule": name,
-            "event": "fire_requested",
-            "task_id": task_id,
-            "manual": manual,
-            "backfilled": False,
-        })
+        self._append_jsonl(
+            name,
+            {
+                "ts": self.clock.now().isoformat(),
+                "schedule": name,
+                "event": "fire_requested",
+                "task_id": task_id,
+                "manual": manual,
+                "backfilled": False,
+            },
+        )
         try:
             result = await self.run_workflow(
-                entry["workflow"], dict(entry.get("args") or {}))
-            self._append_jsonl(name, {
-                "ts": self.clock.now().isoformat(),
-                "schedule": name,
-                "event": "fire_completed",
-                "task_id": task_id,
-                "status": "ok",
-                "result_excerpt": str(result)[:500] if result else "",
-            })
+                entry["workflow"], dict(entry.get("args") or {})
+            )
+            self._append_jsonl(
+                name,
+                {
+                    "ts": self.clock.now().isoformat(),
+                    "schedule": name,
+                    "event": "fire_completed",
+                    "task_id": task_id,
+                    "status": "ok",
+                    "result_excerpt": str(result)[:500] if result else "",
+                },
+            )
             st.last_status = "ok"
         except asyncio.CancelledError:
-            self._append_jsonl(name, {
-                "ts": self.clock.now().isoformat(),
-                "schedule": name,
-                "event": "fire_failed",
-                "task_id": task_id,
-                "status": "failed:killed",
-            })
+            self._append_jsonl(
+                name,
+                {
+                    "ts": self.clock.now().isoformat(),
+                    "schedule": name,
+                    "event": "fire_failed",
+                    "task_id": task_id,
+                    "status": "failed:killed",
+                },
+            )
             st.last_status = "failed:killed"
             raise
         except Exception as e:  # noqa: BLE001 — any error becomes failed:crash
-            self._append_jsonl(name, {
-                "ts": self.clock.now().isoformat(),
-                "schedule": name,
-                "event": "fire_failed",
-                "task_id": task_id,
-                "status": "failed:crash",
-                "error": repr(e),
-            })
+            self._append_jsonl(
+                name,
+                {
+                    "ts": self.clock.now().isoformat(),
+                    "schedule": name,
+                    "event": "fire_failed",
+                    "task_id": task_id,
+                    "status": "failed:crash",
+                    "error": repr(e),
+                },
+            )
             st.last_status = "failed:crash"
             logger.exception("scheduler fire failed: %s", name)
         finally:
             st.fire_count += 1
             st.last_completed_at = self.clock.now()
             st.in_flight = False
-            maybe_notify(self.notifier, entry, schedule=name,
-                         status=st.last_status or "unknown")
+            maybe_notify(
+                self.notifier, entry, schedule=name, status=st.last_status or "unknown"
+            )
             # Drain one deferred (queued) fire if any.
             deferred = self._deferred.get(name)
             if deferred:
@@ -282,8 +297,8 @@ class Scheduler:
                 "in_flight": st.in_flight,
                 "last_status": st.last_status,
                 "last_completed_at": (
-                    st.last_completed_at.isoformat()
-                    if st.last_completed_at else None),
+                    st.last_completed_at.isoformat() if st.last_completed_at else None
+                ),
             }
             for name, st in self._state.items()
         }
@@ -309,8 +324,8 @@ class Scheduler:
                 logger.exception("scheduler tick crashed")
             try:
                 await asyncio.wait_for(
-                    self._stopped.wait(),
-                    timeout=self.cfg.tick_seconds)
+                    self._stopped.wait(), timeout=self.cfg.tick_seconds
+                )
             except asyncio.TimeoutError:
                 pass
 

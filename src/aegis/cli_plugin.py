@@ -1,4 +1,5 @@
 """`aegis plugin ...` Typer subapp."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,24 +20,37 @@ console = Console()
 def cmd_install(
     name: str,
     from_: Path | None = typer.Option(
-        None, "--from",
+        None,
+        "--from",
         help="Install from a local path instead of the registry.",
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Don't prompt; accept defaults."),
-    force: bool = typer.Option(False, "--force", help="Overwrite existing installation."),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Don't prompt; accept defaults."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing installation."
+    ),
 ) -> None:
     """Install a plugin."""
     from aegis.plugins.install import resolve_and_install
+
     try:
         if from_ is not None:
             install_plugin(
-                name=name, source=from_, project_root=Path.cwd(),
-                yes=yes, force=force, console=console,
+                name=name,
+                source=from_,
+                project_root=Path.cwd(),
+                yes=yes,
+                force=force,
+                console=console,
             )
         else:
             resolve_and_install(
-                name=name, project_root=Path.cwd(),
-                yes=yes, force=force, console=console,
+                name=name,
+                project_root=Path.cwd(),
+                yes=yes,
+                force=force,
+                console=console,
             )
     except InstallError as exc:
         console.print(f"[red]install failed:[/] {exc}")
@@ -88,7 +102,9 @@ def cmd_update(
     if name is not None:
         targets = [name]
     else:
-        targets = [p["name"] for p in (lockfile.read_lock(Path.cwd()).get("plugins") or [])]
+        targets = [
+            p["name"] for p in (lockfile.read_lock(Path.cwd()).get("plugins") or [])
+        ]
     if not targets:
         console.print("[dim]no plugins installed[/]")
         return
@@ -96,8 +112,11 @@ def cmd_update(
     for t in targets:
         try:
             update_plugin(
-                name=t, project_root=Path.cwd(),
-                yes=yes, force=force, console=console,
+                name=t,
+                project_root=Path.cwd(),
+                yes=yes,
+                force=force,
+                console=console,
             )
         except InstallError as exc:
             console.print(f"[red]{t} failed:[/] {exc}")
@@ -109,14 +128,14 @@ def cmd_update(
 def cmd_search(query: str) -> None:
     """Search registries for plugins matching `query`."""
     from aegis.plugins.install import search_plugins
+
     hits = search_plugins(query=query, project_root=Path.cwd())
     if not hits:
         console.print(f"[dim]no plugins match {query!r}[/]")
         return
     for h in hits:
         console.print(
-            f"[bold]{h['name']}[/] {h['version']}  "
-            f"[dim]from {h['registry']}[/]"
+            f"[bold]{h['name']}[/] {h['version']}  [dim]from {h['registry']}[/]"
         )
         if h.get("description"):
             console.print(f"  {h['description']}")

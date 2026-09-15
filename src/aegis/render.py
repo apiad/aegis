@@ -9,13 +9,25 @@ from rich.text import Text
 from dataclasses import replace
 
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, ToolUse,
-    ToolResult, Result, SystemInit, Unknown, UserMessage, Event,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    ToolUse,
+    ToolResult,
+    Result,
+    SystemInit,
+    Unknown,
+    UserMessage,
+    Event,
 )
 from aegis.comms.descriptors import aegis_glyph
 from aegis.render_shared import (
-    PLAN_STATUS_GLYPH, describe_tool, diff_window,
-    format_tool_args, result_parts, tool_glyph,
+    PLAN_STATUS_GLYPH,
+    describe_tool,
+    diff_window,
+    format_tool_args,
+    result_parts,
+    tool_glyph,
 )
 
 # Per-tool-call spinner (mirrors the turn-level WorkingIndicator glyphs).
@@ -28,16 +40,7 @@ _TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # as a margin note, which is what these are. `box.MINIMAL` was the first
 # try and draws its verticals as spaces, so the "subtle border" was
 # invisible and only the background did any work.
-_ASIDE_BOX = box.Box(
-    "    \n"
-    "▏   \n"
-    "    \n"
-    "▏   \n"
-    "    \n"
-    "    \n"
-    "▏   \n"
-    "    \n"
-)
+_ASIDE_BOX = box.Box("    \n▏   \n    \n▏   \n    \n    \n▏   \n    \n")
 
 
 def _aside(parts, colors) -> Panel:
@@ -55,15 +58,26 @@ def _aside(parts, colors) -> Panel:
     a saturated tint would win attention from the conversation it is
     supposed to sit beside.
     """
-    return Panel(Group(*parts), box=_ASIDE_BOX,
-                 border_style=colors.rule,
-                 style=f"on {colors.panel}",
-                 padding=(0, 1), expand=True)
+    return Panel(
+        Group(*parts),
+        box=_ASIDE_BOX,
+        border_style=colors.rule,
+        style=f"on {colors.panel}",
+        padding=(0, 1),
+        expand=True,
+    )
 
 
-def render_deferred(label: str, subject: str, elapsed: float, colors, *,
-                    frame: int = 0, cancelled: bool = False,
-                    cancel_note: str = "") -> Panel:
+def render_deferred(
+    label: str,
+    subject: str,
+    elapsed: float,
+    colors,
+    *,
+    frame: int = 0,
+    cancelled: bool = False,
+    cancel_note: str = "",
+) -> Panel:
     """The block a deferred command occupies while it runs, and after it is
     cancelled.
 
@@ -87,11 +101,9 @@ def render_deferred(label: str, subject: str, elapsed: float, colors, *,
     line = Text()
     if cancelled:
         line.append(f"{label} ", style=f"bold italic {colors.muted}")
-        line.append(f"· {cancel_note} · {_fmt_dur(elapsed)}",
-                    style=colors.muted)
+        line.append(f"· {cancel_note} · {_fmt_dur(elapsed)}", style=colors.muted)
         return _aside([line], colors)
-    line.append(f"{_TOOL_SPINNER[frame % len(_TOOL_SPINNER)]}  ",
-                style=colors.working)
+    line.append(f"{_TOOL_SPINNER[frame % len(_TOOL_SPINNER)]}  ", style=colors.working)
     line.append(f"{label} ", style=f"bold italic {colors.accent}")
     if subject:
         line.append(f"· {subject} ", style=colors.muted)
@@ -106,9 +118,15 @@ def _fmt_dur(secs: float) -> str:
     return f"{m}m{s:02d}s"
 
 
-def render_tool_use(ev, colors, *, elapsed: float | None = None,
-                    running: bool = False, frame: int = 0,
-                    expanded: bool = False) -> RenderableType:
+def render_tool_use(
+    ev,
+    colors,
+    *,
+    elapsed: float | None = None,
+    running: bool = False,
+    frame: int = 0,
+    expanded: bool = False,
+) -> RenderableType:
     """One tool-call line: kind icon + human description, with an optional
     per-tool spinner+timer (while running), a frozen duration (once done, if
     ≥1s), and the full args block (when expanded). The args stay collapsed by
@@ -117,8 +135,7 @@ def render_tool_use(ev, colors, *, elapsed: float | None = None,
     desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
     # A call into the aegis layer wears the layer's own colour, so a
     # transcript shows at a glance where agents were talking to each other.
-    style = (colors.comms if aegis_glyph(ev.name, ev.raw_input or {})
-             else colors.accent)
+    style = colors.comms if aegis_glyph(ev.name, ev.raw_input or {}) else colors.accent
     line = Text.assemble((f"{icon} ", style), desc)
     if running and elapsed is not None:
         spin = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)]
@@ -135,8 +152,7 @@ def render_tool_use(ev, colors, *, elapsed: float | None = None,
     return line
 
 
-def _render_diff(diff: tuple[str, str, str], colors,
-                  max_lines: int = 6) -> "Text":
+def _render_diff(diff: tuple[str, str, str], colors, max_lines: int = 6) -> "Text":
     """Render a (path, old_text, new_text) tuple as a small unified
     preview using the shared diff windowing — at most `max_lines` total
     visible removed+added rows, with a "… N more" footer when truncated.
@@ -153,9 +169,10 @@ def _render_diff(diff: tuple[str, str, str], colors,
         body.append("  │ +", style=colors.ok)
         body.append(f" {line}\n", style=colors.ok)
     if elided > 0:
-        body.append(f"  │ … {elided} more line"
-                    f"{'s' if elided != 1 else ''}\n",
-                    style=colors.muted)
+        body.append(
+            f"  │ … {elided} more line{'s' if elided != 1 else ''}\n",
+            style=colors.muted,
+        )
     body.append("  └", style=colors.muted)
     return body
 
@@ -171,13 +188,14 @@ def _render_agent_plan(plan: AgentPlan, colors) -> "RenderableType":
         return Text("📋 (no plan)", style=colors.muted)
     done = sum(1 for e in plan.entries if e.status == "completed")
     body = Text()
-    body.append(f"📋 Plan — {done}/{total} done\n",
-                style=f"bold {colors.accent}")
+    body.append(f"📋 Plan — {done}/{total} done\n", style=f"bold {colors.accent}")
     for entry in plan.entries:
         glyph = PLAN_STATUS_GLYPH.get(entry.status, "○")
         glyph_style = (
-            colors.ok if entry.status == "completed"
-            else colors.accent if entry.status == "in_progress"
+            colors.ok
+            if entry.status == "completed"
+            else colors.accent
+            if entry.status == "in_progress"
             else colors.muted
         )
         content_style = ""
@@ -209,10 +227,12 @@ def coalesce_chunks(events: list[Event]) -> list[Event]:
     buf: AssistantText | AssistantThinking | None = None
     for ev in events:
         if isinstance(ev, (AssistantText, AssistantThinking)):
-            if buf is not None and type(buf) is type(ev) \
-                    and buf.message_id == ev.message_id:
-                buf = replace(buf, text=buf.text + ev.text,
-                              usage=ev.usage or buf.usage)
+            if (
+                buf is not None
+                and type(buf) is type(ev)
+                and buf.message_id == ev.message_id
+            ):
+                buf = replace(buf, text=buf.text + ev.text, usage=ev.usage or buf.usage)
                 continue
             if buf is not None:
                 out.append(buf)
@@ -240,11 +260,13 @@ def renders_to_nothing(ev: Event) -> bool:
     if isinstance(ev, (AssistantText, UserMessage)):
         return not ev.text.strip()
     return not isinstance(
-        ev, (AssistantThinking, ToolUse, ToolResult, AgentPlan, Result))
+        ev, (AssistantThinking, ToolUse, ToolResult, AgentPlan, Result)
+    )
 
 
-def render_event(ev: Event, colors,
-                 *, age_s: float | None = None) -> RenderableType | None:
+def render_event(
+    ev: Event, colors, *, age_s: float | None = None
+) -> RenderableType | None:
     """Map one typed event to a Rich renderable (themed), or None.
 
     ``age_s`` is how long ago the event landed; only the turn terminator
@@ -260,10 +282,15 @@ def render_event(ev: Event, colors,
         # estimate (Claude redacts thinking text → len is 0); fall back to a
         # ~4-chars/token heuristic for harnesses that stream the text instead.
         from aegis.tui.metrics import _fmt_tokens
-        approx = (ev.token_estimate if ev.token_estimate > 0
-                  else max(1, len((ev.text or "").strip()) // 4))
-        return Text(f"💭 thought · ~{_fmt_tokens(approx)} tok",
-                    style=f"italic {colors.muted}")
+
+        approx = (
+            ev.token_estimate
+            if ev.token_estimate > 0
+            else max(1, len((ev.text or "").strip()) // 4)
+        )
+        return Text(
+            f"💭 thought · ~{_fmt_tokens(approx)} tok", style=f"italic {colors.muted}"
+        )
     if isinstance(ev, ToolUse):
         # Static path (replay / non-live). The live pane re-renders through
         # render_tool_use with a per-tool timer + click-to-expand args.
@@ -275,15 +302,14 @@ def render_event(ev: Event, colors,
         if len(first) > 100:
             first = first[:100] + "…"
         if ev.is_error:
-            return Text.assemble(("  └ ", colors.muted),
-                                 ("error ", colors.err), first)
-        return Text.assemble(("  └ ", colors.muted),
-                             ("ok ", colors.ok), first)
+            return Text.assemble(("  └ ", colors.muted), ("error ", colors.err), first)
+        return Text.assemble(("  └ ", colors.muted), ("ok ", colors.ok), first)
     if isinstance(ev, AgentPlan):
         return _render_agent_plan(ev, colors)
     if isinstance(ev, Result):
-        return Text(f"── {' · '.join(result_parts(ev, age_s=age_s))} ──",
-                    style=colors.muted)
+        return Text(
+            f"── {' · '.join(result_parts(ev, age_s=age_s))} ──", style=colors.muted
+        )
     if isinstance(ev, UserMessage):
         # Same line the live pane mounts at send time, so a reopened
         # conversation is indistinguishable from the one you were just in.
@@ -355,9 +381,13 @@ def render_side_note(note, colors) -> Panel:
     else:
         parts.append(Text(note.error or "no answer", style=tint))
     if note.ok and note.needs_more:
-        parts.append(Text(
-            f"  answered from {note.header} — /fork if you want it to "
-            f"actually go look.", style=f"italic {colors.working}"))
+        parts.append(
+            Text(
+                f"  answered from {note.header} — /fork if you want it to "
+                f"actually go look.",
+                style=f"italic {colors.working}",
+            )
+        )
     if note.footer:
         parts.append(Text(note.footer, style=colors.muted))
     return _aside(parts, colors)
@@ -378,8 +408,7 @@ def render_recap(recap, colors) -> Panel:
     sentence and keeps its ``colors.error`` tint.
     """
     tint = colors.error if not recap.ok else colors.accent
-    parts: list[RenderableType] = [
-        Text("recap", style=f"bold italic {tint}")]
+    parts: list[RenderableType] = [Text("recap", style=f"bold italic {tint}")]
     if recap.ok:
         parts.append(Markdown(recap.text))
     else:
@@ -410,7 +439,8 @@ def render_peer_answer(answer, colors) -> Panel:
     """
     tint = colors.error if not answer.ok else colors.accent
     parts: list[RenderableType] = [
-        Text(f"@{answer.target or '?'} ", style=f"bold italic {tint}")]
+        Text(f"@{answer.target or '?'} ", style=f"bold italic {tint}")
+    ]
     if answer.ok:
         parts.append(Markdown(answer.answer))
     else:
@@ -432,8 +462,7 @@ def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
     line.append("✉ ", style=f"bold {colors.accent}")
     if msg.task_id is not None:
         status = msg.status or "?"
-        head = (f"from {msg.sender} · task#{msg.task_id} · "
-                f"{status} · {msg.timestamp}")
+        head = f"from {msg.sender} · task#{msg.task_id} · {status} · {msg.timestamp}"
     else:
         head = f"from {msg.sender} · {msg.timestamp}"
     line.append(head, style=colors.accent)
@@ -444,6 +473,5 @@ def render_inbox_block(msg, colors, *, preview_lines: int = 4) -> Text:
     if len(body_lines) > preview_lines:
         remaining = len(body_lines) - preview_lines
         s = "" if remaining == 1 else "s"
-        line.append(f"  … ({remaining} more line{s})\n",
-                    style=colors.muted)
+        line.append(f"  … ({remaining} more line{s})\n", style=colors.muted)
     return line

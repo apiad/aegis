@@ -4,16 +4,27 @@ rendering semantics via the shared ``aegis.render_shared`` helpers. Colors
 are applied by CSS classes whose values come from the theme's
 ``to_css_variables()`` output, so this renderer takes no palette argument.
 """
+
 from __future__ import annotations
 
 from html import escape
 
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, Event, Result, SystemInit,
-    ToolResult, ToolUse, Unknown,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    Event,
+    Result,
+    SystemInit,
+    ToolResult,
+    ToolUse,
+    Unknown,
 )
 from aegis.render_shared import (
-    PLAN_STATUS_GLYPH, describe_tool, diff_window, result_parts,
+    PLAN_STATUS_GLYPH,
+    describe_tool,
+    diff_window,
+    result_parts,
     tool_glyph,
 )
 
@@ -31,20 +42,22 @@ def render_event_html(ev: Event) -> str | None:
         body = (ev.text or "").strip()
         if ev.token_estimate > 0:
             from aegis.tui.metrics import _fmt_tokens
+
             tok = f" · ~{_fmt_tokens(ev.token_estimate)} tok"
         else:
             tok = ""
         if not body:
             return f'<div class="thinking muted">✻ Thinking…{tok}</div>'
-        return (f'<div class="thinking muted"><em>✻ '
-                f'{escape(body)}{tok}</em></div>')
+        return f'<div class="thinking muted"><em>✻ {escape(body)}{tok}</em></div>'
 
     if isinstance(ev, ToolUse):
         icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
         desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
-        return (f'<div class="tool-use">'
-                f'<span class="icon">{icon}</span> '
-                f'<span class="tool-desc">{escape(desc)}</span></div>')
+        return (
+            f'<div class="tool-use">'
+            f'<span class="icon">{icon}</span> '
+            f'<span class="tool-desc">{escape(desc)}</span></div>'
+        )
 
     if isinstance(ev, ToolResult):
         if ev.diff is not None and not ev.is_error:
@@ -53,9 +66,11 @@ def render_event_html(ev: Event) -> str | None:
         if len(first) > 100:
             first = first[:100] + "…"
         cls = "error" if ev.is_error else "ok"
-        return (f'<div class="tool-result {cls}">└ '
-                f'<span class="status">{cls}</span> '
-                f'{escape(first)}</div>')
+        return (
+            f'<div class="tool-result {cls}">└ '
+            f'<span class="status">{cls}</span> '
+            f"{escape(first)}</div>"
+        )
 
     if isinstance(ev, AgentPlan):
         return _plan_html(ev)
@@ -95,5 +110,6 @@ def _plan_html(plan: AgentPlan) -> str:
         rows.append(
             f'<div class="plan-row {entry.status}{prio}">'
             f'<span class="glyph">{glyph}</span> '
-            f'{escape(entry.content)}</div>')
+            f"{escape(entry.content)}</div>"
+        )
     return f'<div class="agent-plan">{"".join(rows)}</div>'

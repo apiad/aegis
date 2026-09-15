@@ -24,14 +24,21 @@ from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.pane import ConversationPane, PaneStateChanged
 from aegis.tui.state import AgentState
 from aegis.voice import (
-    VoiceSession, prewarm, unavailable_reason, voice_available,
+    VoiceSession,
+    prewarm,
+    unavailable_reason,
+    voice_available,
 )
 from aegis.tui.themes import (
-    THEMES, DEFAULT_THEME, AegisColors, aegis_colors, INK,
+    THEMES,
+    DEFAULT_THEME,
+    AegisColors,
+    aegis_colors,
+    INK,
 )
 from aegis.tui.widgets import TabBar
 
-if TYPE_CHECKING:      # aegis.views imports this module; keep it type-only
+if TYPE_CHECKING:  # aegis.views imports this module; keep it type-only
     from aegis.state.workspace import Workspace
     from aegis.views.state import ViewState
 
@@ -82,8 +89,10 @@ class _DisabledPlaneStub:
 
     def __getattr__(self, item: str):
         from aegis.tui.remote_manager import RemoteUnsupportedError
+
         raise RemoteUnsupportedError(
-            f"{self._name}.{item}: not available in --remote v1")
+            f"{self._name}.{item}: not available in --remote v1"
+        )
 
 
 def _safe_replay(state_dir_path, log_id):
@@ -96,14 +105,16 @@ def _safe_replay(state_dir_path, log_id):
     with it. A tab may lose its scrollback; it may not lose its siblings.
     """
     from aegis.state.session_log import EventReplay, replay_events
+
     try:
         return replay_events(state_dir_path, log_id)
     except Exception:  # noqa: BLE001
         return EventReplay(events=[], interrupted=False)
 
 
-def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
-                     open_tab, open_failed_tab=None):
+def bootstrap_resume(
+    *, state_dir_path, ws, agents, drivers, cwd, mcp_url, open_tab, open_failed_tab=None
+):
     """Drive the resume flow. Pure orchestrator.
 
     - state_dir_path: project state dir.
@@ -153,8 +164,11 @@ def bootstrap_resume(*, state_dir_path, ws, agents, drivers, cwd, mcp_url,
         replay = _safe_replay(state_dir_path, tab.log_id or tab.handle)
         open_tab(handle=tab.handle, replay=replay, session=session)
 
-    return _banner(resumed=len(plan.resumable) - len(failures),
-                   skipped=plan.skipped, failures=failures)
+    return _banner(
+        resumed=len(plan.resumable) - len(failures),
+        skipped=plan.skipped,
+        failures=failures,
+    )
 
 
 def _no_resumable_message(skipped):
@@ -168,8 +182,10 @@ def _no_resumable_message(skipped):
         parts.append(f"{n} {prov}")
     reason_parts = sorted(by_reason.items())
     reason_str = ", ".join(f"{r}" for r, _ in reason_parts)
-    return (f"no resumable tabs ({len(skipped)} tabs in last workspace: "
-            f"{', '.join(parts)} — {reason_str})")
+    return (
+        f"no resumable tabs ({len(skipped)} tabs in last workspace: "
+        f"{', '.join(parts)} — {reason_str})"
+    )
 
 
 def _banner(resumed: int, skipped, failures) -> str:
@@ -196,6 +212,7 @@ def needs_close_marker(state_dir_path: Path, log_id: str) -> bool:
     dataclasses to discard them cost ~940 ms of frozen UI on every tab close.
     """
     from aegis.state.session_log import scan_log, session_log_path
+
     path = session_log_path(state_dir_path, log_id)
     if not path.exists():
         return False
@@ -210,8 +227,8 @@ def needs_close_marker(state_dir_path: Path, log_id: str) -> bool:
 
 
 def pick_workspace_to_resume(
-        state_dir_path: Path,
-        clean: bool) -> "tuple[Workspace | None, Path | None]":
+    state_dir_path: Path, clean: bool
+) -> "tuple[Workspace | None, Path | None]":
     """The Workspace to resume, and the snapshot moved aside if one was.
 
     A None workspace means clean=True, no snapshot on disk, or a snapshot
@@ -228,25 +245,29 @@ def pick_workspace_to_resume(
     if clean:
         return None, None
     from aegis.state.workspace import load_or_quarantine
+
     return load_or_quarantine(state_dir_path)
 
 
-def write_workspace_snapshot(state_dir_path: Path, tabs,
-                             *, terminals=None, files=None) -> None:
+def write_workspace_snapshot(
+    state_dir_path: Path, tabs, *, terminals=None, files=None
+) -> None:
     """Persist the current tab roster to workspace.json.
 
     Takes no focus argument: which tab is active is per-view state and is
     persisted separately by :func:`write_view_snapshot`.
     """
     from aegis.state.workspace import Workspace, save
-    save(state_dir_path,
-         Workspace(tabs=list(tabs),
-                   terminals=list(terminals or []),
-                   files=list(files or [])))
+
+    save(
+        state_dir_path,
+        Workspace(
+            tabs=list(tabs), terminals=list(terminals or []), files=list(files or [])
+        ),
+    )
 
 
-def write_view_snapshot(state_dir_path: Path, view_state,
-                        active_handle) -> None:
+def write_view_snapshot(state_dir_path: Path, view_state, active_handle) -> None:
     """Record which tab this view has focused, and persist it.
 
     Focus used to ride in workspace.json and was therefore durable across a
@@ -254,6 +275,7 @@ def write_view_snapshot(state_dir_path: Path, view_state,
     change keeps that property after the move.
     """
     from aegis.views.state import save_view
+
     view_state.active_handle = active_handle
     save_view(state_dir_path, view_state)
 
@@ -312,8 +334,7 @@ class AegisApp(App):
         # protocol and do disambiguate it. Same trap for ctrl+i/m/j
         # (tab/enter/enter).
         Binding("ctrl+r", "open_history", "History", priority=True),
-        Binding("ctrl+h", "open_history", "History", priority=True,
-                show=False),
+        Binding("ctrl+h", "open_history", "History", priority=True, show=False),
         Binding("ctrl+o", "open_file_picker", "Open file", priority=True),
         Binding("f2", "open_config_panel", "Config", priority=True),
         Binding("f3", "toggle_tasks", "Dashboard", priority=True),
@@ -324,42 +345,44 @@ class AegisApp(App):
         # Ctrl+arrows are free in Textual's TextArea (Up/Down there are the
         # input's sent-message recall), and these are priority bindings so
         # the focused input never sees them.
-        Binding("alt+up", "scroll_transcript(-1)", "Scroll up",
-                priority=True),
-        Binding("alt+down", "scroll_transcript(1)", "Scroll down",
-                priority=True),
-        Binding("ctrl+up", "scroll_message(-1)", "Prev message",
-                priority=True),
-        Binding("ctrl+down", "scroll_message(1)", "Next message",
-                priority=True),
+        Binding("alt+up", "scroll_transcript(-1)", "Scroll up", priority=True),
+        Binding("alt+down", "scroll_transcript(1)", "Scroll down", priority=True),
+        Binding("ctrl+up", "scroll_message(-1)", "Prev message", priority=True),
+        Binding("ctrl+down", "scroll_message(1)", "Next message", priority=True),
         Binding("alt+end", "jump_to_tail", "Live tail", priority=True),
-        Binding("ctrl+shift+right", "move_tab(1)", "Move tab →",
-                priority=True),
-        Binding("ctrl+shift+left", "move_tab(-1)", "Move tab ←",
-                priority=True),
+        Binding("ctrl+shift+right", "move_tab(1)", "Move tab →", priority=True),
+        Binding("ctrl+shift+left", "move_tab(-1)", "Move tab ←", priority=True),
         # Aliases for terminals that swallow ctrl+shift+arrow (or bind it
         # themselves) before it reaches the app.
         Binding("alt+shift+right", "move_tab(1)", priority=True, show=False),
         Binding("alt+shift+left", "move_tab(-1)", priority=True, show=False),
-        *[Binding(f"ctrl+{n}", f"goto({n})", f"Tab {n}", priority=True)
-          for n in range(1, 10)],
+        *[
+            Binding(f"ctrl+{n}", f"goto({n})", f"Tab {n}", priority=True)
+            for n in range(1, 10)
+        ],
     ]
 
-    def __init__(self, agents: dict[str, Agent], default_agent: str,
-                 make_session: "SessionFactory | None", mcp,
-                 *, queues: "dict | None" = None,
-                 clean: bool = False,
-                 drivers: "dict | None" = None,
-                 cwd: "str | None" = None,
-                 voice: "VoiceConfig | None" = None,
-                 hosts: "dict | None" = None,
-                 host_registry: "object | None" = None,
-                 manager: "object | None" = None,
-                 bridge: "object | None" = None,
-                 driver_class: "type | None" = None,
-                 view_state: "ViewState | None" = None,
-                 owns_brain: bool = True,
-                 can_stop_daemon=None) -> None:
+    def __init__(
+        self,
+        agents: dict[str, Agent],
+        default_agent: str,
+        make_session: "SessionFactory | None",
+        mcp,
+        *,
+        queues: "dict | None" = None,
+        clean: bool = False,
+        drivers: "dict | None" = None,
+        cwd: "str | None" = None,
+        voice: "VoiceConfig | None" = None,
+        hosts: "dict | None" = None,
+        host_registry: "object | None" = None,
+        manager: "object | None" = None,
+        bridge: "object | None" = None,
+        driver_class: "type | None" = None,
+        view_state: "ViewState | None" = None,
+        owns_brain: bool = True,
+        can_stop_daemon=None,
+    ) -> None:
         # A view supplies its own driver so its frames go to that view's
         # sink instead of this process's stdout. None keeps Textual's
         # auto-detection, which is every existing caller.
@@ -438,12 +461,14 @@ class AegisApp(App):
         self._queues = queues or {}
         self._state_dir: Path = state_dir(Path.cwd())
         from aegis.tui.file_index import FileIndexer
+
         self._file_indexer = FileIndexer()
         # Which repos the live agents are writing to — app-wide, so a pane
         # can say "a peer is in here too". Built before the remote-mode
         # branch: a --remote session's panes still record their own writes,
         # and the section is the same either way.
         from aegis.repos.tracker import RepoTracker
+
         self.repo_tracker = RepoTracker()
 
         if manager is not None:
@@ -453,31 +478,36 @@ class AegisApp(App):
             self._remote_manager = manager
             # Expose _ws so tests (and on_mount wiring) can reach the client.
             self._ws = getattr(manager, "_ws", None)
-            self.inbox_router = getattr(manager, "inbox_router",
-                                        _DisabledPlaneStub("inbox_router"))
-            self.queue_manager = getattr(manager, "queue_manager",
-                                         _DisabledPlaneStub("queue_manager"))
-            self.monitor_manager = getattr(manager, "monitor_manager",
-                                           _DisabledPlaneStub("monitor_manager"))
+            self.inbox_router = getattr(
+                manager, "inbox_router", _DisabledPlaneStub("inbox_router")
+            )
+            self.queue_manager = getattr(
+                manager, "queue_manager", _DisabledPlaneStub("queue_manager")
+            )
+            self.monitor_manager = getattr(
+                manager, "monitor_manager", _DisabledPlaneStub("monitor_manager")
+            )
             self.reminder_service = getattr(
-                manager, "reminder_service",
-                _DisabledPlaneStub("reminder_service"))
+                manager, "reminder_service", _DisabledPlaneStub("reminder_service")
+            )
             self.loop_service = getattr(
-                manager, "loop_service", _DisabledPlaneStub("loop_service"))
+                manager, "loop_service", _DisabledPlaneStub("loop_service")
+            )
             self.queue_digest = _DisabledPlaneStub("queue_digest")
-            self.canvas_manager = getattr(manager, "canvas_manager",
-                                          _DisabledPlaneStub("canvas_manager"))
-            self.terminal_manager = getattr(manager, "terminal_manager",
-                                             _DisabledPlaneStub("terminal_manager"))
-            self.groups = getattr(manager, "groups",
-                                   _DisabledPlaneStub("groups"))
-            self.locks = getattr(manager, "locks",
-                                  _DisabledPlaneStub("locks"))
+            self.canvas_manager = getattr(
+                manager, "canvas_manager", _DisabledPlaneStub("canvas_manager")
+            )
+            self.terminal_manager = getattr(
+                manager, "terminal_manager", _DisabledPlaneStub("terminal_manager")
+            )
+            self.groups = getattr(manager, "groups", _DisabledPlaneStub("groups"))
+            self.locks = getattr(manager, "locks", _DisabledPlaneStub("locks"))
             self.remotes = getattr(manager, "remotes", {})
             self.scheduler = getattr(manager, "scheduler", None)
             self.state_root = getattr(manager, "state_root", Path.cwd())
-            self.workflow_registry = getattr(manager, "workflow_registry",
-                                              _SN(get=lambda _: None))
+            self.workflow_registry = getattr(
+                manager, "workflow_registry", _SN(get=lambda _: None)
+            )
             # MCP is not used in remote mode; skip binding.
             return
 
@@ -522,14 +552,15 @@ class AegisApp(App):
         # one copy for all views), and aegis.core.planes lists them.
         if bridge is not None:
             from aegis.core.planes import BRAIN_PLANES, CONSTRUCTED_PLANES
+
             for _plane in BRAIN_PLANES + CONSTRUCTED_PLANES:
                 _owned = getattr(bridge, _plane, None)
                 if _owned is None:
                     # Raise rather than substitute: a private copy is the
                     # bug, because nothing else would ever write to it.
                     raise RuntimeError(
-                        f"the brain has no {_plane!r}; a view must not "
-                        "build its own")
+                        f"the brain has no {_plane!r}; a view must not build its own"
+                    )
                 setattr(self, _plane, _owned)
         else:
             self._build_planes()
@@ -544,6 +575,7 @@ class AegisApp(App):
         # which rail is worth launching on. A provider you hold no credentials
         # for never reaches the network and never reaches the bar.
         from aegis.usage.quota_providers import build_services
+
         self.quota_services = build_services()
         # handle -> last seen AgentState, for turn-end detection in _tick.
         self._quota_states: dict[str, object] = {}
@@ -565,7 +597,8 @@ class AegisApp(App):
         """
         self.inbox_router = InboxRouter()
         self.queue_manager = QueueManager(
-            self._queues, _SessionManagerAdapter(self), self.inbox_router)
+            self._queues, _SessionManagerAdapter(self), self.inbox_router
+        )
         # Process-monitor plane — polls agent-supplied bash and wakes the
         # agent on the outcome (interrupting a busy turn). AegisApp is the
         # session-manager seam (list_sessions / interrupt).
@@ -573,33 +606,39 @@ class AegisApp(App):
         # Reminder plane — self-left notes delivered back to the agent's own
         # inbox (turn-end, or after a delay). AegisApp is the session seam.
         from aegis.queue import ReminderService
+
         self.reminder_service = ReminderService(self.inbox_router, self)
         self.loop_service = LoopService(self)
         # Canvas plane — shared markdown blackboards. Notifier dispatches
         # write events to subscribers via the inbox router.
         from aegis.canvas.manager import CanvasManager
         from aegis.canvas.notify import make_canvas_notifier
+
         self.canvas_manager = CanvasManager(
-            state_dir=self._state_dir,
-            notifier=make_canvas_notifier(self.inbox_router))
+            state_dir=self._state_dir, notifier=make_canvas_notifier(self.inbox_router)
+        )
         # Terminal plane — live shared PTYs reachable via MCP.
         from aegis.terminal.manager import TerminalManager
         from aegis.terminal.notify import make_terminal_notifier
+
         self.terminal_manager = TerminalManager(
-            state_dir=self._state_dir / "terminals",
-            default_cwd=Path(self._cwd))
-        self.terminal_manager.set_notifier(
-            make_terminal_notifier(self.inbox_router))
+            state_dir=self._state_dir / "terminals", default_cwd=Path(self._cwd)
+        )
+        self.terminal_manager.set_notifier(make_terminal_notifier(self.inbox_router))
         from aegis.groups.bridge import make_groups_bridge
+
         self.groups = make_groups_bridge(
-            session_manager=_GroupSessionAdapter(self),
-            inbox_router=self.inbox_router)
+            session_manager=_GroupSessionAdapter(self), inbox_router=self.inbox_router
+        )
         from aegis.locks.bridge import make_locks_bridge
+
         self.locks = make_locks_bridge(
-            live_handles=lambda: {p.handle for p in self._panes
-                                  if isinstance(p, ConversationPane)},
+            live_handles=lambda: {
+                p.handle for p in self._panes if isinstance(p, ConversationPane)
+            },
             root_fn=lambda: self.state_root or Path.cwd(),
-            state_dir=self._state_dir)
+            state_dir=self._state_dir,
+        )
 
     def inline_schedule_names(self) -> set[str]:
         return set()
@@ -630,10 +669,11 @@ class AegisApp(App):
         """
         panes = [p for p in self._panes if isinstance(p, ConversationPane)]
         live = ", ".join(f"{p.handle}[{p.id}]" for p in panes) or "none"
-        retired = sorted(self._handles.known
-                         - {p.handle for p in panes})
-        return (f"{len(self._panes)} tabs; live: {live}; "
-                f"retired handles: {', '.join(retired) or 'none'}")
+        retired = sorted(self._handles.known - {p.handle for p in panes})
+        return (
+            f"{len(self._panes)} tabs; live: {live}; "
+            f"retired handles: {', '.join(retired) or 'none'}"
+        )
 
     def _handle_exception(self, error: Exception) -> None:
         """Textual's crash door — the one that matters for the TUI.
@@ -645,7 +685,7 @@ class AegisApp(App):
         """
         try:
             aegis_log.crash("tui", error)
-        except Exception:                                     # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass  # never let logging the crash replace the crash
         super()._handle_exception(error)
 
@@ -653,8 +693,9 @@ class AegisApp(App):
         aegis_log.configure(self._state_dir, context=self._crash_context)
         try:
             import asyncio as _asyncio
+
             aegis_log.install_asyncio_hook(_asyncio.get_running_loop())
-        except Exception:                                     # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass  # a loop we cannot reach is not worth failing boot over
         for theme in THEMES.values():
             self.register_theme(theme)
@@ -664,13 +705,17 @@ class AegisApp(App):
         if self._voice_cfg.enabled:
             import asyncio
             import threading
+
             self._loop = asyncio.get_running_loop()
             self.bind(self._voice_cfg.key, "toggle_voice", description="Voice")
             # Load whisper + Silero in the background so the first ctrl+g is
             # responsive instead of blocking several seconds on a cold model.
             threading.Thread(
-                target=prewarm, args=(self._voice_cfg,),
-                name="voice-prewarm", daemon=True).start()
+                target=prewarm,
+                args=(self._voice_cfg,),
+                name="voice-prewarm",
+                daemon=True,
+            ).start()
         if hasattr(self, "_remote_manager"):
             # Remote mode: skip local planes and wire reconnect + reset handlers.
             self._wire_remote_handlers()
@@ -679,7 +724,7 @@ class AegisApp(App):
             if sessions:
                 cs = self.query_one(ContentSwitcher)
                 for i, info in enumerate(sessions):
-                    foreground = (i == 0)
+                    foreground = i == 0
                     await self._spawn_remote_pane(info, foreground=foreground)
                 if self._panes:
                     active = self._panes[0]
@@ -708,6 +753,7 @@ class AegisApp(App):
         import contextlib
 
         from aegis.commands.prompt_loader import load_prompt_commands
+
         with contextlib.suppress(Exception):
             load_prompt_commands(self.state_root)
 
@@ -719,6 +765,7 @@ class AegisApp(App):
         # to a changed agent set is slice 16).
         if not self._agents:
             from aegis.tui.config_panel import ConfigPanel
+
             panel = ConfigPanel(Path.cwd())
             self._panes.append(panel)
             cs = self.query_one(ContentSwitcher)
@@ -735,9 +782,11 @@ class AegisApp(App):
         # each re-load from disk, the default-agent `_spawn` (which writes
         # a fresh snapshot when no agent tabs were resumable) would have
         # already clobbered the on-disk terminals/files list.
-        ws, quarantined = ((None, None) if self._clean
-                           else pick_workspace_to_resume(self._state_dir,
-                                                         clean=False))
+        ws, quarantined = (
+            (None, None)
+            if self._clean
+            else pick_workspace_to_resume(self._state_dir, clean=False)
+        )
         if quarantined is not None:
             # Said here rather than logged. The daemon's stderr goes to
             # /dev/null, so a log line reaches nobody, and tabs that vanish
@@ -745,7 +794,9 @@ class AegisApp(App):
             self.notify(
                 f"workspace.json was unreadable and has been moved to "
                 f"{quarantined.name}; starting with no restored tabs",
-                severity="warning", timeout=10)
+                severity="warning",
+                timeout=10,
+            )
         resumed_agents = await self._resume_agent_tabs(ws) if ws else False
         # Bridged: the brain owns the session set, so subscribe before
         # adopting -- a session spawned between the two would otherwise be
@@ -802,9 +853,11 @@ class AegisApp(App):
                 # a place in aegis_list_sessions.
                 try:
                     sess = mgr._sync_spawn(
-                        tab.profile, handle=tab.handle,
+                        tab.profile,
+                        handle=tab.handle,
                         resume_from=tab.session_id,
-                        log_id=tab.log_id or tab.handle)
+                        log_id=tab.log_id or tab.handle,
+                    )
                 except Exception as e:  # noqa: BLE001
                     failures.append((tab.handle, str(e)))
                     continue
@@ -814,21 +867,29 @@ class AegisApp(App):
             agent = self._agents[tab.profile]
             try:
                 session = drv.resume(
-                    agent, self._cwd, self._mcp.url,
-                    tab.handle, tab.session_id)
+                    agent, self._cwd, self._mcp.url, tab.handle, tab.session_id
+                )
             except Exception as e:  # noqa: BLE001
                 failures.append((tab.handle, str(e)))
                 continue
             # Off the loop, as in _resume_from_history: at boot this runs
             # once per restored tab, so the freezes add up.
             replay = await asyncio.to_thread(
-                _safe_replay, self._state_dir, tab.log_id or tab.handle)
+                _safe_replay, self._state_dir, tab.log_id or tab.handle
+            )
             pane = ConversationPane(
-                session, agent, tab.profile, tab.handle, self._palette,
-                digest=self.queue_digest, monitor_manager=self.monitor_manager,
+                session,
+                agent,
+                tab.profile,
+                tab.handle,
+                self._palette,
+                digest=self.queue_digest,
+                monitor_manager=self.monitor_manager,
                 state_dir_path=self._state_dir,
                 log_id=tab.log_id or tab.handle,
-                replay=replay, project_root=Path(self._cwd))
+                replay=replay,
+                project_root=Path(self._cwd),
+            )
             self._panes.append(pane)
             self.inbox_router.bind_session(tab.handle, pane._core)
             # Mount hidden. ContentSwitcher only hides children at its own
@@ -847,16 +908,18 @@ class AegisApp(App):
         # two views focus different tabs -- so it is read off the ViewState.
         focused = self._view_state.active_handle if self._view_state else None
         active = next(
-            (p for p in self._panes
-             if isinstance(p, ConversationPane)
-             and p.handle == focused),
-            self._panes[0])
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == focused
+            ),
+            self._panes[0],
+        )
         cs.current = active.id
         active.focus_input()
         self._refresh_tabbar()
 
-        resumed = len([p for p in self._panes
-                       if isinstance(p, ConversationPane)])
+        resumed = len([p for p in self._panes if isinstance(p, ConversationPane)])
         parts = [f"↻ resumed {resumed} tab(s)"]
         if plan.skipped:
             provs = sorted({s.tab.provider for s in plan.skipped})
@@ -895,12 +958,14 @@ class AegisApp(App):
 
     async def _spawn_terminal_from_snapshot(self, snap) -> None:
         from aegis.tui.terminal_tab import TerminalTab
+
         info = await self.terminal_manager.spawn(
-            name=snap.name, shell=snap.shell, cwd=snap.cwd)
+            name=snap.name, shell=snap.shell, cwd=snap.cwd
+        )
         tab = TerminalTab(self.terminal_manager, info, palette=self._palette)
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
-        tab.display = False   # see _mount_hidden note in _mount_and_kick
+        tab.display = False  # see _mount_hidden note in _mount_and_kick
         await cs.mount(tab)
         self._refresh_tabbar()
 
@@ -925,6 +990,7 @@ class AegisApp(App):
         switcher asks through here.
         """
         from textual.css.query import NoMatches
+
         try:
             return self.query_one(ContentSwitcher)
         except NoMatches:
@@ -934,9 +1000,11 @@ class AegisApp(App):
         """The full task list for a peer, backing aegis_peer_plan."""
         for p in self._panes:
             core = getattr(p, "_core", None)
-            if (getattr(p, "handle", None) == handle
-                    and core is not None
-                    and hasattr(core, "plan_state")):
+            if (
+                getattr(p, "handle", None) == handle
+                and core is not None
+                and hasattr(core, "plan_state")
+            ):
                 return core.plan_state()
         return None
 
@@ -950,13 +1018,17 @@ class AegisApp(App):
                 return p
         return None
 
-    def _resolve_place(self, agent, host: str | None = None,
-                       cwd: str | None = None):
+    def _resolve_place(self, agent, host: str | None = None, cwd: str | None = None):
         """Where this pane's harness will run. Local unless asked."""
         from aegis.hosts.resolve import resolve_place
-        return resolve_place(host=host, cwd=cwd,
-                             agent_host=getattr(agent, "host", None),
-                             hosts=self._hosts, local_root=self._cwd)
+
+        return resolve_place(
+            host=host,
+            cwd=cwd,
+            agent_host=getattr(agent, "host", None),
+            hosts=self._hosts,
+            local_root=self._cwd,
+        )
 
     def _factory_kwargs(self, place) -> dict:
         """Extra kwargs for ``_make_session``.
@@ -966,6 +1038,7 @@ class AegisApp(App):
         pre-hosts ``(profile, url, handle)`` factory signature working.
         """
         from aegis.hosts.models import Place
+
         return {} if place == Place("local", self._cwd) else {"place": place}
 
     def _mint_handle(self, handle: str | None) -> str:
@@ -981,21 +1054,24 @@ class AegisApp(App):
             self._handles.reserve(handle)
             return handle
         return self._handles.mint(
-            {p.handle for p in self._panes
-             if isinstance(p, ConversationPane)})
+            {p.handle for p in self._panes if isinstance(p, ConversationPane)}
+        )
 
-    async def _spawn(self, slug: str, *,
-                     handle: str | None = None,
-                     opening_prompt: str | None = None,
-                     foreground: bool = True,
-                     host: str | None = None,
-                     cwd: str | None = None,
-                     agent_override: "Agent | None" = None) -> ConversationPane:
+    async def _spawn(
+        self,
+        slug: str,
+        *,
+        handle: str | None = None,
+        opening_prompt: str | None = None,
+        foreground: bool = True,
+        host: str | None = None,
+        cwd: str | None = None,
+        agent_override: "Agent | None" = None,
+    ) -> ConversationPane:
         # agent_override carries a transient per-session pick (custom
         # harness/model/effort) that isn't persisted in .aegis.yaml; slug is
         # then just the pane's display label.
-        agent = agent_override if agent_override is not None \
-            else self._agents[slug]
+        agent = agent_override if agent_override is not None else self._agents[slug]
         place = self._resolve_place(agent, host, cwd)
         h = self._mint_handle(handle)
 
@@ -1004,10 +1080,12 @@ class AegisApp(App):
         # pool and get recycled, so keying the log on one merges unrelated
         # conversations into a single file.
         from aegis.state.session_log import new_log_id
+
         log_id = new_log_id(h)
 
-        def _write_meta(preview: str = "", *, _h=h, _slug=slug,
-                        _agent=agent, _log_id=log_id) -> None:
+        def _write_meta(
+            preview: str = "", *, _h=h, _slug=slug, _agent=agent, _log_id=log_id
+        ) -> None:
             # Ctrl+H history header. Written twice on purpose: once here at
             # spawn so the log is attributed even if the session is closed
             # or crashes before the first turn, and again on the first user
@@ -1019,12 +1097,21 @@ class AegisApp(App):
             from datetime import datetime, timezone
             from aegis.events import SessionMeta
             from aegis.state.session_log import append_meta
-            now_iso = datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ")
-            append_meta(self._state_dir, _log_id, SessionMeta(
-                handle=_h, profile=_slug, provider=_agent.harness,
-                cwd=self._cwd, created_at=now_iso, origin="tui",
-                preview=preview.replace("\n", " ")[:200]))
+
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            append_meta(
+                self._state_dir,
+                _log_id,
+                SessionMeta(
+                    handle=_h,
+                    profile=_slug,
+                    provider=_agent.harness,
+                    cwd=self._cwd,
+                    created_at=now_iso,
+                    origin="tui",
+                    preview=preview.replace("\n", " ")[:200],
+                ),
+            )
 
         _write_meta()
 
@@ -1034,39 +1121,47 @@ class AegisApp(App):
             # through the observer. Spawning locally here is what used to
             # trap a tab in the view it was opened in.
             sess = self.manager._sync_spawn(
-                slug, handle=h, host=host, cwd=cwd, agent=agent)
+                slug, handle=h, host=host, cwd=cwd, agent=agent
+            )
             # Mount here rather than waiting for our own observer callback:
             # callers use the returned pane immediately, and the callback is
             # scheduled on a worker. Whichever arrives second no-ops on
             # _mount_brain_pane's pane_for guard.
             await self._mount_brain_pane(
-                sess, foreground=foreground,
+                sess,
+                foreground=foreground,
                 on_first_user_message=_write_meta,
                 on_first_result=(
-                    lambda opening, _h=sess.handle: self._autotitle(
-                        _h, opening)))
+                    lambda opening, _h=sess.handle: self._autotitle(_h, opening)
+                ),
+            )
             pane = self.pane_for(sess.handle)
             if pane is not None and opening_prompt is not None:
                 pane._submit(opening_prompt)
             return pane
 
         pane = ConversationPane(
-            self._make_session(agent, self._mcp.url, h,
-                               **self._factory_kwargs(place)), agent,
-            slug, h, self._palette, digest=self.queue_digest,
+            self._make_session(agent, self._mcp.url, h, **self._factory_kwargs(place)),
+            agent,
+            slug,
+            h,
+            self._palette,
+            digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir, log_id=log_id,
+            state_dir_path=self._state_dir,
+            log_id=log_id,
             on_first_user_message=_write_meta,
-            on_first_result=(
-                lambda opening, _h=h: self._autotitle(_h, opening)),
-            place=place, project_root=Path(self._cwd))
+            on_first_result=(lambda opening, _h=h: self._autotitle(_h, opening)),
+            place=place,
+            project_root=Path(self._cwd),
+        )
         self._panes.append(pane)
         # Inbox binding goes through the pane's _core AgentSession — the
         # pane's renderer hooks stay primary; queue/handoff observers
         # ride add_*_observer (see core/session.py).
         self.inbox_router.bind_session(h, pane._core)
         cs = self.query_one(ContentSwitcher)
-        pane.display = False   # see _mount_hidden note in _mount_and_kick
+        pane.display = False  # see _mount_hidden note in _mount_and_kick
         await cs.mount(pane)
         if foreground:
             cs.current = pane.id
@@ -1083,10 +1178,14 @@ class AegisApp(App):
     # view. Focus, scroll and drafts stay per-view -- that is the stage-4
     # split. Only which tabs EXIST crosses.
 
-    async def _mount_brain_pane(self, session, *,
-                                foreground: bool = False,
-                                on_first_user_message=None,
-                                on_first_result=None) -> None:
+    async def _mount_brain_pane(
+        self,
+        session,
+        *,
+        foreground: bool = False,
+        on_first_user_message=None,
+        on_first_result=None,
+    ) -> None:
         """Mount a pane over a session the BRAIN owns.
 
         ``core=`` rather than a fresh ``AgentSession``: the pane must not
@@ -1115,11 +1214,17 @@ class AegisApp(App):
         log_id = getattr(session, "log_id", None) or session.handle
         replay = _safe_replay(self._state_dir, log_id)
         pane = ConversationPane(
-            None, session.agent, session.agent_slug, session.handle,
-            self._palette, digest=self.queue_digest,
+            None,
+            session.agent,
+            session.agent_slug,
+            session.handle,
+            self._palette,
+            digest=self.queue_digest,
             monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir, core=session,
-            log_id=log_id, replay=replay,
+            state_dir_path=self._state_dir,
+            core=session,
+            log_id=log_id,
+            replay=replay,
             # Once-per-session concerns that happen to live on a pane: the
             # Ctrl+H history preview and the autotitle. Only the view that
             # opened the tab carries them, so they fire once rather than
@@ -1128,9 +1233,10 @@ class AegisApp(App):
             on_first_user_message=on_first_user_message,
             on_first_result=on_first_result,
             place=getattr(session, "place", None),
-            project_root=Path(self._cwd))
+            project_root=Path(self._cwd),
+        )
         self._panes.append(pane)
-        pane.display = False   # see _mount_hidden note in _mount_and_kick
+        pane.display = False  # see _mount_hidden note in _mount_and_kick
         try:
             await cs.mount(pane)
         except Exception:  # noqa: BLE001
@@ -1197,9 +1303,11 @@ class AegisApp(App):
         if not self.is_running:
             return
         if kind == "added":
-            self.run_worker(self._mount_brain_pane(session),
-                            group=f"brain-pane-{session.handle}",
-                            exclusive=False)
+            self.run_worker(
+                self._mount_brain_pane(session),
+                group=f"brain-pane-{session.handle}",
+                exclusive=False,
+            )
         elif kind == "renamed":
             # Found by identity, not by handle: the session no longer
             # answers to the name this view knows it by, and does not yet
@@ -1213,9 +1321,11 @@ class AegisApp(App):
                     self._refresh_tabbar()
                     break
         elif kind == "removed":
-            self.run_worker(self._drop_brain_pane(session.handle),
-                            group=f"brain-drop-{session.handle}",
-                            exclusive=False)
+            self.run_worker(
+                self._drop_brain_pane(session.handle),
+                group=f"brain-drop-{session.handle}",
+                exclusive=False,
+            )
 
     async def _adopt_brain_sessions(self) -> bool:
         """Mount a pane for every session the brain already holds.
@@ -1256,11 +1366,13 @@ class AegisApp(App):
         from datetime import datetime, timezone
         from aegis.events import SessionClosed
         from aegis.state.session_log import append_event
+
         if not needs_close_marker(self._state_dir, log_id):
             return
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        append_event(self._state_dir, log_id,
-                     SessionClosed(closed_at=now_iso, reason=reason))
+        append_event(
+            self._state_dir, log_id, SessionClosed(closed_at=now_iso, reason=reason)
+        )
 
     def _refresh_tabbar(self) -> None:
         cs = self._switcher()
@@ -1269,8 +1381,15 @@ class AegisApp(App):
         # In remote mode queue_manager is a _DisabledPlaneStub — don't call it.
         qm = None if hasattr(self, "_remote_manager") else self.queue_manager
         items = [
-            (i + 1, p.handle, p.agent_slug, p.state, p.unseen,
-             p.id == cs.current, _tab_suffix(p, qm))
+            (
+                i + 1,
+                p.handle,
+                p.agent_slug,
+                p.state,
+                p.unseen,
+                p.id == cs.current,
+                _tab_suffix(p, qm),
+            )
             for i, p in enumerate(self._panes)
         ]
         self.query_one(TabBar).set_tabs(items)
@@ -1288,7 +1407,7 @@ class AegisApp(App):
         several times a second. action_quit still writes synchronously.
         """
         if self._snapshot_timer is not None:
-            return                       # one already pending
+            return  # one already pending
         try:
             # Arm it inside the app's context. A Timer's task copies the
             # context that created it and Timer._tick reads active_app, but
@@ -1302,8 +1421,9 @@ class AegisApp(App):
             # silently disabled every later roster write.
             with self._context():
                 self._snapshot_timer = self.set_timer(
-                    self.SNAPSHOT_DEBOUNCE_S, self._flush_snapshot)
-        except Exception:                # noqa: BLE001 — app not running yet
+                    self.SNAPSHOT_DEBOUNCE_S, self._flush_snapshot
+                )
+        except Exception:  # noqa: BLE001 — app not running yet
             self._write_snapshot()
 
     def _flush_snapshot(self) -> None:
@@ -1329,31 +1449,40 @@ class AegisApp(App):
                 if p.id == cs.current:
                     active_handle = p.handle
                     break
-        tabs = [_pane_to_tab(p, i) for i, p in enumerate(self._panes)
-                if isinstance(p, ConversationPane)]
+        tabs = [
+            _pane_to_tab(p, i)
+            for i, p in enumerate(self._panes)
+            if isinstance(p, ConversationPane)
+        ]
         from aegis.tui.terminal_tab import TerminalTab
         from aegis.tui.file_tab import FileTab
         from aegis.state.workspace import WorkspaceFile, WorkspaceTerminal
+
         terms = [
             WorkspaceTerminal(
-                name=p._info.name, shell=p._info.shell,
-                cwd=p._info.cwd, created_at=p._created_at)
-            for p in self._panes if isinstance(p, TerminalTab)
+                name=p._info.name,
+                shell=p._info.shell,
+                cwd=p._info.cwd,
+                created_at=p._created_at,
+            )
+            for p in self._panes
+            if isinstance(p, TerminalTab)
         ]
         from datetime import datetime, timezone
+
         _now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         files = [
             WorkspaceFile(
-                path=str(p._path), order=i,
-                created_at=getattr(p, "_created_at", _now))
+                path=str(p._path), order=i, created_at=getattr(p, "_created_at", _now)
+            )
             for i, p in enumerate(self._panes)
             if isinstance(p, FileTab)
         ]
-        write_workspace_snapshot(self._state_dir, tabs=tabs,
-                                 terminals=terms, files=files)
+        write_workspace_snapshot(
+            self._state_dir, tabs=tabs, terminals=terms, files=files
+        )
         if self._view_state is not None:
-            write_view_snapshot(self._state_dir, self._view_state,
-                                active_handle)
+            write_view_snapshot(self._state_dir, self._view_state, active_handle)
 
     def _quota_tick(self, active) -> None:
         """Push the quota segment and refresh whichever provider just moved.
@@ -1387,15 +1516,16 @@ class AegisApp(App):
             self._quota_states[handle] = state
             if previous is AgentState.working and state is AgentState.ready:
                 self.run_worker(
-                    self.quota_services[provider.name].refresh(
-                        min_interval=10.0),
-                    exclusive=False)
+                    self.quota_services[provider.name].refresh(min_interval=10.0),
+                    exclusive=False,
+                )
 
         if active is None or not hasattr(active, "set_quota"):
             return
         tiers = format_quota_bar(
             [(p, self.quota_services[p.name].current()) for p in PROVIDERS],
-            self._palette)
+            self._palette,
+        )
         # Push only on change — re-delivering a value that has not moved is a
         # repaint per tick for nothing. The pane is compared by identity and
         # held, not keyed by id(): a freed pane's id can be reused, and the
@@ -1414,6 +1544,7 @@ class AegisApp(App):
             active.refresh_result_age()
         if active is not None and hasattr(active, "set_system"):
             from aegis.tui.sysmeter import format_system_tiers, sample_system
+
             # One app-side sample per tick (not per pane); local host stats.
             with contextlib.suppress(Exception):
                 stats = sample_system(self._cwd)
@@ -1454,8 +1585,11 @@ class AegisApp(App):
         self._refresh_tabbar()
 
     def _resume_capable_providers(self) -> set[str]:
-        return {name for name, drv in self._drivers.items()
-                if getattr(drv, "supports_resume", False)}
+        return {
+            name
+            for name, drv in self._drivers.items()
+            if getattr(drv, "supports_resume", False)
+        }
 
     @work
     async def action_open_history(self) -> None:
@@ -1466,8 +1600,7 @@ class AegisApp(App):
         import aegis.state.history as history_mod
         from aegis.tui.history import HistoryModal
 
-        live = {p.handle for p in self._panes
-                if isinstance(p, ConversationPane)}
+        live = {p.handle for p in self._panes if isinstance(p, ConversationPane)}
         # Logs predating SessionMeta can't say which agent ran them; assume
         # the default one so they stay resumable. A wrong guess costs a
         # failed drv.resume, which this modal already reports.
@@ -1477,13 +1610,18 @@ class AegisApp(App):
         # here froze the whole UI. The modal below stays on the loop.
         rows = await asyncio.to_thread(
             history_mod.list_history,
-            self._state_dir, live_handles=live,
+            self._state_dir,
+            live_handles=live,
             fallback_profile=self._default_agent if default else "",
-            fallback_provider=default.harness if default else "")
+            fallback_provider=default.harness if default else "",
+        )
         outcome = await self.push_screen_wait(
-            HistoryModal(rows, agents=set(self._agents),
-                         resume_capable_providers=(
-                             self._resume_capable_providers())))
+            HistoryModal(
+                rows,
+                agents=set(self._agents),
+                resume_capable_providers=(self._resume_capable_providers()),
+            )
+        )
         if outcome is None:
             return
         kind, payload = outcome
@@ -1515,15 +1653,19 @@ class AegisApp(App):
                 return
 
         tab = WorkspaceTab(
-            handle=row.handle, profile=row.profile, order=0,
-            provider=row.provider, session_id=row.session_id,
-            created_at=row.created_at, log_id=row.log_id)
+            handle=row.handle,
+            profile=row.profile,
+            order=0,
+            provider=row.provider,
+            session_id=row.session_id,
+            created_at=row.created_at,
+            log_id=row.log_id,
+        )
         ws = Workspace(tabs=[tab])
         plan = plan_resume(ws, self._agents, self._drivers)
         if not plan.resumable:
             reason = plan.skipped[0].reason.value if plan.skipped else "unknown"
-            self.notify(f"cannot resume {row.handle}: {reason}",
-                        severity="warning")
+            self.notify(f"cannot resume {row.handle}: {reason}", severity="warning")
             return
         tab = plan.resumable[0].tab
         # What makes a reopen unsafe is a MOUNTED pane already holding the
@@ -1544,7 +1686,8 @@ class AegisApp(App):
             self.notify(
                 f"cannot reopen {tab.handle}: a live tab already holds "
                 f"that handle — rename it first",
-                severity="warning")
+                severity="warning",
+            )
             return
         self._handles.reserve(tab.handle)
         mgr = getattr(self, "manager", None)
@@ -1553,9 +1696,11 @@ class AegisApp(App):
             # have no token and no place in aegis_list_sessions.
             try:
                 sess = mgr._sync_spawn(
-                    tab.profile, handle=tab.handle,
+                    tab.profile,
+                    handle=tab.handle,
                     resume_from=tab.session_id,
-                    log_id=tab.log_id or tab.handle)
+                    log_id=tab.log_id or tab.handle,
+                )
             except Exception as e:  # noqa: BLE001
                 self.notify(f"resume failed: {e}", severity="error")
                 return
@@ -1569,7 +1714,8 @@ class AegisApp(App):
         agent = self._agents[tab.profile]
         try:
             session = drv.resume(
-                agent, self._cwd, self._mcp.url, tab.handle, tab.session_id)
+                agent, self._cwd, self._mcp.url, tab.handle, tab.session_id
+            )
         except Exception as e:  # noqa: BLE001
             self.notify(f"resume failed: {e}", severity="error")
             return
@@ -1577,12 +1723,21 @@ class AegisApp(App):
         # ~500ms on a 24MB log, and here it froze the UI mid-reopen. Same
         # reason the history scan above runs in a thread.
         replay = await asyncio.to_thread(
-            _safe_replay, self._state_dir, tab.log_id or tab.handle)
+            _safe_replay, self._state_dir, tab.log_id or tab.handle
+        )
         pane = ConversationPane(
-            session, agent, tab.profile, tab.handle, self._palette,
-            digest=self.queue_digest, monitor_manager=self.monitor_manager,
-            state_dir_path=self._state_dir, replay=replay,
-            log_id=tab.log_id or tab.handle, project_root=Path(self._cwd))
+            session,
+            agent,
+            tab.profile,
+            tab.handle,
+            self._palette,
+            digest=self.queue_digest,
+            monitor_manager=self.monitor_manager,
+            state_dir_path=self._state_dir,
+            replay=replay,
+            log_id=tab.log_id or tab.handle,
+            project_root=Path(self._cwd),
+        )
         self._panes.append(pane)
         self.inbox_router.bind_session(tab.handle, pane._core)
         cs = self.query_one(ContentSwitcher)
@@ -1612,7 +1767,7 @@ class AegisApp(App):
         if not slug and self._agents:
             slug = next(iter(self._agents))
         if not slug:
-            return   # no agent configured on the server
+            return  # no agent configured on the server
         handle = await self._remote_manager.spawn(slug)
         # Force-populate the new session into the manager so make_pane_core works.
         # (The session_list stream may arrive after this call; _add_session is
@@ -1620,20 +1775,31 @@ class AegisApp(App):
         if not self._remote_manager.get(handle):
             # session_list stream hasn't arrived yet; refresh manually.
             from aegis.mcp.bridge import SessionInfo
-            self._remote_manager._add_session({
-                "handle": handle,
-                "agent_slug": slug,
-                "state": "ready",
-                "active": True,
-                "unseen": False,
-            })
+
+            self._remote_manager._add_session(
+                {
+                    "handle": handle,
+                    "agent_slug": slug,
+                    "state": "ready",
+                    "active": True,
+                    "unseen": False,
+                }
+            )
         from aegis.mcp.bridge import SessionInfo
-        info = next((s for s in self._remote_manager.list_sessions()
-                     if s.handle == handle), None)
+
+        info = next(
+            (s for s in self._remote_manager.list_sessions() if s.handle == handle),
+            None,
+        )
         if info is None:
-            info_obj = SessionInfo(handle=handle, agent_slug=slug,
-                                   state="ready", active=True, unseen=False,
-                                   spawned_by=None)
+            info_obj = SessionInfo(
+                handle=handle,
+                agent_slug=slug,
+                state="ready",
+                active=True,
+                unseen=False,
+                spawned_by=None,
+            )
         else:
             info_obj = info
         await self._spawn_remote_pane(info_obj, foreground=True)
@@ -1682,8 +1848,10 @@ class AegisApp(App):
         """Best-effort harness registry for the picker. Falls back to the
         implicit driver registrations when config can't be read."""
         from aegis.config.harnesses import merge_harnesses
+
         try:
             from aegis.config import yaml_loader
+
             return yaml_loader.load_config(self.state_root).harnesses
         except Exception:  # noqa: BLE001
             return merge_harnesses({})
@@ -1691,53 +1859,69 @@ class AegisApp(App):
     @work
     async def action_pick_agent(self) -> None:
         from aegis.tui.picker import (
-            AgentPicker, _ChoicePicker, build_host_rows,
-            resolve_transient_agent)
+            AgentPicker,
+            _ChoicePicker,
+            build_host_rows,
+            resolve_transient_agent,
+        )
 
         # Host tier first, and only when there is a choice to make: with no
         # configured hosts an extra "local" modal would be pure friction.
         host: str | None = None
         if self._hosts and not hasattr(self, "_remote_manager"):
-            host = await self.push_screen_wait(_ChoicePicker(
-                build_host_rows(list(self._hosts), local_label=self._cwd),
-                title="host", prefill="local"))
-            if not host:      # escape at the host tier cancels the spawn
+            host = await self.push_screen_wait(
+                _ChoicePicker(
+                    build_host_rows(list(self._hosts), local_label=self._cwd),
+                    title="host",
+                    prefill="local",
+                )
+            )
+            if not host:  # escape at the host tier cancels the spawn
                 return
             if host == "local":
                 host = None
 
         harnesses = self._load_harnesses()
         choice = await self.push_screen_wait(
-            AgentPicker(sorted(self._agents), harnesses))
+            AgentPicker(sorted(self._agents), harnesses)
+        )
         if not choice:
             return
 
         if choice.startswith("harness:"):
             # Custom path: harness → model → (effort) → transient spawn.
             if hasattr(self, "_remote_manager"):
-                self.notify("custom-model spawn isn't supported in remote "
-                            "mode yet — pick a named agent.")
+                self.notify(
+                    "custom-model spawn isn't supported in remote "
+                    "mode yet — pick a named agent."
+                )
                 return
-            name = choice[len("harness:"):]
+            name = choice[len("harness:") :]
             reg = harnesses.get(name)
             if reg is None:
                 return
             from aegis.models import models_for
-            model = await self.push_screen_wait(_ChoicePicker(
-                models_for(reg.driver), title=f"model · {name}",
-                allow_custom=True))
+
+            model = await self.push_screen_wait(
+                _ChoicePicker(
+                    models_for(reg.driver), title=f"model · {name}", allow_custom=True
+                )
+            )
             if not model:
                 return
             effort = None
             if reg.driver == "claude-code":
-                effort = await self.push_screen_wait(_ChoicePicker(
-                    [(e, e) for e in ("low", "medium", "high", "max")],
-                    title="effort", prefill="high"))
+                effort = await self.push_screen_wait(
+                    _ChoicePicker(
+                        [(e, e) for e in ("low", "medium", "high", "max")],
+                        title="effort",
+                        prefill="high",
+                    )
+                )
                 if not effort:
                     return
             agent = resolve_transient_agent(name, model, effort, harnesses)
-            await self._spawn(f"{name}:{model}", agent_override=agent,
-                              host=host)
+            await self._spawn(f"{name}:{model}", agent_override=agent, host=host)
             return
 
         # Named preset.
@@ -1760,6 +1944,7 @@ class AegisApp(App):
 
     async def _spawn_terminal(self, name: str):
         from aegis.tui.terminal_tab import TerminalTab
+
         try:
             info = await self.terminal_manager.spawn(name=name)
         except Exception as e:
@@ -1825,6 +2010,7 @@ class AegisApp(App):
         cs = self.query_one(ContentSwitcher)
         # Focus existing panel if one is mounted.
         from aegis.tui.config_panel import ConfigPanel
+
         for p in self._panes:
             if isinstance(p, ConfigPanel):
                 cs.current = p.id
@@ -1844,6 +2030,7 @@ class AegisApp(App):
 
     async def action_open_file_picker(self, prefill: str = "") -> None:
         from aegis.tui.file_browser_tab import FileBrowserTab
+
         cwd = self._file_indexer._cwd or Path.cwd()
         tab = FileBrowserTab(
             cwd=cwd,
@@ -1853,15 +2040,17 @@ class AegisApp(App):
         )
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
-        tab.display = False   # hidden until ContentSwitcher activates it
+        tab.display = False  # hidden until ContentSwitcher activates it
         await cs.mount(tab)
         cs.current = tab.id
         self._refresh_tabbar()
         tab.focus_input()
 
-    async def _open_file_tab(self, path: Path, *, line: int | None = None,
-                             foreground: bool = True) -> None:
+    async def _open_file_tab(
+        self, path: Path, *, line: int | None = None, foreground: bool = True
+    ) -> None:
         from aegis.tui.file_tab import FileTab
+
         resolved = path.resolve()
         tab_id = f"filetab-{abs(hash(str(resolved)))}"
         for p in self._panes:
@@ -1881,7 +2070,7 @@ class AegisApp(App):
         tab = FileTab(resolved, line=line)
         self._panes.append(tab)
         cs = self.query_one(ContentSwitcher)
-        tab.display = False   # see _mount_hidden note in _mount_and_kick
+        tab.display = False  # see _mount_hidden note in _mount_and_kick
         await cs.mount(tab)
         if foreground:
             cs.current = tab.id
@@ -1896,16 +2085,19 @@ class AegisApp(App):
         except Exception as e:
             return {"status": "error", "reason": str(e)}
         if not resolved.is_file():
-            return {"status": "error", "reason": "file not found",
-                    "path": str(path)}
+            return {"status": "error", "reason": "file not found", "path": str(path)}
         tab_id = f"filetab-{abs(hash(str(resolved)))}"
         for p in self._panes:
             if p.id == tab_id:
-                self.run_worker(self._focus_existing_tab(p),
-                                group=f"focus-{tab_id}", exclusive=False)
+                self.run_worker(
+                    self._focus_existing_tab(p),
+                    group=f"focus-{tab_id}",
+                    exclusive=False,
+                )
                 return {"status": "focused", "path": str(resolved)}
-        self.run_worker(self._open_file_tab(resolved),
-                        group=f"open-file-{tab_id}", exclusive=False)
+        self.run_worker(
+            self._open_file_tab(resolved), group=f"open-file-{tab_id}", exclusive=False
+        )
         return {"status": "opened", "path": str(resolved)}
 
     async def _focus_existing_tab(self, tab) -> None:
@@ -1936,6 +2128,7 @@ class AegisApp(App):
 
     async def action_open_dashboard(self) -> None:
         from aegis.tui.dashboard import QueueDashboard
+
         await self.push_screen(QueueDashboard())
 
     def action_interrupt(self) -> None:
@@ -1944,6 +2137,7 @@ class AegisApp(App):
         # (the dashboard, the agent picker). Dismiss the modal first
         # and only fall through to interrupt on the default screen.
         from textual.screen import ModalScreen
+
         if isinstance(self.screen, ModalScreen):
             self.screen.dismiss()
             return
@@ -1961,8 +2155,7 @@ class AegisApp(App):
         # attention and it is billing by the second; clearing the input is
         # reachable by other means, and interrupting the turn is the
         # destructive option and stays last, hardest to hit by accident.
-        if active is not None and hasattr(active,
-                                          "cancel_deferred_if_running"):
+        if active is not None and hasattr(active, "cancel_deferred_if_running"):
             if active.cancel_deferred_if_running():
                 return
         # Esc clears a half-typed message before it interrupts the turn.
@@ -1974,7 +2167,7 @@ class AegisApp(App):
 
     async def action_toggle_voice(self) -> None:
         if self._voice_decoding:
-            return          # decode in flight; a new recording would race it
+            return  # decode in flight; a new recording would race it
         if self._voice is not None:
             self._stop_voice()
             return
@@ -1984,6 +2177,7 @@ class AegisApp(App):
         pane = self._active
         if not isinstance(pane, ConversationPane):
             return
+
         def on_final(text: str, pane=pane) -> None:
             # Fires from the decode worker thread -> marshal onto the UI loop.
             # The pane is captured per-recording so a late decode always
@@ -2035,7 +2229,7 @@ class AegisApp(App):
             self._voice_decoding = True
             if pane is not None:
                 pane.set_voice_state("transcribing")
-            voice.stop()   # non-blocking; decode + insert happen off-thread
+            voice.stop()  # non-blocking; decode + insert happen off-thread
         elif pane is not None:
             pane.set_voice_state("idle")
 
@@ -2073,8 +2267,10 @@ class AegisApp(App):
         if mgr is None:
             return False
         try:
-            return any(getattr(s, "state", None) is AgentState.working
-                       for s in getattr(mgr, "_sessions", []))
+            return any(
+                getattr(s, "state", None) is AgentState.working
+                for s in getattr(mgr, "_sessions", [])
+            )
         except Exception:  # noqa: BLE001 — never block a quit on this
             return False
 
@@ -2082,10 +2278,15 @@ class AegisApp(App):
         """True to go through with it. Anything unexpected means no."""
         from aegis.tui.picker import _ChoicePicker
 
-        choice = await self.push_screen_wait(_ChoicePicker(
-            [("stop", "Stop the daemon and lose the turn"),
-             ("cancel", "Keep it running")],
-            title="An agent is mid-turn. Ctrl+D detaches without stopping."))
+        choice = await self.push_screen_wait(
+            _ChoicePicker(
+                [
+                    ("stop", "Stop the daemon and lose the turn"),
+                    ("cancel", "Keep it running"),
+                ],
+                title="An agent is mid-turn. Ctrl+D detaches without stopping.",
+            )
+        )
         return choice == "stop"
 
     async def action_quit(self) -> None:
@@ -2142,14 +2343,19 @@ class AegisApp(App):
     def list_sessions(self) -> list[SessionInfo]:
         active = self._active
         return [
-            SessionInfo(handle=p.handle, agent_slug=p.agent_slug,
-                        state=p.state.value, active=(p is active),
-                        unseen=p.unseen,
-                        spawned_by=getattr(p._core, "spawned_by", None),
-                        host=getattr(p._core, "place", None).host
-                        if getattr(p._core, "place", None) else "local",
-                        plan=_plan_roll_up(p._core),
-                        title=getattr(p._core, "title", ""))
+            SessionInfo(
+                handle=p.handle,
+                agent_slug=p.agent_slug,
+                state=p.state.value,
+                active=(p is active),
+                unseen=p.unseen,
+                spawned_by=getattr(p._core, "spawned_by", None),
+                host=getattr(p._core, "place", None).host
+                if getattr(p._core, "place", None)
+                else "local",
+                plan=_plan_roll_up(p._core),
+                title=getattr(p._core, "title", ""),
+            )
             for p in self._panes
             if isinstance(p, ConversationPane)
         ]
@@ -2170,52 +2376,75 @@ class AegisApp(App):
 
     def reload_plugins(self) -> None:
         from aegis.config import yaml_loader
+
         cfg = yaml_loader.load_config(self.state_root)
         yaml_loader.import_plugins(cfg)
 
-    async def handoff(self, from_handle: str, target_handle: str,
-                      context: str) -> str:
+    async def handoff(self, from_handle: str, target_handle: str, context: str) -> str:
         # Legacy AppBridge entry point — kept for back-compat with any
         # external caller. The MCP aegis_handoff tool (T4.2) no longer
         # calls this; it routes through inbox_router directly.
         if from_handle == target_handle:
             return "handoff rejected: cannot hand off to yourself"
-        target = next((p for p in self._panes
-                       if isinstance(p, ConversationPane)
-                       and p.handle == target_handle), None)
+        target = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == target_handle
+            ),
+            None,
+        )
         if target is None:
-            return (f"handoff rejected: no session {target_handle!r} "
-                    f"(use aegis_list_sessions)")
+            return (
+                f"handoff rejected: no session {target_handle!r} "
+                f"(use aegis_list_sessions)"
+            )
         if target.state is AgentState.working:
-            return (f"handoff rejected: {target_handle!r} is busy, "
-                    f"retry shortly")
+            return f"handoff rejected: {target_handle!r} is busy, retry shortly"
         await target.deliver_handoff(from_handle, context)
         return f"delivered to {target_handle}"
 
-    async def spawn(self, profile: str, *,
-                    handle: str | None = None,
-                    opening_prompt: str | None = None,
-                    spawned_by: str | None = None,
-                    model: str | None = None,
-                    effort: str | None = None,
-                    prompt: str | None = None,
-                    host: str | None = None,
-                    cwd: str | None = None) -> str:
+    async def spawn(
+        self,
+        profile: str,
+        *,
+        handle: str | None = None,
+        opening_prompt: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
         mgr = getattr(self, "manager", None)
         if mgr is not None:
             # Bridged: /spawn opens a brain session, like Ctrl+N does in
             # _spawn. The view mounts it through the session observer.
             return await mgr.spawn(
-                profile, handle=handle, opening_prompt=opening_prompt,
-                spawned_by=spawned_by, model=model, effort=effort,
-                prompt=prompt, host=host, cwd=cwd)
+                profile,
+                handle=handle,
+                opening_prompt=opening_prompt,
+                spawned_by=spawned_by,
+                model=model,
+                effort=effort,
+                prompt=prompt,
+                host=host,
+                cwd=cwd,
+            )
         sm_adapter = _SessionManagerAdapter(self)
-        sess = sm_adapter.spawn(profile, handle=handle,
-                                opening_prompt=opening_prompt,
-                                spawned_by=spawned_by,
-                                model=model, effort=effort, prompt=prompt,
-                                host=host, cwd=cwd)
+        sess = sm_adapter.spawn(
+            profile,
+            handle=handle,
+            opening_prompt=opening_prompt,
+            spawned_by=spawned_by,
+            model=model,
+            effort=effort,
+            prompt=prompt,
+            host=host,
+            cwd=cwd,
+        )
         return sess.handle
 
     async def reconnect(self, handle: str) -> str:
@@ -2233,16 +2462,16 @@ class AegisApp(App):
             # Bridged: the harness belongs to the brain's session, and the
             # new one needs a token only the brain can mint.
             return await mgr.reconnect(handle)
-        pane = next((p for p in self._panes
-                     if getattr(p, "handle", None) == handle), None)
+        pane = next(
+            (p for p in self._panes if getattr(p, "handle", None) == handle), None
+        )
         if pane is None:
             raise ValueError(f"unknown session {handle!r}")
         core = pane._core
         place = getattr(core, "place", None)
         reasons: list[str] = []
         if place is None or place.is_local:
-            reasons.append(
-                f"{handle} runs local — reconnect is for remote sessions")
+            reasons.append(f"{handle} runs local — reconnect is for remote sessions")
         sid = core.session_id
         if not sid:
             reasons.append(f"{handle} has no session id to resume from")
@@ -2251,8 +2480,9 @@ class AegisApp(App):
 
         with contextlib.suppress(Exception):
             await core._session.close()
-        raw = self._make_session(core.agent, self._mcp.url, handle,
-                                 place=place, resume_from=sid)
+        raw = self._make_session(
+            core.agent, self._mcp.url, handle, place=place, resume_from=sid
+        )
         core.adopt(raw)
         self._refresh_tabbar()
         return f"reconnected {handle} on {place.host}"
@@ -2263,21 +2493,31 @@ class AegisApp(App):
         drv = self._drivers.get(harness)
         return bool(getattr(drv, "supports_fork", False))
 
-    async def fork(self, target: str, *,
-                   prompt: str | None = None,
-                   slug: str | None = None,
-                   model: str | None = None,
-                   effort: str | None = None,
-                   forked_by: str | None = None) -> str:
+    async def fork(
+        self,
+        target: str,
+        *,
+        prompt: str | None = None,
+        slug: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        forked_by: str | None = None,
+    ) -> str:
         """AppBridge-shaped: branch a pane's conversation into a new tab."""
         mgr = getattr(self, "manager", None)
         if mgr is not None:
             return await mgr.fork(
-                target, prompt=prompt, slug=slug, model=model,
-                effort=effort, forked_by=forked_by)
+                target,
+                prompt=prompt,
+                slug=slug,
+                model=model,
+                effort=effort,
+                forked_by=forked_by,
+            )
         sm_adapter = _SessionManagerAdapter(self)
-        sess = sm_adapter.fork(target, prompt=prompt, handle=slug,
-                               model=model, effort=effort)
+        sess = sm_adapter.fork(
+            target, prompt=prompt, handle=slug, model=model, effort=effort
+        )
         sess.spawned_by = forked_by
         return sess.handle
 
@@ -2285,17 +2525,26 @@ class AegisApp(App):
         """AppBridge-shaped: where this pane's session stands."""
         from aegis.digest.models import TurnFacts
         from aegis.recap import Recap, recap_for
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
             return Recap(error=f"unknown session: {handle}")
         return await recap_for(
-            state_dir=self._state_dir, log_id=pane.log_id,
+            state_dir=self._state_dir,
+            log_id=pane.log_id,
             facts=pane._core.last_facts or TurnFacts(),
-            agent=pane._agent, agents=self._agents,
+            agent=pane._agent,
+            agents=self._agents,
             cwd=str(pane._core.project_root),
-            session_scope=session_scope)
+            session_scope=session_scope,
+        )
 
     async def side_note(self, handle: str, prompt: str):
         """AppBridge-shaped: a side note off this pane's transcript.
@@ -2305,29 +2554,52 @@ class AegisApp(App):
         it earns its keep.
         """
         from aegis.btw import SideNote, side_note_for
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
             return SideNote(error=f"unknown session: {handle}")
         return await side_note_for(
-            prompt, state_dir=self._state_dir, log_id=pane.log_id,
-            agent=pane._agent, agents=self._agents,
+            prompt,
+            state_dir=self._state_dir,
+            log_id=pane.log_id,
+            agent=pane._agent,
+            agents=self._agents,
             cwd=str(pane._core.project_root),
-            facts=getattr(pane._core, "last_facts", None))
+            facts=getattr(pane._core, "last_facts", None),
+        )
 
-    async def peer_ask(self, from_handle: str, target: str, prompt: str,
-                       *, cc: bool = False):
+    async def peer_ask(
+        self, from_handle: str, target: str, prompt: str, *, cc: bool = False
+    ):
         """AppBridge-shaped: ask an idle peer, from where you're standing."""
         from aegis.peer import ask
-        source = next((p for p in self._panes
-                       if isinstance(p, ConversationPane)
-                       and p.handle == from_handle), None)
-        target_pane = next((p for p in self._panes
-                            if isinstance(p, ConversationPane)
-                            and p.handle == target), None)
+
+        source = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == from_handle
+            ),
+            None,
+        )
+        target_pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == target
+            ),
+            None,
+        )
         return await ask(
-            from_handle=from_handle, target=target,
+            from_handle=from_handle,
+            target=target,
             source_slug=getattr(source, "agent_slug", "") if source else "",
             target_session=target_pane._core if target_pane else None,
             prompt=prompt,
@@ -2351,11 +2623,16 @@ class AegisApp(App):
             cc=cc,
             # So an unknown handle can name the real ones instead of a bare
             # "unknown session: peer".
-            live=self.list_sessions())
+            live=self.list_sessions(),
+        )
 
-    async def read_peer(self, handle: str, turns: int = 12,
-                        budget_tokens: int | None = None,
-                        item_chars: int | None = None) -> dict:
+    async def read_peer(
+        self,
+        handle: str,
+        turns: int = 12,
+        budget_tokens: int | None = None,
+        item_chars: int | None = None,
+    ) -> dict:
         """AppBridge-shaped: window a live peer's transcript.
 
         Deliberately NOT on the AppBridge Protocol — the MCP tool resolves
@@ -2366,20 +2643,36 @@ class AegisApp(App):
         on.
         """
         from aegis.peer import read_window
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
-            return {"ok": False, "text": "", "header": "",
-                    "error": f"unknown session: {handle}"}
-        return await read_window(self._state_dir, pane.log_id, turns,
-                                 budget_tokens, item_chars)
+            return {
+                "ok": False,
+                "text": "",
+                "header": "",
+                "error": f"unknown session: {handle}",
+            }
+        return await read_window(
+            self._state_dir, pane.log_id, turns, budget_tokens, item_chars
+        )
 
     async def close(self, handle: str) -> None:
         """AppBridge-shaped: close a pane by handle."""
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is not None:
             await self._close_pane(pane)
             self._refresh_tabbar()
@@ -2392,9 +2685,14 @@ class AegisApp(App):
         its own message the moment we return, and it must not land while the
         turn we were asked to cut is still running (it would just queue
         behind it, then strand)."""
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
             return
         worker = pane.interrupt(drain=drain)
@@ -2402,7 +2700,9 @@ class AegisApp(App):
             with contextlib.suppress(Exception):
                 await worker.wait()
 
-    async def _spawn_remote_pane(self, info, *, foreground: bool = False) -> "ConversationPane | None":
+    async def _spawn_remote_pane(
+        self, info, *, foreground: bool = False
+    ) -> "ConversationPane | None":
         """B2: create and mount a ConversationPane backed by a RemotePaneCore.
 
         ``info`` is a SessionInfo returned by RemoteSessionManager.list_sessions().
@@ -2428,7 +2728,7 @@ class AegisApp(App):
         )
         self._panes.append(pane)
         cs = self.query_one(ContentSwitcher)
-        pane.display = not foreground   # hide unless asked to foreground
+        pane.display = not foreground  # hide unless asked to foreground
         await cs.mount(pane)
         if foreground:
             cs.current = pane.id
@@ -2469,6 +2769,7 @@ class AegisApp(App):
                 # Session is new and has no pane yet — mount one.
                 # Must run on the Textual event loop.
                 from aegis.mcp.bridge import SessionInfo
+
                 info = SessionInfo(
                     handle=handle,
                     agent_slug=si_dict.get("agent_slug", ""),
@@ -2482,7 +2783,9 @@ class AegisApp(App):
                 if self.is_running:
                     self.run_worker(
                         self._spawn_remote_pane(info, foreground=False),
-                        group=f"remote-pane-{handle}", exclusive=False)
+                        group=f"remote-pane-{handle}",
+                        exclusive=False,
+                    )
 
     def _on_ws_connection(self, up: bool) -> None:
         """Propagate WS connect/disconnect state to all live panes.
@@ -2534,30 +2837,47 @@ class AegisApp(App):
         Nothing here may block the pane, and nothing here may raise into
         it — a title is a convenience, the turn is not.
         """
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None or pane._core.title_source:
             # Already titled by hand or by the agent — auto cannot outrank
             # either, so skip the call rather than pay for a refusal.
             return
         if self.is_running:
-            self.run_worker(self._autotitle_worker(handle, opening),
-                            group=f"autotitle-{handle}", exclusive=True)
+            self.run_worker(
+                self._autotitle_worker(handle, opening),
+                group=f"autotitle-{handle}",
+                exclusive=True,
+            )
 
     async def _autotitle_worker(self, handle: str, opening: str) -> None:
         from aegis.titlegen import title_for
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
             return
         try:
             title = await title_for(
-                opening=opening, agent=pane._agent, agents=self._agents,
-                cwd=str(pane._core.project_root))
-        except Exception:                                     # noqa: BLE001
-            return          # title_for is best-effort; belt and braces
+                opening=opening,
+                agent=pane._agent,
+                agents=self._agents,
+                cwd=str(pane._core.project_root),
+            )
+        except Exception:  # noqa: BLE001
+            return  # title_for is best-effort; belt and braces
         if title:
             # source="auto": the operator or the agent can still override,
             # and a later human title cannot be clobbered by this one.
@@ -2583,24 +2903,32 @@ class AegisApp(App):
         from aegis.state.session_log import replay_events
         from aegis.titlegen import title_for
 
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
-            return {"error":
-                    f"no session {handle!r} (use aegis_list_sessions)"}
+            return {"error": f"no session {handle!r} (use aegis_list_sessions)"}
         try:
             replay = await asyncio.to_thread(
-                replay_events, self._state_dir, pane.log_id)
-        except Exception as e:                                # noqa: BLE001
+                replay_events, self._state_dir, pane.log_id
+            )
+        except Exception as e:  # noqa: BLE001
             return {"error": f"could not read the transcript: {e}"}
         window = assemble(replay)
         if not window.text.strip():
             return {"error": "nothing to summarize yet"}
         title = await title_for(
-            opening=window.text, previous=pane._core.title or None,
-            agent=pane._agent, agents=self._agents,
-            cwd=str(pane._core.project_root))
+            opening=window.text,
+            previous=pane._core.title or None,
+            agent=pane._agent,
+            agents=self._agents,
+            cwd=str(pane._core.project_root),
+        )
         if not title:
             return {"error": "the model returned nothing usable"}
         pane._core.title = title
@@ -2608,11 +2936,9 @@ class AegisApp(App):
         self._record_title(pane)
         pane.refresh_title()
         self._refresh_tabbar()
-        return {"ok": True, "handle": handle, "title": title,
-                "source": "auto"}
+        return {"ok": True, "handle": handle, "title": title, "source": "auto"}
 
-    async def set_title(self, handle: str, title: str, *,
-                        source: str) -> dict:
+    async def set_title(self, handle: str, title: str, *, source: str) -> dict:
         """AppBridge-shaped: set a pane's display title.
 
         Subject to source precedence (``human > agent > auto``). An empty
@@ -2620,29 +2946,39 @@ class AegisApp(App):
         ``/title`` undoes a bad manual one.
         """
         from aegis.state.titles import outranks, sanitize_title
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == handle), None)
+
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
         if pane is None:
-            return {"error":
-                    f"no session {handle!r} (use aegis_list_sessions)"}
+            return {"error": f"no session {handle!r} (use aegis_list_sessions)"}
         current = pane._core.title_source
         if not outranks(source, current):
-            return {"error":
-                    f"title is set by {current!r} and {source!r} "
-                    f"cannot overwrite it"}
+            return {
+                "error": f"title is set by {current!r} and {source!r} "
+                f"cannot overwrite it"
+            }
         clean = sanitize_title(title)
         pane._core.title = clean
         pane._core.title_source = source if clean else ""
         self._record_title(pane)
         pane.refresh_title()
         self._refresh_tabbar()
-        return {"ok": True, "handle": handle, "title": clean,
-                "source": pane._core.title_source}
+        return {
+            "ok": True,
+            "handle": handle,
+            "title": clean,
+            "source": pane._core.title_source,
+        }
 
-    async def rename_handle(self, old: str, new: str,
-                            title: str | None = None, *,
-                            by: str = "agent") -> dict:
+    async def rename_handle(
+        self, old: str, new: str, title: str | None = None, *, by: str = "agent"
+    ) -> dict:
         """AppBridge-shaped: rename a live pane's handle in-place.
 
         Swaps the pane's handle, the inbox-router binding, and the
@@ -2653,33 +2989,43 @@ class AegisApp(App):
         never fails the rename.
         """
         from aegis.core.manager import is_valid_handle
+
         if old == new:
-            pane = next((p for p in self._panes
-                         if isinstance(p, ConversationPane)
-                         and p.handle == old), None)
+            pane = next(
+                (
+                    p
+                    for p in self._panes
+                    if isinstance(p, ConversationPane) and p.handle == old
+                ),
+                None,
+            )
             if pane is None:
                 return {"error": f"no session {old!r}"}
             if title is not None:
                 await self.set_title(old, title, source="agent")
             return {"ok": True, "old": old, "new": new}
         if not is_valid_handle(new):
-            return {"error":
-                    f"new handle {new!r} fails format: must be 2-3 "
-                    f"kebab-case alphanumeric segments, starting with a "
-                    f"letter (e.g. 'lucid-river-runs')"}
-        pane = next((p for p in self._panes
-                     if isinstance(p, ConversationPane)
-                     and p.handle == old), None)
+            return {
+                "error": f"new handle {new!r} fails format: must be 2-3 "
+                f"kebab-case alphanumeric segments, starting with a "
+                f"letter (e.g. 'lucid-river-runs')"
+            }
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == old
+            ),
+            None,
+        )
         if pane is None:
-            return {"error":
-                    f"no session {old!r} (use aegis_list_sessions)"}
+            return {"error": f"no session {old!r} (use aegis_list_sessions)"}
         # Not just "is a pane answering to it" — `new` may be another pane's
         # birth name, which its DOM id `pane-<new>` still holds even though
         # that pane now answers to something else. Minting or renaming into
         # it is the DuplicateIds crash.
         if not self._handles.claimable_by(new, old):
-            return {"error":
-                    f"handle {new!r} already in use by another session"}
+            return {"error": f"handle {new!r} already in use by another session"}
         self._handles.rename(old, new)
         pane.handle = new
         pane._core.handle = new
@@ -2721,14 +3067,24 @@ class AegisApp(App):
         from datetime import datetime, timezone
         from aegis.events import SessionMeta
         from aegis.state.session_log import append_meta
+
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with contextlib.suppress(Exception):
-            append_meta(self._state_dir, pane.log_id, SessionMeta(
-                handle=handle, profile=pane.agent_slug,
-                provider=_provider_slug(pane), cwd=self._cwd,
-                created_at=now_iso, origin="tui", preview="",
-                title=pane._core.title,
-                title_source=pane._core.title_source))
+            append_meta(
+                self._state_dir,
+                pane.log_id,
+                SessionMeta(
+                    handle=handle,
+                    profile=pane.agent_slug,
+                    provider=_provider_slug(pane),
+                    cwd=self._cwd,
+                    created_at=now_iso,
+                    origin="tui",
+                    preview="",
+                    title=pane._core.title,
+                    title_source=pane._core.title_source,
+                ),
+            )
 
 
 class _GroupSessionAdapter:
@@ -2742,10 +3098,8 @@ class _GroupSessionAdapter:
     def __init__(self, app: "AegisApp") -> None:
         self._app = app
 
-    async def spawn(self, *, profile: str,
-                    handle: str | None = None) -> str:
-        sess = _SessionManagerAdapter(self._app).spawn(
-            profile, handle=handle)
+    async def spawn(self, *, profile: str, handle: str | None = None) -> str:
+        sess = _SessionManagerAdapter(self._app).spawn(profile, handle=handle)
         return sess.handle
 
     def get(self, handle: str):
@@ -2789,8 +3143,8 @@ def _refuse_when_bridged(app: "AegisApp") -> None:
     """
     if getattr(app, "manager", None) is not None:
         raise RuntimeError(
-            "a bridged view must open sessions on the brain, not build "
-            "its own")
+            "a bridged view must open sessions on the brain, not build its own"
+        )
 
 
 class _SessionManagerAdapter:
@@ -2819,29 +3173,41 @@ class _SessionManagerAdapter:
         # app's own panes use, so a worker can never land on a retired name.
         return self._app._handles
 
-    def spawn(self, slug: str, *,
-              opening_prompt: str | None = None,
-              handle: str | None = None,
-              spawned_by: str | None = None,
-              model: str | None = None,
-              effort: str | None = None,
-              prompt: str | None = None,
-              host: str | None = None,
-              cwd: str | None = None):
+    def spawn(
+        self,
+        slug: str,
+        *,
+        opening_prompt: str | None = None,
+        handle: str | None = None,
+        spawned_by: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        prompt: str | None = None,
+        host: str | None = None,
+        cwd: str | None = None,
+    ):
         _refuse_when_bridged(self._app)
         from aegis.core.manager import _overlay_agent
-        agent = _overlay_agent(self._app._agents[slug], model=model,
-                               effort=effort, prompt=prompt)
+
+        agent = _overlay_agent(
+            self._app._agents[slug], model=model, effort=effort, prompt=prompt
+        )
         h = self._app._mint_handle(handle)
         place = self._app._resolve_place(agent, host, cwd)
         pane = ConversationPane(
-            self._app._make_session(agent, self._app._mcp.url, h,
-                                    **self._app._factory_kwargs(place)),
+            self._app._make_session(
+                agent, self._app._mcp.url, h, **self._app._factory_kwargs(place)
+            ),
             agent,
-            slug, h, self._app._palette, digest=self._app.queue_digest,
+            slug,
+            h,
+            self._app._palette,
+            digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir, place=place,
-            project_root=Path(self._app._cwd))
+            state_dir_path=self._app._state_dir,
+            place=place,
+            project_root=Path(self._app._cwd),
+        )
         pane._core.spawned_by = spawned_by
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
@@ -2853,14 +3219,20 @@ class _SessionManagerAdapter:
         # cs.current = pane.id) so a queue worker doesn't steal focus.
         self._app.run_worker(
             self._mount_and_kick(pane, opening_prompt),
-            group=f"queue-spawn-{h}", exclusive=False)
+            group=f"queue-spawn-{h}",
+            exclusive=False,
+        )
         return pane._core
 
-    def fork(self, target: str, *,
-             prompt: str | None = None,
-             handle: str | None = None,
-             model: str | None = None,
-             effort: str | None = None):
+    def fork(
+        self,
+        target: str,
+        *,
+        prompt: str | None = None,
+        handle: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+    ):
         """Branch ``target``'s pane into a new one sharing its conversation.
 
         Same construction as ``spawn`` — the difference is ``fork_from``,
@@ -2871,8 +3243,9 @@ class _SessionManagerAdapter:
         from aegis.core.fork_guard import facts_for, refuse_reasons
         from aegis.core.manager import _overlay_agent
 
-        parent = next((p for p in self._app._panes
-                       if getattr(p, "handle", None) == target), None)
+        parent = next(
+            (p for p in self._app._panes if getattr(p, "handle", None) == target), None
+        )
         core = getattr(parent, "_core", None)
         facts = facts_for(core, capability=self._app._fork_capability)
         reasons = refuse_reasons(facts, target=target)
@@ -2880,8 +3253,9 @@ class _SessionManagerAdapter:
             raise ValueError("; ".join(reasons))
 
         slug = parent._core.agent_slug
-        agent = _overlay_agent(self._app._agents[slug], model=model,
-                               effort=effort, prompt=None)
+        agent = _overlay_agent(
+            self._app._agents[slug], model=model, effort=effort, prompt=None
+        )
         h = self._app._mint_handle(handle)
         # Snapshot the parent's session id now, not when the fork is first
         # typed into: a no-prompt fork must branch from where it forked.
@@ -2891,24 +3265,37 @@ class _SessionManagerAdapter:
         place = getattr(core, "place", None)
         pane = ConversationPane(
             self._app._make_session(
-                agent, self._app._mcp.url, h, fork_from=sid,
-                **(self._app._factory_kwargs(place) if place else {})),
-            agent, slug, h, self._app._palette,
+                agent,
+                self._app._mcp.url,
+                h,
+                fork_from=sid,
+                **(self._app._factory_kwargs(place) if place else {}),
+            ),
+            agent,
+            slug,
+            h,
+            self._app._palette,
             digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
-            state_dir_path=self._app._state_dir, place=place,
-            project_root=Path(self._app._cwd))
-        pane._core.forked_from = {"handle": target, "log_id": core.log_id,
-                                  "session_id": sid}
+            state_dir_path=self._app._state_dir,
+            place=place,
+            project_root=Path(self._app._cwd),
+        )
+        pane._core.forked_from = {
+            "handle": target,
+            "log_id": core.log_id,
+            "session_id": sid,
+        }
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
         self._app.run_worker(
-            self._mount_and_kick(pane, prompt),
-            group=f"fork-{h}", exclusive=False)
+            self._mount_and_kick(pane, prompt), group=f"fork-{h}", exclusive=False
+        )
         return pane._core
 
-    async def _mount_and_kick(self, pane: ConversationPane,
-                              opening_prompt: str | None) -> None:
+    async def _mount_and_kick(
+        self, pane: ConversationPane, opening_prompt: str | None
+    ) -> None:
         cs = self._app.query_one(ContentSwitcher)
         # Mount hidden. ContentSwitcher hides children only at its own mount
         # or on a `current` old→new transition — a background mount while
@@ -2922,8 +3309,7 @@ class _SessionManagerAdapter:
             pane._submit(opening_prompt)
 
     async def close(self, handle: str) -> None:
-        pane = next((p for p in self._app._panes if p.handle == handle),
-                    None)
+        pane = next((p for p in self._app._panes if p.handle == handle), None)
         if pane is None:
             return
         await self._app._close_pane(pane)

@@ -34,6 +34,7 @@ class AgentNode(BaseModel):
             return v
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError
+
         try:
             Draft202012Validator.check_schema(v)
         except SchemaError as e:
@@ -75,7 +76,8 @@ class JudgePredicate(BaseModel):
 
 
 AnyPredicate = Annotated[
-    Union[ShellPredicate, JudgePredicate], Field(discriminator="kind")]
+    Union[ShellPredicate, JudgePredicate], Field(discriminator="kind")
+]
 
 
 class LoopNode(BaseModel):
@@ -104,8 +106,7 @@ class HumanNode(BaseModel):
 
 
 AnyNode = Annotated[
-    Union[SequenceNode, ParallelNode, MapNode, LoopNode, IfNode,
-          HumanNode, AgentNode],
+    Union[SequenceNode, ParallelNode, MapNode, LoopNode, IfNode, HumanNode, AgentNode],
     Field(discriminator="type"),
 ]
 

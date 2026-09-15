@@ -6,6 +6,7 @@ big ``body`` section.
 
 No I/O here — this module just round-trips text ↔ ordered sections.
 """
+
 from __future__ import annotations
 
 import re
@@ -47,7 +48,8 @@ def _require_valid(name: str) -> None:
     if not valid_section_name(name):
         raise InvalidSection(
             f"invalid section name: {name!r} "
-            f"(allowed: alphanumeric, dash, underscore, space)")
+            f"(allowed: alphanumeric, dash, underscore, space)"
+        )
 
 
 def parse_sections(text: str) -> list[Section]:
@@ -87,7 +89,7 @@ def parse_sections(text: str) -> list[Section]:
     # Each heading -> next heading or EOF
     for idx, (line_no, name) in enumerate(heads):
         end = heads[idx + 1][0] if idx + 1 < len(heads) else len(lines)
-        body_lines = lines[line_no + 1: end]
+        body_lines = lines[line_no + 1 : end]
         body = "\n".join(body_lines)
         out.append(Section(name=name, body=body))
     return out
@@ -121,8 +123,7 @@ def find_section(sections: list[Section], name: str) -> Section | None:
     return None
 
 
-def write_section(sections: list[Section], name: str,
-                  content: str) -> list[Section]:
+def write_section(sections: list[Section], name: str, content: str) -> list[Section]:
     """Return a new section list with ``name`` set to ``content``.
 
     - Existing section: body replaced.
@@ -146,8 +147,7 @@ def write_section(sections: list[Section], name: str,
     return new
 
 
-def append_to_section(sections: list[Section], name: str,
-                      text: str) -> list[Section]:
+def append_to_section(sections: list[Section], name: str, text: str) -> list[Section]:
     """Return a new section list with ``text`` appended to ``name``.
 
     Joined with a single newline if existing body is non-empty.

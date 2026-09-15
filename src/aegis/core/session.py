@@ -9,8 +9,16 @@ from pathlib import Path
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, CompactBoundary,
-    ContextUpdate, Event, Result, ThinkingTokens, ToolResult, ToolUse,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    CompactBoundary,
+    ContextUpdate,
+    Event,
+    Result,
+    ThinkingTokens,
+    ToolResult,
+    ToolUse,
 )
 from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.digest.collect import DigestCollector
@@ -20,14 +28,21 @@ from aegis.recap import recap_for
 from aegis.recap.gate import should_recap
 from aegis.repos.writes import write_target
 from aegis.hooks import (
-    PostTurnEvent, PreTurnContext, SessionEndEvent,
-    SessionHandle, SessionStartEvent,
+    PostTurnEvent,
+    PreTurnContext,
+    SessionEndEvent,
+    SessionHandle,
+    SessionStartEvent,
 )
 from aegis.hooks.decorator import _REGISTRY as _HOOK_REG
 from aegis.hooks.runner import run_observer_hooks, run_pre_turn_hooks
 from aegis.core.loop import DEFAULT_MAX_ITERATIONS, LoopState
 from aegis.queue.schema import (
-    Delivery, InboxMessage, now_iso, render_inbox_header, sender_loop,
+    Delivery,
+    InboxMessage,
+    now_iso,
+    render_inbox_header,
+    sender_loop,
     sender_substrate,
 )
 from aegis.tui.metrics import SessionMetrics, context_window_for
@@ -54,23 +69,30 @@ def _render_batch(batch: list[InboxMessage]) -> str:
         # User text-box messages render headerless (plain user turn); inbox
         # messages keep their `> from …` substrate header.
         return f"{header}\n{m.body}" if header else m.body
+
     return "\n\n".join(_one(m) for m in batch)
 
 
 class AgentSession:
     """One harness conversation, frontend-agnostic. Observers render."""
 
-    def __init__(self, session: HarnessSession, agent, agent_slug: str,
-                 handle: str, *,
-                 now: Callable[[], float] = time.monotonic,
-                 inbox=None,
-                 opening_prompt: str | None = None,
-                 project_root: Path,
-                 state_dir: Path | None = None,
-                 log_id: str | None = None,
-                 place=None,
-                 repo_tracker=None,
-                 agents=None) -> None:
+    def __init__(
+        self,
+        session: HarnessSession,
+        agent,
+        agent_slug: str,
+        handle: str,
+        *,
+        now: Callable[[], float] = time.monotonic,
+        inbox=None,
+        opening_prompt: str | None = None,
+        project_root: Path,
+        state_dir: Path | None = None,
+        log_id: str | None = None,
+        place=None,
+        repo_tracker=None,
+        agents=None,
+    ) -> None:
         self._session = session
         self.agent = agent
         self.agent_slug = agent_slug
@@ -84,11 +106,13 @@ class AgentSession:
         # Local import: core.session is imported early and aegis.hosts
         # pulls in aegis.mcp transitively.
         from aegis.hosts.models import Place
+
         self.place = place or Place("local", str(project_root))
         # Identity of this session's transcript on disk. Minted once and
         # never changed — unlike `handle`, which is recycled out of a finite
         # pool and can be renamed mid-session. Resume passes the stored id.
         from aegis.state.session_log import new_log_id
+
         self.log_id = log_id or new_log_id(handle)
         self.project_root = Path(project_root)
         # Where this session's hooks, digest, recap and plan write. It is
@@ -102,8 +126,11 @@ class AgentSession:
         # Defaults to the old derivation so a caller that knows only a
         # project root (tests, and any site not yet holding roots) keeps
         # today's behaviour; SessionManager.spawn passes roots.state_dir.
-        self.state_dir = (Path(state_dir) if state_dir is not None
-                          else self.project_root / ".aegis" / "state")
+        self.state_dir = (
+            Path(state_dir)
+            if state_dir is not None
+            else self.project_root / ".aegis" / "state"
+        )
 
         self.state = AgentState.ready
         _harness = getattr(agent, "harness", "")
@@ -111,7 +138,8 @@ class AgentSession:
         self.metrics = SessionMetrics(
             context_window=context_window_for(_harness, _model),
             provider=_harness,
-            model=_model)
+            model=_model,
+        )
         self._now = now
         # Plan state is session state, not view state: the TUI strip, the
         # web client, and the MCP coordination plane are all readers.
@@ -146,7 +174,7 @@ class AgentSession:
         self.subplans: dict[str, PlanTracker] = {}
         self._started = False
         self._task: asyncio.Task | None = None
-        self._inbox = inbox                       # InboxRouter | None
+        self._inbox = inbox  # InboxRouter | None
         self._inbox_buffer: list[InboxMessage] = []
         # Self-left turn-end reminders. Drained by _chain_if_pending as the
         # LOWEST-priority tier — strictly after buffered inbox messages and
@@ -297,8 +325,7 @@ class AgentSession:
                 self.remove_event_observer(_obs)
 
         self.add_event_observer(_obs)
-        fut.add_done_callback(
-            lambda _f: self.remove_event_observer(_obs))
+        fut.add_done_callback(lambda _f: self.remove_event_observer(_obs))
         return fut
 
     def remove_event_observer(self, cb: EventCb) -> None:
@@ -451,8 +478,7 @@ class AgentSession:
                 log.exception("inbox observer raised; continuing")
         self._inbox_buffer.append(msg)
         if self.state is AgentState.working:
-            return Delivery(disposition="queued",
-                            depth=len(self._inbox_buffer))
+            return Delivery(disposition="queued", depth=len(self._inbox_buffer))
         await self._cancel_idle_watcher()
         # idle: drain everything we hold and wake
         batch = self._inbox_buffer
@@ -478,18 +504,20 @@ class AgentSession:
         """
         if by != "operator":
             return
-        self._pending_notices.append(InboxMessage(
-            sender=sender_substrate(),
-            timestamp=now_iso(),
-            body=(
-                f"You were renamed by the operator: `{old}` → `{new}`.\n\n"
-                f"Use `{new}` as your handle from now on — as `from_handle` "
-                f"on aegis_monitor / aegis_enqueue / aegis_remind / "
-                f"aegis_handoff, and when you tell a peer where to reach "
-                f"you. The old handle no longer routes: anything addressed "
-                f"to it is delivered to nobody."
-            ),
-        ))
+        self._pending_notices.append(
+            InboxMessage(
+                sender=sender_substrate(),
+                timestamp=now_iso(),
+                body=(
+                    f"You were renamed by the operator: `{old}` → `{new}`.\n\n"
+                    f"Use `{new}` as your handle from now on — as `from_handle` "
+                    f"on aegis_monitor / aegis_enqueue / aegis_remind / "
+                    f"aegis_handoff, and when you tell a peer where to reach "
+                    f"you. The old handle no longer routes: anything addressed "
+                    f"to it is delivered to nobody."
+                ),
+            )
+        )
 
     def add_reminder(self, msg: InboxMessage) -> None:
         """Buffer a self-left note to be delivered as this session's own
@@ -506,8 +534,7 @@ class AgentSession:
         if self.state is not AgentState.working:
             self._chain_if_pending()
 
-    def arm_loop(self, text: str,
-                 max_iterations: int = DEFAULT_MAX_ITERATIONS) -> None:
+    def arm_loop(self, text: str, max_iterations: int = DEFAULT_MAX_ITERATIONS) -> None:
         """Arm (or replace) this session's looping instruction.
 
         Armed while idle nothing else would poke the session, so promote the
@@ -519,8 +546,7 @@ class AgentSession:
         if self.state is not AgentState.working:
             self._chain_if_pending()
 
-    def stop_loop(self, reason: str = "stopped", *,
-                  advisory: bool = False) -> bool:
+    def stop_loop(self, reason: str = "stopped", *, advisory: bool = False) -> bool:
         """Reap the loop, or record a request to.
 
         ``advisory=True`` is what ``aegis_loop_stop`` now does: the agent
@@ -558,19 +584,19 @@ class AgentSession:
         for cb in list(self._loop_observers):
             try:
                 cb(self, self._loop, reason)
-            except Exception:                                 # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 log.exception("loop observer raised")
 
     def _emit_recap(self, recap) -> None:
         if self.on_recap is not None:
             try:
                 self.on_recap(self, recap)
-            except Exception:                                 # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 log.exception("on_recap observer raised")
         for cb in list(self._recap_observers):
             try:
                 cb(self, recap)
-            except Exception:                                 # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 log.exception("recap observer raised")
 
     def cancel_pending(self, msg: InboxMessage) -> bool:
@@ -639,9 +665,7 @@ class AgentSession:
             # Add a blocked_reason attribute for tests that expect it
             setattr(res, "blocked_reason", composed.block)
             # Fire an AssistantText so observers see WHY it was blocked
-            fake_text = AssistantText(
-                text=f"⚠ Turn blocked by hook: {composed.block}"
-            )
+            fake_text = AssistantText(text=f"⚠ Turn blocked by hook: {composed.block}")
             self._fire_event(fake_text)
             self._fire_event(res)
             self.metrics.commit(None, self._now())
@@ -710,7 +734,8 @@ class AgentSession:
                     saw_result = True
                     self._emit_state(
                         AgentState.error if ev.is_error else AgentState.ready,
-                        finished=True)
+                        finished=True,
+                    )
                 else:
                     u = getattr(ev, "usage", None)
                     if u is not None:
@@ -721,10 +746,14 @@ class AgentSession:
             log.exception("harness error in _run_turn")
             import sys
             import traceback
+
             self.last_error = e
             self.stop_loop("stopped after a harness error")
-            print(f"[aegis] {self.handle} harness error: "
-                  f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            print(
+                f"[aegis] {self.handle} harness error: {type(e).__name__}: {e}",
+                file=sys.stderr,
+                flush=True,
+            )
             traceback.print_exception(e, file=sys.stderr)
             if not saw_result:
                 self.metrics.commit(None, self._now())
@@ -744,14 +773,15 @@ class AgentSession:
                 plan_total=plan_now.total,
                 plan_done_at_start=plan_done_at_start,
                 assistant_tail="".join(own_text_parts),
-                duration_s=max(0.0, self._now() - turn_started))
-        except Exception as e:                                # noqa: BLE001
+                duration_s=max(0.0, self._now() - turn_started),
+            )
+        except Exception as e:  # noqa: BLE001
             facts = TurnFacts(error=f"{type(e).__name__}: {e}")
         self.last_facts = facts
         if self.on_facts is not None:
             try:
                 self.on_facts(self, facts)
-            except Exception:                                 # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 log.exception("on_facts observer raised")
         self._maybe_recap(facts)
 
@@ -791,9 +821,10 @@ class AgentSession:
     def _maybe_recap(self, facts) -> None:
         """Fire a recap without making the turn wait for it."""
         if self._agents is None:
-            return          # no billing profile to resolve; stay quiet
-        if not should_recap(facts, last_line=self._last_recap_line,
-                            enabled=self.recap_enabled):
+            return  # no billing profile to resolve; stay quiet
+        if not should_recap(
+            facts, last_line=self._last_recap_line, enabled=self.recap_enabled
+        ):
             return
         self._cancel_recap()
         self._recap_task = asyncio.create_task(self._run_recap(facts))
@@ -808,12 +839,17 @@ class AgentSession:
     async def _run_recap(self, facts) -> None:
         try:
             recap = await recap_for(
-                state_dir=self.state_dir, log_id=self.log_id, facts=facts,
-                agent=self.agent, agents=self._agents,
-                cwd=str(self.project_root), session_scope=False)
+                state_dir=self.state_dir,
+                log_id=self.log_id,
+                facts=facts,
+                agent=self.agent,
+                agents=self._agents,
+                cwd=str(self.project_root),
+                session_scope=False,
+            )
         except asyncio.CancelledError:
             raise
-        except Exception:                                     # noqa: BLE001
+        except Exception:  # noqa: BLE001
             log.exception("recap failed")
             return
         if not recap.ok or not recap.line:
@@ -852,8 +888,7 @@ class AgentSession:
         if self.repo_tracker is None:
             return
         try:
-            self.repo_tracker.record(self.handle, path,
-                                     host=self.place.host)
+            self.repo_tracker.record(self.handle, path, host=self.place.host)
         except Exception:  # noqa: BLE001 — a dashboard must never take a turn
             log.exception("repo tracker raised on record; continuing")
 
@@ -942,8 +977,7 @@ class AgentSession:
         # turn synchronously so it doesn't spill into the next user
         # message, then arm an async watcher for events that arrive
         # later while truly idle.
-        has_pending = getattr(
-            self._session, "has_pending_event", lambda: False)
+        has_pending = getattr(self._session, "has_pending_event", lambda: False)
         if has_pending() and self._unsolicited_hold == 0:
             self._emit_state(AgentState.working, finished=False)
             self.metrics.start_turn(self._now())
@@ -975,7 +1009,8 @@ class AgentSession:
             if self._loop.exhausted():
                 self.stop_loop(
                     f"capped at {self._loop.max_iterations} iterations "
-                    f"— the judge did not stop it")
+                    f"— the judge did not stop it"
+                )
             else:
                 # `working` is emitted HERE, before the judge's ~7s call,
                 # so the session does not flicker idle while it thinks.
@@ -1000,17 +1035,21 @@ class AgentSession:
             self._emit_state(AgentState.ready, finished=True)
             return
         addendum = ""
-        if loop.iteration > 0 and self.loop_judge_enabled \
-                and self._agents is not None:
+        if loop.iteration > 0 and self.loop_judge_enabled and self._agents is not None:
             loop.note(self.last_facts)
             verdict = await judge_for(
-                state_dir=self.state_dir, log_id=self.log_id,
-                instruction=loop.text, iteration=loop.iteration,
+                state_dir=self.state_dir,
+                log_id=self.log_id,
+                instruction=loop.text,
+                iteration=loop.iteration,
                 max_iterations=loop.max_iterations,
                 facts=self.last_facts or TurnFacts(),
-                still_streak=loop.still_streak, advisory=loop.advisory,
-                agent=self.agent, agents=self._agents,
-                cwd=str(self.project_root))
+                still_streak=loop.still_streak,
+                advisory=loop.advisory,
+                agent=self.agent,
+                agents=self._agents,
+                cwd=str(self.project_root),
+            )
             # Consumed either way: the judge has now seen the claim, and
             # re-presenting a rejected one every iteration would bias
             # every later verdict.
@@ -1025,7 +1064,8 @@ class AgentSession:
         msg = InboxMessage(
             sender=sender_loop(loop.iteration, loop.max_iterations),
             timestamp=now_iso(),
-            body=loop.render(addendum))
+            body=loop.render(addendum),
+        )
         self._emit_dispatch([msg])
         self._emit_loop("fired")
         await self._run_turn(_render_batch([msg]))
@@ -1063,7 +1103,8 @@ class AgentSession:
                     saw_result = True
                     self._emit_state(
                         AgentState.error if ev.is_error else AgentState.ready,
-                        finished=True)
+                        finished=True,
+                    )
                 else:
                     u = getattr(ev, "usage", None)
                     if u is not None:
@@ -1100,13 +1141,11 @@ class AgentSession:
             while True:
                 if self.state is AgentState.working:
                     return  # something else took over
-                has_pending = getattr(
-                    self._session, "has_pending_event", lambda: False)
+                has_pending = getattr(self._session, "has_pending_event", lambda: False)
                 if has_pending() and self._unsolicited_hold == 0:
                     self._emit_state(AgentState.working, finished=False)
                     self.metrics.start_turn(self._now())
-                    self._task = asyncio.create_task(
-                        self._drain_unsolicited_turn())
+                    self._task = asyncio.create_task(self._drain_unsolicited_turn())
                     return
                 await asyncio.sleep(self._idle_poll_seconds)
         except asyncio.CancelledError:
@@ -1162,8 +1201,7 @@ class AgentSession:
             self._emit_dispatch(batch)
             self._emit_state(AgentState.working, finished=False)
             self.metrics.start_turn(self._now())
-            self._task = asyncio.create_task(
-                self._run_turn(_render_batch(batch)))
+            self._task = asyncio.create_task(self._run_turn(_render_batch(batch)))
 
     async def close(self, reason: str = "explicit") -> None:
         await self._cancel_idle_watcher()
@@ -1180,7 +1218,8 @@ class AgentSession:
             run_observer_hooks(
                 SessionEndEvent(
                     session=SessionHandle(
-                        handle=self.handle, agent_profile=self.agent_slug,
+                        handle=self.handle,
+                        agent_profile=self.agent_slug,
                         harness=harness_name,
                     ),
                     project_root=self.project_root,

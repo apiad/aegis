@@ -20,6 +20,7 @@ mid-turn is the point, not an edge case.
 
 Spec: ``docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md``
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,9 +68,10 @@ class PeerAnswer:
     shape ``/btw`` had to adopt after a dataclass broke it on the web
     client and nowhere else.
     """
+
     answer: str = ""
     target: str = ""
-    header: str = ""            # the teaser window's own honest header
+    header: str = ""  # the teaser window's own honest header
     model: str = ""
     duration_ms: int = 0
     cost_usd: float = 0.0
@@ -79,18 +81,23 @@ class PeerAnswer:
     @property
     def footer(self) -> str:
         """Who answered, and the price — shown because this is a paid turn."""
-        bits = [b for b in (
-            self.target,
-            self.model,
-            f"{self.duration_ms / 1000:.1f}s" if self.duration_ms else "",
-            f"${self.cost_usd:.4f}" if self.cost_usd else "",
-            self.header,
-        ) if b]
+        bits = [
+            b
+            for b in (
+                self.target,
+                self.model,
+                f"{self.duration_ms / 1000:.1f}s" if self.duration_ms else "",
+                f"${self.cost_usd:.4f}" if self.cost_usd else "",
+                self.header,
+            )
+            if b
+        ]
         return " · ".join(bits)
 
 
-def refusal(*, from_handle: str, target: str, session, ready: bool,
-            live=()) -> str | None:
+def refusal(
+    *, from_handle: str, target: str, session, ready: bool, live=()
+) -> str | None:
     """Why this ask must not be sent, or None if it may be.
 
     Every refusal names the alternative. A refused ask is never delivered,
@@ -118,15 +125,17 @@ def refusal(*, from_handle: str, target: str, session, ready: bool,
         if not others:
             return f"{head}, and there are no other sessions open right now"
         names = ", ".join(
-            s.handle if getattr(s, "state", "") == "ready"
-            else f"{s.handle} (busy)"
-            for s in sorted(others,
-                            key=lambda s: (getattr(s, "state", "") != "ready",
-                                           s.handle)))
+            s.handle if getattr(s, "state", "") == "ready" else f"{s.handle} (busy)"
+            for s in sorted(
+                others, key=lambda s: (getattr(s, "state", "") != "ready", s.handle)
+            )
+        )
         return f"{head}. Open now: {names}"
     if not ready:
-        return (f"{target} is mid-turn. Wait for it to finish, or /enqueue "
-                f"the task instead.")
+        return (
+            f"{target} is mid-turn. Wait for it to finish, or /enqueue "
+            f"the task instead."
+        )
     return None
 
 
@@ -149,18 +158,25 @@ async def teaser(state_dir, log_id):
     try:
         from aegis.btw.window import assemble
         from aegis.state import session_log
-        replay = await asyncio.to_thread(
-            session_log.replay_events, state_dir, log_id)
-        return assemble(replay, max_turns=TEASER_MAX_TURNS,
-                        budget_tokens=TEASER_BUDGET_TOKENS,
-                        item_chars=TEASER_ITEM_CHARS)
-    except Exception:                                         # noqa: BLE001
+
+        replay = await asyncio.to_thread(session_log.replay_events, state_dir, log_id)
+        return assemble(
+            replay,
+            max_turns=TEASER_MAX_TURNS,
+            budget_tokens=TEASER_BUDGET_TOKENS,
+            item_chars=TEASER_ITEM_CHARS,
+        )
+    except Exception:  # noqa: BLE001
         return None
 
 
-async def read_window(state_dir, log_id, turns: int = 12,
-                      budget_tokens: int | None = None,
-                      item_chars: int | None = None) -> dict:
+async def read_window(
+    state_dir,
+    log_id,
+    turns: int = 12,
+    budget_tokens: int | None = None,
+    item_chars: int | None = None,
+) -> dict:
     """Window a peer's transcript for ``aegis_read_peer``.
 
     Unlocks nothing: the logs are plain JSONL inside the project root and
@@ -179,19 +195,30 @@ async def read_window(state_dir, log_id, turns: int = 12,
     import asyncio
 
     if not state_dir or not log_id:
-        return {"ok": False, "text": "", "header": "",
-                "error": "that session has no persisted transcript to read"}
+        return {
+            "ok": False,
+            "text": "",
+            "header": "",
+            "error": "that session has no persisted transcript to read",
+        }
     try:
         from aegis.btw.window import assemble
         from aegis.state import session_log
-        replay = await asyncio.to_thread(
-            session_log.replay_events, state_dir, log_id)
-        w = assemble(replay, max_turns=turns,
-                     budget_tokens=budget_tokens or READ_BUDGET_TOKENS,
-                     item_chars=item_chars or READ_ITEM_CHARS)
-    except Exception as e:                                    # noqa: BLE001
-        return {"ok": False, "text": "", "header": "",
-                "error": f"could not read the transcript: {e}"}
+
+        replay = await asyncio.to_thread(session_log.replay_events, state_dir, log_id)
+        w = assemble(
+            replay,
+            max_turns=turns,
+            budget_tokens=budget_tokens or READ_BUDGET_TOKENS,
+            item_chars=item_chars or READ_ITEM_CHARS,
+        )
+    except Exception as e:  # noqa: BLE001
+        return {
+            "ok": False,
+            "text": "",
+            "header": "",
+            "error": f"could not read the transcript: {e}",
+        }
     return {"ok": True, "text": w.text, "header": w.header, "error": ""}
 
 
@@ -223,11 +250,16 @@ async def cc_into(source_session, answer: PeerAnswer) -> None:
         return
     try:
         from aegis.queue.schema import InboxMessage, now_iso, sender_agent
-        await source_session.deliver(InboxMessage(
-            sender=sender_agent(answer.target), timestamp=now_iso(),
-            body=f"The operator asked @{answer.target} from this "
-                 f"conversation, and it answered:\n\n{answer.answer}"))
-    except Exception:                                         # noqa: BLE001
+
+        await source_session.deliver(
+            InboxMessage(
+                sender=sender_agent(answer.target),
+                timestamp=now_iso(),
+                body=f"The operator asked @{answer.target} from this "
+                f"conversation, and it answered:\n\n{answer.answer}",
+            )
+        )
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -251,18 +283,23 @@ def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
     turn an undetectable absence into a legible one.
     """
     if window is not None and window.text:
-        slice_ = (f"Below is the recent tail of that conversation — "
-                  f"{window.header}.\n\n"
-                  f"--- tail of {source} ---\n{window.text}\n--- end ---\n\n")
-        pull = (f'Read the fuller conversation with '
-                f'aegis_read_peer("{source}") before answering, unless the '
-                f'question is plainly self-contained.\n\n')
+        slice_ = (
+            f"Below is the recent tail of that conversation — "
+            f"{window.header}.\n\n"
+            f"--- tail of {source} ---\n{window.text}\n--- end ---\n\n"
+        )
+        pull = (
+            f"Read the fuller conversation with "
+            f'aegis_read_peer("{source}") before answering, unless the '
+            f"question is plainly self-contained.\n\n"
+        )
     else:
-        slice_ = ("Its transcript could not be read, so you are seeing "
-                  "none of it.\n\n")
-        pull = (f'Read it with aegis_read_peer("{source}") before '
-                f'answering, unless the question is plainly '
-                f'self-contained.\n\n')
+        slice_ = "Its transcript could not be read, so you are seeing none of it.\n\n"
+        pull = (
+            f'Read it with aegis_read_peer("{source}") before '
+            f"answering, unless the question is plainly "
+            f"self-contained.\n\n"
+        )
     return (
         f"The operator typed this from inside another conversation — tab "
         f"`{source}` ({slug}) — and it probably refers to what is "
@@ -275,8 +312,9 @@ def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
     )
 
 
-def compose_spawn(*, source: str, slug: str, prompt: str,
-                  tail: str, header: str) -> str:
+def compose_spawn(
+    *, source: str, slug: str, prompt: str, tail: str, header: str
+) -> str:
     """The opening turn a `/spawn <prompt>` hands its new agent.
 
     Same three jobs as ``compose`` — provenance of *place, not author*, a
@@ -314,10 +352,15 @@ def compose_spawn(*, source: str, slug: str, prompt: str,
     )
 
 
-async def send_and_await(session, *, prompt: str, sender: str,
-                         timeout: float | None = None,
-                         require_landed: bool = False,
-                         sink: list | None = None) -> str:
+async def send_and_await(
+    session,
+    *,
+    prompt: str,
+    sender: str,
+    timeout: float | None = None,
+    require_landed: bool = False,
+    sink: list | None = None,
+) -> str:
     """Deliver to a live session and await its next complete reply.
 
     Arm before delivering: ``deliver`` starts the turn synchronously when
@@ -343,11 +386,19 @@ async def send_and_await(session, *, prompt: str, sender: str,
     return await asyncio.wait_for(fut, timeout)
 
 
-async def ask(*, from_handle: str, target: str, source_slug: str,
-              target_session, prompt: str,
-              state_dir=None, source_log_id: str | None = None,
-              source_session=None, cc: bool = False,
-              live=()) -> PeerAnswer:
+async def ask(
+    *,
+    from_handle: str,
+    target: str,
+    source_slug: str,
+    target_session,
+    prompt: str,
+    state_dir=None,
+    source_log_id: str | None = None,
+    source_session=None,
+    cc: bool = False,
+    live=(),
+) -> PeerAnswer:
     """The half both ``AppBridge`` implementations share.
 
     Best-effort by contract, exactly as ``side_note`` is: every failure
@@ -361,43 +412,59 @@ async def ask(*, from_handle: str, target: str, source_slug: str,
     from aegis.queue.schema import sender_operator_at
     from aegis.tui.state import AgentState
 
-    ready = (target_session is not None
-             and target_session.state is not AgentState.working)
-    why = refusal(from_handle=from_handle, target=target,
-                  session=target_session, ready=ready, live=live)
+    ready = (
+        target_session is not None and target_session.state is not AgentState.working
+    )
+    why = refusal(
+        from_handle=from_handle,
+        target=target,
+        session=target_session,
+        ready=ready,
+        live=live,
+    )
     if why:
         return PeerAnswer(target=target, error=why)
 
     window = await teaser(state_dir, source_log_id)
-    body = compose(source=from_handle, slug=source_slug or "unknown",
-                   prompt=prompt, window=window)
+    body = compose(
+        source=from_handle, slug=source_slug or "unknown", prompt=prompt, window=window
+    )
     sink: list = []
     t0 = time.monotonic()
     try:
         text = await send_and_await(
-            target_session, prompt=body,
+            target_session,
+            prompt=body,
             sender=sender_operator_at(from_handle),
-            timeout=PEER_ASK_TIMEOUT_S, require_landed=True, sink=sink)
+            timeout=PEER_ASK_TIMEOUT_S,
+            require_landed=True,
+            sink=sink,
+        )
     except PeerBusy:
         return PeerAnswer(
             target=target,
             error=f"{target} went mid-turn before the ask landed. Wait for "
-                  f"it to finish, or /enqueue the task instead.")
+            f"it to finish, or /enqueue the task instead.",
+        )
     except asyncio.TimeoutError:
         return PeerAnswer(
             target=target,
             error=f"{target} did not answer within {PEER_ASK_TIMEOUT_S:.0f}s "
-                  f"— its turn is still running, so go read its tab")
-    except Exception as e:                                    # noqa: BLE001
+            f"— its turn is still running, so go read its tab",
+        )
+    except Exception as e:  # noqa: BLE001
         return PeerAnswer(target=target, error=f"{type(e).__name__}: {e}")
 
     res = sink[0] if sink else None
     answer = PeerAnswer(
-        answer=text, target=target, ok=True,
+        answer=text,
+        target=target,
+        ok=True,
         header=getattr(window, "header", "") or "no transcript",
         model=getattr(getattr(target_session, "agent", None), "model", "") or "",
         duration_ms=int((time.monotonic() - t0) * 1000),
-        cost_usd=float(getattr(res, "cost_usd", 0.0) or 0.0))
+        cost_usd=float(getattr(res, "cost_usd", 0.0) or 0.0),
+    )
     if cc:
         await cc_into(source_session, answer)
     return answer

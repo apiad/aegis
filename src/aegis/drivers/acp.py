@@ -19,6 +19,7 @@ OAuth pass-through is automatic: the agent subprocess reads its own
 cached creds (``~/.gemini/oauth_creds.json`` etc.) regardless of how
 it's invoked. ACP is just protocol on top.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,10 +73,13 @@ from aegis.events import (
 # been assigned yet. Idempotent: if upstream lands a fix, this still
 # does the right thing.
 # ---------------------------------------------------------------------
-if not hasattr(_acp_connection.Connection, "_receive_timeout") \
-        or isinstance(
-            _acp_connection.Connection.__dict__.get("_receive_timeout"),
-            type(None)) is False:
+if (
+    not hasattr(_acp_connection.Connection, "_receive_timeout")
+    or isinstance(
+        _acp_connection.Connection.__dict__.get("_receive_timeout"), type(None)
+    )
+    is False
+):
     # Add as a class attribute so per-instance reads have a fallback
     # before __init__ writes the instance attribute.
     _acp_connection.Connection._receive_timeout = None  # type: ignore[attr-defined]
@@ -107,11 +111,13 @@ class _RingHandler(logging.Handler):
     def clear(self) -> None:
         self._records.clear()
 
+
 try:
     from importlib.metadata import PackageNotFoundError as _PNFE
     from importlib.metadata import version as _pkg_version
+
     _AEGIS_VERSION = _pkg_version("aegis-harness")
-except _PNFE:                    # not installed (e.g. running from source)
+except _PNFE:  # not installed (e.g. running from source)
     _AEGIS_VERSION = "0.0.0+unknown"
 _STREAM_LIMIT = 16 * 1024 * 1024
 
@@ -161,14 +167,12 @@ class _AegisAcpClient(acp.Client):
             text = getattr(update.content, "text", None)
             if text:
                 mid = getattr(update, "message_id", None)
-                self._queue.put_nowait(
-                    AssistantText(text=text, message_id=mid))
+                self._queue.put_nowait(AssistantText(text=text, message_id=mid))
         elif kind == "AgentThoughtChunk":
             text = getattr(update.content, "text", None)
             if text:
                 mid = getattr(update, "message_id", None)
-                self._queue.put_nowait(
-                    AssistantThinking(text=text, message_id=mid))
+                self._queue.put_nowait(AssistantThinking(text=text, message_id=mid))
         elif kind == "ToolCallStart":
             tcid = getattr(update, "tool_call_id", "") or ""
             title = getattr(update, "title", "?") or "?"
@@ -183,16 +187,20 @@ class _AegisAcpClient(acp.Client):
             self._tool_calls[tcid] = title
             if tool_kind:
                 self._tool_kinds[tcid] = tool_kind
-            summary = _summarize_acp_input(raw_input) \
-                if isinstance(raw_input, dict) else ""
-            self._queue.put_nowait(ToolUse(
-                name=title, summary=summary,
-                kind=tool_kind,
-                raw_input=raw_input if isinstance(raw_input, dict) else None,
-                tool_call_id=tcid or None,
-                locations=locations,
-                status=status,
-            ))
+            summary = (
+                _summarize_acp_input(raw_input) if isinstance(raw_input, dict) else ""
+            )
+            self._queue.put_nowait(
+                ToolUse(
+                    name=title,
+                    summary=summary,
+                    kind=tool_kind,
+                    raw_input=raw_input if isinstance(raw_input, dict) else None,
+                    tool_call_id=tcid or None,
+                    locations=locations,
+                    status=status,
+                )
+            )
         elif kind == "ToolCallProgress":
             status = getattr(update, "status", "")
             if status in ("completed", "failed"):
@@ -200,11 +208,10 @@ class _AegisAcpClient(acp.Client):
                 tcid = getattr(update, "tool_call_id", "") or ""
                 text = ""
                 diff: tuple[str, str, str] | None = None
-                for block in (update.content or []):
+                for block in update.content or []:
                     # FileEditToolCallContent carries (path, old_text,
                     # new_text); first one wins per turn.
-                    if diff is None and getattr(
-                            block, "type", None) == "diff":
+                    if diff is None and getattr(block, "type", None) == "diff":
                         path = getattr(block, "path", "") or ""
                         old = getattr(block, "old_text", "") or ""
                         new = getattr(block, "new_text", "") or ""
@@ -215,12 +222,15 @@ class _AegisAcpClient(acp.Client):
                         candidate = getattr(inner, "text", "")
                         if candidate:
                             text = candidate
-                self._queue.put_nowait(ToolResult(
-                    text=text, is_error=is_error,
-                    tool_call_id=tcid or None,
-                    kind=self._tool_kinds.get(tcid),
-                    diff=diff,
-                ))
+                self._queue.put_nowait(
+                    ToolResult(
+                        text=text,
+                        is_error=is_error,
+                        tool_call_id=tcid or None,
+                        kind=self._tool_kinds.get(tcid),
+                        diff=diff,
+                    )
+                )
         elif kind == "AvailableCommandsUpdate":
             # Surface as a follow-on SystemInit carrying only the
             # commands list. Downstream consumers see two SystemInits
@@ -233,25 +243,29 @@ class _AegisAcpClient(acp.Client):
                 if isinstance(getattr(c, "name", None), str)
             )
             if cmds:
-                self._queue.put_nowait(SystemInit(
-                    session_id=session_id,
-                    available_commands=cmds,
-                ))
+                self._queue.put_nowait(
+                    SystemInit(
+                        session_id=session_id,
+                        available_commands=cmds,
+                    )
+                )
         elif kind == "UsageUpdate":
             cost_obj = getattr(update, "cost", None)
             amount = getattr(cost_obj, "amount", None)
             used = getattr(update, "used", None)
             size = getattr(update, "size", None)
-            amount_f = (float(amount)
-                        if isinstance(amount, (int, float)) else None)
+            amount_f = float(amount) if isinstance(amount, (int, float)) else None
             if amount_f is not None:
                 self.last_cost_usd = amount_f
-            self._queue.put_nowait(ContextUpdate(
-                cost=CostUsage(
-                    amount_usd=amount_f,
-                    context_used=int(used) if isinstance(used, int) else None,
-                    context_size=int(size) if isinstance(size, int) else None,
-                )))
+            self._queue.put_nowait(
+                ContextUpdate(
+                    cost=CostUsage(
+                        amount_usd=amount_f,
+                        context_used=int(used) if isinstance(used, int) else None,
+                        context_size=int(size) if isinstance(size, int) else None,
+                    )
+                )
+            )
         elif kind == "CurrentModeUpdate":
             mode_id = getattr(update, "current_mode_id", None)
             if isinstance(mode_id, str):
@@ -273,19 +287,16 @@ class _AegisAcpClient(acp.Client):
         # Other update classes (AvailableCommandsUpdate, UsageUpdate,
         # CurrentModeUpdate, etc.) are provider telemetry — drop.
 
-    async def request_permission(self, options, session_id, tool_call,
-                                 **kw):
+    async def request_permission(self, options, session_id, tool_call, **kw):
         # Queue workers use Permission.full anyway. Auto-allow the first
         # option. (A future enhancement could route via the TUI.)
         return acp.RequestPermissionResponse(
-            outcome={"outcome": "selected",
-                     "optionId": options[0].option_id})
+            outcome={"outcome": "selected", "optionId": options[0].option_id}
+        )
 
-    async def read_text_file(self, path, session_id,
-                             limit=None, line=None, **kw):
+    async def read_text_file(self, path, session_id, limit=None, line=None, **kw):
         try:
-            content = Path(path).read_text(
-                encoding="utf-8", errors="replace")
+            content = Path(path).read_text(encoding="utf-8", errors="replace")
         except Exception as e:  # noqa: BLE001
             raise acp.RequestError(code=-32000, message=str(e))
         return acp.ReadTextFileResponse(content=content)
@@ -296,14 +307,26 @@ class _AegisAcpClient(acp.Client):
 
     # We declare terminal: False in client capabilities, so the agent
     # shouldn't call these. Implement as no-ops for protocol compliance.
-    async def create_terminal(self, *a, **kw): return None
-    async def terminal_output(self, *a, **kw): return None
-    async def wait_for_terminal_exit(self, *a, **kw): return None
-    async def kill_terminal(self, *a, **kw): return None
-    async def release_terminal(self, *a, **kw): return None
+    async def create_terminal(self, *a, **kw):
+        return None
 
-    async def ext_method(self, method, params): return {}
-    async def ext_notification(self, method, params): return None
+    async def terminal_output(self, *a, **kw):
+        return None
+
+    async def wait_for_terminal_exit(self, *a, **kw):
+        return None
+
+    async def kill_terminal(self, *a, **kw):
+        return None
+
+    async def release_terminal(self, *a, **kw):
+        return None
+
+    async def ext_method(self, method, params):
+        return {}
+
+    async def ext_notification(self, method, params):
+        return None
 
 
 class AcpSession(HarnessSession):
@@ -311,13 +334,19 @@ class AcpSession(HarnessSession):
 
     BASE_CMD: list[str] = []  # set by the subclass driver
 
-    def __init__(self, agent: Agent, cwd: str,
-                 mcp_url: str, handle: str,
-                 *, resume_session_id: str | None = None,
-                 extra_env: dict[str, str] | None = None,
-                 persona: str | None = None,
-                 launcher: Launcher = LOCAL,
-                 token: str = "") -> None:
+    def __init__(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        *,
+        resume_session_id: str | None = None,
+        extra_env: dict[str, str] | None = None,
+        persona: str | None = None,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> None:
         self._launcher = launcher
         self._agent = agent
         self._cwd = cwd
@@ -361,10 +390,10 @@ class AcpSession(HarnessSession):
         if not self._mcp_url:
             return []
         token = getattr(self, "_token", "")
-        headers = ([{"name": HEADER_NAME, "value": token}]
-                   if token else [])
-        return [{"type": "http", "name": "aegis",
-                 "url": self._mcp_url, "headers": headers}]
+        headers = [{"name": HEADER_NAME, "value": token}] if token else []
+        return [
+            {"type": "http", "name": "aegis", "url": self._mcp_url, "headers": headers}
+        ]
 
     async def _apply_pre_spawn_hooks(
         self,
@@ -394,8 +423,7 @@ class AcpSession(HarnessSession):
             state_dir=Path(self._cwd) / ".aegis" / "state",
         )
         if composed.block is not None:
-            raise RuntimeError(
-                f"pre_spawn hook blocked spawn: {composed.block}")
+            raise RuntimeError(f"pre_spawn hook blocked spawn: {composed.block}")
         return list(composed.argv or base_argv), composed.env
 
     async def _drain_stderr(self) -> None:
@@ -448,11 +476,13 @@ class AcpSession(HarnessSession):
         acp_log = getattr(self, "_log_ring", None)
         acp_log_text = acp_log.snapshot() if acp_log else ""
         argv = " ".join(self._argv())
-        msg = (f"{type(exc).__name__}: {exc}\n"
-               f"  subprocess: {argv}\n"
-               f"  exit_code:  {rc if rc is not None else '(still running)'}\n"
-               f"  stderr:\n{tail or '(empty — subprocess produced no stderr before failing)'}\n"
-               f"  acp logger:\n{acp_log_text or '(empty)'}")
+        msg = (
+            f"{type(exc).__name__}: {exc}\n"
+            f"  subprocess: {argv}\n"
+            f"  exit_code:  {rc if rc is not None else '(still running)'}\n"
+            f"  stderr:\n{tail or '(empty — subprocess produced no stderr before failing)'}\n"
+            f"  acp logger:\n{acp_log_text or '(empty)'}"
+        )
         wrapped = RuntimeError(msg)
         wrapped.__cause__ = exc
         return wrapped
@@ -469,6 +499,7 @@ class AcpSession(HarnessSession):
         # message to stderr — surfacing those bytes is how we debug.
         self._stderr_tail: list[bytes] = []
         self._stderr_task = asyncio.create_task(self._drain_stderr())
+
         # The SDK logs internal failures (e.g. "Receive loop failed",
         # "Error parsing JSON-RPC message") via the bare top-level
         # logging.exception(...) call — which routes to the ROOT logger,
@@ -479,26 +510,33 @@ class AcpSession(HarnessSession):
             def filter(self, record: logging.LogRecord) -> bool:
                 # SDK calls are 'logging.exception(...)' from inside
                 # acp/* modules — pathname/module identifies them.
-                module = (record.module or "")
-                pathname = (record.pathname or "")
-                return ("/acp/" in pathname or pathname.endswith("/acp")
-                        or module.startswith("acp"))
+                module = record.module or ""
+                pathname = record.pathname or ""
+                return (
+                    "/acp/" in pathname
+                    or pathname.endswith("/acp")
+                    or module.startswith("acp")
+                )
 
         self._log_ring = _RingHandler(max_records=64)
-        self._log_ring.setFormatter(logging.Formatter(
-            "%(levelname)s %(name)s [%(module)s]: %(message)s"))
+        self._log_ring.setFormatter(
+            logging.Formatter("%(levelname)s %(name)s [%(module)s]: %(message)s")
+        )
         self._log_ring.addFilter(_AcpFilter())
         self._root_logger = logging.getLogger()
         self._prev_root_level = self._root_logger.level
         self._root_logger.addHandler(self._log_ring)
-        if self._root_logger.level == logging.NOTSET \
-                or self._root_logger.level > logging.DEBUG:
+        if (
+            self._root_logger.level == logging.NOTSET
+            or self._root_logger.level > logging.DEBUG
+        ):
             self._root_logger.setLevel(logging.DEBUG)
         # ACP SDK arg order: (client, in_stream, out_stream) where
         # in_stream is where the CLIENT writes (= agent's stdin) and
         # out_stream is where the CLIENT reads (= agent's stdout).
         self._conn = acp.connect_to_agent(
-            self._client, self._proc.stdin, self._proc.stdout)
+            self._client, self._proc.stdin, self._proc.stdout
+        )
         try:
             init_resp = await self._conn.initialize(
                 protocol_version=1,
@@ -513,15 +551,18 @@ class AcpSession(HarnessSession):
                 sess = await self._conn.load_session(
                     cwd=self._cwd,
                     session_id=self._resume_session_id,
-                    mcp_servers=mcp_servers)
+                    mcp_servers=mcp_servers,
+                )
             else:
                 sess = await self._conn.new_session(
-                    cwd=self._cwd, mcp_servers=mcp_servers)
+                    cwd=self._cwd, mcp_servers=mcp_servers
+                )
             # load_session's response may not echo session_id; fall back
             # to the requested id so subsequent prompt() calls hit the
             # right conversation.
-            self._session_id = (getattr(sess, "session_id", None)
-                                or self._resume_session_id)
+            self._session_id = (
+                getattr(sess, "session_id", None) or self._resume_session_id
+            )
             # Emit a SystemInit so downstream consumers see the same
             # boot-time payload shape ACP offers (model + version are
             # the model/agent the subprocess advertised, plus the
@@ -531,21 +572,21 @@ class AcpSession(HarnessSession):
             agent_info = getattr(init_resp, "agent_info", None)
             agent_version = getattr(agent_info, "version", None)
             agent_name = getattr(agent_info, "name", None)
-            self._queue.put_nowait(SystemInit(
-                session_id=self._session_id,
-                model=agent_name
-                      if isinstance(agent_name, str) else None,
-                version=agent_version
-                      if isinstance(agent_version, str) else None,
-            ))
+            self._queue.put_nowait(
+                SystemInit(
+                    session_id=self._session_id,
+                    model=agent_name if isinstance(agent_name, str) else None,
+                    version=agent_version if isinstance(agent_version, str) else None,
+                )
+            )
         except BaseException as e:
             raise (await self._wrap_error(e)) from None
 
     async def send(self, text: str) -> None:
         import time as _time
+
         if not self._conn or not self._session_id:
-            raise RuntimeError(
-                "AcpSession.send() called before start()")
+            raise RuntimeError("AcpSession.send() called before start()")
         started = _time.monotonic()
         blocks = [{"type": "text", "text": text}]
         if self._persona and not self._persona_sent:
@@ -575,6 +616,7 @@ class AcpSession(HarnessSession):
         # genuinely consumed tokens. duration_ms is measured locally;
         # PromptResponse doesn't carry it.
         from aegis.events import TokenUsage as _TU
+
         duration_ms = int((_time.monotonic() - started) * 1000)
         is_error = resp.stop_reason not in ("end_turn", None)
         usage = None
@@ -605,8 +647,9 @@ class AcpSession(HarnessSession):
             if tc:
                 in_tok = int(tc.get("input_tokens") or 0)
                 out_tok = int(tc.get("output_tokens") or 0)
-                usage = _TU(input=in_tok, cache_creation=0,
-                            cache_read=0, output=out_tok)
+                usage = _TU(
+                    input=in_tok, cache_creation=0, cache_read=0, output=out_tok
+                )
 
         # Per-model breakdown — Gemini exposes it in field_meta.quota.
         model_usage: tuple[tuple[str, _TU | None], ...] = ()
@@ -620,24 +663,34 @@ class AcpSession(HarnessSession):
                 name = entry.get("model")
                 tc = entry.get("token_count") or {}
                 if isinstance(name, str) and isinstance(tc, dict):
-                    entries.append((name, _TU(
-                        input=int(tc.get("input_tokens") or 0),
-                        cache_creation=0, cache_read=0,
-                        output=int(tc.get("output_tokens") or 0),
-                    )))
+                    entries.append(
+                        (
+                            name,
+                            _TU(
+                                input=int(tc.get("input_tokens") or 0),
+                                cache_creation=0,
+                                cache_read=0,
+                                output=int(tc.get("output_tokens") or 0),
+                            ),
+                        )
+                    )
             model_usage = tuple(entries)
 
         stop_reason = getattr(resp, "stop_reason", None)
         if not isinstance(stop_reason, str):
             stop_reason = None
-        self._queue.put_nowait(Result(
-            duration_ms=duration_ms, is_error=is_error,
-            input_tokens=in_tok, output_tokens=out_tok,
-            usage=usage,
-            stop_reason=stop_reason,
-            cost_usd=self._client.last_cost_usd,
-            model_usage=model_usage,
-        ))
+        self._queue.put_nowait(
+            Result(
+                duration_ms=duration_ms,
+                is_error=is_error,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                usage=usage,
+                stop_reason=stop_reason,
+                cost_usd=self._client.last_cost_usd,
+                model_usage=model_usage,
+            )
+        )
         # End-of-turn sentinel so events() returns.
         self._queue.put_nowait(None)
 
@@ -695,8 +748,9 @@ class AcpDriver(HarnessDriver):
     # raises and the resumed tab surfaces a clear failure banner.
     supports_resume = True
 
-    def build_argv(self, agent: Agent, cwd: str,
-                   mcp_url: str, handle: str) -> list[str]:
+    def build_argv(
+        self, agent: Agent, cwd: str, mcp_url: str, handle: str
+    ) -> list[str]:
         # Default: BASE_CMD verbatim. Provider drivers override to add
         # CLI-specific flags (e.g. Gemini's -m model selector). Models
         # that the CLI doesn't accept stay in agent.model for logging
@@ -709,32 +763,50 @@ class AcpDriver(HarnessDriver):
         endpoint / key through the environment."""
         return {}
 
-    def session(self, agent: Agent, cwd: str,
-                mcp_url: str, handle: str,
-                launcher: Launcher = LOCAL,
-                token: str = "") -> AcpSession:
-        s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
-                             extra_env=self.extra_env(agent),
-                             persona=read_persona(
-                                 agent, launcher.persona_root(cwd)),
-                             launcher=launcher,
-                             token=token)
+    def session(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> AcpSession:
+        s = self.SESSION_CLS(
+            agent,
+            cwd,
+            mcp_url,
+            handle,
+            extra_env=self.extra_env(agent),
+            persona=read_persona(agent, launcher.persona_root(cwd)),
+            launcher=launcher,
+            token=token,
+        )
         # The session reads BASE_CMD from itself; provider sessions
         # override _argv if they need per-call argv tweaks.
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s
 
-    def resume(self, agent: Agent, cwd: str,
-               mcp_url: str, handle: str,
-               session_id: str,
-               launcher: Launcher = LOCAL,
-               token: str = "") -> AcpSession:
-        s = self.SESSION_CLS(agent, cwd, mcp_url, handle,
-                             resume_session_id=session_id,
-                             extra_env=self.extra_env(agent),
-                             persona=read_persona(
-                                 agent, launcher.persona_root(cwd)),
-                             launcher=launcher,
-                             token=token)
+    def resume(
+        self,
+        agent: Agent,
+        cwd: str,
+        mcp_url: str,
+        handle: str,
+        session_id: str,
+        launcher: Launcher = LOCAL,
+        token: str = "",
+    ) -> AcpSession:
+        s = self.SESSION_CLS(
+            agent,
+            cwd,
+            mcp_url,
+            handle,
+            resume_session_id=session_id,
+            extra_env=self.extra_env(agent),
+            persona=read_persona(agent, launcher.persona_root(cwd)),
+            launcher=launcher,
+            token=token,
+        )
         s.BASE_CMD = self.build_argv(agent, cwd, mcp_url, handle)
         return s

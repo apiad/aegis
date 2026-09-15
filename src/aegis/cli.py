@@ -12,7 +12,10 @@ import typer
 from rich.console import Console
 
 from aegis.config import (
-    ConfigError, find_project_root, load_config, load_queues,
+    ConfigError,
+    find_project_root,
+    load_config,
+    load_queues,
 )
 from aegis.config.roots import AegisRoots
 from aegis.core.manager import SessionManager
@@ -28,27 +31,35 @@ app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
 
 from aegis.cli_schedule import app as _schedule_app  # noqa: E402
+
 app.add_typer(_schedule_app, name="schedule")
 
 from aegis.cli_budget import app as _budget_app  # noqa: E402
+
 app.add_typer(_budget_app, name="budget")
 
 from aegis.cli_models import app as _models_app  # noqa: E402
+
 app.add_typer(_models_app, name="models")
 
 from aegis.cli_usage import app as _usage_app  # noqa: E402
+
 app.add_typer(_usage_app, name="usage")
 
 from aegis.cli_config import app as _config_app  # noqa: E402
+
 app.add_typer(_config_app, name="config")
 
 from aegis.cli_plugin import app as _plugin_app  # noqa: E402
+
 app.add_typer(_plugin_app, name="plugin")
 
 from aegis.cli_comms import comms_app as _comms_app  # noqa: E402
+
 app.add_typer(_comms_app, name="comms")
 
 from aegis.cli_bench import app as _bench_app  # noqa: E402
+
 app.add_typer(_bench_app, name="bench")
 
 
@@ -66,8 +77,9 @@ def _session_factory(cwd: str, hosts=None):
     from aegis.hosts.launcher import LocalLauncher
     from aegis.hosts.models import Place
 
-    def make_session(profile, mcp_url, handle, fork_from=None, place=None,
-                     resume_from=None, token=""):
+    def make_session(
+        profile, mcp_url, handle, fork_from=None, place=None, resume_from=None, token=""
+    ):
         place = place or Place("local", cwd)
         if hosts is not None:
             launcher, url = hosts.launcher_for(place, mcp_url)
@@ -75,13 +87,15 @@ def _session_factory(cwd: str, hosts=None):
             launcher, url = LocalLauncher(local_root=cwd), mcp_url
         drv = get_driver(profile.harness)
         if fork_from is not None:
-            return drv.fork(profile, place.cwd, url, handle, fork_from,
-                            launcher, token=token)
+            return drv.fork(
+                profile, place.cwd, url, handle, fork_from, launcher, token=token
+            )
         if resume_from is not None:
-            return drv.resume(profile, place.cwd, url, handle, resume_from,
-                              launcher, token=token)
-        return drv.session(profile, place.cwd, url, handle, launcher,
-                           token=token)
+            return drv.resume(
+                profile, place.cwd, url, handle, resume_from, launcher, token=token
+            )
+        return drv.session(profile, place.cwd, url, handle, launcher, token=token)
+
     return make_session
 
 
@@ -111,8 +125,10 @@ def load_boot_config(roots: AegisRoots) -> BootConfig:
     """
     from aegis.commands.prompt_loader import load_prompt_commands
     from aegis.config.yaml_loader import (
-        import_plugins, load_config as _load_yaml,
+        import_plugins,
+        load_config as _load_yaml,
     )
+
     root = roots.config_root
     agents, default_agent = load_config(root)
     yaml_cfg = _load_yaml(root)
@@ -122,22 +138,26 @@ def load_boot_config(roots: AegisRoots) -> BootConfig:
     import_plugins(yaml_cfg)
     load_prompt_commands(root)
     return BootConfig(
-        agents=agents, default_agent=default_agent,
+        agents=agents,
+        default_agent=default_agent,
         queues=load_queues(root),
-        schedules=yaml_cfg.schedules, remotes=yaml_cfg.remotes,
-        remote_plane=yaml_cfg.remote_plane, hosts=yaml_cfg.hosts,
+        schedules=yaml_cfg.schedules,
+        remotes=yaml_cfg.remotes,
+        remote_plane=yaml_cfg.remote_plane,
+        hosts=yaml_cfg.hosts,
         voice=yaml_cfg.voice,
         # Only a token-bearing block counts, or serve starts a web frontend
         # with no auth.
         web=(yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None),
-        inline_schedule_names=yaml_cfg.inline_schedule_names)
+        inline_schedule_names=yaml_cfg.inline_schedule_names,
+    )
 
 
 def _version_callback(value: bool) -> None:
     if value:
         try:
             v = _pkg_version("aegis-harness")
-        except PackageNotFoundError:        # not installed (rare in dev)
+        except PackageNotFoundError:  # not installed (rare in dev)
             v = "0.0.0+unknown"
         typer.echo(f"aegis {v}")
         raise typer.Exit()
@@ -155,26 +175,36 @@ def _version_callback(value: bool) -> None:
 def run(
     ctx: typer.Context,
     version: bool = typer.Option(
-        False, "--version", callback=_version_callback, is_eager=True,
-        help="Show version and exit."),
-    agent: str = typer.Option(None, "--agent", "-a",
-                              help="Named agent profile to use."),
-    cwd: str = typer.Option(".", "--cwd",
-                            help="Working dir for the harness subprocess."),
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+    agent: str = typer.Option(
+        None, "--agent", "-a", help="Named agent profile to use."
+    ),
+    cwd: str = typer.Option(
+        ".", "--cwd", help="Working dir for the harness subprocess."
+    ),
     clean: bool = typer.Option(
-        False, "--clean",
-        help="Ignore prior workspace state; start fresh"),
+        False, "--clean", help="Ignore prior workspace state; start fresh"
+    ),
     remote: str = typer.Option(
-        None, "--remote",
+        None,
+        "--remote",
         help="Run against a remote aegis serve. "
-             "ws://host:port or wss://host:port. "
-             "Empty value = ws://localhost:8080."),
+        "ws://host:port or wss://host:port. "
+        "Empty value = ws://localhost:8080.",
+    ),
     token: str = typer.Option(
-        None, "--token",
-        help="Web token for --remote ws://. Required for ws:// remotes."),
+        None,
+        "--token",
+        help="Web token for --remote ws://. Required for ws:// remotes.",
+    ),
     tail: int = typer.Option(
-        10, "--tail",
-        help="On subscribe/resume, replay last N coalesced blocks."),
+        10, "--tail", help="On subscribe/resume, replay last N coalesced blocks."
+    ),
 ) -> None:
     """Run the interactive aegis session (default when no subcommand)."""
     if ctx.invoked_subcommand is not None:
@@ -183,32 +213,36 @@ def run(
     if remote is not None:
         url = remote or "ws://localhost:8080"
         from urllib.parse import urlparse as _urlparse
+
         parsed = _urlparse(url)
         if parsed.scheme == "ssh":
             host = parsed.hostname
             port = parsed.port or 8080
             fetched_token = _ssh_fetch_token(host)
             from aegis.remote.ssh_tunnel import SSHTunnel
+
             tunnel = SSHTunnel(host, port)
+
             async def _boot():
                 await tunnel.__aenter__()
                 try:
                     mgr = await _build_remote_manager(
                         url=f"ws://localhost:{tunnel.local_port}",
-                        token=fetched_token, tail=tail)
-                    mgr._tunnel = tunnel   # keep alive for TUI lifetime
+                        token=fetched_token,
+                        tail=tail,
+                    )
+                    mgr._tunnel = tunnel  # keep alive for TUI lifetime
                     return mgr
                 except Exception:
                     await tunnel.__aexit__(None, None, None)
                     raise
+
             mgr = asyncio.run(_boot())
         elif parsed.scheme == "ws":
             _maybe_autolaunch_serve(url)
-            mgr = asyncio.run(_build_remote_manager(url=url, token=token,
-                                                     tail=tail))
+            mgr = asyncio.run(_build_remote_manager(url=url, token=token, tail=tail))
         else:
-            raise typer.BadParameter(
-                f"--remote: unsupported scheme {parsed.scheme!r}")
+            raise typer.BadParameter(f"--remote: unsupported scheme {parsed.scheme!r}")
         _run_tui_with_manager(mgr, cwd=cwd, clean=clean, agent=agent)
         return
     root = find_project_root() or Path.cwd()
@@ -235,18 +269,30 @@ def _run_bootstrap_tui(root: Path, *, cwd: str, clean: bool) -> None:
 
     try:
         from aegis.models.refresh import maybe_refresh
+
         maybe_refresh()
     except Exception:  # noqa: BLE001
         pass
 
     from aegis.hosts.registry import HostRegistry
-    host_registry = HostRegistry({}, state_dir=root / ".aegis" / "state",
-                                 local_root=effective_cwd)
+
+    host_registry = HostRegistry(
+        {}, state_dir=root / ".aegis" / "state", local_root=effective_cwd
+    )
     drivers = {slug: cls() for slug, cls in DRIVERS.items()}
-    AegisApp({}, "", _session_factory(effective_cwd, host_registry),
-             AegisMCP(), queues={}, clean=clean, drivers=drivers,
-             cwd=effective_cwd, voice=None,
-             hosts={}, host_registry=host_registry).run()
+    AegisApp(
+        {},
+        "",
+        _session_factory(effective_cwd, host_registry),
+        AegisMCP(),
+        queues={},
+        clean=clean,
+        drivers=drivers,
+        cwd=effective_cwd,
+        voice=None,
+        hosts={},
+        host_registry=host_registry,
+    ).run()
 
 
 class UIAttachment(Protocol):
@@ -265,6 +311,7 @@ def _tty_view_id() -> str:
     """
     import os
     import sys
+
     try:
         name = os.ttyname(sys.stdin.fileno())
     except (OSError, ValueError, AttributeError):
@@ -285,6 +332,7 @@ class ResolvedBoot:
     construction now: there is one sequence and the callers differ only in
     what they do with it.
     """
+
     roots: AegisRoots
     boot: object
     host_registry: object
@@ -322,22 +370,28 @@ def resolve_boot(root: Path, cwd: str = ".") -> ResolvedBoot:
     # The registry owns one SSH ControlMaster per host and is handed the MCP
     # port once the server binds, so it must exist before the factory that
     # closes over it.
-    host_registry = HostRegistry(boot.hosts, state_dir=roots.state_dir,
-                                 local_root=effective)
-    return ResolvedBoot(roots=roots, boot=boot, host_registry=host_registry,
-                        make_session=_session_factory(effective,
-                                                      host_registry))
+    host_registry = HostRegistry(
+        boot.hosts, state_dir=roots.state_dir, local_root=effective
+    )
+    return ResolvedBoot(
+        roots=roots,
+        boot=boot,
+        host_registry=host_registry,
+        make_session=_session_factory(effective, host_registry),
+    )
 
 
 async def _ensure_daemon(root: Path, **kw):
     """Seam. Imported lazily and indirected so a Typer-level test can stub
     the transport without stubbing a coroutine nested in a command body."""
     from aegis.daemon.lifecycle import ensure_daemon
+
     return await ensure_daemon(root, **kw)
 
 
 async def _attach(path, view_id: str, **kw):
     from aegis.daemon.client import attach
+
     return await attach(path, view_id, **kw)
 
 
@@ -375,6 +429,7 @@ def _daemon_preflight(root: Path) -> None:
 def _daemon_for(root: Path):
     """Seam, so a test can present a daemon without one existing."""
     from aegis.daemon import registry as _dreg
+
     return _dreg.daemon_for(root)
 
 
@@ -401,14 +456,14 @@ def _handle_stale_daemon(root: Path) -> None:
     roots = AegisRoots.for_project(root, harness_cwd=root)
     if nothing_to_lose(roots):
         _dreg.kill(rec)
-        _console.print(
-            "[dim]restarted the daemon: it was running older code[/dim]")
+        _console.print("[dim]restarted the daemon: it was running older code[/dim]")
         return
     _console.print(
         f"[yellow]the daemon for this root (pid {rec.pid}) started before "
         f"the current code and keeps running what it booted with. "
         f"`aegis kill` when you can afford to drop its tabs.[/yellow]",
-        soft_wrap=True)
+        soft_wrap=True,
+    )
 
 
 def _attach_to_daemon(root: Path, view_id: str) -> None:
@@ -418,8 +473,7 @@ def _attach_to_daemon(root: Path, view_id: str) -> None:
     _handle_stale_daemon(root)
 
     async def _go():
-        path = await _ensure_daemon(
-            root, preflight=lambda: _daemon_preflight(root))
+        path = await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
         await _attach(path, view_id)
 
     try:
@@ -435,34 +489,36 @@ def _attach_to_daemon(root: Path, view_id: str) -> None:
     rec = None
     try:
         from aegis.daemon import registry as _dreg
+
         rec = _dreg.daemon_for(root)
     except Exception:  # noqa: BLE001 — a footer must never fail the exit
         pass
     if rec is not None:
         _console.print(
-            f"[dim]brain running (pid {rec.pid}) · "
-            f"`aegis kill` to stop[/dim]")
+            f"[dim]brain running (pid {rec.pid}) · `aegis kill` to stop[/dim]"
+        )
 
 
 def _root_for(cwd: str) -> Path:
-    return Path(cwd).resolve() if cwd != "." else (
-        find_project_root() or Path.cwd())
+    return Path(cwd).resolve() if cwd != "." else (find_project_root() or Path.cwd())
 
 
-async def _build_remote_manager(*, url: str, token: str | None,
-                                tail: int) -> "RemoteSessionManager":
+async def _build_remote_manager(
+    *, url: str, token: str | None, tail: int
+) -> "RemoteSessionManager":
     """Build and start a RemoteSessionManager over a WsClient connection."""
     from aegis.tui.remote_manager import RemoteSessionManager
     from aegis.tui.ws_client import WsClient
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.scheme != "ws":
-        raise typer.BadParameter(
-            f"unsupported scheme {parsed.scheme!r}; use ws://")
+        raise typer.BadParameter(f"unsupported scheme {parsed.scheme!r}; use ws://")
     if not token:
         raise typer.BadParameter(
             "--token is required for --remote ws://; "
-            "obtain it with `aegis token` on the remote host.")
+            "obtain it with `aegis token` on the remote host."
+        )
     ws = WsClient(url, token, default_tail=tail)
     await ws.connect()
     mgr = RemoteSessionManager(ws)
@@ -473,8 +529,10 @@ async def _build_remote_manager(*, url: str, token: str | None,
 def _ssh_fetch_token(host: str) -> str:
     """Shell out to `ssh <host> aegis token` and return the printed token."""
     import subprocess
-    r = subprocess.run(["ssh", host, "aegis", "token"],
-                       capture_output=True, text=True, check=True)
+
+    r = subprocess.run(
+        ["ssh", host, "aegis", "token"], capture_output=True, text=True, check=True
+    )
     return r.stdout.strip()
 
 
@@ -487,6 +545,7 @@ def _maybe_autolaunch_serve(url: str) -> None:
     import sys
     import time
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.hostname not in ("localhost", "127.0.0.1"):
         return
@@ -498,10 +557,12 @@ def _maybe_autolaunch_serve(url: str) -> None:
             return  # already listening
         except OSError:
             pass
-    subprocess.Popen([sys.executable, "-m", "aegis", "serve"],
-                     stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    subprocess.Popen(
+        [sys.executable, "-m", "aegis", "serve"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         with socket.socket() as probe:
@@ -514,19 +575,26 @@ def _maybe_autolaunch_serve(url: str) -> None:
     raise typer.Exit(f"aegis serve failed to start on port {port}")
 
 
-def _run_tui_with_manager(mgr, *, cwd: str, clean: bool,
-                           agent: str | None) -> None:
+def _run_tui_with_manager(mgr, *, cwd: str, clean: bool, agent: str | None) -> None:
     """Launch AegisApp with an externally-built manager (--remote path)."""
     root = find_project_root() or Path.cwd()
     effective_cwd = str(root) if cwd == "." else cwd
     from aegis.drivers import DRIVERS
+
     drivers = {slug: cls() for slug, cls in DRIVERS.items()}
     agents = {slug: None for slug in mgr.list_agents()}
-    AegisApp(agents=agents, default_agent=agent or "",
-             make_session=None, mcp=None,
-             queues={}, clean=clean, drivers=drivers,
-             cwd=effective_cwd, voice=None,
-             manager=mgr).run()
+    AegisApp(
+        agents=agents,
+        default_agent=agent or "",
+        make_session=None,
+        mcp=None,
+        queues={},
+        clean=clean,
+        drivers=drivers,
+        cwd=effective_cwd,
+        voice=None,
+        manager=mgr,
+    ).run()
 
 
 @dataclass
@@ -558,6 +626,7 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None"
     from aegis.remote import plane as plane_mod
     from aegis.remote.callback_observer import install_callback_observer
     from aegis.workflow.decorator import get_workflow
+
     root = Path.cwd()
     bridge = _PlaneBridge(
         queue_manager=queue_manager,
@@ -571,15 +640,17 @@ async def _maybe_start_remote_plane(cfg, queue_manager) -> "_PlaneBridge | None"
     remotes = getattr(cfg, "remotes", None) or {}
     if remotes and cfg.remote_plane.peer_name:
         install_callback_observer(
-            queue_manager, remotes=remotes,
-            self_peer_name=cfg.remote_plane.peer_name)
+            queue_manager, remotes=remotes, self_peer_name=cfg.remote_plane.peer_name
+        )
     elif remotes:
         import logging
+
         logging.getLogger(__name__).info(
             "remote_plane.peer_name not set; outbound callback observer "
             "not installed. aegis_enqueue(target=..., callback=True) "
             "will return an error at call time. Set "
-            "remote_plane.peer_name in .aegis.yaml to enable callbacks.")
+            "remote_plane.peer_name in .aegis.yaml to enable callbacks."
+        )
     return bridge
 
 
@@ -587,22 +658,32 @@ def _aegis_version() -> str:
     """aegis package version, used as the web PWA cache-bust key."""
     try:
         from importlib.metadata import version
+
         return version("aegis-harness")
     except Exception:
         return "0"
 
 
-async def _serve(*, roots: AegisRoots,
-                 agents, default_agent, make_session, mcp,
-                 stop: asyncio.Event, queues: dict | None = None,
-                 schedules: dict | None = None,
-                 remotes: dict | None = None,
-                 remote_plane=None, web=None,
-                 hosts: dict | None = None, host_registry=None,
-                 inline_schedule_names: set[str] | None = None,
-                 ui: "UIAttachment | None" = None,
-                 views: bool = False,
-                 autostarted: bool = False) -> None:
+async def _serve(
+    *,
+    roots: AegisRoots,
+    agents,
+    default_agent,
+    make_session,
+    mcp,
+    stop: asyncio.Event,
+    queues: dict | None = None,
+    schedules: dict | None = None,
+    remotes: dict | None = None,
+    remote_plane=None,
+    web=None,
+    hosts: dict | None = None,
+    host_registry=None,
+    inline_schedule_names: set[str] | None = None,
+    ui: "UIAttachment | None" = None,
+    views: bool = False,
+    autostarted: bool = False,
+) -> None:
     """The single boot path: every entry point wires aegis through here.
 
     With no `ui` attachment this starts the MCP plane itself. With one it
@@ -613,30 +694,41 @@ async def _serve(*, roots: AegisRoots,
     from aegis.queue import InboxRouter, QueueManager
 
     inbox = InboxRouter()
-    mgr = SessionManager(agents, default_agent, make_session, mcp,
-                         inbox=inbox, hosts=hosts or {}, roots=roots)
+    mgr = SessionManager(
+        agents,
+        default_agent,
+        make_session,
+        mcp,
+        inbox=inbox,
+        hosts=hosts or {},
+        roots=roots,
+    )
     qm = QueueManager(queues or {}, mgr, inbox)
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
+
     mgr.attach_monitor_manager(MonitorManager(inbox, mgr))
     from aegis.queue import ReminderService
+
     mgr.attach_reminder_service(ReminderService(inbox, mgr))
     # Canvas plane — shared markdown blackboards reachable via MCP.
     from aegis.canvas.manager import CanvasManager
     from aegis.canvas.notify import make_canvas_notifier
+
     # Persist every serve-spawned session to JSONL (same state_dir the
     # WebFrontend reads from), so seq is a real disk line index in web mode.
     mgr.attach_persistence(roots.state_dir)
     # Persist the claims registry to the same state_dir the TUI uses, so
     # aegis_claim survives a serve restart and both frontends share one store.
     mgr.attach_locks_state(roots.state_dir)
-    cm = CanvasManager(state_dir=roots.state_dir,
-                       notifier=make_canvas_notifier(inbox))
+    cm = CanvasManager(state_dir=roots.state_dir, notifier=make_canvas_notifier(inbox))
     mgr.attach_canvas_manager(cm)
     from aegis.terminal.manager import TerminalManager
     from aegis.terminal.notify import make_terminal_notifier
-    tm = TerminalManager(state_dir=roots.state_dir / "terminals",
-                         default_cwd=roots.harness_cwd)
+
+    tm = TerminalManager(
+        state_dir=roots.state_dir / "terminals", default_cwd=roots.harness_cwd
+    )
     tm.set_notifier(make_terminal_notifier(inbox))
     mgr.attach_terminal_manager(tm)
     mgr.attach_remotes(remotes or {})
@@ -659,12 +751,15 @@ async def _serve(*, roots: AegisRoots,
     await qm.start()
 
     from aegis.config.yaml_loader import AegisConfig as _AegisConfig
+
     plane_bridge = await _maybe_start_remote_plane(
         _AegisConfig(
             remote_plane=remote_plane,
             remotes=remotes or {},
             inline_schedule_names=set(inline_schedule_names or set()),
-        ), qm)
+        ),
+        qm,
+    )
 
     # Scheduler — only runs when schedules are configured.
     scheduler = None
@@ -678,21 +773,26 @@ async def _serve(*, roots: AegisRoots,
         from aegis.workflow.runner import run_workflow as _rw
 
         async def _scheduler_run_workflow(name: str, args: dict):
-            result = await _rw(name, args, bridge=mgr,
-                               queue_manager=qm, inbox_router=inbox)
+            result = await _rw(
+                name, args, bridge=mgr, queue_manager=qm, inbox_router=inbox
+            )
             if result.get("status") == "ok":
                 return result.get("result")
             raise RuntimeError(result.get("error", "workflow failed"))
 
         scheduler = Scheduler(
-            schedules=schedules, state_dir=roots.state_dir,
-            run_workflow=_scheduler_run_workflow)
+            schedules=schedules,
+            state_dir=roots.state_dir,
+            run_workflow=_scheduler_run_workflow,
+        )
         if plane_bridge is not None:
             plane_bridge.scheduler = scheduler
         mgr.attach_scheduler_context(
-            scheduler=scheduler, state_root=roots.state_root,
+            scheduler=scheduler,
+            state_root=roots.state_root,
             workflow_registry=_SN(get=_get_wf),
-            inline_schedule_names=set(inline_schedule_names or set()))
+            inline_schedule_names=set(inline_schedule_names or set()),
+        )
         await scheduler.start()
 
         # Hot reload: re-read .aegis.yaml on filesystem change and
@@ -702,15 +802,18 @@ async def _serve(*, roots: AegisRoots,
 
         def _on_reload() -> None:
             from aegis.config.yaml_loader import (
-                import_plugins, load_config as _load_yaml,
+                import_plugins,
+                load_config as _load_yaml,
             )
+
             cfg = _load_yaml(root)
             import_plugins(cfg)
             scheduler.replace_schedules(cfg.schedules)
 
         events_log = roots.state_dir / "aegis_events.jsonl"
         reload_watcher = ReloadWatcher(
-            root, on_reload=_on_reload, events_log=events_log)
+            root, on_reload=_on_reload, events_log=events_log
+        )
         await reload_watcher.start()
 
     tasks = []
@@ -722,10 +825,13 @@ async def _serve(*, roots: AegisRoots,
         # — one view that owns the process — and the two are exclusive.
         from aegis.daemon import registry as _dreg
         from aegis.daemon.lifecycle import (
-            IdleReaper, idle_timeout_s, socket_path,
+            IdleReaper,
+            idle_timeout_s,
+            socket_path,
         )
         from aegis.daemon.server import UnixSocketServer
         from aegis.views.registry import ViewRegistry
+
         # `drivers` is not optional garnish here: it is what makes a view
         # able to RESUME. plan_resume() skips every tab whose provider is
         # not in this dict, so a view built without it restores no tabs at
@@ -734,29 +840,47 @@ async def _serve(*, roots: AegisRoots,
         # history. Every other AegisApp construction in this file passes
         # it; this one is the path that forgot.
         view_registry = ViewRegistry(
-            manager=mgr, roots=roots, mcp=mcp,
+            manager=mgr,
+            roots=roots,
+            mcp=mcp,
             # Ctrl+Q may stop this daemon only if a client autostarted it.
             # A daemon a person or systemd started gets no hook at all, so
             # there is nothing for a keystroke to reach.
             on_last_quit=(stop.set if autostarted else None),
-            agents=agents, default_agent=default_agent,
-            make_session=make_session, queues=queues or {},
-            hosts=hosts or {}, host_registry=host_registry,
+            agents=agents,
+            default_agent=default_agent,
+            make_session=make_session,
+            queues=queues or {},
+            hosts=hosts or {},
+            host_registry=host_registry,
             drivers={slug: cls() for slug, cls in DRIVERS.items()},
-            cwd=str(roots.harness_cwd))
+            cwd=str(roots.harness_cwd),
+        )
         socket_server = UnixSocketServer(socket_path(roots), view_registry)
         await socket_server.start()
-        _dreg.record(_dreg.DaemonRecord(
-            root=roots.state_root, pid=os.getpid(),
-            socket=socket_server.path, started=_dreg.now(),
-            version=_aegis_version(), autostarted=autostarted))
-        tasks.append(asyncio.create_task(IdleReaper(
-            view_registry, mgr, timeout_s=idle_timeout_s(),
-            stop=stop).run()))
+        _dreg.record(
+            _dreg.DaemonRecord(
+                root=roots.state_root,
+                pid=os.getpid(),
+                socket=socket_server.path,
+                started=_dreg.now(),
+                version=_aegis_version(),
+                autostarted=autostarted,
+            )
+        )
+        tasks.append(
+            asyncio.create_task(
+                IdleReaper(
+                    view_registry, mgr, timeout_s=idle_timeout_s(), stop=stop
+                ).run()
+            )
+        )
     if web is not None:
         from aegis.web.frontend import WebFrontend
-        web_fe = WebFrontend(mgr, web, state_dir=roots.state_dir,
-                             server_version=_aegis_version())
+
+        web_fe = WebFrontend(
+            mgr, web, state_dir=roots.state_dir, server_version=_aegis_version()
+        )
         tasks.append(asyncio.create_task(web_fe.run()))
         _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
@@ -776,6 +900,7 @@ async def _serve(*, roots: AegisRoots,
             await view_registry.close_all()
         if views:
             from aegis.daemon import registry as _dreg
+
             _dreg.forget(roots.state_root)
         if reload_watcher is not None:
             await reload_watcher.stop()
@@ -790,9 +915,12 @@ async def _serve(*, roots: AegisRoots,
 def serve(
     cwd: str = typer.Option(".", "--cwd"),
     autostarted: bool = typer.Option(
-        False, "--autostarted", hidden=True,
+        False,
+        "--autostarted",
+        hidden=True,
         help="Set by a client's autostart. Marks this daemon as one a "
-             "client may later stop; a daemon you start yourself is not."),
+        "client may later stop; a daemon you start yourself is not.",
+    ),
 ) -> None:
     """Run the daemon in the foreground (brain + views + MCP plane)."""
     _run_serve(cwd, autostarted=autostarted)
@@ -800,10 +928,10 @@ def serve(
 
 @app.command()
 def attach(
-    view: str = typer.Option(None, "--view",
-                             help="View id. Defaults to this terminal."),
-    cwd: str = typer.Option(".", "--cwd",
-                            help="Project root whose daemon to attach."),
+    view: str = typer.Option(
+        None, "--view", help="View id. Defaults to this terminal."
+    ),
+    cwd: str = typer.Option(".", "--cwd", help="Project root whose daemon to attach."),
 ) -> None:
     """Attach this terminal to the daemon for a project root."""
     root = _root_for(cwd)
@@ -814,6 +942,7 @@ def attach(
 def ls_cmd() -> None:
     """List running aegis daemons across all project roots."""
     from aegis.daemon import registry as _dreg
+
     daemons = _dreg.live_daemons()
     if not daemons:
         _console.print("no aegis daemons running")
@@ -825,13 +954,12 @@ def ls_cmd() -> None:
 
 @app.command("kill")
 def kill_cmd(
-    cwd: str = typer.Option(".", "--cwd",
-                            help="Project root whose daemon to stop."),
-    all_: bool = typer.Option(False, "--all",
-                              help="Stop every running daemon."),
+    cwd: str = typer.Option(".", "--cwd", help="Project root whose daemon to stop."),
+    all_: bool = typer.Option(False, "--all", help="Stop every running daemon."),
 ) -> None:
     """Stop the daemon for a project root (or all of them)."""
     from aegis.daemon import registry as _dreg
+
     if all_:
         daemons = _dreg.live_daemons()
         if not daemons:
@@ -852,27 +980,35 @@ def kill_cmd(
 
 @app.command()
 def doctor(
-        dedupe: bool = typer.Option(
-            False, "--dedupe",
-            help="Drop records a second writer left behind (adjacent, "
-                 "identical, same instant). Keeps the original."),
-        repair: bool = typer.Option(
-            False, "--repair",
-            help="Rewrite damaged logs from their readable records."),
-        split: bool = typer.Option(
-            False, "--split",
-            help="Split legacy logs that hold several sessions."),
-        archive: bool = typer.Option(
-            False, "--archive",
-            help="Gzip closed transcripts older than --archive-days "
-                 "(in place; they stay readable and resumable)."),
-        archive_days: float = typer.Option(
-            90.0, "--archive-days",
-            help="Age threshold for --archive."),
+    dedupe: bool = typer.Option(
+        False,
+        "--dedupe",
+        help="Drop records a second writer left behind (adjacent, "
+        "identical, same instant). Keeps the original.",
+    ),
+    repair: bool = typer.Option(
+        False, "--repair", help="Rewrite damaged logs from their readable records."
+    ),
+    split: bool = typer.Option(
+        False, "--split", help="Split legacy logs that hold several sessions."
+    ),
+    archive: bool = typer.Option(
+        False,
+        "--archive",
+        help="Gzip closed transcripts older than --archive-days "
+        "(in place; they stay readable and resumable).",
+    ),
+    archive_days: float = typer.Option(
+        90.0, "--archive-days", help="Age threshold for --archive."
+    ),
 ) -> None:
     """Report (and optionally fix) damage in stored conversations."""
     from aegis.state.repair import (
-        _boundaries, dedupe_log, repair_log, split_log, survey,
+        _boundaries,
+        dedupe_log,
+        repair_log,
+        split_log,
+        survey,
     )
     from aegis.state.session_log import parse_log_id, scan_log
 
@@ -881,18 +1017,19 @@ def doctor(
 
     if archive:
         from aegis.state.session_log import archive_old_logs
-        plan = archive_old_logs(sd, older_than_days=archive_days,
-                                dry_run=True)
+
+        plan = archive_old_logs(sd, older_than_days=archive_days, dry_run=True)
         if not plan.archived:
             _console.print(
-                f"nothing to archive (no closed logs older than "
-                f"{archive_days:g} days)")
+                f"nothing to archive (no closed logs older than {archive_days:g} days)"
+            )
         else:
             res = archive_old_logs(sd, older_than_days=archive_days)
             _console.print(
                 f"archived [green]{res.archived}[/green] log(s), "
                 f"saved [green]{res.bytes_saved / 1e6:.1f} MB[/green] "
-                f"(kept as .jsonl.gz — still readable)")
+                f"(kept as .jsonl.gz — still readable)"
+            )
         return
 
     reports = survey(sd)
@@ -906,7 +1043,7 @@ def doctor(
     merged = []
     for r in reports:
         if parse_log_id(r.path.stem)[0] is not None:
-            continue   # already carries its own identity
+            continue  # already carries its own identity
         n = len(_boundaries(scan_log(r.path).records))
         if n > 1:
             merged.append((r, n))
@@ -915,24 +1052,31 @@ def doctor(
         tag = " [yellow](live — skipped)[/yellow]" if r.live else ""
         _console.print(
             f"  [yellow]{r.handle}[/yellow]  {r.records} records · "
-            f"{r.damaged} damaged · {r.recovered} salvaged{tag}")
+            f"{r.damaged} damaged · {r.recovered} salvaged{tag}"
+        )
     for r, n in merged:
         tag = " [yellow](live — skipped)[/yellow]" if r.live else ""
         _console.print(
             f"  [cyan]{r.handle}[/cyan]  {n} conversations sharing "
-            f"one recycled handle{tag}")
+            f"one recycled handle{tag}"
+        )
     _console.print(
         f"{len(reports)} logs · {len(reports) - len(bad)} clean · "
-        f"{len(bad)} damaged · {len(merged)} merged")
+        f"{len(bad)} damaged · {len(merged)} merged"
+    )
 
     if bad and not repair:
-        _console.print("[dim]damaged logs still replay; "
-                       "re-run with --repair to rewrite them clean.[/dim]")
+        _console.print(
+            "[dim]damaged logs still replay; "
+            "re-run with --repair to rewrite them clean.[/dim]"
+        )
     if merged and not split:
         buried = sum(n - 1 for _, n in merged)
-        _console.print(f"[dim]{buried} conversation(s) are buried inside "
-                       f"another log; re-run with --split to separate "
-                       f"them.[/dim]")
+        _console.print(
+            f"[dim]{buried} conversation(s) are buried inside "
+            f"another log; re-run with --split to separate "
+            f"them.[/dim]"
+        )
 
     if repair:
         for r in bad:
@@ -941,12 +1085,14 @@ def doctor(
                 # so every event it appends after the swap goes nowhere.
                 _console.print(
                     f"[yellow]skipped {r.handle}: session is open "
-                    f"(close it, then re-run)[/yellow]")
+                    f"(close it, then re-run)[/yellow]"
+                )
                 continue
             done = repair_log(r.path)
             _console.print(
                 f"[green]repaired {done.handle}[/green] → {done.records} "
-                f"records kept, original at {done.backup.name}")
+                f"records kept, original at {done.backup.name}"
+            )
 
     if dedupe:
         # Every log, not just the damaged ones: duplication is orthogonal
@@ -964,27 +1110,34 @@ def doctor(
                 _console.print(
                     f"[green]deduped {r.handle}[/green] → "
                     f"{done.removed} duplicate record(s) dropped, "
-                    f"original at {done.backup.name}")
+                    f"original at {done.backup.name}"
+                )
         _console.print(
-            f"{total} duplicate record(s) dropped" if total
-            else "no duplicate records found")
+            f"{total} duplicate record(s) dropped"
+            if total
+            else "no duplicate records found"
+        )
 
     if split:
         for r, _n in merged:
             if r.live:
                 _console.print(
                     f"[yellow]skipped {r.handle}: session is open "
-                    f"(close it, then re-run)[/yellow]")
+                    f"(close it, then re-run)[/yellow]"
+                )
                 continue
             parts = split_log(r.path)
             _console.print(
                 f"[green]split {r.handle}[/green] → "
-                f"{len(parts)} logs: {', '.join(p.stem for p in parts)}")
+                f"{len(parts)} logs: {', '.join(p.stem for p in parts)}"
+            )
 
 
 @app.command()
-def web(cwd: str = typer.Option(".", "--cwd"),
-        no_browser: bool = typer.Option(False, "--no-browser")) -> None:
+def web(
+    cwd: str = typer.Option(".", "--cwd"),
+    no_browser: bool = typer.Option(False, "--no-browser"),
+) -> None:
     """Launch the web client: ensure a token, open the browser, then serve."""
     root = find_project_root() or Path.cwd()
     if not (root / ".aegis.yaml").is_file():
@@ -995,6 +1148,7 @@ def web(cwd: str = typer.Option(".", "--cwd"),
     from aegis.config.yaml_loader import load_config as _load_yaml
     from aegis.state.workspace import state_dir as _sd
     from aegis.web.frontend import _resolve_port
+
     web_cfg = _load_yaml(root).web
     port = _resolve_port(web_cfg, _sd(root))
     _edit.set_web(root, port=port)
@@ -1003,6 +1157,7 @@ def web(cwd: str = typer.Option(".", "--cwd"),
     if not no_browser:
         import threading
         import webbrowser
+
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     _run_serve(cwd)
 
@@ -1019,15 +1174,16 @@ def token() -> None:
 
 @app.command()
 def logs(
-    lines: int = typer.Option(200, "--lines", "-n",
-                              help="How many lines to show."),
-    crashes: bool = typer.Option(False, "--crashes", "-c",
-                                 help="Only crash banners and their "
-                                      "tracebacks."),
-    follow: bool = typer.Option(False, "--follow", "-f",
-                                help="Stream new lines as they arrive."),
-    path_only: bool = typer.Option(False, "--path",
-                                   help="Print the log's path and exit."),
+    lines: int = typer.Option(200, "--lines", "-n", help="How many lines to show."),
+    crashes: bool = typer.Option(
+        False, "--crashes", "-c", help="Only crash banners and their tracebacks."
+    ),
+    follow: bool = typer.Option(
+        False, "--follow", "-f", help="Stream new lines as they arrive."
+    ),
+    path_only: bool = typer.Option(
+        False, "--path", help="Print the log's path and exit."
+    ),
     cwd: str = typer.Option(".", "--cwd"),
 ) -> None:
     """Read the aegis process log — what the harness itself did, including
@@ -1035,6 +1191,7 @@ def logs(
     import time
 
     from aegis.state import aegis_log
+
     # Same rule as `serve`: an explicit --cwd wins, otherwise walk up to the
     # project root. A --cwd that silently resolved somewhere else would send
     # you to read the wrong machine's crash.
@@ -1046,7 +1203,8 @@ def logs(
     if not target.exists():
         _console.print(
             f"[yellow]No aegis log yet at {target}[/yellow]\n"
-            "It is created when `aegis` or `aegis serve` starts.")
+            "It is created when `aegis` or `aegis serve` starts."
+        )
         raise typer.Exit(1)
     for ln in aegis_log.tail(lines, crashes_only=crashes, log_path=target):
         typer.echo(ln)
@@ -1072,6 +1230,7 @@ def _ensure_web_token(root: Path) -> str:
 
     from aegis.config import edit as _edit
     from aegis.config.yaml_loader import load_config as _load_yaml
+
     cfg = _load_yaml(root)
     if cfg.web and cfg.web.token:
         return cfg.web.token
@@ -1091,6 +1250,7 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
     # Headless has no terminal to lose, but it is also the path nobody is
     # watching — a traceback on a detached stdout is as good as unwritten.
     from aegis.state import aegis_log
+
     aegis_log.configure(resolved.roots.state_dir)
     aegis_log.write(f"serve starting (cwd {resolved.roots.harness_cwd})")
 
@@ -1098,12 +1258,16 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
     # and before the socket is touched, so a daemon that loses a race leaves
     # nothing behind. See lifecycle.DaemonLock.
     from aegis.daemon.lifecycle import DaemonAlreadyRunning, acquire_daemon_lock
+
     lock = acquire_daemon_lock(resolved.roots, wait_s=1.0)
     if lock is None:
         aegis_log.write("serve refused: another daemon holds this root's lock")
-        _print_error(DaemonAlreadyRunning(
-            f"a daemon is already running for {resolved.roots.state_root}; "
-            "`aegis attach` reaches it and `aegis kill` stops it"))
+        _print_error(
+            DaemonAlreadyRunning(
+                f"a daemon is already running for {resolved.roots.state_root}; "
+                "`aegis attach` reaches it and `aegis kill` stops it"
+            )
+        )
         raise typer.Exit(1)
 
     async def main_async():
@@ -1112,9 +1276,14 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
         aegis_log.install_asyncio_hook(loop)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
-        await _serve(**resolved.serve_kwargs, mcp=AegisMCP(), stop=stop,
-                     web=resolved.boot.web, views=True,
-                     autostarted=autostarted)
+        await _serve(
+            **resolved.serve_kwargs,
+            mcp=AegisMCP(),
+            stop=stop,
+            web=resolved.boot.web,
+            views=True,
+            autostarted=autostarted,
+        )
 
     try:
         asyncio.run(main_async())
@@ -1136,11 +1305,13 @@ def workflow_list_cmd() -> None:
             import_plugins,
             load_config as _load_yaml,
         )
+
         import_plugins(_load_yaml(root))
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     from aegis.workflow import list_workflows
+
     names = list_workflows()
     if not names:
         _console.print("[yellow]no workflows registered.[/yellow]")
@@ -1150,9 +1321,8 @@ def workflow_list_cmd() -> None:
 
 
 @workflow_app.command(
-    "run",
-    context_settings={"allow_extra_args": True,
-                      "ignore_unknown_options": True})
+    "run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def workflow_run_cmd(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="workflow name"),
@@ -1173,6 +1343,7 @@ def workflow_run_cmd(
             import_plugins,
             load_config as _load_yaml,
         )
+
         yaml_cfg = _load_yaml(root)
         import_plugins(yaml_cfg)
     except ConfigError as e:
@@ -1192,34 +1363,45 @@ def workflow_run_cmd(
 
     if get_workflow(name) is None:
         _console.print(
-            f"[red]unknown workflow: {name!r}. "
-            f"Available: {list_workflows()}[/red]")
+            f"[red]unknown workflow: {name!r}. Available: {list_workflows()}[/red]"
+        )
         raise typer.Exit(1)
 
     from aegis.hosts.registry import HostRegistry
+
     _hosts = yaml_cfg.hosts
-    host_registry = HostRegistry(_hosts,
-                                 state_dir=root / ".aegis" / "state",
-                                 local_root=str(root))
+    host_registry = HostRegistry(
+        _hosts, state_dir=root / ".aegis" / "state", local_root=str(root)
+    )
     make_session = _session_factory(str(root), host_registry)
 
     async def main_async():
         from aegis.queue import InboxRouter, QueueManager
+
         inbox = InboxRouter(state_dir=root / ".aegis" / "state")
-        mgr = SessionManager(agents, default_agent, make_session,
-                             AegisMCP(), inbox=inbox, hosts=_hosts,
-                             roots=AegisRoots.for_project(root))
-        qm = QueueManager(queues, mgr, inbox,
-                          state_dir=root / ".aegis" / "state")
+        mgr = SessionManager(
+            agents,
+            default_agent,
+            make_session,
+            AegisMCP(),
+            inbox=inbox,
+            hosts=_hosts,
+            roots=AegisRoots.for_project(root),
+        )
+        qm = QueueManager(queues, mgr, inbox, state_dir=root / ".aegis" / "state")
         mgr.attach_queue_manager(qm)
         from aegis.monitor import MonitorManager
+
         mgr.attach_monitor_manager(MonitorManager(inbox, mgr))
         from aegis.queue import ReminderService
+
         mgr.attach_reminder_service(ReminderService(inbox, mgr))
         from aegis.canvas.manager import CanvasManager
         from aegis.canvas.notify import make_canvas_notifier
-        cm = CanvasManager(state_dir=root / ".aegis" / "state",
-                           notifier=make_canvas_notifier(inbox))
+
+        cm = CanvasManager(
+            state_dir=root / ".aegis" / "state", notifier=make_canvas_notifier(inbox)
+        )
         mgr.attach_canvas_manager(cm)
         mgr._mcp.bind(mgr)
         await mgr._mcp.start()
@@ -1227,9 +1409,13 @@ def workflow_run_cmd(
         await qm.start()
         try:
             out = await run_workflow(
-                name, kwargs, bridge=mgr, queue_manager=qm,
+                name,
+                kwargs,
+                bridge=mgr,
+                queue_manager=qm,
                 inbox_router=inbox,
-                state_dir=root / ".aegis" / "state")
+                state_dir=root / ".aegis" / "state",
+            )
         finally:
             await qm.stop()
             await mgr.close_all()
@@ -1256,13 +1442,15 @@ def workflow_status_cmd(
     running daemon, call the ``aegis_workflow_status`` MCP tool instead.
     """
     import json
+
     root = find_project_root() or Path.cwd()
     ledger = root / ".aegis" / "state" / workflow_id / "ledger.jsonl"
     if not ledger.exists():
         _console.print(f"[red]no ledger for {workflow_id!r} at {ledger}[/red]")
         raise typer.Exit(1)
-    records = [json.loads(line) for line in ledger.read_text().splitlines()
-               if line.strip()]
+    records = [
+        json.loads(line) for line in ledger.read_text().splitlines() if line.strip()
+    ]
     if not records:
         _console.print("[yellow]empty ledger[/yellow]")
         return
@@ -1290,7 +1478,8 @@ def workflow_cancel_cmd(
     """
     _console.print(
         "[yellow]Cancel requires a running daemon. Use the "
-        "aegis_workflow_cancel MCP tool against the live MCP server.[/yellow]")
+        "aegis_workflow_cancel MCP tool against the live MCP server.[/yellow]"
+    )
     raise typer.Exit(1)
 
 

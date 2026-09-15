@@ -9,6 +9,7 @@ Subcommands:
 - ``clear``    — delete the local cache so the next aegis boot falls back
   to the bundled YAML.
 """
+
 from __future__ import annotations
 
 
@@ -35,14 +36,16 @@ def refresh_cmd() -> None:
     if not dest.exists():
         _console.print(
             "[red]refresh failed — cache file not written. "
-            "Check connectivity / DNS to raw.githubusercontent.com.[/red]")
+            "Check connectivity / DNS to raw.githubusercontent.com.[/red]"
+        )
         raise typer.Exit(1)
     reg = models_mod.load_registry(force=True)
     n_models = sum(len(p.models) for p in reg.providers.values())
     _console.print(
         f"[green]✓ refreshed[/green]  "
         f"{len(reg.providers)} providers, {n_models} models  "
-        f"(updated {reg.updated})")
+        f"(updated {reg.updated})"
+    )
 
 
 @app.command("clear")
@@ -60,21 +63,26 @@ def clear_cmd() -> None:
 
 
 @app.command("list")
-def list_cmd(provider: str = typer.Argument(
-        None, help="Restrict to one provider (claude-code / gemini / opencode).")
+def list_cmd(
+    provider: str = typer.Argument(
+        None, help="Restrict to one provider (claude-code / gemini / opencode)."
+    ),
 ) -> None:
     """Print the active registry — what aegis sees right now."""
     from aegis.models import load_registry
 
     reg = load_registry()
-    targets = ([provider] if provider else list(reg.providers))
+    targets = [provider] if provider else list(reg.providers)
     for prov_name in targets:
         prov = reg.providers.get(prov_name)
         if prov is None:
             _console.print(f"[red]unknown provider: {prov_name}[/red]")
             continue
-        t = Table(title=f"{prov_name}  (default_context={prov.default_context_window})",
-                  title_justify="left", title_style="bold")
+        t = Table(
+            title=f"{prov_name}  (default_context={prov.default_context_window})",
+            title_justify="left",
+            title_style="bold",
+        )
         t.add_column("model")
         t.add_column("label")
         t.add_column("context", justify="right")
@@ -82,10 +90,16 @@ def list_cmd(provider: str = typer.Argument(
         t.add_column("$out/MTok", justify="right")
         t.add_column("aliases")
         for name, entry in prov.models.items():
-            in_p = (f"${entry.prices.input}" if entry.prices else "—")
-            out_p = (f"${entry.prices.output}" if entry.prices else "—")
+            in_p = f"${entry.prices.input}" if entry.prices else "—"
+            out_p = f"${entry.prices.output}" if entry.prices else "—"
             ctx = f"{entry.context_window:,}" if entry.context_window else "—"
-            t.add_row(name, entry.label or "—", ctx, in_p, out_p,
-                      ", ".join(entry.aliases) or "—")
+            t.add_row(
+                name,
+                entry.label or "—",
+                ctx,
+                in_p,
+                out_p,
+                ", ".join(entry.aliases) or "—",
+            )
         _console.print(t)
         _console.print()
