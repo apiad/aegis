@@ -29,3 +29,21 @@ def should_recap(facts: TurnFacts, *, last_line: str, enabled: bool) -> bool:
     if not enabled:
         return False
     return facts.moved
+
+
+def should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool:
+    """When a mid-turn recap is worth firing.
+
+    Four conditions, all required. `watchers` is how many clients have this
+    session's card or sidebar on screen: nobody looking, nobody pays, which
+    is what makes a dashboard left open all day affordable at all.
+    """
+    if cfg.recap == "off":
+        return False
+    if state != "working":
+        return False
+    if cfg.recap == "watched" and watchers < 1:
+        return False
+    if turn_s < cfg.recap_after_s:
+        return False
+    return since_last_s >= cfg.recap_interval_s

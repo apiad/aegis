@@ -78,3 +78,50 @@ def test_a_replay_that_cannot_be_assembled_is_a_missing_answer(fake_agent):
     assert r.ok is False
     assert r.error
     assert d.calls == [], "the driver must not be paid for a window that failed"
+
+
+from aegis.config import FleetConfig
+from aegis.recap.gate import should_fleet_recap
+
+ON = FleetConfig(recap="watched", recap_after_s=60, recap_interval_s=120)
+
+
+def test_an_idle_session_is_never_worth_a_call():
+    """Its last turn recap already exists and already says what landed."""
+    assert should_fleet_recap(state="ready", turn_s=0, since_last_s=999,
+                              watchers=1, cfg=ON) is False
+
+
+def test_a_young_turn_waits():
+    """Under a minute you would read the line before it refreshed."""
+    assert should_fleet_recap(state="working", turn_s=30, since_last_s=999,
+                              watchers=1, cfg=ON) is False
+
+
+def test_a_working_watched_turn_past_the_threshold_fires():
+    assert should_fleet_recap(state="working", turn_s=61, since_last_s=999,
+                              watchers=1, cfg=ON) is True
+
+
+def test_nobody_watching_means_nobody_pays():
+    assert should_fleet_recap(state="working", turn_s=999, since_last_s=999,
+                              watchers=0, cfg=ON) is False
+
+
+def test_the_interval_holds_between_calls():
+    assert should_fleet_recap(state="working", turn_s=999, since_last_s=30,
+                              watchers=1, cfg=ON) is False
+    assert should_fleet_recap(state="working", turn_s=999, since_last_s=121,
+                              watchers=1, cfg=ON) is True
+
+
+def test_on_ignores_the_watcher_count():
+    cfg = FleetConfig(recap="on", recap_after_s=60, recap_interval_s=120)
+    assert should_fleet_recap(state="working", turn_s=61, since_last_s=999,
+                              watchers=0, cfg=cfg) is True
+
+
+def test_off_never_fires():
+    cfg = FleetConfig(recap="off")
+    assert should_fleet_recap(state="working", turn_s=999, since_last_s=999,
+                              watchers=9, cfg=cfg) is False
