@@ -63,6 +63,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **A cancelled recap or loop-judge call no longer keeps billing.**
+  Cancelling a one-shot generation left its `claude -p` process running to
+  completion, paid for and unread, because `asyncio.CancelledError` slipped
+  past the driver's `except Exception`. A turn recap superseded by a newer
+  one, or a mid-turn recap whose turn ended, hit this every time. The
+  driver now kills the process and reaps it before the cancel propagates.
+
 - **`recap: false` and `loop_judge: false` in `.aegis.yaml` now take effect.**
   They were parsed and then ignored: every session hard-coded both to on, so
   setting either to `false` changed nothing. A session now reads `recap`,

@@ -448,7 +448,18 @@ class ClaudeDriver(HarnessDriver):
                 stderr=asyncio.subprocess.DEVNULL,
                 limit=_STREAM_LIMIT,
             )
+        except Exception:  # noqa: BLE001
+            return Generation()
+        try:
             out, _ = await proc.communicate()
+        except asyncio.CancelledError:
+            # CancelledError is not an Exception, so without this a cancelled
+            # recap or loop judge left `claude -p` running to completion and
+            # billing, with nobody left to read the answer.
+            if proc.returncode is None:
+                proc.kill()
+                await asyncio.shield(proc.wait())
+            raise
         except Exception:  # noqa: BLE001
             return Generation()
         try:

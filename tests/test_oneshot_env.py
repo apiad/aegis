@@ -77,3 +77,55 @@ def test_generate_runs_from_a_neutral_directory_not_the_project(monkeypatch, age
     assert cwd != project
     assert cwd.is_dir()
     assert list(cwd.iterdir()) == [], "the neutral directory must stay empty"
+
+
+async def test_cancelling_a_generation_kills_its_claude_process(monkeypatch, agent, tmp_path):
+    """A cancelled one-shot must not leave `claude -p` running and billing.
+
+    The turn recap is cancelled when a newer one supersedes it, the fleet
+    recap when its turn ends or its last watcher leaves. Before the fix the
+    child ran to completion after the task was gone, unseen and paid for.
+    """
+    import os
+    import stat
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    started, finished = tmp_path / "started", tmp_path / "finished"
+    fake = bindir / "claude"
+    fake.write_text(
+        "#!/bin/sh\n"
+        f"echo $$ > {started}\n"
+        "sleep 3\n"
+        f"echo done > {finished}\n"
+        "echo '{}'\n"
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+
+    task = asyncio.create_task(
+        ClaudeDriver().generate_detailed(agent, str(tmp_path), _Two, "hi")
+    )
+    for _ in range(200):
+        if started.exists() and started.read_text().strip():
+            break
+        await asyncio.sleep(0.01)
+    pid = int(started.read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    def alive() -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    for _ in range(100):
+        if not alive():
+            break
+        await asyncio.sleep(0.01)
+    assert not alive(), "the claude process outlived its cancelled call"
+    await asyncio.sleep(3.5)
+    assert not finished.exists(), "the cancelled call ran to completion"
