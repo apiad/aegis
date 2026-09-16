@@ -17,6 +17,7 @@
 - **Shared checkout.** Stage and commit named paths only: `git commit -- <paths>`. Never `git add -A`, never `git add` a whole file that was already dirty, never `--amend`.
 - Conventional commits, English, one logical change each.
 - UI chrome is English (`did`, `now`, `9 agents · 6 yours · 3 ephemeral`) like the rest of the TUI. Session content is whatever that session is about.
+- **Cards are built from a snapshot of live sessions, never from the `added` event.** `_announce("added", s)` fires inside `_sync_spawn` (`core/manager.py:313`), and fork, workflow and group set `origin` *after* that returns, so an add-event listener reads `Origin()` — the operator — for one beat. `spawned_by` and `forked_from` already behave the same way at the same three sites. `build_snapshot` reading `manager._sessions` is what makes this a non-issue; do not switch any surface to event-driven card creation.
 - **Workers run only the focused tests their own task needs.** The controller runs the full suite and the gate between tasks. This is a standing instruction from the operator, not a shortcut.
 - Renderers are **pure functions over dataclasses**, following `aegis.tui.sidebar.render_sidebar`. No Textual object may appear in a renderer's signature. Tests construct the model and assert on `.plain` — see `tests/test_sidebar_render.py`.
 - A daemon keeps the code it booted with. Any live check means `aegis kill` first, then attach fresh. See `know-how/the-daemon.md`.
@@ -1559,6 +1560,10 @@ In the TUI: open three or four tabs, press **F10**. Confirm by eye: a card per t
 
 Click one. Expected: the screen closes and that session's transcript is on screen. Then F10 again and press `3`. Expected: tab 3.
 
+- [ ] **Step 2b: Confirm a fork reads as a fork**
+
+`tests/test_fleet_origin.py` covers the fork *shape* through `_sync_spawn`, not `SessionManager.fork()`, so deleting `core/manager.py:408` leaves it green. Same for `workflow/engine.py:398` and `groups/wiring.py:38`, which have no test at all. Fork a tab in the TUI, open F10, and confirm the card says `fork` and names the parent.
+
 - [ ] **Step 3: Watch a real ephemeral worker**
 
 With F10 open, from another tab run a queue task (`/enqueue general <something short>`, or the tool). Expected: an ephemeral card appears with a dashed border, `queue <name> #<id>`, and where the answer returns; when the worker finishes it becomes a ghost and disappears about a minute later.
@@ -2050,6 +2055,15 @@ git push origin main
 ---
 
 ## Deferred, and why
+
+- **A restored session reads as operator-born.** `_resume_agent_tabs`
+  (`tui/app.py:856`) and `_resume_from_history` (`tui/app.py:1699`) call
+  `_sync_spawn` with no `origin`, so a queue worker that comes back after a
+  daemon restart shows as yours. Outside every task here, and the fix is to
+  persist `origin` in the session snapshot and restore it. Narrow — a worker
+  only comes back if it was mid-task when the daemon went down — but the
+  dashboard is where it becomes visible, so it gets filed rather than
+  forgotten.
 
 - **The comms edges** (`spoke_with` / `waiting_on`) are empty until the ledger is held in memory. Reading the day's JSONL during assembly would break the no-disk rule that keeps the grid from stuttering. Its own task if the edges turn out to matter in use.
 - **A relations strip.** Cut in the spec: the nine live sessions have one real edge between them, and a graph drawn from that is decoration.
