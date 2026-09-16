@@ -1,7 +1,14 @@
 """The pure card renderer. Chrome is English; content is the session's own."""
 
-from aegis.fleet.models import CardView, EventLine, Origin
-from aegis.fleet.render import render_card
+from aegis.fleet.models import (
+    BandView,
+    CardView,
+    EventLine,
+    FleetSnapshot,
+    Origin,
+    RepoCount,
+)
+from aegis.fleet.render import columns_for, render_card, render_fleet
 from aegis.tui.themes import INK, aegis_colors
 
 C = aegis_colors(INK)
@@ -72,3 +79,68 @@ def test_no_row_exceeds_the_width():
     )
     for row in as_text(render_card(card, C, W)).split("\n"):
         assert cell_len(row) <= W, f"row overflows: {row!r}"
+
+
+def test_an_empty_fleet_says_so_rather_than_drawing_nothing():
+    out = as_text(render_fleet(FleetSnapshot(), C, 120))
+    assert "no sessions" in out.lower()
+
+
+def test_columns_follow_the_width():
+    assert columns_for(40) == 1
+    assert columns_for(120) == 2
+    assert columns_for(200) == 4
+
+
+def test_a_narrow_terminal_still_gets_one_column():
+    """Never zero: `width // 50` is 0 below 50 cells and would divide by it."""
+    assert columns_for(10) == 1
+
+
+def test_the_band_names_the_mix():
+    band = BandView(
+        host="zion",
+        total=9,
+        yours=6,
+        ephemeral=3,
+        by_kind=(("queue", 2), ("workflow", 1)),
+    )
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "9 agents" in out
+    assert "6 yours" in out
+    assert "3 ephemeral" in out
+    assert "2 queue" in out
+
+
+def test_a_shared_repo_is_marked():
+    """Two agents in one working tree is the condition that costs an
+    afternoon, and no other surface in aegis shows it."""
+    band = BandView(
+        repos=(
+            RepoCount(name="une-tools", agents=2, shared=True),
+            RepoCount(name="aegis", agents=1),
+        )
+    )
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "une-tools ×2" in out
+    assert "⚠" in out
+
+
+def test_the_recap_spend_rides_in_the_band():
+    """A paid call whose bill is not on screen is a paid call nobody audits."""
+    out = as_text(
+        render_fleet(
+            FleetSnapshot(band=BandView(recap_cost=1.20, recap_calls=340)), C, 160
+        )
+    )
+    assert "1.20" in out
+    assert "340" in out
+
+
+def test_the_grid_never_exceeds_the_terminal_width():
+    from rich.cells import cell_len
+
+    cards = tuple(CardView(handle=f"session-{i}", title="x" * 60) for i in range(9))
+    out = as_text(render_fleet(FleetSnapshot(cards=cards), C, 160))
+    for row in out.split("\n"):
+        assert cell_len(row) <= 160

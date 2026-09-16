@@ -13,7 +13,7 @@ import time
 from rich.cells import cell_len
 from rich.text import Text
 
-from aegis.fleet.models import CardView, EventLine, Origin
+from aegis.fleet.models import BandView, CardView, EventLine, FleetSnapshot, Origin
 from aegis.tui.fit import truncate_cells
 
 CARD_WIDTH = 46
@@ -46,6 +46,20 @@ def _age(seconds: float) -> str:
     return f"{s // 86400}d{s % 86400 // 3600}h"
 
 
+def _fit(t: Text, parts: list[tuple[str, str]], cells: int) -> int:
+    """Append ``(text, style)`` parts cut to ``cells`` in total, in order, so
+    the leading parts survive and the last one to fit takes the ellipsis.
+    Returns the cells used."""
+    used = 0
+    for text, style in parts:
+        piece = truncate_cells(text, cells - used)
+        if not piece:
+            break
+        t.append(piece, style=style)
+        used += cell_len(piece)
+    return used
+
+
 def _row(
     t: Text, body: str | list[tuple[str, str]], *, width: int, pal, edge: str
 ) -> None:
@@ -58,13 +72,7 @@ def _row(
     inner = width - 4
     parts = [(body, "")] if isinstance(body, str) else body
     t.append(f"{edge} ", style=pal.muted)
-    used = 0
-    for text, style in parts:
-        piece = truncate_cells(text, inner - used)
-        if not piece:
-            break
-        t.append(piece, style=style)
-        used += cell_len(piece)
+    used = _fit(t, parts, inner)
     t.append(" " * max(0, inner - used), style=pal.muted)
     t.append(f" {edge}\n", style=pal.muted)
 
@@ -172,4 +180,111 @@ def render_card(card: CardView, pal, width: int) -> Text:
     t.append("└" + fill * max(0, width - 2) + "┘", style=pal.muted)
     if ghost:
         t.stylize("dim")
+    return t
+
+
+def columns_for(width: int) -> int:
+    """Never zero — a narrow terminal gets one column, not a ZeroDivisionError."""
+    return max(1, width // (CARD_WIDTH + GUTTER))
+
+
+def _band(band: BandView, pal, width: int) -> Text:
+    """Three lines: who is running, how they are doing, where they write.
+
+    The headline is ``band.total``, the live fleet. A ghost card is drawn
+    but not counted, so ``len(snapshot.cards)`` would overcount.
+    """
+    sep = (" · ", pal.muted)
+    mix = [
+        (band.host, f"bold {pal.accent}"),
+        sep,
+        (f"{band.total} agents", f"bold {pal.ink}"),
+        sep,
+        (f"{band.yours} yours", pal.ink),
+        sep,
+        (f"{band.ephemeral} ephemeral", pal.ink),
+    ]
+    if band.by_kind:
+        kinds = ", ".join(f"{n} {kind}" for kind, n in band.by_kind)
+        mix.append((f" ({kinds})", pal.muted))
+    # Summed over open sessions: it drops when a tab closes, so it is
+    # labelled live and never today.
+    mix += [sep, (f"${band.cost_live:.2f} live", pal.ink)]
+    if band.recap_calls:
+        mix += [
+            sep,
+            (f"recap ${band.recap_cost:.2f} / {band.recap_calls} calls", pal.muted),
+        ]
+    if band.clock:
+        mix += [sep, (band.clock, pal.muted)]
+
+    health = [
+        (f"✻ {band.working} working", pal.working),
+        sep,
+        (f"● {band.ready} ready", pal.ready),
+        sep,
+        (f"⧗ {band.waiting} waiting", pal.muted),
+        sep,
+        (f"✗ {band.error} error", pal.error if band.error else pal.muted),
+        sep,
+        (f"ctx avg {band.ctx_avg:.0f}%", pal.muted),
+    ]
+    if band.ctx_worst is not None:
+        handle, pct = band.ctx_worst
+        health.append((f" worst {handle} {pct:.0f}%", pal.muted))
+    running, configured = band.queues
+    health += [sep, (f"queues {running}/{configured}", pal.muted)]
+    health += [
+        sep,
+        (f"{band.monitors} monitor{'s' if band.monitors != 1 else ''}", pal.muted),
+    ]
+
+    t = Text()
+    for parts in (mix, health):
+        _fit(t, parts, width)
+        t.append("\n")
+    if band.repos:
+        repos: list[tuple[str, str]] = [("repos ", pal.muted)]
+        for i, r in enumerate(band.repos):
+            if i:
+                repos.append(sep)
+            label = f"{r.name} ×{r.agents}" if r.agents > 1 else r.name
+            if r.shared:
+                # Two agents in one working tree: the collision nothing
+                # else in aegis shows.
+                repos.append((f"{label} ⚠", f"bold {pal.err}"))
+            else:
+                repos.append((label, pal.ink))
+        _fit(t, repos, width)
+        t.append("\n")
+    return t
+
+
+def render_fleet(snapshot: FleetSnapshot, pal, width: int) -> Text:
+    """The band, then the cards in rows of ``columns_for(width)``. Cards in
+    a row are padded to one height so a short card does not pull the next
+    row up."""
+    t = _band(snapshot.band, pal, width)
+    t.append("\n")
+    if not snapshot.cards:
+        _fit(t, [("no sessions", pal.muted)], width)
+        return t
+    cols = columns_for(width)
+    card_w = min(CARD_WIDTH, width)
+    rows = [snapshot.cards[i : i + cols] for i in range(0, len(snapshot.cards), cols)]
+    for n, row in enumerate(rows):
+        if n:
+            t.append("\n")
+        rendered = [render_card(c, pal, card_w).split("\n") for c in row]
+        height = max(len(lines) for lines in rendered)
+        for y in range(height):
+            for x, lines in enumerate(rendered):
+                if x:
+                    t.append(" " * GUTTER)
+                if y < len(lines):
+                    t.append_text(lines[y])
+                elif x < len(rendered) - 1:
+                    t.append(" " * card_w)
+            if y < height - 1 or n < len(rows) - 1:
+                t.append("\n")
     return t
