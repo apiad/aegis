@@ -230,17 +230,25 @@ class FleetScreen(ModalScreen):
 
     def on_unmount(self) -> None:
         for session in self._hooked:
-            session.remove_event_observer(self._on_event)
-            session.remove_fleet_watcher(self._on_fleet_recap)
+            self._unhook(session)
         self._hooked.clear()
+
+    def _unhook(self, session) -> None:
+        session.remove_event_observer(self._on_event)
+        session.remove_fleet_watcher(self._on_fleet_recap)
 
     def on_resize(self, _event) -> None:
         self._draw()
 
     def _hook_events(self) -> None:
         """Observe sessions not seen yet. One spawned while the screen is
-        open is picked up on the next refresh, at most a second later."""
-        for session in self._sessions():
+        open is picked up on the next refresh, at most a second later, and
+        one that closed is let go of then: `aegis dash` stays up all day."""
+        current = list(self._sessions())
+        for session in [h for h in self._hooked if not any(h is s for s in current)]:
+            self._unhook(session)
+            self._hooked.remove(session)
+        for session in current:
             if not any(session is h for h in self._hooked):
                 self._hooked.append(session)
                 session.add_event_observer(self._on_event)

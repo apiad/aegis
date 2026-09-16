@@ -2190,6 +2190,10 @@ class AegisApp(App):
         if isinstance(self.screen, FleetScreen):
             self.screen.dismiss(None)
             return
+        if self._fleet_in_stack():
+            # Covered by another screen (F4 over F10). A second one would
+            # watch, and pay for, every session twice.
+            return
         if hasattr(self, "_remote_manager"):
             # A remote pane core carries no metrics to build a card from.
             self.notify("The fleet dashboard shows local sessions only")
@@ -2215,10 +2219,13 @@ class AegisApp(App):
         """Open the fleet unless it is already up. `aegis dash` asks for it
         on attach, and on a re-attach the view may be showing it: F10's
         toggle would close it there."""
+        if not self._fleet_in_stack():
+            self.action_open_fleet()
+
+    def _fleet_in_stack(self) -> bool:
         from aegis.tui.fleet_screen import FleetScreen
 
-        if not any(isinstance(s, FleetScreen) for s in self.screen_stack):
-            self.action_open_fleet()
+        return any(isinstance(s, FleetScreen) for s in self.screen_stack)
 
     def _fleet_system_row(self) -> dict:
         """The band's SYSTEM row: the tiers the last tick sampled and pushed

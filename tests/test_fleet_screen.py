@@ -534,3 +534,22 @@ def test_no_modal_in_aegis_makes_its_own_screen_translucent():
                 if bg and ("%" in bg.group(1) or "transparent" in bg.group(1)):
                     offenders.append(f"{path.relative_to(src)}: {name} {bg.group(1)}")
     assert not offenders, offenders
+
+
+async def test_f10_over_a_covered_fleet_does_not_stack_a_second_one(tmp_path):
+    """F4 over F10, then F10: the fleet is already in the stack, only
+    covered (F2 opens a tab, not a screen, so it cannot cover F10). A second FleetScreen would watch every session twice and pay
+    twice for nothing on screen."""
+    app = _bridged(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        await pilot.press("f10")
+        await pilot.pause()
+        assert isinstance(app.screen, FleetScreen)
+        await pilot.press("f4")
+        await pilot.pause()
+        assert not isinstance(app.screen, FleetScreen), "F4 must cover F10"
+        await pilot.press("f10")
+        await pilot.pause()
+        fleets = [s for s in app.screen_stack if isinstance(s, FleetScreen)]
+        assert len(fleets) == 1

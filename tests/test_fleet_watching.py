@@ -278,3 +278,28 @@ async def test_a_view_whose_shutdown_hangs_still_releases_its_watchers(tmp_path,
     assert all(s._fleet_task is None for s in sessions), (
         "the view is gone but the paid check still runs"
     )
+
+
+async def test_a_session_closed_while_f10_is_open_is_released(tmp_path):
+    """`aegis dash` stays open all day. A screen that never lets go of a
+    closed session holds it, and its observers, for as long as it is up."""
+    app = _bridged(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _tabs(app, pilot, 2)
+        await pilot.press("f10")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, FleetScreen)
+        screen.refresh_fleet()
+        gone = app._panes[1]._core
+        assert any(gone is s for s in screen._hooked)
+        await app.manager.close(gone.handle)
+        for _ in range(20):
+            await pilot.pause()
+            if gone not in app.manager._sessions:
+                break
+        assert gone not in app.manager._sessions
+        screen.refresh_fleet()
+        assert not any(gone is s for s in screen._hooked)
+        assert screen._on_event not in gone._extra_event_observers
+        assert len(screen._hooked) == 1
