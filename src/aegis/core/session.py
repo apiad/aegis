@@ -26,8 +26,8 @@ from aegis.plan import PlanSnapshot, PlanState, PlanTracker
 from aegis.digest.collect import DigestCollector
 from aegis.digest.models import TurnFacts
 from aegis.core.loop_judge import judge_for
-from aegis.recap import recap_for
-from aegis.recap.gate import should_recap
+from aegis.recap import Recap, recap_for, recap_in_flight_for
+from aegis.recap.gate import should_fleet_recap, should_recap
 from aegis.repos.writes import write_target
 from aegis.hooks import (
     PostTurnEvent,
@@ -194,6 +194,28 @@ class AgentSession:
         self.on_recap = None
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
+        # The fleet dashboard's mid-turn recap. Paid, so it runs only while
+        # a client watches this session (`fleet.recap: watched`): the
+        # periodic check is armed by the first watcher and cancelled by the
+        # last, by a close, and never armed twice.
+        self.fleet_recap: Recap | None = None
+        # What the mid-turn recaps have cost this session, for the band.
+        self.fleet_recap_cost_usd = 0.0
+        self.fleet_recap_calls = 0
+        self._fleet_watchers: list = []
+        self._fleet_task: asyncio.Task | None = None
+        self._fleet_recap_task: asyncio.Task | None = None
+        self._fleet_last_started: float | None = None
+        # 5s: the gate's shortest spacing is recap_interval_s >= 30, so a
+        # call is at most 5s late, and a check is a few comparisons plus the
+        # config's one `stat`.
+        self._fleet_check_s = 5.0
+        self._closed = False
+        # The running turn, as the mid-turn recap needs it. Kept on self
+        # because the turn-end facts build them as locals of _run_turn.
+        self._turn_started_at: float | None = None
+        self._turn_plan_done_at_start = 0
+        self._turn_tail: list[str] = []
         # Subagent plans, keyed by the dispatching Task tool_use id. Kept
         # apart from the top-level plan because a subagent's short list
         # would otherwise overwrite its parent's — the strip would read
@@ -418,7 +440,15 @@ class AgentSession:
                 log.exception("dispatch observer raised; continuing")
 
     def _emit_state(self, state: AgentState, *, finished: bool) -> None:
-        self.state = state
+        was, self.state = self.state, state
+        if state is AgentState.working and was is not AgentState.working:
+            self._turn_started_at = self._now()
+            self._turn_plan_done_at_start = self.plan_state().done
+            self._turn_tail = []
+        elif state is not AgentState.working:
+            self._turn_started_at = None
+            # A late answer describes a turn that has already closed.
+            self._cancel_fleet_recap()
         # Working time accrues only mid-turn, so every tracker follows the
         # session's turn state — including the subagents', which are also
         # only doing work while this session's turn is live.
@@ -717,6 +747,7 @@ class AgentSession:
         # assistant_text_parts, which PostTurnEvent consumes with its own
         # (deliberately inclusive) contract.
         own_text_parts: list[str] = []
+        self._turn_tail = own_text_parts
         try:
             if not self._started:
                 await self._session.start()
@@ -974,6 +1005,92 @@ class AgentSession:
         if recap.line.strip() == self._last_recap_line.strip():
             return
         self._last_recap_line = recap.line
+        self._emit_recap(recap)
+
+    def add_fleet_watcher(self, cb) -> None:
+        """A client put this session's card or sidebar on screen."""
+        if self._closed:
+            return
+        self._fleet_watchers.append(cb)
+        if self._fleet_task is None:
+            self._fleet_task = asyncio.create_task(self._fleet_loop())
+
+    def remove_fleet_watcher(self, cb) -> None:
+        """Idempotent. The last one gone stops the checks and the spend."""
+        with contextlib.suppress(ValueError):
+            self._fleet_watchers.remove(cb)
+        if not self._fleet_watchers:
+            self._stop_fleet()
+
+    def _stop_fleet(self) -> None:
+        if self._fleet_task is not None and not self._fleet_task.done():
+            self._fleet_task.cancel()
+        self._fleet_task = None
+        self._cancel_fleet_recap()
+
+    async def _fleet_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._fleet_check_s)
+            try:
+                self._fleet_tick()
+            except Exception:  # noqa: BLE001
+                log.exception("fleet recap check raised; continuing")
+
+    def _fleet_tick(self) -> None:
+        if self._fleet_recap_task is not None:
+            return  # one at a time
+        if self._agents is None:
+            return  # no billing profile to resolve; stay quiet
+        now = self._now()
+        started = self._turn_started_at
+        last = self._fleet_last_started
+        if not should_fleet_recap(
+            state=self.state.value,
+            turn_s=0.0 if started is None else now - started,
+            since_last_s=float("inf") if last is None else now - last,
+            watchers=len(self._fleet_watchers),
+            cfg=self.fleet_config,
+        ):
+            return
+        self._fleet_last_started = now
+        self._fleet_recap_task = asyncio.create_task(self._run_fleet_recap())
+
+    def _cancel_fleet_recap(self) -> None:
+        if self._fleet_recap_task is not None and not self._fleet_recap_task.done():
+            self._fleet_recap_task.cancel()
+        self._fleet_recap_task = None
+
+    async def _run_fleet_recap(self) -> None:
+        try:
+            plan_now = self.plan_state()
+            facts = await self.digest.build(
+                plan_done=plan_now.done,
+                plan_total=plan_now.total,
+                plan_done_at_start=self._turn_plan_done_at_start,
+                assistant_tail="".join(self._turn_tail),
+                duration_s=max(0.0, self._now() - (self._turn_started_at or 0.0)),
+            )
+            recap = await recap_in_flight_for(
+                state_dir=self.state_dir,
+                log_id=self.log_id,
+                facts=facts,
+                agent=self.agent,
+                agents=self._agents,
+                cwd=str(self.project_root),
+                root=self._config_root,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("fleet recap failed")
+            self._fleet_recap_task = None
+            return
+        self._fleet_recap_task = None
+        self.fleet_recap_calls += 1
+        self.fleet_recap_cost_usd += recap.cost_usd
+        if not recap.ok:
+            return
+        self.fleet_recap = recap
         self._emit_recap(recap)
 
     @property
@@ -1344,6 +1461,9 @@ class AgentSession:
             self._task = asyncio.create_task(self._run_turn(_render_batch(batch)))
 
     async def close(self, reason: str = "explicit") -> None:
+        self._closed = True
+        self._fleet_watchers.clear()
+        self._stop_fleet()
         await self._cancel_idle_watcher()
         if self._task is not None and not self._task.done():
             self._task.cancel()

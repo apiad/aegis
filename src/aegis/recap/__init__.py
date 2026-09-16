@@ -227,18 +227,8 @@ async def recap_in_flight(
     )
 
 
-async def recap_for(
-    *,
-    state_dir,
-    log_id: str,
-    facts: TurnFacts,
-    agent,
-    agents: dict,
-    cwd: str,
-    session_scope: bool,
-    root=None,
-) -> Recap:
-    """Resolve driver + billing profile + transcript, then ask.
+async def _resolve(*, state_dir, log_id: str, agent, agents: dict, root):
+    """Driver, billing profile and transcript — or a ``Recap`` saying why not.
 
     Mirrors ``btw.side_note_for`` exactly, including reading the log off
     the event loop — a 24MB transcript takes 0.65s warm, far too much to
@@ -267,5 +257,52 @@ async def recap_for(
         replay = await asyncio.to_thread(replay_events, state_dir, log_id)
     except Exception as e:  # noqa: BLE001
         return Recap(error=f"could not read the transcript: {e}")
+    return driver, gen_agent, replay
+
+
+async def recap_for(
+    *,
+    state_dir,
+    log_id: str,
+    facts: TurnFacts,
+    agent,
+    agents: dict,
+    cwd: str,
+    session_scope: bool,
+    root=None,
+) -> Recap:
+    """Resolve driver + billing profile + transcript, then ask."""
+    got = await _resolve(
+        state_dir=state_dir, log_id=log_id, agent=agent, agents=agents, root=root
+    )
+    if isinstance(got, Recap):
+        return got
+    driver, gen_agent, replay = got
     fn = recap_session if session_scope else recap_turn
     return await fn(replay=replay, facts=facts, driver=driver, agent=gen_agent, cwd=cwd)
+
+
+async def recap_in_flight_for(
+    *,
+    state_dir,
+    log_id: str,
+    facts: TurnFacts,
+    agent,
+    agents: dict,
+    cwd: str,
+    root=None,
+) -> Recap:
+    """``recap_for`` for a turn still running: same billing, same transcript.
+
+    The log is appended as the turn streams, so a mid-turn read sees the
+    turn up to now.
+    """
+    got = await _resolve(
+        state_dir=state_dir, log_id=log_id, agent=agent, agents=agents, root=root
+    )
+    if isinstance(got, Recap):
+        return got
+    driver, gen_agent, replay = got
+    return await recap_in_flight(
+        replay=replay, facts=facts, driver=driver, agent=gen_agent, cwd=cwd
+    )
