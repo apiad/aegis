@@ -314,3 +314,10 @@ def test_no_cancelled_recap_draws_no_cancelled_count():
     out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
     assert "recap $0.05 / 5 calls" in out
     assert "cancelled" not in out
+
+
+def test_one_recap_call_is_singular():
+    out = as_text(render_fleet(
+        FleetSnapshot(band=BandView(recap_cost=0.01, recap_calls=1)), C, 160))
+    assert "recap $0.01 / 1 call" in out
+    assert "1 calls" not in out

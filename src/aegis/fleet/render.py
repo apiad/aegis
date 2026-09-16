@@ -244,7 +244,8 @@ def _band(band: BandView, pal, width: int) -> Text:
     # labelled live and never today.
     mix += [sep, (f"${band.cost_live:.2f} live", pal.ink)]
     if band.recap_calls or band.recap_cancelled:
-        recap = f"recap ${band.recap_cost:.2f} / {band.recap_calls} calls"
+        noun = "call" if band.recap_calls == 1 else "calls"
+        recap = f"recap ${band.recap_cost:.2f} / {band.recap_calls} {noun}"
         if band.recap_cancelled:
             recap += f" · {band.recap_cancelled} cancelled"
         mix += [sep, (recap, pal.muted)]
