@@ -175,10 +175,14 @@ sketch; the rendered card differs from it in five deliberate ways:
 The footer carries `← x` for the peer that last spoke to this session and
 `→ x` for the one it waits on. Both fields stay empty until the comms ledger
 is held in memory (see Deferred), so the edges render as soon as data
-exists. The three middle rows
-are the event ring. The footer carries edges from the `CommsLedger` (`←`
-who last spoke to it, `→` who it is waiting on), held claims (`⛓`) and any
-live monitor with its progress (`⏳`).
+exists. The rows above the footer are the event ring.
+
+The footer reads `1h47m · ctx 41% · pytest 60% · ← peer · $2.14 · 2 claims`,
+in plain words rather than the `⛓` and `⏳` of the first sketch: `⏳` is two
+cells wide (`cell_len` 2, East Asian width `W`) and a glyph buys nothing a
+word does not. Parts are ordered by how fast they go stale, because a full
+footer is cut from the right: the live monitor survives, and cost and claims,
+which the band repeats, are what get cut.
 
 An **ephemeral** card reads differently. Its border is dimmed, it carries
 a `⏱`, and the origin line is promoted to the top, because for a worker
