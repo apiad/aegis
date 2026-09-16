@@ -895,8 +895,11 @@ class AgentSession:
         if getattr(ev, "parent_tool_use_id", None) is not None:
             return
         self._events.append(
-            EventLine(at=at if at is not None else time.time(),
-                      tool=ev.name, summary=ev.summary or "")
+            EventLine(
+                at=at if at is not None else time.time(),
+                tool=ev.name,
+                summary=ev.summary or "",
+            )
         )
 
     def _record_repo(self, ev: ToolUse) -> None:

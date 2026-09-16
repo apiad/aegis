@@ -1,6 +1,7 @@
 """The card's three middle rows. Today the only way to know what a session
 did a minute ago is to read its transcript, which is exactly what a
 dashboard exists to avoid."""
+
 import pytest
 
 from aegis.events import ToolUse
@@ -27,11 +28,18 @@ def session(tmp_path):
 
     from tests.brain import make_brain
 
-    roster = {"opus": Agent(harness="claude-code", model="opus",
-                            effort="high", permission="auto")}
-    mgr = make_brain(roster, "opus",
-                     make_session=lambda p, u, h, **kw: _FakeHarness(),
-                     mcp=None, roots=AegisRoots.for_project(tmp_path))
+    roster = {
+        "opus": Agent(
+            harness="claude-code", model="opus", effort="high", permission="auto"
+        )
+    }
+    mgr = make_brain(
+        roster,
+        "opus",
+        make_session=lambda p, u, h, **kw: _FakeHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+    )
     return mgr._sync_spawn("opus")
 
 
@@ -51,7 +59,11 @@ def test_the_ring_keeps_the_five_newest(session):
         session.note_event(ToolUse(name="Bash", summary=f"cmd {i}"), at=float(i))
     assert len(session.recent_events) == 5
     assert [e.summary for e in session.recent_events] == [
-        "cmd 3", "cmd 4", "cmd 5", "cmd 6", "cmd 7"
+        "cmd 3",
+        "cmd 4",
+        "cmd 5",
+        "cmd 6",
+        "cmd 7",
     ]
 
 
