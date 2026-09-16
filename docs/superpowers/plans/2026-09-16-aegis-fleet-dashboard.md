@@ -2024,7 +2024,7 @@ class FleetRecap(BaseModel):
 
 ```python
 # Measured 2026-09-16: the prefix floor is ~1,027 input tokens and a full
-# window costs ~546 more, so the window is calderilla and gets sized for
+# window costs ~546 more, so the window is a minor share of the cost and gets sized for
 # relevance rather than thrift. Squeezing it to ~1,135 total produced
 # terser lines that named no files.
 IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)

@@ -25,10 +25,12 @@ from aegis.digest.render import render_facts
 # what an end-of-turn line is about.
 TURN_WINDOW = dict(max_turns=1, budget_tokens=2_000, item_chars=200)
 
-# Measured 2026-09-16: the prefix floor is ~1,027 input tokens and a full
-# window costs ~546 more, so the window is calderilla and gets sized for
-# relevance rather than thrift. Squeezing it to ~1,135 total produced
-# terser lines that named no files.
+# Sized for relevance rather than thrift. Measured 2026-09-16 on a real
+# 61-turn transcript: this window is ~2,600 tokens, and the whole call cost
+# 4,902 input tokens / $0.0162 from an empty directory ($0.0073 once the
+# prefix is cached), so the window is a minor share of it. A synthetic
+# probe earlier that day squeezed the window and got terser lines that
+# named no files.
 IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
 
 
