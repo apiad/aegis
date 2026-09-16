@@ -370,6 +370,18 @@ class ClaudeDriver(HarnessDriver):
         window explicitly and has no business reading the project's
         instructions.
 
+        **Re-measured 2026-09-16 (CLI 2.1.270) and the numbers above are
+        HISTORY.** The same flags now cost ~1,027 input tokens, a further
+        factor of 7.6 — the CLI shed its own prefix between 2.1.220 and
+        2.1.270. The practical consequence inverts the old advice: the
+        window is no longer worth squeezing (a full one costs ~546 tokens
+        over the floor) and the expensive side is OUTPUT. See
+        `generate_detailed` for the MAX_THINKING_TOKENS cut.
+
+        ``--effort`` is not an alternative and never was: it runs `low` to
+        `max` with no off, and `low` still emitted 133 thinking tokens to
+        write two sentences (measured 2026-09-13).
+
         ``--exclude-dynamic-system-prompt-sections`` was measured too and
         is deliberately absent: it relocates the per-machine sections
         without removing them (21,445 either way).
@@ -401,10 +413,17 @@ class ClaudeDriver(HarnessDriver):
         from aegis.drivers.oneshot import Generation, parse_structured
 
         argv = self._oneshot_argv(agent, schema, list(instructions))
+        # A generation call is handed its window and asked for two lines.
+        # Reasoning buys nothing here and costs a lot: measured 2026-09-16
+        # on a recap-shaped call, 27.1s / 2,508 output tokens on against
+        # 4.7s / 103 off, with the on-arm swinging 8.7s-30.4s run to run.
+        # `--effort` has no off (`low` still thinks), so this is the switch.
+        env = {**os.environ, "MAX_THINKING_TOKENS": "0"}
         try:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
                 cwd=cwd,
+                env=env,
                 # DEVNULL, not inherited: claude waits 3s for stdin it will
                 # never get, and that wait is a third of the whole call.
                 stdin=asyncio.subprocess.DEVNULL,
