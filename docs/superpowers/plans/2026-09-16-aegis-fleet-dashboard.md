@@ -2485,3 +2485,64 @@ git push origin main
 - **The comms edges** (`spoke_with` / `waiting_on`) are empty until the ledger is held in memory. Reading the day's JSONL during assembly would break the no-disk rule that keeps the grid from stuttering. Its own task if the edges turn out to matter in use.
 - **A relations strip.** Cut in the spec: the nine live sessions have one real edge between them, and a graph drawn from that is decoration.
 - **The loop judge's thinking budget**, pending its own measurement. It decides whether a turn satisfied an instruction, which is the one call of the four where reasoning might earn its cost, and turning it off on the strength of a writing-task measurement would be reasoning past the evidence.
+
+---
+
+## Rulings made during execution
+
+Decisions the controller took on the operator's behalf while the plan ran, in
+order, each with what it costs if wrong. The SDD ledger they come from is
+scratch and was deleted after the final review; this is the durable copy.
+
+1. **Task 7 owns `CARD_WIDTH`/`GUTTER`; Task 8 does not redeclare them.** Cost: nil.
+2. **Execution order 11, 13, 12, 14**, because Task 12's tests import Task 13's config. Cost: one blocked dispatch.
+3. **Card cost through a guarded `_cost(s)`**, 0.0 for a session with no agent profile. Cost: a card reading $0.00 for a session that spent money.
+4. **Missing fixtures defined locally**, built on `tests/brain.py::make_brain`, not added to `conftest.py`. Cost: duplication across test files.
+5. **`.aegis.yaml` not edited at the start to add a cheaper profile** (it held another session's uncommitted edit), so every worker ran on opus. Cost: a more expensive run. Superseded by ruling 34.
+6. **`make check` is not the gate:** `ty check src/` was already red with 327 errors before the plan. The gate became format + lint + lint-docs + test, with ty held at the baseline. Cost: a new type error hidden among old ones — which happened (5 new), and was fixed before shipping.
+7. **Accepted widening `origin=` to `AppBridge.spawn` and its implementations**, not only `_sync_spawn`. Cost: an implementation left behind raising `TypeError`.
+8. **Accepted replacing three source-string tests with behavioural ones.** Cost: a behavioural test that passes with the wiring deleted.
+9. **`waiting` = ready with a live monitor or an owed queue callback**, and `error` got its own band counter. Cost: a session waiting on a handoff reads as ready. (The queue half first matched a remote-only field; fixed in the final wave.)
+10. **The controller ran `ruff format` inline** on four files instead of a fix round. Cost: an unreviewed whitespace commit.
+11. **`cost_today` renamed `cost_live` and the band host set to the local hostname, inline.** Cost: an unreviewed 4-line commit.
+12. **The band's cost is labelled "live", not turned into a daily total**, because a daily figure needs a disk read. Cost: the operator wants the day's spend and gets the open sessions'.
+13. **No `├───┤` separators on cards.** Cost: nine cards read worse; one helper to add back.
+14. **Uptime always leads the footer; the cap shows turn time only while working.** Cost: an idle card's cap loses its duration.
+15. **Six card minors folded into fix round 1** (equal row heights, trailing whitespace, ghost age, hidden `local`, context over 80% in red, `⏱`). Cost: a larger fix diff.
+16. **The SYSTEM row in F10's band reuses the tiers pushed to the active pane**; cwd and locale dropped. Cost: the operator wanted cwd — one segment.
+17. **Tasks 9/9b minors folded:** state the click invariant, key the selection on the handle, one pass over panes. Cost: a larger fix diff.
+18. **The app holds the last system and quota sample**, delivered to the screen through an injected callable, so F10 shows meters over any tab. Cost: one host sample per tick while a terminal tab is in front.
+19. **The build is always shown in the band.** Cost: nil.
+20. **Screenshot and bench tooling stub the quota poll** after a run hit the operator's real Claude account ("cc rate limited"). Cost: none.
+21. **Task 10 rewritten onto the `aegis bench` rig** instead of `aegis kill` on the live daemon. Cost: F10 over the operator's own fleet waits for his restart.
+22. **Task 10b round 2 continued with the same live worker** via handoff. Cost: one more experiment.
+23. **The in-flight recap lives in `aegis.recap` beside the other recaps**, not a new `aegis.fleet.recap`. Cost: a later move.
+24. **Tasks 11 and 13 batched.** Cost: nil.
+25. **vital-valiant's queue-rename fix landed on `main` in parallel**, with constraints on queue shapes and `callback_handle`. Cost: a transient red suite of unclear owner.
+26. **After a worker died on a network error, Task 13 re-dispatched from its RED test** and Task 11 reviewed from its diff. Cost: nil.
+27. **Task 13's number validation fixed inline.** Cost: an unreviewed ~15-line commit.
+28. **Recap interval floor of 30 s**, since a call takes ~4.7 s. Cost: an operator wanting 10 s gets a clear `ConfigError`.
+29. **Task 12a: sessions read `recap`, `loop_judge` and `fleet` from an explicit config root at call time**, mtime-cached (following `text_generation`'s precedent). It also fixed `recap: false` / `loop_judge: false` being silently ignored. Cost: a few `stat`s per read.
+30. **Option A done inline by the controller, at the operator's request:** pinned haiku profile + `text_generation`, roster threaded into real sessions, billing from the config root, one-shots from an empty directory. Cost: the automatic recap and loop judge now spend in every session (~$0.007–0.015 per call).
+31. **The fleet recap gets its own channel** (the watcher callbacks), not `_emit_recap`, which the pane draws into the transcript. Cost: nil.
+32. **With `text_generation` unset, the unattended in-flight recap refuses** instead of billing the session's own model. Cost: no `now` line until it is set (now logged once).
+33. **Task 12 minors folded:** per-turn interval reset, a snapshot of `_tracked`, counting paid calls only, the cheap state check first. Cost: nil.
+34. **Task 14 rewritten before dispatch:** F3 watches the active tab with the sidebar open; F10 watches every session while open; every registration removed on unmount; a detach test. Cost: a leaked watcher — which the review then found on a hung shutdown and which was fixed (ruling 35).
+35. **The hung-shutdown watcher leak fixed inline** with a sweep in `View.stop`. Cost: an unreviewed ~30-line commit, pinned by a failing-first test.
+36. **`aegis dash` asks through the hello frame**, and the view opens the fleet idempotently in the app's own context. Cost: a new client against an old daemon silently gets a plain view (documented).
+37. **The loop judge keeps thinking** (`think=True`), restoring the spec's exclusion that Task 1 had lost. Cost: judge calls take longer and cost more until measured.
+38. **The ty gate is "no new errors over the baseline"**, and 5 new errors were fixed. Cost: nil.
+39. **`fleet.recap: on` removed rather than implemented**; modes are `watched | off`. Cost: an operator wanting recaps with no screen open.
+40. **One final fix wave with every finding**, and seven user-visible minors folded in. Cost: a large final diff, re-reviewed against real objects.
+
+## Status after the final review
+
+All tasks landed and passed task review; the final whole-branch review's
+four Important findings and its must-fix test gap were fixed and re-reviewed
+against real objects (a real `QueueManager`, a real session, a fake `claude`
+on `PATH`). Final gate on `40469ee`'s parent `220b838`: 4074 passed, 1
+skipped; ruff check and format clean; lint-docs clean; `ty` 327 (baseline).
+
+**Not yet exercised:** F10, `aegis dash` and the now-live turn recap and loop
+judge over the operator's own fleet. The running daemon predates all of it
+and needs a restart (`aegis kill`, which drops the open tabs).
