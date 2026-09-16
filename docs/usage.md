@@ -19,6 +19,7 @@
 | `Ctrl+D` | Detach: leave the daemon and its agents running |
 | `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
+| `F10` | Open / close the [fleet dashboard](#the-fleet-dashboard-f10-and-aegis-dash): every session as a card |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
@@ -433,6 +434,99 @@ tab with a plan, `aegis_list_sessions` rolls it up, and
 [`aegis_peer_plan`](mcp.md) drills into a peer's full list — so an agent
 deciding who to hand work to learns not just that a peer is busy but how
 far along it is.
+
+## The fleet dashboard: `F10` and `aegis dash`
+
+`F3` describes the tab in front of you. **`F10`** shows every session: a band
+across the top, then one card per session, in tab order, with no
+transcript. It covers the tabs; `F10` again or `Escape` closes it.
+
+| Key | Action |
+|---|---|
+| `←` `→` `↑` `↓` | Move the selection across the grid (it stops at the edges) |
+| `Enter` / click a card | Close the dashboard and switch to that session's tab |
+| `1`..`9` | Open the session whose card shows that tab number |
+| `Escape` / `F10` | Close the dashboard |
+
+A card reads top to bottom:
+
+```
+┌─ 3 calm-hopper ──────────────────── ✻ 4m12s ─┐
+│ Wire the fleet dashboard                     │
+│ opus · aegis                                 │
+│ plan ██████░░░░ 6/10 Task 7                  │
+│ did committed the band renderer              │
+│ now running the fleet screen tests           │
+│ 14:02 Edit src/aegis/fleet/render.py         │
+│ 14:03 Bash uv run pytest -q tests/test_fl…   │
+│ 1h47m · ctx 38% · $4.12                      │
+└──────────────────────────────────────────────┘
+```
+
+- The top border carries the tab number, the handle, a state glyph
+  (`✻` working, `●` ready, `✗` error) and, while a turn runs, how long it
+  has been running.
+- Then the title, the agent and the repo it writes to (and the host, when
+  it is not this machine), and the plan with its current task.
+- **`did`** is the last turn recap: what the session finished.
+- **`now`** is the mid-turn recap: what a turn still running is doing. It
+  appears once a turn has run for a minute and refreshes every two minutes
+  at most (see below for what that costs).
+- The last three tool events, stamped with the time of day.
+- The footer: uptime, context use (red past 80%), a running monitor, cost
+  and claims. A narrow card cuts it from the right, so the cost goes before
+  the monitor does.
+
+**Ephemeral sessions** (one a queue, a workflow or a group started) get a
+dashed border, a `⏱` beside the tab number, and a line saying who made them
+and who gets the answer: `queue general #a3f2 → rosy-rivest`. They are the
+sessions that start and close between two looks at the screen, so when one
+closes its card stays for **60 seconds**, dimmed and marked `closed 12s`.
+A closed card cannot be opened and is not counted in the band.
+
+**The band** answers the fleet-wide questions in four rows:
+
+- The host, how many agents are live, how many are yours and how many are
+  ephemeral (by kind), what the open sessions have cost (`$18.40 live`;
+  it drops when a tab closes), and what the mid-turn recaps have cost them:
+  `recap $0.09 / 11 calls`, with `· 1 cancelled` when a call was killed
+  before its price came back.
+- How many sessions are working, ready, waiting or in error, the average
+  and worst context use, running and configured queues, and monitors.
+- `repos`: which repos the agents write to. `aegis ×2 ⚠` means two agents
+  share one working tree.
+- The **SYSTEM** row from the foot of `F3`: CPU, RAM and disk, quota, and
+  the build. `F10` covers `F3`, so the band repeats it.
+
+`F3` shows the same mid-turn recap for the active tab, as a `now …` line
+under the state.
+
+### What the `now` line costs
+
+Each mid-turn recap is a one-shot generation call billed to
+[`text_generation:`](configuration.md#text_generation-optional). Measured
+on a real transcript on haiku, a call costs **about $0.007–0.015**. By
+default it runs only for **working sessions someone is watching**: the
+active tab while `F3` is open, and every session while `F10` is open. A
+background tab, a closed sidebar or a detached terminal pays nothing. The
+[`fleet:` block](configuration.md#fleet-optional) changes that and the
+timings.
+
+### `aegis dash`: the dashboard on a second monitor
+
+```bash
+aegis dash                  # this terminal, with the fleet already open
+aegis dash --view wall      # a named view
+aegis dash --cwd ~/project  # the daemon for another project root
+```
+
+`aegis dash` is `aegis attach` with `F10` already open. It takes the same
+`--view` and `--cwd` options and starts the daemon the way `aegis` does
+when none is running. The view id defaults to the terminal's own, so a
+second terminal gets a view of its own. Every view shows the same
+sessions, but focus is per view: opening a card in the dash switches the
+dash's tab, and the terminal you work in stays where it was. Re-attaching
+a view whose fleet is already open leaves it open.
 
 ## Queue dashboard
 

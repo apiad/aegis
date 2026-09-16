@@ -249,6 +249,11 @@ plan → dispatch implementer per task with durable resume),
   shows live per-queue depth and the most recent in-flight worker.
   `F4` expands into a full-screen modal with `QUEUES / IN-FLIGHT /
   QUEUED / RECENT` bands and a live assistant-text tail.
+- **Fleet dashboard.** `F10` shows every session as a card: what it
+  finished, what it is doing now, its last tool events, plan, repo and
+  cost, with a band of fleet-wide counts on top. Queue workers stay on
+  screen for a minute after they close. `aegis dash` opens it in a second
+  terminal.
 - **File browser + viewer.** `Ctrl+O` opens a **FileBrowserTab** — a
   persistent tab, not a modal, so several can coexist. It lists files
   newest-first over a background watchdog index (the common case is
@@ -619,6 +624,7 @@ ConfigPanel via `F2`.
 | `Ctrl+Shift+←→` | Move the active tab along the bar (or drag it with the mouse) |
 | `Ctrl+K` | Toggle terminal-tab input between **run** and **raw** mode |
 | `F4` | Open / close the queue dashboard |
+| `F10` | Open / close the fleet dashboard: every session as a card |
 | `Ctrl+D` | Detach: leave the daemon and its agents running |
 | `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
@@ -675,8 +681,10 @@ Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 
 `aegis` is a client. `aegis serve` is the daemon it attaches to, and
 running it in a terminal yourself is how you read its output when it will
-not start. `aegis ls` lists daemons across roots and `aegis kill` stops
-one. A daemon keeps the code it booted with, and reaps itself after 30
+not start. `aegis attach [--view N]` attaches this terminal to a root's
+daemon, and `aegis dash` does the same with the `F10` fleet dashboard
+already open, for a second monitor. `aegis ls` lists daemons across roots
+and `aegis kill` stops one. A daemon keeps the code it booted with, and reaps itself after 30
 minutes with no views and no sessions; `know-how/the-daemon.md` covers
 both.
 

@@ -7,6 +7,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **`F10` shows every session at once, and `aegis dash` keeps it open on a
+  second monitor.** One card per session, in tab order: title, agent and
+  repo, plan, `did` (the last turn recap), `now` (what a running turn is
+  doing), the last three tool events, then uptime, context and cost. A
+  queue, workflow or group worker carries a `⏱`, says who made it and who
+  gets the answer, and stays on screen for 60 s after it closes. The band
+  on top counts agents by state and origin, flags two agents in one
+  working tree, repeats F3's SYSTEM row, and shows what the `now` lines
+  have cost as `recap $X / N calls`. Arrows and Enter or a click open a
+  session, and `1`-`9` jump straight to a tab number. `aegis dash` takes
+  `attach`'s `--view` and `--cwd`. A card opened there moves only that
+  view's tab.
+
+  The `now` line is a one-shot call of about $0.007-0.015 on haiku, made
+  only for working sessions a client has on screen: the active tab while
+  F3 is open (where it also shows), every session while F10 is open. The
+  first comes after a turn has run 60 s, then at most one every 120 s;
+  the `fleet:` block in `.aegis.yaml` changes both and the watching rule.
+  With seven sessions streaming behind it the grid draws 2.0 frames/s,
+  21 KB/s. See `docs/usage.md`.
+
 - **`aegis bench` measures what reaches the terminal, and runs with every
   release.** It drives a real `aegis serve` and a real client in a pty, with
   fake `claude` and `lovelaice-acp` agents replaying recorded or synthetic
@@ -62,6 +83,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   outlives `~n ↑n`: those describe a moment, this describes the session.
 
 ### Fixed
+
+- **One-shot generation calls no longer pay for reasoning or for the
+  project directory.** On the Claude driver, the turn recap, the loop
+  judge, `/btw`, session titles and the fleet's `now` line now run with
+  `MAX_THINKING_TOKENS=0` and from an empty directory. Thinking took a
+  recap-shaped call from 4.7 s and 103 output tokens to 27.1 s and 2,508,
+  and its latency swung 8.7-30.4 s run to run.
+  Launching from the Workspace root read 11,445 input tokens for $0.0287,
+  against 4,902 for $0.0162 from an empty directory, and $0.0073 on the
+  next call once that prefix is cached.
 
 - **A cancelled recap or loop-judge call no longer keeps billing.**
   Cancelling a one-shot generation left its `claude -p` process running to
