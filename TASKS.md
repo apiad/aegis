@@ -68,12 +68,12 @@ Left over from the bench check (Task 10, 2026-09-16):
   `1`-`9` jump in a daemon started after the change. The live daemon still
   runs the old build; the check over a real fleet needs a restart, on the
   operator's schedule.
-- [ ] **The fleet screen draws ~40 frames/s of ~14.7 KB with seven busy
-  sessions**, against 15.5 frames/s for the visible stream it replaces
-  (`aegis bench run -s fleet`). The refresh is meant to coalesce to one
-  redraw per 0.5 s. Find what redraws in between (the band's clock, card
-  ages, or the tab bar behind the modal) before `aegis dash` makes the
-  grid a screen that stays open all day.
+- [x] **The fleet screen draws ~40 frames/s of ~14.7 KB with seven busy
+  sessions.** Fixed 2026-09-16 (Task 10b): 50-60 → 2.0 frames/s,
+  730-890 → 21 KB/s with the grid open. Textual kept the covered main
+  screen live, and its forward-then-full-repaint branch looped on every
+  update tick; `AegisApp._background_screens` now returns none under an
+  opaque top screen.
 - [ ] **A queue-born card and its ghost have no end-to-end check.** The
   bench cannot enqueue: the fake `claude` cannot call MCP tools and there
   is no enqueue CLI. The fork's origin is now tested through the real

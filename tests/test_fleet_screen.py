@@ -453,3 +453,41 @@ async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(
         band = app.screen._current.band
         assert band.system == app._system_last
         assert band.build
+
+
+async def test_the_screen_behind_the_fleet_does_not_repaint_it(tmp_path):
+    """Textual's background-screen branch (``Screen._compositor_refresh``)
+    sets ``_repaint_required`` on the covered screen after forwarding its
+    dirty regions, so every idle of a busy covered screen became a full
+    repaint of it and of the fleet on top: 57 frames/s in the bench. The
+    covered screen is kept busy here the way streaming sessions keep it,
+    by going idle 50 times a second."""
+    from textual.screen import Screen
+
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        behind = app.screen
+        await pilot.press("f10")
+        await pilot.pause()
+        fleet = app.screen
+        assert isinstance(fleet, FleetScreen)
+        full = []
+        refresh = Screen._compositor_refresh
+
+        def counting(scr):
+            if scr is fleet and scr in scr._dirty_widgets:
+                full.append(1)
+            return refresh(scr)
+
+        Screen._compositor_refresh = counting
+        try:
+            behind.query_one("StatusBar").refresh()
+            app.set_interval(0.02, behind.check_idle)
+            await pilot.pause(1.0)
+        finally:
+            Screen._compositor_refresh = refresh
+        assert len(full) <= 3, f"{len(full)} full repaints of the fleet in 1 s"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.screen is behind

@@ -29,13 +29,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   `many-tabs`' seven Claude-shaped streams, presses F10 inside the window,
   and fails unless the pty client drew the band and a card headed
   `N handle` for every tab, and, after `2`, the tab bar with tab 2 in
-  reverse video and tab 3 not. Not in the default set. On zion at 120x40,
-  three repeats each, with the host 64-73% busy: frame tick p50/p95/p99
-  3.8/14.2/23.3 ms under the grid against 7.6/54.7/175.2 ms for
-  `many-tabs` with the stream visible; daemon CPU 0.79 s/s against 0.89;
-  RSS 129.6 MB against 128.5. The grid hides every transcript, so `fleet`
-  has no marker latency (`many-tabs`: p50 113 ms, p95 327 ms). It draws
-  39.5 frames/s of 14.7 KB against 15.5 of 9.6 KB.
+  reverse video and tab 3 not. Not in the default set. Its first runs
+  showed the grid repainting the whole terminal at up to 60 frames/s; the
+  fix is under Fixed. With it, on zion at 120x40, three repeats, host
+  65-94% busy: 2.0 frames/s of 10.7 KB, 21 KB/s, with the grid open, where
+  `many-tabs` with the stream visible draws 18.8 frames/s of 9.6 KB. Frame
+  tick p50/p95 3.5/31.2 ms against 4.2/46.3 ms; daemon CPU 0.39 s/s against
+  0.83. The grid hides every transcript, so `fleet` has no marker latency.
 
   A bench world no longer polls the operator's quota accounts. It
   inherited `HOME`, so the TUI read the real Claude and OpenCode
@@ -62,6 +62,22 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   outlives `~n ↑n`: those describe a moment, this describes the session.
 
 ### Fixed
+
+- **F10's fleet grid no longer repaints the whole terminal 57 times a
+  second.** With six sessions streaming behind it, the pty client got 50-60
+  frames/s of 14.7 KB, 730-890 KB/s; now it gets 2.0 frames/s of 10.7 KB,
+  21 KB/s (`aegis bench run -s fleet`, three repeats each, host 31-94%
+  busy). Daemon CPU fell from 0.74 to 0.39 s/s. The cause was Textual
+  8.2.6, not the grid, whose own redraws were 2 a second throughout. A
+  screen under a pushed screen stays live, forwards its dirty regions up
+  and marks itself for a full repaint, which it runs on its next idle and
+  forwards again, so a busy covered screen repainted itself and the top
+  screen on every update tick. `AegisApp` now keeps no screen live under
+  an opaque top screen, which every pushed screen is here. This applies to
+  every modal: the screen under a picker or the queue dashboard now waits
+  and catches up when it is uncovered. `many-tabs`, with no screen pushed,
+  did not change: 16.3 → 18.8 frames/s, marker p95 355 → 286 ms, both
+  runs 69-89% busy.
 
 - **Agents could not see tabs opened with `/spawn`, `/fork`, Ctrl+R or a
   restart.** Only Ctrl+N had been moved onto the brain when the daemon

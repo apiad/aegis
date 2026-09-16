@@ -8,7 +8,7 @@ from types import SimpleNamespace as _SN
 from typing import TYPE_CHECKING
 
 from textual import work
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.binding import Binding
 from textual.widgets import ContentSwitcher
 
@@ -649,6 +649,25 @@ class AegisApp(App):
     def compose(self) -> ComposeResult:
         yield TabBar()
         yield ContentSwitcher()
+
+    @property
+    def _background_screens(self) -> list:
+        """No screen shows through an opaque top screen, so none is kept live.
+
+        Textual's version keeps the screen below any pushed screen, whatever
+        the top's own opacity. A covered screen forwards its dirty regions to
+        the top and marks itself for a full repaint, which it does on its
+        next idle, which forwards again: with sessions streaming behind F10
+        that was a full repaint of both screens on every update tick, 57
+        frames/s. Our `Screen` CSS makes every pushed screen opaque, so a
+        covered screen now waits and repaints when it is uncovered.
+        """
+        try:
+            if self.screen.styles.background.a == 1:
+                return []
+        except ScreenStackError:  # no screen yet: Textual's own answer
+            pass
+        return super()._background_screens
 
     @property
     def palette(self) -> AegisColors:
