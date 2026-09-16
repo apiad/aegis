@@ -277,3 +277,34 @@ def test_the_band_names_this_machine_even_when_tab_one_is_remote():
         FakeManager([remote, FakeSession("local-one")]), now=1000.0
     ).band
     assert band.host == socket.gethostname()
+
+
+def test_a_real_manager_builds_a_snapshot(tmp_path):
+    """Every fake above copies the manager's private attributes as they are
+    today. This one does not, so renaming `_workers`, `_pending` or `_queues`
+    breaks a test instead of the dashboard."""
+    from aegis.config.roots import AegisRoots
+    from tests.brain import make_brain
+
+    class FakeHarness:
+        async def start(self): ...
+        async def send(self, t): ...
+        async def close(self): ...
+
+        async def events(self):
+            if False:
+                yield
+
+    mgr = make_brain(
+        {"default": Agent(harness="claude-code", model="opus")},
+        "default",
+        make_session=lambda profile, url, handle: FakeHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+    )
+    mgr._sync_spawn("default")
+    snap = build_snapshot(mgr, now=1000.0)
+    assert len(snap.cards) == 1
+    assert snap.band.total == 1
+    # A ready session walks the waiting rule, which reads the queue manager.
+    assert snap.band.ready + snap.band.waiting == 1
