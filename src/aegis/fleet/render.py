@@ -243,11 +243,11 @@ def _band(band: BandView, pal, width: int) -> Text:
     # Summed over open sessions: it drops when a tab closes, so it is
     # labelled live and never today.
     mix += [sep, (f"${band.cost_live:.2f} live", pal.ink)]
-    if band.recap_calls:
-        mix += [
-            sep,
-            (f"recap ${band.recap_cost:.2f} / {band.recap_calls} calls", pal.muted),
-        ]
+    if band.recap_calls or band.recap_cancelled:
+        recap = f"recap ${band.recap_cost:.2f} / {band.recap_calls} calls"
+        if band.recap_cancelled:
+            recap += f" · {band.recap_cancelled} cancelled"
+        mix += [sep, (recap, pal.muted)]
     if band.clock:
         mix += [sep, (band.clock, pal.muted)]
 

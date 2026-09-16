@@ -96,6 +96,9 @@ class BandView:
     cost_live: float = 0.0  # sum over OPEN sessions — not a daily total
     recap_cost: float = 0.0
     recap_calls: int = 0
+    # Killed mid-flight, so billed an amount nobody can know: the band says
+    # the total above is incomplete rather than presenting it as the bill.
+    recap_cancelled: int = 0
     queues: tuple[int, int] = (0, 0)  # (running, configured)
     monitors: int = 0
     repos: tuple[RepoCount, ...] = ()

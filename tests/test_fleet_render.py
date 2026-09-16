@@ -299,3 +299,18 @@ def test_a_narrow_band_sheds_the_build_before_the_meters():
     out = as_text(render_fleet(FleetSnapshot(band=band), C, 40))
     assert "CPU 57%" in out
     assert "aegis 0.37.0" not in out
+
+
+def test_the_band_says_how_many_recaps_were_cancelled():
+    """A cancelled call billed an amount nobody can know, so the total is
+    marked incomplete rather than presented as the whole bill."""
+    band = BandView(recap_cost=0.05, recap_calls=5, recap_cancelled=2)
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "recap $0.05 / 5 calls · 2 cancelled" in out
+
+
+def test_no_cancelled_recap_draws_no_cancelled_count():
+    band = BandView(recap_cost=0.05, recap_calls=5)
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "recap $0.05 / 5 calls" in out
+    assert "cancelled" not in out

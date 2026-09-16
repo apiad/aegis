@@ -5,6 +5,8 @@ attributes `build_snapshot` actually reaches for, so a rename upstream
 breaks this test instead of production."""
 
 from dataclasses import dataclass
+
+import pytest
 from pathlib import Path
 
 from aegis.config import Agent
@@ -318,3 +320,12 @@ def test_a_real_manager_builds_a_snapshot(tmp_path):
     assert snap.band.total == 1
     # A ready session walks the waiting rule, which reads the queue manager.
     assert snap.band.ready + snap.band.waiting == 1
+
+
+def test_the_band_sums_the_recap_spend_over_live_sessions():
+    a, b = FakeSession("a"), FakeSession("b")
+    a.fleet_recap_cost_usd, a.fleet_recap_calls, a.fleet_recap_cancelled = 0.02, 2, 1
+    b.fleet_recap_cost_usd, b.fleet_recap_calls, b.fleet_recap_cancelled = 0.01, 1, 0
+    band = build_snapshot(FakeManager([a, b]), now=1000.0).band
+    assert band.recap_cost == pytest.approx(0.03)
+    assert (band.recap_calls, band.recap_cancelled) == (3, 1)

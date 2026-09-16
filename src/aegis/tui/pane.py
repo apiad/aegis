@@ -3012,6 +3012,7 @@ class ConversationPane(Widget):
             monitors=self._monitor_manager.snapshot(for_handle=self.handle)
             if self._monitor_manager is not None
             else [],
+            now_line=getattr(getattr(core, "fleet_recap", None), "doing", "") or "",
             system=self._system_tiers,
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,

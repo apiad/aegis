@@ -12,9 +12,11 @@ import asyncio
 
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
+from aegis.recap import Recap
 from aegis.tui.app import AegisApp
 from aegis.tui.fleet_screen import FleetScreen
 from aegis.tui.pane import ConversationPane
+from aegis.tui.sidebar import Sidebar
 from aegis.views.registry import ViewRegistry
 
 from tests.brain import make_brain
@@ -154,6 +156,25 @@ async def test_f10_watches_every_session_while_open(tmp_path):
         await pilot.pause()
         assert not isinstance(app.screen, FleetScreen)
         assert _watchers(app) == [1, 0, 0]
+
+
+async def test_a_delivered_recap_refreshes_the_now_line(tmp_path):
+    app = _bridged(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _tabs(app, pilot, 1)
+        await pilot.press("f3")
+        await pilot.pause()
+        pane = app._panes[0]
+        core = pane._core
+        bar = pane.query_one("#sidebar", Sidebar)
+        assert bar._model.now_line == ""
+        (cb,) = core._fleet_watchers
+        # Delivered the way the session delivers it: stored, then handed out.
+        recap = Recap(doing="wiring the watcher", ok=True)
+        core.fleet_recap = recap
+        cb(core, recap)
+        assert bar._model.now_line == "wiring the watcher"
+        assert "now wiring the watcher" in bar.plain()
 
 
 # --- the daemon shape: a view over a brain, detached ---

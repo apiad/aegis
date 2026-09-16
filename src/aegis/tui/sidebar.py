@@ -47,6 +47,8 @@ class SidebarModel:
     identity: tuple[str, ...] = ()
     state_label: str = ""
     loop: tuple[str, ...] = ()
+    # The mid-turn recap's `doing`, while someone watches a working session.
+    now_line: str = ""
     # CONTEXT
     metrics: tuple[str, ...] = ()
     quota: tuple[str, ...] = ()
@@ -108,6 +110,12 @@ def _session(m: SidebarModel, palette, width: int) -> Text | None:
         Segment("loop", m.loop, 0),
     ]
     rows = _rows(segs, palette, width)
+    if m.now_line:
+        # Wrapped, not tiered: fit_rows drops a row whose narrowest tier
+        # overflows, and a recap sentence is usually wider than the column.
+        now = Text("now ", style=palette.muted)
+        now.append(m.now_line, style=palette.working)
+        rows.append(now)
     if not rows:
         return None
     return _block(heading("SESSION", palette, width), rows)

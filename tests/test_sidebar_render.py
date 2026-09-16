@@ -297,3 +297,15 @@ def test_a_coloured_metrics_segment_survives_the_rich_parser():
     assert "ctx 160k (80%)" in out
     assert "✂2" in out
     assert "$error" not in out and "[" not in out
+
+
+def test_the_now_line_rides_in_the_session_section():
+    m = SidebarModel(title="t", now_line="wiring the fleet watcher")
+    out = as_text(render_sidebar(m, C, 40))
+    assert "SESSION" in out
+    assert "now wiring the fleet watcher" in out
+
+
+def test_no_recap_draws_no_now_line():
+    out = as_text(render_sidebar(SidebarModel(title="t"), C, 40))
+    assert "now" not in out

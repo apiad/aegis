@@ -111,6 +111,10 @@ def _band(cards, *, sessions, manager) -> BandView:
         ctx_avg=sum(p for _h, p in ctx) / len(ctx) if ctx else 0.0,
         ctx_worst=max(ctx, key=lambda hp: hp[1]) if ctx else None,
         cost_live=sum(c.cost_usd for c in cards),
+        # getattr: a session source without the counters has spent nothing.
+        recap_cost=sum(getattr(s, "fleet_recap_cost_usd", 0.0) for s in sessions),
+        recap_calls=sum(getattr(s, "fleet_recap_calls", 0) for s in sessions),
+        recap_cancelled=sum(getattr(s, "fleet_recap_cancelled", 0) for s in sessions),
         queues=(len(qm._workers), len(qm._queues)) if qm is not None else (0, 0),
         monitors=len(mm.snapshot()) if mm is not None else 0,
         repos=tuple(
