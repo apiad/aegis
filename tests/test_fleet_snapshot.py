@@ -267,6 +267,16 @@ def test_ghosts_are_drawn_but_not_counted():
     assert snap.band.total == 1
 
 
+def test_a_ghost_carries_its_age_so_the_renderer_needs_no_clock():
+    """ghost_since and now are both monotonic; the age is computed here, where
+    the clock already is, and the renderer only formats it."""
+    ghost = CardView(handle="w9", origin=Origin(kind="queue"), ghost_since=977.0)
+    snap = build_snapshot(
+        FakeManager([FakeSession("a")]), now=1000.0, ghosts={"w9": (ghost, 977.0)}
+    )
+    assert snap.cards[-1].ghost_s == 23.0
+
+
 def test_the_band_names_this_machine_even_when_tab_one_is_remote():
     """The first card's host would label the whole fleet with a remote box."""
     import socket

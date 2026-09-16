@@ -70,6 +70,7 @@ class CardView:
     waiting_on: tuple[str, ...] = ()
     tab_index: int = 0  # 1-based; the card is that tab
     ghost_since: float | None = None  # set when an ephemeral session died
+    ghost_s: float = 0.0  # how long ago it died; set by build_snapshot
 
 
 @dataclass(frozen=True)

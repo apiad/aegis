@@ -15,6 +15,7 @@ from __future__ import annotations
 import socket
 
 from collections import Counter
+from dataclasses import replace
 
 from aegis.budget.cost import compute
 from aegis.fleet.models import BandView, CardView, FleetSnapshot, Origin, RepoCount
@@ -32,7 +33,12 @@ def build_snapshot(manager, *, now: float, ghosts=None) -> FleetSnapshot:
     # closed, kept on screen briefly, so it is drawn but never counted.
     band = _band(cards, sessions=sessions, manager=manager)
     if ghosts:
-        cards = cards + tuple(c for c, _died in ghosts.values())
+        # ghost_since and now are both monotonic, and the renderer has no
+        # clock, so the ghost's age is taken here.
+        cards = cards + tuple(
+            replace(c, ghost_s=now - c.ghost_since) if c.ghost_since is not None else c
+            for c, _died in ghosts.values()
+        )
     return FleetSnapshot(band=band, cards=cards)
 
 
