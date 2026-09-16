@@ -36,6 +36,8 @@ from aegis.queue.schema import (
     InboxMessage,
     Queue,
     Task,
+    _handle_of,
+    local_waiter,
     new_ulid,
     now_iso,
     sender_agent,
@@ -90,16 +92,6 @@ def _adapt_metrics(metrics):
         thinking_tokens = 0
 
     return _M
-
-
-def _handle_of(sender_tag: str) -> str:
-    """Extract the inbox handle from a SenderTag. Only ``agent:<handle>``
-    has a delivery target in v1; others (system/queue:…) deliver
-    to a sentinel handle equal to the sender — the router tolerates
-    unbound handles and just buffers."""
-    if sender_tag.startswith("agent:"):
-        return sender_tag.split(":", 1)[1]
-    return sender_tag
 
 
 class QueueManager:
@@ -562,7 +554,9 @@ class QueueManager:
                     kind="queue",
                     by=queue,
                     detail=task.id[-4:],
-                    returns_to=task.callback_to or "",
+                    # A local task answers the session that enqueued it;
+                    # only a task a remote peer sent carries `callback_to`.
+                    returns_to=local_waiter(task) or task.callback_to or "",
                 ),
             )
             self._attach_observers(session, dispatched)

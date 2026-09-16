@@ -121,6 +121,31 @@ class Task:
     callback_handle: str | None = None
 
 
+def local_waiter(task: Task) -> str | None:
+    """The local session handle this task's answer is delivered to, or None.
+
+    None when the task asked for no callback, or when ``callback_to`` names
+    a remote peer: that waiter is a session on the other host, reached over
+    the wire, not a handle here. A local ``aegis_enqueue`` never sets
+    ``callback_to`` or ``callback_handle``; the waiter is whoever
+    ``enqueued_by`` names, which is where ``QueueManager._finalize``
+    delivers.
+    """
+    if not task.callback or task.callback_to:
+        return None
+    return _handle_of(task.enqueued_by)
+
+
+def _handle_of(sender_tag: str) -> str:
+    """Extract the inbox handle from a SenderTag. Only ``agent:<handle>``
+    has a delivery target in v1; others (system/queue:…) deliver
+    to a sentinel handle equal to the sender — the router tolerates
+    unbound handles and just buffers."""
+    if sender_tag.startswith("agent:"):
+        return sender_tag.split(":", 1)[1]
+    return sender_tag
+
+
 @dataclass(frozen=True)
 class Delivery:
     """Receipt returned by ``deliver``: did the message ``landed`` (consumed

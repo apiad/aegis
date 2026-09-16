@@ -85,6 +85,12 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **A queue worker's card names the session that gets its answer.** A task
+  enqueued locally with `aegis_enqueue` showed no `→` target on its F10
+  card, because the card read the field only a remote peer's task fills.
+  It now names the session that enqueued it, and a task a remote peer
+  sent still names that peer.
+
 - **One-shot generation calls no longer pay for reasoning or for the
   project directory.** On the Claude driver, the turn recap, `/btw`,
   session titles and the fleet's `now` line now run with

@@ -3,6 +3,7 @@ and will it outlive the work it was made for."""
 
 import pytest
 
+from aegis.config import Agent
 from aegis.fleet.models import Origin
 
 
@@ -120,37 +121,100 @@ async def test_the_real_fork_marks_its_child_as_a_fork(tmp_path):
     assert mgr.get(child).origin.ephemeral is False
 
 
-async def test_the_queue_spawns_its_worker_with_a_queue_origin():
-    """Drive the real dispatch loop, not a synthetic call: the queue is the
-    site that records nothing today, so what matters is whether THAT line
-    changed. The brief specified an `inspect.getsource` seam here; the real
-    substrate is reachable from a test, so this asserts on the session the
-    queue actually built."""
-    from aegis.queue import InboxRouter, QueueManager, sender_agent
+async def test_the_queue_spawns_its_worker_with_a_queue_origin(tmp_path):
+    """Drive a real brain and a real QueueManager, enqueued exactly the way
+    `aegis_enqueue` enqueues on its local path: a sender tag and
+    `callback=True`, and no `callback_to` / `callback_handle`, which only a
+    remote peer sets. The earlier version passed `callback_to="rosy-rivest"`
+    and so asserted the one field a local enqueue never fills: every local
+    queue card said the answer went nowhere."""
+    from aegis.config.roots import AegisRoots
+    from aegis.queue import Queue, sender_agent
 
-    from tests.test_queue_manager import StubSessionManager, _q
+    from tests.brain import make_brain
 
-    sm, inbox = StubSessionManager(), InboxRouter()
-    qm = QueueManager(
-        {"general": _q(name="general", profile="claude", cap=1)},
-        sm,
-        inbox,
-        handle_factory=lambda used: "worker-1",
+    mgr = make_brain(
+        {"default": Agent(harness="claude-code", model="opus")},
+        "default",
+        make_session=lambda profile, url, handle: _QuietHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+        queues={"general": Queue(name="general", agent_profile="default",
+                                 max_parallel=1)},
     )
-    task_id, _ = qm.enqueue(
+    mgr._sync_spawn("default", handle="rosy-rivest")
+    task_id, _ = mgr.queue_manager.enqueue(
         "general",
         "audit the ledger",
         enqueued_by=sender_agent("rosy-rivest"),
         callback=True,
-        callback_to="rosy-rivest",
     )
 
-    ((_slug, _handle, _prompt, session),) = sm.spawns
-    assert session.origin.kind == "queue"
-    assert session.origin.by == "general"
-    assert session.origin.detail == task_id[-4:]
-    assert session.origin.returns_to == "rosy-rivest"
-    assert session.origin.ephemeral is True
+    ((worker, (task, _last)),) = mgr.queue_manager._workers.items()
+    assert task.id == task_id and task.callback_to is None
+    origin = mgr.get(worker).origin
+    assert origin.kind == "queue"
+    assert origin.by == "general"
+    assert origin.detail == task_id[-4:]
+    assert origin.returns_to == "rosy-rivest"
+    assert origin.ephemeral is True
+
+
+async def test_a_queue_task_without_a_callback_returns_to_nobody(tmp_path):
+    from aegis.config.roots import AegisRoots
+    from aegis.queue import Queue, sender_agent
+
+    from tests.brain import make_brain
+
+    mgr = make_brain(
+        {"default": Agent(harness="claude-code", model="opus")},
+        "default",
+        make_session=lambda profile, url, handle: _QuietHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+        queues={"general": Queue(name="general", agent_profile="default",
+                                 max_parallel=1)},
+    )
+    mgr.queue_manager.enqueue("general", "fire and forget",
+                              enqueued_by=sender_agent("rosy-rivest"),
+                              callback=False)
+    ((worker, _),) = mgr.queue_manager._workers.items()
+    assert mgr.get(worker).origin.returns_to == ""
+
+
+async def test_a_task_a_remote_peer_sent_returns_to_that_peer(tmp_path):
+    """Enqueued with the arguments `remote/plane.py` passes: the waiter is a
+    session on the other host, so the card names the peer."""
+    from aegis.config.roots import AegisRoots
+    from aegis.queue import Queue
+
+    from tests.brain import make_brain
+
+    mgr = make_brain(
+        {"default": Agent(harness="claude-code", model="opus")},
+        "default",
+        make_session=lambda profile, url, handle: _QuietHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+        queues={"general": Queue(name="general", agent_profile="default",
+                                 max_parallel=1)},
+    )
+    mgr.queue_manager.enqueue("general", "audit the ledger",
+                              enqueued_by="remote:laptop", callback=False,
+                              callback_to="laptop", callback_handle="rosy-rivest")
+    ((worker, _),) = mgr.queue_manager._workers.items()
+    assert mgr.get(worker).origin.returns_to == "laptop"
+
+
+class _QuietHarness:
+    async def start(self): ...
+    async def send(self, t): ...
+    async def close(self): ...
+    async def interrupt(self): ...
+
+    async def events(self):
+        if False:
+            yield
 
 
 async def test_the_mcp_spawn_tool_marks_an_agent_origin():
