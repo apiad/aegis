@@ -192,3 +192,21 @@ async def test_a_second_client_for_a_live_view_is_refused(tmp_path):
         "the refusal took the first client's view"
     a.eof()
     await asyncio.wait_for(ta, timeout=15)
+
+
+async def test_a_hello_asking_for_the_fleet_opens_it(tmp_path):
+    """`aegis dash`: the hello's ``open`` reaches the view, which comes up
+    with the fleet dashboard on top."""
+    from aegis.tui.fleet_screen import FleetScreen
+
+    reg, _ = _reg(tmp_path)
+    pipe = _Pipe()
+    pipe.push(hello("v1", 120, 40, open="fleet"))
+    task = asyncio.create_task(serve_view(pipe, pipe, reg))
+    try:
+        await _until(lambda: reg.get("v1") is not None)
+        await _until(lambda: reg.get("v1").app.screen_stack
+                     and isinstance(reg.get("v1").app.screen, FleetScreen))
+    finally:
+        pipe.eof()
+        await asyncio.wait_for(task, timeout=15)

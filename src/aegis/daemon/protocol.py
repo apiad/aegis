@@ -32,22 +32,29 @@ def encode_meta(obj: dict) -> bytes:
     return b"M" + len(raw).to_bytes(4, "big") + raw
 
 
-def hello(view_id: str, width: int, height: int) -> bytes:
-    """The client's first frame: which view, at what size.
+#: Screens a client may ask a view to show on attach (`aegis dash`).
+OPENABLE = ("fleet",)
+
+
+def hello(view_id: str, width: int, height: int, *, open: str | None = None) -> bytes:
+    """The client's first frame: which view, at what size, showing what.
 
     A meta frame rather than a bespoke preamble, so the stream has exactly
     one shape from the first byte. 5b's auth frame is the same trick.
+    ``open`` is written only when set, so a plain attach sends the frame
+    every older daemon already reads.
     """
-    return encode_meta(
-        {"type": "hello", "view_id": view_id, "width": width, "height": height}
-    )
+    obj = {"type": "hello", "view_id": view_id, "width": width, "height": height}
+    if open is not None:
+        obj["open"] = open
+    return encode_meta(obj)
 
 
 def resize(width: int, height: int) -> bytes:
     return encode_meta({"type": "resize", "width": width, "height": height})
 
 
-def parse_hello(payload: bytes) -> tuple[str, int, int]:
+def parse_hello(payload: bytes) -> tuple[str, int, int, str | None]:
     try:
         obj = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
@@ -66,7 +73,10 @@ def parse_hello(payload: bytes) -> tuple[str, int, int]:
     for name, value in (("width", width), ("height", height)):
         if type(value) is not int or value < 1:
             raise ProtocolError(f"hello has a bad {name}: {value!r}")
-    return view_id, width, height
+    open_ = obj.get("open")
+    if open_ is not None and open_ not in OPENABLE:
+        raise ProtocolError(f"hello asks to open an unknown screen: {open_!r}")
+    return view_id, width, height, open_
 
 
 class FrameDecoder:

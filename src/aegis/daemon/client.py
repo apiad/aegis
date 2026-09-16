@@ -53,7 +53,12 @@ def _raw(fd: int):
 
 
 async def attach(
-    path: str | Path, view_id: str, *, stdin_fd: int = 0, stdout: BinaryIO | None = None
+    path: str | Path,
+    view_id: str,
+    *,
+    stdin_fd: int = 0,
+    stdout: BinaryIO | None = None,
+    open: str | None = None,
 ) -> None:
     """Connect to a daemon's unix socket and pipe until either end stops."""
     out = stdout if stdout is not None else sys.stdout.buffer
@@ -61,7 +66,7 @@ async def attach(
     loop = asyncio.get_running_loop()
 
     width, height = terminal_size(stdin_fd)
-    writer.write(hello(view_id, width, height))
+    writer.write(hello(view_id, width, height, open=open))
     await writer.drain()
 
     def _on_winch() -> None:

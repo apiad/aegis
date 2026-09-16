@@ -26,6 +26,8 @@ class View:
     state: ViewState
     sink: FrameSink = field(default_factory=FrameSink)
     _task: asyncio.Task | None = None
+    #: A screen asked for before the app could show one, applied by `run`.
+    _pending_open: str | None = None
 
     #: How long `stop` waits for the app to exit before cancelling it.
     STOP_TIMEOUT_S = 10
@@ -94,6 +96,22 @@ class View:
             if asyncio.get_running_loop().time() > deadline:
                 raise TimeoutError(f"view {self.view_id} never pushed a screen")
             await asyncio.sleep(0.005)
+        if self._pending_open is not None:
+            self.show(self._pending_open)
+
+    def show(self, screen: str) -> None:
+        """Put ``screen`` (a `protocol.OPENABLE` name) on top of this view.
+
+        Posted with ``call_next`` because pushing a screen needs the app's
+        own context, which a daemon connection task does not have. The app
+        side checks the stack when the message runs, not now, so asking
+        twice before either runs still shows one fleet.
+        """
+        if not self.app.screen_stack:
+            self._pending_open = screen
+            return
+        self._pending_open = None
+        self.app.call_next(self.app.show_fleet)
 
     async def wait_stopped(self) -> None:
         """Block until the app behind this view has exited.

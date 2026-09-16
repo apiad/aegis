@@ -34,9 +34,13 @@ class ViewRegistry:
         self._app_kw = app_kw
         self._views: dict[str, View] = {}
 
-    async def open(self, view_id: str, geometry: tuple[int, int]) -> View:
+    async def open(
+        self, view_id: str, geometry: tuple[int, int], *, open: str | None = None
+    ) -> View:
         existing = self._views.get(view_id)
         if existing is not None:
+            if open is not None:
+                existing.show(open)
             return existing
         v = await open_view(
             view_id,
@@ -47,6 +51,8 @@ class ViewRegistry:
             can_stop_daemon=self.would_grant_quit,
             **self._app_kw,
         )
+        if open is not None:
+            v.show(open)
         self._views[view_id] = v
         return v
 

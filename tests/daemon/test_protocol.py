@@ -47,7 +47,15 @@ def test_two_frames_in_one_chunk_both_come_out():
 
 def test_hello_round_trips():
     assert parse_hello(hello("tty-dev-pts-3", 120, 40)[5:]) == (
-        "tty-dev-pts-3", 120, 40)
+        "tty-dev-pts-3", 120, 40, None)
+
+
+def test_hello_carries_a_screen_to_open():
+    """`aegis dash` asks for the fleet in the hello. Without the flag the
+    frame is byte-for-byte what every older client sends."""
+    assert parse_hello(hello("tty-1", 120, 40, open="fleet")[5:]) == (
+        "tty-1", 120, 40, "fleet")
+    assert "open" not in json.loads(hello("tty-1", 120, 40)[5:])
 
 
 def test_resize_is_the_meta_shape_textual_already_understands():
@@ -65,6 +73,8 @@ def test_resize_is_the_meta_shape_textual_already_understands():
     b'{"type": "hello", "view_id": "../etc", "width": 1, "height": 1}',
     b'{"type": "hello", "view_id": "a", "width": 0, "height": 1}',
     b'{"type": "hello", "view_id": "a", "width": "80", "height": 24}',
+    b'{"type": "hello", "view_id": "a", "width": 1, "height": 1, "open": "f3"}',
+    b'{"type": "hello", "view_id": "a", "width": 1, "height": 1, "open": 1}',
 ])
 def test_a_malformed_hello_raises(payload):
     """The first frame is the only one a client can send before it owns a

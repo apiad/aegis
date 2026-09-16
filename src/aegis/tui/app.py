@@ -2211,6 +2211,15 @@ class AegisApp(App):
             callback=opened,
         )
 
+    def show_fleet(self) -> None:
+        """Open the fleet unless it is already up. `aegis dash` asks for it
+        on attach, and on a re-attach the view may be showing it: F10's
+        toggle would close it there."""
+        from aegis.tui.fleet_screen import FleetScreen
+
+        if not any(isinstance(s, FleetScreen) for s in self.screen_stack):
+            self.action_open_fleet()
+
     def _fleet_system_row(self) -> dict:
         """The band's SYSTEM row: the tiers the last tick sampled and pushed
         to F3, and the build. System and quota are empty before that tick."""

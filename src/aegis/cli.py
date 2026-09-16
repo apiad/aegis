@@ -466,15 +466,17 @@ def _handle_stale_daemon(root: Path) -> None:
     )
 
 
-def _attach_to_daemon(root: Path, view_id: str) -> None:
-    """Ensure a daemon for ``root`` and pipe this terminal to it."""
+def _attach_to_daemon(root: Path, view_id: str, *, open: str | None = None) -> None:
+    """Ensure a daemon for ``root`` and pipe this terminal to it.
+
+    ``open`` names a screen the view shows on attach (`aegis dash`)."""
     from aegis.daemon.lifecycle import SpawnFailed
 
     _handle_stale_daemon(root)
 
     async def _go():
         path = await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
-        await _attach(path, view_id)
+        await _attach(path, view_id, open=open)
 
     try:
         asyncio.run(_go())
@@ -936,6 +938,18 @@ def attach(
     """Attach this terminal to the daemon for a project root."""
     root = _root_for(cwd)
     _attach_to_daemon(root, view or _tty_view_id())
+
+
+@app.command()
+def dash(
+    view: str = typer.Option(
+        None, "--view", help="View id. Defaults to this terminal."
+    ),
+    cwd: str = typer.Option(".", "--cwd", help="Project root whose daemon to attach."),
+) -> None:
+    """Attach with the fleet dashboard (F10) open, e.g. on a second monitor."""
+    root = _root_for(cwd)
+    _attach_to_daemon(root, view or _tty_view_id(), open="fleet")
 
 
 @app.command("ls")

@@ -29,7 +29,7 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
     view = None
     sink_fn = None
     try:
-        view_id, width, height = await _read_hello(reader, decoder)
+        view_id, width, height, open_ = await _read_hello(reader, decoder)
         if registry.get(view_id) is not None:
             # One client per view id. ViewRegistry.open returns the
             # EXISTING view for a live id, so attaching twice would give
@@ -37,7 +37,7 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
             # the first client's terminal and both drive the same focus.
             raise ProtocolError(f"view {view_id!r} already has a client")
 
-        view = await registry.open(view_id, (width, height))
+        view = await registry.open(view_id, (width, height), open=open_)
 
         loop = asyncio.get_running_loop()
         pending: list[bytes] = []
@@ -145,7 +145,9 @@ async def serve_view(reader, writer, registry, *, on_close=None) -> None:
             on_close()
 
 
-async def _read_hello(reader, decoder: FrameDecoder) -> tuple[str, int, int]:
+async def _read_hello(
+    reader, decoder: FrameDecoder
+) -> tuple[str, int, int, str | None]:
     """Block until the first whole frame, which must be a hello.
 
     Bounded, because an unauthenticated client that dribbles bytes forever
