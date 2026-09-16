@@ -1764,52 +1764,73 @@ git commit -m "feat(fleet): the band carries F3's SYSTEM row, since F10 hides F3
 
 Green tests against a daemon that booted before the change prove nothing about the change.
 
+> **Rewritten mid-run.** The first draft began with `aegis kill` and `aegis`.
+> On the operator's machine that kills the live daemon and every agent in it,
+> including the controller running this plan. It is replaced by the
+> `aegis bench` rig, which builds a throwaway world under `/tmp/aegis-bench-*`
+> with **its own daemon**, a fake `claude` on `PATH` and a real client in a
+> pty, and "never touches the daemon you are using"
+> (`know-how/benchmarking.md`). That is a daemon started after the change,
+> reached through a real terminal client — what `AGENTS.md` asks for — at no
+> risk to the live fleet. The last check, F10 over the operator's own fleet,
+> needs his daemon restarted and is his to schedule.
+
 **Files:**
 - Modify: `src/aegis/bench/scenarios.py`
+- Test: whatever the bench's own tests use to register a scenario (read `tests/bench/`)
 - Modify: `CHANGELOG.md`, `TASKS.md`
 
-- [ ] **Step 1: Restart the daemon and open F10 for real**
+- [ ] **Step 1: A `fleet` scenario in the bench rig**
+
+Model it on `many_tabs` (`bench/scenarios.py:471`): boot, open several tabs
+with background Claude-shaped streams so events flow, then **inside the
+measurement window press F10** and keep pumping while the streams run, so the
+window measures frames with the grid up and redrawing. Register it in the
+scenario list the CLI reads, not in `DEFAULT` or `QUICK`.
+
+- [ ] **Step 2: Assert on what the pty client actually drew**
+
+The rig reconstructs each client's screen (`Rig.screen()`, `rig.py:147`).
+After F10, assert the screen shows the band (`agents`) and one card per tab
+by handle; after pressing `2`, assert the fleet is gone and tab 2 is the
+active tab in the tab bar. Fail the scenario with `BenchError` otherwise. This
+is the step that proves F10 works in a daemon started after the change,
+through a real terminal client.
+
+- [ ] **Step 3: A fork and a queue worker, if the rig can make them**
+
+`tests/test_fleet_origin.py` covers the fork's *shape* through `_sync_spawn`,
+not `SessionManager.fork()`, and workflow and group births have no test at
+all. If the bench world can configure a queue (its `.aegis.yaml` is written in
+`bench/world.py:69`) and the fake claude can serve a worker, enqueue one task
+with F10 open and assert an ephemeral card appears and then becomes a ghost.
+If the rig cannot do that without new infrastructure, **stop at Steps 1-2**,
+and instead add one in-process test over `tests/brain.py::make_brain` that
+calls the real `SessionManager.fork()` and asserts the child's
+`origin.kind == "fork"`. Report which you did and why.
+
+- [ ] **Step 4: Run it and record the numbers**
 
 ```bash
-cd /home/apiad/Workspace/repos/aegis
-aegis kill
-aegis
+AEGIS_BENCH_HOME=/tmp/fleet-bench uv run aegis bench run -s fleet --repeat 3
 ```
 
-In the TUI: open three or four tabs, press **F10**. Confirm by eye: a card per tab, in tab order; the band counts them; a plan bar where a session has a plan; the activity tail showing real tool calls.
+Record the frame-span and latency medians in `CHANGELOG.md`. Then run the
+existing `many-tabs` scenario the same way, so the fleet's cost reads against
+the same streams without the grid. `AEGIS_BENCH_HOME` keeps the throwaway runs
+out of `~/.aegis/bench`.
 
-- [ ] **Step 2: Click a card**
+- [ ] **Step 5: No real accounts**
 
-Click one. Expected: the screen closes and that session's transcript is on screen. Then F10 again and press `3`. Expected: tab 3.
-
-- [ ] **Step 2b: Confirm a fork reads as a fork**
-
-`tests/test_fleet_origin.py` covers the fork *shape* through `_sync_spawn`, not `SessionManager.fork()`, so deleting `core/manager.py:408` leaves it green. Same for `workflow/engine.py:398` and `groups/wiring.py:38`, which have no test at all. Fork a tab in the TUI, open F10, and confirm the card says `fork` and names the parent.
-
-- [ ] **Step 3: Watch a real ephemeral worker**
-
-With F10 open, from another tab run a queue task (`/enqueue general <something short>`, or the tool). Expected: an ephemeral card appears with a dashed border, `queue <name> #<id>`, and where the answer returns; when the worker finishes it becomes a ghost and disappears about a minute later.
-
-This is the step that verifies `Origin` against the real system rather than against `inspect.getsource`. If the card says `operator`, the queue's spawn is not carrying the origin.
-
-- [ ] **Step 4: Add the bench scenario**
-
-Add a scenario to `src/aegis/bench/scenarios.py` that opens F10 over nine sessions under a live event stream and measures frame spans, following the scenarios already there. Run it:
-
-```bash
-uv run aegis bench run --scenario fleet-grid
-```
-
-Record the numbers in `CHANGELOG.md`. This is the most expensive screen the TUI has; `AGENTS.md` requires bench for any claim about its speed, and "it felt fine" is not one.
-
-- [ ] **Step 5: Full gate**
-
-Run `make check` as its own tool call. Read the exit code directly.
+The bench world uses a fake `claude`, so it does not poll real providers.
+Confirm the quota poll is also stubbed in that world; if it is not, stub it.
+Screenshot and bench tooling must never poll the operator's real quota
+accounts (a Task 9c screenshot run came back `cc rate limited`).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -- src/aegis/bench/scenarios.py CHANGELOG.md TASKS.md -m "feat(bench): a nine-card fleet grid scenario, and slice 2 shipped"
+git commit -m "feat(bench): a fleet scenario that opens F10 in a fresh daemon" -- src/aegis/bench/scenarios.py CHANGELOG.md TASKS.md <tests you added>
 ```
 
 ---
