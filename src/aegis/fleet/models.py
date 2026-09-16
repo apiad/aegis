@@ -92,7 +92,7 @@ class BandView:
     error: int = 0  # working + ready + waiting + error == total
     ctx_avg: float = 0.0
     ctx_worst: tuple[str, float] | None = None  # (handle, pct)
-    cost_today: float = 0.0
+    cost_live: float = 0.0  # sum over OPEN sessions — not a daily total
     recap_cost: float = 0.0
     recap_calls: int = 0
     queues: tuple[int, int] = (0, 0)  # (running, configured)

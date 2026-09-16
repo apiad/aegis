@@ -228,7 +228,7 @@ def test_context_and_cost_reach_the_card_and_the_band():
     assert snap.band.ctx_avg == 50.0
     assert snap.band.ctx_worst == ("b", 75.0)
     assert snap.cards[1].cost_usd > 0.0
-    assert snap.band.cost_today == sum(c.cost_usd for c in snap.cards)
+    assert snap.band.cost_live == sum(c.cost_usd for c in snap.cards)
 
 
 def test_a_session_without_a_profile_costs_nothing():
@@ -265,3 +265,15 @@ def test_ghosts_are_drawn_but_not_counted():
     )
     assert [c.handle for c in snap.cards] == ["a", "w9"]
     assert snap.band.total == 1
+
+
+def test_the_band_names_this_machine_even_when_tab_one_is_remote():
+    """The first card's host would label the whole fleet with a remote box."""
+    import socket
+
+    remote = FakeSession("on-vps")
+    remote.place = FakePlace(host="vps")
+    band = build_snapshot(
+        FakeManager([remote, FakeSession("local-one")]), now=1000.0
+    ).band
+    assert band.host == socket.gethostname()

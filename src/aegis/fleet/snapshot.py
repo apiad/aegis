@@ -12,6 +12,8 @@ would take them all down.
 
 from __future__ import annotations
 
+import socket
+
 from collections import Counter
 
 from aegis.budget.cost import compute
@@ -89,7 +91,9 @@ def _band(cards, *, sessions, manager) -> BandView:
     qm = getattr(manager, "queue_manager", None)
     mm = getattr(manager, "monitor_manager", None)
     return BandView(
-        host=cards[0].host if cards else "local",
+        # The machine this dashboard runs on. The first card's host would
+        # name a remote box whenever tab 1 happens to be one.
+        host=socket.gethostname(),
         total=len(cards),
         yours=len(cards) - len(ephemeral),
         ephemeral=len(ephemeral),
@@ -100,7 +104,7 @@ def _band(cards, *, sessions, manager) -> BandView:
         error=error,
         ctx_avg=sum(p for _h, p in ctx) / len(ctx) if ctx else 0.0,
         ctx_worst=max(ctx, key=lambda hp: hp[1]) if ctx else None,
-        cost_today=sum(c.cost_usd for c in cards),
+        cost_live=sum(c.cost_usd for c in cards),
         queues=(len(qm._workers), len(qm._queues)) if qm is not None else (0, 0),
         monitors=len(mm.snapshot()) if mm is not None else 0,
         repos=tuple(
