@@ -75,3 +75,18 @@ def test_a_subagents_tool_call_is_not_the_sessions_own(session):
         ToolUse(name="Read", summary="x.py", parent_tool_use_id="toolu_01"), at=1.0
     )
     assert session.recent_events == ()
+
+
+def test_a_tool_call_on_the_live_path_reaches_the_ring(session):
+    """The seam, not the method. Delete the note_event call from
+    _fire_event and this goes red; the four tests above do not."""
+    session._fire_event(ToolUse(name="Edit", summary="apps/sigere/pusher.py"))
+    assert [e.tool for e in session.recent_events] == ["Edit"]
+
+
+def test_a_replayed_transcript_does_not_refill_the_ring(session):
+    """Replay walks events through rehydrate_plan, which never calls
+    _fire_event. A resumed session must start with an empty tail rather
+    than one repainted from stale history."""
+    session.rehydrate_plan([ToolUse(name="Edit", summary="old.py")], [1.0])
+    assert session.recent_events == ()
