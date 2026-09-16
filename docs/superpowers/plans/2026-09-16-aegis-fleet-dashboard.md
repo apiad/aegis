@@ -1835,6 +1835,80 @@ git commit -m "feat(bench): a fleet scenario that opens F10 in a fresh daemon" -
 
 ---
 
+### Task 10b: the fleet screen repaints at 60 fps
+
+Found by Task 10's bench run and characterised in its review. With F10 open
+over six working sessions, the pty client receives **40 frames/s inside the
+measurement window and 56–60 frames/s after it**, every frame a full-screen
+repaint of ~14.7 KB — about 850 KB/s of terminal output. The same streams
+without the modal draw 4–5 frames/s. The fleet's own coalescing is correct
+(`fleet_screen.py:255-265`); something outside it is driving the repaints.
+Until this is fixed the dashboard is not fit to sit open all day, which is its
+whole purpose.
+
+**Hypothesis, from the review — confirm it before fixing anything.**
+`FleetScreen` is a `ModalScreen` (`fleet_screen.py:115`). Textual keeps the
+screen below a modal in `app._background_screens` regardless of opacity
+(`textual/app.py:1646-1652`), and `Screen._compositor_refresh` forwards that
+background screen's dirty regions into the top screen
+(`textual/screen.py:1226-1231`). The main screen stays dirty while sessions
+work (tab-bar spinners, `✻ working…`, the elapsed clock), and each dirty
+region becomes a full repaint of the modal. Read those Textual lines in the
+installed package before relying on the line numbers.
+
+**Files:**
+- Modify: `src/aegis/tui/fleet_screen.py`, `src/aegis/tui/app.py`
+- Test: `tests/test_fleet_screen.py`, the `fleet` bench scenario
+- Modify: `CHANGELOG.md`, `TASKS.md`
+
+- [ ] **Step 1: Confirm the redraws are not the fleet's own**
+
+In a scratch copy or behind a temporary env flag, count `FleetScreen._draw`
+calls and emit the count where the bench can read it. Run
+`AEGIS_BENCH_HOME=/tmp/fleet-bench uv run aegis bench run -s fleet` once. If
+`_draw` runs ~2–3 times/s while the rig counts 40+ frames/s, the cause is
+outside the fleet screen. Record both numbers. Remove the counter.
+
+- [ ] **Step 2: Test the hypothesis directly**
+
+Change `class FleetScreen(ModalScreen)` to `class FleetScreen(Screen)` and run
+the scenario again. If frames fall to ≤ 5/s with each frame still ~full size
+or smaller, the background-screen forwarding is confirmed. If they do not,
+**stop**: report the numbers and what you ruled out, and do not guess at a
+second fix.
+
+- [ ] **Step 3: Make the fix real**
+
+If Step 2 confirmed it, keep `Screen`, and repair what `ModalScreen` gave for
+free:
+- **Escape.** `AegisApp.action_interrupt` dismisses only a `ModalScreen`
+  (`app.py:2229`). Escape over the fleet must still close it and must never
+  interrupt a running turn in the pane behind. Prefer a priority `escape`
+  binding on `FleetScreen` itself over widening the app's `isinstance` check.
+- **Dismissal and the `push_screen(callback=)` path** must behave the same.
+- Anything else that checks for `ModalScreen` — grep `src/aegis` for it.
+
+Write a test that pins the cause: with the fleet open over a pane whose status
+bar keeps changing, the fleet's screen must not be repainted on each change
+(for example, count `refresh` calls or compositor updates on the fleet screen
+in a `run_test` app while poking the background pane's spinner). It must fail
+on `ModalScreen` and pass on `Screen`.
+
+- [ ] **Step 4: Measure again and correct the record**
+
+Re-run `fleet --repeat 3` and `many-tabs --repeat 3`. In `CHANGELOG.md`, lead
+the fleet entry with **frames/s and bytes/s**, then frame-tick times — the
+first entry led with cheaper ticks and hid the 2.5× frame count. Update the
+`TASKS.md` entry Task 10 filed: fixed, with before and after numbers.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "fix(tui): the fleet screen no longer repaints with the tabs behind it" -- src/aegis/tui/fleet_screen.py src/aegis/tui/app.py tests/test_fleet_screen.py CHANGELOG.md TASKS.md
+```
+
+---
+
 # Slice 3 — the mid-turn recap
 
 ### Task 11: `{done, doing}`, and a recap of the turn in flight
