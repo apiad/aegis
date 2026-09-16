@@ -105,7 +105,7 @@ class _Two(BaseModel):
 
 @pytest.fixture
 def agent():
-    return Agent(harness="claude", model="claude-haiku-4-5-20251001")
+    return Agent(harness="claude-code", model="claude-haiku-4-5-20251001")
 
 
 def test_generate_passes_thinking_budget_zero(monkeypatch, agent, tmp_path):
@@ -203,7 +203,7 @@ class R(BaseModel):
     done: str
     doing: str
 
-agent = Agent(harness="claude", model="claude-haiku-4-5-20251001")
+agent = Agent(harness="claude-code", model="claude-haiku-4-5-20251001")
 w = open("docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md").read()[:4000]
 t0 = time.monotonic()
 g = asyncio.run(ClaudeDriver().generate_detailed(agent, ".", R, w, "Two lines."))
@@ -590,7 +590,7 @@ def test_a_subagents_tool_call_is_not_the_sessions_own(session):
 def session(tmp_path):
     from tests.brain import make_brain
 
-    mgr = make_brain({"opus": Agent(harness="claude", model="claude-opus-5")},
+    mgr = make_brain({"opus": Agent(harness="claude-code", model="opus")},
                      default_agent="opus", ...)
     return mgr._sync_spawn("opus")
 ```
@@ -790,7 +790,7 @@ class FakeSession:
         self.handle = handle
         # Carry a real profile so _cost exercises budget.cost.compute rather
         # than only its guard.
-        self.agent = Agent(harness="claude", model="claude-opus-5")
+        self.agent = Agent(harness="claude-code", model="opus")
         self.title = kw.get("title", "")
         self.agent_slug = kw.get("agent_slug", "opus")
         self.origin = origin or Origin()
