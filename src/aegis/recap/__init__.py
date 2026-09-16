@@ -236,6 +236,7 @@ async def recap_for(
     agents: dict,
     cwd: str,
     session_scope: bool,
+    root=None,
 ) -> Recap:
     """Resolve driver + billing profile + transcript, then ask.
 
@@ -249,7 +250,9 @@ async def recap_for(
     from aegis.drivers import get_driver
     from aegis.state.session_log import replay_events
 
-    gen_agent, _unset = generation_agent(agent, agents)
+    # The session's config root, not the cwd: a daemon started from a
+    # directory with its own .aegis.yaml would otherwise bill elsewhere.
+    gen_agent, _unset = generation_agent(agent, agents, root)
     try:
         driver = get_driver(gen_agent.harness)
     except KeyError:

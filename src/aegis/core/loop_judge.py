@@ -165,6 +165,7 @@ async def judge_for(
     agent,
     agents: dict,
     cwd: str,
+    root=None,
 ) -> Judgement:
     """Resolve driver + billing profile + transcript, then judge.
 
@@ -178,7 +179,8 @@ async def judge_for(
     from aegis.drivers import get_driver
     from aegis.state.session_log import replay_events
 
-    gen_agent, _unset = generation_agent(agent, agents)
+    # The session's config root, not the cwd (see recap_for).
+    gen_agent, _unset = generation_agent(agent, agents, root)
     try:
         driver = get_driver(gen_agent.harness)
     except KeyError:

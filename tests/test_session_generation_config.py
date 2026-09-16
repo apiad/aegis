@@ -155,12 +155,8 @@ async def test_recap_false_stops_the_turn_recap(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.recap_for", recap)
     s = _brain(tmp_path, OFF)._sync_spawn("opus")
-    # _sync_spawn passes no roster, and a session without one never recaps
-    # at all; give it one so the only thing standing in the way is the flag.
-    # Tripwire: _sync_spawn threads no roster today. The day it does, this
-    # fails, and the patch below must go so the test runs the real path.
-    assert s._agents is None, "roster now threaded: drop this patch"
-    s._agents = {}
+    # The session carries the brain's roster, so nothing is patched: the
+    # only thing standing between a moved turn and a paid call is the flag.
     monkeypatch.setattr(s.digest, "build", _facts_returning(MOVED))
     s._maybe_recap(MOVED)
     assert s._recap_task is None
@@ -176,10 +172,6 @@ async def test_recap_true_still_fires(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.recap_for", recap)
     s = _brain(tmp_path, "recap: true\n")._sync_spawn("opus")
-    # Tripwire: _sync_spawn threads no roster today. The day it does, this
-    # fails, and the patch below must go so the test runs the real path.
-    assert s._agents is None, "roster now threaded: drop this patch"
-    s._agents = {}
     s._maybe_recap(MOVED)
     assert s._recap_task is not None
     s._cancel_recap()
@@ -202,10 +194,6 @@ async def test_loop_judge_false_never_consults_the_judge(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.judge_for", verdict)
     s = _brain(tmp_path, OFF)._sync_spawn("opus")
-    # Tripwire: _sync_spawn threads no roster today. The day it does, this
-    # fails, and the patch below must go so the test runs the real path.
-    assert s._agents is None, "roster now threaded: drop this patch"
-    s._agents = {}
     s.arm_loop("keep going", 3)
     await _settle(s)
     await _settle(s)
@@ -216,20 +204,19 @@ async def test_loop_judge_false_never_consults_the_judge(tmp_path, monkeypatch):
 async def test_loop_judge_true_consults_the_judge(tmp_path, monkeypatch):
     asked = []
 
-    async def verdict(**_kw):
-        asked.append(1)
+    async def verdict(**kw):
+        asked.append(kw.get("root"))
         return Judgement(verdict="done", reason="x", ok=True)
 
     monkeypatch.setattr("aegis.core.session.judge_for", verdict)
     s = _brain(tmp_path, "loop_judge: true\n")._sync_spawn("opus")
-    # Tripwire: _sync_spawn threads no roster today. The day it does, this
-    # fails, and the patch below must go so the test runs the real path.
-    assert s._agents is None, "roster now threaded: drop this patch"
-    s._agents = {}
     s.arm_loop("keep going", 3)
     await _settle(s)
     await _settle(s)
     assert asked
+    # The judge resolves its billing profile from the session's config root,
+    # not the cwd — the same rule as the turn recap.
+    assert asked[0] == s._config_root
 
 
 @pytest.mark.parametrize("key", ["recap", "loop_judge"])
@@ -252,3 +239,102 @@ def test_a_real_bool_flag_loads(tmp_path, value, expected):
     (tmp_path / ".aegis.yaml").write_text(f"recap: {value}\nloop_judge: {value}\n")
     cfg = load_config(tmp_path)
     assert (cfg.recap, cfg.loop_judge) == (expected, expected)
+
+
+HAIKU = """\
+agents:
+  opus:
+    provider: claude-code
+    model: opus
+  haiku:
+    provider: claude-code
+    model: claude-haiku-4-5-20251001
+    effort: low
+    permission: read
+default_agent: opus
+text_generation: haiku
+"""
+
+
+def _brain_with_haiku(tmp_path, yaml_text):
+    (tmp_path / ".aegis.yaml").write_text(yaml_text)
+    roster = {
+        "opus": Agent(harness="claude-code", model="opus", effort="high", permission="auto"),
+        "haiku": Agent(harness="claude-code", model="claude-haiku-4-5-20251001",
+                       effort="low", permission="read"),
+    }
+    return make_brain(
+        roster, "opus",
+        make_session=lambda p, u, h, **kw: _FakeHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+    )
+
+
+def test_a_spawned_session_carries_the_brains_roster(tmp_path):
+    """Before this no construction site passed agents=, so every real
+    session had _agents None and the turn recap and loop judge returned
+    before doing anything — since they were written. It is the brain's own
+    dict, so a profile hot-registered later is visible too."""
+    mgr = _brain(tmp_path, "recap: true\n")
+    s = mgr._sync_spawn("opus")
+    assert s._agents is mgr._agents
+
+
+def _decoy_cwd(tmp_path, monkeypatch):
+    """A cwd whose own .aegis.yaml names no text_generation, so a resolver
+    that walks up from the cwd bills to opus and one that uses the session's
+    config root bills to haiku."""
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    (decoy / ".aegis.yaml").write_text(
+        "agents:\n  opus:\n    provider: claude-code\n    model: opus\ndefault_agent: opus\n")
+    monkeypatch.chdir(decoy)
+
+
+async def test_the_turn_recap_bills_to_text_generation_from_the_config_root(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    root.mkdir()
+    s = _brain_with_haiku(root, HAIKU)._sync_spawn("opus")
+    _decoy_cwd(tmp_path, monkeypatch)
+    billed = []
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, agent, cwd, schema, *instructions):
+            billed.append(agent.model)
+            from aegis.drivers.oneshot import Generation
+            return Generation()
+
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    monkeypatch.setattr("aegis.state.session_log.replay_events",
+                        lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
+    await s._run_recap(MOVED)
+    assert billed == ["claude-haiku-4-5-20251001"]
+
+
+async def test_the_loop_judge_bills_to_text_generation_from_the_config_root(tmp_path, monkeypatch):
+    from aegis.core import loop_judge
+
+    root = tmp_path / "root"
+    root.mkdir()
+    s = _brain_with_haiku(root, HAIKU)._sync_spawn("opus")
+    _decoy_cwd(tmp_path, monkeypatch)
+    resolved = []
+    real = __import__("aegis.btw", fromlist=["generation_agent"]).generation_agent
+
+    def spy(fallback, agents, root=None):
+        agent, unset = real(fallback, agents, root)
+        resolved.append(agent.model)
+        return agent, unset
+
+    monkeypatch.setattr("aegis.btw.generation_agent", spy)
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: (_ for _ in ()).throw(KeyError(harness)))
+    await loop_judge.judge_for(
+        state_dir=s.state_dir, log_id=s.log_id, instruction="x", iteration=1,
+        max_iterations=20, facts=TurnFacts(), still_streak=0, advisory="",
+        agent=s.agent, agents=s._agents, cwd=str(s.project_root),
+        root=s._config_root,
+    )
+    assert resolved == ["claude-haiku-4-5-20251001"]

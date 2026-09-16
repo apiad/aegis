@@ -299,6 +299,11 @@ class SessionManager:
             place=place,
             origin=origin,
             config_root=self.roots.config_root,
+            # The roster the turn recap and the loop judge resolve their
+            # `text_generation:` billing profile from. Omitted here since both
+            # were written, so neither ever ran in a real session. The brain's
+            # own dict, so a profile registered later is visible too.
+            agents=self._agents,
         )
         s.spawned_by = spawned_by
         s.forked_from = forked_from

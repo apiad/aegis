@@ -173,9 +173,11 @@ class AgentSession:
         # Fired once per completed turn with that turn's facts.
         self.on_facts = None
         # The configured agent profiles, needed to resolve the
-        # `text_generation:` billing profile. Both AppBridge
-        # implementations pass their own; headless callers and older tests
-        # pass nothing, and the recap simply does not fire for those.
+        # `text_generation:` billing profile. SessionManager._sync_spawn
+        # passes the brain's roster; headless callers and older tests pass
+        # nothing, and the turn recap and the loop judge do not fire for
+        # those. (Until 2026-09-16 no construction site passed it, so neither
+        # ever ran in a real session.)
         self._agents = agents
         # The auto recap. Detached on purpose: measured 2026-08-26, a
         # one-shot costs ~7s wall REGARDLESS of prefix size, and a 7s
@@ -958,6 +960,7 @@ class AgentSession:
                 agents=self._agents,
                 cwd=str(self.project_root),
                 session_scope=False,
+                root=self._config_root,
             )
         except asyncio.CancelledError:
             raise
@@ -1185,6 +1188,7 @@ class AgentSession:
                 agent=self.agent,
                 agents=self._agents,
                 cwd=str(self.project_root),
+                root=self._config_root,
             )
             # Consumed either way: the judge has now seen the claim, and
             # re-presenting a rejected one every iteration would bias
