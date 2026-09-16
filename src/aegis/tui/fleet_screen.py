@@ -225,6 +225,7 @@ class FleetScreen(ModalScreen):
     def on_unmount(self) -> None:
         for session in self._hooked:
             session.remove_event_observer(self._on_event)
+            session.remove_fleet_watcher(self._on_fleet_recap)
         self._hooked.clear()
 
     def on_resize(self, _event) -> None:
@@ -237,8 +238,14 @@ class FleetScreen(ModalScreen):
             if not any(session is h for h in self._hooked):
                 self._hooked.append(session)
                 session.add_event_observer(self._on_event)
+                # F10 shows every card's `now` line, so it watches every
+                # session, and pays for their recaps, while it is open.
+                session.add_fleet_watcher(self._on_fleet_recap)
 
     def _on_event(self, _session, _ev) -> None:
+        self.poke()
+
+    def _on_fleet_recap(self, _session, _recap) -> None:
         self.poke()
 
     def poke(self) -> None:

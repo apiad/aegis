@@ -724,6 +724,15 @@ class AegisApp(App):
         self.theme = DEFAULT_THEME
         self._palette = aegis_colors(self.current_theme)
         self.query_one(TabBar).set_palette(self._palette)
+        # Most ways a tab comes forward set the switcher directly (a spawn,
+        # an adopted session, the history modal) rather than via _activate,
+        # and each would leave F3's paid watch on the tab it hid.
+        self.watch(
+            self.query_one(ContentSwitcher),
+            "current",
+            lambda _current: self._reconcile_fleet_watch(),
+            init=False,
+        )
         if self._voice_cfg.enabled:
             import asyncio
             import threading
@@ -1611,6 +1620,20 @@ class AegisApp(App):
         pane.unseen = False
         pane.focus_input()
         self._refresh_tabbar()
+        self._reconcile_fleet_watch()
+
+    def _reconcile_fleet_watch(self) -> None:
+        """F3 watches exactly one session: the active tab's, while it is open.
+
+        A fleet watcher authorises a paid mid-turn recap, so every other tab
+        is unwatched here, and a closed sidebar watches nothing. F10 keeps
+        its own watchers on every session and never goes through this.
+        """
+        active = self._active if self._sidebar_mode else None
+        for pane in self._panes:
+            fn = getattr(pane, "set_fleet_watch", None)
+            if fn is not None:
+                fn(pane is active)
 
     def _resume_capable_providers(self) -> set[str]:
         return {
@@ -2031,6 +2054,7 @@ class AegisApp(App):
             setter = getattr(pane, "set_task_dock", None)
             if setter is not None:
                 setter(opened)
+        self._reconcile_fleet_watch()
         return opened
 
     async def action_open_config_panel(self) -> None:

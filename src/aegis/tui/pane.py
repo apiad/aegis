@@ -1095,6 +1095,9 @@ class ConversationPane(Widget):
         self._connection_tiers: tuple[str, ...] = ()
         # Subscription handles held for the pane's lifetime (see on_unmount).
         self._unsubs: list = []
+        # Whether this pane's callback is on the core's fleet watchers. The
+        # core keeps a list, so a second add would need a second remove.
+        self._fleet_watching = False
         self._indicator: "WorkingIndicator | None" = None
         # Replay is painted on first show, not on mount (see on_mount).
         self._replayed: bool = False
@@ -1238,6 +1241,9 @@ class ConversationPane(Widget):
             if fn is not None:
                 with contextlib.suppress(Exception):
                     fn(cb)
+        # Not in the table: it is added only while F3 shows this tab, and
+        # a detached view that left it behind would keep paying for recaps.
+        self.set_fleet_watch(False)
 
     def on_unmount(self) -> None:
         """Release the sidebar's subscriptions.
@@ -2942,6 +2948,28 @@ class ConversationPane(Widget):
                 group="repos",
                 exit_on_error=False,
             )
+
+    def set_fleet_watch(self, on: bool) -> None:
+        """Put this pane on (or off) its session's fleet watchers.
+
+        Idempotent. The app decides which pane watches; see
+        ``AegisApp._reconcile_fleet_watch``. ``RemotePaneCore`` has no
+        watchers, hence the getattr.
+        """
+        if on == self._fleet_watching:
+            return
+        fn = getattr(
+            self._core, "add_fleet_watcher" if on else "remove_fleet_watcher", None
+        )
+        if fn is None:
+            return
+        fn(self._on_fleet_recap)
+        self._fleet_watching = on
+
+    def _on_fleet_recap(self, _core, _recap) -> None:
+        # Refresh, never draw: a mid-turn recap lives in the sidebar's `now`
+        # line, and the transcript keeps only the turn-end one.
+        self._refresh_sidebar()
 
     def _refresh_sidebar(self) -> None:
         """Repaint the sidebar if it is open. Cheap when closed: the widget
