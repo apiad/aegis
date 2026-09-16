@@ -4,6 +4,10 @@ Pure, in the shape of ``aegis.tui.sidebar.render_sidebar``: a model in, a
 ``Text`` out, no Textual object, no clock and no manager. Every row is cut
 to the card's width here, because Textual clips an over-long line silently
 and one overflowing card breaks every column of the grid.
+
+The width floor is about 12 cells: below it the cap's fixed chrome alone
+is wider than the card and a row can overflow. Nothing clamps it, because
+no terminal the dashboard opens in is that narrow.
 """
 
 from __future__ import annotations
@@ -83,16 +87,17 @@ def _state_style(state: str, pal) -> str:
 
 def _cap(t: Text, card: CardView, width: int, *, fill: str, pal, style: str) -> None:
     """The top border, carrying the tab number, the handle and a state
-    glyph with the age: the turn's while working, the session's otherwise."""
+    glyph. The only age here is the running turn's; the uptime leads the
+    footer, so one number never means two things."""
     if card.ghost_since is not None:
-        # A ghost's stamp is monotonic and this renderer has no clock, so it
-        # cannot be turned into an age here; say what happened instead.
-        right = " closed "
+        right = f" closed {_age(card.ghost_s)} "
     else:
         glyph = _GLYPH.get(card.state, "●")
-        age = card.turn_s if card.state == "working" and card.turn_s else card.uptime_s
-        right = f" {glyph} {_age(age)} "
+        working = card.state == "working" and card.turn_s
+        right = f" {glyph} {_age(card.turn_s)} " if working else f" {glyph} "
     tab = f"{card.tab_index} " if card.tab_index else ""
+    if card.origin.ephemeral:
+        tab += "⏱ "
     # "┌" + fill + " " ... " " + at least one fill + right + fill + "┐"
     budget = width - 4 - cell_len(tab) - 1 - cell_len(right) - 2
     if budget < 1:
@@ -118,8 +123,10 @@ def _origin_line(origin: Origin) -> str:
 
 
 def _identity(card: CardView) -> str:
-    """``opus · local · une-tools · main +3 ~2``, skipping what is unknown."""
-    return " · ".join(p for p in (card.agent_slug, card.host, card.repo) if p)
+    """``opus · vps · une-tools · main +3 ~2``, skipping what is unknown. The
+    host is named only when it is not this machine."""
+    host = "" if card.host == "local" else card.host
+    return " · ".join(p for p in (card.agent_slug, host, card.repo) if p)
 
 
 def _event(ev: EventLine) -> str:
@@ -128,22 +135,37 @@ def _event(ev: EventLine) -> str:
     return f"{time.strftime('%H:%M', time.localtime(ev.at))} {ev.tool} {ev.summary}"
 
 
-def _footer(card: CardView) -> str:
+def _footer(card: CardView, pal) -> list[tuple[str, str]]:
+    """Uptime first, then context, cost, claims, the monitor and the two
+    conversation edges, as ``(text, style)`` parts split by ``·``."""
     parts = []
+    if card.uptime_s:
+        parts.append((_age(card.uptime_s), pal.muted))
     if card.ctx_pct:
-        parts.append(f"ctx {card.ctx_pct:.0f}%")
+        style = pal.err if card.ctx_pct > 80 else pal.muted
+        parts.append((f"ctx {card.ctx_pct:.0f}%", style))
     if card.cost_usd:
-        parts.append(f"${card.cost_usd:.2f}")
+        parts.append((f"${card.cost_usd:.2f}", pal.muted))
     if card.claims:
-        parts.append(f"{card.claims} claim{'s' if card.claims != 1 else ''}")
+        claims = f"{card.claims} claim{'s' if card.claims != 1 else ''}"
+        parts.append((claims, pal.muted))
     if card.monitor:
-        parts.append(card.monitor)
+        parts.append((card.monitor, pal.muted))
+    if card.spoke_with:
+        parts.append((f"← {card.spoke_with[0]}", pal.muted))
     if card.waiting_on:
-        parts.append("waiting on " + ", ".join(card.waiting_on))
-    return " · ".join(parts)
+        parts.append((f"→ {card.waiting_on[0]}", pal.muted))
+    joined: list[tuple[str, str]] = []
+    for i, part in enumerate(parts):
+        if i:
+            joined.append((" · ", pal.muted))
+        joined.append(part)
+    return joined
 
 
-def render_card(card: CardView, pal, width: int) -> Text:
+def render_card(card: CardView, pal, width: int, *, height: int = 0) -> Text:
+    """One card. ``height`` pads it with blank bordered rows before the
+    bottom border, so cards in a grid row close on the same line."""
     ghost = card.ghost_since is not None
     eph = card.origin.ephemeral or ghost
     edge, fill = ("┆", "┄") if eph else ("│", "─")
@@ -175,8 +197,11 @@ def render_card(card: CardView, pal, width: int) -> Text:
         row([("now ", pal.muted), (card.doing, pal.working)])
     for ev in card.events[-_EVENTS:]:
         row([(_event(ev), pal.muted)])
-    if footer := _footer(card):
-        row([(footer, pal.muted)])
+    if footer := _footer(card, pal):
+        row(footer)
+    # The one deliberate blank: padding inside the border to the row's height.
+    for _ in range(height - t.plain.count("\n") - 1):
+        row("")
     t.append("└" + fill * max(0, width - 2) + "┘", style=pal.muted)
     if ghost:
         t.stylize("dim")
@@ -275,16 +300,13 @@ def render_fleet(snapshot: FleetSnapshot, pal, width: int) -> Text:
     for n, row in enumerate(rows):
         if n:
             t.append("\n")
-        rendered = [render_card(c, pal, card_w).split("\n") for c in row]
-        height = max(len(lines) for lines in rendered)
+        height = max(len(render_card(c, pal, card_w).split("\n")) for c in row)
+        rendered = [render_card(c, pal, card_w, height=height).split("\n") for c in row]
         for y in range(height):
             for x, lines in enumerate(rendered):
                 if x:
                     t.append(" " * GUTTER)
-                if y < len(lines):
-                    t.append_text(lines[y])
-                elif x < len(rendered) - 1:
-                    t.append(" " * card_w)
+                t.append_text(lines[y])
             if y < height - 1 or n < len(rows) - 1:
                 t.append("\n")
     return t
