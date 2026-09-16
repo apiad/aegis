@@ -228,7 +228,13 @@ async def recap_in_flight(
 
 
 async def _resolve(
-    *, state_dir, log_id: str, agent, agents: dict, root, unattended: bool = False
+    *,
+    state_dir,
+    log_id: str,
+    agent,
+    agents: dict | None,
+    root,
+    unattended: bool = False,
 ):
     """Driver, billing profile and transcript — or a ``Recap`` saying why not.
 
@@ -244,7 +250,7 @@ async def _resolve(
 
     # The session's config root, not the cwd: a daemon started from a
     # directory with its own .aegis.yaml would otherwise bill elsewhere.
-    gen_agent, _unset = generation_agent(agent, agents, root)
+    gen_agent, _unset = generation_agent(agent, agents or {}, root)
     if unattended and _unset:
         # The turn recap falls back to the session's own model and says so.
         # A recurring call nobody asked for must not bill Opus silently.
@@ -299,7 +305,7 @@ async def recap_in_flight_for(
     log_id: str,
     facts: TurnFacts,
     agent,
-    agents: dict,
+    agents: dict | None,
     cwd: str,
     root=None,
 ) -> Recap:

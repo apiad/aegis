@@ -900,6 +900,8 @@ class AgentSession:
         from aegis.config.yaml_loader import _SECTIONS
 
         root = self._config_root
+        if root is None:
+            return ()
         stamp = []
         for path in (
             root / ".aegis.yaml",

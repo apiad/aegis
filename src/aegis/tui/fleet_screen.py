@@ -12,6 +12,7 @@ import time
 
 from collections.abc import Callable, Iterable
 from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 
 from rich.cells import cell_len
 from rich.text import Text
@@ -30,6 +31,9 @@ from aegis.fleet.render import (
     render_card,
     render_fleet,
 )
+
+if TYPE_CHECKING:
+    from aegis.tui.app import AegisApp
 
 # At most one redraw per this many seconds from the event stream. Nine
 # sessions streaming at once would otherwise redraw hundreds of times a second.
@@ -109,7 +113,9 @@ def _outline(text: Text, rect: Rect, style: str) -> None:
 class _Grid(Static):
     def on_click(self, event) -> None:
         event.stop()
-        self.screen.open_at(event.x, event.y)
+        screen = self.screen
+        if isinstance(screen, FleetScreen):
+            screen.open_at(event.x, event.y)
 
 
 class FleetScreen(ModalScreen):
@@ -293,7 +299,7 @@ class FleetScreen(ModalScreen):
         snap = self._current
         n = len(snap.cards)
         self.selected = max(1, min(n, self.selected)) if n else 1
-        pal = self.app.palette
+        pal = cast("AegisApp", self.app).palette
         width = max(1, self._grid.content_size.width or self.app.size.width - 4)
         self._cols = columns_for(width)
         text = render_fleet(snap, pal, width)
