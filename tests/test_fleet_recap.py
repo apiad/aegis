@@ -19,13 +19,16 @@ def fake_agent():
 class FakeDriver:
     supports_oneshot = True
 
-    def __init__(self, value=None, fail=False):
+    def __init__(self, value=None, fail=False, raises=None):
         self.value = value
         self.fail = fail
+        self.raises = raises
         self.calls = []
 
     async def generate_detailed(self, agent, cwd, schema, *instructions):
-        self.calls.append((schema, instructions))
+        self.calls.append((agent, schema, instructions))
+        if self.raises is not None:
+            raise self.raises
         if self.fail:
             return Generation()
         return Generation(value=self.value, model="haiku", duration_ms=4700,
@@ -39,6 +42,64 @@ def test_a_good_call_returns_both_lines(fake_agent):
     assert r.ok is True
     assert r.done == "landed 3 tests"
     assert r.doing == "closing the loop"
+
+
+def test_the_driver_is_handed_the_in_flight_schema_prompt_and_facts(fake_agent):
+    """What is paid for is what reaches the driver: the `{done, doing}`
+    schema, the in-flight system prompt rather than the turn recap's, and
+    the FACTS block the prompt tells the model to prefer."""
+    from aegis.digest.models import CommitLine, RepoDelta
+    from aegis.recap import _IN_FLIGHT_SYSTEM, _TURN_SYSTEM
+
+    facts = TurnFacts(repos=(RepoDelta(name="aegis", files_written=2,
+                                       commits=(CommitLine("a1", "feat: x"),)),))
+    d = FakeDriver(FleetRecap(done="a", doing="b"))
+    asyncio.run(recap_in_flight(replay=[], facts=facts, driver=d,
+                                agent=fake_agent, cwd="."))
+    ((agent, schema, instructions),) = d.calls
+    assert agent is fake_agent
+    assert schema is FleetRecap
+    assert instructions[0] == _IN_FLIGHT_SYSTEM
+    assert _TURN_SYSTEM not in instructions
+    assert any("feat: x" in i for i in instructions[1:])
+
+
+def test_a_driver_that_raises_is_a_missing_answer(fake_agent):
+    d = FakeDriver(raises=RuntimeError("claude -p exited 1"))
+    r = asyncio.run(recap_in_flight(replay=[], facts=TurnFacts(), driver=d,
+                                    agent=fake_agent, cwd="."))
+    assert r.ok is False
+    assert "claude -p exited 1" in r.error
+    assert len(d.calls) == 1
+
+
+async def test_recap_in_flight_for_bills_the_text_generation_agent(
+        tmp_path, monkeypatch):
+    """Through the real `_resolve`: the config at `root` names the billing
+    profile, and the driver is handed that profile rather than the
+    session's own model."""
+    from aegis.recap import _IN_FLIGHT_SYSTEM, recap_in_flight_for
+
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n  opus:\n    provider: claude-code\n    model: opus\n"
+        "  haiku:\n    provider: claude-code\n"
+        "    model: claude-haiku-4-5-20251001\n"
+        "default_agent: opus\ntext_generation: haiku\n")
+    opus = Agent(harness="claude-code", model="opus")
+    haiku = Agent(harness="claude-code", model="claude-haiku-4-5-20251001")
+    d = FakeDriver(FleetRecap(done="a", doing="b"))
+    harnesses = []
+    monkeypatch.setattr("aegis.drivers.get_driver",
+                        lambda harness: harnesses.append(harness) or d)
+    recap = await recap_in_flight_for(
+        state_dir=tmp_path, log_id="x", facts=TurnFacts(), agent=opus,
+        agents={"opus": opus, "haiku": haiku}, cwd=str(tmp_path), root=tmp_path)
+    assert recap.ok, recap.error
+    assert harnesses == ["claude-code"]
+    ((agent, schema, instructions),) = d.calls
+    assert agent is haiku
+    assert schema is FleetRecap
+    assert instructions[0] == _IN_FLIGHT_SYSTEM
 
 
 def test_a_failed_call_is_a_missing_answer_not_an_exception(fake_agent):
