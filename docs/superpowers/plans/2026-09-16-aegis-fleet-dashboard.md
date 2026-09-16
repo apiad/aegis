@@ -13,10 +13,11 @@
 ## Global Constraints
 
 - Python 3.13 or newer. Use `uv`, never `pip`. `uv run pytest`, `uv run ruff`.
-- `make check` must pass before any task is called done. `make test` is the fast lane while iterating.
+- **`make check` is red on `main` and not because of this work.** Measured at `da5c989`, before any task landed: `make typecheck` (`uv run ty check src/`) exits 1 with **327 errors**, spread across files this plan never touches (15 in `commands/builtins/core.py` alone, all pre-existing). Nothing in `TASKS.md` or `CHANGELOG.md` records it. The achievable gate, and the one the controller runs between tasks, is therefore: `format`, `lint`, `lint-docs` and `test` green, **and `ty` no worse than the 327-error baseline**. Workers run neither — see the testing rule below.
 - **Shared checkout.** Stage and commit named paths only: `git commit -- <paths>`. Never `git add -A`, never `git add` a whole file that was already dirty, never `--amend`.
 - Conventional commits, English, one logical change each.
 - UI chrome is English (`did`, `now`, `9 agents · 6 yours · 3 ephemeral`) like the rest of the TUI. Session content is whatever that session is about.
+- **Workers run only the focused tests their own task needs.** The controller runs the full suite and the gate between tasks. This is a standing instruction from the operator, not a shortcut.
 - Renderers are **pure functions over dataclasses**, following `aegis.tui.sidebar.render_sidebar`. No Textual object may appear in a renderer's signature. Tests construct the model and assert on `.plain` — see `tests/test_sidebar_render.py`.
 - A daemon keeps the code it booted with. Any live check means `aegis kill` first, then attach fresh. See `know-how/the-daemon.md`.
 
@@ -741,15 +742,25 @@ class FleetSnapshot:
     cards: tuple[CardView, ...] = ()
 ```
 
-- [ ] **Step 2: Import check**
+- [ ] **Step 2: Restore the package exports**
 
-Run: `uv run python -c "from aegis.fleet.models import FleetSnapshot, CardView, BandView, RepoCount; print(FleetSnapshot())"`
-Expected: prints a `FleetSnapshot` with an empty band and no cards.
+Task 2 wrote `src/aegis/fleet/__init__.py` exporting only `Origin`, because the other four names did not exist yet. They do now. Widen it:
 
-- [ ] **Step 3: Commit**
+```python
+from aegis.fleet.models import BandView, CardView, EventLine, FleetSnapshot, Origin, RepoCount
+
+__all__ = ["BandView", "CardView", "EventLine", "FleetSnapshot", "Origin", "RepoCount"]
+```
+
+- [ ] **Step 3: Import check**
+
+Run: `uv run python -c "from aegis.fleet import FleetSnapshot, CardView, BandView, RepoCount; print(FleetSnapshot())"`
+Expected: prints a `FleetSnapshot` with an empty band and no cards. Import from the package, not the module, so the step actually exercises Step 2.
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git commit -- src/aegis/fleet/models.py -m "feat(fleet): the snapshot dataclasses the renderer reads"
+git commit -m "feat(fleet): the snapshot dataclasses the renderer reads" -- src/aegis/fleet/models.py src/aegis/fleet/__init__.py
 ```
 
 ### Task 6: assembly from the live manager
