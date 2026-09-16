@@ -418,7 +418,7 @@ class ClaudeDriver(HarnessDriver):
         ]
 
     async def generate_detailed(
-        self, agent: Agent, cwd: str, schema, *instructions: str
+        self, agent: Agent, cwd: str, schema, *instructions: str, think: bool = False
     ):
         from aegis.drivers.oneshot import Generation, parse_structured
 
@@ -428,7 +428,10 @@ class ClaudeDriver(HarnessDriver):
         # on a recap-shaped call, 27.1s / 2,508 output tokens on against
         # 4.7s / 103 off, with the on-arm swinging 8.7s-30.4s run to run.
         # `--effort` has no off (`low` still thinks), so this is the switch.
-        env = {**os.environ, "MAX_THINKING_TOKENS": "0"}
+        # The loop judge passes think=True: it decides whether an instruction
+        # is satisfied, the one call where reasoning may earn its cost, and the
+        # spec leaves it thinking until that is measured.
+        env = dict(os.environ) if think else {**os.environ, "MAX_THINKING_TOKENS": "0"}
         try:
             proc = await asyncio.create_subprocess_exec(
                 *argv,

@@ -134,7 +134,12 @@ class HarnessDriver(abc.ABC):
         )
 
     async def generate_detailed(
-        self, agent: Agent, cwd: str, schema: type["BaseModel"], *instructions: str
+        self,
+        agent: Agent,
+        cwd: str,
+        schema: type["BaseModel"],
+        *instructions: str,
+        think: bool = False,
     ) -> "Generation":
         """One-shot structured generation, with what the call cost.
 
@@ -143,6 +148,10 @@ class HarnessDriver(abc.ABC):
         back as a ``Generation`` whose ``value`` is None, never as an
         exception, because the caller is a side note and a side note must
         never be able to disturb the conversation it sits beside.
+
+        ``think=False`` asks the driver not to spend reasoning tokens, which
+        is right for every call that writes lines from a window it is handed.
+        A call that has to *decide* something may pass ``think=True``.
         """
         from aegis.drivers.oneshot import Generation
 

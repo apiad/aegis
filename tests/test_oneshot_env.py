@@ -129,3 +129,46 @@ async def test_cancelling_a_generation_kills_its_claude_process(monkeypatch, age
     assert not alive(), "the claude process outlived its cancelled call"
     await asyncio.sleep(3.5)
     assert not finished.exists(), "the cancelled call ran to completion"
+
+
+def test_a_call_that_asks_to_think_keeps_the_clis_thinking_default(monkeypatch, agent, tmp_path):
+    """The loop judge decides whether a turn satisfied an instruction, the one
+    one-shot where reasoning may earn its cost, and the spec excludes it from
+    the thinking cut until it is measured. `think=True` leaves the CLI's own
+    default: MAX_THINKING_TOKENS is not forced to 0."""
+    seen = {}
+
+    async def fake_exec(*argv, **kw):
+        seen["env"] = kw.get("env")
+        raise RuntimeError("stop")
+
+    monkeypatch.delenv("MAX_THINKING_TOKENS", raising=False)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    asyncio.run(ClaudeDriver().generate_detailed(agent, str(tmp_path), _Two, "hi", think=True))
+    assert "MAX_THINKING_TOKENS" not in seen["env"]
+
+
+def test_the_loop_judge_asks_to_think(monkeypatch, agent, tmp_path):
+    """Wired at the call site, driven through the real judge_for."""
+    from aegis.core.loop_judge import judge_for
+    from aegis.digest.models import TurnFacts
+    from aegis.drivers.oneshot import Generation
+
+    kwargs = {}
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, agent, cwd, schema, *instructions, **kw):
+            kwargs.update(kw)
+            return Generation()
+
+    replay = type("R", (), {"events": [], "stamps": []})()
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    monkeypatch.setattr("aegis.state.session_log.replay_events", lambda *a: replay)
+    asyncio.run(judge_for(
+        state_dir=tmp_path, log_id="x", instruction="do it", iteration=1,
+        max_iterations=20, facts=TurnFacts(), still_streak=0, advisory="",
+        agent=agent, agents={"a": agent}, cwd=str(tmp_path), root=tmp_path,
+    ))
+    assert kwargs.get("think") is True

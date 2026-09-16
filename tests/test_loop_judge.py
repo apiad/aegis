@@ -14,8 +14,11 @@ class FakeDriver:
         self.value, self.raises = value, raises
         self.calls = []
 
-    async def generate_detailed(self, agent, cwd, schema, *instructions):
+    async def generate_detailed(self, agent, cwd, schema, *instructions, think=False):
+        # The one-shot contract gained think= for the loop judge, which
+        # alone is excluded from the thinking cut.
         self.calls.append((schema, instructions))
+        self.think = think
         if self.raises:
             raise RuntimeError("driver exploded")
         return Generation(value=self.value, model="haiku",

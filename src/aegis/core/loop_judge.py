@@ -130,6 +130,9 @@ async def judge(
             f"{window.text}\n--- end ---",
             render_facts(facts),
             "\n".join(state),
+            # Decides, rather than summarises: excluded from the thinking cut
+            # until measured (spec, "MAX_THINKING_TOKENS=0").
+            think=True,
         )
     except Exception as e:  # noqa: BLE001
         return Judgement(error=f"{type(e).__name__}: {e}")
