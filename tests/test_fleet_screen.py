@@ -389,17 +389,18 @@ async def test_a_view_that_exits_with_the_fleet_open_leaves_no_observer(tmp_path
     assert [c._extra_event_observers for c in cores] == [[], []]
 
 
-def test_the_band_carries_the_active_panes_system_row():
+def test_the_band_carries_the_apps_system_row():
     """F10 hides F3, so the band shows the tiers F3 would: the very tuples
-    the app pushed to the active pane, not a second sample."""
+    the app sampled and pushed to F3, not a second sample."""
     from types import SimpleNamespace
 
     from textual._context import active_app
 
     from aegis.tui.sysmeter import format_build
 
-    pane = SimpleNamespace(_system_tiers=("CPU 1%",), _quota_tiers=("cc 1%",))
-    app = SimpleNamespace(_active=pane, palette=PAL, _exit=False)
+    app = SimpleNamespace(
+        _system_last=("CPU 1%",), _quota_last=("cc 1%",), palette=PAL, _exit=False
+    )
     scr = FleetScreen(lambda **_: FleetSnapshot())
     token = active_app.set(app)
     try:
@@ -409,9 +410,52 @@ def test_the_band_carries_the_active_panes_system_row():
         assert band.quota == ("cc 1%",)
         assert band.build == format_build(PAL)
 
-        app._active = None
+        # At boot, before the first tick, only the build is known.
+        app._system_last, app._quota_last = (), None
         scr.refresh_fleet()
         band = scr._current.band
-        assert (band.system, band.quota, band.build) == ((), (), ())
+        assert (band.system, band.quota) == ((), ())
+        assert band.build == format_build(PAL)
     finally:
         active_app.reset(token)
+
+
+async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(
+    tmp_path, monkeypatch
+):
+    """The operator opens F10 from whatever tab is in front. A file or
+    terminal tab has no SYSTEM row, so the app holds the last sample: sampled
+    once per tick, pushed to F3 when an agent pane is in front, and read by
+    the band either way."""
+    from aegis.tui import sysmeter
+
+    calls = []
+    real = sysmeter.sample_system
+    monkeypatch.setattr(
+        sysmeter, "sample_system", lambda cwd: calls.append(cwd) or real(cwd)
+    )
+    note = tmp_path / "notes.txt"
+    note.write_text("hello\n")
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        agent = app._active
+        calls.clear()
+        app._tick()
+        assert len(calls) == 1
+        assert agent._system_tiers and agent._system_tiers == app._system_last
+
+        await app._open_file_tab(note)
+        await pilot.pause()
+        assert app._active is not agent and not hasattr(app._active, "set_system")
+        calls.clear()
+        app._tick()
+        assert len(calls) == 1
+        assert app._system_last
+
+        await pilot.press("f10")
+        await pilot.pause()
+        assert isinstance(app.screen, FleetScreen)
+        band = app.screen._current.band
+        assert band.system == app._system_last
+        assert band.build

@@ -278,19 +278,16 @@ class FleetScreen(ModalScreen):
         self._draw()
 
     def _system_row(self) -> dict:
-        """F3's SYSTEM row, which F10 hides: the tiers the app pushed to the
-        active pane on its last tick, read as they are, so both views show
-        the same numbers. A terminal or file tab carries no tiers."""
+        """F3's SYSTEM row, which F10 hides: the tiers the app sampled on its
+        last tick and pushed to F3, read as they are, so both views show the
+        same numbers whatever tab sits behind the modal."""
         try:
             app = self.app
         except NoActiveAppError:  # built outside a running app, as in tests
             return {}
-        pane = getattr(app, "_active", None)
-        if pane is None:
-            return {}
         return {
-            "system": getattr(pane, "_system_tiers", ()),
-            "quota": getattr(pane, "_quota_tiers", ()),
+            "system": getattr(app, "_system_last", ()),
+            "quota": getattr(app, "_quota_last", None) or (),
             "build": format_build(app.palette),
         }
 

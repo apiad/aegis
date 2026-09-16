@@ -312,6 +312,7 @@ class AegisApp(App):
     # without __init__ having run.
     _quota_last = None
     _quota_pane = None
+    _system_last: tuple[str, ...] = ()
     _last_bell: float = float("-inf")
     _snapshot_timer = None
 
@@ -1522,12 +1523,15 @@ class AegisApp(App):
                     exclusive=False,
                 )
 
-        if active is None or not hasattr(active, "set_quota"):
-            return
         tiers = format_quota_bar(
             [(p, self.quota_services[p.name].current()) for p in PROVIDERS],
             self._palette,
         )
+        if active is None or not hasattr(active, "set_quota"):
+            # Held for the fleet band, which F10 can open over any tab. No
+            # pane holds it, so the next agent pane in front is painted.
+            self._quota_pane, self._quota_last = None, tiers
+            return
         # Push only on change — re-delivering a value that has not moved is a
         # repaint per tick for nothing. The pane is compared by identity and
         # held, not keyed by id(): a freed pane's id can be reused, and the
@@ -1544,13 +1548,16 @@ class AegisApp(App):
             active.refresh_metrics()
         if active is not None and hasattr(active, "refresh_result_age"):
             active.refresh_result_age()
-        if active is not None and hasattr(active, "set_system"):
-            from aegis.tui.sysmeter import format_system_tiers, sample_system
+        from aegis.tui.sysmeter import format_system_tiers, sample_system
 
-            # One app-side sample per tick (not per pane); local host stats.
-            with contextlib.suppress(Exception):
-                stats = sample_system(self._cwd)
-                active.set_system(format_system_tiers(stats, self._palette))
+        # One app-side sample per tick (not per pane); local host stats. The
+        # app holds it whatever tab is in front, since the fleet band reads it
+        # over terminal and file tabs too; F3 gets the same tuple.
+        with contextlib.suppress(Exception):
+            stats = sample_system(self._cwd)
+            self._system_last = format_system_tiers(stats, self._palette)
+            if active is not None and hasattr(active, "set_system"):
+                active.set_system(self._system_last)
         with contextlib.suppress(Exception):
             self._quota_tick(active)
 

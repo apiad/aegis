@@ -183,3 +183,25 @@ def test_switching_panes_pushes_to_the_new_pane():
     # Same numbers, different pane — the new one must still be painted.
     assert second.quota_tiers == first.quota_tiers
     assert second.quota_tiers is not None
+
+
+class TerminalLike:
+    """A terminal or file tab: no quota segment of its own."""
+
+
+def test_the_app_holds_the_quota_with_no_agent_pane_in_front():
+    """F10 opened over a terminal tab still needs the quota the app computed."""
+    app = _app([])
+    app._quota_tick(TerminalLike())
+    assert app._quota_last and "cc 5h 64%" in strip_markup(app._quota_last[0])
+
+
+def test_an_agent_pane_after_a_terminal_tab_is_still_painted():
+    """The held value must not suppress the push to the next agent pane."""
+    pane = FakePane("claude-code")
+    app = _app([])
+    app._quota_tick(pane)
+    pane.quota_tiers = None
+    app._quota_tick(TerminalLike())
+    app._quota_tick(pane)
+    assert pane.quota_tiers == app._quota_last
