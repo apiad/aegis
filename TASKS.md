@@ -64,6 +64,22 @@ Two findings fell out of designing it, both of which stand alone:
 
 Left over from the bench check (Task 10, 2026-09-16):
 
+- [ ] **A turn that finishes behind any modal leaves its transcript short of
+  the tail.** Reproduced by the Task 10b review with a probe: a pane
+  following its tail at scroll_y 128, F10 opened, four tall messages
+  streamed, Escape — it ends at 128 of 288, with and without the 10b fix;
+  with no modal it ends at 288. `pane.py:1264` snaps to the tail in
+  `on_show`, and an uncovered pane never gets a `Show`. While a stream is
+  still running the next paint fixes it; a finished turn stays short. Fix:
+  snap to the tail on `ScreenResume` when `_stick_to_bottom` is set.
+- [ ] **The bench `fleet` scenario's "tab 2 active" check is racy.** It
+  waits for the footer to go, then `wait_quiet(rig, 500, timeout_s=5)`,
+  which returns silently on timeout, and `_drawn_reversed` then reads the
+  last frame that drew the label — possibly the pop frame, before the tab
+  switch. Failed on unmodified `c74aa15` on an 89.5%-busy host. Fix:
+  `wait_until(..., lambda: _drawn_reversed(rig, label) is True, 10)`
+  (`bench/scenarios.py:554-558`).
+
 - [ ] **F10 over the operator's own fleet.** The bench proved F10 and the
   `1`-`9` jump in a daemon started after the change. The live daemon still
   runs the old build; the check over a real fleet needs a restart, on the

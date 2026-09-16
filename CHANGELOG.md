@@ -76,7 +76,7 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   an opaque top screen, which every pushed screen is here. This applies to
   every modal: the screen under a picker or the queue dashboard now waits
   and catches up when it is uncovered. `many-tabs`, with no screen pushed,
-  did not change: 16.3 → 18.8 frames/s, marker p95 355 → 286 ms, both
+  is within noise: 16.3 → 18.8 frames/s, marker p95 355 → 286 ms, both
   runs 69-89% busy.
 
 - **Agents could not see tabs opened with `/spawn`, `/fork`, Ctrl+R or a
