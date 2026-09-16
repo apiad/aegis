@@ -150,7 +150,32 @@ No turn count: `SessionMetrics` has none, and adding a counter every other
 consumer then has to keep correct, for a number the uptime and the cost
 already imply, is not worth the field.
 
-`did` and `now` are the two recap fields (below). The three middle rows
+`did` and `now` are the two recap fields (below).
+
+**Revised 2026-09-16 after rendering the real `render_fleet` to PNG**
+(`.playground/fleet-render/grid-150.png`). The mockup above is the first
+sketch; the rendered card differs from it in five deliberate ways:
+
+- **No `├───┤` separators.** Rendered at nine cards, the labels (`plan`,
+  `did` in grey, `now` in orange, events dimmed with an `HH:MM` stamp)
+  already group the rows, and separators cost up to three rows per card
+  across the whole grid. Reversible in one helper if the grid reads worse
+  in use.
+- **The cap's age is the running turn, and only while working.** The session
+  uptime always leads the footer: `1h47m · ctx 61% · $4.31 · …`. The first
+  render put uptime in the cap for idle cards and turn time for working ones,
+  so a three-hour session mid-turn looked newer than a ten-minute idle one.
+  One number, one meaning, one place.
+- **Cards in a grid row share a height**, so bottom borders line up and the
+  grid reads as a board rather than a ragged list.
+- **The host is shown only when it is not the local machine.**
+- **Context over 80% is drawn in the error colour on the card**, not only in
+  the band.
+
+The footer carries `← x` for the peer that last spoke to this session and
+`→ x` for the one it waits on. Both fields stay empty until the comms ledger
+is held in memory (see Deferred), so the edges render as soon as data
+exists. The three middle rows
 are the event ring. The footer carries edges from the `CommsLedger` (`←`
 who last spoke to it, `→` who it is waiting on), held claims (`⛓`) and any
 live monitor with its progress (`⏳`).
