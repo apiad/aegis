@@ -140,7 +140,8 @@ class FleetScreen(ModalScreen):
         # take each one off again: a session outlives any one screen.
         self._hooked: list = []
         self.selected = 1  # 1-based, a position in the grid
-        self.chosen: int | None = None
+        # The handle of the card opened; the app resolves it to a tab then.
+        self.chosen: str | None = None
         self._current: FleetSnapshot | None = None
         self._rects: list[Rect] = []
         self._cols = 1
@@ -179,11 +180,13 @@ class FleetScreen(ModalScreen):
         cards = self._view().cards
         card = cards[self.selected - 1] if 1 <= self.selected <= len(cards) else None
         # A ghost is a dead ephemeral session: there is no tab to switch to.
-        if card is None or card.ghost_since is not None or not card.tab_index:
+        if card is None or card.ghost_since is not None:
             return
-        self.chosen = card.tab_index
+        # The handle, never the tab number: the grid can be a second old, and
+        # a tab closed or moved since would turn the number into a neighbour.
+        self.chosen = card.handle
         if self.is_attached:
-            self.dismiss(card.tab_index)
+            self.dismiss(card.handle)
 
     def card_at(self, x: int, y: int) -> int | None:
         """The 1-based grid position of the card drawn at cell ``(x, y)`` of
@@ -252,6 +255,10 @@ class FleetScreen(ModalScreen):
         now = self._last_draw = time.monotonic()
         if self.is_attached:
             self._hook_events()
+        # The selection follows its session: a refresh that reorders the grid
+        # must not move the outline onto a different card.
+        old = self._current.cards if self._current is not None else ()
+        held = old[self.selected - 1].handle if 1 <= self.selected <= len(old) else None
         snap = self._snap(now=now)
         # A ghost is only ever a live card seen on an earlier refresh, so the
         # book observes the live fleet and the builder draws its ghosts. The
@@ -263,6 +270,10 @@ class FleetScreen(ModalScreen):
         self._current = replace(
             snap, band=replace(snap.band, clock=time.strftime("%H:%M"))
         )
+        for i, card in enumerate(self._current.cards, start=1):
+            if card.handle == held:
+                self.selected = i
+                break
         self._draw()
 
     def _draw(self) -> None:

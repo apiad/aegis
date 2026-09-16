@@ -26,7 +26,7 @@ def test_arrows_move_the_selection_and_stop_at_the_ends():
 def test_a_number_key_selects_that_card():
     scr = FleetScreen(lambda: SNAP)
     scr.action_pick(4)
-    assert scr.chosen == 4
+    assert scr.chosen == "s3"
 
 
 def test_a_number_beyond_the_fleet_is_inert():
@@ -120,7 +120,7 @@ def test_a_number_key_opens_the_tab_the_card_shows():
     scr.action_pick(2)
     assert scr.chosen is None
     scr.action_pick(3)
-    assert scr.chosen == 3 and scr.selected == 2
+    assert scr.chosen == "b" and scr.selected == 2
 
 
 # --- mounted: F10 in both shapes the app runs in ---
@@ -242,6 +242,7 @@ async def test_a_moved_tab_is_still_opened_by_its_card(tmp_path, shape):
         await pilot.click("#fleet-grid", offset=(x + 3, y + 1))
         await pilot.pause()
         assert not isinstance(app.screen, FleetScreen)
+        assert app._active.handle == card.handle
         assert app._active is first
 
 
@@ -284,6 +285,69 @@ async def test_a_burst_of_events_redraws_once_and_late(tmp_path):
         assert scr._pending is not None, "the session's event must reach the screen"
         await pilot.pause(0.7)
         assert calls == [1]
+
+
+def test_the_selection_follows_its_session_across_a_reorder():
+    """A refresh that inserts a card ahead of the selection must not move
+    the outline onto a different session."""
+    fleet = [CardView(handle=h, tab_index=i) for i, h in enumerate("abc", start=1)]
+    scr = FleetScreen(lambda **_: FleetSnapshot(cards=tuple(fleet)))
+    scr.refresh_fleet()
+    scr.action_move(2)
+    assert scr._current.cards[scr.selected - 1].handle == "c"
+    fleet.insert(1, CardView(handle="new", tab_index=2))
+    scr.refresh_fleet()
+    assert scr._current.cards[scr.selected - 1].handle == "c"
+
+
+async def _three_tabs(app, pilot):
+    await _two_tabs(app, pilot)
+    await app._spawn("default")
+    for _ in range(20):
+        await pilot.pause()
+        if len(app._panes) == 3:
+            return
+    raise AssertionError(f"expected three tabs, have {len(app._panes)}")
+
+
+@pytest.mark.parametrize(
+    "shape", [_standalone, _bridged], ids=["standalone", "bridged"]
+)
+async def test_a_card_opens_its_session_after_an_earlier_tab_closed(tmp_path, shape):
+    """The grid can be up to a second old. A tab closed in that window
+    shifts every later tab down by one, so the card must name its session,
+    not the number it was drawn with."""
+    app = shape(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _three_tabs(app, pilot)
+        app._activate(1)
+        await pilot.press("f10")
+        await pilot.pause()
+        scr = app.screen
+        last = scr._current.cards[2]
+        assert last.tab_index == 3
+        await app._close_pane(app._panes[0])
+        # Stale on purpose: the grid still shows the closed tab.
+        assert len(scr._current.cards) == 3
+        await pilot.press("3")
+        await pilot.pause()
+        assert not isinstance(app.screen, FleetScreen)
+        assert app._active is not None and app._active.handle == last.handle
+
+
+async def test_a_card_whose_session_is_gone_opens_nothing(tmp_path):
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        app._activate(0)
+        await pilot.press("f10")
+        await pilot.pause()
+        gone = app._panes[1]
+        await app._close_pane(gone)
+        await pilot.press("2")
+        await pilot.pause()
+        assert not isinstance(app.screen, FleetScreen)
+        assert app._active is app._panes[0]
 
 
 def _observers(app):

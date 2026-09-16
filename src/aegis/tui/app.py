@@ -2145,9 +2145,14 @@ class AegisApp(App):
             self.notify("The fleet dashboard shows local sessions only")
             return
 
-        def opened(tab: int | None) -> None:
-            if tab:
-                self.action_goto(tab)
+        def opened(handle: str | None) -> None:
+            # Resolved now, against the tab bar as it is: a session whose tab
+            # closed meanwhile opens nothing rather than its neighbour.
+            for i, p in enumerate(self._panes):
+                core = getattr(p, "_core", None)
+                if core is not None and handle is not None and core.handle == handle:
+                    self._activate(i)
+                    return
 
         self.push_screen(
             FleetScreen(self._fleet_snapshot, self._fleet_sessions), callback=opened
@@ -2155,42 +2160,42 @@ class AegisApp(App):
 
     def _fleet_sessions(self) -> list:
         """The sessions the fleet screen observes for redraws."""
-        if self.manager is not None:
-            return list(self.manager._sessions)
-        return [c for p in self._panes if (c := getattr(p, "_core", None)) is not None]
+        return list(self._fleet_source()[0]._sessions)
+
+    def _fleet_source(self):
+        """The snapshot's source and this view's tab map, in one pass over
+        the panes. A terminal or file tab has no session and is skipped."""
+        cores, tabs = [], {}
+        for i, p in enumerate(self._panes, start=1):
+            if (c := getattr(p, "_core", None)) is not None:
+                cores.append(c)
+                tabs[c.handle] = i
+        source = self.manager
+        if source is None:
+            source = _SN(
+                _sessions=cores,
+                locks=self.locks,
+                monitor_manager=self.monitor_manager,
+                queue_manager=self.queue_manager,
+            )
+        return source, tabs
 
     def _fleet_snapshot(self, *, now: float | None = None, ghosts=None):
         """The fleet as this view sees it, numbered by this view's tab bar.
 
         Bridged, the brain's manager is the source. Standalone the app is its
         own bridge and ``self.manager`` is None, so the sessions are read off
-        the panes; a terminal or file tab has no session and is skipped.
+        the panes.
         """
         from aegis.fleet.snapshot import build_snapshot
         from aegis.tui.fleet_screen import in_tab_order
 
-        source = self.manager
-        if source is None:
-            source = _SN(
-                _sessions=[
-                    c
-                    for p in self._panes
-                    if (c := getattr(p, "_core", None)) is not None
-                ],
-                locks=self.locks,
-                monitor_manager=self.monitor_manager,
-                queue_manager=self.queue_manager,
-            )
+        source, tabs = self._fleet_source()
         snap = build_snapshot(
             source, now=time.monotonic() if now is None else now, ghosts=ghosts
         )
         # By handle, never by list index: the brain's session list and this
         # view's tab bar diverge on any terminal tab or any moved tab.
-        tabs = {
-            c.handle: i
-            for i, p in enumerate(self._panes, start=1)
-            if (c := getattr(p, "_core", None)) is not None
-        }
         return in_tab_order(snap, tabs)
 
     def action_interrupt(self) -> None:
