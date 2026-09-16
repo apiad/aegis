@@ -86,14 +86,32 @@ def test_an_edit_takes_effect_without_respawning(tmp_path):
     assert s.fleet_config == FleetConfig()
 
 
-def test_a_broken_config_yields_defaults_and_logs_once(tmp_path, caplog):
-    s = _brain(tmp_path, "recap: false\nfleet:\n  recap: sometimes\n")._sync_spawn("opus")
-    with caplog.at_level(logging.WARNING, logger="aegis.core.session"):
+def test_a_broken_config_yields_defaults_and_logs_once(tmp_path):
+    # The handler goes on the session's own logger rather than through
+    # caplog: `aegis_log.open()` sets `propagate = False` on the "aegis"
+    # logger and never restores it, so once any earlier test has opened the
+    # log, nothing from aegis.core.session reaches the root handler caplog
+    # listens on. This test passed alone and failed after test_aegis_log.py.
+    records: list[logging.LogRecord] = []
+
+    class _Keep(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger("aegis.core.session")
+    handler, level = _Keep(logging.WARNING), logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        s = _brain(tmp_path, "recap: false\nfleet:\n  recap: sometimes\n")._sync_spawn("opus")
         assert s.recap_enabled is True
         assert s.loop_judge_enabled is True
         assert s.fleet_config == FleetConfig()
         assert s.recap_enabled is True
-    hits = [r for r in caplog.records if ".aegis.yaml" in r.getMessage()
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+    hits = [r for r in records if ".aegis.yaml" in r.getMessage()
             or "config" in r.getMessage()]
     assert len(hits) == 1
 
@@ -139,6 +157,9 @@ async def test_recap_false_stops_the_turn_recap(tmp_path, monkeypatch):
     s = _brain(tmp_path, OFF)._sync_spawn("opus")
     # _sync_spawn passes no roster, and a session without one never recaps
     # at all; give it one so the only thing standing in the way is the flag.
+    # Tripwire: _sync_spawn threads no roster today. The day it does, this
+    # fails, and the patch below must go so the test runs the real path.
+    assert s._agents is None, "roster now threaded: drop this patch"
     s._agents = {}
     monkeypatch.setattr(s.digest, "build", _facts_returning(MOVED))
     s._maybe_recap(MOVED)
@@ -155,6 +176,9 @@ async def test_recap_true_still_fires(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.recap_for", recap)
     s = _brain(tmp_path, "recap: true\n")._sync_spawn("opus")
+    # Tripwire: _sync_spawn threads no roster today. The day it does, this
+    # fails, and the patch below must go so the test runs the real path.
+    assert s._agents is None, "roster now threaded: drop this patch"
     s._agents = {}
     s._maybe_recap(MOVED)
     assert s._recap_task is not None
@@ -178,6 +202,9 @@ async def test_loop_judge_false_never_consults_the_judge(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.judge_for", verdict)
     s = _brain(tmp_path, OFF)._sync_spawn("opus")
+    # Tripwire: _sync_spawn threads no roster today. The day it does, this
+    # fails, and the patch below must go so the test runs the real path.
+    assert s._agents is None, "roster now threaded: drop this patch"
     s._agents = {}
     s.arm_loop("keep going", 3)
     await _settle(s)
@@ -195,8 +222,33 @@ async def test_loop_judge_true_consults_the_judge(tmp_path, monkeypatch):
 
     monkeypatch.setattr("aegis.core.session.judge_for", verdict)
     s = _brain(tmp_path, "loop_judge: true\n")._sync_spawn("opus")
+    # Tripwire: _sync_spawn threads no roster today. The day it does, this
+    # fails, and the patch below must go so the test runs the real path.
+    assert s._agents is None, "roster now threaded: drop this patch"
     s._agents = {}
     s.arm_loop("keep going", 3)
     await _settle(s)
     await _settle(s)
     assert asked
+
+
+@pytest.mark.parametrize("key", ["recap", "loop_judge"])
+@pytest.mark.parametrize("value", ['"false"', "'no'", "0", "off"])
+def test_a_flag_that_is_not_a_bool_is_a_config_error(tmp_path, key, value):
+    """`bool(raw.get(...))` turned the quoted string "false" into True. That
+    was harmless while the flags were never read; now that they are, a
+    quoted false would silently leave a paid call switched on."""
+    from aegis.config.yaml_loader import ConfigError, load_config
+
+    (tmp_path / ".aegis.yaml").write_text(f"{key}: {value}\n")
+    with pytest.raises(ConfigError, match=key):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize("value,expected", [("true", True), ("false", False)])
+def test_a_real_bool_flag_loads(tmp_path, value, expected):
+    from aegis.config.yaml_loader import load_config
+
+    (tmp_path / ".aegis.yaml").write_text(f"recap: {value}\nloop_judge: {value}\n")
+    cfg = load_config(tmp_path)
+    assert (cfg.recap, cfg.loop_judge) == (expected, expected)
