@@ -1628,6 +1628,138 @@ Expected: PASS. The Task 9 test that a ghost cannot be opened now has a real pro
 git commit -- src/aegis/fleet/ghosts.py src/aegis/tui/fleet_screen.py tests/test_fleet_ghosts.py -m "feat(fleet): a dead ephemeral worker stays readable for a minute"
 ```
 
+### Task 9c: the SYSTEM row in the band
+
+Added mid-run at the operator's request. F10 is full screen, so while it is
+open the F3 sidebar is hidden — and with it the SYSTEM meters (CPU, RAM,
+disk), the provider quota and the running build. Those are app-wide facts,
+not per-session ones, so the fleet band is where they belong.
+
+**One source, two surfaces.** The app already samples `SystemStats` once per
+tick and pushes the formatted tiers to the active pane
+(`tui/app.py:1546-1552` → `pane.set_system`, stored as `pane._system_tiers`),
+and pushes quota tiers the same way (`set_quota` → `pane._quota_tiers`). The
+band reads **those same tier tuples**; it does not sample the host a second
+time and does not format anything itself. F3 and F10 then show identical
+numbers by construction. The sampling runs while F10 is up, because the
+active pane still exists behind the modal.
+
+**Dropped on purpose:** the working directory and the locale. `cwd` is the
+active pane's directory, and in a view of the whole fleet every card already
+names its own repo, so one directory in the band would describe one session
+while sitting above all of them.
+
+**Files:**
+- Modify: `src/aegis/fleet/models.py` (`BandView`)
+- Modify: `src/aegis/fleet/render.py` (`render_fleet`'s band)
+- Modify: `src/aegis/tui/fleet_screen.py` (fill the fields at refresh)
+- Test: `tests/test_fleet_render.py`, `tests/test_fleet_screen.py`
+
+**Interfaces:**
+- Consumes: `pane._system_tiers`, `pane._quota_tiers` (tuples of Rich-markup strings, widest first), `aegis.tui.sysmeter.format_build(palette)`, `aegis.tui.fit.Segment` and `aegis.tui.fit.fit(segments, width, sep)`.
+- Produces: `BandView.system: tuple[str, ...] = ()`, `BandView.quota: tuple[str, ...] = ()`, `BandView.build: tuple[str, ...] = ()`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/test_fleet_render.py`:
+
+```python
+def test_the_band_carries_the_system_row():
+    band = BandView(system=("CPU 57% · RAM 48% · DSK 16%",),
+                    quota=("cc 26/49%",), build=("aegis 0.37.0",))
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "CPU 57%" in out
+    assert "cc 26/49%" in out
+    assert "aegis 0.37.0" in out
+
+
+def test_no_system_data_draws_no_system_row():
+    """An empty section renders nothing — not a blank line in the band."""
+    bare = as_text(render_fleet(FleetSnapshot(band=BandView()), C, 160))
+    assert "CPU" not in bare
+    assert "\n\n\n" not in bare
+
+
+def test_a_narrow_band_sheds_the_build_before_the_meters():
+    """The meters move every tick and the build never does, so on a narrow
+    terminal the build is what goes."""
+    band = BandView(system=("CPU 57% · RAM 48% · DSK 16%", "CPU 57%"),
+                    quota=("cc 26/49%",), build=("aegis 0.37.0+12485c2",))
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 40))
+    assert "CPU 57%" in out
+    assert "aegis 0.37.0" not in out
+```
+
+Append to `tests/test_fleet_screen.py` a test that the screen fills
+`system`, `quota` and `build` from the app's active pane: a fake app whose
+active pane carries `_system_tiers=("CPU 1%",)` and `_quota_tiers=("cc 1%",)`,
+asserting the snapshot the screen renders has those tuples on its band, and
+that with no active pane all three are empty.
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Run: `uv run pytest tests/test_fleet_render.py tests/test_fleet_screen.py -v`
+Expected: the new tests FAIL on the unknown `BandView` keywords.
+
+- [ ] **Step 3: Add the fields**
+
+```python
+    # The SYSTEM row, as the same widest-first tier tuples the F3 sidebar
+    # renders — filled by the screen from the active pane, never sampled or
+    # formatted here, so F3 and F10 cannot disagree.
+    system: tuple[str, ...] = ()
+    quota: tuple[str, ...] = ()
+    build: tuple[str, ...] = ()
+```
+
+- [ ] **Step 4: Render the row**
+
+In `render_fleet`, after the band's existing lines, add one line built with
+the horizontal fitter the status bar already uses, meters first:
+
+```python
+    row = fit(
+        [
+            Segment("system", band.system, 3),
+            Segment("quota", band.quota, 2),
+            Segment("build", band.build, 1),
+        ],
+        width,
+        sep=" · ",
+    )
+    if row:
+        t.append("\n")
+        t.append_text(Text.from_markup(row))
+```
+
+Check `fit`'s real behaviour for an empty `tiers` tuple before relying on it:
+a segment with no tiers must be skipped, not rendered as an empty cell with a
+separator beside it. If it is not skipped, filter empty segments out first.
+
+- [ ] **Step 5: Fill it in the screen**
+
+At refresh, read the app's active pane with `getattr(pane, "_system_tiers",
+())` and `getattr(pane, "_quota_tiers", ())`, and `format_build(palette)`, and
+put them on the band with `dataclasses.replace` — the same place the `clock`
+string is set.
+
+- [ ] **Step 6: Run the tests**
+
+Run: `uv run pytest tests/test_fleet_render.py tests/test_fleet_screen.py -v`
+Expected: PASS.
+
+- [ ] **Step 7: See it**
+
+Re-run `.playground/fleet-render/shoot_f10.py` (written in Task 9) and open
+the PNG: the band carries the CPU/RAM/DSK meters, the quota and the build,
+and they match what F3 shows for the same app.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git commit -m "feat(fleet): the band carries F3's SYSTEM row, since F10 hides F3" -- src/aegis/fleet/models.py src/aegis/fleet/render.py src/aegis/tui/fleet_screen.py tests/test_fleet_render.py tests/test_fleet_screen.py
+```
+
 ### Task 10: exercise it the way a user reaches it
 
 Green tests against a daemon that booted before the change prove nothing about the change.
