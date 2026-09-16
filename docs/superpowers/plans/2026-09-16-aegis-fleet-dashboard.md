@@ -17,6 +17,8 @@
 - **Shared checkout.** Stage and commit named paths only: `git commit -- <paths>`. Never `git add -A`, never `git add` a whole file that was already dirty, never `--amend`.
 - Conventional commits, English, one logical change each.
 - UI chrome is English (`did`, `now`, `9 agents · 6 yours · 3 ephemeral`) like the rest of the TUI. Session content is whatever that session is about.
+- **Run `uv run ruff format <the src files you changed>` before every commit.** `make check` runs `ruff format src/` in *write* mode (`Makefile:3,17-18`), so unformatted code does not fail a gate quietly — it gets rewritten in a shared checkout, after the commit, under nobody's name. Never run `make format` or `ruff format src/` wholesale: other agents' files live there. Format the files you touched, by name.
+- **Two clocks, and they must not cross.** `now` passed to `build_snapshot` is **monotonic** (`time.monotonic()`), because it feeds `SessionMetrics.session_seconds(now)` and `turn_seconds(now)`, which are monotonic, and so does `GhostBook.observe(now)`. `CardView.ghost_since` is therefore monotonic too, and is only ever used for an *age* and a TTL, never rendered as a time of day. `EventLine.at` is **wall-clock** (`time.time()`) because it renders as `HH:MM`. A monotonic value printed as a time of day, or a wall-clock value subtracted from a monotonic one, is a silent wrong answer rather than an error.
 - **Cards are built from a snapshot of live sessions, never from the `added` event.** `_announce("added", s)` fires inside `_sync_spawn` (`core/manager.py:313`), and fork, workflow and group set `origin` *after* that returns, so an add-event listener reads `Origin()` — the operator — for one beat. `spawned_by` and `forked_from` already behave the same way at the same three sites. `build_snapshot` reading `manager._sessions` is what makes this a non-issue; do not switch any surface to event-driven card creation.
 - **Workers run only the focused tests their own task needs.** The controller runs the full suite and the gate between tasks. This is a standing instruction from the operator, not a shortcut.
 - Renderers are **pure functions over dataclasses**, following `aegis.tui.sidebar.render_sidebar`. No Textual object may appear in a renderer's signature. Tests construct the model and assert on `.plain` — see `tests/test_sidebar_render.py`.
@@ -716,7 +718,7 @@ class CardView:
     spoke_with: tuple[str, ...] = ()   # comms edges, most recent first
     waiting_on: tuple[str, ...] = ()
     tab_index: int = 0              # 1-based; the card is that tab
-    ghost_since: float | None = None  # set when an ephemeral session died
+    ghost_since: float | None = None  # MONOTONIC; age and TTL only, never a time of day
 
 
 @dataclass(frozen=True)
@@ -883,15 +885,15 @@ def test_the_plan_reaches_the_card():
     assert (card.plan_done, card.plan_total) == (7, 10)
 
 
-def test_a_tool_call_from_a_live_turn_reaches_the_card(session):
-    """The Task 4 tests call note_event directly, so nothing yet proves the
-    seam is on the live path. Drive one ToolUse through _fire_event and read
-    it back off the card."""
-    from aegis.events import ToolUse
-
-    session._fire_event(ToolUse(name="Edit", summary="apps/sigere/pusher.py"))
-    card = build_snapshot(FakeManager([session]), now=1000.0).cards[0]
-    assert [e.tool for e in card.events] == ["Edit"]
+def test_the_band_states_are_disjoint_and_sum_to_the_total():
+    m = FakeManager([
+        FakeSession("a", state="working"),
+        FakeSession("b", state="ready"),
+        FakeSession("c", state="error"),
+    ])
+    band = build_snapshot(m, now=1000.0).band
+    assert band.working + band.ready + band.waiting + band.error == band.total == 3
+    assert band.error == 1
 
 
 def test_assembly_never_touches_the_disk(monkeypatch):
@@ -904,6 +906,31 @@ def test_assembly_never_touches_the_disk(monkeypatch):
     monkeypatch.setattr(builtins, "open", boom)
     build_snapshot(FakeManager([FakeSession("alpha")]), now=1000.0)
 ```
+
+- [ ] **Step 1b: Close the two gaps the Task 4 review found**
+
+Append these to **`tests/test_fleet_events.py`**, not to the snapshot tests — that file already defines the local `session` fixture, and both are properties of the ring rather than of assembly. Task 4's four tests call `note_event` directly, so deleting the `self.note_event(ev)` line from `_fire_event` (`core/session.py:826`) leaves every one of them green, and the replay-skip property has no test at all.
+
+```python
+from aegis.events import ToolUse
+
+
+def test_a_tool_call_on_the_live_path_reaches_the_ring(session):
+    """The seam, not the method. Delete the note_event call from
+    _fire_event and this goes red; the four tests above do not."""
+    session._fire_event(ToolUse(name="Edit", summary="apps/sigere/pusher.py"))
+    assert [e.tool for e in session.recent_events] == ["Edit"]
+
+
+def test_a_replayed_transcript_does_not_refill_the_ring(session):
+    """Replay walks events through rehydrate_plan, which never calls
+    _fire_event. A resumed session must start with an empty tail rather
+    than one repainted from stale history."""
+    session.rehydrate_plan([ToolUse(name="Edit", summary="old.py")], [1.0])
+    assert session.recent_events == ()
+```
+
+`rehydrate_plan(self, events, stamps)` takes two parallel lists — verified at `core/session.py:957`, and its only caller passes `replay.events, replay.stamps` (`tui/pane.py:1004`). Then **mutation-check the first test**: delete the `self.note_event(ev)` line, confirm with `cmp` against `git show HEAD:src/aegis/core/session.py` that the file actually changed, confirm the test goes red, and restore.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -940,6 +967,19 @@ def build_snapshot(manager, *, now: float, ghosts=None) -> FleetSnapshot:
         cards = cards + tuple(c for c, _died in ghosts.values())
     return FleetSnapshot(band=_band(cards, manager=manager, now=now), cards=cards)
 ```
+
+**The state vocabulary, which Task 5's dataclasses left undefined.** `CardView.state` holds the session's own `AgentState` value: `ready`, `working` or `error`. `BandView` counts `working`, `ready` and `waiting`, and has no `error` counter. Resolve it this way, and add `error: int = 0` to `BandView`:
+
+| band counter | a session counts here when |
+|---|---|
+| `working` | `state == "working"` |
+| `waiting` | `state == "ready"` **and** it has at least one live monitor it armed, or at least one in-flight queue task it enqueued with `callback=True` |
+| `ready` | `state == "ready"` and not waiting |
+| `error` | `state == "error"` |
+
+The four are disjoint and sum to `total`. Assert that in a test. `waiting` is what Alex asked for in the brainstorm — *"si están esperando por otros"* — and an idle session with a monitor armed or a callback pending is exactly an agent that ended its turn to wait. `waiting_on` stays empty until the comms ledger is held in memory (see Deferred); `waiting` does not depend on it.
+
+Monitors carry `from_handle`; queue tasks carry `enqueued_by`. Both are live state, so the no-disk rule holds.
 
 Write `_card` and `_band` to fill the fields Task 5 declared, reading:
 
