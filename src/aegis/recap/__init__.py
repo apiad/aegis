@@ -141,8 +141,14 @@ _IN_FLIGHT_SYSTEM = (
 async def _one(
     schema, system, *, replay, facts, driver, agent, cwd, window_opts
 ) -> Recap:
-    window = assemble(replay, **window_opts)
+    header = ""
     try:
+        # Inside the try, not before it: best-effort by contract means a
+        # replay that cannot be assembled is a missing recap, not a raise.
+        # The in-flight caller hands over a live event list, a newer kind of
+        # input than the persisted replays the turn recap reads.
+        window = assemble(replay, **window_opts)
+        header = window.header
         gen = await driver.generate_detailed(
             agent,
             cwd,
@@ -153,7 +159,7 @@ async def _one(
             render_facts(facts),
         )
     except Exception as e:  # noqa: BLE001
-        return Recap(header=window.header, error=f"{type(e).__name__}: {e}")
+        return Recap(header=header, error=f"{type(e).__name__}: {e}")
     if gen is None or gen.value is None:
         return Recap(
             header=window.header,

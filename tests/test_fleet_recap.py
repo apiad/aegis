@@ -67,3 +67,14 @@ def test_the_window_is_the_generous_one(fake_agent):
     from aegis.recap import IN_FLIGHT_WINDOW
 
     assert IN_FLIGHT_WINDOW["budget_tokens"] >= 2_000
+
+
+def test_a_replay_that_cannot_be_assembled_is_a_missing_answer(fake_agent):
+    """Best-effort by contract: the in-flight caller hands over a live event
+    list, and a malformed one must come back as ok=False, never raise."""
+    d = FakeDriver(FleetRecap(done="a", doing="b"))
+    r = asyncio.run(recap_in_flight(replay=object(), facts=TurnFacts(),
+                                    driver=d, agent=fake_agent, cwd="."))
+    assert r.ok is False
+    assert r.error
+    assert d.calls == [], "the driver must not be paid for a window that failed"
