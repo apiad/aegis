@@ -146,4 +146,5 @@ async def test_in_flight_recap_without_text_generation_never_calls_the_driver(
     assert driven == []
     assert not recap.ok
     assert recap.error == (
-        "set text_generation: to bill the mid-turn recap to a cheap profile")
+        "text_generation: must name a configured agent profile to bill "
+        "the mid-turn recap (it is unset, or names no profile)")

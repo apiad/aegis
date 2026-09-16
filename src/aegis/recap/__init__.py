@@ -249,7 +249,10 @@ async def _resolve(
         # The turn recap falls back to the session's own model and says so.
         # A recurring call nobody asked for must not bill Opus silently.
         return Recap(
-            error="set text_generation: to bill the mid-turn recap to a cheap profile"
+            error=(
+                "text_generation: must name a configured agent profile to bill "
+                "the mid-turn recap (it is unset, or names no profile)"
+            )
         )
     try:
         driver = get_driver(gen_agent.harness)
