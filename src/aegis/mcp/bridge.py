@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from aegis.plan import PlanSnapshot
+
+if TYPE_CHECKING:  # annotation only — keeps this module import-light
+    from aegis.fleet.models import Origin
 
 
 @dataclass(frozen=True)
@@ -116,6 +119,7 @@ class AppBridge(Protocol):
         prompt: str | None = None,
         host: str | None = None,
         cwd: str | None = None,
+        origin: "Origin | None" = None,
     ) -> str: ...
     async def fork(
         self,

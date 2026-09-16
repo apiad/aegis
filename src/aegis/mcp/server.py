@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from aegis.fleet.models import Origin
 from aegis.mcp.bridge import AppBridge
 from aegis.mcp.identity import HEADER_NAME
 from aegis.remote.client import (
@@ -1134,6 +1135,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 handle=slug,
                 opening_prompt=prompt,
                 spawned_by=from_handle,
+                origin=Origin(kind="agent", by=from_handle),
                 model=model,
                 effort=effort,
                 prompt=persona,

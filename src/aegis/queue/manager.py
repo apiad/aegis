@@ -20,6 +20,7 @@ from aegis.budget.cost import compute as _compute_cost
 from aegis.budget.evaluator import evaluate_budgets
 from aegis.budget.prices import UnknownPriceError
 from aegis.events import AssistantText
+from aegis.fleet.models import Origin
 from aegis.queue.events import (
     QueueCompleted,
     QueueDispatched,
@@ -514,7 +515,15 @@ class QueueManager:
             # Use the sync seam — async AppBridge.spawn is for workflow.
             sync_spawn = getattr(self._sm, "_sync_spawn", self._sm.spawn)
             session = sync_spawn(
-                q.agent_profile, opening_prompt=task.payload, handle=worker_handle
+                q.agent_profile,
+                opening_prompt=task.payload,
+                handle=worker_handle,
+                origin=Origin(
+                    kind="queue",
+                    by=queue,
+                    detail=task.id[-4:],
+                    returns_to=task.callback_to or "",
+                ),
             )
             self._attach_observers(session, dispatched)
 

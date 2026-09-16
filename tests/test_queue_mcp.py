@@ -27,7 +27,7 @@ class NopSM:
     is fine; we never actually let it run in these tests because cap=0)."""
     _sessions = []
 
-    def spawn(self, slug, *, opening_prompt=None, handle=None):
+    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None):
         from aegis.core.session import AgentSession
 
         class _H:

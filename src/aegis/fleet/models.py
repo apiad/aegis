@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Kinds whose sessions the substrate closes when their unit of work ends:
-# a queue worker at queue/manager.py:719, a workflow subagent by the
+# a queue worker in QueueManager._finalize, a workflow subagent by the
 # engine, a group member with its group. Derived, never stored — a boolean
 # on the session would drift from the behaviour it names.
 EPHEMERAL_KINDS = frozenset({"queue", "workflow", "group"})

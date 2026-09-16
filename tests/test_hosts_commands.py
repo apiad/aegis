@@ -163,7 +163,7 @@ class _SpawnBridge:
 
     async def spawn(self, profile, *, opening_prompt=None, spawned_by=None,
                     model=None, effort=None, host=None, cwd=None,
-                    prompt=None, handle=None):
+                    prompt=None, handle=None, origin=None):
         if self._raise:
             from aegis.hosts.errors import HostError
             raise HostError("unknown host 'nowhere'; known: ['vps', 'local']")
@@ -265,7 +265,7 @@ async def test_aegis_spawn_forwards_host_and_cwd():
 
     async def _spawn(agent, *, handle=None, opening_prompt=None,
                      spawned_by=None, model=None, effort=None, prompt=None,
-                     host=None, cwd=None):
+                     host=None, cwd=None, origin=None):
         seen.update({"agent": agent, "host": host, "cwd": cwd})
         return "new-agent"
 

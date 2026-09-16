@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from aegis.drivers.base import HarnessSession
 from aegis.events import (
@@ -47,6 +48,9 @@ from aegis.queue.schema import (
 )
 from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
+
+if TYPE_CHECKING:  # annotation only; the runtime import is in __init__
+    from aegis.fleet.models import Origin
 
 log = logging.getLogger("aegis.core.session")
 
@@ -92,6 +96,7 @@ class AgentSession:
         place=None,
         repo_tracker=None,
         agents=None,
+        origin: "Origin | None" = None,
     ) -> None:
         self._session = session
         self.agent = agent
@@ -102,6 +107,13 @@ class AgentSession:
         # something sets it, and a rename carries it across untouched.
         self.title: str = ""
         self.title_source: str = ""
+        # Who made this agent, and whether the substrate will close it when
+        # its work ends. `spawned_by` (below) stays: three guards read it.
+        # Local import for the same reason as `Place` below — core.session
+        # is imported early.
+        from aegis.fleet.models import Origin
+
+        self.origin = origin or Origin()
         # Which machine and working tree this session's harness runs in.
         # Local import: core.session is imported early and aegis.hosts
         # pulls in aegis.mcp transitively.

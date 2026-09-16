@@ -153,7 +153,7 @@ class _StubSM:
         self.closed: list[str] = []
     def script(self, handle, events):
         self._scripts[handle] = events
-    def spawn(self, slug, *, opening_prompt=None, handle=None):
+    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None):
         from aegis.core.session import AgentSession
         evs = self._scripts.get(
             handle,

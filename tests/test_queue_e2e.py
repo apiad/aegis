@@ -75,7 +75,7 @@ class StubSM:
     def script(self, handle, events):
         self._scripts[handle] = events
 
-    def spawn(self, slug, *, opening_prompt=None, handle=None):
+    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None):
         script = self._scripts.get(
             handle,
             [AssistantText(text="ok"),

@@ -13,11 +13,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from aegis.mcp.bridge import SessionInfo
 from aegis.state.event_codec import decode_event
 from aegis.tui.ws_client import WsClient
+
+if TYPE_CHECKING:  # annotation only — Origin never crosses the WS link
+    from aegis.fleet.models import Origin
 
 
 class RemoteUnsupportedError(RuntimeError):
@@ -233,7 +236,12 @@ class RemoteSessionManager:
         prompt: str | None = None,
         host: str | None = None,
         cwd: str | None = None,
+        origin: "Origin | None" = None,
     ) -> str:
+        # `origin` is accepted and dropped: the WS protocol has no field for
+        # it, and the sessions belong to the remote serve, which sets its own
+        # at its own birth sites. A remote spawn lands there as Origin() —
+        # the operator — which is what a /spawn typed here actually is.
         # Execution hosts are resolved by whoever owns the sessions, and in
         # remote mode that is the serve we are attached to, not us. Its
         # `hosts:` config is the one that counts, and the WS protocol has

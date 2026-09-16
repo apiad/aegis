@@ -64,7 +64,7 @@ class SM(StubSessionManager):
         super().__init__()
         self._harness = harness
 
-    def spawn(self, slug, *, opening_prompt=None, handle=None):
+    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None):
         from aegis.core.session import AgentSession
         s = AgentSession(self._harness, agent=None, agent_slug=slug,
                          handle=handle, project_root=Path.cwd())

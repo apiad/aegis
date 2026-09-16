@@ -17,6 +17,7 @@ from aegis.commands import (
 )
 from aegis.commands.args import Arg, ArgSpec, Flag
 from aegis.config.edit import _VALID_PROVIDERS
+from aegis.fleet.models import Origin
 
 
 def _agent_choices(bridge) -> list:
@@ -278,6 +279,10 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
             agent,
             opening_prompt=opening,
             spawned_by=ctx.handle,
+            # The operator typed this while standing in ctx.handle. That is
+            # a different event from agent ctx.handle calling aegis_spawn,
+            # and spawned_by records them identically.
+            origin=Origin(kind="operator", by=ctx.handle),
             model=model,
             effort=effort,
             host=host,

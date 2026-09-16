@@ -9,6 +9,7 @@ from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.core.handles import HandleRegistry
 from aegis.core.session import AgentSession
+from aegis.fleet.models import Origin
 from aegis.hosts.models import HostSpec, Place
 from aegis.hosts.resolve import resolve_place
 from aegis.mcp.bridge import SessionInfo
@@ -234,6 +235,7 @@ class SessionManager:
         agent: "Agent | None" = None,
         resume_from: str | None = None,
         log_id: str | None = None,
+        origin: "Origin | None" = None,
     ) -> AgentSession:
         # ``resume_from`` and ``log_id`` reopen a conversation that already
         # has a log: a tab restored at boot or reopened from history. It is
@@ -295,6 +297,7 @@ class SessionManager:
             state_dir=self.roots.state_dir,
             log_id=log_id,
             place=place,
+            origin=origin,
         )
         s.spawned_by = spawned_by
         s.forked_from = forked_from
@@ -325,6 +328,7 @@ class SessionManager:
         prompt: str | None = None,
         host: str | None = None,
         cwd: str | None = None,
+        origin: "Origin | None" = None,
     ) -> str:
         """AppBridge-shaped async spawn. Returns the new handle.
 
@@ -343,6 +347,7 @@ class SessionManager:
             prompt=prompt,
             host=host,
             cwd=cwd,
+            origin=origin,
         )
         return sess.handle
 
@@ -400,6 +405,7 @@ class SessionManager:
             forked_from={"handle": target, "log_id": s.log_id, "session_id": sid},
         )
         child.spawned_by = forked_by
+        child.origin = Origin(kind="fork", by=forked_by or "")
         return child.handle
 
     async def reconnect(self, handle: str) -> str:

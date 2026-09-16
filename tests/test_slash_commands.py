@@ -56,8 +56,9 @@ class FakeBridge:
 
     async def spawn(self, profile, *, handle=None, opening_prompt=None,
                     spawned_by=None, model=None, effort=None, prompt=None,
-                    host=None, cwd=None):
+                    host=None, cwd=None, origin=None):
         self.spawned.append((profile, opening_prompt, spawned_by))
+        self.spawn_origin = origin
         self.spawn_overrides = (model, effort, prompt)
         self.spawn_place = (host, cwd)
         return "beta"

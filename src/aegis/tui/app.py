@@ -39,6 +39,7 @@ from aegis.tui.themes import (
 from aegis.tui.widgets import TabBar
 
 if TYPE_CHECKING:  # aegis.views imports this module; keep it type-only
+    from aegis.fleet.models import Origin
     from aegis.state.workspace import Workspace
     from aegis.views.state import ViewState
 
@@ -2416,6 +2417,7 @@ class AegisApp(App):
         prompt: str | None = None,
         host: str | None = None,
         cwd: str | None = None,
+        origin: "Origin | None" = None,
     ) -> str:
         """AppBridge-shaped: spawn a long-lived agent as a TUI pane."""
         mgr = getattr(self, "manager", None)
@@ -2432,6 +2434,7 @@ class AegisApp(App):
                 prompt=prompt,
                 host=host,
                 cwd=cwd,
+                origin=origin,
             )
         sm_adapter = _SessionManagerAdapter(self)
         sess = sm_adapter.spawn(
@@ -2444,6 +2447,7 @@ class AegisApp(App):
             prompt=prompt,
             host=host,
             cwd=cwd,
+            origin=origin,
         )
         return sess.handle
 
@@ -3185,6 +3189,7 @@ class _SessionManagerAdapter:
         prompt: str | None = None,
         host: str | None = None,
         cwd: str | None = None,
+        origin: "Origin | None" = None,
     ):
         _refuse_when_bridged(self._app)
         from aegis.core.manager import _overlay_agent
@@ -3209,6 +3214,8 @@ class _SessionManagerAdapter:
             project_root=Path(self._app._cwd),
         )
         pane._core.spawned_by = spawned_by
+        if origin is not None:
+            pane._core.origin = origin
         self._app._panes.append(pane)
         self._app.inbox_router.bind_session(h, pane._core)
         # App.run_worker (not asyncio.create_task) so the mount task runs

@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from aegis.fleet.models import Origin
 from aegis.mcp.bridge import SessionInfo
 from aegis.mcp.server import (
     BRIEFING,
@@ -69,10 +70,10 @@ class FakeBridge(StubRoots):
     async def spawn(self, profile, *, handle=None,
                     opening_prompt=None, spawned_by=None,
                     model=None, effort=None, prompt=None,
-                    host=None, cwd=None):
+                    host=None, cwd=None, origin=None):
         self.spawned = {"profile": profile, "handle": handle,
                         "opening_prompt": opening_prompt,
-                        "spawned_by": spawned_by,
+                        "spawned_by": spawned_by, "origin": origin,
                         "model": model, "effort": effort, "prompt": prompt}
         return handle or "auto-handle"
 
@@ -182,6 +183,9 @@ async def test_aegis_spawn_creates_peer():
     assert br.spawned == {"profile": "default", "handle": "child-one",
                           "opening_prompt": "do the thing",
                           "spawned_by": "parent-x",
+                          # An agent made this one, which spawned_by alone
+                          # cannot distinguish from an operator's /spawn.
+                          "origin": Origin(kind="agent", by="parent-x"),
                           "model": None, "effort": None, "prompt": None}
 
 

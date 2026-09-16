@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aegis.mcp.bridge import SessionInfo
+from aegis.fleet.models import Origin
 from aegis.queue.schema import InboxMessage, new_ulid as _new_ulid, now_iso
 from aegis.workflow.decorator import (
     PredicateFailed,
@@ -390,6 +391,11 @@ class WorkflowEngine:
                 f"spawn({profile!r}, alias={requested!r}) failed: {e}"
             ) from e
         self._spawned_handles.add(h)
+        # The engine's own run id, not a `run_id` attribute: this class
+        # names it workflow_id (workflow_run_id is its legacy alias).
+        sess = self._bridge.get(h) if hasattr(self._bridge, "get") else None
+        if sess is not None:
+            sess.origin = Origin(kind="workflow", by=self.name, detail=self.workflow_id)
         return h
 
     async def close(self, handle: str) -> None:

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from aegis.events import AssistantText, Result
+from aegis.fleet.models import Origin
 from aegis.groups.models import MemberRef
 from aegis.groups.registry import GroupRegistry
 from aegis.queue.inbox import InboxRouter
@@ -34,6 +35,7 @@ class GroupWiring:
         session = self.session_manager.get(h)
         self.registry.add_member(group, MemberRef(handle=h, profile=profile))
         if session is not None:
+            session.origin = Origin(kind="group", by=group)
             self.inbox.bind_session(h, session)
             last_text = {"text": ""}
             loop = asyncio.get_event_loop()
