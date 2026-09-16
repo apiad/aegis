@@ -139,7 +139,7 @@ _IN_FLIGHT_SYSTEM = (
 
 
 async def _one(
-    schema, system, *, replay, facts, driver, agent, cwd, window_opts
+    schema, system, *, replay, facts, driver, agent, cwd, window_opts, on_driver=None
 ) -> Recap:
     header = ""
     try:
@@ -149,6 +149,10 @@ async def _one(
         # input than the persisted replays the turn recap reads.
         window = assemble(replay, **window_opts)
         header = window.header
+        if on_driver is not None:
+            # No await between this and the call: a cancel from here on
+            # lands inside the driver, where a started call is paid for.
+            on_driver()
         gen = await driver.generate_detailed(
             agent,
             cwd,
@@ -212,9 +216,13 @@ async def recap_session(*, replay, facts: TurnFacts, driver, agent, cwd: str) ->
 
 
 async def recap_in_flight(
-    *, replay, facts: TurnFacts, driver, agent, cwd: str
+    *, replay, facts: TurnFacts, driver, agent, cwd: str, on_driver=None
 ) -> Recap:
-    """Two lines about a turn still running: what landed, what it is doing."""
+    """Two lines about a turn still running: what landed, what it is doing.
+
+    ``on_driver`` is called just before the driver is, so a caller that
+    cancels can tell a paid call from one that never started.
+    """
     return await _one(
         FleetRecap,
         _IN_FLIGHT_SYSTEM,
@@ -224,6 +232,7 @@ async def recap_in_flight(
         agent=agent,
         cwd=cwd,
         window_opts=IN_FLIGHT_WINDOW,
+        on_driver=on_driver,
     )
 
 
@@ -308,6 +317,7 @@ async def recap_in_flight_for(
     agents: dict | None,
     cwd: str,
     root=None,
+    on_driver=None,
 ) -> Recap:
     """``recap_for`` for a turn still running: same billing, same transcript.
 
@@ -326,5 +336,10 @@ async def recap_in_flight_for(
         return got
     driver, gen_agent, replay = got
     return await recap_in_flight(
-        replay=replay, facts=facts, driver=driver, agent=gen_agent, cwd=cwd
+        replay=replay,
+        facts=facts,
+        driver=driver,
+        agent=gen_agent,
+        cwd=cwd,
+        on_driver=on_driver,
     )

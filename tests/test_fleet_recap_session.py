@@ -73,6 +73,9 @@ def _stub_recap(monkeypatch, *, block=None, cost=0.01):
 
     async def fake(**kw):
         calls.append(kw)
+        # Stands in for the whole call, driver included: a cancel while it
+        # blocks is a cancel of a started `claude -p`.
+        kw["on_driver"]()
         if block is not None:
             await block.wait()
         return Recap(done="landed x", doing="doing y", cost_usd=cost, ok=True)
@@ -393,3 +396,138 @@ async def test_an_idle_session_never_reads_the_config(tmp_path, monkeypatch):
     assert reads == [], "the state check is free; the config read is a stat"
     s._fleet_watchers.clear()
     s._stop_fleet()
+
+
+# --- the fix wave: refusal logged once, cancels counted only when paid,
+# --- and a reconnect clears what the old process was doing
+
+
+def _keep_warnings():
+    """On the session's own logger, not caplog: `aegis_log.open()` leaves
+    `propagate = False` on "aegis" (see test_session_generation_config)."""
+    import logging
+
+    records = []
+
+    class _Keep(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger("aegis.core.session")
+    handler, level = _Keep(logging.WARNING), logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+
+    def undo():
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+
+    return records, undo
+
+
+async def test_a_refused_recap_is_logged_once_per_session(tmp_path, monkeypatch):
+    """No `text_generation:` means the in-flight recap is refused on every
+    check. Silent, the operator sees cards with no `now` line and no
+    reason; logged per check, it floods the log every two minutes."""
+    monkeypatch.setattr("aegis.state.session_log.replay_events",
+                        lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
+    records, undo = _keep_warnings()
+    try:
+        s, harness, clock = _session(tmp_path)  # FLEET only: no text_generation
+        await s.send("go")
+        _watch(s)
+        for _ in range(3):
+            clock.t += 121
+            await _spin(50)
+        assert s.fleet_recap_failed == 3
+        await _finish(s, harness)
+    finally:
+        undo()
+    hits = [r for r in records if "text_generation" in r.getMessage()]
+    assert len(hits) == 1, [r.getMessage() for r in records]
+    assert s.handle in hits[0].getMessage()
+
+
+async def test_a_cancel_before_the_driver_counts_nowhere(tmp_path, monkeypatch):
+    """Killed while the digest is still being built, the call never
+    started, so it cost nothing and is not `cancelled` in the band."""
+    block = asyncio.Event()
+    driven = []
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, *a):
+            driven.append(a)
+
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    s, harness, clock = _session(tmp_path)
+
+    async def slow_build(**_kw):
+        await block.wait()
+
+    monkeypatch.setattr(s.digest, "build", slow_build)
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin()
+    running = s._fleet_recap_task
+    assert running is not None and not running.done()
+    await _finish(s, harness)
+    assert running.cancelled()
+    assert driven == []
+    assert s.fleet_recap_cancelled == 0
+    assert (s.fleet_recap_calls, s.fleet_recap_failed) == (0, 0)
+
+
+async def test_a_cancel_inside_the_driver_counts_as_cancelled(tmp_path, monkeypatch):
+    """Through the real `recap_in_flight_for`: the driver was entered, a
+    `claude -p` may be running, and its price never prints."""
+    block = asyncio.Event()
+    entered = []
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, *a):
+            entered.append(a)
+            await block.wait()
+
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    monkeypatch.setattr("aegis.state.session_log.replay_events",
+                        lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
+    s, harness, clock = _session(tmp_path, HAIKU, {
+        "opus": Agent(harness="claude-code", model="opus"),
+        "haiku": Agent(harness="claude-code", model="claude-haiku-4-5-20251001"),
+    })
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    for _ in range(10):
+        await _spin()
+        if entered:
+            break
+    assert len(entered) == 1
+    await _finish(s, harness)
+    assert s.fleet_recap_cancelled == 1
+
+
+async def test_a_reconnect_drops_the_old_processes_recap(tmp_path, monkeypatch):
+    """`adopt` swaps the process under a session and sets it ready without
+    going through `_emit_state`, so nothing cleared the `now` line or the
+    recap still running against the old process."""
+    block = asyncio.Event()
+    calls = _stub_recap(monkeypatch, block=block)
+    s, harness, clock = _session(tmp_path)
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin()
+    assert len(calls) == 1
+    running = s._fleet_recap_task
+    s.fleet_recap = Recap(doing="an earlier line", ok=True)
+    s.adopt(_BlockingHarness())
+    await _spin()
+    assert running.cancelled()
+    assert s._fleet_recap_task is None
+    assert s.fleet_recap is None

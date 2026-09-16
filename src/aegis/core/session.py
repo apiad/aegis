@@ -204,9 +204,14 @@ class AgentSession:
         self.fleet_recap_calls = 0
         # Recaps that never reached the driver, so cost nothing.
         self.fleet_recap_failed = 0
-        # Cancelled mid-flight. The price prints when claude exits and a
-        # cancelled call is killed first, so its cost is unknowable.
+        # Cancelled after the driver was entered. The price prints when
+        # claude exits and a cancelled call is killed first, so its cost is
+        # unknowable. A cancel before the driver cost nothing and counts
+        # nowhere.
         self.fleet_recap_cancelled = 0
+        # A refused recap (no `text_generation:`, say) is refused on every
+        # check; say why once per session rather than every two minutes.
+        self._fleet_refusal_logged = False
         # Called with (session, recap) for each mid-turn recap. Not the
         # recap observers: those draw into the transcript.
         self._fleet_watchers: list = []
@@ -321,6 +326,10 @@ class AgentSession:
         """
         self._session = session
         self.state = AgentState.ready
+        # Set directly, not through _emit_state, so clear here what a turn
+        # end clears: the old process's recap is about a turn that is gone.
+        self._cancel_fleet_recap()
+        self.fleet_recap = None
 
     def add_event_observer(self, cb: EventCb) -> None:
         """Subscribe an additional event callback. Fires after on_event."""
@@ -1077,6 +1086,12 @@ class AgentSession:
         self._fleet_recap_task = None
 
     async def _run_fleet_recap(self) -> None:
+        entered = False
+
+        def on_driver() -> None:
+            nonlocal entered
+            entered = True
+
         try:
             plan_now = self.plan_state()
             facts = await self.digest.build(
@@ -1094,9 +1109,11 @@ class AgentSession:
                 agents=self._agents,
                 cwd=str(self.project_root),
                 root=self._config_root,
+                on_driver=on_driver,
             )
         except asyncio.CancelledError:
-            self.fleet_recap_cancelled += 1
+            if entered:
+                self.fleet_recap_cancelled += 1
             raise
         except Exception:  # noqa: BLE001
             log.exception("fleet recap failed")
@@ -1109,6 +1126,14 @@ class AgentSession:
             self.fleet_recap_cost_usd += recap.cost_usd
         else:
             self.fleet_recap_failed += 1
+            if recap.error and not self._fleet_refusal_logged:
+                self._fleet_refusal_logged = True
+                log.warning(
+                    "%s: mid-turn recap not made, and no `now` line will "
+                    "show (logged once per session): %s",
+                    self.handle,
+                    recap.error,
+                )
         if not recap.ok:
             return
         self.fleet_recap = recap

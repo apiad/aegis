@@ -167,6 +167,11 @@ fleet:
   background tab, a closed sidebar or a detached client pays nothing.
 - `off` never calls; the cards and the sidebar show no `now` line.
 
+The call bills only to [`text_generation:`](#text_generation-optional). When
+that key is unset or names no profile, the recap is refused rather than
+billed to the session's own model, the card shows no `now` line, and the
+daemon log says why once per session.
+
 There is no mode that pays for sessions nobody has on screen, and
 `recap: on` is refused at boot. `aegis dash` on a second monitor counts as
 watching, so a fleet you want recapped all day is one `aegis dash` away.
