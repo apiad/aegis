@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Kinds whose sessions the substrate closes when their unit of work ends:
 # a queue worker in QueueManager._finalize, a workflow subagent by the
@@ -40,3 +40,67 @@ class EventLine:
     at: float          # wall-clock epoch seconds, for the HH:MM stamp
     tool: str
     summary: str
+
+
+@dataclass(frozen=True)
+class CardView:
+    """One session as the dashboard sees it. Everything a card draws is
+    here; the renderer reads no live object."""
+
+    handle: str
+    title: str = ""
+    state: str = "ready"            # ready | working | error
+    agent_slug: str = ""
+    host: str = "local"
+    repo: str = ""                  # "une-tools · main +3 ~2", already formatted
+    origin: Origin = field(default_factory=Origin)
+    uptime_s: float = 0.0
+    turn_s: float = 0.0             # 0 when not in a turn
+    cost_usd: float = 0.0
+    ctx_pct: float = 0.0
+    plan_done: int = 0
+    plan_total: int = 0
+    plan_current: str = ""
+    did: str = ""                   # last turn's recap
+    doing: str = ""                 # mid-turn recap; "" until slice 3
+    events: tuple[EventLine, ...] = ()
+    claims: int = 0
+    monitor: str = ""               # "pytest 60%", "" when none
+    spoke_with: tuple[str, ...] = ()   # comms edges, most recent first
+    waiting_on: tuple[str, ...] = ()
+    tab_index: int = 0              # 1-based; the card is that tab
+    ghost_since: float | None = None  # set when an ephemeral session died
+
+
+@dataclass(frozen=True)
+class RepoCount:
+    name: str
+    agents: int
+    shared: bool = False            # more than one agent in this tree
+
+
+@dataclass(frozen=True)
+class BandView:
+    host: str = "local"
+    total: int = 0
+    yours: int = 0
+    ephemeral: int = 0
+    by_kind: tuple[tuple[str, int], ...] = ()   # (("queue", 2), ("workflow", 1))
+    working: int = 0
+    ready: int = 0
+    waiting: int = 0
+    ctx_avg: float = 0.0
+    ctx_worst: tuple[str, float] | None = None  # (handle, pct)
+    cost_today: float = 0.0
+    recap_cost: float = 0.0
+    recap_calls: int = 0
+    queues: tuple[int, int] = (0, 0)            # (running, configured)
+    monitors: int = 0
+    repos: tuple[RepoCount, ...] = ()
+    clock: str = ""
+
+
+@dataclass(frozen=True)
+class FleetSnapshot:
+    band: BandView = field(default_factory=BandView)
+    cards: tuple[CardView, ...] = ()
