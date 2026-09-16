@@ -153,8 +153,8 @@ class FakeMonitorView:
 @dataclass
 class FakeTask:
     callback: bool
-    callback_handle: str | None = None
     enqueued_by: str = ""
+    callback_to: str | None = None
 
 
 class FakeQueues:
@@ -177,14 +177,15 @@ def test_a_ready_session_with_a_live_monitor_is_waiting():
 
 
 def test_a_ready_session_owed_a_queue_callback_is_waiting():
-    """Matched on callback_handle. enqueued_by is a sender tag and would
-    never equal a bare handle."""
+    """The local shape, as `aegis_enqueue` fills it: the waiter is the
+    handle inside the `agent:<handle>` sender tag. A real manager drives
+    the same rule in test_a_producer_owed_a_local_queue_callback_is_waiting."""
     m = FakeManager([FakeSession("a"), FakeSession("b"), FakeSession("c")])
     m.queue_manager = FakeQueues(
-        pending=[FakeTask(callback=True, callback_handle="a", enqueued_by="agent:a")],
+        pending=[FakeTask(callback=True, enqueued_by="agent:a")],
         running=[
-            FakeTask(callback=True, callback_handle="b"),
-            FakeTask(callback=False, callback_handle="c"),
+            FakeTask(callback=True, enqueued_by="agent:b"),
+            FakeTask(callback=False, enqueued_by="agent:c"),
         ],
         configured=4,
     )
@@ -320,6 +321,57 @@ def test_a_real_manager_builds_a_snapshot(tmp_path):
     assert snap.band.total == 1
     # A ready session walks the waiting rule, which reads the queue manager.
     assert snap.band.ready + snap.band.waiting == 1
+
+
+async def test_a_producer_owed_a_local_queue_callback_is_waiting(tmp_path):
+    """A real brain and QueueManager, enqueued the way `aegis_enqueue` does
+    locally (sender tag, `callback=True`, nothing else) and the way
+    `remote/plane.py` does for a peer. The fake-based version matched
+    `callback_handle`, which a local enqueue never sets, so no local
+    producer was ever counted as waiting."""
+    from aegis.config.roots import AegisRoots
+    from aegis.fleet.snapshot import _owed_callback
+    from aegis.queue import Queue, sender_agent
+    from tests.brain import make_brain
+
+    class FakeHarness:
+        async def start(self): ...
+        async def send(self, t): ...
+        async def close(self): ...
+
+        async def events(self):
+            if False:
+                yield
+
+    mgr = make_brain(
+        {"default": Agent(harness="claude-code", model="opus")},
+        "default",
+        make_session=lambda profile, url, handle: FakeHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+        queues={"general": Queue(name="general", agent_profile="default",
+                                 max_parallel=1)},
+    )
+    for h in ("dispatched-cb", "pending-cb", "no-cb", "remote-peer"):
+        mgr._sync_spawn("default", handle=h)
+    qm = mgr.queue_manager
+    qm.enqueue("general", "one", enqueued_by=sender_agent("dispatched-cb"),
+               callback=True)
+    qm.enqueue("general", "two", enqueued_by=sender_agent("no-cb"),
+               callback=False)
+    qm.enqueue("general", "three", enqueued_by=sender_agent("pending-cb"),
+               callback=True)
+    qm.enqueue("general", "four", enqueued_by="remote:laptop", callback=False,
+               callback_to="laptop", callback_handle="remote-peer")
+    assert [t.status for t, _ in qm._workers.values()] == ["dispatched"]
+    assert len(qm._pending["general"]) == 3
+
+    owed = {h: _owed_callback(mgr, h)
+            for h in ("dispatched-cb", "pending-cb", "no-cb", "remote-peer")}
+    assert owed == {"dispatched-cb": True, "pending-cb": True,
+                    "no-cb": False, "remote-peer": False}
+    band = build_snapshot(mgr, now=1000.0).band
+    assert band.waiting == 2
 
 
 def test_the_band_sums_the_recap_spend_over_live_sessions():

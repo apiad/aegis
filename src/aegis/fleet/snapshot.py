@@ -19,6 +19,7 @@ from dataclasses import replace
 
 from aegis.budget.cost import compute
 from aegis.fleet.models import BandView, CardView, FleetSnapshot, Origin, RepoCount
+from aegis.queue.schema import local_waiter
 from aegis.repos.render import _branch_cell, _churn, _counts
 
 
@@ -196,12 +197,13 @@ def _monitor_label(manager, handle: str) -> str:
 def _owed_callback(manager, handle: str) -> bool:
     """A queue task, pending or running, that calls back to ``handle``.
 
-    Matched on ``callback_handle``: ``enqueued_by`` is a sender tag such as
-    ``agent:<handle>`` and would never equal a bare handle.
+    Matched through ``local_waiter``, the rule ``QueueManager._finalize``
+    delivers by. ``callback_handle`` is set only on a task a remote peer
+    sent, and its waiter is a session on that peer, not one here.
     """
     qm = getattr(manager, "queue_manager", None)
     if qm is None:
         return False
     running = (task for task, _last_text in qm._workers.values())
     pending = (task for tasks in qm._pending.values() for task in tasks)
-    return any(t.callback and t.callback_handle == handle for t in (*running, *pending))
+    return any(local_waiter(t) == handle for t in (*running, *pending))

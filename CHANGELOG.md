@@ -91,6 +91,12 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   It now names the session that enqueued it, and a task a remote peer
   sent still names that peer.
 
+- **The F10 band counts a session waiting on a local queue task as
+  `waiting`.** A session that enqueued work with a callback and ended its
+  turn to wait was counted as `ready`, because the check matched a field
+  only a remote peer's task carries. It now counts as waiting while its
+  task is pending or running.
+
 - **One-shot generation calls no longer pay for reasoning or for the
   project directory.** On the Claude driver, the turn recap, `/btw`,
   session titles and the fleet's `now` line now run with
