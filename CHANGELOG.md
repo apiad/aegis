@@ -85,11 +85,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 ### Fixed
 
 - **One-shot generation calls no longer pay for reasoning or for the
-  project directory.** On the Claude driver, the turn recap, the loop
-  judge, `/btw`, session titles and the fleet's `now` line now run with
-  `MAX_THINKING_TOKENS=0` and from an empty directory. Thinking took a
-  recap-shaped call from 4.7 s and 103 output tokens to 27.1 s and 2,508,
-  and its latency swung 8.7-30.4 s run to run.
+  project directory.** On the Claude driver, the turn recap, `/btw`,
+  session titles and the fleet's `now` line now run with
+  `MAX_THINKING_TOKENS=0`, and every one-shot call, the loop judge
+  included, runs from an empty directory. The loop judge keeps the CLI's
+  thinking default on purpose: it decides whether an instruction is
+  satisfied, the one call where reasoning may earn its cost, and it has not
+  been measured on and off. Thinking took a recap-shaped call from 4.7 s and
+  103 output tokens to 27.1 s and 2,508, and its latency swung 8.7-30.4 s
+  run to run.
   Launching from the Workspace root read 11,445 input tokens for $0.0287,
   against 4,902 for $0.0162 from an empty directory, and $0.0073 on the
   next call once that prefix is cached.
@@ -117,7 +121,7 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   now carries both ends of every task.
 
 - **F10's fleet grid no longer repaints the whole terminal 57 times a
-  second.** With six sessions streaming behind it, the pty client got 50-60
+  second.** With seven sessions streaming behind it, the pty client got 50-60
   frames/s of 14.7 KB, 730-890 KB/s; now it gets 2.0 frames/s of 10.7 KB,
   21 KB/s (`aegis bench run -s fleet`, three repeats each, host 31-94%
   busy). Daemon CPU fell from 0.74 to 0.39 s/s. The cause was Textual

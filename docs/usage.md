@@ -525,8 +525,13 @@ aegis dash --cwd ~/project  # the daemon for another project root
 when none is running. The view id defaults to the terminal's own, so a
 second terminal gets a view of its own. Every view shows the same
 sessions, but focus is per view: opening a card in the dash switches the
-dash's tab, and the terminal you work in stays where it was. Re-attaching
-a view whose fleet is already open leaves it open.
+dash's tab, and the terminal you work in stays where it was. Every
+`aegis dash` attach comes up with the fleet open; a later plain
+`aegis attach` to the same view id does not.
+
+A daemon started before this version ignores the request and opens a
+plain view without the fleet. Restart it (`aegis kill`, then `aegis dash`)
+when you can afford to drop its tabs; see `know-how/the-daemon.md`.
 
 ## Queue dashboard
 
@@ -535,7 +540,7 @@ just above the status bar in every conversation showing live per-queue
 depth and the most recent in-flight worker. Press `F4` to expand
 into a full-screen modal with `QUEUES / IN-FLIGHT / QUEUED / RECENT`
 bands and a detail panel that tails the selected worker's assistant
-text. See [Queues → Dashboard](queues.md#dashboard-ctrld) for the full
+text. See [Queues → Dashboard](queues.md#dashboard-f4) for the full
 key map.
 
 When a handoff or queue callback lands on the active agent, a
