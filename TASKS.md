@@ -98,6 +98,16 @@ Left over from the bench check (Task 10, 2026-09-16):
   screen live, and its forward-then-full-repaint branch looped on every
   update tick; `AegisApp._background_screens` now returns none under an
   opaque top screen.
+- [ ] **`aegis_log.open()` leaks `propagate = False` across tests.**
+  `state/aegis_log.py:115` turns propagation off on the "aegis" logger and
+  nothing restores it, so once any test opens the log, records from
+  `aegis.*` never reach the root handler `caplog` listens on. A caplog
+  test then passes alone and fails after `test_aegis_log.py`. Two fleet
+  tests work around it with a handler on the session's own logger
+  (`test_session_generation_config.py`, `test_fleet_recap_session.py`).
+  Fix: an autouse fixture that restores `propagate` and the handlers, or
+  have `open()` return something tests can close. Filed by the final fix
+  wave, 2026-09-16.
 - [ ] **A queue-born card and its ghost have no end-to-end check.** The
   bench cannot enqueue: the fake `claude` cannot call MCP tools and there
   is no enqueue CLI. The fork's origin is now tested through the real
