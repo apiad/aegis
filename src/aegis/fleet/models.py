@@ -89,6 +89,7 @@ class BandView:
     working: int = 0
     ready: int = 0
     waiting: int = 0
+    error: int = 0  # working + ready + waiting + error == total
     ctx_avg: float = 0.0
     ctx_worst: tuple[str, float] | None = None  # (handle, pct)
     cost_today: float = 0.0
