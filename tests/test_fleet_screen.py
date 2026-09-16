@@ -538,8 +538,9 @@ def test_no_modal_in_aegis_makes_its_own_screen_translucent():
 
 async def test_f10_over_a_covered_fleet_does_not_stack_a_second_one(tmp_path):
     """F4 over F10, then F10: the fleet is already in the stack, only
-    covered (F2 opens a tab, not a screen, so it cannot cover F10). A second FleetScreen would watch every session twice and pay
-    twice for nothing on screen."""
+    covered (F2 opens a tab, not a screen, so it cannot cover F10). A
+    second FleetScreen would double every session's event observers and
+    fleet watchers for a view nobody can see."""
     app = _bridged(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         await _two_tabs(app, pilot)

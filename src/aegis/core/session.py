@@ -1129,8 +1129,9 @@ class AgentSession:
             if recap.error and not self._fleet_refusal_logged:
                 self._fleet_refusal_logged = True
                 log.warning(
-                    "%s: mid-turn recap not made, and no `now` line will "
-                    "show (logged once per session): %s",
+                    "%s: mid-turn recap not made (logged once per session; "
+                    "if the reason is configuration, no `now` line will show "
+                    "until it is fixed): %s",
                     self.handle,
                     recap.error,
                 )

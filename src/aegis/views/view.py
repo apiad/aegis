@@ -141,9 +141,9 @@ class View:
         The widgets remove their own on unmount, and on a clean exit this
         finds nothing. But the wait above cancels a slow app, and Textual runs
         its shutdown under a shield: a hang *inside* shutdown means no
-        `on_unmount` ever runs. A fleet watcher left behind turns `watched`
-        into `on` for that session until it closes, a paid call every
-        interval for a client that is gone (reproduced 2026-09-16).
+        `on_unmount` ever runs. A fleet watcher left behind keeps that
+        session "watched" until it closes, a paid call every interval for a
+        client that is gone (reproduced 2026-09-16).
 
         Ownership is decided by walking the callback owner's `_parent` chain
         to this app, not by `widget.app`: outside the app's own context that
