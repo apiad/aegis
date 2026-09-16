@@ -51,3 +51,29 @@ def test_generate_env_keeps_the_rest_of_the_environment(monkeypatch, agent, tmp_
     asyncio.run(ClaudeDriver().generate_detailed(agent, str(tmp_path), _Two, "hi"))
 
     assert seen["env"]["AEGIS_PROBE_MARKER"] == "present"
+
+
+def test_generate_runs_from_a_neutral_directory_not_the_project(monkeypatch, agent, tmp_path):
+    """A generation call has no tools and is handed its window, so the cwd
+    buys nothing and costs a lot. Measured 2026-09-16 on a real in-flight
+    recap, same argv: 11,445 input tokens and $0.0287 launched from the
+    Workspace root against 4,902 and $0.0162 from /tmp, despite
+    `--setting-sources ""`."""
+    seen = {}
+
+    async def fake_exec(*argv, **kw):
+        seen["cwd"] = kw.get("cwd")
+        raise RuntimeError("stop")
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "CLAUDE.md").write_text("a large project instruction file\n")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    asyncio.run(ClaudeDriver().generate_detailed(agent, str(project), _Two, "hi"))
+
+    from pathlib import Path
+
+    cwd = Path(seen["cwd"])
+    assert cwd != project
+    assert cwd.is_dir()
+    assert list(cwd.iterdir()) == [], "the neutral directory must stay empty"

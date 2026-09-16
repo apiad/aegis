@@ -295,6 +295,16 @@ class ClaudeSession(HarnessSession):
                 self._proc.kill()
 
 
+def _oneshot_cwd() -> str:
+    """An empty directory one-shot generation runs from. Created on first
+    use, never written to."""
+    import tempfile
+
+    path = Path(tempfile.gettempdir()) / f"aegis-oneshot-{os.getuid()}"
+    path.mkdir(mode=0o700, exist_ok=True)
+    return str(path)
+
+
 class ClaudeDriver(HarnessDriver):
     supports_resume = True
     supports_fork = True
@@ -422,7 +432,14 @@ class ClaudeDriver(HarnessDriver):
         try:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
-                cwd=cwd,
+                # Not the project: a generation call has no tools and is handed
+                # its window, so the cwd buys nothing and costs a lot. Measured
+                # 2026-09-16 on a real in-flight recap, same argv: 11,445 input
+                # tokens / $0.0287 from the Workspace root against 4,902 /
+                # $0.0162 from an empty directory, despite
+                # `--setting-sources ""`. `cwd` is kept in the signature for
+                # the drivers that do need it.
+                cwd=_oneshot_cwd(),
                 env=env,
                 # DEVNULL, not inherited: claude waits 3s for stdin it will
                 # never get, and that wait is a third of the whole call.
