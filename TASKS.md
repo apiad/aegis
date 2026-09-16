@@ -37,6 +37,31 @@ Rationale, and what is deliberately *not* in v1.0, under **v1.0 scope** below.
 > **Do not trust this file's headings or plan checkboxes** — both were caught
 > lying. See *Audit findings* at the end of the v1.0 scope section.
 
+## The fleet dashboard (F10) — designed 2026-09-16
+
+Spec: `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md`.
+One card per session, no transcript. F10 in the TUI, then `aegis dash` as a
+boot flag for a second monitor. Four vertical slices; VS1 is independent of
+the rest.
+
+Two findings fell out of designing it, both of which stand alone:
+
+- **`_oneshot_argv`'s docstring is stale by 7.6×.** It records 21,445 →
+  7,749 input tokens measured 2026-08-26 on claude ~2.1.220. The same
+  flags on 2.1.270 cost **1,027** (measured 2026-09-16,
+  `.playground/fleet-recap-probe/`). Re-measure through the real path and
+  correct the docstring.
+- **`MAX_THINKING_TOKENS=0` was never wired, and was never filed here.**
+  Found 2026-09-13 (`vault/Atlas/Architecture/2026-09-13-style-prompt-arms-experiment.md`,
+  Result 5) and recorded only in that session's transcript. The recap,
+  `titlegen` and `/btw` are structured-generation calls that do not need to
+  reason and pay for it at every turn boundary. Measured on a recap-shaped
+  call: 27.1s / 2,508 output tokens on, against 4.7s / 103 off, and the
+  on-arm's latency swings 8.7s–30.4s run to run. `--effort` is not an
+  alternative: it has no off, and `low` still emitted 133 thinking tokens
+  for two sentences. The loop judge is excluded pending its own
+  measurement.
+
 ## Resolved — the June 2026 billing scare
 
 Both ⚠️ deadlines below have passed and neither action is needed. Kept as a
