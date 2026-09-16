@@ -118,3 +118,24 @@ async def test_reset_forgets_the_previous_turn(repo):
                           assistant_tail="", duration_s=0.1)
     assert facts.repos == ()
     assert facts.moved is False
+
+
+async def test_build_diffs_a_snapshot_while_the_loop_keeps_writing(tmp_path, monkeypatch):
+    """A mid-turn build runs git in a thread while the turn keeps calling
+    note_write on the loop. Iterating the live dict would raise
+    'dictionary changed size during iteration'."""
+    import aegis.digest.collect as collect
+
+    c = DigestCollector()
+    c.note_write(tmp_path / "a")
+    c.note_write(tmp_path / "b")
+
+    def racing_commits_since(root, base, **kw):
+        c.note_write(tmp_path / f"new-{root.name}")
+        return ()
+
+    monkeypatch.setattr(collect, "commits_since", racing_commits_since)
+    facts = await c.build(plan_done=0, plan_total=0, plan_done_at_start=0,
+                          assistant_tail="", duration_s=0.0)
+    assert facts.error == ""
+    assert [r.name for r in facts.repos] == ["a", "b"]

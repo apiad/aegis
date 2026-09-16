@@ -202,6 +202,13 @@ class AgentSession:
         # What the mid-turn recaps have cost this session, for the band.
         self.fleet_recap_cost_usd = 0.0
         self.fleet_recap_calls = 0
+        # Recaps that never reached the driver, so cost nothing.
+        self.fleet_recap_failed = 0
+        # Cancelled mid-flight. The price prints when claude exits and a
+        # cancelled call is killed first, so its cost is unknowable.
+        self.fleet_recap_cancelled = 0
+        # Called with (session, recap) for each mid-turn recap. Not the
+        # recap observers: those draw into the transcript.
         self._fleet_watchers: list = []
         self._fleet_task: asyncio.Task | None = None
         self._fleet_recap_task: asyncio.Task | None = None
@@ -445,10 +452,15 @@ class AgentSession:
             self._turn_started_at = self._now()
             self._turn_plan_done_at_start = self.plan_state().done
             self._turn_tail = []
+            # Each turn waits recap_after_s for its first recap, however
+            # recently the last turn had one.
+            self._fleet_last_started = None
         elif state is not AgentState.working:
             self._turn_started_at = None
-            # A late answer describes a turn that has already closed.
+            # A late answer describes a turn that has already closed, and
+            # an idle card must not show what the turn was doing.
             self._cancel_fleet_recap()
+            self.fleet_recap = None
         # Working time accrues only mid-turn, so every tracker follows the
         # session's turn state — including the subagents', which are also
         # only doing work while this session's turn is live.
@@ -1037,6 +1049,8 @@ class AgentSession:
                 log.exception("fleet recap check raised; continuing")
 
     def _fleet_tick(self) -> None:
+        if self.state is not AgentState.working:
+            return  # free, where the config read below is a stat
         if self._fleet_recap_task is not None:
             return  # one at a time
         if self._agents is None:
@@ -1080,18 +1094,27 @@ class AgentSession:
                 root=self._config_root,
             )
         except asyncio.CancelledError:
+            self.fleet_recap_cancelled += 1
             raise
         except Exception:  # noqa: BLE001
             log.exception("fleet recap failed")
             self._fleet_recap_task = None
+            self.fleet_recap_failed += 1
             return
         self._fleet_recap_task = None
-        self.fleet_recap_calls += 1
-        self.fleet_recap_cost_usd += recap.cost_usd
+        if recap.model or recap.cost_usd:
+            self.fleet_recap_calls += 1
+            self.fleet_recap_cost_usd += recap.cost_usd
+        else:
+            self.fleet_recap_failed += 1
         if not recap.ok:
             return
         self.fleet_recap = recap
-        self._emit_recap(recap)
+        for cb in list(self._fleet_watchers):
+            try:
+                cb(self, recap)
+            except Exception:  # noqa: BLE001
+                log.exception("fleet watcher raised")
 
     @property
     def recent_events(self) -> tuple["EventLine", ...]:

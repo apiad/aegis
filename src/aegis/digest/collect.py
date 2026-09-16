@@ -111,7 +111,10 @@ class DigestCollector:
         ``_chain_if_pending`` runs relative to the caller.
         """
         try:
-            deltas = await asyncio.to_thread(self._diff_all) if self._tracked else ()
+            # Snapshot on the loop: note_write keeps inserting while a
+            # mid-turn build diffs in the worker thread.
+            tracked = tuple(self._tracked.values())
+            deltas = await asyncio.to_thread(self._diff_all, tracked) if tracked else ()
         except Exception as e:  # noqa: BLE001
             return TurnFacts(
                 assistant_tail=assistant_tail,
@@ -127,9 +130,9 @@ class DigestCollector:
             duration_s=duration_s,
         )
 
-    def _diff_all(self) -> tuple[RepoDelta, ...]:
+    def _diff_all(self, tracked: tuple[_Tracked, ...]) -> tuple[RepoDelta, ...]:
         out = []
-        for entry in self._tracked.values():
+        for entry in tracked:
             local = entry.host == "local"
             out.append(
                 RepoDelta(

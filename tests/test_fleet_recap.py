@@ -125,3 +125,25 @@ def test_off_never_fires():
     cfg = FleetConfig(recap="off")
     assert should_fleet_recap(state="working", turn_s=999, since_last_s=999,
                               watchers=9, cfg=cfg) is False
+
+
+async def test_in_flight_recap_without_text_generation_never_calls_the_driver(
+        tmp_path, monkeypatch):
+    from aegis.config import Agent
+    from aegis.recap import recap_in_flight_for
+    from aegis.digest.models import TurnFacts
+
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n  opus:\n    provider: claude-code\n    model: opus\n"
+        "default_agent: opus\n")
+    opus = Agent(harness="claude-code", model="opus")
+    driven = []
+    monkeypatch.setattr("aegis.drivers.get_driver",
+                        lambda harness: driven.append(harness))
+    recap = await recap_in_flight_for(
+        state_dir=tmp_path, log_id="x", facts=TurnFacts(), agent=opus,
+        agents={"opus": opus}, cwd=str(tmp_path), root=tmp_path)
+    assert driven == []
+    assert not recap.ok
+    assert recap.error == (
+        "set text_generation: to bill the mid-turn recap to a cheap profile")

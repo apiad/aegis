@@ -227,7 +227,9 @@ async def recap_in_flight(
     )
 
 
-async def _resolve(*, state_dir, log_id: str, agent, agents: dict, root):
+async def _resolve(
+    *, state_dir, log_id: str, agent, agents: dict, root, unattended: bool = False
+):
     """Driver, billing profile and transcript — or a ``Recap`` saying why not.
 
     Mirrors ``btw.side_note_for`` exactly, including reading the log off
@@ -243,6 +245,12 @@ async def _resolve(*, state_dir, log_id: str, agent, agents: dict, root):
     # The session's config root, not the cwd: a daemon started from a
     # directory with its own .aegis.yaml would otherwise bill elsewhere.
     gen_agent, _unset = generation_agent(agent, agents, root)
+    if unattended and _unset:
+        # The turn recap falls back to the session's own model and says so.
+        # A recurring call nobody asked for must not bill Opus silently.
+        return Recap(
+            error="set text_generation: to bill the mid-turn recap to a cheap profile"
+        )
     try:
         driver = get_driver(gen_agent.harness)
     except KeyError:
@@ -298,7 +306,12 @@ async def recap_in_flight_for(
     turn up to now.
     """
     got = await _resolve(
-        state_dir=state_dir, log_id=log_id, agent=agent, agents=agents, root=root
+        state_dir=state_dir,
+        log_id=log_id,
+        agent=agent,
+        agents=agents,
+        root=root,
+        unattended=True,
     )
     if isinstance(got, Recap):
         return got

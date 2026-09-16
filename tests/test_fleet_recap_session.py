@@ -82,11 +82,12 @@ def _stub_recap(monkeypatch, *, block=None, cost=0.01):
 
 
 def _watch(s):
-    seen = []
-    cb = lambda *_a: None  # noqa: E731
+    """A fleet watcher, plus a turn-recap observer that must stay silent."""
+    seen, turn_seen = [], []
+    cb = lambda _s, r: seen.append(r)  # noqa: E731
     s.add_fleet_watcher(cb)
-    s.add_recap_observer(lambda _s, r: seen.append(r))
-    return cb, seen
+    s.add_recap_observer(lambda _s, r: turn_seen.append(r))
+    return cb, seen, turn_seen
 
 
 async def _finish(s, harness):
@@ -114,14 +115,15 @@ async def test_a_watched_turn_pays_once_then_waits_the_interval(tmp_path, monkey
     calls = _stub_recap(monkeypatch)
     s, harness, clock = _session(tmp_path)
     await s.send("go")
-    cb, seen = _watch(s)
+    cb, seen, turn_seen = _watch(s)
     await _spin()
     assert calls == [], "a young turn waits"
     clock.t += 61
     await _spin()
     assert len(calls) == 1
     assert s.fleet_recap is not None and s.fleet_recap.doing == "doing y"
-    assert [r.doing for r in seen] == ["doing y"]
+    assert [r.doing for r in seen] == ["doing y"], "the fleet watcher is the channel"
+    assert turn_seen == [], "a fleet recap must not reach the transcript's recap channel"
     clock.t += 60
     await _spin()
     assert len(calls) == 1, "the interval holds"
@@ -206,6 +208,8 @@ async def test_a_turn_that_ends_cancels_the_running_recap(tmp_path, monkeypatch)
     await _finish(s, harness)
     assert running.cancelled()
     assert s._fleet_recap_task is None
+    assert s.fleet_recap_cancelled == 1, "a killed call's cost is unknowable; count it"
+    assert s.fleet_recap_calls == 0
     assert s.fleet_recap is None
     # The periodic task stays armed (someone is still watching) but idle:
     # a ready session never qualifies.
@@ -287,3 +291,105 @@ async def test_fleet_recap_off_in_the_config_means_no_call(tmp_path, monkeypatch
         await _spin()
     assert calls == []
     await _finish(s, harness)
+
+
+async def test_a_turn_that_ends_clears_its_mid_turn_recap(tmp_path, monkeypatch):
+    _stub_recap(monkeypatch)
+    s, harness, clock = _session(tmp_path)
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin()
+    assert s.fleet_recap is not None
+    await _finish(s, harness)
+    assert s.fleet_recap is None, "an idle card must not show a stale 'now'"
+
+
+async def test_each_turn_starts_its_own_interval(tmp_path, monkeypatch):
+    calls = _stub_recap(monkeypatch)
+    s, harness, clock = _session(tmp_path)
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin()
+    assert len(calls) == 1
+    clock.t += 50
+    await _finish(s, harness)
+    harness.finish.clear()
+    await s.send("again")
+    assert s.state is AgentState.working
+    clock.t += 61
+    await _spin()
+    # 111s after turn 1's recap, under the 120s interval: only a reset at
+    # the turn boundary lets turn 2's first recap fire at recap_after_s.
+    assert len(calls) == 2
+    await _finish(s, harness)
+
+
+async def test_unset_text_generation_never_bills_the_sessions_own_model(
+        tmp_path, monkeypatch):
+    s, harness, clock = _session(tmp_path)  # FLEET only: no text_generation
+    billed = []
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, agent, cwd, schema, *instructions):
+            billed.append(agent.model)
+            from aegis.drivers.oneshot import Generation
+            return Generation(value=FleetRecap(done="a", doing="b"),
+                              model="opus", cost_usd=0.05)
+
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    monkeypatch.setattr("aegis.state.session_log.replay_events",
+                        lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin(50)
+    assert billed == []
+    assert s.fleet_recap is None
+    assert s.fleet_recap_calls == 0 and s.fleet_recap_cost_usd == 0.0
+    assert s.fleet_recap_failed == 1
+    await _finish(s, harness)
+
+
+async def test_only_calls_that_reached_the_driver_count_as_paid(tmp_path, monkeypatch):
+    results = [Recap(error="unknown harness: 'x'"),
+               Recap(model="haiku", cost_usd=0.01, error="nothing usable")]
+    calls = []
+
+    async def fake(**kw):
+        calls.append(kw)
+        return results[len(calls) - 1]
+
+    monkeypatch.setattr("aegis.core.session.recap_in_flight_for", fake)
+    s, harness, clock = _session(tmp_path)
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    await _spin()
+    assert len(calls) == 1
+    assert s.fleet_recap_calls == 0 and s.fleet_recap_failed == 1
+    clock.t += 121
+    await _spin()
+    assert len(calls) == 2
+    assert s.fleet_recap_calls == 1 and s.fleet_recap_failed == 1
+    assert s.fleet_recap_cost_usd == pytest.approx(0.01)
+    await _finish(s, harness)
+
+
+async def test_an_idle_session_never_reads_the_config(tmp_path, monkeypatch):
+    _stub_recap(monkeypatch)
+    s, harness, clock = _session(tmp_path)
+    reads = []
+    real = s._generation_config
+    s._generation_config = lambda: reads.append(1) or real()
+    _watch(s)
+    for _ in range(5):
+        clock.t += 600
+        await _spin()
+    assert s.state is not AgentState.working
+    assert reads == [], "the state check is free; the config read is a stat"
+    s._fleet_watchers.clear()
+    s._stop_fleet()
