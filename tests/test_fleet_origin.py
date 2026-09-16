@@ -1,5 +1,6 @@
 """Origin answers two questions spawned_by cannot: who made this agent,
 and will it outlive the work it was made for."""
+
 import pytest
 
 from aegis.fleet.models import Origin
@@ -52,11 +53,18 @@ def session_manager(tmp_path):
 
     from tests.brain import make_brain
 
-    roster = {"opus": Agent(harness="claude-code", model="opus",
-                            effort="high", permission="auto")}
-    return make_brain(roster, "opus",
-                      make_session=lambda p, u, h, **kw: _FakeHarness(),
-                      mcp=None, roots=AegisRoots.for_project(tmp_path))
+    roster = {
+        "opus": Agent(
+            harness="claude-code", model="opus", effort="high", permission="auto"
+        )
+    }
+    return make_brain(
+        roster,
+        "opus",
+        make_session=lambda p, u, h, **kw: _FakeHarness(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+    )
 
 
 def test_every_session_has_an_origin(session_manager):
@@ -73,9 +81,43 @@ def test_spawn_records_the_origin_it_is_given(session_manager):
 
 def test_a_fork_is_marked_as_one(session_manager):
     parent = session_manager._sync_spawn("opus")
-    child = session_manager._sync_spawn("opus", origin=Origin(kind="fork", by=parent.handle))
+    child = session_manager._sync_spawn(
+        "opus", origin=Origin(kind="fork", by=parent.handle)
+    )
     assert child.origin.kind == "fork"
     assert child.origin.by == parent.handle
+
+
+async def test_the_real_fork_marks_its_child_as_a_fork(tmp_path):
+    """`SessionManager.fork()` itself, not an origin handed to `_sync_spawn`:
+    the line that sets a fork's origin is inside `fork()`, so only a call
+    through it proves that line runs."""
+    from aegis.config import Agent
+    from aegis.config.roots import AegisRoots
+
+    from tests.brain import make_brain
+
+    class _Resumable(_FakeHarness):
+        session_id = "parent-sid"
+
+    roster = {
+        "opus": Agent(
+            harness="claude-code", model="opus", effort="high", permission="auto"
+        )
+    }
+    mgr = make_brain(
+        roster,
+        "opus",
+        make_session=lambda p, u, h, **kw: _Resumable(),
+        mcp=None,
+        roots=AegisRoots.for_project(tmp_path),
+    )
+    mgr._fork_capability = lambda harness: True
+    parent = await mgr.spawn("opus")
+    child = await mgr.fork(parent, prompt="diverge", forked_by="rosy-rivest")
+    assert mgr.get(child).origin.kind == "fork"
+    assert mgr.get(child).origin.by == "rosy-rivest"
+    assert mgr.get(child).origin.ephemeral is False
 
 
 async def test_the_queue_spawns_its_worker_with_a_queue_origin():
@@ -89,13 +131,21 @@ async def test_the_queue_spawns_its_worker_with_a_queue_origin():
     from tests.test_queue_manager import StubSessionManager, _q
 
     sm, inbox = StubSessionManager(), InboxRouter()
-    qm = QueueManager({"general": _q(name="general", profile="claude", cap=1)},
-                      sm, inbox, handle_factory=lambda used: "worker-1")
-    task_id, _ = qm.enqueue("general", "audit the ledger",
-                            enqueued_by=sender_agent("rosy-rivest"),
-                            callback=True, callback_to="rosy-rivest")
+    qm = QueueManager(
+        {"general": _q(name="general", profile="claude", cap=1)},
+        sm,
+        inbox,
+        handle_factory=lambda used: "worker-1",
+    )
+    task_id, _ = qm.enqueue(
+        "general",
+        "audit the ledger",
+        enqueued_by=sender_agent("rosy-rivest"),
+        callback=True,
+        callback_to="rosy-rivest",
+    )
 
-    (_slug, _handle, _prompt, session), = sm.spawns
+    ((_slug, _handle, _prompt, session),) = sm.spawns
     assert session.origin.kind == "queue"
     assert session.origin.by == "general"
     assert session.origin.detail == task_id[-4:]
@@ -118,8 +168,13 @@ async def test_the_mcp_spawn_tool_marks_an_agent_origin():
         return "new-agent"
 
     br.spawn = _spawn
-    out = await _call(build_server(br), "aegis_spawn", agent="default",
-                      prompt="go", from_handle="rosy-rivest")
+    out = await _call(
+        build_server(br),
+        "aegis_spawn",
+        agent="default",
+        prompt="go",
+        from_handle="rosy-rivest",
+    )
     assert out == {"handle": "new-agent"}
     assert seen["origin"] == Origin(kind="agent", by="rosy-rivest")
 
@@ -132,7 +187,8 @@ async def test_the_slash_command_marks_an_operator_origin():
     from tests.test_slash_commands import FakeBridge
 
     bridge = FakeBridge()
-    res = await dispatch("/spawn opus go analyze the logs",
-                         CommandContext(bridge=bridge, handle="me"))
+    res = await dispatch(
+        "/spawn opus go analyze the logs", CommandContext(bridge=bridge, handle="me")
+    )
     assert res.ok
     assert bridge.spawn_origin == Origin(kind="operator", by="me")

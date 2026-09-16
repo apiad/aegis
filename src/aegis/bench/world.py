@@ -86,6 +86,11 @@ def build_world(
             "PATH": f"{bin_dir}:{env.get('PATH', '')}",
             "AEGIS_DAEMON_DIR": str(root / ".daemons"),
             "AEGIS_IDLE_TIMEOUT": "0",
+            # The TUI polls subscription quota with whatever credentials
+            # it finds under HOME. Point both providers at files that do
+            # not exist, so a world never spends the operator's accounts.
+            "CLAUDE_CREDS": str(root / ".no-claude-credentials.json"),
+            "OPENCODE_AUTH": str(root / ".no-opencode-auth.json"),
             "TERM": "xterm-256color",
             "COLORTERM": "truecolor",
             "AEGIS_BENCH_SCRIPT": str(script_path),

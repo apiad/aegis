@@ -25,6 +25,23 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   second attached view stops drawing a live stream. See
   `know-how/benchmarking.md`.
 
+- **`aegis bench run -s fleet` opens F10 in a fresh daemon.** It runs
+  `many-tabs`' seven Claude-shaped streams, presses F10 inside the window,
+  and fails unless the pty client drew the band and a card headed
+  `N handle` for every tab, and, after `2`, the tab bar with tab 2 in
+  reverse video and tab 3 not. Not in the default set. On zion at 120x40,
+  three repeats each, with the host 64-73% busy: frame tick p50/p95/p99
+  3.8/14.2/23.3 ms under the grid against 7.6/54.7/175.2 ms for
+  `many-tabs` with the stream visible; daemon CPU 0.79 s/s against 0.89;
+  RSS 129.6 MB against 128.5. The grid hides every transcript, so `fleet`
+  has no marker latency (`many-tabs`: p50 113 ms, p95 327 ms). It draws
+  39.5 frames/s of 14.7 KB against 15.5 of 9.6 KB.
+
+  A bench world no longer polls the operator's quota accounts. It
+  inherited `HOME`, so the TUI read the real Claude and OpenCode
+  credentials; the world now sets `CLAUDE_CREDS` and `OPENCODE_AUTH` to
+  files that do not exist.
+
 - **The `REPOS` section now says how many lines the session wrote, not just
   how many files are dirty.** `~n` answers *how much is uncommitted right
   now* and goes to zero on every commit — so a session that commits as it

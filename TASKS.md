@@ -62,6 +62,23 @@ Two findings fell out of designing it, both of which stand alone:
   for two sentences. The loop judge is excluded pending its own
   measurement.
 
+Left over from the bench check (Task 10, 2026-09-16):
+
+- [ ] **F10 over the operator's own fleet.** The bench proved F10 and the
+  `1`-`9` jump in a daemon started after the change. The live daemon still
+  runs the old build; the check over a real fleet needs a restart, on the
+  operator's schedule.
+- [ ] **The fleet screen draws ~40 frames/s of ~14.7 KB with seven busy
+  sessions**, against 15.5 frames/s for the visible stream it replaces
+  (`aegis bench run -s fleet`). The refresh is meant to coalesce to one
+  redraw per 0.5 s. Find what redraws in between (the band's clock, card
+  ages, or the tab bar behind the modal) before `aegis dash` makes the
+  grid a screen that stays open all day.
+- [ ] **A queue-born card and its ghost have no end-to-end check.** The
+  bench cannot enqueue: the fake `claude` cannot call MCP tools and there
+  is no enqueue CLI. The fork's origin is now tested through the real
+  `SessionManager.fork()`; workflow and group births still have no test.
+
 ## Resolved — the June 2026 billing scare
 
 Both ⚠️ deadlines below have passed and neither action is needed. Kept as a

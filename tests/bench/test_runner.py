@@ -8,6 +8,11 @@ def test_scenario_sets_are_registered():
     assert QUICK == ["startup", "block-stream", "acp-stream", "resize"]
 
 
+def test_fleet_is_registered_but_not_run_by_default():
+    assert "fleet" in SCENARIOS
+    assert "fleet" not in DEFAULT and "fleet" not in QUICK
+
+
 def test_quick_and_default_only_name_registered_scenarios():
     assert set(QUICK) <= set(DEFAULT) <= set(SCENARIOS)
 
@@ -19,8 +24,7 @@ def test_runs_dir_honours_env(tmp_path, monkeypatch):
 
 def test_failed_counts_gate_failures_and_failed_status():
     ok = {"scenarios": {"a": {"status": "ok", "gates": [[{"ok": True}]]}}}
-    bad_gate = {"scenarios": {"a": {"status": "ok",
-                                    "gates": [[{"ok": False}]]}}}
+    bad_gate = {"scenarios": {"a": {"status": "ok", "gates": [[{"ok": False}]]}}}
     bad = {"scenarios": {"a": {"status": "failed", "gates": []}}}
     skipped = {"scenarios": {"a": {"status": "skipped", "gates": []}}}
     assert not failed(ok)

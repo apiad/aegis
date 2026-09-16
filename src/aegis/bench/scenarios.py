@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -33,6 +34,8 @@ READY_TEXT = "type a message"
 F3 = b"\x1bOR"
 CTRL_T = b"\x14"
 CTRL_RIGHT = b"\x1b[1;5C"
+F10 = b"\x1b[21~"
+FLEET_FOOTER = "esc/F10 close"
 
 
 class ScenarioContext:
@@ -501,6 +504,91 @@ def many_tabs(ctx: ScenarioContext) -> None:
         ctx.pump_for(1.0)
 
 
+def fleet(ctx: ScenarioContext) -> None:
+    """``many-tabs`` with F10's fleet grid up over the visible stream.
+
+    The same seven Claude-shaped streams, so the two read against each
+    other. The grid hides every transcript, so no marker can be drawn and
+    none is expected: this measures what the grid costs to keep redrawing.
+    Then it checks what the pty client drew: the band and a card per tab
+    by handle, and after ``2`` the fleet gone with tab 2 active.
+    """
+    rig = ctx.boot(
+        make_script(
+            {
+                "bg": synthetic_blocks(1800, 50, mark=False),
+                "go": synthetic_blocks(150, 50, mark=False),
+            }
+        )
+    )
+    pids = {ctx.send_prompt(rig, "bg")}
+    for _ in range(5):
+        ctx.new_tab(rig)
+        ctx.send_to_new_tab(rig, "bg", pids)
+    ctx.new_tab(rig)
+    with ctx.window():
+        go_pid = ctx.send_to_new_tab(rig, "go", pids)
+        rig.write(F10)
+        if not wait_until(ctx.rigs, lambda: ctx._shows(rig, FLEET_FOOTER), 10):
+            raise BenchError("F10 drew no fleet screen")
+        if not wait_until(
+            ctx.rigs,
+            lambda: any(r["pid"] == go_pid for r in ctx.emits("turn_end")),
+            120,
+        ):
+            raise BenchError("the stream under the fleet did not finish")
+        ctx.pump_for(1.0)
+    ctx.wait_quiet(rig, 1000, timeout_s=5)
+    handles = ctx.tabs()
+    screen = rig.screen()
+    (ctx.rep_dir / "screen-fleet.txt").write_text("\n".join(screen) + "\n")
+    text = "\n".join(screen)
+    if not any(" agents " in line for line in screen[:4]):
+        raise BenchError("the fleet screen shows no band")
+    missing = [h for n, h in enumerate(handles, 1) if f"─ {n} {h} " not in text]
+    if missing:
+        raise BenchError(f"the fleet screen shows no card for {missing}")
+    rig.write(b"2")
+    if not wait_until(ctx.rigs, lambda: not ctx._shows(rig, FLEET_FOOTER), 10):
+        raise BenchError("pressing 2 left the fleet screen up")
+    ctx.wait_quiet(rig, 500, timeout_s=5)
+    screen = rig.screen()
+    (ctx.rep_dir / "screen-after-2.txt").write_text("\n".join(screen) + "\n")
+    if _drawn_reversed(rig, f"2 {handles[1]}") is not True:
+        raise BenchError(f"after 2, tab 2 ({handles[1]}) is not the active tab")
+    if _drawn_reversed(rig, f"3 {handles[2]}") is not False:
+        raise BenchError(f"after 2, tab 3 ({handles[2]}) is drawn as active too")
+
+
+def _drawn_reversed(rig: Rig, label: str) -> bool | None:
+    """Whether the newest frame that drew ``label`` drew it in reverse
+    video, which is how the tab bar marks the active tab; None when no kept
+    frame drew it. The grid keeps no attributes, so this reads raw frames.
+    """
+    for raw in reversed(rig._raw_frames):
+        text = raw.decode(errors="replace")
+        at = text.rfind(label)
+        if at < 0:
+            continue
+        sgrs = _SGR.findall(text, 0, at)
+        if not sgrs:
+            return False
+        params = sgrs[-1].split(";")
+        i = 0
+        while i < len(params):
+            if params[i] in ("38", "48"):  # extended colour and its arguments
+                i += 5 if params[i + 1 : i + 2] == ["2"] else 3
+                continue
+            if params[i] == "7":
+                return True
+            i += 1
+        return False
+    return None
+
+
+_SGR = re.compile(r"\x1b\[([0-9;]*)m")
+
+
 def two_clients(ctx: ScenarioContext) -> None:
     rig = ctx.boot(make_script({"go": synthetic_blocks(200, 50)}))
     ctx.expect_markers("a")
@@ -595,6 +683,7 @@ SCENARIOS: dict[str, Scenario] = {
         Scenario("typing", typing, "keystroke echo while a stream runs"),
         Scenario("idle", idle, "three finished tabs, nothing happening, 20 s"),
         Scenario("many-tabs", many_tabs, "one visible stream, six background streams"),
+        Scenario("fleet", fleet, "many-tabs' streams under the F10 fleet grid"),
         Scenario(
             "two-clients",
             two_clients,
