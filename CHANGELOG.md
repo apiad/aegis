@@ -63,6 +63,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **A queue worker that renames itself reports back again.** The queue kept
+  its workers under the handle it minted, and `rename_handle` never told it,
+  so a worker that followed the briefing and renamed itself finished its turn
+  and nothing happened: no callback to the producer, no close, and its
+  `max_parallel` slot stayed taken until restart. A producer that renamed
+  with a task in flight had its callback sent to the old name. The rename
+  now carries both ends of every task.
+
 - **F10's fleet grid no longer repaints the whole terminal 57 times a
   second.** With six sessions streaming behind it, the pty client got 50-60
   frames/s of 14.7 KB, 730-890 KB/s; now it gets 2.0 frames/s of 10.7 KB,

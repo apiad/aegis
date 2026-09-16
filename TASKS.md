@@ -421,6 +421,18 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### Queue workers orphaned by a rename *(fixed 2026-09-16; old orphans still alive)*
+
+The rename fix only helps tasks dispatched by a daemon running the new code.
+Workers stranded before it, such as `analisis-selector-vs2` and
+`fleet-repaint-fix`, stay alive in `ready` and still hold a `max_parallel` slot
+in their queue. Two ways to recover them, both Alex's call:
+
+- Restart the daemon. `QueueManager.start()` replays each dispatched-but-unfinished
+  task as interrupted and sends the producer the restart notice.
+- Or by hand, without a restart: read the worker with `aegis_read_peer`, hand
+  its result to the producer, then close it. The slot comes back only on restart.
+
 ### aegis bench — follow-ups *(built 2026-09-13/14; baseline not yet recorded)*
 
 `aegis bench` is on main (`e8e1956`..`aaf2a00`). Spec:

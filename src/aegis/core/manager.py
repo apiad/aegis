@@ -755,7 +755,9 @@ class SessionManager:
         # `for_handle` — its wake is delivered to a handle nobody answers to,
         # so the session waits forever on a callback that was already sent
         # somewhere else. Both are optional: only `serve`/`web` attach them.
-        for plane in (self.monitor_manager, self.reminder_service):
+        # The queue too, at both ends: a renamed worker never finalizes and
+        # a renamed producer's callback goes to the old name.
+        for plane in (self.monitor_manager, self.reminder_service, self.queue_manager):
             if plane is not None:
                 plane.rename(old, new)
         # Someone other than the session changed its identity. It cannot

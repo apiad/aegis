@@ -13,6 +13,7 @@ import contextlib
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from aegis.queue.schema import (
     Task,
     new_ulid,
     now_iso,
+    sender_agent,
     sender_queue,
 )
 from aegis.tui.names import generate_name
@@ -467,6 +469,44 @@ class QueueManager:
             return None
         task = entry[0]
         return f"{task.queue}#{task.id[-4:]}"
+
+    def rename(self, old: str, new: str) -> None:
+        """Carry every handle-keyed reference from ``old`` to ``new``.
+
+        Both ends of a task name a session by handle. The worker end is the
+        ``_workers`` key: left behind, ``_finalize`` finds nothing under the
+        new name and returns, so the producer never hears back, the worker
+        is never closed and its ``max_parallel`` slot is never freed. The
+        producer end is ``enqueued_by`` / ``callback_handle``: left behind,
+        the callback goes to a handle nobody drains.
+
+        Only a local ``agent:<old>`` producer is moved. A remote task's
+        ``callback_handle`` names a session on the other host.
+        """
+        if old == new:
+            return
+        if old in self._workers:
+            self._workers[new] = self._workers.pop(old)
+        if old in self._chunk_run:
+            self._chunk_run[new] = self._chunk_run.pop(old)
+        producer = sender_agent(old)
+
+        def moved(t: Task) -> Task:
+            changes: dict = {}
+            if t.worker_handle == old:
+                changes["worker_handle"] = new
+            if t.enqueued_by == producer:
+                changes["enqueued_by"] = sender_agent(new)
+                if t.callback_handle == old:
+                    changes["callback_handle"] = new
+            return replace(t, **changes) if changes else t
+
+        for tid, t in list(self._all.items()):
+            self._all[tid] = moved(t)
+        for tasks in (*self._pending.values(), *self._inflight.values()):
+            tasks[:] = [moved(t) for t in tasks]
+        for h, (t, said) in list(self._workers.items()):
+            self._workers[h] = (moved(t), said)
 
     def _position_of(self, t: Task) -> int | None:
         if t.status != "pending":
