@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -50,7 +51,7 @@ from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
 if TYPE_CHECKING:  # annotation only; the runtime import is in __init__
-    from aegis.fleet.models import Origin
+    from aegis.fleet.models import EventLine, Origin
 
 log = logging.getLogger("aegis.core.session")
 
@@ -163,6 +164,9 @@ class AgentSession:
         # What this turn actually did — commits, writes, plan movement.
         # Shared by the loop judge, the recap and /btw. Reset per turn.
         self.digest = DigestCollector()
+        # The last few tool calls, for the fleet dashboard's activity tail.
+        # Bounded and in memory: a dashboard must never read a transcript.
+        self._events: deque = deque(maxlen=5)
         self.last_facts: TurnFacts | None = None
         # Fired once per completed turn with that turn's facts.
         self.on_facts = None
@@ -819,6 +823,7 @@ class AgentSession:
             self._apply_plan(ev)
         elif isinstance(ev, ToolUse):
             self._record_repo(ev)
+            self.note_event(ev)
         if self.on_event is not None:
             try:
                 self.on_event(self, ev)
@@ -872,6 +877,27 @@ class AgentSession:
             return
         self._last_recap_line = recap.line
         self._emit_recap(recap)
+
+    @property
+    def recent_events(self) -> tuple["EventLine", ...]:
+        return tuple(self._events)
+
+    def note_event(self, ev, at: float | None = None) -> None:
+        """Record a tool call for the dashboard's activity tail.
+
+        A subagent's tool calls are skipped for the reason the queue skips
+        its assistant text: they are the subagent working, not this agent.
+        """
+        from aegis.fleet.models import EventLine
+
+        if not isinstance(ev, ToolUse):
+            return
+        if getattr(ev, "parent_tool_use_id", None) is not None:
+            return
+        self._events.append(
+            EventLine(at=at if at is not None else time.time(),
+                      tool=ev.name, summary=ev.summary or "")
+        )
 
     def _record_repo(self, ev: ToolUse) -> None:
         """Note the repo behind a write tool call.

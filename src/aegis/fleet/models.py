@@ -31,3 +31,12 @@ class Origin:
     @property
     def ephemeral(self) -> bool:
         return self.kind in EPHEMERAL_KINDS
+
+
+@dataclass(frozen=True)
+class EventLine:
+    """One line of the card's activity tail."""
+
+    at: float          # wall-clock epoch seconds, for the HH:MM stamp
+    tool: str
+    summary: str
