@@ -2192,7 +2192,8 @@ class AegisApp(App):
             return
         if self._fleet_in_stack():
             # Covered by another screen (F4 over F10). A second one would
-            # watch, and pay for, every session twice.
+            # hang a second observer and watcher on every session, and
+            # escape would close only one of the two.
             return
         if hasattr(self, "_remote_manager"):
             # A remote pane core carries no metrics to build a card from.
