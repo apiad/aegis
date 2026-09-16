@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 
 from rich.cells import cell_len
@@ -128,9 +128,17 @@ class FleetScreen(ModalScreen):
         *[Binding(str(n), f"pick({n})", show=False) for n in range(1, 10)],
     ]
 
-    def __init__(self, snap: Callable[..., FleetSnapshot]) -> None:
+    def __init__(
+        self,
+        snap: Callable[..., FleetSnapshot],
+        sessions: Callable[[], Iterable] = tuple,
+    ) -> None:
         super().__init__()
         self._snap = snap
+        self._sessions = sessions
+        # Every session carrying this screen's event observer, so unmount can
+        # take each one off again: a session outlives any one screen.
+        self._hooked: list = []
         self.selected = 1  # 1-based, a position in the grid
         self.chosen: int | None = None
         self._current: FleetSnapshot | None = None
@@ -206,8 +214,24 @@ class FleetScreen(ModalScreen):
         self.set_interval(1.0, self.refresh_fleet)
         self.call_after_refresh(self.refresh_fleet)
 
+    def on_unmount(self) -> None:
+        for session in self._hooked:
+            session.remove_event_observer(self._on_event)
+        self._hooked.clear()
+
     def on_resize(self, _event) -> None:
         self._draw()
+
+    def _hook_events(self) -> None:
+        """Observe sessions not seen yet. One spawned while the screen is
+        open is picked up on the next refresh, at most a second later."""
+        for session in self._sessions():
+            if not any(session is h for h in self._hooked):
+                self._hooked.append(session)
+                session.add_event_observer(self._on_event)
+
+    def _on_event(self, _session, _ev) -> None:
+        self.poke()
 
     def poke(self) -> None:
         """An event arrived. Redraw now if the last redraw is old enough,
@@ -226,6 +250,8 @@ class FleetScreen(ModalScreen):
             self._pending = None
         # Monotonic, the clock ghost_since and build_snapshot's ages share.
         now = self._last_draw = time.monotonic()
+        if self.is_attached:
+            self._hook_events()
         snap = self._snap(now=now)
         # A ghost is only ever a live card seen on an earlier refresh, so the
         # book observes the live fleet and the builder draws its ghosts. The

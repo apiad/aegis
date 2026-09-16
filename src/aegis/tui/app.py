@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import time
-import weakref
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace as _SN
@@ -438,9 +437,6 @@ class AegisApp(App):
         self._quota_pane = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
-        # Sessions already carrying the fleet screen's event hook. Weak, so a
-        # closed session is not kept alive by having once been on screen.
-        self._fleet_hooked: weakref.WeakSet = weakref.WeakSet()
         # Pending debounced roster write (see _schedule_snapshot).
         self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
@@ -2153,7 +2149,15 @@ class AegisApp(App):
             if tab:
                 self.action_goto(tab)
 
-        self.push_screen(FleetScreen(self._fleet_snapshot), callback=opened)
+        self.push_screen(
+            FleetScreen(self._fleet_snapshot, self._fleet_sessions), callback=opened
+        )
+
+    def _fleet_sessions(self) -> list:
+        """The sessions the fleet screen observes for redraws."""
+        if self.manager is not None:
+            return list(self.manager._sessions)
+        return [c for p in self._panes if (c := getattr(p, "_core", None)) is not None]
 
     def _fleet_snapshot(self, *, now: float | None = None, ghosts=None):
         """The fleet as this view sees it, numbered by this view's tab bar.
@@ -2177,8 +2181,6 @@ class AegisApp(App):
                 monitor_manager=self.monitor_manager,
                 queue_manager=self.queue_manager,
             )
-        for s in getattr(source, "_sessions", []):
-            self._hook_fleet_events(s)
         snap = build_snapshot(
             source, now=time.monotonic() if now is None else now, ghosts=ghosts
         )
@@ -2190,28 +2192,6 @@ class AegisApp(App):
             if (c := getattr(p, "_core", None)) is not None
         }
         return in_tab_order(snap, tabs)
-
-    def _hook_fleet_events(self, session) -> None:
-        """One event observer per session for the app's lifetime, forwarding
-        to the fleet screen while one is open. Hooked on first sight rather
-        than per screen, because a session's observers cannot be removed."""
-        if session in self._fleet_hooked:
-            return
-        self._fleet_hooked.add(session)
-        # Weak: the brain outlives its views, and a session holding the app
-        # would keep every detached view alive.
-        app = weakref.ref(self)
-
-        def poke(_session, _ev) -> None:
-            from aegis.tui.fleet_screen import FleetScreen
-
-            view = app()
-            if view is None or not view.is_running:
-                return
-            if isinstance(view.screen, FleetScreen):
-                view.screen.poke()
-
-        session.add_event_observer(poke)
 
     def action_interrupt(self) -> None:
         # The escape binding is priority=True at the app level, so it

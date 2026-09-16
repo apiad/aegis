@@ -284,3 +284,42 @@ async def test_a_burst_of_events_redraws_once_and_late(tmp_path):
         assert scr._pending is not None, "the session's event must reach the screen"
         await pilot.pause(0.7)
         assert calls == [1]
+
+
+def _observers(app):
+    return [len(p._core._extra_event_observers) for p in app._panes]
+
+
+@pytest.mark.parametrize(
+    "shape", [_standalone, _bridged], ids=["standalone", "bridged"]
+)
+async def test_closing_the_fleet_removes_its_event_observers(tmp_path, shape):
+    """A session outlives any one screen, and in the daemon any one view:
+    every observer the screen added must leave with it, however often F10
+    opens."""
+    app = shape(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        base = _observers(app)
+        for _ in range(2):
+            await pilot.press("f10")
+            await pilot.pause()
+            assert isinstance(app.screen, FleetScreen)
+            assert _observers(app) == [n + 1 for n in base]
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(app.screen, FleetScreen)
+            assert _observers(app) == base
+
+
+async def test_a_view_that_exits_with_the_fleet_open_leaves_no_observer(tmp_path):
+    """The brain keeps its sessions after a view detaches. The pane removes
+    its own observer on the way out, and the fleet must remove its own too."""
+    app = _bridged(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        cores = [p._core for p in app._panes]
+        await pilot.press("f10")
+        await pilot.pause()
+        assert isinstance(app.screen, FleetScreen)
+    assert [c._extra_event_observers for c in cores] == [[], []]
