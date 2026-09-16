@@ -2281,63 +2281,90 @@ Expected: PASS, all four.
 git commit -- src/aegis/config/__init__.py src/aegis/config/yaml_loader.py tests/test_fleet_config.py -m "feat(config): a fleet: block for the dashboard's recap gate"
 ```
 
-### Task 14: the line in F3, and the spend in the band
+### Task 14: the line in F3, the spend in the band, and who is watching
+
+> **Rewritten after Task 12 landed.** The first draft said "register the pane
+> as a watcher on mount and unregister on unmount". That pays for every
+> mounted pane, focused or not, sidebar open or not — the opposite of the
+> `watched` rule. And Task 12's reviewer flagged that a client which
+> disconnects without removing its watcher turns `watched` into `on` for that
+> session until it closes. This task wires *who is watching* precisely.
+
+**What Task 12 delivers, on `main`:**
+- `AgentSession.add_fleet_watcher(cb)` / `remove_fleet_watcher(cb)`; the
+  periodic check runs only while at least one watcher is registered.
+- An ok mid-turn recap is delivered **only** to those callbacks, as
+  `cb(session, recap)` — never through `_emit_recap`, so the pane's
+  transcript never draws it.
+- `session.fleet_recap` (cleared when the session leaves working),
+  `fleet_recap_cost_usd`, `fleet_recap_calls` (paid calls only),
+  `fleet_recap_cancelled`, `fleet_recap_failed`.
 
 **Files:**
-- Modify: `src/aegis/tui/sidebar.py` (`SidebarModel`, `render_sidebar`)
-- Modify: `src/aegis/tui/pane.py:2969` (the `SidebarModel(...)` construction)
-- Modify: `src/aegis/fleet/snapshot.py` (band totals)
-- Test: `tests/test_sidebar_render.py` (append)
+- Modify: `src/aegis/tui/app.py` (one place decides what F3 is watching)
+- Modify: `src/aegis/tui/pane.py`, `src/aegis/tui/sidebar.py` (the `now` line)
+- Modify: `src/aegis/tui/fleet_screen.py` (F10 watches every session while open)
+- Modify: `src/aegis/fleet/snapshot.py`, `src/aegis/fleet/models.py`, `src/aegis/fleet/render.py` (band spend)
+- Test: `tests/test_fleet_watching.py`, `tests/test_sidebar_render.py`, `tests/test_fleet_render.py`
 
-**Interfaces:**
-- Consumes: `AgentSession.fleet_recap`.
-- Produces: `SidebarModel.now_line: str`, rendered in the SESSION section.
+**The watching rule.**
+- **F3 watches exactly one session: the active pane's, and only while sidebar
+  mode is on.** One method on the app, called from `set_sidebar_mode` and from
+  `_activate`, reconciles it: register the active pane's callback if the
+  sidebar is open, unregister every other pane's. A tab switch moves the watch;
+  closing F3 drops it.
+- **F10 watches every live session while it is open.** `FleetScreen` already
+  hooks each session for events (`_hook_events` / `on_unmount`); register a
+  fleet watcher beside each event observer and remove it beside each removal.
+- **Every registration has a matching removal on unmount**, for panes and for
+  the screen. Then verify the part the reviewer flagged: **when a client
+  detaches from the daemon, does its app actually unmount its panes and
+  screens?** Find out how a view's app is torn down (`src/aegis/views/`,
+  `src/aegis/daemon/`) and prove with a test that detaching a view leaves zero
+  fleet watchers on the brain's sessions. If teardown does not unmount, remove
+  the watchers from the view teardown path itself.
 
-- [ ] **Step 1: Write the failing tests**
+**The callbacks.** A watcher callback refreshes its surface: the pane calls
+`_refresh_sidebar()`, the fleet screen calls its coalesced `poke()`. Neither
+draws anything into a transcript.
 
-Append to `tests/test_sidebar_render.py`:
+**The `now` line in F3.** `SidebarModel.now_line: str = ""`, filled in
+`pane._sidebar_model` from `core.fleet_recap.doing` when set, rendered in the
+SESSION section when non-empty.
 
-```python
-def test_the_sidebar_shows_what_the_turn_is_doing():
-    m = SidebarModel(state_label="✻ working…", now_line="closing the pusher loop")
-    out = as_text(render_sidebar(m, C, 40))
-    assert "closing the pusher loop" in out
+**The band.** `BandView` gains `recap_cancelled: int = 0`. `_band` sums
+`fleet_recap_cost_usd`, `fleet_recap_calls` and `fleet_recap_cancelled` across
+live sessions. The renderer shows `recap $X / N calls`, adding
+`· C cancelled` only when C > 0 — a cancelled call billed an unknowable amount,
+so the band says it happened rather than pretending the total is complete.
 
-
-def test_no_now_line_renders_nothing_extra():
-    """An empty section renders nothing at all — not a heading over a blank."""
-    before = as_text(render_sidebar(SidebarModel(state_label="idle"), C, 40))
-    after = as_text(render_sidebar(SidebarModel(state_label="idle", now_line=""), C, 40))
-    assert before == after
-```
-
-- [ ] **Step 2: Run them and watch them fail**
-
-Run: `uv run pytest tests/test_sidebar_render.py -v`
-Expected: the first FAILS on the unknown `now_line` keyword.
-
-- [ ] **Step 3: Add the field and render it**
-
-Add `now_line: str = ""` to `SidebarModel` under the SESSION group, render it in the SESSION section when non-empty, and fill it in `pane.py` from `session.fleet_recap.doing`. Register the pane as a watcher on mount and unregister on unmount, so an unfocused pane stops paying.
-
-- [ ] **Step 4: Fill the band's spend counters**
-
-In `_band`, sum each session's fleet-recap cost and call count into `BandView.recap_cost` / `recap_calls`.
-
-- [ ] **Step 5: Run the tests**
-
-Run: `uv run pytest tests/test_sidebar_render.py tests/test_fleet_render.py -v`
-Expected: PASS.
-
-- [ ] **Step 6: Exercise it live**
-
-`aegis kill`, `aegis`, open F3 on a session, give it something that takes more than a minute, and watch the `now` line appear and refresh. Then close F3 and confirm from the band that the call count stops rising.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git commit -- src/aegis/tui/sidebar.py src/aegis/tui/pane.py src/aegis/fleet/snapshot.py tests/test_sidebar_render.py -m "feat(tui): F3 says what the current turn is doing, and the band says what it cost"
-```
+- [ ] **Step 1: Failing tests.** In `tests/test_fleet_watching.py`, over a real
+  in-process app (the pattern in `tests/test_fleet_screen.py`):
+  1. sidebar closed → the active session has 0 fleet watchers;
+  2. F3 opened → the active session has exactly 1; every other session 0;
+  3. switch tabs with F3 open → the watch moves (old 0, new 1);
+  4. F3 closed → 0 everywhere;
+  5. F10 opened → every session has ≥ 1; F10 closed → back to what F3 alone
+     implies;
+  6. a watcher callback with a recap refreshes the sidebar's `now` line;
+  7. **a view detached from a brain leaves 0 fleet watchers** on the brain's
+     sessions (the daemon shape — `tests/brain.py::make_brain` and the view
+     tests show how a view attaches).
+  Plus render tests: `now_line` shows and is omitted when empty; the band shows
+  `· 2 cancelled` only when non-zero.
+- [ ] **Step 2: Implement** to the rules above.
+- [ ] **Step 3: Mutation-check** the reconcile (register on every pane instead
+  of the active one → test 2 or 3 red) and the unmount removal (skip it →
+  test 7 red).
+- [ ] **Step 4: See it.** Re-run `.playground/fleet-render/shoot_f10.py` and a
+  copy that opens F3 on a pane; a fake recap delivered to the watcher should
+  show as `now …` in both. Stub the quota poll in any script (do not poll real
+  accounts).
+- [ ] **Step 5: Document** the `fleet:` block in `docs/configuration.md`
+  beside `recap:` / `loop_judge:`, with the measured per-call cost and the
+  30 s interval floor.
+- [ ] **Step 6: Commit** — the watching rule; the F3 line and band spend; the
+  docs.
 
 ---
 
