@@ -8,6 +8,10 @@
 
 **Tech Stack:** Python 3.13+, `uv`, Textual, Rich, pytest. No new dependencies.
 
+> **Status:** implemented 2026-09-16. Tasks 1-16 landed, with 9b, 9c, 10b
+> and 12a. Open: Task 10's check of F10 over the operator's own fleet waits
+> for his daemon restart; Task 16's full gate and push are the controller's.
+
 **Spec:** `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md` — read it before Task 1. Every cost number in this plan comes from there.
 
 ## Global Constraints
@@ -83,7 +87,7 @@ Independent of everything below. Ship it on its own.
 - Consumes: nothing.
 - Produces: `ClaudeDriver.generate_detailed` now spawns with an explicit `env` mapping containing `MAX_THINKING_TOKENS="0"`. No signature change.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """One-shot generation must not pay for reasoning it does not use.
@@ -141,12 +145,12 @@ def test_generate_env_keeps_the_rest_of_the_environment(monkeypatch, agent, tmp_
     assert seen["env"]["AEGIS_PROBE_MARKER"] == "present"
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_oneshot_env.py -v`
 Expected: both FAIL on `seen["env"] is not None` — `generate_detailed` passes no `env` today, so the key is absent.
 
-- [ ] **Step 3: Pass the env**
+- [x] **Step 3: Pass the env**
 
 In `src/aegis/drivers/claude.py`, add `import os` if absent, and in `generate_detailed` change the `create_subprocess_exec` call:
 
@@ -170,12 +174,12 @@ In `src/aegis/drivers/claude.py`, add `import os` if absent, and in `generate_de
             )
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_oneshot_env.py -v`
 Expected: PASS, both.
 
-- [ ] **Step 5: Break it on purpose and confirm the test fails**
+- [x] **Step 5: Break it on purpose and confirm the test fails**
 
 A check whose healthy and broken outputs are identical is not a check.
 
@@ -191,7 +195,7 @@ uv run pytest tests/test_oneshot_env.py -v
 ```
 Expected: PASS again.
 
-- [ ] **Step 6: Measure the real path and correct the docstring**
+- [x] **Step 6: Measure the real path and correct the docstring**
 
 The docstring on `_oneshot_argv` records 21,445 → 7,749 input tokens from 2026-08-26. A probe on 2026-09-16 measured 1,027 for the same flags. Confirm through the real aegis path rather than a reimplementation of it:
 
@@ -231,7 +235,7 @@ Record the wall time and cost. Then replace the two stale paragraphs of the `_on
         write two sentences (measured 2026-09-13).
 ```
 
-- [ ] **Step 7: Full gate, then commit**
+- [x] **Step 7: Full gate, then commit**
 
 Run `make check` as its own tool call and read its exit code directly. Never pipe it; a pipe hands `&&` the pipe's status and turns a red gate green.
 
@@ -261,7 +265,7 @@ is from 2026-08-26 and the same flags now cost ~1,027."
 **Interfaces:**
 - Produces: `Origin(kind, by, detail, returns_to)` with `Origin.ephemeral -> bool`, and the constant `EPHEMERAL_KINDS`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Origin answers two questions spawned_by cannot: who made this agent,
@@ -296,12 +300,12 @@ def test_a_queue_worker_carries_where_its_answer_goes():
     assert (o.by, o.detail, o.returns_to) == ("general", "a3f2", "rosy-rivest")
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_origin.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.fleet'`.
 
-- [ ] **Step 3: Write the model**
+- [x] **Step 3: Write the model**
 
 `src/aegis/fleet/__init__.py`:
 
@@ -356,12 +360,12 @@ class Origin:
         return self.kind in EPHEMERAL_KINDS
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_origin.py -v`
 Expected: PASS, all five.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/__init__.py src/aegis/fleet/models.py tests/test_fleet_origin.py -m "feat(fleet): Origin, a typed record of who made an agent"
@@ -383,7 +387,7 @@ git commit -- src/aegis/fleet/__init__.py src/aegis/fleet/models.py tests/test_f
 - Consumes: `Origin` from Task 2.
 - Produces: `AgentSession.origin: Origin`, always set, defaulting to `Origin()`. `SessionManager._sync_spawn(..., origin: Origin | None = None)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_fleet_origin.py`. These assert against the **real** call sites, not a synthetic stand-in: a test that hardcodes the value it branches on restates my model and passes for no reason.
 
@@ -442,12 +446,12 @@ def test_the_slash_command_marks_an_operator_origin():
 > command through a live manager belongs in the live-exercise step of
 > Task 10; these stop the wiring silently reverting in between.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_fleet_origin.py -v`
 Expected: the six new tests FAIL — `AgentSession` has no `origin`, `_sync_spawn` takes no `origin=`, and none of the three source strings is present.
 
-- [ ] **Step 3: Thread `origin` through the session and the manager**
+- [x] **Step 3: Thread `origin` through the session and the manager**
 
 In `src/aegis/core/session.py`, `AgentSession.__init__`, add `origin: "Origin | None" = None` to the keyword-only parameters and, next to where `self.title` is set:
 
@@ -466,7 +470,7 @@ In `src/aegis/core/manager.py`, add `origin: "Origin | None" = None` to `_sync_s
         child.origin = Origin(kind="fork", by=forked_by or "")
 ```
 
-- [ ] **Step 4: Set it at the five remaining sites**
+- [x] **Step 4: Set it at the five remaining sites**
 
 `src/aegis/commands/builtins/core.py` — the `/spawn` call, beside `spawned_by=ctx.handle`:
 
@@ -516,17 +520,17 @@ Use the engine's own attribute names for the workflow name and run id; if they d
 
 Add `from aegis.fleet.models import Origin` at the top of each file.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_origin.py -v`
 Expected: PASS, all eleven.
 
-- [ ] **Step 6: Run the suite that touches spawning**
+- [x] **Step 6: Run the suite that touches spawning**
 
 Run: `uv run pytest tests/test_spawn_provenance.py tests/core tests/test_queue_manager.py -v` (drop any path that does not exist)
 Expected: PASS. A new keyword-only parameter with a default breaks no caller; if something fails, it is a positional-argument call site that needs fixing, not the default.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -- src/aegis/core/session.py src/aegis/core/manager.py src/aegis/commands/builtins/core.py src/aegis/mcp/server.py src/aegis/queue/manager.py src/aegis/workflow/engine.py src/aegis/groups/wiring.py tests/test_fleet_origin.py -m "feat(core): every session records where it came from
@@ -547,7 +551,7 @@ tab were indistinguishable."
 - Consumes: `aegis.events.ToolUse` (fields `name`, `summary`, `parent_tool_use_id`).
 - Produces: `EventLine(at: float, tool: str, summary: str)` and `AgentSession.recent_events: tuple[EventLine, ...]`, newest last, at most 5.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The card's three middle rows. Today the only way to know what a session
@@ -601,12 +605,12 @@ def session(tmp_path):
 
 Fill the constructor arguments from an existing caller — `tests/test_session_titles.py` builds one. The same applies to `session_manager` in Task 3 and `fake_agent` in Task 11: neither exists in `conftest.py`, so define them locally in the test file that needs them.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_events.py -v`
 Expected: FAIL — `AgentSession` has no `note_event` and no `recent_events`.
 
-- [ ] **Step 3: Add `EventLine` to the models**
+- [x] **Step 3: Add `EventLine` to the models**
 
 ```python
 @dataclass(frozen=True)
@@ -618,7 +622,7 @@ class EventLine:
     summary: str
 ```
 
-- [ ] **Step 4: Add the ring to the session**
+- [x] **Step 4: Add the ring to the session**
 
 In `AgentSession.__init__`, beside the digest:
 
@@ -666,12 +670,12 @@ Then hook it into **`AgentSession._fire_event`** (`core/session.py:819`), in the
 > replay path skips it — which is the behaviour the ring wants, since a
 > replayed transcript must not refill the ring with stale events.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_events.py -v`
 Expected: PASS, all four.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/models.py src/aegis/core/session.py tests/test_fleet_events.py -m "feat(fleet): a bounded ring of each session's last five tool calls"
@@ -686,7 +690,7 @@ git commit -- src/aegis/fleet/models.py src/aegis/core/session.py tests/test_fle
 **Interfaces:**
 - Produces: `CardView`, `BandView`, `RepoCount`, `FleetSnapshot`, all frozen dataclasses with defaults so a test can build a partial one.
 
-- [ ] **Step 1: Write the model**
+- [x] **Step 1: Write the model**
 
 No test of its own — a dataclass with defaults has no behaviour worth asserting, and Task 6 tests it through assembly. Append to `src/aegis/fleet/models.py`:
 
@@ -755,7 +759,7 @@ class FleetSnapshot:
     cards: tuple[CardView, ...] = ()
 ```
 
-- [ ] **Step 2: Restore the package exports**
+- [x] **Step 2: Restore the package exports**
 
 Task 2 wrote `src/aegis/fleet/__init__.py` exporting only `Origin`, because the other four names did not exist yet. They do now. Widen it:
 
@@ -765,12 +769,12 @@ from aegis.fleet.models import BandView, CardView, EventLine, FleetSnapshot, Ori
 __all__ = ["BandView", "CardView", "EventLine", "FleetSnapshot", "Origin", "RepoCount"]
 ```
 
-- [ ] **Step 3: Import check**
+- [x] **Step 3: Import check**
 
 Run: `uv run python -c "from aegis.fleet import FleetSnapshot, CardView, BandView, RepoCount; print(FleetSnapshot())"`
 Expected: prints a `FleetSnapshot` with an empty band and no cards. Import from the package, not the module, so the step actually exercises Step 2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(fleet): the snapshot dataclasses the renderer reads" -- src/aegis/fleet/models.py src/aegis/fleet/__init__.py
@@ -805,7 +809,7 @@ git commit -m "feat(fleet): the snapshot dataclasses the renderer reads" -- src/
 > `task.callback` true and `task.callback_handle == s.handle`.
 - Produces: `build_snapshot(manager, *, now: float, ghosts: dict[str, tuple[CardView, float]] | None = None) -> FleetSnapshot`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Assembly reads live state and nothing from disk.
@@ -927,7 +931,7 @@ def test_assembly_never_touches_the_disk(monkeypatch):
     build_snapshot(FakeManager([FakeSession("alpha")]), now=1000.0)
 ```
 
-- [ ] **Step 1b: Close the two gaps the Task 4 review found**
+- [x] **Step 1b: Close the two gaps the Task 4 review found**
 
 Append these to **`tests/test_fleet_events.py`**, not to the snapshot tests — that file already defines the local `session` fixture, and both are properties of the ring rather than of assembly. Task 4's four tests call `note_event` directly, so deleting the `self.note_event(ev)` line from `_fire_event` (`core/session.py:826`) leaves every one of them green, and the replay-skip property has no test at all.
 
@@ -952,12 +956,12 @@ def test_a_replayed_transcript_does_not_refill_the_ring(session):
 
 `rehydrate_plan(self, events, stamps)` takes two parallel lists — verified at `core/session.py:957`, and its only caller passes `replay.events, replay.stamps` (`tui/pane.py:1004`). Then **mutation-check the first test**: delete the `self.note_event(ev)` line, confirm with `cmp` against `git show HEAD:src/aegis/core/session.py` that the file actually changed, confirm the test goes red, and restore.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_snapshot.py -v`
 Expected: FAIL — no module `aegis.fleet.snapshot`.
 
-- [ ] **Step 3: Write the assembly**
+- [x] **Step 3: Write the assembly**
 
 ```python
 """Building a FleetSnapshot from the live manager.
@@ -1069,12 +1073,12 @@ Each `_`-prefixed helper returns the empty value when its source is absent:
 manager with none of the three, and a dashboard that raises rather than
 omitting a section takes them all down.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_snapshot.py -v`
 Expected: PASS, all six.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/snapshot.py tests/test_fleet_snapshot.py -m "feat(fleet): assemble a snapshot from live state, never from disk"
@@ -1090,7 +1094,7 @@ git commit -- src/aegis/fleet/snapshot.py tests/test_fleet_snapshot.py -m "feat(
 - Consumes: `CardView`, `aegis.tui.themes.aegis_colors`, `aegis.tui.fit` helpers.
 - Produces: `render_card(card: CardView, palette, width: int) -> Text`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The pure card renderer. Chrome is English; content is the session's own."""
@@ -1158,12 +1162,12 @@ def test_no_row_exceeds_the_width():
         assert cell_len(row) <= W, f"row overflows: {row!r}"
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_render.py -v`
 Expected: FAIL — `render_card` is not importable.
 
-- [ ] **Step 3: Write the renderer**
+- [x] **Step 3: Write the renderer**
 
 Add `from aegis.fleet.render import render_card` to the test, then write the renderer. Follow `aegis/tui/sidebar.py` for style: a `rich.text.Text`, measured with `rich.cells.cell_len`, truncated through `aegis.tui.fit`, and a row omitted entirely when its content is empty rather than drawn blank.
 
@@ -1230,12 +1234,12 @@ event rows follow the same shape. `_origin_line` renders
 is empty. Every row goes through `_row`, which is what makes the width test
 in Step 1 a real gate rather than a coincidence.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_render.py -v`
 Expected: PASS, all seven. The width test is the one that matters; if it fails, the fix is in the truncation, never in the test's budget.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/render.py tests/test_fleet_render.py -m "feat(fleet): the pure card renderer"
@@ -1259,7 +1263,7 @@ git commit -- src/aegis/fleet/render.py tests/test_fleet_render.py -m "feat(flee
 >   `live`, never `today` — it drops when a tab closes.
 > - `band.host` is the local machine's hostname, not the first card's host.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from aegis.fleet.models import BandView, FleetSnapshot, RepoCount
@@ -1319,12 +1323,12 @@ def test_the_grid_never_exceeds_the_terminal_width():
         assert cell_len(row) <= 160
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_fleet_render.py -v`
 Expected: the seven new tests FAIL on the import of `render_fleet` / `columns_for`.
 
-- [ ] **Step 3: Write the grid**
+- [x] **Step 3: Write the grid**
 
 `CARD_WIDTH` and `GUTTER` already exist at the top of `render.py` from Task 7. Do **not** re-declare them; import nothing and add only:
 
@@ -1336,12 +1340,12 @@ def columns_for(width: int) -> int:
 
 `render_fleet` renders the band, then lays the cards out row by row: render each card to its own `Text`, split into lines, and zip the lines of each row of cards side by side with the gutter between. Cards in a row are padded to equal height so a short card does not pull the next row up.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_render.py -v`
 Expected: PASS, all fourteen.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/render.py tests/test_fleet_render.py -m "feat(fleet): the grid, the band, and the shared-repo warning"
@@ -1358,7 +1362,7 @@ git commit -- src/aegis/fleet/render.py tests/test_fleet_render.py -m "feat(flee
 - Consumes: `build_snapshot`, `render_fleet`, `AegisApp.action_goto(n)` (line 1807).
 - Produces: `FleetScreen(ModalScreen)` with `selected: int` (1-based), `card_at(x, y) -> int | None`, and dismissal returning the chosen tab index or `None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The screen's behaviour, not its pixels. The pixels are Task 7 and 8."""
@@ -1409,12 +1413,12 @@ def test_a_ghost_card_cannot_be_opened():
     assert scr.chosen is None
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_screen.py -v`
 Expected: FAIL — no module `aegis.tui.fleet_screen`.
 
-- [ ] **Step 3: Write the screen**
+- [x] **Step 3: Write the screen**
 
 Model it on `aegis/tui/dashboard.py`'s `QueueDashboard`: a `ModalScreen` holding one `Static`, refreshed from a callable returning the current snapshot. Redraw on the manager's event subscription **coalesced at 500 ms**, plus a 1 s `set_interval` for clocks and spinners.
 
@@ -1453,7 +1457,7 @@ class FleetScreen(ModalScreen):
 
 `on_click` maps `(x, y)` to a card through `card_at`, using `CARD_WIDTH + GUTTER` for the column and the rendered card height for the row, sets `selected`, and calls `action_open`.
 
-- [ ] **Step 4: Wire F10**
+- [x] **Step 4: Wire F10**
 
 In `src/aegis/tui/app.py` BINDINGS, beside the F3 line:
 
@@ -1480,12 +1484,12 @@ Use whatever attribute this app actually holds its manager under — check, do n
 
 `action_interrupt` (line 2134) already dismisses a `ModalScreen` on escape, so escape works with no further change. Confirm that by reading it rather than assuming.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_screen.py -v`
 Expected: PASS, all five.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/tui/fleet_screen.py src/aegis/tui/app.py tests/test_fleet_screen.py -m "feat(tui): F10 opens the fleet, and a card opens its tab"
@@ -1506,7 +1510,7 @@ populates that: `CardView.ghost_since` exists and `build_snapshot` takes a
 - Consumes: `CardView`, `Origin.ephemeral`.
 - Produces: `GhostBook` with `observe(cards, now) -> None`, `alive(now) -> dict[str, tuple[CardView, float]]`, and the constant `GHOST_TTL = 60.0`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """A queue worker can live forty seconds. Without a ghost it appears and
@@ -1563,12 +1567,12 @@ def test_a_worker_that_comes_back_is_not_also_a_ghost():
     assert b.alive(now=151.0) == {}
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_ghosts.py -v`
 Expected: FAIL — no module `aegis.fleet.ghosts`.
 
-- [ ] **Step 3: Write it**
+- [x] **Step 3: Write it**
 
 ```python
 """Ephemeral sessions that died, kept visible for a minute.
@@ -1613,16 +1617,16 @@ class GhostBook:
         return dict(self._ghosts)
 ```
 
-- [ ] **Step 4: Hold one book per screen**
+- [x] **Step 4: Hold one book per screen**
 
 In `FleetScreen`, keep a `GhostBook`, call `observe` on every refresh with the manager's live cards, and pass `alive(now)` into `build_snapshot(..., ghosts=...)`. The book lives on the screen rather than on the manager because a ghost is a viewing artefact: a client that was not open has nothing to catch up on.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_ghosts.py tests/test_fleet_screen.py -v`
 Expected: PASS. The Task 9 test that a ghost cannot be opened now has a real producer behind it.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/fleet/ghosts.py src/aegis/tui/fleet_screen.py tests/test_fleet_ghosts.py -m "feat(fleet): a dead ephemeral worker stays readable for a minute"
@@ -1659,7 +1663,7 @@ while sitting above all of them.
 - Consumes: `pane._system_tiers`, `pane._quota_tiers` (tuples of Rich-markup strings, widest first), `aegis.tui.sysmeter.format_build(palette)`, `aegis.tui.fit.Segment` and `aegis.tui.fit.fit(segments, width, sep)`.
 - Produces: `BandView.system: tuple[str, ...] = ()`, `BandView.quota: tuple[str, ...] = ()`, `BandView.build: tuple[str, ...] = ()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_fleet_render.py`:
 
@@ -1696,12 +1700,12 @@ active pane carries `_system_tiers=("CPU 1%",)` and `_quota_tiers=("cc 1%",)`,
 asserting the snapshot the screen renders has those tuples on its band, and
 that with no active pane all three are empty.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_fleet_render.py tests/test_fleet_screen.py -v`
 Expected: the new tests FAIL on the unknown `BandView` keywords.
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 ```python
     # The SYSTEM row, as the same widest-first tier tuples the F3 sidebar
@@ -1712,7 +1716,7 @@ Expected: the new tests FAIL on the unknown `BandView` keywords.
     build: tuple[str, ...] = ()
 ```
 
-- [ ] **Step 4: Render the row**
+- [x] **Step 4: Render the row**
 
 In `render_fleet`, after the band's existing lines, add one line built with
 the horizontal fitter the status bar already uses, meters first:
@@ -1736,25 +1740,25 @@ Check `fit`'s real behaviour for an empty `tiers` tuple before relying on it:
 a segment with no tiers must be skipped, not rendered as an empty cell with a
 separator beside it. If it is not skipped, filter empty segments out first.
 
-- [ ] **Step 5: Fill it in the screen**
+- [x] **Step 5: Fill it in the screen**
 
 At refresh, read the app's active pane with `getattr(pane, "_system_tiers",
 ())` and `getattr(pane, "_quota_tiers", ())`, and `format_build(palette)`, and
 put them on the band with `dataclasses.replace` — the same place the `clock`
 string is set.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_render.py tests/test_fleet_screen.py -v`
 Expected: PASS.
 
-- [ ] **Step 7: See it**
+- [x] **Step 7: See it**
 
 Re-run `.playground/fleet-render/shoot_f10.py` (written in Task 9) and open
 the PNG: the band carries the CPU/RAM/DSK meters, the quota and the build,
 and they match what F3 shows for the same app.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git commit -m "feat(fleet): the band carries F3's SYSTEM row, since F10 hides F3" -- src/aegis/fleet/models.py src/aegis/fleet/render.py src/aegis/tui/fleet_screen.py tests/test_fleet_render.py tests/test_fleet_screen.py
@@ -1780,7 +1784,7 @@ Green tests against a daemon that booted before the change prove nothing about t
 - Test: whatever the bench's own tests use to register a scenario (read `tests/bench/`)
 - Modify: `CHANGELOG.md`, `TASKS.md`
 
-- [ ] **Step 1: A `fleet` scenario in the bench rig**
+- [x] **Step 1: A `fleet` scenario in the bench rig**
 
 Model it on `many_tabs` (`bench/scenarios.py:471`): boot, open several tabs
 with background Claude-shaped streams so events flow, then **inside the
@@ -1788,7 +1792,7 @@ measurement window press F10** and keep pumping while the streams run, so the
 window measures frames with the grid up and redrawing. Register it in the
 scenario list the CLI reads, not in `DEFAULT` or `QUICK`.
 
-- [ ] **Step 2: Assert on what the pty client actually drew**
+- [x] **Step 2: Assert on what the pty client actually drew**
 
 The rig reconstructs each client's screen (`Rig.screen()`, `rig.py:147`).
 After F10, assert the screen shows the band (`agents`) and one card per tab
@@ -1797,7 +1801,7 @@ active tab in the tab bar. Fail the scenario with `BenchError` otherwise. This
 is the step that proves F10 works in a daemon started after the change,
 through a real terminal client.
 
-- [ ] **Step 3: A fork and a queue worker, if the rig can make them**
+- [x] **Step 3: A fork and a queue worker, if the rig can make them**
 
 `tests/test_fleet_origin.py` covers the fork's *shape* through `_sync_spawn`,
 not `SessionManager.fork()`, and workflow and group births have no test at
@@ -1809,7 +1813,7 @@ and instead add one in-process test over `tests/brain.py::make_brain` that
 calls the real `SessionManager.fork()` and asserts the child's
 `origin.kind == "fork"`. Report which you did and why.
 
-- [ ] **Step 4: Run it and record the numbers**
+- [x] **Step 4: Run it and record the numbers**
 
 ```bash
 AEGIS_BENCH_HOME=/tmp/fleet-bench uv run aegis bench run -s fleet --repeat 3
@@ -1820,14 +1824,14 @@ existing `many-tabs` scenario the same way, so the fleet's cost reads against
 the same streams without the grid. `AEGIS_BENCH_HOME` keeps the throwaway runs
 out of `~/.aegis/bench`.
 
-- [ ] **Step 5: No real accounts**
+- [x] **Step 5: No real accounts**
 
 The bench world uses a fake `claude`, so it does not poll real providers.
 Confirm the quota poll is also stubbed in that world; if it is not, stub it.
 Screenshot and bench tooling must never poll the operator's real quota
 accounts (a Task 9c screenshot run came back `cc rate limited`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(bench): a fleet scenario that opens F10 in a fresh daemon" -- src/aegis/bench/scenarios.py CHANGELOG.md TASKS.md <tests you added>
@@ -1861,7 +1865,7 @@ installed package before relying on the line numbers.
 - Test: `tests/test_fleet_screen.py`, the `fleet` bench scenario
 - Modify: `CHANGELOG.md`, `TASKS.md`
 
-- [ ] **Step 1: Confirm the redraws are not the fleet's own**
+- [x] **Step 1: Confirm the redraws are not the fleet's own**
 
 In a scratch copy or behind a temporary env flag, count `FleetScreen._draw`
 calls and emit the count where the bench can read it. Run
@@ -1869,7 +1873,7 @@ calls and emit the count where the bench can read it. Run
 `_draw` runs ~2–3 times/s while the rig counts 40+ frames/s, the cause is
 outside the fleet screen. Record both numbers. Remove the counter.
 
-- [ ] **Step 2: Test the hypothesis directly**
+- [x] **Step 2: Test the hypothesis directly**
 
 Change `class FleetScreen(ModalScreen)` to `class FleetScreen(Screen)` and run
 the scenario again. If frames fall to ≤ 5/s with each frame still ~full size
@@ -1877,7 +1881,7 @@ or smaller, the background-screen forwarding is confirmed. If they do not,
 **stop**: report the numbers and what you ruled out, and do not guess at a
 second fix.
 
-- [ ] **Step 3: Make the fix real**
+- [x] **Step 3: Make the fix real**
 
 If Step 2 confirmed it, keep `Screen`, and repair what `ModalScreen` gave for
 free:
@@ -1894,14 +1898,14 @@ bar keeps changing, the fleet's screen must not be repainted on each change
 in a `run_test` app while poking the background pane's spinner). It must fail
 on `ModalScreen` and pass on `Screen`.
 
-- [ ] **Step 4: Measure again and correct the record**
+- [x] **Step 4: Measure again and correct the record**
 
 Re-run `fleet --repeat 3` and `many-tabs --repeat 3`. In `CHANGELOG.md`, lead
 the fleet entry with **frames/s and bytes/s**, then frame-tick times — the
 first entry led with cheaper ticks and hid the 2.5× frame count. Update the
 `TASKS.md` entry Task 10 filed: fixed, with before and after numbers.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "fix(tui): the fleet screen no longer repaints with the tabs behind it" -- src/aegis/tui/fleet_screen.py src/aegis/tui/app.py tests/test_fleet_screen.py CHANGELOG.md TASKS.md
@@ -1921,7 +1925,7 @@ git commit -m "fix(tui): the fleet screen no longer repaints with the tabs behin
 - Consumes: `aegis.btw.window.assemble`, `aegis.digest.render.render_facts`, the driver's `generate_detailed`, `aegis.btw.generation_agent`.
 - Produces: `FleetRecap(BaseModel)` with `done: str` and `doing: str`; `async recap_in_flight(*, replay, facts, driver, agent, cwd) -> Recap`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The mid-turn recap: what this session is doing INSIDE a turn that has
@@ -1987,12 +1991,12 @@ def test_the_window_is_the_generous_one(fake_agent):
     assert IN_FLIGHT_WINDOW["budget_tokens"] >= 2_000
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
 Expected: FAIL — `FleetRecap` / `recap_in_flight` not importable from `aegis.recap`.
 
-- [ ] **Step 3: Write it**
+- [x] **Step 3: Write it**
 
 > **Placement and three corrections, verified before dispatch.**
 > - The in-flight recap lives **in `aegis/recap/__init__.py`, beside
@@ -2026,12 +2030,12 @@ class FleetRecap(BaseModel):
 IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
 Expected: PASS, all four.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(recap): a mid-turn recap, {done, doing}, best-effort by contract" -- src/aegis/recap/__init__.py tests/test_fleet_recap.py
@@ -2064,18 +2068,18 @@ that `Path.cwd()` was replaced by three roots that must stay threaded.
 **Interfaces:**
 - Produces: `AgentSession(..., config_root: Path | None = None)`; properties `AgentSession.recap_enabled -> bool`, `AgentSession.loop_judge_enabled -> bool`, `AgentSession.fleet_config -> FleetConfig`. Each reads `yaml_loader.load_config(config_root)`, cached on the file's `(mtime_ns, size)`, so an edited `.aegis.yaml` takes effect on the next check without a restart. No `config_root`, or any failure to load, returns the defaults (`True`, `True`, `FleetConfig()`) — a broken config must not cost a running session its turn, as in `generation_agent`.
 
-- [ ] **Step 1: The failing test, end to end**
+- [x] **Step 1: The failing test, end to end**
 
 The test that matters builds a **real** manager with `tests/brain.py::make_brain` over a temp roots whose `.aegis.yaml` says `recap: false`, `loop_judge: false` and a `fleet:` block, spawns a session through `_sync_spawn`, and asserts the session reports all three. It must fail today. Add:
 - editing the file (a new mtime) changes the answer on the next read without respawning;
 - a malformed `.aegis.yaml` yields the defaults and does not raise;
 - **`recap: false` actually stops the automatic turn recap**: drive `_maybe_recap`/the turn-end path with facts that moved and assert no recap task is created. A flag nobody reads is exactly the bug being fixed.
 
-- [ ] **Step 2: Implement** — keep the attribute names `recap_enabled` and `loop_judge_enabled` so the two readers (`session.py:843`, `session.py:1079`) are untouched, but make them read-through properties. Check whether anything *assigns* them (tests may); if so, keep a setter that overrides the file, and say so.
+- [x] **Step 2: Implement** — keep the attribute names `recap_enabled` and `loop_judge_enabled` so the two readers (`session.py:843`, `session.py:1079`) are untouched, but make them read-through properties. Check whether anything *assigns* them (tests may); if so, keep a setter that overrides the file, and say so.
 
-- [ ] **Step 3: Cost check** — the fleet gate will read `fleet_config` on every check of every watched working session. With the `(mtime_ns, size)` cache a check is one `stat`. Assert in a test that two consecutive reads parse the YAML once.
+- [x] **Step 3: Cost check** — the fleet gate will read `fleet_config` on every check of every watched working session. With the `(mtime_ns, size)` cache a check is one `stat`. Assert in a test that two consecutive reads parse the YAML once.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -F - -- src/aegis/core/session.py src/aegis/core/manager.py tests/test_session_generation_config.py
@@ -2097,7 +2101,7 @@ git commit -F - -- src/aegis/core/session.py src/aegis/core/manager.py tests/tes
 **Interfaces:**
 - Produces: `should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool`; `AgentSession.add_fleet_watcher(cb)` / `remove_fleet_watcher(cb)`; `AgentSession.fleet_recap: Recap | None`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from aegis.config import FleetConfig
@@ -2147,12 +2151,12 @@ def test_off_never_fires():
                               watchers=9, cfg=cfg) is False
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
 Expected: the seven new tests FAIL on `should_fleet_recap`, which does not exist. `FleetConfig` does, because Task 13 ran first.
 
-- [ ] **Step 3: Write the gate**
+- [x] **Step 3: Write the gate**
 
 ```python
 def should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool:
@@ -2173,7 +2177,7 @@ def should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool:
     return since_last_s >= cfg.recap_interval_s
 ```
 
-- [ ] **Step 4: Drive it from the session**
+- [x] **Step 4: Drive it from the session**
 
 > **Two inputs Task 12 must not invent.** The config comes from
 > `session.fleet_config` (Task 12a), never a hand-built `FleetConfig`. And
@@ -2187,12 +2191,12 @@ In `AgentSession`, add the watcher registry and a periodic task that is armed wh
 
 Cancel an in-flight fleet recap when the turn ends, for the reason `_cancel_recap` gives at line 832: a late answer describes a turn that has already closed.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
 Expected: PASS, all eleven.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(recap): pay for a mid-turn recap only when someone is watching" -- src/aegis/recap/gate.py src/aegis/core/session.py tests/test_fleet_recap.py
@@ -2208,7 +2212,7 @@ git commit -m "feat(recap): pay for a mid-turn recap only when someone is watchi
 **Interfaces:**
 - Produces: `FleetConfig(recap: str = "watched", recap_after_s: int = 60, recap_interval_s: int = 120)`; `AegisConfig.fleet: FleetConfig`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 import pytest
@@ -2245,12 +2249,12 @@ def test_a_non_mapping_fleet_block_fails_loud(tmp_path):
         load_config(tmp_path)
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_config.py -v`
 Expected: FAIL — `FleetConfig` is not importable.
 
-- [ ] **Step 3: Write it**
+- [x] **Step 3: Write it**
 
 In `src/aegis/config/__init__.py`, beside `VoiceConfig`:
 
@@ -2270,12 +2274,12 @@ class FleetConfig:
 
 In `yaml_loader.py`, add `fleet: FleetConfig = field(default_factory=FleetConfig)` to `AegisConfig`, a `_build_fleet` shaped like `_build_voice` that raises `ConfigError("fleet.recap: must be one of watched|on|off")` on an unknown mode, and wire it into `load_config` beside `voice = _build_voice(...)`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_fleet_config.py -v`
 Expected: PASS, all four.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/config/__init__.py src/aegis/config/yaml_loader.py tests/test_fleet_config.py -m "feat(config): a fleet: block for the dashboard's recap gate"
@@ -2338,7 +2342,7 @@ live sessions. The renderer shows `recap $X / N calls`, adding
 `· C cancelled` only when C > 0 — a cancelled call billed an unknowable amount,
 so the band says it happened rather than pretending the total is complete.
 
-- [ ] **Step 1: Failing tests.** In `tests/test_fleet_watching.py`, over a real
+- [x] **Step 1: Failing tests.** In `tests/test_fleet_watching.py`, over a real
   in-process app (the pattern in `tests/test_fleet_screen.py`):
   1. sidebar closed → the active session has 0 fleet watchers;
   2. F3 opened → the active session has exactly 1; every other session 0;
@@ -2352,18 +2356,18 @@ so the band says it happened rather than pretending the total is complete.
      tests show how a view attaches).
   Plus render tests: `now_line` shows and is omitted when empty; the band shows
   `· 2 cancelled` only when non-zero.
-- [ ] **Step 2: Implement** to the rules above.
-- [ ] **Step 3: Mutation-check** the reconcile (register on every pane instead
+- [x] **Step 2: Implement** to the rules above.
+- [x] **Step 3: Mutation-check** the reconcile (register on every pane instead
   of the active one → test 2 or 3 red) and the unmount removal (skip it →
   test 7 red).
-- [ ] **Step 4: See it.** Re-run `.playground/fleet-render/shoot_f10.py` and a
+- [x] **Step 4: See it.** Re-run `.playground/fleet-render/shoot_f10.py` and a
   copy that opens F3 on a pane; a fake recap delivered to the watcher should
   show as `now …` in both. Stub the quota poll in any script (do not poll real
   accounts).
-- [ ] **Step 5: Document** the `fleet:` block in `docs/configuration.md`
+- [x] **Step 5: Document** the `fleet:` block in `docs/configuration.md`
   beside `recap:` / `loop_judge:`, with the measured per-call cost and the
   30 s interval floor.
-- [ ] **Step 6: Commit** — the watching rule; the F3 line and band spend; the
+- [x] **Step 6: Commit** — the watching rule; the F3 line and band spend; the
   docs.
 
 ---
@@ -2380,7 +2384,7 @@ so the band says it happened rather than pretending the total is complete.
 **Interfaces:**
 - Produces: `aegis dash` — attaches like `aegis` and pushes `FleetScreen` on mount.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """`aegis dash` is the same client with the screen already up. Tabs are
@@ -2412,25 +2416,25 @@ def test_dash_attaches_with_the_fleet_screen_open(monkeypatch):
 
 Use whatever the attach entry point is actually called in `cli.py` — read it first; `_attach` is a placeholder here and must be replaced with the real name.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/cli/test_dash_command.py -v`
 Expected: FAIL — no `dash` command.
 
-- [ ] **Step 3: Add the command**
+- [x] **Step 3: Add the command**
 
 Add `dash` to `cli.py` as a thin alias for the attach path, passing a flag through to the app. In `AegisApp.on_mount`, when the flag is set, call `action_open_fleet()`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/cli/test_dash_command.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Exercise it in a second terminal**
+- [x] **Step 5: Exercise it in a second terminal** — done in the daemon shape instead, never against the live daemon: `tests/test_fleet_dash.py` opens two views over one brain, picks a card in the dash view and asserts the other view's tab did not move. The brief's local boot flag could not work (the app lives in the daemon), so the client asks in its hello.
 
 With `aegis` already running in one terminal, open another and run `aegis dash`. Expected: the grid, with the same sessions. Click a card in the dash terminal and confirm the **other** terminal does not move — focus is per view, tabs are not.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/cli.py src/aegis/tui/app.py tests/cli/test_dash_command.py -m "feat(cli): aegis dash boots straight into the fleet grid"
@@ -2442,19 +2446,19 @@ git commit -- src/aegis/cli.py src/aegis/tui/app.py tests/cli/test_dash_command.
 - Modify: `CHANGELOG.md`, `docs/`, `TASKS.md`
 - Modify: `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md` (status header)
 
-- [ ] **Step 1: Document the config keys and the command**
+- [x] **Step 1: Document the config keys and the command**
 
 Add `fleet:` (all three keys, with the measured cost that justifies the defaults) and `aegis dash` to the user-facing reference under `docs/`. A new config key that is only in a spec is a key nobody finds.
 
-- [ ] **Step 2: CHANGELOG**
+- [x] **Step 2: CHANGELOG**
 
 One entry for the dashboard, one for the thinking cut, each with the measured numbers rather than an adjective.
 
-- [ ] **Step 3: Flip the statuses**
+- [x] **Step 3: Flip the statuses**
 
 Set the spec's header to `implemented <date>` and tick this plan's tasks in the same commit batch. A stale status header sends the next `/workon` down a road that is already built.
 
-- [ ] **Step 4: Full gate**
+- [ ] **Step 4: Full gate** — run by the controller.
 
 Run `make check` as its own tool call. Read the exit code directly.
 

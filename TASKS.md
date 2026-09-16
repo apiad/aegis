@@ -37,14 +37,15 @@ Rationale, and what is deliberately *not* in v1.0, under **v1.0 scope** below.
 > **Do not trust this file's headings or plan checkboxes** — both were caught
 > lying. See *Audit findings* at the end of the v1.0 scope section.
 
-## The fleet dashboard (F10) — designed 2026-09-16
+## The fleet dashboard (F10) — shipped 2026-09-16
 
-Spec: `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md`.
-One card per session, no transcript. F10 in the TUI, then `aegis dash` as a
-boot flag for a second monitor. Four vertical slices; VS1 is independent of
-the rest.
+Spec: `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md`,
+plan beside it, user docs in `docs/usage.md`. One card per session, no
+transcript. F10 in the TUI, and `aegis dash` attaches a view with it
+already open, for a second monitor. The items below that are still open
+are follow-ups.
 
-Two findings fell out of designing it, both of which stand alone:
+Two findings fell out of designing it, both fixed in Task 1 (`cf19d46`):
 
 - **`_oneshot_argv`'s docstring is stale by 7.6×.** It records 21,445 →
   7,749 input tokens measured 2026-08-26 on claude ~2.1.220. The same

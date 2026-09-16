@@ -1,6 +1,8 @@
 # The fleet dashboard: F10, and `aegis dash`
 
-> **Status:** design, 2026-09-16. Brainstormed with Alex the same day.
+> **Status:** implemented 2026-09-16, per
+> `docs/superpowers/plans/2026-09-16-aegis-fleet-dashboard.md`.
+> Designed and brainstormed with Alex the same day.
 > Every cost number here was measured before the design was written; the
 > probe is `.playground/fleet-recap-probe/` and the index is at the end.
 
