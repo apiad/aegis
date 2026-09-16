@@ -387,3 +387,31 @@ async def test_a_view_that_exits_with_the_fleet_open_leaves_no_observer(tmp_path
         await pilot.pause()
         assert isinstance(app.screen, FleetScreen)
     assert [c._extra_event_observers for c in cores] == [[], []]
+
+
+def test_the_band_carries_the_active_panes_system_row():
+    """F10 hides F3, so the band shows the tiers F3 would: the very tuples
+    the app pushed to the active pane, not a second sample."""
+    from types import SimpleNamespace
+
+    from textual._context import active_app
+
+    from aegis.tui.sysmeter import format_build
+
+    pane = SimpleNamespace(_system_tiers=("CPU 1%",), _quota_tiers=("cc 1%",))
+    app = SimpleNamespace(_active=pane, palette=PAL, _exit=False)
+    scr = FleetScreen(lambda **_: FleetSnapshot())
+    token = active_app.set(app)
+    try:
+        scr.refresh_fleet()
+        band = scr._current.band
+        assert band.system == ("CPU 1%",)
+        assert band.quota == ("cc 1%",)
+        assert band.build == format_build(PAL)
+
+        app._active = None
+        scr.refresh_fleet()
+        band = scr._current.band
+        assert (band.system, band.quota, band.build) == ((), (), ())
+    finally:
+        active_app.reset(token)

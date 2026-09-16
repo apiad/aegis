@@ -18,7 +18,7 @@ from rich.cells import cell_len
 from rich.text import Text
 
 from aegis.fleet.models import BandView, CardView, EventLine, FleetSnapshot, Origin
-from aegis.tui.fit import truncate_cells
+from aegis.tui.fit import Segment, fit, truncate_cells
 
 CARD_WIDTH = 46
 GUTTER = 2
@@ -221,7 +221,8 @@ def columns_for(width: int) -> int:
 
 
 def _band(band: BandView, pal, width: int) -> Text:
-    """Three lines: who is running, how they are doing, where they write.
+    """Who is running, how they are doing, where they write, and the host
+    they run on.
 
     The headline is ``band.total``, the live fleet. A ghost card is drawn
     but not counted, so ``len(snapshot.cards)`` would overcount.
@@ -288,6 +289,20 @@ def _band(band: BandView, pal, width: int) -> Text:
             else:
                 repos.append((label, pal.ink))
         _fit(t, repos, width)
+        t.append("\n")
+    # Meters first: they move every tick and the build never does, so a
+    # narrow terminal sheds the build. ``fit`` skips a section with no tiers.
+    row = fit(
+        [
+            Segment("system", band.system, 3),
+            Segment("quota", band.quota, 2),
+            Segment("build", band.build, 1),
+        ],
+        width,
+        sep=" · ",
+    )
+    if row:
+        t.append_text(Text.from_markup(row))
         t.append("\n")
     return t
 

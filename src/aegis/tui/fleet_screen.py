@@ -17,6 +17,7 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual._context import NoActiveAppError
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
@@ -30,6 +31,7 @@ from aegis.fleet.render import (
     render_card,
     render_fleet,
 )
+from aegis.tui.sysmeter import format_build
 
 # At most one redraw per this many seconds from the event stream. Nine
 # sessions streaming at once would otherwise redraw hundreds of times a second.
@@ -267,14 +269,30 @@ class FleetScreen(ModalScreen):
         if ghosts := self._ghosts.alive(now):
             snap = self._snap(now=now, ghosts=ghosts)
         # The one place wall-clock enters the dashboard, as a finished string.
-        self._current = replace(
-            snap, band=replace(snap.band, clock=time.strftime("%H:%M"))
-        )
+        band = replace(snap.band, clock=time.strftime("%H:%M"), **self._system_row())
+        self._current = replace(snap, band=band)
         for i, card in enumerate(self._current.cards, start=1):
             if card.handle == held:
                 self.selected = i
                 break
         self._draw()
+
+    def _system_row(self) -> dict:
+        """F3's SYSTEM row, which F10 hides: the tiers the app pushed to the
+        active pane on its last tick, read as they are, so both views show
+        the same numbers. A terminal or file tab carries no tiers."""
+        try:
+            app = self.app
+        except NoActiveAppError:  # built outside a running app, as in tests
+            return {}
+        pane = getattr(app, "_active", None)
+        if pane is None:
+            return {}
+        return {
+            "system": getattr(pane, "_system_tiers", ()),
+            "quota": getattr(pane, "_quota_tiers", ()),
+            "build": format_build(app.palette),
+        }
 
     def _draw(self) -> None:
         if not self.is_attached or self._current is None:

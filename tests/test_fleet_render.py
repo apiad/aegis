@@ -267,3 +267,35 @@ def test_a_full_footer_keeps_the_monitor_and_sheds_the_slow_parts():
     )
     out = as_text(render_card(card, C, 46))
     assert "pytest 60%" in out
+
+
+def test_the_band_carries_the_system_row():
+    band = BandView(
+        system=("CPU 57% · RAM 48% · DSK 16%",),
+        quota=("cc 26/49%",),
+        build=("aegis 0.37.0",),
+    )
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 160))
+    assert "CPU 57%" in out
+    assert "cc 26/49%" in out
+    assert "aegis 0.37.0" in out
+
+
+def test_no_system_data_draws_no_system_row():
+    """An empty section renders nothing — not a blank line in the band."""
+    bare = as_text(render_fleet(FleetSnapshot(band=BandView()), C, 160))
+    assert "CPU" not in bare
+    assert "\n\n\n" not in bare
+
+
+def test_a_narrow_band_sheds_the_build_before_the_meters():
+    """The meters move every tick and the build never does, so on a narrow
+    terminal the build is what goes."""
+    band = BandView(
+        system=("CPU 57% · RAM 48% · DSK 16%", "CPU 57%"),
+        quota=("cc 26/49%",),
+        build=("aegis 0.37.0+12485c2",),
+    )
+    out = as_text(render_fleet(FleetSnapshot(band=band), C, 40))
+    assert "CPU 57%" in out
+    assert "aegis 0.37.0" not in out

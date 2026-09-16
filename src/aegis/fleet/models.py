@@ -100,6 +100,12 @@ class BandView:
     monitors: int = 0
     repos: tuple[RepoCount, ...] = ()
     clock: str = ""
+    # The SYSTEM row, as the same widest-first tier tuples the F3 sidebar
+    # renders — filled by the screen from the active pane, never sampled or
+    # formatted here, so F3 and F10 cannot disagree.
+    system: tuple[str, ...] = ()
+    quota: tuple[str, ...] = ()
+    build: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
