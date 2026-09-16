@@ -251,3 +251,19 @@ def test_an_ephemeral_card_carries_the_timer_before_its_handle():
     card = CardView(handle="brisk-babbage", origin=Origin(kind="queue"), tab_index=4)
     cap = as_text(render_card(card, C, W)).split("\n")[0]
     assert "⏱ brisk-babbage" in cap
+
+
+def test_a_full_footer_keeps_the_monitor_and_sheds_the_slow_parts():
+    """A footer is cut from the right. The live monitor must survive; the
+    cost and claim count, which the band repeats, are what get cut."""
+    card = CardView(
+        handle="busy",
+        uptime_s=6420,
+        ctx_pct=41,
+        cost_usd=2.14,
+        claims=2,
+        monitor="pytest 60%",
+        tab_index=1,
+    )
+    out = as_text(render_card(card, C, 46))
+    assert "pytest 60%" in out

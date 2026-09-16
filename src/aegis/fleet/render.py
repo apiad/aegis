@@ -136,25 +136,32 @@ def _event(ev: EventLine) -> str:
 
 
 def _footer(card: CardView, pal) -> list[tuple[str, str]]:
-    """Uptime first, then context, cost, claims, the monitor and the two
-    conversation edges, as ``(text, style)`` parts split by ``·``."""
+    """Uptime, context, the live monitor, the two conversation edges, then
+    cost and claims, as ``(text, style)`` parts split by ``·``.
+
+    Ordered by how fast a part goes stale, because a full footer is cut from
+    the right. A running ``pytest 60%`` changes every few seconds and is the
+    part an operator acts on; cost and claims move slowly and the band
+    repeats them. Measured: in the old order the busiest card lost exactly
+    the monitor (``2 claims · pyte…``).
+    """
     parts = []
     if card.uptime_s:
         parts.append((_age(card.uptime_s), pal.muted))
     if card.ctx_pct:
         style = pal.err if card.ctx_pct > 80 else pal.muted
         parts.append((f"ctx {card.ctx_pct:.0f}%", style))
-    if card.cost_usd:
-        parts.append((f"${card.cost_usd:.2f}", pal.muted))
-    if card.claims:
-        claims = f"{card.claims} claim{'s' if card.claims != 1 else ''}"
-        parts.append((claims, pal.muted))
     if card.monitor:
         parts.append((card.monitor, pal.muted))
     if card.spoke_with:
         parts.append((f"← {card.spoke_with[0]}", pal.muted))
     if card.waiting_on:
         parts.append((f"→ {card.waiting_on[0]}", pal.muted))
+    if card.cost_usd:
+        parts.append((f"${card.cost_usd:.2f}", pal.muted))
+    if card.claims:
+        claims = f"{card.claims} claim{'s' if card.claims != 1 else ''}"
+        parts.append((claims, pal.muted))
     joined: list[tuple[str, str]] = []
     for i, part in enumerate(parts):
         if i:
