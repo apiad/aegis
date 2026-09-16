@@ -355,9 +355,32 @@ def _build_fleet(raw: Any) -> FleetConfig:
         raise ConfigError(f"fleet.recap: must be one of watched|on|off (got {recap!r})")
     return FleetConfig(
         recap=recap,
-        recap_after_s=int(raw.get("recap_after_s", defaults.recap_after_s)),
-        recap_interval_s=int(raw.get("recap_interval_s", defaults.recap_interval_s)),
+        recap_after_s=_fleet_seconds(raw, "recap_after_s", defaults.recap_after_s, 0),
+        recap_interval_s=_fleet_seconds(
+            raw, "recap_interval_s", defaults.recap_interval_s, _FLEET_MIN_INTERVAL_S
+        ),
     )
+
+
+# A recap call takes ~4.7 s (measured 2026-09-16); an interval under 30 s pays
+# for lines faster than anyone reads a card, and 0 or less turns the gate
+# `since_last_s >= interval` into a paid call on every check.
+_FLEET_MIN_INTERVAL_S = 30
+
+
+def _fleet_seconds(raw: dict, key: str, default: int, floor: int) -> int:
+    """A whole number of seconds at or above ``floor``, or a ConfigError
+    naming the key. Every boot path catches only ConfigError, so a bare
+    ValueError from ``int()`` reached the operator as a traceback; and
+    ``int()`` silently turned 0.5 into 0 and ``true`` into 1."""
+    value = raw.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(
+            f"fleet.{key}: must be a whole number of seconds (got {value!r})"
+        )
+    if value < floor:
+        raise ConfigError(f"fleet.{key}: must be at least {floor} (got {value})")
+    return value
 
 
 def _resolve_groups(root: Path, inline: dict[str, Any]) -> dict[str, Any]:

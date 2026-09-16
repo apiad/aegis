@@ -30,3 +30,40 @@ def test_a_non_mapping_fleet_block_fails_loud(tmp_path):
     (tmp_path / ".aegis.yaml").write_text("fleet: true\n")
     with pytest.raises(ConfigError, match="fleet"):
         load_config(tmp_path)
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "0.5", "true", "10"])
+def test_a_recap_interval_that_would_pay_per_tick_is_refused(tmp_path, value):
+    """recap_interval_s gates a paid one-shot call. 0 or less makes the gate
+    `since_last_s >= interval` always true — a recap on every check for every
+    watched working session. 0.5 used to truncate to 0 and `true` to 1."""
+    (tmp_path / ".aegis.yaml").write_text(f"fleet:\n  recap_interval_s: {value}\n")
+    with pytest.raises(ConfigError, match="fleet.recap_interval_s"):
+        load_config(tmp_path)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("recap_interval_s", "abc"),
+    ("recap_interval_s", ""),
+    ("recap_after_s", ""),
+    ("recap_after_s", "-1"),
+    ("recap_after_s", "1.5"),
+])
+def test_a_bad_fleet_number_is_a_config_error_naming_the_key(tmp_path, key, value):
+    """Every boot path catches only ConfigError; a bare ValueError or TypeError
+    reaches the operator as a traceback that never names the key."""
+    (tmp_path / ".aegis.yaml").write_text(f"fleet:\n  {key}: {value}\n")
+    with pytest.raises(ConfigError, match=f"fleet.{key}"):
+        load_config(tmp_path)
+
+
+def test_off_unquoted_is_the_string_off(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text("fleet:\n  recap: off\n")
+    assert load_config(tmp_path).fleet.recap == "off"
+
+
+def test_the_smallest_sane_interval_loads(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text(
+        "fleet:\n  recap_after_s: 0\n  recap_interval_s: 30\n")
+    cfg = load_config(tmp_path).fleet
+    assert (cfg.recap_after_s, cfg.recap_interval_s) == (0, 30)
