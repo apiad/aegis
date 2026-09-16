@@ -32,17 +32,32 @@ stays where it was.
 The consequence for this design is that `aegis dash` is a boot flag, not a
 program. All of its cost is in F10.
 
-## The data lives in the brain, not the client
+## A snapshot and a pure renderer
 
-`FleetSnapshot` is assembled in core and pushed to clients as one frame on
-the existing state channel.
+**Corrected 2026-09-16, after this spec was first committed.** The first
+draft argued that `FleetSnapshot` had to be assembled in the brain and
+shipped to clients as a frame, because a client-side assembly would break
+the web client the way it broke the F3 sidebar. That argument is wrong and
+the reason is worth recording, because it would have shaped the code.
 
-Assembling it client-side would work in the local TUI and fail in the two
-clients that matter most: a TUI attached to the daemon, and the web
-client. That failure already happened once — `TASKS.md:1659` records the
-F3 sidebar's, *"the web client renders no sidebar"* — because the sidebar
-reads per-session objects the client happens to hold. One frame assembled
-above the clients serves all three with no per-client work.
+Every view runs *inside* the daemon. The socket carries terminal bytes, not
+application state: `know-how/the-daemon.md` says the terminal "pipes bytes
+both ways", and the web design says a browser "gets a `View` exactly as a
+tty does, and `aegis web` relays that view's frames to an xterm.js in the
+page". There is no client that assembles anything, so there is nothing to
+ship a frame to. The F3 sidebar's web gap had a different cause and the
+daemon closed it. `--remote` — the one path that really did hold a
+degraded manager and raise `RemoteUnsupportedError` — is **removed** by the
+retire-web design.
+
+So the split is ordinary decomposition, and the reason is testing. Assembly
+reads the live `SessionManager` in memory; the renderer is a pure function
+over a dataclass, which is how `render_sidebar`, `render_plan_strip` and
+`render_repos` are already built and tested (`tests/test_sidebar_render.py`
+constructs a `SidebarModel` and asserts on `.plain`, with no Textual app in
+sight). A grid of nine cards with progress bars, truncation and three
+states per card needs exactly that, and gets it for free by following the
+pattern already here.
 
 The renderer is pure, mirroring `render_sidebar`:
 
