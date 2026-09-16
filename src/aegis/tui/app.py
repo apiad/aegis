@@ -2162,8 +2162,22 @@ class AegisApp(App):
                     return
 
         self.push_screen(
-            FleetScreen(self._fleet_snapshot, self._fleet_sessions), callback=opened
+            FleetScreen(
+                self._fleet_snapshot, self._fleet_sessions, self._fleet_system_row
+            ),
+            callback=opened,
         )
+
+    def _fleet_system_row(self) -> dict:
+        """The band's SYSTEM row: the tiers the last tick sampled and pushed
+        to F3, and the build. System and quota are empty before that tick."""
+        from aegis.tui.sysmeter import format_build
+
+        return {
+            "system": self._system_last,
+            "quota": self._quota_last or (),
+            "build": format_build(self._palette),
+        }
 
     def _fleet_sessions(self) -> list:
         """The sessions the fleet screen observes for redraws."""

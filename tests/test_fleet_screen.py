@@ -389,35 +389,29 @@ async def test_a_view_that_exits_with_the_fleet_open_leaves_no_observer(tmp_path
     assert [c._extra_event_observers for c in cores] == [[], []]
 
 
-def test_the_band_carries_the_apps_system_row():
+def test_the_band_carries_the_system_row_it_is_handed():
     """F10 hides F3, so the band shows the tiers F3 would: the very tuples
-    the app sampled and pushed to F3, not a second sample."""
-    from types import SimpleNamespace
-
-    from textual._context import active_app
-
-    from aegis.tui.sysmeter import format_build
-
-    app = SimpleNamespace(
-        _system_last=("CPU 1%",), _quota_last=("cc 1%",), palette=PAL, _exit=False
+    the app sampled and pushed to F3, handed in and not sampled again."""
+    row = {"system": ("CPU 1%",), "quota": ("cc 1%",), "build": ("aegis 1",)}
+    scr = FleetScreen(lambda **_: FleetSnapshot(), system_row=lambda: row)
+    scr.refresh_fleet()
+    band = scr._current.band
+    assert (band.system, band.quota, band.build) == (
+        ("CPU 1%",),
+        ("cc 1%",),
+        ("aegis 1",),
     )
-    scr = FleetScreen(lambda **_: FleetSnapshot())
-    token = active_app.set(app)
-    try:
-        scr.refresh_fleet()
-        band = scr._current.band
-        assert band.system == ("CPU 1%",)
-        assert band.quota == ("cc 1%",)
-        assert band.build == format_build(PAL)
 
-        # At boot, before the first tick, only the build is known.
-        app._system_last, app._quota_last = (), None
-        scr.refresh_fleet()
-        band = scr._current.band
-        assert (band.system, band.quota) == ((), ())
-        assert band.build == format_build(PAL)
-    finally:
-        active_app.reset(token)
+
+async def test_the_build_shows_before_the_first_tick(tmp_path):
+    """System and quota may be empty at boot; the build never is."""
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        row = app._fleet_system_row()
+        assert set(row) == {"system", "quota", "build"}
+        assert isinstance(row["system"], tuple) and isinstance(row["quota"], tuple)
+        assert row["build"]
 
 
 async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(

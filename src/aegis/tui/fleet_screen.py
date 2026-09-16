@@ -17,7 +17,6 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual._context import NoActiveAppError
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
@@ -31,7 +30,6 @@ from aegis.fleet.render import (
     render_card,
     render_fleet,
 )
-from aegis.tui.sysmeter import format_build
 
 # At most one redraw per this many seconds from the event stream. Nine
 # sessions streaming at once would otherwise redraw hundreds of times a second.
@@ -134,10 +132,15 @@ class FleetScreen(ModalScreen):
         self,
         snap: Callable[..., FleetSnapshot],
         sessions: Callable[[], Iterable] = tuple,
+        system_row: Callable[[], dict] = dict,
     ) -> None:
         super().__init__()
         self._snap = snap
         self._sessions = sessions
+        # F3's SYSTEM row, which F10 hides: the app's system, quota and build
+        # tiers from its last tick, the tuples it pushed to F3, so both views
+        # show the same numbers whatever tab sits behind the modal.
+        self._system_row = system_row
         # Every session carrying this screen's event observer, so unmount can
         # take each one off again: a session outlives any one screen.
         self._hooked: list = []
@@ -276,20 +279,6 @@ class FleetScreen(ModalScreen):
                 self.selected = i
                 break
         self._draw()
-
-    def _system_row(self) -> dict:
-        """F3's SYSTEM row, which F10 hides: the tiers the app sampled on its
-        last tick and pushed to F3, read as they are, so both views show the
-        same numbers whatever tab sits behind the modal."""
-        try:
-            app = self.app
-        except NoActiveAppError:  # built outside a running app, as in tests
-            return {}
-        return {
-            "system": getattr(app, "_system_last", ()),
-            "quota": getattr(app, "_quota_last", None) or (),
-            "build": format_build(app.palette),
-        }
 
     def _draw(self) -> None:
         if not self.is_attached or self._current is None:
