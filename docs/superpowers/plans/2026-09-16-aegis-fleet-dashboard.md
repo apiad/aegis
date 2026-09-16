@@ -783,7 +783,26 @@ git commit -m "feat(fleet): the snapshot dataclasses the renderer reads" -- src/
 - Test: `tests/test_fleet_snapshot.py`
 
 **Interfaces:**
-- Consumes: `SessionManager` (`list_sessions()`, `_sessions`), `AgentSession` (`.origin`, `.metrics`, `.plan`, `.recent_events`, `.place`, `.state`), `RepoTracker.snapshot(for_handle="")`, `ClaimRegistry.active()`, `MonitorManager`, `CommsLedger.read(day)`.
+- Consumes: `SessionManager` (`list_sessions()`, `_sessions`), `AgentSession` (`.origin`, `.metrics`, `.plan`, `.recent_events`, `.place`, `.state`, `.repo_tracker`), `RepoTracker.snapshot(for_handle="")`, `manager.locks.active()`, `manager.monitor_manager.snapshot(for_handle=...)`, `manager.queue_manager`.
+
+> **Real attribute names — the first draft of this task guessed three of them
+> wrong.** Verified against `core/manager.py` before dispatch:
+>
+> | the draft said | what exists |
+> |---|---|
+> | `manager.repo_tracker` | **no such attribute.** The tracker is app-wide and every session carries it as `s.repo_tracker` (`core/session.py:163`). Read it off the first session that has one. |
+> | `manager.claims` | **no such attribute.** `manager.locks` (`core/manager.py:116,156`), whose `.active()` returns `Claim`s with a `.handle`. |
+> | `manager.monitors` | **no such attribute.** `manager.monitor_manager` (`:85`, set by `attach_monitor_manager`), whose `.snapshot(for_handle=h)` returns that session's `MonitorView`s. `MonitorView` has no `from_handle` field, so filter with `for_handle`, not by reading the views. |
+>
+> All three are `None` on a manager nothing attached them to — every headless
+> caller and most of the suite — so each read is guarded.
+>
+> **For the `waiting` rule's queue half**, match on the callback target, not
+> on the sender: `Task.enqueued_by` is a sender tag (`agent:<handle>`, see
+> `queue/schema.py::sender_agent`), so comparing it to a bare handle silently
+> never matches. A session is waiting on a queue task when some task in
+> `queue_manager._workers.values()` or `queue_manager._pending.values()` has
+> `task.callback` true and `task.callback_handle == s.handle`.
 - Produces: `build_snapshot(manager, *, now: float, ghosts: dict[str, tuple[CardView, float]] | None = None) -> FleetSnapshot`.
 
 - [ ] **Step 1: Write the failing test**
@@ -829,9 +848,10 @@ class FakeSession:
 class FakeManager:
     def __init__(self, sessions):
         self._sessions = list(sessions)
-        self.repo_tracker = None
-        self.claims = None
-        self.monitors = None
+        # The real names — see the table above. None, as on a bare manager.
+        self.locks = None
+        self.monitor_manager = None
+        self.queue_manager = None
 
     def list_sessions(self):
         return []
@@ -985,9 +1005,9 @@ Write `_card` and `_band` to fill the fields Task 5 declared, reading:
 
 - `s.metrics.session_seconds(now)` → `uptime_s`; `s.metrics.turn_seconds(now)` → `turn_s` (0 when `turn_start` is None); `s.metrics.last_true_input / s.metrics.context_window` → `ctx_pct`.
 - `s.plan.snapshot(now)` → `plan_done`/`plan_total`/`plan_current`, guarded with `getattr(s, "plan", None)`.
-- `manager.repo_tracker.snapshot()` → a `{handle: RepoView}` index for the `repo` string and the band's `RepoCount` rows, where `RepoCount.shared` is `RepoView.shared`.
-- `manager.claims.active()` → count per handle.
-- the monitor manager's views for the live-monitor string.
+- the first session's `s.repo_tracker.snapshot()` → a `{handle: RepoView}` index for the `repo` string and the band's `RepoCount` rows, where `RepoCount.shared` is `RepoView.shared`.
+- `manager.locks.active()` → count per handle.
+- `manager.monitor_manager.snapshot(for_handle=s.handle)` → the live-monitor string, and the monitor half of `waiting`.
 - the day's `CommsLedger.read(day)` → `spoke_with` / `waiting_on` per handle. If the ledger is not already held in memory by the manager, **leave both tuples empty and note it**: reading the JSONL here would violate the no-disk rule. Wiring an in-memory tail of the ledger is its own task if the edges turn out to matter.
 
 `_card` in full, so the optional-source guards are not left to taste:
@@ -1043,9 +1063,9 @@ def _cost(s) -> float:
 **`SessionMetrics` has no turn counter**, so the card carries no turn count and the spec's mockup row reads `1h47m · $2.14` alone. Adding a counter to `SessionMetrics` for a decoration the uptime and the cost already imply is not worth a field that every other consumer has to keep correct.
 
 Each `_`-prefixed helper returns the empty value when its source is absent:
-`_repo_index` returns `{}` when `manager.repo_tracker` is None, `_claims_for`
-returns 0 when `manager.claims` is None, `_monitor_label` returns `""` when
-there are no monitors. Headless callers and most of the test suite hold a
+`_repo_index` returns `{}` when no session carries a `repo_tracker`,
+`_claims_for` returns 0 when `manager.locks` is None, `_monitor_label` returns
+`""` when `manager.monitor_manager` is None. Headless callers and most of the test suite hold a
 manager with none of the three, and a dashboard that raises rather than
 omitting a section takes them all down.
 
