@@ -491,3 +491,46 @@ async def test_the_screen_behind_the_fleet_does_not_repaint_it(tmp_path):
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen is behind
+
+
+async def test_a_pushed_modal_is_opaque_so_the_screen_below_stays_paused(tmp_path):
+    """`AegisApp._background_screens` pauses the covered screen only when the
+    top screen is opaque; a translucent one falls back to Textual, whose
+    covered screen repaints in a loop (57 frames/s behind F10). Today every
+    pushed screen is opaque through the app's `Screen { background: ... }`
+    rule, which beats `ModalScreen`'s translucent default. A bare
+    `ModalScreen` subclass with no CSS of its own must inherit that."""
+    from textual.screen import ModalScreen
+
+    class _Bare(ModalScreen):
+        pass
+
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.push_screen(_Bare())
+        await pilot.pause()
+        assert app.screen.styles.background.a == 1
+        assert app._background_screens == []
+
+
+def test_no_modal_in_aegis_makes_its_own_screen_translucent():
+    """The other half of the guard: a modal whose own CSS gives the screen a
+    translucent background would bring the repaint loop back under it
+    without anything failing. Scans each `ModalScreen` subclass's rule for
+    its own selector."""
+    import re
+    from pathlib import Path
+
+    import aegis
+
+    src = Path(aegis.__file__).parent
+    offenders = []
+    for path in src.rglob("*.py"):
+        text = path.read_text()
+        for name in re.findall(r"class (\w+)\([^)]*ModalScreen[^)]*\)", text):
+            for rule in re.findall(rf"(?m)^\s*{name}\s*\{{([^}}]*)\}}", text):
+                bg = re.search(r"background:\s*([^;]+);", rule)
+                if bg and ("%" in bg.group(1) or "transparent" in bg.group(1)):
+                    offenders.append(f"{path.relative_to(src)}: {name} {bg.group(1)}")
+    assert not offenders, offenders
