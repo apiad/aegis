@@ -130,7 +130,7 @@ stored boolean would drift from the behaviour it names.
 │ ordenar tareas y sincronizar el plan   │
 │ opus · une-tools · main +3 ~2          │
 │ plan ███████░░░ 7/10  ctx ████░░░░ 41% │
-│ 1h47m · $2.14 · 12 turns               │
+│ 1h47m · $2.14                          │
 ├────────────────────────────────────────┤
 │ did  3 new tests in scheduler_test.py  │
 │ now  closing the SIGERE pusher loop    │
@@ -145,6 +145,10 @@ stored boolean would drift from the behaviour it names.
 
 The chrome is English like the rest of the TUI; the session title and any
 quoted content are whatever that session is actually about.
+
+No turn count: `SessionMetrics` has none, and adding a counter every other
+consumer then has to keep correct, for a number the uptime and the cost
+already imply, is not worth the field.
 
 `did` and `now` are the two recap fields (below). The three middle rows
 are the event ring. The footer carries edges from the `CommsLedger` (`←`
