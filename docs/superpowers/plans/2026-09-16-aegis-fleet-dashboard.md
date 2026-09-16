@@ -36,7 +36,7 @@
 | `src/aegis/fleet/models.py` | `Origin`, `CardView`, `BandView`, `FleetSnapshot`, `EventLine` |
 | `src/aegis/fleet/snapshot.py` | `build_snapshot(manager, now)` — reads live state, returns `FleetSnapshot` |
 | `src/aegis/fleet/render.py` | `render_card`, `render_fleet` — pure |
-| `src/aegis/fleet/recap.py` | `FleetRecap` schema, `recap_in_flight`, `should_fleet_recap` |
+| `src/aegis/recap/__init__.py`, `src/aegis/recap/gate.py` | `FleetRecap`, `recap_in_flight` beside `recap_turn`/`recap_session`; `should_fleet_recap` beside `should_recap` |
 | `src/aegis/tui/fleet_screen.py` | `FleetScreen(ModalScreen)` — mounting, keys, click |
 | `tests/test_fleet_origin.py` | `Origin` set correctly at each birth site |
 | `tests/test_fleet_events.py` | the per-session event ring |
@@ -1914,7 +1914,7 @@ git commit -m "fix(tui): the fleet screen no longer repaints with the tabs behin
 ### Task 11: `{done, doing}`, and a recap of the turn in flight
 
 **Files:**
-- Create: `src/aegis/fleet/recap.py`
+- Modify: `src/aegis/recap/__init__.py` (beside `recap_turn` and `recap_session`)
 - Test: `tests/test_fleet_recap.py`
 
 **Interfaces:**
@@ -1930,7 +1930,8 @@ the moment the answer stops being useful to a dashboard."""
 import asyncio
 
 from aegis.drivers.oneshot import Generation
-from aegis.fleet.recap import FleetRecap, recap_in_flight
+from aegis.digest.models import TurnFacts
+from aegis.recap import FleetRecap, recap_in_flight
 
 
 class FakeDriver:
@@ -1951,7 +1952,7 @@ class FakeDriver:
 
 def test_a_good_call_returns_both_lines(fake_agent):
     d = FakeDriver(FleetRecap(done="landed 3 tests", doing="closing the loop"))
-    r = asyncio.run(recap_in_flight(replay=[], facts=None, driver=d,
+    r = asyncio.run(recap_in_flight(replay=[], facts=TurnFacts(), driver=d,
                                     agent=fake_agent, cwd="."))
     assert r.ok is True
     assert r.done == "landed 3 tests"
@@ -1962,7 +1963,7 @@ def test_a_failed_call_is_a_missing_answer_not_an_exception(fake_agent):
     """Best-effort by contract, like titlegen: a dashboard must not break
     because a $0.0036 call did not come back."""
     d = FakeDriver(fail=True)
-    r = asyncio.run(recap_in_flight(replay=[], facts=None, driver=d,
+    r = asyncio.run(recap_in_flight(replay=[], facts=TurnFacts(), driver=d,
                                     agent=fake_agent, cwd="."))
     assert r.ok is False
     assert r.done == "" and r.doing == ""
@@ -1972,7 +1973,7 @@ def test_the_cost_rides_back_with_the_answer(fake_agent):
     """The band shows the running recap spend; it can only do that if each
     call reports what it cost."""
     d = FakeDriver(FleetRecap(done="a", doing="b"))
-    r = asyncio.run(recap_in_flight(replay=[], facts=None, driver=d,
+    r = asyncio.run(recap_in_flight(replay=[], facts=TurnFacts(), driver=d,
                                     agent=fake_agent, cwd="."))
     assert r.cost_usd == 0.00363
 
@@ -1981,19 +1982,33 @@ def test_the_window_is_the_generous_one(fake_agent):
     """Measured 2026-09-16: a full window costs ~546 tokens over the 1,027
     floor, $0.0012, and produces lines that name files and counts. Squeezing
     it saves nothing and measurably degrades the answer."""
-    from aegis.fleet.recap import TURN_WINDOW
+    from aegis.recap import IN_FLIGHT_WINDOW
 
-    assert TURN_WINDOW["budget_tokens"] >= 2_000
+    assert IN_FLIGHT_WINDOW["budget_tokens"] >= 2_000
 ```
 
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
-Expected: FAIL — no module `aegis.fleet.recap`.
+Expected: FAIL — `FleetRecap` / `recap_in_flight` not importable from `aegis.recap`.
 
 - [ ] **Step 3: Write it**
 
-Model the module on `src/aegis/recap/__init__.py`: same `Recap` dataclass for the result, same "every failure comes back as `ok=False`, never as an exception" contract, same `generation_agent` resolution so it bills to `text_generation:`. The schema:
+> **Placement and three corrections, verified before dispatch.**
+> - The in-flight recap lives **in `aegis/recap/__init__.py`, beside
+>   `recap_turn` and `recap_session`**, and reuses the module's `_one` helper
+>   rather than a parallel `aegis/fleet/recap.py`. One module owns recap
+>   generation; a fleet module importing `_one` across packages would be the
+>   private reach the Task 6 review flagged.
+> - **`Recap` has no `doing` field** (it has `line`, `building`, `done`,
+>   `remaining`). Add `doing: str = ""`, and map it in `_one` with
+>   `doing=getattr(v, "doing", "")` beside the others.
+> - **`render_facts(None)` raises** — it reads `facts.error`. Mid-turn facts
+>   come from the session's live `digest`; the tests pass `TurnFacts()`.
+> - **`TURN_WINDOW` already exists** in that module (`max_turns=1,
+>   budget_tokens=2_000`). The new window is **`IN_FLIGHT_WINDOW`**.
+
+Model it on `src/aegis/recap/__init__.py`: same `Recap` dataclass for the result, same "every failure comes back as `ok=False`, never as an exception" contract, same `generation_agent` resolution so it bills to `text_generation:`. The schema:
 
 ```python
 class FleetRecap(BaseModel):
@@ -2008,7 +2023,7 @@ class FleetRecap(BaseModel):
 # window costs ~546 more, so the window is calderilla and gets sized for
 # relevance rather than thrift. Squeezing it to ~1,135 total produced
 # terser lines that named no files.
-TURN_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
+IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
 ```
 
 - [ ] **Step 4: Run the tests**
@@ -2019,7 +2034,7 @@ Expected: PASS, all four.
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -- src/aegis/fleet/recap.py tests/test_fleet_recap.py -m "feat(fleet): a mid-turn recap, {done, doing}, best-effort by contract"
+git commit -m "feat(recap): a mid-turn recap, {done, doing}, best-effort by contract" -- src/aegis/recap/__init__.py tests/test_fleet_recap.py
 ```
 
 ### Task 12: the gate — pay only for a working session someone is watching
@@ -2029,7 +2044,7 @@ git commit -- src/aegis/fleet/recap.py tests/test_fleet_recap.py -m "feat(fleet)
 > the execution order is 11, 13, 12, 14.
 
 **Files:**
-- Modify: `src/aegis/fleet/recap.py`
+- Modify: `src/aegis/recap/gate.py` (beside `should_recap`)
 - Modify: `src/aegis/core/session.py`
 - Test: `tests/test_fleet_recap.py` (append)
 
@@ -2040,7 +2055,7 @@ git commit -- src/aegis/fleet/recap.py tests/test_fleet_recap.py -m "feat(fleet)
 
 ```python
 from aegis.config import FleetConfig
-from aegis.fleet.recap import should_fleet_recap
+from aegis.recap.gate import should_fleet_recap
 
 ON = FleetConfig(recap="watched", recap_after_s=60, recap_interval_s=120)
 
@@ -2126,7 +2141,7 @@ Expected: PASS, all eleven.
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -- src/aegis/fleet/recap.py src/aegis/core/session.py tests/test_fleet_recap.py -m "feat(fleet): pay for a mid-turn recap only when someone is watching"
+git commit -m "feat(recap): pay for a mid-turn recap only when someone is watching" -- src/aegis/recap/gate.py src/aegis/core/session.py tests/test_fleet_recap.py
 ```
 
 ### Task 13: the `fleet:` config block
