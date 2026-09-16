@@ -381,11 +381,16 @@ class ClaudeDriver(HarnessDriver):
         instructions.
 
         **Re-measured 2026-09-16 (CLI 2.1.270) and the numbers above are
-        HISTORY.** The same flags now cost ~1,027 input tokens, a further
-        factor of 7.6 — the CLI shed its own prefix between 2.1.220 and
-        2.1.270. The practical consequence inverts the old advice: the
-        window is no longer worth squeezing (a full one costs ~546 tokens
-        over the floor) and the expensive side is OUTPUT. See
+        HISTORY.** A synthetic probe put the same flags at ~1,027 input
+        tokens, with a ~550-token window adding ~546 over that floor; that
+        probe is history too. Through the real path, an in-flight recap on
+        a 61-turn transcript billed to haiku, the current figures are:
+        **4,902 input tokens / $0.0162** launched from an empty directory,
+        **$0.0073** on the next call once that prefix is cached, and a real
+        window of **~2,600 tokens**, which is the `IN_FLIGHT_WINDOW` budget
+        working as sized. The same argv from the Workspace root cost
+        11,445 / $0.0287, which is why `generate_detailed` launches from an
+        empty directory. Reasoning is the other expensive side; see
         `generate_detailed` for the MAX_THINKING_TOKENS cut.
 
         ``--effort`` is not an alternative and never was: it runs `low` to
