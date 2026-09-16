@@ -2037,6 +2037,52 @@ Expected: PASS, all four.
 git commit -m "feat(recap): a mid-turn recap, {done, doing}, best-effort by contract" -- src/aegis/recap/__init__.py tests/test_fleet_recap.py
 ```
 
+### Task 12a: a session reads its generation config
+
+Added mid-run from the Task 13 review, which traced the config and found
+**no path from `.aegis.yaml` to a session**. `load_config` parses `recap:`
+and `loop_judge:`, but `BootConfig` does not carry them, `_session_factory`
+receives no config, and `AgentSession` hard-codes `recap_enabled = True` and
+`loop_judge_enabled = True` (`core/session.py:181-182`). **Setting
+`recap: false` or `loop_judge: false` does nothing today** — both keep
+spending. Task 12's gate needs `cfg.fleet` in the session and would hit the
+same wall, with tests that build `FleetConfig` by hand and pass anyway.
+
+**Follow the precedent already in the repo.** `text_generation:` is not
+threaded through constructors; `btw.generation_agent` reads it **at call
+time** and says why: a config read is nothing next to the API call it
+precedes. Do the same for `recap`, `loop_judge` and `fleet`, with one fix to
+the precedent: read from an **explicit config root**, not from
+`find_project_root()` and the cwd — `know-how/embedding-aegis.md` explains
+that `Path.cwd()` was replaced by three roots that must stay threaded.
+
+**Files:**
+- Modify: `src/aegis/core/session.py` (accept `config_root`; replace the two hard-coded booleans)
+- Modify: `src/aegis/core/manager.py` (`_sync_spawn` passes `self.roots.config_root`)
+- Test: `tests/test_session_generation_config.py`
+
+**Interfaces:**
+- Produces: `AgentSession(..., config_root: Path | None = None)`; properties `AgentSession.recap_enabled -> bool`, `AgentSession.loop_judge_enabled -> bool`, `AgentSession.fleet_config -> FleetConfig`. Each reads `yaml_loader.load_config(config_root)`, cached on the file's `(mtime_ns, size)`, so an edited `.aegis.yaml` takes effect on the next check without a restart. No `config_root`, or any failure to load, returns the defaults (`True`, `True`, `FleetConfig()`) — a broken config must not cost a running session its turn, as in `generation_agent`.
+
+- [ ] **Step 1: The failing test, end to end**
+
+The test that matters builds a **real** manager with `tests/brain.py::make_brain` over a temp roots whose `.aegis.yaml` says `recap: false`, `loop_judge: false` and a `fleet:` block, spawns a session through `_sync_spawn`, and asserts the session reports all three. It must fail today. Add:
+- editing the file (a new mtime) changes the answer on the next read without respawning;
+- a malformed `.aegis.yaml` yields the defaults and does not raise;
+- **`recap: false` actually stops the automatic turn recap**: drive `_maybe_recap`/the turn-end path with facts that moved and assert no recap task is created. A flag nobody reads is exactly the bug being fixed.
+
+- [ ] **Step 2: Implement** — keep the attribute names `recap_enabled` and `loop_judge_enabled` so the two readers (`session.py:843`, `session.py:1079`) are untouched, but make them read-through properties. Check whether anything *assigns* them (tests may); if so, keep a setter that overrides the file, and say so.
+
+- [ ] **Step 3: Cost check** — the fleet gate will read `fleet_config` on every check of every watched working session. With the `(mtime_ns, size)` cache a check is one `stat`. Assert in a test that two consecutive reads parse the YAML once.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -F - -- src/aegis/core/session.py src/aegis/core/manager.py tests/test_session_generation_config.py
+```
+
+---
+
 ### Task 12: the gate — pay only for a working session someone is watching
 
 > **Run Task 13 first.** The tests below import `FleetConfig`, which Task 13
@@ -2128,6 +2174,14 @@ def should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool:
 ```
 
 - [ ] **Step 4: Drive it from the session**
+
+> **Two inputs Task 12 must not invent.** The config comes from
+> `session.fleet_config` (Task 12a), never a hand-built `FleetConfig`. And
+> billing: `recap_in_flight` takes `driver` and `agent` from its caller, so the
+> caller must resolve them the way `recap_for` does — `btw.generation_agent`
+> then `get_driver` — or the in-flight recap bills to the session's own agent
+> (usually Opus) instead of `text_generation:`. Test that the agent handed to
+> the driver is the `text_generation:` profile when one is set.
 
 In `AgentSession`, add the watcher registry and a periodic task that is armed when `watchers` goes from 0 to 1 and cancelled when it returns to 0. It calls `should_fleet_recap` and, when true, `recap_in_flight` — **detached**, exactly like `_run_recap` at line 839, because a 4.7 s stall in a turn is not payable. Store the result on `self.fleet_recap` and notify the recap observers so the card and the sidebar refresh.
 
