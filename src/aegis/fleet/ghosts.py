@@ -15,6 +15,10 @@ from aegis.fleet.models import CardView
 GHOST_TTL = 60.0
 
 
+def _task_of(card: CardView) -> tuple[str, str, str]:
+    return (card.origin.kind, card.origin.by, card.origin.detail)
+
+
 class GhostBook:
     def __init__(self) -> None:
         self._last: dict[str, CardView] = {}
@@ -22,8 +26,21 @@ class GhostBook:
 
     def observe(self, cards: tuple[CardView, ...], now: float) -> None:
         live = {c.handle: c for c in cards}
+        # A worker that renames itself departs under the old handle and
+        # arrives under the new one in the same snapshot. Its origin names
+        # the same task, so the old name is not a session that closed.
+        # Only an arrival counts: every agent of one workflow run shares
+        # its origin, and a sibling already on screen is not a rename.
+        arrived = [
+            _task_of(c)
+            for h, c in live.items()
+            if h not in self._last and c.origin.ephemeral and c.origin.detail
+        ]
         for handle, card in self._last.items():
             if handle in live or not card.origin.ephemeral:
+                continue
+            if card.origin.detail and _task_of(card) in arrived:
+                arrived.remove(_task_of(card))
                 continue
             self._ghosts[handle] = (replace(card, ghost_since=now, tab_index=0), now)
         # A recycled handle is a live session again, never also a ghost.
