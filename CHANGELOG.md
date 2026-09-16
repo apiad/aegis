@@ -97,6 +97,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   only a remote peer's task carries. It now counts as waiting while its
   task is pending or running.
 
+- **Closing a session stops its turn recap.** A recap started when a turn
+  ended kept running its one-shot call after the session closed, still
+  billing, and then delivered its line to a pane that was gone. `close()`
+  now cancels it.
+
 - **One-shot generation calls no longer pay for reasoning or for the
   project directory.** On the Claude driver, the turn recap, `/btw`,
   session titles and the fleet's `now` line now run with

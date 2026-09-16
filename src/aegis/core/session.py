@@ -1489,6 +1489,9 @@ class AgentSession:
         self._closed = True
         self._fleet_watchers.clear()
         self._stop_fleet()
+        # The turn recap is a detached paid call; left alone it keeps
+        # billing and then emits to observers of a pane that is gone.
+        self._cancel_recap()
         await self._cancel_idle_watcher()
         if self._task is not None and not self._task.done():
             self._task.cancel()

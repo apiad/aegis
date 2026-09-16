@@ -125,3 +125,39 @@ async def test_the_recap_never_reaches_the_agent(tmp_path, monkeypatch):
 
     assert harness.sent
     assert not any("RECAP-SENTINEL-XYZ" in m for m in harness.sent)
+
+
+@pytest.mark.asyncio
+async def test_closing_the_session_cancels_the_turn_recap(tmp_path,
+                                                          monkeypatch):
+    """A turn recap is a detached `claude -p` call. Left running past
+    `close()`, it keeps billing and then emits a line to observers of a pane
+    that no longer exists."""
+    release = asyncio.Event()
+    entered = []
+
+    async def blocked(**_kw):
+        entered.append(True)
+        await release.wait()
+        return Recap(line="landed after close", ok=True)
+
+    monkeypatch.setattr("aegis.core.session.recap_for", blocked)
+    s, _ = build_session(tmp_path, agents={})
+    s.recap_enabled = True
+    seen = []
+    s.add_recap_observer(lambda _s, r: seen.append(r))
+    monkeypatch.setattr(s.digest, "build", _facts_returning(MOVED))
+    await s.send_and_wait("hello")
+    for _ in range(20):
+        await asyncio.sleep(0)
+    running = s._recap_task
+    assert running is not None and entered, "the turn must have started a recap"
+
+    await s.close()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert running.cancelled()
+    release.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert seen == []
