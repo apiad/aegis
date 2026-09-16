@@ -275,8 +275,8 @@ def load_config(root: Path) -> AegisConfig:
     return AegisConfig(
         default_agent=default_agent,
         text_generation=text_generation,
-        recap=bool(raw.get("recap", True)),
-        loop_judge=bool(raw.get("loop_judge", True)),
+        recap=_flag(raw, "recap", True),
+        loop_judge=_flag(raw, "loop_judge", True),
         agents=agents,
         harnesses=harnesses,
         queues=queues,
@@ -337,6 +337,19 @@ def _build_voice(raw: Any) -> VoiceConfig:
 
 
 _FLEET_RECAP_MODES = ("watched", "on", "off")
+
+
+def _flag(raw: dict, key: str, default: bool) -> bool:
+    """A real YAML bool, or a ConfigError naming the key.
+
+    ``bool(value)`` turned the quoted string "false" into True. That was
+    harmless while nothing read these flags; since sessions obey them, a
+    quoted false would silently leave a paid call switched on.
+    """
+    value = raw.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{key}: must be true or false (got {value!r})")
+    return value
 
 
 def _build_fleet(raw: Any) -> FleetConfig:
