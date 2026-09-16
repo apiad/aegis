@@ -287,6 +287,35 @@ for a refreshing screen — predictable.** The three thinking-on runs took
 write two sentences. Off: 3.9s, 4.7s, 5.9s, always 100–107 tokens. The
 lines were no better on; they were terser and named fewer files.
 
+### Re-measured on a real transcript, later the same day
+
+The probe's window was synthetic and small, and it ran from `repos/aegis`.
+Through the real path — `recap_in_flight` on this session's own 61-turn
+transcript, billed to the pinned haiku profile — the numbers were larger,
+for two reasons:
+
+| same in-flight recap | input (all cache writes) | output | cost |
+|---|---|---|---|
+| launched from the Workspace root | 11,445 | 200 | $0.0287 |
+| launched from an empty directory | 4,902 | 313 | $0.0162 |
+| empty directory, second call | — | — | $0.0073 |
+
+- **A real window is ~2,600 tokens** (10k characters, one turn of 61 with
+  33 items truncated), which is the `IN_FLIGHT_WINDOW` budget working as
+  sized, against the probe's ~550.
+- **The cwd was not free.** "1,016 from /tmp against 1,027 from the repo"
+  held for `repos/aegis` and not for the Workspace root, where the same
+  argv, `--setting-sources ""` included, cost ~6,500 more tokens. A
+  generation call has no tools and is handed its window, so one-shot
+  generation now runs from an empty directory. The second call from that
+  directory halves again, because an identical prefix is read from cache
+  rather than written.
+
+The working figure for planning is therefore **~$0.007–0.015 per call** at
+list price, charged against the subscription pool, not the probe's
+$0.0036. The design below stands; the per-hour estimates scale by about
+2–4×.
+
 ### The shape that follows
 
 A five-minute timer is the wrong instrument at this price. The question is
