@@ -298,6 +298,7 @@ class SessionManager:
             log_id=log_id,
             place=place,
             origin=origin,
+            config_root=self.roots.config_root,
         )
         s.spawned_by = spawned_by
         s.forked_from = forked_from

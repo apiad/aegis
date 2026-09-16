@@ -63,6 +63,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **`recap: false` and `loop_judge: false` in `.aegis.yaml` now take effect.**
+  They were parsed and then ignored: every session hard-coded both to on, so
+  setting either to `false` changed nothing. A session now reads `recap`,
+  `loop_judge` and the `fleet:` block from its config root when it needs
+  them, so an edit applies on the next turn without a restart. A config that
+  fails to load falls back to the defaults and logs one warning.
+
 - **A queue worker that renames itself reports back again.** The queue kept
   its workers under the handle it minted, and `rename_handle` never told it,
   so a worker that followed the briefing and renamed itself finished its turn

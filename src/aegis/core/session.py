@@ -51,6 +51,7 @@ from aegis.tui.metrics import SessionMetrics, context_window_for
 from aegis.tui.state import AgentState
 
 if TYPE_CHECKING:  # annotation only; the runtime import is in __init__
+    from aegis.config import FleetConfig
     from aegis.fleet.models import EventLine, Origin
 
 log = logging.getLogger("aegis.core.session")
@@ -98,6 +99,7 @@ class AgentSession:
         repo_tracker=None,
         agents=None,
         origin: "Origin | None" = None,
+        config_root: Path | None = None,
     ) -> None:
         self._session = session
         self.agent = agent
@@ -178,8 +180,15 @@ class AgentSession:
         # The auto recap. Detached on purpose: measured 2026-08-26, a
         # one-shot costs ~7s wall REGARDLESS of prefix size, and a 7s
         # stall after every productive turn is not payable.
-        self.recap_enabled = True
-        self.loop_judge_enabled = True
+        # `recap`, `loop_judge` and `fleet` are read from `.aegis.yaml` at
+        # call time — see `_generation_config`. An explicit assignment (tests
+        # pin behaviour this way) overrides the file.
+        self._config_root = Path(config_root) if config_root is not None else None
+        self._config_key: tuple | None = None
+        self._config_cache = None
+        self._config_error_logged = ""
+        self._recap_override: bool | None = None
+        self._loop_judge_override: bool | None = None
         self.on_recap = None
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
@@ -834,6 +843,92 @@ class AgentSession:
                 cb(self, ev)
             except Exception:
                 log.exception("event observer raised; continuing")
+
+    def _config_stamp(self) -> tuple:
+        """What the cached config is keyed on, one `stat` per entry.
+
+        `.aegis.yaml` by `(mtime_ns, size)`, plus the mtime of every overlay
+        folder `load_config` walks. The three values read here live only in
+        `.aegis.yaml`, but an overlay can make the whole load raise; a folder's
+        mtime moves when a drop-in is added, removed or renamed into place.
+        """
+        from aegis.config.yaml_loader import _SECTIONS
+
+        root = self._config_root
+        stamp = []
+        for path in (
+            root / ".aegis.yaml",
+            *(root / ".aegis" / s for s in (*_SECTIONS, "groups")),
+        ):
+            try:
+                st = path.stat()
+                stamp.append((st.st_mtime_ns, st.st_size))
+            except OSError:
+                stamp.append(None)
+        return tuple(stamp)
+
+    def _generation_config(self):
+        """The loaded config, or None for "use the defaults".
+
+        Read at call time for the reason `btw.generation_agent` gives: a
+        config read is nothing next to the paid call it gates. Unlike that
+        precedent, it reads from the explicit config root, never the cwd.
+        """
+        if self._config_root is None:
+            return None
+        key = self._config_stamp()
+        if key == self._config_key:
+            return self._config_cache
+        from aegis.config import yaml_loader
+
+        try:
+            cfg = yaml_loader.load_config(self._config_root)
+        except Exception as e:  # noqa: BLE001
+            # A broken config must not cost a running session its turn —
+            # but say so once, or the file is silently ignored.
+            msg = f"{type(e).__name__}: {e}"
+            if msg != self._config_error_logged:
+                log.warning(
+                    "%s: could not load config, using defaults "
+                    "(recap, loop_judge, fleet): %s",
+                    self._config_root / ".aegis.yaml",
+                    msg,
+                )
+                self._config_error_logged = msg
+            cfg = None
+        else:
+            self._config_error_logged = ""
+        self._config_key, self._config_cache = key, cfg
+        return cfg
+
+    @property
+    def recap_enabled(self) -> bool:
+        if self._recap_override is not None:
+            return self._recap_override
+        cfg = self._generation_config()
+        return True if cfg is None else bool(cfg.recap)
+
+    @recap_enabled.setter
+    def recap_enabled(self, value: bool) -> None:
+        self._recap_override = value
+
+    @property
+    def loop_judge_enabled(self) -> bool:
+        if self._loop_judge_override is not None:
+            return self._loop_judge_override
+        cfg = self._generation_config()
+        return True if cfg is None else bool(cfg.loop_judge)
+
+    @loop_judge_enabled.setter
+    def loop_judge_enabled(self, value: bool) -> None:
+        self._loop_judge_override = value
+
+    @property
+    def fleet_config(self) -> "FleetConfig":
+        from aegis.config import FleetConfig
+
+        cfg = self._generation_config()
+        return FleetConfig() if cfg is None else cfg.fleet
 
     def _maybe_recap(self, facts) -> None:
         """Fire a recap without making the turn wait for it."""
