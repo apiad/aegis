@@ -21,6 +21,7 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
+from aegis.fleet.ghosts import GhostBook
 from aegis.fleet.models import FleetSnapshot
 from aegis.fleet.render import (
     CARD_WIDTH,
@@ -137,6 +138,9 @@ class FleetScreen(ModalScreen):
         self._cols = 1
         self._last_draw = 0.0
         self._pending = None
+        # One book per screen: a ghost is a viewing artefact, and a client
+        # that was not open has nothing to catch up on.
+        self._ghosts = GhostBook()
 
     # --- the members that hold no Textual call ---
 
@@ -220,8 +224,15 @@ class FleetScreen(ModalScreen):
         if self._pending is not None:
             self._pending.stop()
             self._pending = None
-        self._last_draw = time.monotonic()
-        snap = self._snap()
+        # Monotonic, the clock ghost_since and build_snapshot's ages share.
+        now = self._last_draw = time.monotonic()
+        snap = self._snap(now=now)
+        # A ghost is only ever a live card seen on an earlier refresh, so the
+        # book observes the live fleet and the builder draws its ghosts. The
+        # second build runs only while a ghost is on screen.
+        self._ghosts.observe(snap.cards, now)
+        if ghosts := self._ghosts.alive(now):
+            snap = self._snap(now=now, ghosts=ghosts)
         # The one place wall-clock enters the dashboard, as a finished string.
         self._current = replace(
             snap, band=replace(snap.band, clock=time.strftime("%H:%M"))
