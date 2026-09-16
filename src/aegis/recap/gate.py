@@ -42,7 +42,7 @@ def should_fleet_recap(*, state, turn_s, since_last_s, watchers, cfg) -> bool:
         return False
     if state != "working":
         return False
-    if cfg.recap == "watched" and watchers < 1:
+    if watchers < 1:
         return False
     if turn_s < cfg.recap_after_s:
         return False

@@ -24,7 +24,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   only for working sessions a client has on screen: the active tab while
   F3 is open (where it also shows), every session while F10 is open. The
   first comes after a turn has run 60 s, then at most one every 120 s;
-  the `fleet:` block in `.aegis.yaml` changes both and the watching rule.
+  the `fleet:` block in `.aegis.yaml` changes both, or turns the line off
+  with `recap: off`.
   With seven sessions streaming behind it the grid draws 2.0 frames/s,
   21 KB/s. See `docs/usage.md`.
 

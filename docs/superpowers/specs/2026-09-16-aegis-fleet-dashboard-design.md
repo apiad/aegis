@@ -339,11 +339,12 @@ sidebar line, the F10 card, and `/recap` on demand.
 
 Gating, all three required: a client is watching that session, the turn
 has run past `recap_after_s`, and `recap_interval_s` has elapsed since the
-last one. Nobody watching, nothing paid. Config:
+last one. Nobody watching, nothing paid; there is no always-on mode, and
+`aegis dash` on a second monitor counts as watching. Config:
 
 ```yaml
 fleet:
-  recap: watched        # watched | on | off
+  recap: watched        # watched | off
   recap_after_s: 60
   recap_interval_s: 120
 ```

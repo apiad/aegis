@@ -509,8 +509,8 @@ on a real transcript on haiku, a call costs **about $0.007–0.015**. By
 default it runs only for **working sessions someone is watching**: the
 active tab while `F3` is open, and every session while `F10` is open. A
 background tab, a closed sidebar or a detached terminal pays nothing. The
-[`fleet:` block](configuration.md#fleet-optional) changes that and the
-timings.
+[`fleet:` block](configuration.md#fleet-optional) turns it off and changes
+the timings.
 
 ### `aegis dash`: the dashboard on a second monitor
 

@@ -336,7 +336,7 @@ def _build_voice(raw: Any) -> VoiceConfig:
     )
 
 
-_FLEET_RECAP_MODES = ("watched", "on", "off")
+_FLEET_RECAP_MODES = ("watched", "off")
 
 
 def _flag(raw: dict, key: str, default: bool) -> bool:
@@ -365,7 +365,7 @@ def _build_fleet(raw: Any) -> FleetConfig:
     defaults = FleetConfig()
     recap = raw.get("recap", defaults.recap)
     if recap not in _FLEET_RECAP_MODES:
-        raise ConfigError(f"fleet.recap: must be one of watched|on|off (got {recap!r})")
+        raise ConfigError(f"fleet.recap: must be one of watched|off (got {recap!r})")
     return FleetConfig(
         recap=recap,
         recap_after_s=_fleet_seconds(raw, "recap_after_s", defaults.recap_after_s, 0),

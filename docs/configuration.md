@@ -157,7 +157,7 @@ other two. Measured on a real 61-turn transcript on haiku, one call costs
 
 ```yaml
 fleet:
-  recap: watched         # watched | on | off
+  recap: watched         # watched | off
   recap_after_s: 60      # a turn must have run this long before its first call
   recap_interval_s: 120  # at least this long between calls; floor 30
 ```
@@ -165,8 +165,11 @@ fleet:
 - `watched` (the default) pays only for sessions a client has on screen:
   the active tab while F3 is open, and every session while F10 is open. A
   background tab, a closed sidebar or a detached client pays nothing.
-- `on` pays for every working session, on screen or not.
 - `off` never calls; the cards and the sidebar show no `now` line.
+
+There is no mode that pays for sessions nobody has on screen, and
+`recap: on` is refused at boot. `aegis dash` on a second monitor counts as
+watching, so a fleet you want recapped all day is one `aegis dash` away.
 
 `recap_interval_s` below 30 is refused at boot: a call takes about 5 s, so a
 shorter interval buys lines faster than anyone reads a card. Both durations

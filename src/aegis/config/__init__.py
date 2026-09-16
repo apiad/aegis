@@ -32,7 +32,9 @@ class FleetConfig:
     """The F10 dashboard's paid call.
 
     `watched` — only sessions whose card or sidebar a client has on screen.
-    `on` — every working session, watched or not. `off` — never.
+    `off` — never. There is no always-on mode: paying for sessions nobody
+    is looking at is what the watcher gate exists to prevent, and
+    `aegis dash` on a second monitor already counts as looking.
     """
 
     recap: str = "watched"

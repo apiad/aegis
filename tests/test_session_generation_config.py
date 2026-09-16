@@ -26,7 +26,7 @@ OFF = """\
 recap: false
 loop_judge: false
 fleet:
-  recap: "on"
+  recap: "off"
   recap_after_s: 5
   recap_interval_s: 45
 """
@@ -67,7 +67,7 @@ def test_a_spawned_session_reads_all_three_from_the_file(tmp_path):
     s = _brain(tmp_path, OFF)._sync_spawn("opus")
     assert s.recap_enabled is False
     assert s.loop_judge_enabled is False
-    assert s.fleet_config == FleetConfig(recap="on", recap_after_s=5,
+    assert s.fleet_config == FleetConfig(recap="off", recap_after_s=5,
                                          recap_interval_s=45)
 
 

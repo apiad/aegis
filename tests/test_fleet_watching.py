@@ -190,8 +190,8 @@ async def _until(cond, rounds=400):
 
 async def test_a_detached_view_leaves_no_fleet_watcher_on_the_brain(tmp_path):
     """The brain keeps its sessions after a client goes away. A watcher the
-    view left behind would turn ``watched`` into ``on`` for those sessions
-    until they close. Detached the way the daemon detaches, through
+    view left behind would keep paying for those sessions with nobody
+    looking until they close. Detached the way the daemon detaches, through
     ``ViewRegistry.close``, with both F3 and F10 up."""
     roots = AegisRoots.for_project(tmp_path)
     roster = {"default": _agent()}

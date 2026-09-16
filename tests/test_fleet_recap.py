@@ -115,10 +115,13 @@ def test_the_interval_holds_between_calls():
                               watchers=1, cfg=ON) is True
 
 
-def test_on_ignores_the_watcher_count():
+def test_no_mode_pays_for_a_session_nobody_watches():
+    """There is no always-on mode. A config object that somehow carries
+    another string still needs a watcher: the gate has no branch that
+    skips the watcher count."""
     cfg = FleetConfig(recap="on", recap_after_s=60, recap_interval_s=120)
     assert should_fleet_recap(state="working", turn_s=61, since_last_s=999,
-                              watchers=0, cfg=cfg) is True
+                              watchers=0, cfg=cfg) is False
 
 
 def test_off_never_fires():
