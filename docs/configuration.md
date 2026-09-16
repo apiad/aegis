@@ -147,6 +147,33 @@ loop_judge: true     # decide whether an armed /loop continues
 available either way. Turning `loop_judge:` off returns `/loop` to running
 to its iteration cap unless the operator stops it.
 
+### `fleet` (optional)
+
+Top-level mapping for the mid-turn recap: the `now …` line on a working
+session's F10 card and in its F3 sidebar. It is the third automatic
+consumer of the `generate()` seam and bills to `text_generation:` like the
+other two. Measured on a real 61-turn transcript on haiku, one call costs
+**~$0.007–0.015** at list price, against the subscription pool.
+
+```yaml
+fleet:
+  recap: watched         # watched | on | off
+  recap_after_s: 60      # a turn must have run this long before its first call
+  recap_interval_s: 120  # at least this long between calls; floor 30
+```
+
+- `watched` (the default) pays only for sessions a client has on screen:
+  the active tab while F3 is open, and every session while F10 is open. A
+  background tab, a closed sidebar or a detached client pays nothing.
+- `on` pays for every working session, on screen or not.
+- `off` never calls; the cards and the sidebar show no `now` line.
+
+`recap_interval_s` below 30 is refused at boot: a call takes about 5 s, so a
+shorter interval buys lines faster than anyone reads a card. Both durations
+must be whole seconds. The F10 band shows what these calls have cost the open
+sessions, as `recap $X / N calls`, and adds `· C cancelled` when a call was
+killed before its price printed.
+
 ## Drop-in overlays
 
 Each top-level section also accepts overlay files under
