@@ -652,7 +652,17 @@ with `from collections import deque` at the top, and:
         )
 ```
 
-Then call it from wherever the session already dispatches typed events to its observers (search for `record_tool()` on `self.metrics` — `note_event` goes on the same line, because that is the one place every tool call passes through).
+Then hook it into **`AgentSession._fire_event`** (`core/session.py:819`), in the existing `elif isinstance(ev, ToolUse):` branch beside `_record_repo(ev)`.
+
+> **Corrected mid-run.** This step originally said to hook beside
+> `self.metrics.record_tool()`, "the one place every tool call passes
+> through". That was wrong and the Task 4 implementer caught it:
+> `record_tool()` has two call sites (`_run_turn:730`,
+> `_drain_unsolicited_turn:1122`), while both loops call `_fire_event(ev)`
+> unconditionally *before* their isinstance chains. `_fire_event` is the
+> strict superset, it already holds the sibling `ToolUse` fold, and the
+> replay path skips it — which is the behaviour the ring wants, since a
+> replayed transcript must not refill the ring with stale events.
 
 - [ ] **Step 5: Run the tests**
 
@@ -871,6 +881,17 @@ def test_the_plan_reaches_the_card():
     m = FakeManager([FakeSession("alpha", plan=plan)])
     card = build_snapshot(m, now=1000.0).cards[0]
     assert (card.plan_done, card.plan_total) == (7, 10)
+
+
+def test_a_tool_call_from_a_live_turn_reaches_the_card(session):
+    """The Task 4 tests call note_event directly, so nothing yet proves the
+    seam is on the live path. Drive one ToolUse through _fire_event and read
+    it back off the card."""
+    from aegis.events import ToolUse
+
+    session._fire_event(ToolUse(name="Edit", summary="apps/sigere/pusher.py"))
+    card = build_snapshot(FakeManager([session]), now=1000.0).cards[0]
+    assert [e.tool for e in card.events] == ["Edit"]
 
 
 def test_assembly_never_touches_the_disk(monkeypatch):
