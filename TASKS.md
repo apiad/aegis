@@ -64,6 +64,13 @@ Two findings fell out of designing it, both of which stand alone:
 
 Left over from the bench check (Task 10, 2026-09-16):
 
+- [ ] **`test_workflows_band_lists_running_workflow` fails under host load.**
+  It fakes a workflow started 3.2 s ago and asserts the band shows 3.0-4.0 s,
+  leaving 0.8 s for the app to boot and render. The full suite on 2026-09-16
+  measured 4.6 s at load average 10-12, and the test passed 3/3 alone. A
+  wall-clock assertion with sub-second headroom inside an 8-minute suite.
+  Fix: inject the clock the band reads, or assert only a lower bound.
+
 - [ ] **A turn that finishes behind any modal leaves its transcript short of
   the tail.** Reproduced by the Task 10b review with a probe: a pane
   following its tail at scroll_y 128, F10 opened, four tall messages
