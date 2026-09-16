@@ -27,6 +27,19 @@ class VoiceConfig:
     language: str | None = None
 
 
+@dataclass(frozen=True)
+class FleetConfig:
+    """The F10 dashboard's paid call.
+
+    `watched` — only sessions whose card or sidebar a client has on screen.
+    `on` — every working session, watched or not. `off` — never.
+    """
+
+    recap: str = "watched"
+    recap_after_s: int = 60
+    recap_interval_s: int = 120
+
+
 class Permission(str, Enum):
     read = "read"
     write = "write"

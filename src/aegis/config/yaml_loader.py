@@ -25,6 +25,7 @@ from ruamel.yaml import YAML
 from aegis.config import (
     Agent,
     ConfigError,
+    FleetConfig,
     Permission,
     VoiceConfig,
     WebConfig,
@@ -70,6 +71,7 @@ class AegisConfig:
     remote_plane: RemotePlaneSpec | None = None
     web: WebConfig | None = None
     voice: VoiceConfig = field(default_factory=VoiceConfig)
+    fleet: FleetConfig = field(default_factory=FleetConfig)
     root: Path | None = None
     # Agent profile used for one-shot generation (`/btw` side notes,
     # generated session titles) rather than for conversation. None means
@@ -268,6 +270,7 @@ def load_config(root: Path) -> AegisConfig:
 
     web = _build_web(raw.get("web"))
     voice = _build_voice(raw.get("voice"))
+    fleet = _build_fleet(raw.get("fleet"))
 
     return AegisConfig(
         default_agent=default_agent,
@@ -287,6 +290,7 @@ def load_config(root: Path) -> AegisConfig:
         remote_plane=remote_plane,
         web=web,
         voice=voice,
+        fleet=fleet,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
         dynamic_workflow_autoapprove_agents=int(
@@ -329,6 +333,30 @@ def _build_voice(raw: Any) -> VoiceConfig:
         key=str(raw.get("key", defaults.key)),
         preview=bool(raw.get("preview", defaults.preview)),
         language=raw.get("language", defaults.language),
+    )
+
+
+_FLEET_RECAP_MODES = ("watched", "on", "off")
+
+
+def _build_fleet(raw: Any) -> FleetConfig:
+    """Build a FleetConfig from a `fleet:` YAML block. Absent -> defaults.
+
+    An unknown `recap:` mode fails loud: a typo that silently meant "off"
+    would be a dashboard with no lines and no explanation.
+    """
+    if raw is None:
+        return FleetConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError("fleet: must be a mapping")
+    defaults = FleetConfig()
+    recap = raw.get("recap", defaults.recap)
+    if recap not in _FLEET_RECAP_MODES:
+        raise ConfigError(f"fleet.recap: must be one of watched|on|off (got {recap!r})")
+    return FleetConfig(
+        recap=recap,
+        recap_after_s=int(raw.get("recap_after_s", defaults.recap_after_s)),
+        recap_interval_s=int(raw.get("recap_interval_s", defaults.recap_interval_s)),
     )
 
 
