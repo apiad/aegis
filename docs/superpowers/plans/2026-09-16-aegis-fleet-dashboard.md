@@ -740,7 +740,7 @@ class BandView:
     waiting: int = 0
     ctx_avg: float = 0.0
     ctx_worst: tuple[str, float] | None = None  # (handle, pct)
-    cost_today: float = 0.0
+    cost_live: float = 0.0          # sum over OPEN sessions — not a daily total
     recap_cost: float = 0.0
     recap_calls: int = 0
     queues: tuple[int, int] = (0, 0)            # (running, configured)
@@ -1249,6 +1249,15 @@ git commit -- src/aegis/fleet/render.py tests/test_fleet_render.py -m "feat(flee
 
 **Interfaces:**
 - Produces: `render_fleet(snapshot: FleetSnapshot, palette, width: int) -> Text` and `columns_for(width: int) -> int`.
+
+> **Carried from the Task 6 review.** Three facts about the band the
+> renderer must respect:
+> - `total` counts **live** sessions only. Ghost cards are drawn but not
+>   counted, so while a ghost is on screen there is one more card than
+>   `total`. Do not derive the headline count from `len(snapshot.cards)`.
+> - The cost field is **`cost_live`**, the sum over open sessions. Label it
+>   `live`, never `today` — it drops when a tab closes.
+> - `band.host` is the local machine's hostname, not the first card's host.
 
 - [ ] **Step 1: Write the failing tests**
 

@@ -179,13 +179,22 @@ is invisible is a view of the operator's tabs, not of the fleet.
 ```
  AEGIS · zion · 9 agents · 6 yours · 3 ephemeral (2 queue, 1 workflow)  14:07
  2 working  6 ready  1 waiting        ctx avg 41%   worst kingly-karp 82%
- $18.42 today · recaps $1.20 (340)    queues 1/4    monitors 2
+ $18.42 live · recaps $1.20 (340)     queues 1/4    monitors 2
  repos  une-tools ×2 ⚠   aegis ×1   Workspace ×3   enciclopedia ×1
 ```
 
 The repo line is the part that earns its space. `une-tools ×2 ⚠` says two
 agents are standing in the same working tree, which is the condition that
 actually costs an afternoon and which no surface in aegis shows today.
+
+The cost is labelled `live`, not `today`: it is the sum over sessions open
+right now, so it drops when a tab closes and counts a session started
+yesterday in full. A real daily figure needs a ledger read, which the no-disk
+rule keeps out of assembly.
+
+Ghost cards are drawn but not counted: `total` and the four state counters
+cover live sessions only, so while a ghost is on screen there is one more
+card than `total` says.
 
 The recap spend rides in the band on purpose: this design adds a recurring
 paid call, and a paid call whose bill is not on screen is a paid call
