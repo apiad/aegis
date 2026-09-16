@@ -137,12 +137,13 @@ def assemble(
 ) -> Window:
     """Fill a window backwards from the newest event until a bound trips.
 
-    ``replay`` is an ``EventReplay``. The turn boundary is the ``Result``
+    ``replay`` is an ``EventReplay`` or a plain sequence of events (a
+    mid-turn caller holds the live list, not a replayed log). The turn boundary is the ``Result``
     event, which terminates a turn; a trailing run of events with no
     ``Result`` after it is a turn still in flight, and it is the most
     relevant thing in the window, so it is always included first.
     """
-    events = coalesce_chunks(replay.events)
+    events = coalesce_chunks(getattr(replay, "events", replay))
 
     lines: list[str] = []
     used = truncated = crossed = 0

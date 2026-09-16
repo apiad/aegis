@@ -25,6 +25,12 @@ from aegis.digest.render import render_facts
 # what an end-of-turn line is about.
 TURN_WINDOW = dict(max_turns=1, budget_tokens=2_000, item_chars=200)
 
+# Measured 2026-09-16: the prefix floor is ~1,027 input tokens and a full
+# window costs ~546 more, so the window is calderilla and gets sized for
+# relevance rather than thrift. Squeezing it to ~1,135 total produced
+# terser lines that named no files.
+IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
+
 
 class TurnRecap(BaseModel):
     line: str = Field(
@@ -39,6 +45,17 @@ class SessionRecap(BaseModel):
     remaining: str = Field(description="what is left")
 
 
+class FleetRecap(BaseModel):
+    done: str = Field(
+        description="ONE line, past tense: the last thing that "
+        "actually landed. Name files and counts. No preamble."
+    )
+    doing: str = Field(
+        description="ONE line, present tense: what the turn "
+        "currently running is working on."
+    )
+
+
 @dataclass(frozen=True)
 class Recap:
     """One recap, and what it cost."""
@@ -46,6 +63,7 @@ class Recap:
     line: str = ""
     building: str = ""
     done: str = ""
+    doing: str = ""
     remaining: str = ""
     header: str = ""
     model: str = ""
@@ -67,13 +85,14 @@ class Recap:
         """
         if self.line:
             return self.line
-        if not (self.building or self.done or self.remaining):
+        if not (self.building or self.done or self.doing or self.remaining):
             return ""
         return "\n".join(
             x
             for x in (
                 f"- **building:** {self.building}" if self.building else "",
                 f"- **done:** {self.done}" if self.done else "",
+                f"- **doing:** {self.doing}" if self.doing else "",
                 f"- **remaining:** {self.remaining}" if self.remaining else "",
             )
             if x
@@ -109,6 +128,15 @@ _SESSION_SYSTEM = (
     "narration. No preamble, no praise."
 )
 
+_IN_FLIGHT_SYSTEM = (
+    "You say where a coding agent stands in the middle of a turn that has "
+    "not finished, for an operator glancing at a dashboard. Two fields: the "
+    "last thing that actually landed (past tense), and what the running "
+    "turn is doing now (present tense). Prefer the FACTS block over the "
+    "agent's own narration — the agent describes what it means to do; the "
+    "facts say what landed. Name files and counts. No preamble, no praise."
+)
+
 
 async def _one(
     schema, system, *, replay, facts, driver, agent, cwd, window_opts
@@ -139,6 +167,7 @@ async def _one(
         line=getattr(v, "line", ""),
         building=getattr(v, "building", ""),
         done=getattr(v, "done", ""),
+        doing=getattr(v, "doing", ""),
         remaining=getattr(v, "remaining", ""),
         header=window.header,
         model=gen.model,
@@ -173,6 +202,22 @@ async def recap_session(*, replay, facts: TurnFacts, driver, agent, cwd: str) ->
         agent=agent,
         cwd=cwd,
         window_opts={},
+    )
+
+
+async def recap_in_flight(
+    *, replay, facts: TurnFacts, driver, agent, cwd: str
+) -> Recap:
+    """Two lines about a turn still running: what landed, what it is doing."""
+    return await _one(
+        FleetRecap,
+        _IN_FLIGHT_SYSTEM,
+        replay=replay,
+        facts=facts,
+        driver=driver,
+        agent=agent,
+        cwd=cwd,
+        window_opts=IN_FLIGHT_WINDOW,
     )
 
 
