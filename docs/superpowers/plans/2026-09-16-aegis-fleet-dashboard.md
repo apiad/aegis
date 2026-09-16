@@ -583,7 +583,19 @@ def test_a_subagents_tool_call_is_not_the_sessions_own(session):
     assert session.recent_events == ()
 ```
 
-The `session` fixture builds an `AgentSession` — reuse whatever `tests/conftest.py` already offers for that; if there is none, construct one the way `tests/core` does and put the fixture in `tests/test_fleet_events.py`.
+**`tests/conftest.py` has no `session` fixture** — checked. Build one in `tests/test_fleet_events.py` from `tests/brain.py::make_brain`, which is how the suite builds a manager wired the way `cli.py::_serve` wires one:
+
+```python
+@pytest.fixture
+def session(tmp_path):
+    from tests.brain import make_brain
+
+    mgr = make_brain({"opus": Agent(harness="claude", model="claude-opus-5")},
+                     default_agent="opus", ...)
+    return mgr._sync_spawn("opus")
+```
+
+Fill the constructor arguments from an existing caller — `tests/test_session_titles.py` builds one. The same applies to `session_manager` in Task 3 and `fake_agent` in Task 11: neither exists in `conftest.py`, so define them locally in the test file that needs them.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -760,6 +772,7 @@ attributes `build_snapshot` actually reaches for, so a rename upstream
 breaks this test instead of production."""
 from dataclasses import dataclass
 
+from aegis.config import Agent
 from aegis.fleet.models import Origin
 from aegis.fleet.snapshot import build_snapshot
 from aegis.plan.models import PlanState, PlanTask
@@ -775,6 +788,9 @@ class FakePlace:
 class FakeSession:
     def __init__(self, handle, state="ready", origin=None, **kw):
         self.handle = handle
+        # Carry a real profile so _cost exercises budget.cost.compute rather
+        # than only its guard.
+        self.agent = Agent(harness="claude", model="claude-opus-5")
         self.title = kw.get("title", "")
         self.agent_slug = kw.get("agent_slug", "opus")
         self.origin = origin or Origin()
@@ -922,7 +938,7 @@ def _card(s, *, index: int, now: float, manager) -> CardView:
         # turn_start is None between turns; session_seconds would otherwise
         # read as a turn that has been running since the session began.
         turn_s=m.turn_seconds(now) if m.turn_start is not None else 0.0,
-        cost_usd=float(compute(m, s.agent.harness, s.agent.model).usd),
+        cost_usd=_cost(s),
         ctx_pct=(100.0 * m.last_true_input / m.context_window)
         if m.context_window
         else 0.0,
@@ -936,6 +952,17 @@ def _card(s, *, index: int, now: float, manager) -> CardView:
         monitor=_monitor_label(manager, s.handle),
         tab_index=index,
     )
+```
+
+```python
+def _cost(s) -> float:
+    """List-price cost so far. A session with no resolved agent profile —
+    every headless caller and most of the suite — costs 0.0 rather than
+    raising, for the same reason the other sources are optional."""
+    agent = getattr(s, "agent", None)
+    if agent is None:
+        return 0.0
+    return float(compute(s.metrics, agent.harness, agent.model).usd)
 ```
 
 `compute` is `aegis.budget.cost.compute(metrics, provider, model) -> Cost`; take `.usd`, which is a `Decimal`.
@@ -1197,11 +1224,9 @@ Expected: the seven new tests FAIL on the import of `render_fleet` / `columns_fo
 
 - [ ] **Step 3: Write the grid**
 
+`CARD_WIDTH` and `GUTTER` already exist at the top of `render.py` from Task 7. Do **not** re-declare them; import nothing and add only:
+
 ```python
-CARD_WIDTH = 46
-GUTTER = 2
-
-
 def columns_for(width: int) -> int:
     """Never zero — a narrow terminal gets one column, not a ZeroDivisionError."""
     return max(1, width // (CARD_WIDTH + GUTTER))
@@ -1666,6 +1691,10 @@ git commit -- src/aegis/fleet/recap.py tests/test_fleet_recap.py -m "feat(fleet)
 
 ### Task 12: the gate — pay only for a working session someone is watching
 
+> **Run Task 13 first.** The tests below import `FleetConfig`, which Task 13
+> creates. The plan numbers them in reading order — gate then config — but
+> the execution order is 11, 13, 12, 14.
+
 **Files:**
 - Modify: `src/aegis/fleet/recap.py`
 - Modify: `src/aegis/core/session.py`
@@ -1727,7 +1756,7 @@ def test_off_never_fires():
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_fleet_recap.py -v`
-Expected: the seven new tests FAIL — `should_fleet_recap` and `FleetConfig` do not exist. `FleetConfig` arrives in Task 13; write it there first if the import blocks you, then come back.
+Expected: the seven new tests FAIL on `should_fleet_recap`, which does not exist. `FleetConfig` does, because Task 13 ran first.
 
 - [ ] **Step 3: Write the gate**
 
