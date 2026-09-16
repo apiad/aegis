@@ -27,6 +27,9 @@ class View:
     sink: FrameSink = field(default_factory=FrameSink)
     _task: asyncio.Task | None = None
 
+    #: How long `stop` waits for the app to exit before cancelling it.
+    STOP_TIMEOUT_S = 10
+
     @property
     def frames(self) -> list[bytes]:
         """The detached buffer. A property, not a field, so the existing
@@ -106,12 +109,46 @@ class View:
     async def stop(self) -> None:
         if self._task is not None and not self._task.done():
             self.app.exit()
-            with_timeout = asyncio.wait_for(self._task, timeout=10)
+            with_timeout = asyncio.wait_for(self._task, timeout=self.STOP_TIMEOUT_S)
             try:
                 await with_timeout
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._task.cancel()
         self._task = None
+        self._release_brain_hooks()
+
+    def _release_brain_hooks(self) -> None:
+        """Take this view's callbacks off the brain's sessions.
+
+        The widgets remove their own on unmount, and on a clean exit this
+        finds nothing. But the wait above cancels a slow app, and Textual runs
+        its shutdown under a shield: a hang *inside* shutdown means no
+        `on_unmount` ever runs. A fleet watcher left behind turns `watched`
+        into `on` for that session until it closes, a paid call every
+        interval for a client that is gone (reproduced 2026-09-16).
+
+        Ownership is decided by walking the callback owner's `_parent` chain
+        to this app, not by `widget.app`: outside the app's own context that
+        property reads a context variable, which in a daemon holding several
+        views can name a different app.
+        """
+        manager = getattr(self.app, "manager", None)
+        for session in list(getattr(manager, "_sessions", None) or ()):
+            for attr, remove in (
+                ("_fleet_watchers", "remove_fleet_watcher"),
+                ("_extra_event_observers", "remove_event_observer"),
+            ):
+                for cb in list(getattr(session, attr, None) or ()):
+                    if self._owns(cb):
+                        getattr(session, remove)(cb)
+
+    def _owns(self, cb) -> bool:
+        node = getattr(cb, "__self__", None)
+        while node is not None:
+            if node is self.app:
+                return True
+            node = getattr(node, "_parent", None)
+        return False
 
     def repaint(self) -> None:
         """Force the next render cycle to emit a full frame.

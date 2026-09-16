@@ -238,3 +238,43 @@ async def test_a_detached_view_leaves_no_fleet_watcher_on_the_brain(tmp_path):
     assert all(s._fleet_task is None for s in sessions), (
         "a watcher is gone but the paid check still runs"
     )
+
+
+async def test_a_view_whose_shutdown_hangs_still_releases_its_watchers(tmp_path, monkeypatch):
+    """`View.stop` waits a bounded time for the app to exit and then cancels
+    it. Textual runs the shutdown under a shield, so a hang inside it means
+    no `on_unmount` ever runs — the pane and fleet-screen removals never
+    happen, and the brain keeps paying for a client that is gone. Reproduced
+    by the Task 14 review: watchers [2, 1] before and after. The view must
+    release what its own widgets registered, whatever the shutdown does."""
+    from aegis.views import view as view_mod
+
+    monkeypatch.setattr(view_mod.View, "STOP_TIMEOUT_S", 0.5)
+    roots = AegisRoots.for_project(tmp_path)
+    roster = {"default": _agent()}
+    mgr = make_brain(roster, "default", make_session=lambda *a, **k: _Harness(),
+                     mcp=None, roots=roots)
+    reg = ViewRegistry(manager=mgr, roots=roots, mcp=FakeMCP(), agents=roster,
+                       default_agent="default", make_session=lambda *a, **k: _Harness())
+    view = await reg.open("tty-1", (120, 40))
+    await view.run()
+    app = view.app
+    await mgr.spawn("default")
+    await mgr.spawn("default")
+    await _until(lambda: len([p for p in app._panes if isinstance(p, ConversationPane)]) >= 2)
+    sessions = list(mgr._sessions)
+    app.call_next(app.set_sidebar_mode, True)
+    app.call_next(app.action_open_fleet)
+    await _until(lambda: isinstance(app.screen, FleetScreen))
+    await _until(lambda: len(app.screen._hooked) == len(sessions))
+    assert sum(len(s._fleet_watchers) for s in sessions) > 0
+
+    async def hang(*a, **k):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(app, "_close_all", hang)
+    await reg.close("tty-1")
+    assert [len(s._fleet_watchers) for s in sessions] == [0] * len(sessions)
+    assert all(s._fleet_task is None for s in sessions), (
+        "the view is gone but the paid check still runs"
+    )
