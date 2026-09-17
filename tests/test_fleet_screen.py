@@ -473,28 +473,45 @@ async def test_a_view_that_exits_with_the_fleet_open_leaves_no_observer(tmp_path
 
 
 def test_the_band_carries_the_system_row_it_is_handed():
-    """F10 hides F3, so the band shows the tiers F3 would: the very tuples
-    the app sampled and pushed to F3, handed in and not sampled again."""
-    row = {"system": ("CPU 1%",), "quota": ("cc 1%",), "build": ("aegis 1",)}
+    """F10 hides F3, so the band draws the numbers the app sampled on its
+    tick: handed in raw, not sampled again."""
+    from aegis.fleet.models import QuotaGauge
+    from aegis.fleet.render import render_band
+    from aegis.tui.sysmeter import SystemStats
+    from aegis.tui.themes import INK, aegis_colors
+
+    stats = SystemStats(12, 34, 56)
+    gauges = (QuotaGauge("cc 5h", 38, "normal", 60),)
+    row = {"stats": stats, "gauges": gauges, "build": ("aegis 1",)}
     scr = FleetScreen(lambda **_: FleetSnapshot(), system_row=lambda: row)
     scr.refresh_fleet()
     band = scr._current.band
-    assert (band.system, band.quota, band.build) == (
-        ("CPU 1%",),
-        ("cc 1%",),
-        ("aegis 1",),
-    )
+    assert (band.stats, band.gauges, band.build) == (stats, gauges, ("aegis 1",))
+    drawn = render_band(scr._current, aegis_colors(INK), 160, 0).plain
+    assert "CPU" in drawn and "cc 5h" in drawn and "aegis 1" in drawn
 
 
 async def test_the_build_shows_before_the_first_tick(tmp_path):
-    """System and quota may be empty at boot; the build never is."""
+    """Stats and gauges may be empty at boot; the build never is."""
+    from dataclasses import replace
+
+    from rich.text import Text
+
+    from aegis.fleet.render import render_band
+
     app = _standalone(tmp_path)
+    app._quota_tick = lambda active: None
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
+        app._system_stats = None  # the boot state, before any tick samples
         row = app._fleet_system_row()
-        assert set(row) == {"system", "quota", "build"}
-        assert isinstance(row["system"], tuple) and isinstance(row["quota"], tuple)
+        assert set(row) == {"stats", "gauges", "build"}
+        assert row["stats"] is None and isinstance(row["gauges"], tuple)
         assert row["build"]
+        snap = FleetSnapshot(band=replace(FleetSnapshot().band, **row))
+        drawn = render_band(snap, app.palette, 200, 0).plain
+        assert "CPU" not in drawn
+        assert Text.from_markup(row["build"][-1]).plain in drawn
 
 
 async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(
@@ -504,8 +521,11 @@ async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(
     terminal tab has no SYSTEM row, so the app holds the last sample: sampled
     once per tick, pushed to F3 when an agent pane is in front, and read by
     the band either way."""
+    from aegis.fleet.render import render_band
     from aegis.tui import sysmeter
+    from aegis.tui.app import AegisApp
 
+    monkeypatch.setattr(AegisApp, "_quota_tick", lambda self, active: None)
     calls = []
     real = sysmeter.sample_system
     monkeypatch.setattr(
@@ -528,14 +548,15 @@ async def test_the_band_keeps_its_meters_with_a_file_tab_in_front(
         calls.clear()
         app._tick()
         assert len(calls) == 1
-        assert app._system_last
+        assert app._system_last and app._system_stats is not None
 
         await pilot.press("f10")
         await pilot.pause()
         assert isinstance(app.screen, FleetScreen)
         band = app.screen._current.band
-        assert band.system == app._system_last
+        assert band.stats is app._system_stats
         assert band.build
+        assert "CPU" in render_band(app.screen._current, app.palette, 200, 0).plain
 
 
 async def test_the_screen_behind_the_fleet_does_not_repaint_it(tmp_path):

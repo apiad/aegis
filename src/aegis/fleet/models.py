@@ -133,11 +133,8 @@ class BandView:
     monitors: int = 0
     repos: tuple[RepoCount, ...] = ()
     clock: str = ""
-    # The SYSTEM row, as the same widest-first tier tuples the F3 sidebar
-    # renders — filled by the screen from the active pane, never sampled or
-    # formatted here, so F3 and F10 cannot disagree.
-    system: tuple[str, ...] = ()
-    quota: tuple[str, ...] = ()
+    # The band's raw numbers, handed in by the app from its own tick —
+    # never sampled here — so F3 and F10 read the same sample.
     build: tuple[str, ...] = ()
     stats: SystemStats | None = None
     gauges: tuple[QuotaGauge, ...] = ()

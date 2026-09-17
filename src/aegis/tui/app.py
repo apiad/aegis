@@ -70,6 +70,23 @@ def _attention_mark(p, active: bool, colors, blink_off: bool) -> str:
     return mark(category, colors, blink_off=blink_off and not active)
 
 
+def _with_attention(snapshot, cores: dict, acked: dict):
+    """Each live card's category as pending in THIS view, or ``""``.
+    Seen-ness is per view, so the brain's snapshot cannot know it."""
+    from dataclasses import replace
+
+    from aegis.attention import is_pending
+
+    cards = []
+    for c in snapshot.cards:
+        core = cores.get(c.handle)
+        category = getattr(core, "effective_attention", "") or ""
+        seq = getattr(core, "attention_seq", 0)
+        pending = is_pending(category, seq, acked.get(c.handle, 0))
+        cards.append(replace(c, attention=category if pending else ""))
+    return replace(snapshot, cards=tuple(cards))
+
+
 def _tab_suffix(pane, qm) -> str | None:
     """The trailing annotation on a tab: plan progress, queue worker label,
     host, or any combination.
@@ -325,6 +342,7 @@ class AegisApp(App):
     # avoid a Textual boot, so anything the tick path reads must exist
     # without __init__ having run.
     _quota_last = None
+    _system_stats = None
     _quota_pane = None
     _system_last: tuple[str, ...] = ()
     _last_bell: float = float("-inf")
@@ -1639,6 +1657,7 @@ class AegisApp(App):
         # over terminal and file tabs too; F3 gets the same tuple.
         with contextlib.suppress(Exception):
             stats = sample_system(self._cwd)
+            self._system_stats = stats
             self._system_last = format_system_tiers(stats, self._palette)
             if active is not None and hasattr(active, "set_system"):
                 active.set_system(self._system_last)
@@ -2289,13 +2308,21 @@ class AegisApp(App):
         return any(isinstance(s, FleetScreen) for s in self.screen_stack)
 
     def _fleet_system_row(self) -> dict:
-        """The band's SYSTEM row: the tiers the last tick sampled and pushed
-        to F3, and the build. System and quota are empty before that tick."""
-        from aegis.tui.sysmeter import format_build
+        """The band's raw numbers: the last tick's system sample, every
+        provider's last quota reading as gauges, and the build."""
+        from datetime import datetime, timezone
 
+        from aegis.tui.sysmeter import format_build
+        from aegis.usage.quota import quota_gauges
+        from aegis.usage.quota_providers import PROVIDERS
+
+        services = getattr(self, "quota_services", {}) or {}
+        readings = [
+            (p, services[p.name].current()) for p in PROVIDERS if p.name in services
+        ]
         return {
-            "system": self._system_last,
-            "quota": self._quota_last or (),
+            "stats": self._system_stats,
+            "gauges": quota_gauges(readings, now=datetime.now(timezone.utc)),
             "build": format_build(self._palette),
         }
 
@@ -2337,7 +2364,13 @@ class AegisApp(App):
         )
         # By handle, never by list index: the brain's session list and this
         # view's tab bar diverge on any terminal tab or any moved tab.
-        return in_tab_order(snap, tabs)
+        ordered = in_tab_order(snap, tabs)
+        cores, acked = {}, {}
+        for p in self._panes:
+            if (c := getattr(p, "_core", None)) is not None:
+                cores[c.handle] = c
+                acked[c.handle] = getattr(p, "attention_acked", 0)
+        return _with_attention(ordered, cores, acked)
 
     def action_interrupt(self) -> None:
         # The escape binding is priority=True at the app level, so it
