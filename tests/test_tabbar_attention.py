@@ -76,6 +76,26 @@ async def test_the_tick_paints_a_late_category_without_writing_the_roster():
         assert snapshots == []
 
 
+@pytest.mark.asyncio
+async def test_a_tick_during_teardown_finds_no_tab_bar_and_does_nothing():
+    from textual.css.query import NoMatches
+
+    app = _app(_factory(FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        real_query_one = app.query_one
+
+        def query_one(selector, *a, **kw):
+            if selector is TabBar:
+                raise NoMatches("TabBar pruned")
+            return real_query_one(selector, *a, **kw)
+
+        app.query_one = query_one
+        app._tick()
+        app._refresh_tabbar()
+        del app.query_one
+
+
 def test_the_sidebar_state_names_a_pending_category_until_acked():
     core = SimpleNamespace(
         state=AgentState.ready, effective_attention="needs_input", attention_seq=1

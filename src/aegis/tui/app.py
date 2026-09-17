@@ -1044,6 +1044,20 @@ class AegisApp(App):
         except NoMatches:
             return None
 
+    def _tab_bar(self):
+        """The TabBar, or None once the DOM is gone.
+
+        The tree is pruned piecemeal during teardown, so the switcher can
+        still resolve after the tab bar is gone; the once-a-second tick
+        reaches this, so it asks here the same way ``_switcher`` does.
+        """
+        from textual.css.query import NoMatches
+
+        try:
+            return self.query_one(TabBar)
+        except NoMatches:
+            return None
+
     def plan_state(self, handle: str):
         """The full task list for a peer, backing aegis_peer_plan."""
         for p in self._panes:
@@ -1435,7 +1449,8 @@ class AegisApp(App):
         items = self._tab_items()
         if items is None:
             return
-        self.query_one(TabBar).set_tabs(items)
+        if (bar := self._tab_bar()) is not None:
+            bar.set_tabs(items)
         self._schedule_snapshot()
 
     def _tab_items(self) -> list | None:
@@ -1609,8 +1624,9 @@ class AegisApp(App):
         # can land after the state change that last refreshed the bar, and a
         # pending needs_input blinks. set_tabs repaints only changed cells.
         items = self._tab_items()
-        if items is not None:
-            self.query_one(TabBar).set_tabs(items)
+        bar = self._tab_bar()
+        if items is not None and bar is not None:
+            bar.set_tabs(items)
         active = self._active
         if active is not None and hasattr(active, "refresh_metrics"):
             active.refresh_metrics()
