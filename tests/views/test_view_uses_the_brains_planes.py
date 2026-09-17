@@ -123,23 +123,32 @@ async def test_a_monitor_armed_on_the_brain_reaches_the_tab(tmp_path):
         await reg.close_all()
 
 
-async def test_closing_a_tab_in_a_view_keeps_the_brains_inbox_binding(
-        tmp_path):
-    """The inbox is shared now, so a view unbinding on close would cut
-    delivery to a session the brain is still running. Binding and unbinding
-    belong to the brain, which does both in spawn and close."""
+async def test_a_view_never_unbinds_the_inbox_itself(tmp_path, monkeypatch):
+    """The inbox is shared, so a view unbinding on close would cut delivery
+    to a session the brain is still running. Binding and unbinding belong to
+    the brain, which does both in spawn and close. (This test used to also
+    assert the session outlived the close; that was the zombie fixed in
+    test_closing_a_tab_closes_the_session_in_the_brain.)"""
     mgr, reg = _world(tmp_path)
     view = await reg.open("tty-1", (100, 30))
     try:
         async with view.app.run_test(headless=False, size=(100, 30)) as p:
             handle = await mgr.spawn("opus")
             await p.pause()
+            by_view = []
+            real = mgr.inbox_router.unbind_session
+
+            def spy(h):
+                import inspect
+                caller = inspect.stack()[1].function
+                by_view.append(caller)
+                return real(h)
+
+            monkeypatch.setattr(mgr.inbox_router, "unbind_session", spy)
             await view.app._close_pane(_pane(view.app, handle))
             await p.pause()
-            assert mgr.get(handle) is not None
-            assert handle in mgr.inbox_router._sessions, (
-                "closing a tab in one view unbound the brain's session "
-                "from the inbox; its messages would never wake it")
+            assert "_close_pane" not in by_view, (
+                "the view unbound the inbox itself instead of leaving it to the brain")
     finally:
         await reg.close_all()
 
@@ -154,3 +163,25 @@ async def test_the_local_path_still_builds_its_own(tmp_path, monkeypatch):
     for plane in BRAIN_PLANES + CONSTRUCTED_PLANES:
         assert getattr(app, plane) is not None, plane
     assert app.queue_digest._manager is app.queue_manager
+
+
+async def test_closing_a_tab_closes_the_session_in_the_brain(tmp_path):
+    """Reproduced on the operator's daemon 2026-09-16: closing a tab called
+    pane.close(), which closed the session's harness, but never
+    manager.close(), so the brain kept a dead session — listed by
+    aegis_list_sessions as ready, counted and drawn by F10, and a live
+    target for a handoff. Which tabs exist is brain state
+    (know-how/the-daemon.md): closing one closes it for every view."""
+    mgr, reg = _world(tmp_path)
+    view = await reg.open("tty-1", (100, 30))
+    try:
+        async with view.app.run_test(headless=False, size=(100, 30)) as p:
+            handle = await mgr.spawn("opus")
+            await p.pause()
+            await view.app._close_pane(_pane(view.app, handle))
+            await p.pause()
+            assert mgr.get(handle) is None, "the brain still holds a closed session"
+            assert handle not in [s.handle for s in mgr.list_sessions()]
+            assert handle not in mgr.inbox_router._sessions
+    finally:
+        await reg.close_all()

@@ -1382,6 +1382,15 @@ class AegisApp(App):
             if self.manager is None:
                 self.inbox_router.unbind_session(pane.handle)
             self._record_session_closed(pane.log_id, reason="user")
+            if self.manager is not None:
+                # Which tabs exist is brain state (know-how/the-daemon.md), so
+                # closing one closes the session in the brain, for every view.
+                # pane.close() alone closed the harness and left a dead session
+                # in the brain: listed as ready, drawn by F10, and a live-looking
+                # handoff target (reproduced 2026-09-16). The brain unbinds its
+                # own inbox, revokes the token, and announces the removal, which
+                # drops this pane and every other view's.
+                await self.manager.close(pane.handle)
         await pane.close()
         if pane in self._panes:
             self._panes.remove(pane)
