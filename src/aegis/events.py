@@ -264,9 +264,12 @@ class RecapNote:
     """The end-of-turn recap line, persisted so a card's ``did`` survives a
     restart. Written straight to the log, never fired to observers: it is
     not part of the conversation, so nothing renders it and the recap
-    window skips it (a recap that read the last recap would compound)."""
+    window skips it (a recap that read the last recap would compound).
+    ``attention`` is the turn's category (``aegis.attention``); records
+    written before it existed read as done."""
 
     line: str
+    attention: str = "done"
 
 
 Event = (

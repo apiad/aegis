@@ -34,7 +34,7 @@ FACTS = TurnFacts(repos=(RepoDelta(name="aegis", files_written=2,
 
 @pytest.mark.asyncio
 async def test_turn_recap_returns_the_line():
-    d = FakeDriver(TurnRecap(line="Wrote the spec; 1 commit."))
+    d = FakeDriver(TurnRecap(line="Wrote the spec; 1 commit.", attention="done"))
     got = await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                            agent=object(), cwd=".")
     assert got.ok is True
@@ -44,7 +44,7 @@ async def test_turn_recap_returns_the_line():
 
 @pytest.mark.asyncio
 async def test_turn_recap_asks_for_the_turn_schema():
-    d = FakeDriver(TurnRecap(line="x"))
+    d = FakeDriver(TurnRecap(line="x", attention="done"))
     await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                      agent=object(), cwd=".")
     schema, _ = d.calls[0]
@@ -54,7 +54,7 @@ async def test_turn_recap_asks_for_the_turn_schema():
 @pytest.mark.asyncio
 async def test_the_facts_are_in_the_prompt():
     """The whole reason the recap can say '1 commit' at all."""
-    d = FakeDriver(TurnRecap(line="x"))
+    d = FakeDriver(TurnRecap(line="x", attention="done"))
     await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                      agent=object(), cwd=".")
     _, instructions = d.calls[0]

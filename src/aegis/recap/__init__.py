@@ -12,6 +12,7 @@ comes back as a ``Recap`` with ``ok=False``, never as an exception.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +39,13 @@ class TurnRecap(BaseModel):
     line: str = Field(
         description="ONE line, past tense, concrete. Name "
         "files and counts. No preamble."
+    )
+    attention: Literal["needs_input", "error", "review", "waiting", "done"] = Field(
+        description="needs_input: the turn ended on a question or a decision "
+        "for the operator. error: something failed. review: the turn presents "
+        "something for the operator to read, without waiting on it. waiting: "
+        "the agent waits on a monitor, a queue, a subagent or CI, not on the "
+        "operator. done: it reports finished work and needs nothing."
     )
 
 
@@ -67,6 +75,7 @@ class Recap:
     done: str = ""
     doing: str = ""
     remaining: str = ""
+    attention: str = ""
     header: str = ""
     model: str = ""
     duration_ms: int = 0
@@ -121,6 +130,9 @@ _TURN_SYSTEM = (
     "Past tense, concrete, no preamble, no praise. Prefer the FACTS block "
     "over the agent's own narration — the agent describes what it meant "
     "to do; the facts say what landed. Name files and counts."
+    " Also classify the turn's attention as one of needs_input, error, "
+    "review, waiting, done. A question to the operator is needs_input even "
+    "when the turn also landed work."
 )
 
 _SESSION_SYSTEM = (
@@ -181,6 +193,7 @@ async def _one(
         done=getattr(v, "done", ""),
         doing=getattr(v, "doing", ""),
         remaining=getattr(v, "remaining", ""),
+        attention=getattr(v, "attention", ""),
         header=window.header,
         model=gen.model,
         duration_ms=gen.duration_ms,
