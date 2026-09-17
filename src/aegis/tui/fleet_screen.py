@@ -57,6 +57,7 @@ class _Item(Static):
     def __init__(self, handle: str) -> None:
         super().__init__("")
         self.handle = handle
+        self.drawn: Text | None = None  # the last Text given to update()
 
     def on_click(self, event) -> None:
         event.stop()
@@ -326,7 +327,16 @@ class FleetScreen(ModalScreen):
         chosen = cards[self.selected - 1] if n else None
         for card in cards:
             item = self._items[card.handle]
-            item.update(render_item(card, pal, self.frame))
+            text = render_item(card, pal, self.frame)
+            # Every frame redraws every item; most have not changed, and an
+            # update() re-lays the widget out. Text equality compares the
+            # plain string and the spans, so the base style is compared too.
+            if item.drawn is None or (text, text.style) != (
+                item.drawn,
+                item.drawn.style,
+            ):
+                item.drawn = text
+                item.update(text)
             item.set_class(card is chosen, "-selected")
             item.set_class(card.ghost_since is not None, "-ghost")
 
@@ -342,9 +352,10 @@ class FleetScreen(ModalScreen):
         self._drawn = chosen.handle if chosen is not None else None
 
         footer = Text(_KEYS)
-        remaining = self.rotator.countdown(time.monotonic())
-        if remaining is not None:
-            auto = f"auto · next in {remaining:.0f}s"
+        now = time.monotonic()
+        remaining = self.rotator.countdown(now)
+        if self.rotator.is_auto(now):
+            auto = "auto" if remaining is None else f"auto · next in {remaining:.0f}s"
             room = self._footer.content_size.width or self.app.size.width - 4
             footer.append(" " * max(2, room - footer.cell_len - cell_len(auto)))
             footer.append(auto)

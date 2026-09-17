@@ -43,6 +43,10 @@ class Rotator:
 
     def observe(self, snapshot: FleetSnapshot, now: float) -> None:
         self._cards = {c.handle: c for c in snapshot.cards if c.ghost_since is None}
+        # What changes on screen is read there, so it is not news once the
+        # rotator moves on. The shown time stays that of the first showing.
+        if (shown := self._cards.get(self._shown or "")) is not None:
+            self._seen[shown.handle] = fingerprint(shown)
 
     def _record(self, card: CardView, now: float) -> None:
         self._seen[card.handle] = fingerprint(card)

@@ -89,3 +89,43 @@ def test_an_empty_section_is_omitted():
         _card(doing="", monitors=(), plan_tasks=(), events=()), P, 90, 0
     ).plain
     assert "NOW" not in text and "MONITORS" not in text and "PLAN" not in text
+
+
+def test_an_idle_item_labels_its_uptime():
+    """A bare duration next to an idle session reads as how long it has been
+    idle, not how long it has been up."""
+    line = render_item(_card(uptime_s=68_400), P, 0).plain.split("\n")[0]
+    assert "up 19h00m" in line
+
+
+def test_an_idle_item_with_doing_but_no_did_shows_now_not_the_tail():
+    ev = EventLine(at=0.0, tool="Bash", summary="uv run pytest")
+    text = render_item(_card(did="", doing="Reading the spec.", events=(ev,)), P, 0).plain
+    assert "now Reading the spec." in text and "uv run pytest" not in text
+
+
+def test_an_idle_detail_draws_no_turn_gauge():
+    text = render_detail(_card(avg_turn_s=90.0, turn_s=0.0), P, 90, 0).plain
+    assert "turn" not in text
+    working = render_detail(
+        _card(state="working", avg_turn_s=90.0, turn_s=30.0), P, 90, 0
+    ).plain
+    assert "avg 1m30s" in working
+
+
+def test_the_detail_header_keeps_the_state_beside_pending_attention():
+    head = render_detail(_card(attention="review"), P, 90, 0).plain.split("\n")[0]
+    assert head.index("fleet-dashboard-f10") < head.index("review") < head.index("ready")
+
+
+def test_bodies_drop_control_characters_but_keep_newlines():
+    dirty = "one\ttwo\rthree\x1b[31mred\x9bfour\nfive"
+    for text in (
+        render_item(_card(did=dirty), P, 0).plain,
+        render_item(_card(state="working", doing=dirty), P, 0).plain,
+        render_detail(_card(did=dirty, doing=dirty), P, 90, 0).plain,
+    ):
+        assert not any(
+            (ord(ch) < 0x20 and ch != "\n") or 0x7F <= ord(ch) <= 0x9F for ch in text
+        ), repr(text)
+        assert "one two" in text and "\nfive" in text

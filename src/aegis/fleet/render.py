@@ -93,6 +93,20 @@ def _one_line(text: str) -> str:
     return "".join(" " if ch < " " or ch == "\x7f" else ch for ch in text)
 
 
+def _body(text: str) -> str:
+    """``text`` for a multi-line body: newlines stay, a tab becomes a space,
+    and every other C0 or C1 control character is dropped. A carriage return
+    or an escape sequence would move the cursor inside the widget."""
+    return "".join(
+        " "
+        if ch == "\t"
+        else ""
+        if (ch < " " and ch != "\n") or "\x7f" <= ch <= "\x9f"
+        else ch
+        for ch in text
+    )
+
+
 def _state_style(state: str, pal) -> str:
     return {"working": pal.working, "error": pal.error}.get(state, pal.ready)
 
@@ -315,8 +329,9 @@ def _where(card: CardView) -> str:
 
 
 def render_item(card: CardView, pal, frame: int) -> Text:
-    """One list item, at least three lines. Only line 1 and the where line are
-    sanitized; ``did`` and ``now`` keep every word, and the widget wraps them."""
+    """One list item, at least three lines. Line 1 and the where line are one
+    line each; ``did`` and ``now`` keep every word and line, and the widget
+    wraps them."""
     from aegis.attention import LABELS, style_for
 
     t = _lead(card, pal, frame)
@@ -335,16 +350,16 @@ def render_item(card: CardView, pal, frame: int) -> Text:
     elif card.attention:
         t.append(f"  {LABELS[card.attention]}", style=style_for(card.attention, pal))
     else:
-        t.append(f"  {_age(card.uptime_s)}", style=pal.muted)
+        t.append(f"  up {_age(card.uptime_s)}", style=pal.muted)
     t.append("\n")
     t.append(_where(card), style=pal.accent if card.origin.ephemeral else pal.muted)
     t.append("\n")
-    if card.state == "working" and card.doing:
+    if card.doing and (card.state == "working" or not card.did):
         t.append("now ", style=pal.muted)
-        t.append(card.doing, style=pal.working)
+        t.append(_body(card.doing), style=pal.working)
     elif card.did:
         t.append("did ", style=pal.muted)
-        t.append(card.did, style=pal.ink)
+        t.append(_body(card.did), style=pal.ink)
     else:
         for i, ev in enumerate(card.events[-_EVENTS:]):
             if i:
@@ -370,13 +385,13 @@ def _detail_header(card: CardView, pal, frame: int) -> Text:
     if card.state != "working" and card.attention:
         t.append_text(_lead(card, pal, frame))
         t.append(f" {LABELS[card.attention]}", style=style_for(card.attention, pal))
-    else:
-        t.append(
-            f"● {card.state}",
-            style=pulse(_state_style(card.state, pal), frame, pal)
-            if card.state == "working"
-            else _state_style(card.state, pal),
-        )
+        t.append("  ")
+    t.append(
+        f"● {card.state}",
+        style=pulse(_state_style(card.state, pal), frame, pal)
+        if card.state == "working"
+        else _state_style(card.state, pal),
+    )
     if card.state == "working":
         t.append(f"  turn {_age(card.turn_s)}", style=pal.working)
     if card.title:
@@ -439,7 +454,7 @@ def _gauges(card: CardView, pal, width: int) -> Text:
             f"{card.plan_done}/{card.plan_total}",
         )
     span = max(card.avg_turn_s, card.turn_s)
-    if span > 0:
+    if card.state == "working" and span > 0:
         row(
             "turn",
             100 * card.turn_s / span,
@@ -476,8 +491,8 @@ def render_detail(card: CardView, pal, width: int, frame: int) -> Text:
     if card.waiting_on:
         spend.append(f"→ {card.waiting_on[0]}")
     sections = [
-        ("NOW", Text(card.doing, style=pal.working)),
-        ("DID", Text(card.did, style=pal.ink)),
+        ("NOW", Text(_body(card.doing), style=pal.working)),
+        ("DID", Text(_body(card.did), style=pal.ink)),
         (f"MONITORS · {len(card.monitors)}", _monitors(card, pal, width, frame)),
         ("GAUGES", _gauges(card, pal, width)),
         ("PLAN", _plan(card, pal)),

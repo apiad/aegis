@@ -169,3 +169,16 @@ def test_showing_an_unknown_handle_is_a_no_op():
     r.observe(snap(A), 0.0)
     r.show("gone", 5.0)
     assert r.pick(5.0, current=None) == "a"
+
+
+def test_a_change_seen_on_screen_is_not_new_once_the_rotator_leaves():
+    r = Rotator()
+    r.observe(snap(A, B), 0.0)
+    for c in (A, B):
+        r._record(c, 0.0)
+    r.show("a", 0.0)
+    # A's did lands while A is on screen: the operator has already read it.
+    r.observe(snap(replace(A, did="landed while shown"), B), 5.0)
+    r.observe(snap(replace(A, did="landed while shown"), replace(B, did="new b")), 25.0)
+    assert r.pick(25.0, current="a") == "b"
+    assert r._rank(replace(A, did="landed while shown")) is None

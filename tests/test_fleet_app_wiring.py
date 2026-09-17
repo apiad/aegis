@@ -52,3 +52,19 @@ async def test_the_fleet_snapshot_reads_this_views_seen_ness(tmp_path, monkeypat
         assert app._fleet_snapshot().cards[0].attention == "review"
         pane.attention_acked = 3
         assert app._fleet_snapshot().cards[0].attention == ""
+
+
+async def test_a_pane_with_no_ack_record_counts_as_seen(tmp_path, monkeypatch):
+    """The tab bar treats a pane without ``attention_acked`` as having seen
+    its category; F10 must agree, not light it up as pending."""
+    from aegis.tui.app import AegisApp
+    from tests.test_fleet_screen import _standalone
+
+    monkeypatch.setattr(AegisApp, "_quota_tick", lambda self, active: None)
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        pane = app._panes[0]
+        pane._core.attention, pane._core.attention_seq = "review", 3
+        del pane.attention_acked
+        assert app._fleet_snapshot().cards[0].attention == ""

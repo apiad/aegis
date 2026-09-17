@@ -2369,7 +2369,9 @@ class AegisApp(App):
         for p in self._panes:
             if (c := getattr(p, "_core", None)) is not None:
                 cores[c.handle] = c
-                acked[c.handle] = getattr(p, "attention_acked", 0)
+                acked[c.handle] = getattr(
+                    p, "attention_acked", getattr(c, "attention_seq", 0)
+                )
         return _with_attention(ordered, cores, acked)
 
     def action_interrupt(self) -> None:

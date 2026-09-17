@@ -278,6 +278,8 @@ async def test_a_click_on_the_item_auto_mode_highlighted_only_selects(tmp_path):
         await pilot.pause()
         scr = app.screen
         assert scr.rotator.is_auto(time.monotonic())
+        # Auto mode says so even while it holds and has no countdown.
+        assert "auto" in scr.query_one("#fleet-footer").render().plain
         handle = scr._current.cards[scr.selected - 1].handle
         item = next(
             i for i in scr.query_one("#fleet-list").query(_Item) if i.handle == handle
@@ -658,3 +660,36 @@ async def test_f10_over_a_covered_fleet_does_not_stack_a_second_one(tmp_path):
         await pilot.pause()
         fleets = [s for s in app.screen_stack if isinstance(s, FleetScreen)]
         assert len(fleets) == 1
+
+
+async def test_a_frame_with_nothing_new_does_not_update_an_idle_item(tmp_path):
+    fleet = FleetSnapshot(cards=(CardView(handle="a", tab_index=1, did="x"),))
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.pause()
+        scr = FleetScreen(lambda **_kw: fleet)
+        await app.push_screen(scr)
+        await pilot.pause()
+        scr._draw()
+        item = scr._items["a"]
+        calls = []
+        update = item.update
+        item.update = lambda *a, **k: (calls.append(1), update(*a, **k))
+        scr._draw()
+        assert calls == []
+
+
+async def test_the_footer_says_auto_while_auto_mode_holds(tmp_path):
+    """One idle session: nothing to rotate to, so no countdown, but auto mode
+    is still on and the footer says so."""
+    fleet = FleetSnapshot(cards=(CardView(handle="a", tab_index=1, did="x"),))
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.pause()
+        scr = FleetScreen(lambda **_kw: fleet)
+        await app.push_screen(scr)
+        await pilot.pause()
+        scr.refresh_fleet()
+        assert scr.rotator.countdown(time.monotonic()) is None
+        footer = scr.query_one("#fleet-footer").render().plain
+        assert footer.rstrip().endswith("auto")
