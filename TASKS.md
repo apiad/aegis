@@ -1806,6 +1806,13 @@ Doc truth lands last, when the claims it makes are finally true.
 
 ## Backlog
 
+### Turn attention — follow-ups *(filed 2026-09-17, from the final review of ae1b1e7..ba65638)*
+
+- [ ] Unsolicited harness-driven turns (`_drain_unsolicited_turn`, e.g. a Claude Monitor wake) set no attention and get no recap; run the hard `_set_attention(resolve(None, …))` and `_maybe_recap` there too.
+- [ ] Remote and web views carry no `attention` / `attention_seq`: add both to the state frame `RemoteAgentSession` reads.
+- [ ] `SessionManager.waits_on` matches monitors by the handle they were armed under; a session renamed after arming one stops reading as `waiting`.
+- [ ] `_tick` rebuilds every tab item each second (including `_tab_suffix`); cache the suffix if the tab count makes it show in a profile.
+
 ### Technical-writing harness — plugin vision *(captured 2026-09-13)*
 
 Aegis configured for technical writing: a plugin with its own stages (outline,
