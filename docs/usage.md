@@ -117,8 +117,11 @@ turn.
 
 ## Recaps and the loop judge
 
-Two surfaces read what a turn actually **did** — commits, files written,
-plan movement — rather than what it said about itself.
+Two surfaces are grounded in what the turns actually **did** rather than
+what the agent said about itself: the recap and the loop judge. The recap
+reports it at the level of intent; the facts it is given (commits, files
+written, plan movement) only guard it against claiming work that did not
+happen.
 
 - **A recap** is made after every turn. It says three things at the level
   of intent, never as an inventory of files, commits or ids: the **task**

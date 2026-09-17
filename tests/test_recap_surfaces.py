@@ -85,6 +85,41 @@ def test_the_snapshot_carries_task_next_and_the_mid_turn_outcome():
     assert card.doing == "Running the suite."
 
 
+def test_the_first_turn_takes_its_task_from_the_mid_turn_recap():
+    s = FakeSession("alpha")
+    s.fleet_recap = Recap(line="Running the suite.", task="Unify the recap", ok=True)
+    (card,) = build_snapshot(FakeManager([s]), now=1000.0).cards
+    assert card.task == "Unify the recap"
+
+
+def test_the_recap_effect_reads_its_session_key():
+    from dataclasses import asdict
+
+    from aegis.commands import CommandResult
+    from aegis.tui.pane import ConversationPane
+
+    class _Pane:
+        def __init__(self):
+            self.puts = []
+
+        def _put_recap(self, recap, *, session=False, at_idx=None):
+            self.puts.append(session)
+
+    pane = _Pane()
+    r = Recap(line="x", ok=True)
+    for flag in (False, True):
+        eff = {"kind": "recap", "recap": asdict(r), "session": flag}
+        ConversationPane._apply_command_result(
+            pane, CommandResult(True, r.block, r.footer, effect=eff), 80
+        )
+    ConversationPane._apply_command_result(
+        pane,
+        CommandResult(True, r.block, r.footer, effect={"kind": "recap", "recap": asdict(r)}),
+        80,
+    )
+    assert pane.puts == [False, True, True]
+
+
 async def test_the_sidebar_now_line_reads_the_mid_turn_outcome(tmp_path):
     app = _bridged(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:

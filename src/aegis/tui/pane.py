@@ -1785,7 +1785,7 @@ class ConversationPane(Widget):
             # at_idx matters here and only here: a deferred /recap mounted
             # a placeholder when you asked, and the answer has to land
             # *there* rather than at the tail.
-            self._put_recap(recap, session=True, at_idx=at_idx)
+            self._put_recap(recap, session=eff.get("session", True), at_idx=at_idx)
             return None
         if kind == "peer_answer":
             # An @peer answer is transient *here* and real *there*: it

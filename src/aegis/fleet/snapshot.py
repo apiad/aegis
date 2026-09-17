@@ -76,7 +76,10 @@ def _card(s, *, index: int, now: float, manager, repos) -> CardView:
         plan_current=(ps.current.subject if ps and ps.current else ""),
         did=getattr(s, "_last_recap_line", ""),
         doing=getattr(getattr(s, "fleet_recap", None), "line", ""),
-        task=getattr(s, "_last_recap_task", ""),
+        # A session's first turn has no turn recap yet; the mid-turn one
+        # already names the goal.
+        task=getattr(s, "_last_recap_task", "")
+        or getattr(getattr(s, "fleet_recap", None), "task", ""),
         next=getattr(s, "_last_recap_next", ""),
         events=getattr(s, "recent_events", ()),
         claims=_claims_for(manager, s.handle),

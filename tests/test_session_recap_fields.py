@@ -119,7 +119,9 @@ def test_a_restart_restores_task_and_next(tmp_path):
     assert s._last_recap_next == "N"
 
 
-def test_a_stale_note_restores_neither_task_nor_next(tmp_path):
+def test_a_stale_note_restores_the_task_but_not_next(tmp_path):
+    # The identity guard skips a note when outcome, task and category repeat,
+    # so a Result after the last note is common; the goal outlives the turn.
     s = _brain(tmp_path)
     s.recap_enabled = False  # no paid resume recap for this check
     s.rehydrate_card(
@@ -129,8 +131,36 @@ def test_a_stale_note_restores_neither_task_nor_next(tmp_path):
         ],
         [1.0, 2.0],
     )
-    assert s._last_recap_task == ""
+    assert s._last_recap_task == "T"
     assert s._last_recap_next == ""
+
+
+@pytest.mark.asyncio
+async def test_a_changed_next_alone_is_kept_but_not_drawn(tmp_path, monkeypatch):
+    s = _brain(tmp_path)
+    nexts = iter(["Build.", "Test."])
+
+    async def fake(**_kw):
+        return Recap(
+            line="Fixed it.", task="Ship Help", next=next(nexts), attention="done",
+            ok=True,
+        )
+
+    monkeypatch.setattr("aegis.core.session.recap_for", fake)
+    # Every turn asks to be drawn, so a fall-through past the guard would draw.
+    monkeypatch.setattr("aegis.core.session.should_draw_recap", lambda _f: True)
+    await _turn(s, monkeypatch)
+    emitted = []
+    monkeypatch.setattr(s, "_emit_recap", emitted.append)
+    await _turn(s, monkeypatch)
+    assert s._last_recap_next == "Test."
+    assert emitted == []
+    notes = [
+        e
+        for e in replay_events(s.state_dir, s.log_id).events
+        if isinstance(e, RecapNote)
+    ]
+    assert [n.next for n in notes] == ["Build.", "Test."]
 
 
 def test_an_old_note_decodes_with_empty_task_and_next():

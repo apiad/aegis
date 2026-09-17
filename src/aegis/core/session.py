@@ -1101,6 +1101,13 @@ class AgentSession:
             and recap.task.strip() == self._last_recap_task.strip()
             and category == self.attention
         ):
+            # A new `next` alone is not worth a transcript block, but F10's
+            # NEXT and a restart should still see it.
+            if recap.next.strip() != self._last_recap_next.strip():
+                self._last_recap_next = recap.next
+                self._persist_recap(
+                    recap.line, category, task=recap.task, next=recap.next
+                )
             return
         # A recap agreeing with the hard category is not news to a view
         # that already saw it.
@@ -1391,11 +1398,14 @@ class AgentSession:
         self.metrics.cancel_turn(self._now())
         if last_line:
             self._last_recap_line = last_line
+            # The goal outlives a turn, and the identity guard skips a note
+            # whose outcome, task and category repeat, so even a stale note
+            # still names the task.
+            self._last_recap_task = last_task
             if result_after_note:
                 last_attention = "error" if last_errored else "done"
             else:
-                # A stale note's goal belongs to a turn the log moved past.
-                self._last_recap_task = last_task
+                # A stale note's `next` belongs to a turn the log moved past.
                 self._last_recap_next = last_next
             self._set_attention(last_attention, bump=last_attention != "done")
         elif saw_result and self._agents is not None and self.recap_enabled:
