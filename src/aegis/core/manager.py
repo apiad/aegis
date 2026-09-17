@@ -492,6 +492,7 @@ class SessionManager:
             agents=self._agents,
             cwd=str(s.project_root),
             session_scope=session_scope,
+            previous_task=getattr(s, "_last_recap_task", ""),
         )
 
     async def side_note(self, handle: str, prompt: str):

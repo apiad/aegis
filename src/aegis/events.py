@@ -266,10 +266,13 @@ class RecapNote:
     not part of the conversation, so nothing renders it and the recap
     window skips it (a recap that read the last recap would compound).
     ``attention`` is the turn's category (``aegis.attention``); records
-    written before it existed read as done."""
+    written before it existed read as done. ``task`` and ``next`` are the
+    recap's standing goal and next step; older records read them as empty."""
 
     line: str
     attention: str = "done"
+    task: str = ""
+    next: str = ""
 
 
 Event = (

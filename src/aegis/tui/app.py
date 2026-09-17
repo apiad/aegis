@@ -2790,6 +2790,7 @@ class AegisApp(App):
             agents=self._agents,
             cwd=str(pane._core.project_root),
             session_scope=session_scope,
+            previous_task=getattr(pane._core, "_last_recap_task", ""),
         )
 
     async def side_note(self, handle: str, prompt: str):

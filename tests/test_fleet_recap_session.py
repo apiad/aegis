@@ -11,7 +11,7 @@ import pytest
 from aegis.config import Agent
 from aegis.config.roots import AegisRoots
 from aegis.events import Result
-from aegis.recap import FleetRecap, Recap
+from aegis.recap import Recap, StandingRecap
 from aegis.tui.state import AgentState
 
 from tests.brain import make_brain
@@ -78,7 +78,7 @@ def _stub_recap(monkeypatch, *, block=None, cost=0.01):
         kw["on_driver"]()
         if block is not None:
             await block.wait()
-        return Recap(done="landed x", doing="doing y", cost_usd=cost, ok=True)
+        return Recap(line="doing y", task="land x", cost_usd=cost, ok=True)
 
     monkeypatch.setattr("aegis.core.session.recap_in_flight_for", fake)
     return calls
@@ -124,8 +124,8 @@ async def test_a_watched_turn_pays_once_then_waits_the_interval(tmp_path, monkey
     clock.t += 61
     await _spin()
     assert len(calls) == 1
-    assert s.fleet_recap is not None and s.fleet_recap.doing == "doing y"
-    assert [r.doing for r in seen] == ["doing y"], "the fleet watcher is the channel"
+    assert s.fleet_recap is not None and s.fleet_recap.line == "doing y"
+    assert [r.line for r in seen] == ["doing y"], "the fleet watcher is the channel"
     assert turn_seen == [], "a fleet recap must not reach the transcript's recap channel"
     clock.t += 60
     await _spin()
@@ -178,7 +178,8 @@ async def test_the_mid_turn_recap_bills_to_text_generation_from_the_config_root(
         async def generate_detailed(self, agent, cwd, schema, *instructions):
             billed.append((agent.model, schema))
             from aegis.drivers.oneshot import Generation
-            return Generation(value=FleetRecap(done="a", doing="b"),
+            return Generation(value=StandingRecap(task="a", outcome="b", next="",
+                                                    attention="done"),
                               model="haiku", cost_usd=0.007)
 
     monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
@@ -191,8 +192,8 @@ async def test_the_mid_turn_recap_bills_to_text_generation_from_the_config_root(
         await _spin()
         if billed and s.fleet_recap is not None:
             break
-    assert billed == [("claude-haiku-4-5-20251001", FleetRecap)]
-    assert s.fleet_recap.doing == "b"
+    assert billed == [("claude-haiku-4-5-20251001", StandingRecap)]
+    assert s.fleet_recap.line == "b"
     assert s.fleet_recap_cost_usd == pytest.approx(0.007)
     await _finish(s, harness)
 
@@ -340,7 +341,8 @@ async def test_unset_text_generation_never_bills_the_sessions_own_model(
         async def generate_detailed(self, agent, cwd, schema, *instructions):
             billed.append(agent.model)
             from aegis.drivers.oneshot import Generation
-            return Generation(value=FleetRecap(done="a", doing="b"),
+            return Generation(value=StandingRecap(task="a", outcome="b", next="",
+                                                    attention="done"),
                               model="opus", cost_usd=0.05)
 
     monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
@@ -525,9 +527,49 @@ async def test_a_reconnect_drops_the_old_processes_recap(tmp_path, monkeypatch):
     await _spin()
     assert len(calls) == 1
     running = s._fleet_recap_task
-    s.fleet_recap = Recap(doing="an earlier line", ok=True)
+    s.fleet_recap = Recap(line="an earlier line", ok=True)
     s.adopt(_BlockingHarness())
     await _spin()
     assert running.cancelled()
     assert s._fleet_recap_task is None
     assert s.fleet_recap is None
+
+
+async def test_the_mid_turn_recap_hands_the_previous_task_to_the_model(
+        tmp_path, monkeypatch):
+    """Through the real `recap_in_flight_for`: the task the last recap named
+    reaches the driver, so the mid-turn line keeps the same goal."""
+    root = tmp_path / "root"
+    root.mkdir()
+    roster = {
+        "opus": Agent(harness="claude-code", model="opus", effort="high", permission="auto"),
+        "haiku": Agent(harness="claude-code", model="claude-haiku-4-5-20251001",
+                       effort="low", permission="read"),
+    }
+    s, harness, clock = _session(root, HAIKU, roster)
+    seen = []
+
+    class _Driver:
+        supports_oneshot = True
+
+        async def generate_detailed(self, agent, cwd, schema, *instructions):
+            seen.append(instructions)
+            from aegis.drivers.oneshot import Generation
+            return Generation(value=StandingRecap(task="X", outcome="b", next="",
+                                                  attention="done"),
+                              model="haiku", cost_usd=0.007)
+
+    monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
+    monkeypatch.setattr("aegis.state.session_log.replay_events",
+                        lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
+    s._last_recap_task = "X"
+    await s.send("go")
+    _watch(s)
+    clock.t += 61
+    for _ in range(10):
+        await _spin()
+        if seen:
+            break
+    assert len(seen) == 1
+    assert any("Previous task: X" in part for part in seen[0])
+    await _finish(s, harness)

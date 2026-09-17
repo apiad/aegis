@@ -194,6 +194,10 @@ class AgentSession:
         self.on_recap = None
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
+        # The recap's standing goal, handed back to the next recap so the
+        # phrasing holds across turns, and the step it named after it.
+        self._last_recap_task = ""
+        self._last_recap_next = ""
         self._card_rehydrated = False
         # The last finished turn's attention category (aegis.attention),
         # and a counter a view compares with what it has shown.
@@ -1075,6 +1079,7 @@ class AgentSession:
                 cwd=str(self.project_root),
                 session_scope=False,
                 root=self._config_root,
+                previous_task=self._last_recap_task,
             )
         except asyncio.CancelledError:
             raise
@@ -1089,10 +1094,11 @@ class AgentSession:
             ephemeral=self.origin.ephemeral,
             waiting=self._waiting(),
         )
-        # The identity guard: the same line with the same category is noise,
-        # which is the #56346 failure arriving by another road.
+        # The identity guard: the same line and task with the same category
+        # is noise, which is the #56346 failure arriving by another road.
         if (
             recap.line.strip() == self._last_recap_line.strip()
+            and recap.task.strip() == self._last_recap_task.strip()
             and category == self.attention
         ):
             return
@@ -1101,13 +1107,17 @@ class AgentSession:
         if category != self.attention:
             self._set_attention(category, bump=not (resumed and category == "done"))
         self._last_recap_line = recap.line
-        self._persist_recap(recap.line, category)
+        self._last_recap_task = recap.task
+        self._last_recap_next = recap.next
+        self._persist_recap(recap.line, category, task=recap.task, next=recap.next)
         if resumed:
             return
         if draw or category != "done":
             self._emit_recap(replace(recap, attention=category))
 
-    def _persist_recap(self, line: str, attention: str) -> None:
+    def _persist_recap(
+        self, line: str, attention: str, *, task: str = "", next: str = ""
+    ) -> None:
         """Keep the line in the session log, so a restart can put it back
         on the card without paying for it again. A separate O_APPEND write,
         like the close marker: records cannot interleave with the event
@@ -1117,7 +1127,9 @@ class AgentSession:
 
         try:
             append_event(
-                self.state_dir, self.log_id, RecapNote(line=line, attention=attention)
+                self.state_dir,
+                self.log_id,
+                RecapNote(line=line, attention=attention, task=task, next=next),
             )
         except Exception:  # noqa: BLE001
             log.exception("could not persist the recap; continuing")
@@ -1201,6 +1213,7 @@ class AgentSession:
                 agents=self._agents,
                 cwd=str(self.project_root),
                 root=self._config_root,
+                previous_task=self._last_recap_task,
                 on_driver=on_driver,
             )
         except asyncio.CancelledError:
@@ -1340,6 +1353,8 @@ class AgentSession:
 
         last_line = ""
         last_attention = ""
+        last_task = ""
+        last_next = ""
         saw_result = False
         last_errored = False
         # A Result after the last note means a turn ended without writing
@@ -1350,6 +1365,8 @@ class AgentSession:
             if isinstance(ev, RecapNote):
                 last_line = ev.line
                 last_attention = ev.attention
+                last_task = ev.task
+                last_next = ev.next
                 result_after_note = False
             elif isinstance(ev, Result):
                 saw_result = True
@@ -1376,6 +1393,10 @@ class AgentSession:
             self._last_recap_line = last_line
             if result_after_note:
                 last_attention = "error" if last_errored else "done"
+            else:
+                # A stale note's goal belongs to a turn the log moved past.
+                self._last_recap_task = last_task
+                self._last_recap_next = last_next
             self._set_attention(last_attention, bump=last_attention != "done")
         elif saw_result and self._agents is not None and self.recap_enabled:
             try:
