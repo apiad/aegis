@@ -321,3 +321,36 @@ def test_one_recap_call_is_singular():
         FleetSnapshot(band=BandView(recap_cost=0.01, recap_calls=1)), C, 160))
     assert "recap $0.01 / 1 call" in out
     assert "1 calls" not in out
+
+
+def test_a_newline_inside_card_text_cannot_break_the_grid():
+    """Reproduced on the operator's screen 2026-09-16: a Bash event whose
+    summary was `python3 - <<'PY'` + newline + `from pathlib i…` split one
+    card row across two terminal lines, and every card to its right shifted
+    down a line. Any text a session produces can carry control characters:
+    titles, recap lines, plan subjects, tool summaries."""
+    from aegis.fleet.models import EventLine
+
+    nasty = "python3 - <<'PY'\nfrom pathlib import Path\r\n\tprint(1)"
+    cards = (
+        CardView(handle="a", title=nasty, did=nasty, doing=nasty,
+                 plan_done=1, plan_total=2, plan_current=nasty,
+                 events=(EventLine(at=0, tool="Bash", summary=nasty),),
+                 uptime_s=10, tab_index=1),
+        CardView(handle="b", uptime_s=10, tab_index=2),
+        CardView(handle="c", uptime_s=10, tab_index=3),
+    )
+    clean = tuple(
+        CardView(handle=c.handle, title="x" if c.title else "", did="x" if c.did else "",
+                 doing="x" if c.doing else "", plan_done=c.plan_done,
+                 plan_total=c.plan_total, plan_current="x" if c.plan_current else "",
+                 events=tuple(EventLine(at=0, tool="Bash", summary="x") for _ in c.events),
+                 uptime_s=c.uptime_s, tab_index=c.tab_index)
+        for c in cards
+    )
+    out = as_text(render_fleet(FleetSnapshot(cards=cards), C, 160))
+    same_shape = as_text(render_fleet(FleetSnapshot(cards=clean), C, 160))
+    assert out.count("\n") == same_shape.count("\n"), "a newline added a row"
+    for row in out.split("\n"):
+        assert "\t" not in row and "\r" not in row
+    assert not any(ch < " " for ch in out.replace("\n", "")), "a control character survived"

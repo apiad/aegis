@@ -50,13 +50,25 @@ def _age(seconds: float) -> str:
     return f"{s // 86400}d{s % 86400 // 3600}h"
 
 
+def _one_line(text: str) -> str:
+    """``text`` with every control character turned into a space.
+
+    Session text is untrusted for layout: a tool summary like
+    ``python3 - <<'PY'`` followed by a newline split one card row across two
+    terminal lines on the operator's screen (2026-09-16), shifting every
+    card to its right. Measuring cells cannot catch that; a newline is zero
+    cells wide.
+    """
+    return "".join(" " if ch < " " or ch == "\x7f" else ch for ch in text)
+
+
 def _fit(t: Text, parts: list[tuple[str, str]], cells: int) -> int:
     """Append ``(text, style)`` parts cut to ``cells`` in total, in order, so
     the leading parts survive and the last one to fit takes the ellipsis.
     Returns the cells used."""
     used = 0
     for text, style in parts:
-        piece = truncate_cells(text, cells - used)
+        piece = truncate_cells(_one_line(text), cells - used)
         if not piece:
             break
         t.append(piece, style=style)
