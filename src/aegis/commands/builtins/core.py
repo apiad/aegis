@@ -378,7 +378,7 @@ async def _btw(ctx: CommandContext, args) -> CommandResult:
 
 
 async def _recap(ctx: CommandContext, args) -> CommandResult:
-    """Where this session stands — building / done / remaining.
+    """Where this session stands — task / outcome / next.
 
     More verbose than the automatic one-liner on purpose: the automatic
     one re-orients you after a turn, this one audits a two-hour session
@@ -394,7 +394,10 @@ async def _recap(ctx: CommandContext, args) -> CommandResult:
     # as JSON, and a dataclass there would break /recap on the web client
     # only — the same trap /btw already documented.
     return CommandResult(
-        True, recap.text, recap.footer, effect={"kind": "recap", "recap": asdict(recap)}
+        True,
+        recap.block,
+        recap.footer,
+        effect={"kind": "recap", "recap": asdict(recap), "session": True},
     )
 
 

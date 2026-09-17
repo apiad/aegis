@@ -491,8 +491,10 @@ def render_detail(card: CardView, pal, width: int, frame: int) -> Text:
     if card.waiting_on:
         spend.append(f"→ {card.waiting_on[0]}")
     sections = [
+        ("TASK", Text(_body(card.task), style=pal.ink)),
         ("NOW", Text(_body(card.doing), style=pal.working)),
         ("DID", Text(_body(card.did), style=pal.ink)),
+        ("NEXT", Text(_body(card.next), style=pal.ink)),
         (f"MONITORS · {len(card.monitors)}", _monitors(card, pal, width, frame)),
         ("GAUGES", _gauges(card, pal, width)),
         ("PLAN", _plan(card, pal)),

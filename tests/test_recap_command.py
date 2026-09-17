@@ -19,8 +19,8 @@ class Bridge:
 
 @pytest.mark.asyncio
 async def test_recap_command_renders_the_block():
-    bridge = Bridge(Recap(building="the judge", done="the spec",
-                          remaining="the wiring", ok=True, model="haiku"))
+    bridge = Bridge(Recap(task="the judge", line="the spec",
+                          next="the wiring", ok=True, model="haiku"))
     res = await dispatch("/recap", CommandContext(bridge, "agent-1"))
     assert res.ok is True
     assert "the judge" in res.title or "the judge" in res.body
@@ -33,7 +33,7 @@ async def test_recap_command_renders_the_block():
 @pytest.mark.asyncio
 async def test_recap_command_asks_for_the_session_scope():
     """The automatic one-liner is turn-scoped; /recap is not."""
-    bridge = Bridge(Recap(building="x", ok=True))
+    bridge = Bridge(Recap(task="x", ok=True))
     await dispatch("/recap", CommandContext(bridge, "agent-1"))
     assert bridge.calls == [("agent-1", True)]
 

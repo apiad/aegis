@@ -84,8 +84,10 @@ class CardView:
     plan_done: int = 0
     plan_total: int = 0
     plan_current: str = ""
-    did: str = ""  # last turn's recap
-    doing: str = ""  # mid-turn recap; "" until slice 3
+    did: str = ""  # last turn's recap outcome
+    doing: str = ""  # mid-turn recap outcome
+    task: str = ""  # last turn's recap task
+    next: str = ""  # last turn's recap next
     events: tuple[EventLine, ...] = ()
     claims: int = 0
     monitor: str = ""  # "pytest 60%", "" when none

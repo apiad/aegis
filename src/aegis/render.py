@@ -393,7 +393,7 @@ def render_side_note(note, colors) -> Panel:
     return _aside(parts, colors)
 
 
-def render_recap(recap, colors) -> Panel:
+def render_recap(recap, colors, *, session: bool = False) -> Panel:
     """Visible block for a recap.
 
     The block itself lands in the pane's ``_history``; the recap line and
@@ -405,6 +405,10 @@ def render_recap(recap, colors) -> Panel:
 
     On the ok path the header names the turn's attention category, and
     the border takes its colour unless the turn is simply ``done``.
+
+    The turn recap's body is the outcome with the task on a muted line
+    under it; ``session`` (``/recap``) draws the labelled task / outcome /
+    next list instead.
 
     Markdown on the ok path only, for the reason ``render_side_note``
     gives: the text is model prose, but an error is aegis speaking a fixed
@@ -425,8 +429,12 @@ def render_recap(recap, colors) -> Panel:
         if recap.attention != "done":
             border = style_for(recap.attention, colors)
     parts: list[RenderableType] = [header]
-    if recap.ok:
+    if recap.ok and session:
+        parts.append(Markdown(recap.block))
+    elif recap.ok:
         parts.append(Markdown(recap.text))
+        if recap.task:
+            parts.append(Text(recap.task, style=colors.muted))
     else:
         parts.append(Text(recap.error or "no answer", style=tint))
     if recap.footer:

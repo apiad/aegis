@@ -170,7 +170,7 @@ async def test_a_delivered_recap_refreshes_the_now_line(tmp_path):
         assert bar._model.now_line == ""
         (cb,) = core._fleet_watchers
         # Delivered the way the session delivers it: stored, then handed out.
-        recap = Recap(doing="wiring the watcher", ok=True)
+        recap = Recap(line="wiring the watcher", ok=True)
         core.fleet_recap = recap
         cb(core, recap)
         assert bar._model.now_line == "wiring the watcher"

@@ -127,12 +127,13 @@ def test_the_session_block_renders_as_separate_lines():
     """
     from rich.console import Console
 
-    from rich.markdown import Markdown
+    from aegis.render import render_recap
+    from aegis.tui.themes import INK, aegis_colors
 
     r = Recap(task="the judge", line="the spec", next="the wiring", ok=True)
     console = Console(width=76, no_color=True)
     with console.capture() as cap:
-        console.print(Markdown(r.block))
+        console.print(render_recap(r, aegis_colors(INK), session=True))
     body = [ln.strip() for ln in cap.get().splitlines() if ln.strip()]
     # One line each for task / outcome / next, not one paragraph.
     assert sum("the judge" in ln for ln in body) == 1

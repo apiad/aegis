@@ -1780,18 +1780,12 @@ class ConversationPane(Widget):
             # so it never enters the window a later recap assembles.
             # Summaries that compound would summarize themselves.
             from aegis.recap import Recap
-            from aegis.render import render_recap
 
             recap = Recap(**eff["recap"])
-            self._flush_streaming()
             # at_idx matters here and only here: a deferred /recap mounted
             # a placeholder when you asked, and the answer has to land
             # *there* rather than at the tail.
-            self._put_block(
-                render_recap(recap, self._palette),
-                f"recap: {recap.text}\n{recap.footer}".strip(),
-                at_idx=at_idx,
-            )
+            self._put_recap(recap, session=True, at_idx=at_idx)
             return None
         if kind == "peer_answer":
             # An @peer answer is transient *here* and real *there*: it
@@ -2452,20 +2446,24 @@ class ConversationPane(Widget):
                     render_user_line(msg.body, self._palette, width), msg.body
                 )
 
-    def _put_recap(self, recap) -> None:
+    def _put_recap(
+        self, recap, *, session: bool = False, at_idx: int | None = None
+    ) -> None:
         """Mount a recap block. The one place a recap reaches the screen.
 
-        Shared by the ``/recap`` effect branch and the automatic
-        end-of-turn line, so the two cannot drift apart in transience:
-        both land in ``_history`` and neither is ever appended to the
-        session log.
+        Shared by the ``/recap`` effect branch (``session=True``, the
+        labelled task / outcome / next list) and the automatic end-of-turn
+        line, so the two cannot drift apart in transience: both land in
+        ``_history`` and neither is ever appended to the session log.
         """
         from aegis.render import render_recap
 
+        body = recap.block if session else recap.text
         self._flush_streaming()
         self._put_block(
-            render_recap(recap, self._palette),
-            f"recap: {recap.text}\n{recap.footer}".strip(),
+            render_recap(recap, self._palette, session=session),
+            f"recap: {body}\n{recap.footer}".strip(),
+            at_idx=at_idx,
         )
 
     def _on_recap(self, _core, recap) -> None:
@@ -3029,7 +3027,7 @@ class ConversationPane(Widget):
             monitors=self._monitor_manager.snapshot(for_handle=self.handle)
             if self._monitor_manager is not None
             else [],
-            now_line=getattr(getattr(core, "fleet_recap", None), "doing", "") or "",
+            now_line=getattr(getattr(core, "fleet_recap", None), "line", "") or "",
             system=self._system_tiers,
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
