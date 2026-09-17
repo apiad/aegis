@@ -3,6 +3,8 @@
 > **Status:** implemented 2026-09-16, per
 > `docs/superpowers/plans/2026-09-16-aegis-fleet-dashboard.md`.
 > Designed and brainstormed with Alex the same day.
+> The card grid and the band layout are superseded by
+> `2026-09-17-aegis-fleet-dashboard-v2-design.md`; the data model and costs hold.
 > Every cost number here was measured before the design was written; the
 > probe is `.playground/fleet-recap-probe/` and the index is at the end.
 
