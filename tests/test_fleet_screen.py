@@ -267,6 +267,59 @@ async def test_down_moves_the_detail_and_enter_opens_that_session(tmp_path):
         assert app._active is second
 
 
+async def test_a_click_on_the_item_auto_mode_highlighted_only_selects(tmp_path):
+    """Auto mode put that item there, not the operator: a first click on it
+    means "this one", never "open it"."""
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        app._activate(0)
+        await pilot.press("f10")
+        await pilot.pause()
+        scr = app.screen
+        assert scr.rotator.is_auto(time.monotonic())
+        handle = scr._current.cards[scr.selected - 1].handle
+        item = next(
+            i for i in scr.query_one("#fleet-list").query(_Item) if i.handle == handle
+        )
+        await pilot.click(item)
+        await pilot.pause()
+        assert scr.chosen is None and app.screen is scr
+        await pilot.click(item)
+        await pilot.pause()
+        assert scr.chosen == handle
+        assert not isinstance(app.screen, FleetScreen)
+
+
+_LONG = FleetSnapshot(
+    cards=tuple(
+        CardView(handle=f"s{i}", tab_index=i + 1, did="landed a thing " * 300)
+        for i in range(6)
+    )
+)
+
+
+@pytest.mark.parametrize("cols", [90, 160])
+async def test_the_detail_fits_the_body_narrow_and_wide(tmp_path, cols):
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(cols, 40)) as pilot:
+        await pilot.pause()
+        scr = FleetScreen(lambda **_kw: _LONG)
+        await app.push_screen(scr)
+        for _ in range(5):
+            await pilot.pause()
+        body = scr.query_one("#fleet-body").region
+        lst = scr.query_one("#fleet-list").region
+        detail = scr.query_one("#fleet-detail")
+        assert detail.region.bottom <= body.bottom
+        assert detail.max_scroll_y > 0, "a long detail scrolls"
+        if cols < 110:
+            assert detail.region.y >= lst.bottom, "narrow stacks the detail"
+        else:
+            assert detail.region.x >= lst.right, "wide keeps two columns"
+            assert detail.region.y == lst.y
+
+
 @pytest.mark.parametrize("key", ["escape", "f10"])
 async def test_escape_and_f10_close_the_fleet(tmp_path, key):
     app = _standalone(tmp_path)

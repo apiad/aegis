@@ -1,4 +1,4 @@
-"""FleetScreen — every session as a card, over the TUI, behind F10.
+"""FleetScreen — every session in a list, over the TUI, behind F10.
 
 The screen composes a band, a list and a detail. The renderers are pure and
 take a frame number; two clocks drive them, the 1 s snapshot and the 0.5 s
@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -37,7 +38,7 @@ _KEYS = "↑↓ select   enter open tab   1-9 tab   esc/F10 close"
 
 
 def in_tab_order(snapshot: FleetSnapshot, tabs: dict[str, int]) -> FleetSnapshot:
-    """Number each live card by the tab bar and sort the grid by it.
+    """Number each live session by the tab bar and sort the list by it.
 
     ``build_snapshot`` numbers cards by the brain's session list, which is
     not the tab bar: a terminal or file tab sits only in the bar, and a
@@ -70,7 +71,7 @@ class FleetScreen(ModalScreen):
     FleetScreen #fleet-band { height: auto; padding: 1 2 0 2; }
     FleetScreen #fleet-body { height: 1fr; padding: 1 2 0 2; }
     FleetScreen #fleet-list { width: 44%; height: 100%; margin-right: 1; }
-    FleetScreen #fleet-detail { width: 1fr; height: 100%;
+    FleetScreen #fleet-detail { width: 1fr; height: 1fr;
                                 border: round $accent; padding: 0 1; }
     FleetScreen #fleet-detail-body { height: auto; }
     FleetScreen _Item { border: round $panel-lighten-2; padding: 0 1;
@@ -157,9 +158,11 @@ class FleetScreen(ModalScreen):
                 return
 
     def click_item(self, handle: str) -> None:
-        """The first click on an item selects it; a click on the selected
-        item opens it."""
-        if handle == self._selected_handle():
+        """The first click on an item selects it; a click on the item the
+        operator selected opens it. An item auto mode highlighted is not the
+        operator's choice, so a click on it only selects."""
+        chosen_by_operator = not self.rotator.is_auto(time.monotonic())
+        if handle == self._selected_handle() and chosen_by_operator:
             self.action_open()
             return
         self.select_handle(handle)
@@ -343,6 +346,6 @@ class FleetScreen(ModalScreen):
         if remaining is not None:
             auto = f"auto · next in {remaining:.0f}s"
             room = self._footer.content_size.width or self.app.size.width - 4
-            footer.append(" " * max(2, room - footer.cell_len - len(auto)))
+            footer.append(" " * max(2, room - footer.cell_len - cell_len(auto)))
             footer.append(auto)
         self._footer.update(footer)
