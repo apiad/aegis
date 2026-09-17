@@ -15,29 +15,26 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   it, and anything but done is drawn even when the turn changed no file. The
   category survives a restart.
 - **`F10` shows every session at once, and `aegis dash` keeps it open on a
-  second monitor.** One card per session, in tab order: title, agent and
-  repo, plan, `did` (the last turn recap), `now` (what a running turn is
-  doing), then uptime, context and cost. The last three tool events show
-  only while a card has neither line yet. After a restart each card is
-  rebuilt from the session's log: the last recap, the tool tail, the cost
-  and the context gauge. A
-  queue, workflow or group worker carries a `⏱`, says who made it and who
-  gets the answer, and stays on screen for 60 s after it closes. The band
-  on top counts agents by state and origin, flags two agents in one
-  working tree, repeats F3's SYSTEM row, and shows what the `now` lines
-  have cost as `recap $X / N calls`. Arrows and Enter or a click open a
-  session, and `1`-`9` jump straight to a tab number. `aegis dash` takes
-  `attach`'s `--view` and `--cwd`. A card opened there moves only that
-  view's tab.
+  second monitor.** A band of bars on top (CPU, RAM, disk, average context,
+  and every quota window with its reset time) with counters by turn
+  attention; a list of sessions whose items keep `did` and `now` whole; and
+  the selected session in full on the right: now, did, live monitors with
+  their ETA, context, plan and turn gauges, the plan's tasks, recent tool
+  calls and spend. Working sessions pulse, errors and critical quotas
+  blink, and a monitor without progress sweeps. Arrows move the detail,
+  Enter or a second click opens the tab, and `1`-`9` jump to a tab number.
+  Left alone for two minutes it rotates the detail to whatever changed,
+  needs-you first, at most one switch every 20 s. A queue, workflow or group
+  worker says who made it and who gets the answer, and stays on screen for
+  60 s after it closes. After a restart the list is rebuilt from each
+  session's log. `aegis dash` takes `attach`'s `--view` and `--cwd`.
 
   The `now` line is a one-shot call of about $0.007-0.015 on haiku, made
   only for working sessions a client has on screen: the active tab while
   F3 is open (where it also shows), every session while F10 is open. The
   first comes after a turn has run 60 s, then at most one every 120 s;
   the `fleet:` block in `.aegis.yaml` changes both, or turns the line off
-  with `recap: off`.
-  With seven sessions streaming behind it the grid draws 2.0 frames/s,
-  21 KB/s. See `docs/usage.md`.
+  with `recap: off`. See `docs/usage.md`.
 
 - **`aegis bench` measures what reaches the terminal, and runs with every
   release.** It drives a real `aegis serve` and a real client in a pty, with

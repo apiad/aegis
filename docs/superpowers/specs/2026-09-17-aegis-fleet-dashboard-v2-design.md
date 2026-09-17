@@ -1,7 +1,8 @@
 # The fleet dashboard, v2: a list, a detail pane, and a screen that rotates itself
 
-> **Status:** designed 2026-09-17 with Alex, through four browser mockups.
-> Not implemented. Supersedes the card grid of
+> **Status:** implemented 2026-09-17, per
+> `docs/superpowers/plans/2026-09-17-aegis-fleet-dashboard-v2.md`. Designed
+> with Alex through four browser mockups. Supersedes the card grid of
 > `docs/superpowers/specs/2026-09-16-aegis-fleet-dashboard-design.md`; the
 > data model, the recap costs and the ghost rules of that spec still hold.
 > The approved mockup is

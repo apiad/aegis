@@ -19,7 +19,7 @@
 | `Ctrl+D` | Detach: leave the daemon and its agents running |
 | `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
-| `F10` | Open / close the [fleet dashboard](#the-fleet-dashboard-f10-and-aegis-dash): every session as a card |
+| `F10` | Open / close the [fleet dashboard](#the-fleet-dashboard-f10-and-aegis-dash): gauges, every session, and one in detail |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
@@ -120,7 +120,7 @@ turn.
 Two surfaces read what a turn actually **did** — commits, files written,
 plan movement — rather than what it said about itself.
 
-- **A one-line recap** is made after every turn. It is the F10 card's
+- **A one-line recap** is made after every turn. It is the F10 list's
   `did` line, and it lands in the transcript only after a turn that moved
   the substrate.
   `/recap` asks for the bigger version on demand: a building / done /
@@ -452,66 +452,77 @@ far along it is.
 
 ## The fleet dashboard: `F10` and `aegis dash`
 
-`F3` describes the tab in front of you. **`F10`** shows every session: a band
-across the top, then one card per session, in tab order, with no
-transcript. It covers the tabs; `F10` again or `Escape` closes it.
+`F3` describes the tab in front of you. **`F10`** shows every session at
+once, with no transcript: a band of gauges across the top, a list of
+sessions on the left and the full detail of one session on the right. It
+covers the tabs; `F10` again or `Escape` closes it.
 
 | Key | Action |
 |---|---|
-| `←` `→` `↑` `↓` | Move the selection across the grid (it stops at the edges) |
-| `Enter` / click a card | Close the dashboard and switch to that session's tab |
-| `1`..`9` | Open the session whose card shows that tab number |
+| `↑` `↓` | Move the selection; the detail follows (it stops at the ends) |
+| click an item | Select it; a second click on the selected item opens its tab |
+| `Enter` | Close the dashboard and switch to the selected session's tab |
+| `1`..`9` | Open the session whose item shows that tab number |
 | `Escape` / `F10` | Close the dashboard |
 
-A card reads top to bottom:
+**The band** is three rows:
+
+- CPU, RAM (with used and total GB), disk, and the average context use of
+  the live sessions, each as a bar.
+- One bar per quota window of every provider aegis holds credentials for
+  (`cc 5h`, `cc wk`, `oc 5h`, `oc wk`, `oc mo`), coloured by severity, with
+  the time until it resets. A critical percentage blinks. These are the
+  readings `F3` already polls; `F10` never polls on its own.
+- Counters by [turn attention](#recaps-and-the-loop-judge): working, need
+  you, error, review, waiting and done, then what the open sessions have
+  cost (`$18.40 live`; it drops when a tab closes), the mid-turn recap
+  spend, queues, monitors, the build and the clock. A narrow terminal drops
+  whole segments from the end of this row.
+
+**The list** has one item per session, in tab order. Each item is at least
+three lines, and no line is cut:
 
 ```
-┌─ 3 calm-hopper ──────────────────── ✻ 4m12s ─┐
-│ Wire the fleet dashboard                     │
-│ opus · aegis                                 │
-│ plan ██████░░░░ 6/10 Task 7                  │
-│ did committed the band renderer              │
-│ now running the fleet screen tests           │
-│ 14:02 Edit src/aegis/fleet/render.py         │
-│ 14:03 Bash uv run pytest -q tests/test_fl…   │
-│ 1h47m · ctx 38% · $4.12                      │
-└──────────────────────────────────────────────┘
+╭──────────────────────────────────────────────╮
+│ ? 2 fleet-recap-restore  ███░░░ 28% needs you │
+│ opus · aegis · main                          │
+│ did Wrote and pushed the F10 v2 spec; asks   │
+│ whether the rotation should hold.            │
+╰──────────────────────────────────────────────╯
 ```
 
-- The top border carries the tab number, the handle, a state glyph
-  (`✻` working, `●` ready, `✗` error) and, while a turn runs, how long it
-  has been running.
-- Then the title, the agent and the repo it writes to (and the host, when
-  it is not this machine), and the plan with its current task.
-- **`did`** is the last turn recap: what the session finished.
-- **`now`** is the mid-turn recap: what a turn still running is doing. It
-  appears once a turn has run for a minute and refreshes every two minutes
-  at most (see below for what that costs).
-- The last three tool events, stamped with the time of day.
-- The footer: uptime, context use (red past 80%), a running monitor, cost
-  and claims. A narrow card cuts it from the right, so the cost goes before
-  the monitor does.
+- The first line leads with the session's attention mark (a pulsing `●`
+  while it works), then the tab number, the handle, a small context bar,
+  `◉2` when it has live monitors, and the category or how long the turn has
+  run.
+- The second line says where it works: agent, repo, branch and churn. An
+  ephemeral session (one a queue, a workflow or a group started) says who
+  made it and who gets the answer instead, has a dashed border, and shows
+  `⏱` in place of a tab number. When it closes, its item stays for **60
+  seconds**, marked `closed 12s ago`; it cannot be opened and is not
+  counted in the band.
+- The third line is `now …` in full while the session works, otherwise
+  `did …` in full. A session with neither shows its last tool calls.
 
-**Ephemeral sessions** (one a queue, a workflow or a group started) get a
-dashed border, a `⏱` beside the tab number, and a line saying who made them
-and who gets the answer: `queue general #a3f2 → rosy-rivest`. They are the
-sessions that start and close between two looks at the screen, so when one
-closes its card stays for **60 seconds**, dimmed and marked `closed 12s`.
-A closed card cannot be opened and is not counted in the band.
+**The detail** shows the selected session in full, in this order: its
+handle, attention and turn time; its title; where it works and for how
+long; **NOW** and **DID**; **MONITORS**, one bar per live monitor with its
+elapsed time and ETA (a monitor with no progress condition sweeps and says
+`no ETA`); **GAUGES** for context, plan and turn time against the
+session's average; **PLAN** with every task; **ACTIVITY**, the last three
+tool calls; and cost, claims and who it talked to. Empty sections are left
+out, and the pane scrolls on its own. Under 110 columns the detail sits
+under the list instead of beside it.
 
-**The band** answers the fleet-wide questions in four rows:
-
-- The host, how many agents are live, how many are yours and how many are
-  ephemeral (by kind), what the open sessions have cost (`$18.40 live`;
-  it drops when a tab closes), and what the mid-turn recaps have cost them:
-  `recap $0.09 / 11 calls`, with `· 1 cancelled` when a call was killed
-  before its price came back.
-- How many sessions are working, ready, waiting or in error, the average
-  and worst context use, running and configured queues, and monitors.
-- `repos`: which repos the agents write to. `aegis ×2 ⚠` means two agents
-  share one working tree.
-- The **SYSTEM** row from the foot of `F3`: CPU, RAM and disk, quota, and
-  the build. `F10` covers `F3`, so the band repeats it.
+**Auto mode.** Left alone, the dashboard picks the detail by itself. It is
+on when `F10` opens and comes back 120 seconds after your last key or
+click; the footer says `auto · next in 12s` while it runs. It moves to a
+session with something new since it was last shown, in this order: needs
+you, error, a monitor that ended, review, a new `did` or plan step, a state
+change, a new `now`. A session stays on screen at least 20 seconds. With
+nothing new it steps through the working sessions every 30 seconds, and
+with none working it stays where it is. Opening a tab clears that
+session's category, and that alone does not count as new.
 
 `F3` shows the same mid-turn recap for the active tab, as a `now …` line
 under the state.
