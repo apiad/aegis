@@ -1,3 +1,5 @@
+from rich.cells import cell_len
+
 from aegis.fleet.models import BandView, CardView, FleetSnapshot, QuotaGauge
 from aegis.fleet.render import render_band
 from aegis.tui.sysmeter import SystemStats
@@ -65,3 +67,44 @@ def test_a_narrow_screen_puts_two_gauges_per_line():
     lines = _lines(width=100)
     assert lines[0].startswith("CPU") and "DSK" not in lines[0]
     assert any(line.startswith("DSK") for line in lines)
+
+
+def test_a_nonzero_error_or_need_you_counter_blinks_in_place():
+    on, off = _lines(frame=0)[2], _lines(frame=1)[2]
+    assert "✗" in on and "✗" not in off
+    assert "?" in on and "?" not in off
+    assert cell_len(on) == cell_len(off)
+    assert on.index("1 error") == off.index("1 error")
+
+
+def test_a_six_cell_label_keeps_a_space_before_its_bar():
+    from dataclasses import replace
+
+    band = replace(BAND, gauges=(QuotaGauge("oc wk1", 50, "normal", None),))
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 160, 0).plain.split("\n")[1]
+    assert row.startswith("oc wk1 ")
+
+
+def test_a_single_quota_gauge_takes_the_whole_narrow_line():
+    from dataclasses import replace
+
+    band = replace(BAND, gauges=(QuotaGauge("cc 5h", 38, "normal", 8040),))
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 100, 0).plain.split("\n")[2]
+    assert row.startswith("cc 5h") and cell_len(row) > 60
+
+
+def test_a_narrow_counters_row_drops_whole_segments():
+    row = _lines(width=100)[-1]
+    assert cell_len(row) <= 100
+    assert row.endswith(("1 done", "live", "queues 0/0", "monitors 0", "01:12"))
+    assert not row.endswith(" · ")
+
+
+def test_quota_gauges_wrap_two_per_line_on_a_narrow_screen():
+    from dataclasses import replace
+
+    band = replace(BAND, gauges=BAND.gauges + (QuotaGauge("oc wk", 10, "normal", 50),))
+    lines = render_band(FleetSnapshot(band=band, cards=CARDS), P, 100, 0).plain.split("\n")
+    first_quota = lines[2]
+    assert sum(label in first_quota for label in ("cc 5h", "oc mo", "oc wk")) == 2
+    assert lines[3].startswith("oc wk")

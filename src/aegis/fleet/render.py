@@ -26,13 +26,6 @@ _BAR = "█"
 _EMPTY = "░"
 _EVENTS = 3  # the activity tail's depth
 _GLYPH = {"working": "✻", "error": "✗"}  # anything else reads as ready
-_ATTN_GLYPH = {
-    "needs_input": "?",
-    "error": "✗",
-    "review": "◆",
-    "waiting": "⧗",
-    "done": "✓",
-}
 _COUNTERS = (
     ("needs_input", "need you"),
     ("error", "error"),
@@ -418,7 +411,7 @@ def _gauge(
     tail: str = "",
 ) -> Text:
     """``label bar value tail`` in ``cells`` cells or fewer, never more."""
-    head = f"{label:<6}"
+    head = f"{label} ".ljust(6)
     rest = f" {value}" + (f" {tail}" if tail else "")
     bar_cells = max(3, cells - cell_len(head) - cell_len(rest) - 1)
     t = Text(head, style=pal.muted)
@@ -456,7 +449,7 @@ def _reset(seconds: float | None) -> str:
 def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
     """The v2 band: host gauges, quota gauges (when any), then the attention
     counters and totals. Under 110 columns the gauges go two per line."""
-    from aegis.attention import mark, style_for
+    from aegis.attention import GLYPHS, mark, style_for
 
     band = snapshot.band
     narrow = width < 110
@@ -498,7 +491,7 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
     t.append("\n")
 
     if band.gauges:
-        per_q = 2 if narrow else len(band.gauges)
+        per_q = min(2, len(band.gauges)) if narrow else len(band.gauges)
         qcells = (width - 2 * (per_q - 1)) // per_q
         quota: list[Text] = []
         for g in band.gauges:
@@ -534,35 +527,47 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
             )
         return sum(1 for c in idle if c.attention == cat and c.state != "error")
 
-    row = Text()
-    row.append(band.host, style=f"bold {pal.accent}")
-    row.append(" · ", style=pal.muted)
-    row.append(
-        f"✻ {working} working",
-        style=pulse(pal.working, frame, pal) if working else pal.muted,
-    )
-    row.append(" · ", style=pal.muted)
+    segments = [
+        Text(band.host, style=f"bold {pal.accent}"),
+        Text(
+            f"✻ {working} working",
+            style=pulse(pal.working, frame, pal) if working else pal.muted,
+        ),
+    ]
     for cat, noun in _COUNTERS:
         n = count(cat)
-        if n and cat in ("needs_input", "error"):
-            blink_off = cat == "needs_input" and frame % 2 == 1
-            row.append_text(Text.from_markup(mark(cat, pal, blink_off=blink_off)))
-            row.append(f" {n} {noun}", style=style_for(cat, pal))
-        else:
-            row.append(
-                f"{_ATTN_GLYPH[cat]} {n} {noun}", style=pal.ink if n else pal.muted
+        if n and cat == "needs_input":
+            seg = Text.from_markup(mark(cat, pal, blink_off=frame % 2 == 1))
+        elif n and cat == "error":
+            # Blinks here but not in the tab bar, so not through ``mark``.
+            seg = Text.from_markup(
+                f"[bold {pal.panel} on {pal.error}] {blink(GLYPHS[cat], frame)} [/]"
             )
-        row.append(" · ", style=pal.muted)
-    tail = f"${band.cost_live:.2f} live"
+        else:
+            segments.append(
+                Text(f"{GLYPHS[cat]} {n} {noun}", style=pal.ink if n else pal.muted)
+            )
+            continue
+        seg.append(f" {n} {noun}", style=style_for(cat, pal))
+        segments.append(seg)
+    tail = [f"${band.cost_live:.2f} live"]
     if band.recap_calls:
-        tail += f" · recap ${band.recap_cost:.2f} / {band.recap_calls}"
+        tail.append(f"recap ${band.recap_cost:.2f} / {band.recap_calls}")
     running, configured = band.queues
-    tail += f" · queues {running}/{configured} · monitors {band.monitors}"
+    tail += [f"queues {running}/{configured}", f"monitors {band.monitors}"]
     if band.build:
-        tail += f" · {Text.from_markup(band.build[-1]).plain}"
+        tail.append(Text.from_markup(band.build[-1]).plain)
     if band.clock:
-        tail += f" · {band.clock}"
-    row.append(tail, style=pal.muted)
+        tail.append(band.clock)
+    segments += [Text(text, style=pal.muted) for text in tail]
+
+    # Drop whole segments from the end until the row fits; never cut one.
+    sep = 3  # " · "
+    while len(segments) > 1 and (
+        sum(x.cell_len for x in segments) + sep * (len(segments) - 1) > width
+    ):
+        segments.pop()
+    row = Text(" · ", style=pal.muted).join(segments)
     row.truncate(width)
     t.append_text(row)
     return t
