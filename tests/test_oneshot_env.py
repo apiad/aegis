@@ -96,7 +96,10 @@ async def test_cancelling_a_generation_kills_its_claude_process(monkeypatch, age
     fake.write_text(
         "#!/bin/sh\n"
         f"echo $$ > {started}\n"
-        "sleep 3\n"
+        # Redirected so the sleep does not hold the stdout pipe: a killed
+        # `sh` then reaps at once instead of when the orphaned sleep exits,
+        # which kept this test at 6.5 s against make test's 3 s budget.
+        "sleep 1 >/dev/null\n"
         f"echo done > {finished}\n"
         "echo '{}'\n"
     )
@@ -127,7 +130,7 @@ async def test_cancelling_a_generation_kills_its_claude_process(monkeypatch, age
             break
         await asyncio.sleep(0.01)
     assert not alive(), "the claude process outlived its cancelled call"
-    await asyncio.sleep(3.5)
+    await asyncio.sleep(1.3)
     assert not finished.exists(), "the cancelled call ran to completion"
 
 
