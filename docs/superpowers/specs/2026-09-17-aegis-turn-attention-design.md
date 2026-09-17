@@ -1,7 +1,8 @@
 # Turn attention: the recap says whether a turn needs you
 
-> **Status:** designed 2026-09-17 with Alex, through browser mockups of both
-> screens. Not implemented. Builds on the every-turn recap (3c2a99a) and feeds
+> **Status:** implemented 2026-09-17, per
+> `docs/superpowers/plans/2026-09-17-aegis-turn-attention.md`. Designed with
+> Alex through browser mockups of both screens. Builds on the every-turn recap (3c2a99a) and feeds
 > `2026-09-17-aegis-fleet-dashboard-v2-design.md`. The approved mockup is
 > `.playground/fleet-render/.superpowers/brainstorm/1761831-1789648257/content/attention-both-screens.html`
 > (workspace playground, not in this repo).

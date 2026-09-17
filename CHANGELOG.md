@@ -7,6 +7,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **Each turn says whether it needs you.** The end-of-turn recap classifies
+  the turn as needs you, error, review, waiting or done. The model proposes
+  the category; an error result, a queue or workflow worker, and a live
+  monitor, queue callback or spawned session decide over it. Tabs lead with
+  the category's mark until you open them (`?` blinks), the recap block names
+  it, and anything but done is drawn even when the turn changed no file. The
+  category survives a restart.
 - **`F10` shows every session at once, and `aegis dash` keeps it open on a
   second monitor.** One card per session, in tab order: title, agent and
   repo, plan, `did` (the last turn recap), `now` (what a running turn is

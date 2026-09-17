@@ -125,6 +125,17 @@ plan movement — rather than what it said about itself.
   the substrate.
   `/recap` asks for the bigger version on demand: a building / done /
   remaining block about the whole session.
+- **Every recap classifies its turn.** `? needs you` means the turn ended
+  on a question or a decision for you, `✗ error` that something failed,
+  `◆ review` that it left something for you to read, `⧗ waiting` that it
+  waits on a monitor, a queue callback or a session it spawned, and
+  `✓ done` that it only reports finished work. The model proposes the
+  category and hard facts override it: an error result is always `error`,
+  a queue or workflow worker is never `needs you`, and a live wait makes a
+  calm category `waiting`. The tab bar leads each tab with its category
+  until you open that tab in that view (`waiting` stays while the wait
+  does), the recap block's header names it, and any category but `done`
+  is drawn in the transcript even when the turn wrote nothing.
 - **The loop judge** decides whether an armed `/loop` continues, returning
   `continue`, `done` or `stuck`. `aegis_loop_stop` is the *agent's* claim
   that it is finished, and the judge is free to reject it; your own
