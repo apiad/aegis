@@ -1,7 +1,10 @@
 """The tab bar leads with the pending category instead of the ready dot."""
 
+from types import SimpleNamespace
+
 import pytest
 
+from aegis.tui.pane import ConversationPane
 from aegis.tui.state import AgentState
 from aegis.tui.themes import INK, aegis_colors
 from aegis.tui.widgets import TabBar, _TabCell
@@ -26,8 +29,9 @@ def test_a_pending_category_replaces_the_ready_dot():
 
 
 def test_a_working_session_keeps_its_dot_whatever_the_category():
-    out = _label(AgentState.working, "")
+    out = _label(AgentState.working, "[x]?[/]")
     assert "●" in out
+    assert "[x]?[/]" not in out
 
 
 def test_no_category_is_todays_tab():
@@ -52,3 +56,31 @@ async def test_an_inactive_tab_shows_its_mark_until_activated():
         app._activate(idx)
         assert app.query_one(TabBar)._items[idx][7] == ""
         assert pane.attention_acked == 1
+
+
+@pytest.mark.asyncio
+async def test_the_tick_paints_a_late_category_without_writing_the_roster():
+    app = _app(_factory(FakeSession(), FakeSession()))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        idx = next(i for i, p in enumerate(app._panes) if p is not app._active)
+        pane = app._panes[idx]
+        pane._core.attention = "review"
+        pane._core.attention_seq = 1
+        snapshots = []
+        app._schedule_snapshot = lambda: snapshots.append(1)
+
+        app._tick()
+        assert app.query_one(TabBar)._items[idx][7] != ""
+        assert snapshots == []
+
+
+def test_the_sidebar_state_names_a_pending_category_until_acked():
+    core = SimpleNamespace(
+        state=AgentState.ready, effective_attention="needs_input", attention_seq=1
+    )
+    pane = SimpleNamespace(attention_acked=0)
+    assert ConversationPane._state_label(pane, core) == "idle · needs you"
+    pane.attention_acked = 1
+    assert ConversationPane._state_label(pane, core) == "idle"

@@ -70,17 +70,6 @@ def _attention_mark(p, active: bool, colors, blink_off: bool) -> str:
     return mark(category, colors, blink_off=blink_off and not active)
 
 
-def _blinks(p, active: bool) -> bool:
-    """Whether this tab's mark changes with the blink phase."""
-    from aegis.attention import is_pending
-
-    core = getattr(p, "_core", None)
-    if active or getattr(core, "effective_attention", "") != "needs_input":
-        return False
-    seq = getattr(core, "attention_seq", 0)
-    return is_pending("needs_input", seq, getattr(p, "attention_acked", seq))
-
-
 def _tab_suffix(pane, qm) -> str | None:
     """The trailing annotation on a tab: plan progress, queue worker label,
     host, or any combination.
@@ -1443,12 +1432,20 @@ class AegisApp(App):
         )
 
     def _refresh_tabbar(self) -> None:
+        items = self._tab_items()
+        if items is None:
+            return
+        self.query_one(TabBar).set_tabs(items)
+        self._schedule_snapshot()
+
+    def _tab_items(self) -> list | None:
+        """The tab bar's item tuples, or None once the DOM is gone."""
         cs = self._switcher()
         if cs is None:
-            return
+            return None
         # In remote mode queue_manager is a _DisabledPlaneStub — don't call it.
         qm = None if hasattr(self, "_remote_manager") else self.queue_manager
-        items = [
+        return [
             (
                 i + 1,
                 p.handle,
@@ -1461,8 +1458,6 @@ class AegisApp(App):
             )
             for i, p in enumerate(self._panes)
         ]
-        self.query_one(TabBar).set_tabs(items)
-        self._schedule_snapshot()
 
     #: seconds to coalesce roster writes over — the tab bar refreshes on
     #: every state change, and each write is a full atomic file rewrite
@@ -1610,8 +1605,12 @@ class AegisApp(App):
         import contextlib
 
         self._blink_off = not self._blink_off
-        if any(_blinks(p, p is self._active) for p in self._panes):
-            self._refresh_tabbar()
+        # Repaint the bar every tick without touching the roster: a category
+        # can land after the state change that last refreshed the bar, and a
+        # pending needs_input blinks. set_tabs repaints only changed cells.
+        items = self._tab_items()
+        if items is not None:
+            self.query_one(TabBar).set_tabs(items)
         active = self._active
         if active is not None and hasattr(active, "refresh_metrics"):
             active.refresh_metrics()
