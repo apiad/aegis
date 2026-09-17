@@ -571,3 +571,212 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
     row.truncate(width)
     t.append_text(row)
     return t
+
+
+def _lead(card: CardView, pal, frame: int) -> Text:
+    """The item's first cell: the pulsing working dot, the pending attention
+    mark (``needs_input`` and ``error`` blink here), or the resting dot."""
+    from aegis.attention import GLYPHS, mark
+
+    if card.state == "working":
+        return Text("●", style=pulse(pal.working, frame, pal))
+    if card.attention == "error":
+        return Text.from_markup(
+            f"[bold {pal.panel} on {pal.error}] {blink(GLYPHS['error'], frame)} [/]"
+        )
+    if card.attention:
+        return Text.from_markup(mark(card.attention, pal, blink_off=frame % 2 == 1))
+    return Text("●", style=pal.error if card.state == "error" else pal.ready)
+
+
+def _where(card: CardView) -> str:
+    return _one_line(
+        _origin_line(card.origin) if card.origin.ephemeral else _identity(card)
+    )
+
+
+def render_item(card: CardView, pal, frame: int) -> Text:
+    """One list item, at least three lines. Only line 1 and the where line are
+    sanitized; ``did`` and ``now`` keep every word, and the widget wraps them."""
+    from aegis.attention import LABELS, style_for
+
+    t = _lead(card, pal, frame)
+    num = "⏱" if card.origin.ephemeral else str(card.tab_index or "")
+    t.append(f" {num} ", style=pal.muted)
+    t.append(_one_line(card.handle), style=f"bold {pal.ink}")
+    t.append("  ")
+    t.append_text(bar(card.ctx_pct, 6, ctx_style(card.ctx_pct, pal), pal))
+    t.append(f" {card.ctx_pct:.0f}%", style=pal.muted)
+    if card.monitors:
+        t.append(f" ◉{len(card.monitors)}", style=pal.accent)
+    if card.ghost_since is not None:
+        t.append(f"  closed {_age(card.ghost_s)} ago", style=pal.muted)
+    elif card.state == "working":
+        t.append(f"  working {_age(card.turn_s)}", style=pal.working)
+    elif card.attention:
+        t.append(f"  {LABELS[card.attention]}", style=style_for(card.attention, pal))
+    else:
+        t.append(f"  {_age(card.uptime_s)}", style=pal.muted)
+    t.append("\n")
+    t.append(_where(card), style=pal.accent if card.origin.ephemeral else pal.muted)
+    t.append("\n")
+    if card.state == "working" and card.doing:
+        t.append("now ", style=pal.muted)
+        t.append(card.doing, style=pal.working)
+    elif card.did:
+        t.append("did ", style=pal.muted)
+        t.append(card.did, style=pal.ink)
+    else:
+        for i, ev in enumerate(card.events[-_EVENTS:]):
+            if i:
+                t.append("\n")
+            t.append(_one_line(_event(ev)), style=pal.muted)
+    return t
+
+
+def _tokens(n: int) -> str:
+    """``920k``, ``1M``, ``1.5M``."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}".removesuffix(".0") + "M"
+    if n >= 1000:
+        return f"{n // 1000}k"
+    return str(n)
+
+
+def _detail_header(card: CardView, pal, frame: int) -> Text:
+    from aegis.attention import LABELS, style_for
+
+    t = Text(_one_line(card.handle), style=f"bold {pal.accent}")
+    t.append("  ")
+    if card.state != "working" and card.attention:
+        t.append_text(_lead(card, pal, frame))
+        t.append(f" {LABELS[card.attention]}", style=style_for(card.attention, pal))
+    else:
+        t.append(
+            f"● {card.state}",
+            style=pulse(_state_style(card.state, pal), frame, pal)
+            if card.state == "working"
+            else _state_style(card.state, pal),
+        )
+    if card.state == "working":
+        t.append(f"  turn {_age(card.turn_s)}", style=pal.working)
+    if card.title:
+        t.append("\n")
+        t.append(_one_line(card.title), style=f"bold {pal.ink}")
+    facts = [_where(card), f"up {_age(card.uptime_s)}"]
+    if card.tab_index and not card.origin.ephemeral:
+        facts.append(f"tab {card.tab_index}")
+    t.append("\n")
+    t.append(" · ".join(f for f in facts if f), style=pal.muted)
+    return t
+
+
+def _monitors(card: CardView, pal, width: int, frame: int) -> Text:
+    cells = max(10, width - 60)
+    t = Text()
+    for i, m in enumerate(card.monitors):
+        if i:
+            t.append("\n")
+        t.append("◉ ", style=pulse(pal.accent, frame, pal))
+        t.append(_one_line(m.description), style=pal.ink)
+        t.append(" ")
+        if m.pct is None:
+            t.append_text(sweep_bar(cells, frame, pal))
+        else:
+            t.append_text(bar(m.pct, cells, pal.accent, pal))
+            t.append(f" {m.pct:.0f}%", style=pal.ink)
+        t.append(f" {_age(m.elapsed_s)}", style=pal.muted)
+        eta = "no ETA" if m.eta_s is None else f"ETA {_age(m.eta_s)}"
+        t.append(f" {eta}", style=pal.muted)
+    return t
+
+
+def _gauges(card: CardView, pal, width: int) -> Text:
+    cells = max(10, width - 30)
+    rows: list[Text] = []
+
+    def row(label: str, pct: float, style: str, value: str, tail: str = "") -> None:
+        r = Text(f"{label:<5}", style=pal.muted)
+        r.append_text(bar(pct, cells, style, pal))
+        r.append(f" {value}", style=pal.ink)
+        if tail:
+            r.append(f" {tail}", style=pal.muted)
+        rows.append(r)
+
+    row(
+        "ctx",
+        card.ctx_pct,
+        ctx_style(card.ctx_pct, pal),
+        f"{card.ctx_pct:.0f}%",
+        f"{_tokens(card.ctx_tokens)}/{_tokens(card.ctx_window)}"
+        if card.ctx_window
+        else "",
+    )
+    if card.plan_total:
+        row(
+            "plan",
+            100 * card.plan_done / card.plan_total,
+            pal.ready,
+            f"{card.plan_done}/{card.plan_total}",
+        )
+    span = max(card.avg_turn_s, card.turn_s)
+    if span > 0:
+        row(
+            "turn",
+            100 * card.turn_s / span,
+            pal.working,
+            _age(card.turn_s),
+            f"avg {_age(card.avg_turn_s)}" if card.avg_turn_s else "",
+        )
+    return Text("\n").join(rows)
+
+
+_PLAN_GLYPH = {"completed": "●", "in_progress": "◐"}  # anything else is pending
+
+
+def _plan(card: CardView, pal) -> Text:
+    t = Text()
+    for i, task in enumerate(card.plan_tasks):
+        if i:
+            t.append("\n")
+        glyph = _PLAN_GLYPH.get(task.status, "○")
+        style = {"●": pal.ready, "◐": pal.working}.get(glyph, pal.muted)
+        t.append(f"{glyph} ", style=style)
+        t.append(_one_line(task.subject), style=pal.ink)
+    return t
+
+
+def render_detail(card: CardView, pal, width: int, frame: int) -> Text:
+    """The selected session in full. ``width`` sizes the bars only; the pane
+    wraps text. A section with nothing to say is left out, heading and all."""
+    spend = [f"${card.cost_usd:.2f}"]
+    if card.claims:
+        spend.append(f"{card.claims} claims")
+    if card.spoke_with:
+        spend.append(f"← {card.spoke_with[0]}")
+    if card.waiting_on:
+        spend.append(f"→ {card.waiting_on[0]}")
+    sections = [
+        ("NOW", Text(card.doing, style=pal.working)),
+        ("DID", Text(card.did, style=pal.ink)),
+        (f"MONITORS · {len(card.monitors)}", _monitors(card, pal, width, frame)),
+        ("GAUGES", _gauges(card, pal, width)),
+        ("PLAN", _plan(card, pal)),
+        (
+            "ACTIVITY",
+            Text("\n", style=pal.muted).join(
+                Text(_one_line(_event(ev)), style=pal.muted)
+                for ev in card.events[-_EVENTS:]
+            ),
+        ),
+        ("SPEND · COORDINATION", Text(" · ".join(spend), style=pal.ink)),
+    ]
+    t = _detail_header(card, pal, frame)
+    for heading, body in sections:
+        if not body.plain:
+            continue
+        t.append("\n\n")
+        t.append(heading, style=pal.muted)
+        t.append("\n")
+        t.append_text(body)
+    return t
