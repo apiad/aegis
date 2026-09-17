@@ -150,3 +150,22 @@ def test_countdown_is_none_while_holding():
     r._show("a", 0.0)
     assert r.countdown(25.0) is None
     assert r.countdown(300.0) is None
+
+
+def test_an_operator_choice_is_what_the_dwell_and_countdown_follow():
+    r = Rotator()
+    r.observe(snap(A, B), 0.0)
+    for c in (A, B):
+        r._record(c, 0.0)
+    r.observe(snap(replace(A, did="new a"), B), 1.0)
+    r.show("b", 10.0)
+    assert r.countdown(10.0) is not None
+    assert r.pick(25.0, current="b") == "b", "b was put on screen at 10, dwell to 30"
+    assert r.pick(31.0, current="b") == "a"
+
+
+def test_showing_an_unknown_handle_is_a_no_op():
+    r = Rotator()
+    r.observe(snap(A), 0.0)
+    r.show("gone", 5.0)
+    assert r.pick(5.0, current=None) == "a"

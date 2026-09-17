@@ -78,6 +78,12 @@ class Rotator:
         self._shown_since = now
         return handle
 
+    def show(self, handle: str, now: float) -> None:
+        """The operator put ``handle`` on screen, so the dwell and the
+        countdown run from now, for it."""
+        if handle in self._cards:
+            self._show(handle, now)
+
     def pick(self, now: float, current: str | None) -> str | None:
         if not self._cards:
             return None

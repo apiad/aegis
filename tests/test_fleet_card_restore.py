@@ -16,12 +16,13 @@ from aegis.events import (
     UserMessage,
 )
 from aegis.fleet.models import CardView, EventLine
-from aegis.fleet.render import render_card
+from aegis.fleet.render import render_item
 from aegis.recap import Recap
 from aegis.state.event_codec import decode_event, encode_event
 from aegis.state.session_log import replay_events
+from aegis.tui.themes import INK, aegis_colors
 
-from tests.test_fleet_render import C, W, as_text
+C = aegis_colors(INK)
 
 
 class _FakeHarness:
@@ -219,16 +220,12 @@ async def test_a_log_with_no_finished_turn_pays_nothing(session, monkeypatch):
 
 def test_a_card_with_a_recap_hides_the_command_tail():
     ev = EventLine(at=0.0, tool="Bash", summary="SENTINEL-CMD")
-    out = as_text(render_card(CardView(handle="a", did="landed x", events=(ev,)), C, W))
-    assert "SENTINEL-CMD" not in out
-    out = as_text(render_card(CardView(handle="a", doing="testing", events=(ev,)), C, W))
-    assert "SENTINEL-CMD" not in out
+    assert "SENTINEL-CMD" not in render_item(CardView(handle="a", did="landed x", events=(ev,)), C, 0).plain
 
 
 def test_a_card_without_a_recap_falls_back_to_the_commands():
     ev = EventLine(at=0.0, tool="Bash", summary="SENTINEL-CMD")
-    out = as_text(render_card(CardView(handle="a", events=(ev,)), C, W))
-    assert "SENTINEL-CMD" in out
+    assert "SENTINEL-CMD" in render_item(CardView(handle="a", events=(ev,)), C, 0).plain
 
 
 def test_disabled_recaps_are_never_paid_for_on_resume(session, monkeypatch):

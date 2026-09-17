@@ -1,5 +1,7 @@
 """The screen's behaviour, not its pixels. The pixels are Task 7 and 8."""
 
+import time
+
 import pytest
 
 from aegis.fleet.models import CardView, FleetSnapshot
@@ -35,6 +37,35 @@ def test_a_number_beyond_the_fleet_is_inert():
     assert scr.chosen is None
 
 
+def test_up_and_down_move_the_detail_and_stop_auto():
+    scr = FleetScreen(lambda: SNAP)
+    assert scr.rotator.is_auto(0.0)
+    scr.action_move(1)
+    assert scr.selected == 2
+    assert not scr.rotator.is_auto(time.monotonic())
+
+
+def test_select_handle_moves_the_selection():
+    scr = FleetScreen(lambda: SNAP)
+    scr._current = SNAP
+    scr.select_handle("s4")
+    assert scr.selected == 5
+
+
+def test_the_frame_advances_without_rebuilding_the_snapshot():
+    built = []
+
+    def snap(**_kw):
+        built.append(1)
+        return SNAP
+
+    scr = FleetScreen(snap)
+    scr._current = SNAP
+    scr.advance_frame()
+    scr.advance_frame()
+    assert scr.frame == 2 and built == []
+
+
 def test_a_ghost_card_cannot_be_opened():
     """An ephemeral session that died has no tab left to switch to."""
     snap = FleetSnapshot(
@@ -49,46 +80,9 @@ def test_a_ghost_card_cannot_be_opened():
     assert scr.chosen is None
 
 
-# --- beyond the brief: the layout a click reads, and the tab a card names ---
+# --- beyond the brief: the tab a card names ---
 
-from aegis.fleet.render import CARD_WIDTH, GUTTER, render_fleet  # noqa: E402
-from aegis.tui.fleet_screen import card_rects, in_tab_order  # noqa: E402
-from aegis.tui.themes import INK, aegis_colors  # noqa: E402
-
-PAL = aegis_colors(INK)
-
-
-def test_every_rect_sits_on_its_own_cards_top_border():
-    """card_at is only right if it agrees with render_fleet's real layout:
-    the band on top, rows padded to their tallest card, a blank between."""
-    cards = tuple(
-        CardView(
-            handle=f"h{i}", tab_index=i + 1, did="x" if i % 2 else "", title="t" * i
-        )
-        for i in range(5)
-    )
-    snap = FleetSnapshot(cards=cards)
-    width = 2 * (CARD_WIDTH + GUTTER)
-    lines = render_fleet(snap, PAL, width).plain.split("\n")
-    rects = card_rects(snap, PAL, width)
-    assert len(rects) == 5
-    for card, (x, y, w, h) in zip(cards, rects):
-        top = lines[y][x : x + w]
-        assert top.startswith("┌") and top.endswith("┐"), (card.handle, top)
-        assert card.handle in top
-        assert lines[y + h - 1][x : x + w].startswith("└")
-    # Row two starts one blank line below row one's tallest card.
-    assert rects[2][1] == rects[0][1] + max(rects[0][3], rects[1][3]) + 1
-
-
-def test_card_at_maps_a_cell_to_its_card_and_the_gutter_to_none():
-    scr = FleetScreen(lambda: SNAP)
-    scr._rects = [(0, 4, 46, 5), (48, 4, 46, 5)]
-    assert scr.card_at(0, 4) == 1
-    assert scr.card_at(47, 5) is None, "the gutter belongs to no card"
-    assert scr.card_at(50, 8) == 2
-    assert scr.card_at(50, 9) is None
-    assert scr.card_at(10, 0) is None, "the band is not a card"
+from aegis.tui.fleet_screen import _Item, in_tab_order  # noqa: E402
 
 
 def test_cards_follow_the_tab_bar_not_the_brains_list():
@@ -238,12 +232,39 @@ async def test_a_moved_tab_is_still_opened_by_its_card(tmp_path, shape):
         await pilot.pause()
         card = next(c for c in app.screen._current.cards if c.handle == first.handle)
         assert card.tab_index == 2
-        x, y, _w, _h = app.screen._rects[1]
-        await pilot.click("#fleet-grid", offset=(x + 3, y + 1))
+        # Take the selection off the rotator, so the first click selects.
+        await pilot.press("up")
+        await pilot.pause()
+        items = list(app.screen.query_one("#fleet-list").query(_Item))
+        assert [i.handle for i in items][1] == card.handle
+        await pilot.click(items[1])
+        await pilot.pause()
+        assert isinstance(app.screen, FleetScreen), "the first click only selects"
+        assert app.screen._current.cards[app.screen.selected - 1].handle == card.handle
+        await pilot.click(items[1])
         await pilot.pause()
         assert not isinstance(app.screen, FleetScreen)
         assert app._active.handle == card.handle
         assert app._active is first
+
+
+async def test_down_moves_the_detail_and_enter_opens_that_session(tmp_path):
+    app = _standalone(tmp_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await _two_tabs(app, pilot)
+        app._activate(0)
+        await pilot.press("f10")
+        await pilot.pause()
+        second = app._panes[1]
+        await pilot.press("down")
+        await pilot.pause()
+        body = app.screen.query_one("#fleet-detail-body")
+        assert body.render().plain.startswith(second.handle)
+        assert "auto" not in app.screen.query_one("#fleet-footer").render().plain
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, FleetScreen)
+        assert app._active is second
 
 
 @pytest.mark.parametrize("key", ["escape", "f10"])
@@ -298,6 +319,15 @@ def test_the_selection_follows_its_session_across_a_reorder():
     fleet.insert(1, CardView(handle="new", tab_index=2))
     scr.refresh_fleet()
     assert scr._current.cards[scr.selected - 1].handle == "c"
+
+
+def test_auto_mode_starts_on_what_it_picks_not_past_the_first_item():
+    """The default first item was never on screen, so the rotator must not
+    treat it as shown and skip to the next one."""
+    fleet = tuple(CardView(handle=h, tab_index=i) for i, h in enumerate("ab", start=1))
+    scr = FleetScreen(lambda **_: FleetSnapshot(cards=fleet))
+    scr.refresh_fleet()
+    assert scr.selected == 1
 
 
 async def _three_tabs(app, pilot):
