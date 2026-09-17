@@ -1265,8 +1265,12 @@ class AgentSession:
 
         A subagent's tool calls are skipped for the reason the queue skips
         its assistant text: they are the subagent working, not this agent.
+
+        ``summary`` holds the *label* (``render_shared.tool_label``), so the
+        tail reads one line per call rather than a pasted command.
         """
         from aegis.fleet.models import EventLine
+        from aegis.render_shared import tool_label
 
         if not isinstance(ev, ToolUse):
             return
@@ -1276,7 +1280,9 @@ class AgentSession:
             EventLine(
                 at=at if at is not None else time.time(),
                 tool=ev.name,
-                summary=ev.summary or "",
+                # The label the transcript would show, not the raw argument:
+                # one dashboard row is a line, and a command is not one.
+                summary=tool_label(ev.name, ev.raw_input, ev.summary, ev.locations),
             )
         )
 

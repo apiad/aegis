@@ -129,7 +129,10 @@ def _identity(card: CardView) -> str:
 def _event(ev: EventLine) -> str:
     # `at` is wall-clock epoch seconds, the one stamp here that is a time
     # of day. localtime converts it; it does not read the clock.
-    return f"{time.strftime('%H:%M', time.localtime(ev.at))} {ev.tool} {ev.summary}"
+    # The label already names the action ("read render.py", "Run the
+    # suite"), so the tool name would only repeat it; it is the fallback for
+    # a call that produced no label at all.
+    return f"{time.strftime('%H:%M', time.localtime(ev.at))} {ev.summary or ev.tool}"
 
 
 def _gauge(

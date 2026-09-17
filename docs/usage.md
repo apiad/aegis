@@ -512,7 +512,9 @@ three lines, and no line is cut:
   seconds**, marked `closed 12s ago`; it cannot be opened and is not
   counted in the band.
 - The third line is `now …` in full while the session works, otherwise
-  `did …` in full. A session with neither shows its last tool calls.
+  `did …` in full. A session with neither shows its last tool calls, one
+  line each: the label the transcript shows (a Bash call's description, a
+  file call's `read render.py`), never the command itself.
 
 **The detail** shows the selected session in full, in this order: its
 handle, attention and turn time; its title; where it works and for how

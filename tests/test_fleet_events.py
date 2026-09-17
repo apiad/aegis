@@ -90,3 +90,59 @@ def test_a_replayed_transcript_does_not_refill_the_ring(session):
     than one repainted from stale history."""
     session.rehydrate_plan([ToolUse(name="Edit", summary="old.py")], [1.0])
     assert session.recent_events == ()
+
+
+# --- the activity tail is a label, not the command ------------------------
+
+
+def test_a_bash_call_is_labelled_by_its_description_not_its_command(session):
+    """Alex, 2026-09-17: the activity tail had too much detail. One line per
+    call, the same label the transcript shows — for Bash that is the
+    description the agent wrote, never the command."""
+    session.note_event(
+        ToolUse(
+            name="Bash",
+            summary="uv run pytest -q -n auto -m 'not slow' tests/",
+            kind="execute",
+            raw_input={
+                "command": "uv run pytest -q -n auto -m 'not slow' tests/",
+                "description": "Run the suite",
+            },
+        ),
+        at=100.0,
+    )
+    assert session.recent_events == (
+        EventLine(at=100.0, tool="Bash", summary="Run the suite"),
+    )
+
+
+def test_a_bash_call_with_no_description_keeps_a_short_command(session):
+    cmd = "git log --oneline --decorate --graph --all --since=2.weeks --author=alex"
+    session.note_event(ToolUse(name="Bash", summary=cmd, kind="execute",
+                              raw_input={"command": cmd}), at=1.0)
+    label = session.recent_events[0].summary
+    assert label.startswith("git log") and len(label) <= 61
+
+
+def test_a_file_call_is_labelled_the_way_the_transcript_labels_it(session):
+    session.note_event(
+        ToolUse(name="Read", summary="src/aegis/fleet/render.py", kind="read",
+                raw_input={"file_path": "src/aegis/fleet/render.py"}),
+        at=2.0,
+    )
+    assert session.recent_events[0].summary == "read render.py"
+
+
+def test_the_activity_line_is_the_stamp_and_the_label_only():
+    from aegis.fleet.render import _event
+
+    assert _event(EventLine(at=0.0, tool="Bash", summary="Run the suite")).endswith(
+        " Run the suite"
+    )
+    assert "Bash" not in _event(EventLine(at=0.0, tool="Bash", summary="Run the suite"))
+
+
+def test_a_label_less_call_still_names_its_tool():
+    from aegis.fleet.render import _event
+
+    assert _event(EventLine(at=0.0, tool="Mystery", summary="")).endswith(" Mystery")

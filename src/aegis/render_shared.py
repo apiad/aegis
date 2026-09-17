@@ -110,6 +110,25 @@ def describe_tool(
     return summary or _loc_tail(locations) or name
 
 
+def tool_label(
+    name: str, raw_input: dict | None, summary: str = "", locations=()
+) -> str:
+    """The shortest honest name for a tool call: what a dashboard row shows.
+
+    ``describe_tool`` is the transcript's line and pairs a Bash description
+    with its command, which is exactly the detail an activity tail should
+    not carry (Alex, 2026-09-17: "solo el label, no todo el bash"). Here the
+    description wins alone, and a command with no description is cut.
+    """
+    inp = raw_input or {}
+    if name == "Bash" and aegis_describe(name, inp) is None:
+        desc = inp.get("description")
+        if desc:
+            return str(desc)
+        return _trunc(inp.get("command", "") or summary, 60)
+    return describe_tool(name, raw_input, summary, locations)
+
+
 def tool_glyph(name: str, kind: str | None, raw_input: dict | None = None) -> str:
     """The leading glyph for a tool line: the aegis layer's own when the call
     is one of ours, else the native per-kind emoji.
