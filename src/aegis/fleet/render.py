@@ -214,8 +214,11 @@ def render_card(card: CardView, pal, width: int, *, height: int = 0) -> Text:
         row([("did ", pal.muted), (card.did, pal.ink)])
     if card.doing:
         row([("now ", pal.muted), (card.doing, pal.working)])
-    for ev in card.events[-_EVENTS:]:
-        row([(_event(ev), pal.muted)])
+    # The recap says what the session did; the raw commands are only a
+    # fallback for a card that has no recap yet (operator ruling 2026-09-16).
+    if not (card.did or card.doing):
+        for ev in card.events[-_EVENTS:]:
+            row([(_event(ev), pal.muted)])
     if footer := _footer(card, pal):
         row(footer)
     # The one deliberate blank: padding inside the border to the row's height.

@@ -1002,6 +1002,10 @@ class ConversationPane(Widget):
         # Guarded: a RemotePaneCore has no tracker to rehydrate.
         if replay is not None and hasattr(self._core, "rehydrate_plan"):
             self._core.rehydrate_plan(replay.events, replay.stamps)
+        # The fleet card too: last recap, tool tail, cost and context gauge.
+        # The session guards itself against a second view replaying again.
+        if replay is not None and hasattr(self._core, "rehydrate_card"):
+            self._core.rehydrate_card(replay.events, replay.stamps)
         # Same reasoning for the title, and it matters more than the label:
         # title_source is what stops an agent overwriting what Alex typed,
         # so a resumed session that forgot it would hand his authority back

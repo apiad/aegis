@@ -1,15 +1,18 @@
-"""When a recap is worth firing.
+"""When a recap is worth firing, and when it is worth drawing.
 
 Claude Code gates its recap on turn count (>=3 turns, "never twice in a
 row") and anthropics/claude-code#56346 reports the predictable result: in
 a conversation of questions and reads, 10+ identical recaps accumulate.
 
-Gate on substrate movement instead. Ten identical recaps would require ten
-turns that each changed something and each changed it the same way.
+So the recap is paid for on every turn (unless recaps are off), because
+the fleet card's ``did`` line should always say what the last turn did
+(operator ruling, 2026-09-16). Only a turn that moved the substrate draws its recap
+into the transcript, which keeps a conversation of questions free of
+repeated lines. Ten identical drawn recaps would still require ten turns
+that each changed something and each changed it the same way.
 
-This is a cost requirement, not a nicety. Measured 2026-08-26, one recap
-is ~6,900 input tokens; without the gate that is every turn rather than
-every productive turn.
+The cost of recapping every turn is accepted: measured 2026-09-16, one
+turn recap is $0.007-0.015 on haiku.
 """
 
 from __future__ import annotations
@@ -17,17 +20,11 @@ from __future__ import annotations
 from aegis.digest.models import TurnFacts
 
 
-def should_recap(facts: TurnFacts, *, last_line: str, enabled: bool) -> bool:
-    """True when this turn earned a recap.
-
-    ``last_line`` is the previous recap's text. It cannot be compared here
-    — we do not know the new line until we have paid for it — so the
-    identity guard is applied after generation, in the caller. It is taken
-    as a parameter anyway so the gate reads as the one place the policy
-    lives.
-    """
-    if not enabled:
-        return False
+def should_draw_recap(facts: TurnFacts) -> bool:
+    """True when the recap belongs in the transcript: the turn moved the
+    substrate. An errored digest is not movement (see ``TurnFacts.moved``).
+    The identity guard against a repeated line is applied by the caller,
+    once the new line has been paid for."""
     return facts.moved
 
 

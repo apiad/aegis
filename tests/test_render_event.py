@@ -357,7 +357,7 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
     """
     import typing
     from aegis.events import Event, UserMessage, ContextUpdate, ThinkingTokens
-    from aegis.events import SessionMeta, SessionClosed, CompactBoundary
+    from aegis.events import SessionMeta, SessionClosed, CompactBoundary, RecapNote
     from aegis.render import renders_to_nothing
 
     samples = [
@@ -382,6 +382,8 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
         SessionMeta(handle="h", profile="p", provider="v", cwd="/tmp",
                     created_at="2026-07-31T00:00:00Z", origin="user"),
         SessionClosed(closed_at="2026-07-31T00:00:00Z", reason="done"),
+        # The card's persisted recap: never part of the conversation.
+        RecapNote(line="Wrote 3 tests."),
     ]
     covered = {type(s) for s in samples}
     declared = set(typing.get_args(Event))

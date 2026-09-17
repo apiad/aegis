@@ -139,7 +139,7 @@ which is the reason to set it: measured, one call is $0.045 on haiku against
 $0.32–$0.46 on Opus.
 
 ```yaml
-recap: true          # one-line recap after a turn that moved the substrate
+recap: true          # one-line recap after every turn; drawn only when it moved the substrate
 loop_judge: true     # decide whether an armed /loop continues
 ```
 

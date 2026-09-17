@@ -259,6 +259,16 @@ class SessionClosed:
     reason: str
 
 
+@dataclass(frozen=True)
+class RecapNote:
+    """The end-of-turn recap line, persisted so a card's ``did`` survives a
+    restart. Written straight to the log, never fired to observers: it is
+    not part of the conversation, so nothing renders it and the recap
+    window skips it (a recap that read the last recap would compound)."""
+
+    line: str
+
+
 Event = (
     SystemInit
     | AssistantText
@@ -274,6 +284,7 @@ Event = (
     | Unknown
     | SessionMeta
     | SessionClosed
+    | RecapNote
 )
 
 # Tool name -> input key whose value is the one-line summary.

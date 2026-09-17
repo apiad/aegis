@@ -120,7 +120,9 @@ turn.
 Two surfaces read what a turn actually **did** — commits, files written,
 plan movement — rather than what it said about itself.
 
-- **A one-line recap** lands after any turn that moved the substrate.
+- **A one-line recap** is made after every turn. It is the F10 card's
+  `did` line, and it lands in the transcript only after a turn that moved
+  the substrate.
   `/recap` asks for the bigger version on demand: a building / done /
   remaining block about the whole session.
 - **The loop judge** decides whether an armed `/loop` continues, returning
@@ -132,14 +134,16 @@ Both are off the same facts, and both matter for the same reason: an agent
 grading its own homework from inside the tunnel it has been in for N turns
 is how a loop gets reaped with the user-visible half unbuilt.
 
-The automatic recap gates on **substrate movement, not turn count** — turn
-count is what makes recaps pile up identically in a conversation of
+What the transcript draws gates on **substrate movement, not turn count**:
+turn count is what makes recaps pile up identically in a conversation of
 questions and reads. It is also detached and cancellable: a measured ~7s
 one-shot cannot be allowed to stall every turn boundary, and a new turn
 drops an in-flight recap rather than rendering it late against a transcript
-that has moved on. Like a `/btw` side note it lands in the pane's scrollback
-and is never appended to the session log, so recaps never compound into
-summaries of their own summaries.
+that has moved on. The line is kept in the session log so a restarted
+daemon can put it back on the card for free, but the window every recap
+reads skips it, so recaps never compound into summaries of their own
+summaries. A session whose log predates this gets one recap of its last
+turn when it resumes.
 
 Both are one-shot generation calls, so set
 [`text_generation:`](configuration.md#text_generation-optional) to something

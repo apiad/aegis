@@ -154,6 +154,28 @@ already imply, is not worth the field.
 
 `did` and `now` are the two recap fields (below).
 
+**Revised 2026-09-16, after the first restart in use.** Every card came
+back nearly empty: the last recap, the tool tail, the cost and the gauge
+lived only in memory, and `did` was only ever made for a turn that moved
+the substrate. Alex's ruling, with the reasons:
+
+- **Every turn is recapped**, because the card should always say what the
+  last turn did. The transcript still draws only a moving turn's line
+  (`recap.gate.should_draw_recap`), so a conversation of questions does not
+  fill with repeated lines. About $0.007-0.015 a turn on haiku.
+- **The recap line is persisted** as a `RecapNote` record in the session
+  log, written directly and never fired to observers. `btw.window` skips
+  it, so a recap never reads the last one.
+- **`AgentSession.rehydrate_card` rebuilds the card on resume**, next to
+  `rehydrate_plan`: the last `RecapNote`, the top-level `ToolUse` tail, and
+  the metrics fed the same events and calls the live turn feeds them. It
+  runs once per session and never after the session has run a turn in this
+  process, because each attaching view replays the log again. A log with a
+  finished turn and no `RecapNote` pays for one recap of its last turn,
+  which is then persisted.
+- **The recap replaces the command tail.** The tool events draw only on a
+  card with neither `did` nor `now`.
+
 **Revised 2026-09-16 after rendering the real `render_fleet` to PNG**
 (`.playground/fleet-render/grid-150.png`). The mockup above is the first
 sketch; the rendered card differs from it in five deliberate ways:

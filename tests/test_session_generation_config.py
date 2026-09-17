@@ -310,7 +310,7 @@ async def test_the_turn_recap_bills_to_text_generation_from_the_config_root(tmp_
     monkeypatch.setattr("aegis.drivers.get_driver", lambda harness: _Driver())
     monkeypatch.setattr("aegis.state.session_log.replay_events",
                         lambda state_dir, log_id: type("R", (), {"events": [], "stamps": []})())
-    await s._run_recap(MOVED)
+    await s._run_recap(MOVED, draw=True)
     assert billed == ["claude-haiku-4-5-20251001"]
 
 

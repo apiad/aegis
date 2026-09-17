@@ -27,7 +27,7 @@ from aegis.digest.collect import DigestCollector
 from aegis.digest.models import TurnFacts
 from aegis.core.loop_judge import judge_for
 from aegis.recap import Recap, recap_for, recap_in_flight_for
-from aegis.recap.gate import should_fleet_recap, should_recap
+from aegis.recap.gate import should_draw_recap, should_fleet_recap
 from aegis.repos.writes import write_target
 from aegis.hooks import (
     PostTurnEvent,
@@ -194,6 +194,7 @@ class AgentSession:
         self.on_recap = None
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
+        self._card_rehydrated = False
         # The fleet dashboard's mid-turn recap. Paid, so it runs only while
         # a client watches this session (`fleet.recap: watched`): the
         # periodic check is armed by the first watcher and cancelled by the
@@ -987,15 +988,16 @@ class AgentSession:
         return FleetConfig() if cfg is None else cfg.fleet
 
     def _maybe_recap(self, facts) -> None:
-        """Fire a recap without making the turn wait for it."""
+        """Fire a recap without making the turn wait for it. Every turn
+        gets one; only a turn that moved the substrate draws it."""
         if self._agents is None:
             return  # no billing profile to resolve; stay quiet
-        if not should_recap(
-            facts, last_line=self._last_recap_line, enabled=self.recap_enabled
-        ):
+        if not self.recap_enabled:
             return
         self._cancel_recap()
-        self._recap_task = asyncio.create_task(self._run_recap(facts))
+        self._recap_task = asyncio.create_task(
+            self._run_recap(facts, draw=should_draw_recap(facts))
+        )
 
     def _cancel_recap(self) -> None:
         """Drop an in-flight recap. A late one describes a transcript that
@@ -1004,7 +1006,7 @@ class AgentSession:
             self._recap_task.cancel()
         self._recap_task = None
 
-    async def _run_recap(self, facts) -> None:
+    async def _run_recap(self, facts, *, draw: bool) -> None:
         try:
             recap = await recap_for(
                 state_dir=self.state_dir,
@@ -1028,7 +1030,22 @@ class AgentSession:
         if recap.line.strip() == self._last_recap_line.strip():
             return
         self._last_recap_line = recap.line
-        self._emit_recap(recap)
+        self._persist_recap(recap.line)
+        if draw:
+            self._emit_recap(recap)
+
+    def _persist_recap(self, line: str) -> None:
+        """Keep the line in the session log, so a restart can put it back
+        on the card without paying for it again. A separate O_APPEND write,
+        like the close marker: records cannot interleave with the event
+        writer's, and a failed write costs the card, never the session."""
+        from aegis.events import RecapNote
+        from aegis.state.session_log import append_event
+
+        try:
+            append_event(self.state_dir, self.log_id, RecapNote(line=line))
+        except Exception:  # noqa: BLE001
+            log.exception("could not persist the recap; continuing")
 
     def add_fleet_watcher(self, cb) -> None:
         """A client put this session's card or sidebar on screen."""
@@ -1222,6 +1239,64 @@ class AgentSession:
         self.plan.set_working(working, ts=ts)
         for tracker in self.subplans.values():
             tracker.set_working(working, ts=ts)
+
+    def rehydrate_card(self, events, stamps) -> None:
+        """Rebuild what the fleet card shows from a replayed transcript: the
+        last recap, the tool tail, the token totals and the context gauge.
+
+        A restart used to leave every card nearly empty until each session
+        ran another turn. The metrics are fed the same events, through the
+        same calls, as ``_run_turn`` feeds them live, so the cost and the
+        gauge come back as they were rather than approximated.
+
+        Once per session, and only before it has run a turn in this
+        process: every view that attaches replays the log again, and a
+        session that already ran turns would add the log's totals on top
+        of its live ones.
+
+        A log with a finished turn but no persisted recap (every log
+        written before recaps were persisted) pays for one recap of its
+        last turn, which is then persisted, so the next restart is free.
+        """
+        if self._card_rehydrated or self._started:
+            return
+        self._card_rehydrated = True
+        from aegis.events import RecapNote
+
+        last_line = ""
+        saw_result = False
+        for i, ev in enumerate(events):
+            if isinstance(ev, RecapNote):
+                last_line = ev.line
+            elif isinstance(ev, Result):
+                saw_result = True
+                self.metrics.commit(ev.usage, self._now())
+                continue
+            elif isinstance(ev, ToolUse):
+                self.note_event(ev, at=stamps[i] if i < len(stamps) else None)
+            elif isinstance(ev, CompactBoundary):
+                self.metrics.note_compaction(ev.post_tokens)
+            elif isinstance(ev, ContextUpdate) and ev.cost:
+                if ev.cost.context_used:
+                    self.metrics.observe_context(ev.cost.context_used)
+                if ev.cost.context_size:
+                    self.metrics.context_window = ev.cost.context_size
+            u = getattr(ev, "usage", None)
+            if u is not None:
+                self.metrics.observe(u)
+        # A log that stops mid-turn leaves provisional usage behind; the
+        # session is idle now, so it is discarded as a live turn end would.
+        self.metrics.cancel_turn(self._now())
+        if last_line:
+            self._last_recap_line = last_line
+        elif saw_result and self._agents is not None and self.recap_enabled:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return  # no loop to run the call on; the next turn recaps
+            self._recap_task = asyncio.create_task(
+                self._run_recap(TurnFacts(), draw=False)
+            )
 
     def rehydrate_plan(self, events, stamps) -> None:
         """Rebuild plan state from a replayed transcript.

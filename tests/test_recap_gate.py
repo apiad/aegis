@@ -10,7 +10,7 @@ import pytest
 
 from aegis.digest.models import CommitLine, RepoDelta, TurnFacts
 from aegis.recap import Recap
-from aegis.recap.gate import should_recap
+from aegis.recap.gate import should_draw_recap
 
 from tests.digest_harness import build_session
 
@@ -19,21 +19,17 @@ MOVED = TurnFacts(repos=(RepoDelta(name="aegis", files_written=1,
 STILL = TurnFacts(assistant_tail="Here is what that function does.")
 
 
-def test_a_moving_turn_recaps():
-    assert should_recap(MOVED, last_line="", enabled=True) is True
+def test_a_moving_turn_draws_its_recap():
+    assert should_draw_recap(MOVED) is True
 
 
-def test_a_read_only_turn_does_not():
-    assert should_recap(STILL, last_line="", enabled=True) is False
+def test_a_read_only_turn_does_not_draw_its_recap():
+    assert should_draw_recap(STILL) is False
 
 
-def test_a_disabled_recap_never_fires():
-    assert should_recap(MOVED, last_line="", enabled=False) is False
-
-
-def test_an_errored_digest_does_not_fire():
+def test_an_errored_digest_does_not_draw():
     facts = TurnFacts(repos=MOVED.repos, error="git exploded")
-    assert should_recap(facts, last_line="", enabled=True) is False
+    assert should_draw_recap(facts) is False
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,10 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 - **`F10` shows every session at once, and `aegis dash` keeps it open on a
   second monitor.** One card per session, in tab order: title, agent and
   repo, plan, `did` (the last turn recap), `now` (what a running turn is
-  doing), the last three tool events, then uptime, context and cost. A
+  doing), then uptime, context and cost. The last three tool events show
+  only while a card has neither line yet. After a restart each card is
+  rebuilt from the session's log: the last recap, the tool tail, the cost
+  and the context gauge. A
   queue, workflow or group worker carries a `⏱`, says who made it and who
   gets the answer, and stays on screen for 60 s after it closes. The band
   on top counts agents by state and origin, flags two agents in one

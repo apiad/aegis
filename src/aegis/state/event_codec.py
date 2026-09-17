@@ -17,6 +17,7 @@ from aegis.events import (
     CostUsage,
     Event,
     PlanEntry,
+    RecapNote,
     Result,
     SessionClosed,
     SessionMeta,
@@ -188,6 +189,8 @@ def _encode_inner(ev: Event) -> dict:
         }
     if isinstance(ev, SessionClosed):
         return {"t": "SessionClosed", "closed_at": ev.closed_at, "reason": ev.reason}
+    if isinstance(ev, RecapNote):
+        return {"t": "RecapNote", "line": ev.line}
     raise ValueError(f"unknown event type: {type(ev).__name__}")
 
 
@@ -319,4 +322,6 @@ def _decode_inner(d: dict) -> Event:
         )
     if t == "SessionClosed":
         return SessionClosed(closed_at=d["closed_at"], reason=d["reason"])
+    if t == "RecapNote":
+        return RecapNote(line=d["line"])
     raise ValueError(f"unknown event type tag: {t!r}")
