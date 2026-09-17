@@ -929,6 +929,7 @@ class ConversationPane(Widget):
             "%Y-%m-%dT%H:%M:%SZ"
         )
         self.unseen = False
+        self.attention_acked = 0
         # ``core`` allows remote mode to inject a RemotePaneCore directly,
         # bypassing the AgentSession wrapping that requires a real HarnessSession.
         if core is not None:
@@ -2984,6 +2985,17 @@ class ConversationPane(Widget):
             return
         bar.refresh_model(self._sidebar_model())
 
+    def _state_label(self, core) -> str:
+        from aegis.attention import LABELS, is_pending
+
+        label = core.state.label
+        category = getattr(core, "effective_attention", "") or ""
+        if core.state is AgentState.ready and is_pending(
+            category, getattr(core, "attention_seq", 0), self.attention_acked
+        ):
+            label = f"{label} · {LABELS[category]}"
+        return label
+
     def _sidebar_model(self) -> SidebarModel:
         """The sidebar's snapshot, from the sources the strips and the bar
         already read — no new data path, no second subscription."""
@@ -3002,7 +3014,7 @@ class ConversationPane(Widget):
             connection=self._connection_tiers,
             title=getattr(core, "title", "") or "",
             identity=(ident,) if ident else (),
-            state_label=core.state.label,
+            state_label=self._state_label(core),
             loop=self._loop_tiers,
             metrics=tuple(core.metrics.render_tiers(time.monotonic(), self._palette)),
             quota=self._quota_tiers,

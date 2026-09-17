@@ -56,6 +56,31 @@ def _plan_roll_up(core):
     return roll if roll is not None and roll.total else None
 
 
+def _attention_mark(p, active: bool, colors, blink_off: bool) -> str:
+    from aegis.attention import is_pending, mark
+
+    core = getattr(p, "_core", None)
+    category = getattr(core, "effective_attention", "") or ""
+    seq = getattr(core, "attention_seq", 0)
+    if active and hasattr(p, "attention_acked"):
+        p.attention_acked = seq  # the tab in front is seen
+    acked = getattr(p, "attention_acked", seq)
+    if not is_pending(category, seq, acked):
+        return ""
+    return mark(category, colors, blink_off=blink_off and not active)
+
+
+def _blinks(p, active: bool) -> bool:
+    """Whether this tab's mark changes with the blink phase."""
+    from aegis.attention import is_pending
+
+    core = getattr(p, "_core", None)
+    if active or getattr(core, "effective_attention", "") != "needs_input":
+        return False
+    seq = getattr(core, "attention_seq", 0)
+    return is_pending("needs_input", seq, getattr(p, "attention_acked", seq))
+
+
 def _tab_suffix(pane, qm) -> str | None:
     """The trailing annotation on a tab: plan progress, queue worker label,
     host, or any combination.
@@ -438,6 +463,9 @@ class AegisApp(App):
         self._quota_pane = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
+        # Flips every tick; a pending needs_input mark on a background tab
+        # blanks its glyph while it is set.
+        self._blink_off = False
         # Pending debounced roster write (see _schedule_snapshot).
         self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
@@ -1429,6 +1457,7 @@ class AegisApp(App):
                 p.unseen,
                 p.id == cs.current,
                 _tab_suffix(p, qm),
+                _attention_mark(p, p.id == cs.current, self._palette, self._blink_off),
             )
             for i, p in enumerate(self._panes)
         ]
@@ -1580,6 +1609,9 @@ class AegisApp(App):
     def _tick(self) -> None:
         import contextlib
 
+        self._blink_off = not self._blink_off
+        if any(_blinks(p, p is self._active) for p in self._panes):
+            self._refresh_tabbar()
         active = self._active
         if active is not None and hasattr(active, "refresh_metrics"):
             active.refresh_metrics()
@@ -1627,6 +1659,10 @@ class AegisApp(App):
         pane = self._panes[idx]
         self.query_one(ContentSwitcher).current = pane.id
         pane.unseen = False
+        if (core := getattr(pane, "_core", None)) is not None and hasattr(
+            pane, "attention_acked"
+        ):
+            pane.attention_acked = getattr(core, "attention_seq", 0)
         pane.focus_input()
         self._refresh_tabbar()
         self._reconcile_fleet_watch()

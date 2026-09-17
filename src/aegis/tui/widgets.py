@@ -205,15 +205,17 @@ class _TabCell(Static):
         self._index = -1
 
     def render_tab(
-        self, idx, handle, slug, state, unseen, active, suffix, colors
+        self, idx, handle, slug, state, unseen, active, suffix, attention_mark, colors
     ) -> None:
         self._index = idx - 1
         mark = "[bold]*[/bold]" if unseen else ""
         sfx = f" [{colors.muted}]{suffix}[/]" if suffix else ""
-        label = (
-            f"{state.dot(colors)} {idx} {handle} "
-            f"[{colors.accent}]·{slug}·[/]{sfx}{mark}"
+        lead = (
+            attention_mark
+            if attention_mark and state is not AgentState.working
+            else state.dot(colors)
         )
+        label = f"{lead} {idx} {handle} [{colors.accent}]·{slug}·[/]{sfx}{mark}"
         self.update(f"[reverse] {label} [/reverse]" if active else f" {label} ")
 
     def on_click(self, event: events.Click) -> None:
@@ -316,7 +318,7 @@ class TabBar(HorizontalScroll):
 
     def set_tabs(self, items: list) -> None:
         if not items:
-            items = [(0, "no tabs", "", AgentState.ready, False, False, None)]
+            items = [(0, "no tabs", "", AgentState.ready, False, False, None, "")]
         self._items = items
         while len(self._cells) < len(items):
             cell = _TabCell(markup=True)
