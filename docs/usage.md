@@ -120,11 +120,18 @@ turn.
 Two surfaces read what a turn actually **did** — commits, files written,
 plan movement — rather than what it said about itself.
 
-- **A one-line recap** is made after every turn. It is the F10 list's
-  `did` line, and it lands in the transcript only after a turn that moved
-  the substrate.
-  `/recap` asks for the bigger version on demand: a building / done /
-  remaining block about the whole session.
+- **A recap** is made after every turn. It says three things at the level
+  of intent, never as an inventory of files, commits or ids: the **task**
+  the session is working toward, the **outcome** of the last turn (what got
+  solved, decided or delivered, in at most 20 words) and what comes
+  **next**. The outcome is the F10 list's `did` line and the transcript
+  block's body, with the task on a muted line under it. It reads the last
+  three turns and is told the previous task, so the task stays put while
+  the goal does. The model is asked to write in your language; that is a
+  request, not a guarantee.
+  `/recap` asks for the same three fields on demand over the last eight
+  turns, drawn as a labelled block. The `now` line in F3 and F10 is the
+  same recap for a turn still running, whose outcome is what it is doing.
 - **Every recap classifies its turn.** `? needs you` means the turn ended
   on a question or a decision for you, `✗ error` that something failed,
   `◆ review` that it left something for you to read, `⧗ waiting` that it
@@ -506,7 +513,7 @@ three lines, and no line is cut:
 
 **The detail** shows the selected session in full, in this order: its
 handle, attention and turn time; its title; where it works and for how
-long; **NOW** and **DID**; **MONITORS**, one bar per live monitor with its
+long; **TASK**, **NOW**, **DID** and **NEXT**; **MONITORS**, one bar per live monitor with its
 elapsed time and ETA (a monitor with no progress condition sweeps and says
 `no ETA`); **GAUGES** for context, plan and turn time against the
 session's average; **PLAN** with every task; **ACTIVITY**, the last three

@@ -1,6 +1,6 @@
 # One recap: task, outcome, next
 
-> **Status:** designed 2026-09-17 with Alex; not implemented. Changes the
+> **Status:** implemented 2026-09-17, per `docs/superpowers/plans/2026-09-17-aegis-unified-recap.md`. Changes the
 > recap schemas of `2026-09-17-aegis-turn-attention-design.md` and the `now`
 > line of `2026-09-17-aegis-fleet-dashboard-v2-design.md`. The probe behind
 > every choice here is `.playground/recap-abstract-probe/` (workspace

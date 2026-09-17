@@ -5,6 +5,15 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Changed
+
+- **The recap says what is being solved, not which files changed.** One
+  format for the end-of-turn recap, the `now` line and `/recap`: the task,
+  the outcome in at most 20 words, and what comes next, written at the level
+  of intent and never as a list of files, commits, ids or counts. The
+  previous task is handed back so it stays stable. `/recap` reads the last
+  eight turns instead of the whole conversation.
+
 ### Added
 
 - **Each turn says whether it needs you.** The end-of-turn recap classifies
