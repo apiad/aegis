@@ -32,6 +32,7 @@ class Rotator:
         self._cards: dict[str, CardView] = {}
         self._seen: dict[str, tuple] = {}
         self._seen_at: dict[str, float] = {}
+        self._shown: str | None = None
         self._shown_since: float = float("-inf")
 
     def touch(self, now: float) -> None:
@@ -73,6 +74,7 @@ class Rotator:
 
     def _show(self, handle: str, now: float) -> str:
         self._record(self._cards[handle], now)
+        self._shown = handle
         self._shown_since = now
         return handle
 
@@ -105,4 +107,11 @@ class Rotator:
     def countdown(self, now: float) -> float | None:
         if not self.is_auto(now):
             return None
-        return max(0.0, self.dwell_s - (now - self._shown_since))
+        current = self._shown if self._shown in self._cards else None
+        elapsed = now - self._shown_since
+        others = [c for h, c in self._cards.items() if h != current]
+        if any(self._rank(c) is not None for c in others):
+            return max(0.0, self.dwell_s - elapsed)
+        if any(c.state == "working" for c in others):
+            return max(0.0, self.cycle_s - elapsed)
+        return None

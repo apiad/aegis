@@ -50,13 +50,14 @@ def test_needs_input_beats_error_beats_a_new_did():
 
 def test_a_shown_session_is_not_new_until_it_changes_again():
     r = Rotator()
-    r.observe(snap(A), 0.0)
-    for c in (A,):
+    s = snap(A, B)
+    r.observe(s, 0.0)
+    for c in s.cards:
         r._record(c, 0.0)
-    r.observe(snap(replace(A, did="changed")), 1.0)
-    assert r.pick(30.0, current=None) == "a"
-    r.observe(snap(replace(A, did="changed")), 31.0)
-    assert r.pick(60.0, current="a") == "a"
+    r.observe(snap(replace(A, did="changed"), B), 1.0)
+    assert r.pick(30.0, current="b") == "a"
+    # B is back on screen past the dwell; A has not changed since it was shown.
+    assert r.pick(51.0, current="b") == "b"
 
 
 def test_with_nothing_new_it_cycles_working_sessions_every_thirty_seconds():
@@ -106,8 +107,46 @@ def test_countdown_is_none_outside_auto():
 
 def test_an_acked_category_is_not_new():
     r = Rotator()
-    s = snap(replace(A, attention="review"))
+    s = snap(replace(A, attention="review"), B)
     r.observe(s, 0.0)
-    r._record(s.cards[0], 0.0)
-    r.observe(snap(replace(A, attention="")), 1.0)
+    for c in s.cards:
+        r._record(c, 0.0)
+    r.observe(snap(replace(A, attention=""), B), 1.0)
     assert r._rank(r._cards["a"]) is None
+    r._show("b", 0.0)
+    assert r.pick(30.0, current="b") == "b"
+
+
+def test_countdown_runs_to_the_dwell_when_something_is_new():
+    r = Rotator()
+    s = snap(A, B)
+    r.observe(s, 0.0)
+    for c in s.cards:
+        r._record(c, 0.0)
+    r._show("a", 0.0)
+    r.observe(snap(A, replace(B, did="changed")), 1.0)
+    assert r.countdown(5.0) == 15.0
+    assert r.countdown(25.0) == 0.0
+
+
+def test_countdown_runs_to_the_cycle_when_only_working_sessions_step():
+    r = Rotator()
+    w2 = CardView(handle="w2", state="working", doing="q")
+    s = snap(A, W, w2)
+    r.observe(s, 0.0)
+    for c in s.cards:
+        r._record(c, 0.0)
+    r._show("w", 0.0)
+    assert r.countdown(10.0) == 20.0
+    assert r.countdown(25.0) == 5.0
+
+
+def test_countdown_is_none_while_holding():
+    r = Rotator()
+    s = snap(A, B)
+    r.observe(s, 0.0)
+    for c in s.cards:
+        r._record(c, 0.0)
+    r._show("a", 0.0)
+    assert r.countdown(25.0) is None
+    assert r.countdown(300.0) is None
