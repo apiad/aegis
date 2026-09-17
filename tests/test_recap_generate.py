@@ -4,7 +4,7 @@ import pytest
 from aegis.digest.models import CommitLine, RepoDelta, TurnFacts
 from aegis.drivers.oneshot import Generation
 from aegis.recap import (
-    Recap, SessionRecap, TurnRecap, recap_session, recap_turn,
+    SESSION_WINDOW, TURN_WINDOW, Recap, StandingRecap, recap_session, recap_turn,
 )
 
 
@@ -34,27 +34,31 @@ FACTS = TurnFacts(repos=(RepoDelta(name="aegis", files_written=2,
 
 @pytest.mark.asyncio
 async def test_turn_recap_returns_the_line():
-    d = FakeDriver(TurnRecap(line="Wrote the spec; 1 commit.", attention="done"))
+    d = FakeDriver(StandingRecap(task="Write the judge spec",
+                                 outcome="Wrote the spec.", next="Wire it.",
+                                 attention="done"))
     got = await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                            agent=object(), cwd=".")
     assert got.ok is True
-    assert got.line == "Wrote the spec; 1 commit."
-    assert got.text == "Wrote the spec; 1 commit."
+    assert got.line == "Wrote the spec."
+    assert got.text == "Wrote the spec."
+    assert got.task == "Write the judge spec"
+    assert got.next == "Wire it."
 
 
 @pytest.mark.asyncio
-async def test_turn_recap_asks_for_the_turn_schema():
-    d = FakeDriver(TurnRecap(line="x", attention="done"))
+async def test_turn_recap_asks_for_the_one_schema():
+    d = FakeDriver(StandingRecap(task="t", outcome="x", next="", attention="done"))
     await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                      agent=object(), cwd=".")
     schema, _ = d.calls[0]
-    assert schema is TurnRecap
+    assert schema is StandingRecap
 
 
 @pytest.mark.asyncio
 async def test_the_facts_are_in_the_prompt():
-    """The whole reason the recap can say '1 commit' at all."""
-    d = FakeDriver(TurnRecap(line="x", attention="done"))
+    """The guard against claiming work that did not happen."""
+    d = FakeDriver(StandingRecap(task="t", outcome="x", next="", attention="done"))
     await recap_turn(replay=FakeReplay(), facts=FACTS, driver=d,
                      agent=object(), cwd=".")
     _, instructions = d.calls[0]
@@ -63,14 +67,29 @@ async def test_the_facts_are_in_the_prompt():
 
 @pytest.mark.asyncio
 async def test_session_recap_returns_the_block():
-    d = FakeDriver(SessionRecap(building="the judge", done="the spec",
-                                remaining="the wiring"))
+    d = FakeDriver(StandingRecap(task="the judge", outcome="the spec",
+                                 next="the wiring", attention="waiting"))
     got = await recap_session(replay=FakeReplay(), facts=FACTS, driver=d,
                               agent=object(), cwd=".")
     assert got.ok is True
-    assert got.building == "the judge"
-    assert "the judge" in got.text and "the wiring" in got.text
-    assert got.line == ""
+    assert (got.task, got.line, got.next) == ("the judge", "the spec", "the wiring")
+    assert "the judge" in got.block and "the wiring" in got.block
+
+
+@pytest.mark.asyncio
+async def test_the_turn_and_session_recaps_differ_only_in_window(monkeypatch):
+    import aegis.recap as recap
+
+    seen = []
+    real = recap.assemble
+    monkeypatch.setattr(recap, "assemble",
+                        lambda replay, **opts: seen.append(opts) or real(replay, **opts))
+    v = StandingRecap(task="t", outcome="x", next="", attention="done")
+    d = FakeDriver(v)
+    await recap_turn(replay=[], facts=FACTS, driver=d, agent=object(), cwd=".")
+    await recap_session(replay=[], facts=FACTS, driver=d, agent=object(), cwd=".")
+    assert seen == [TURN_WINDOW, SESSION_WINDOW]
+    assert d.calls[0][1][0] == d.calls[1][1][0]
 
 
 @pytest.mark.asyncio
@@ -102,23 +121,20 @@ def test_footer_carries_the_price():
 def test_the_session_block_renders_as_separate_lines():
     """It goes through rich Markdown, which collapses single newlines.
 
-    A plain newline join drew as one run-on paragraph — "building: x
-    done: y remaining: z" — while every substring assertion still passed.
-    Assert on the RENDERED output, not on `text`.
+    A plain newline join drew as one run-on paragraph — "task: x
+    outcome: y next: z" — while every substring assertion still passed.
+    Assert on the RENDERED output, not on `block`.
     """
     from rich.console import Console
 
-    from aegis.render import render_recap
-    from aegis.themes import aegis_colors
-    from aegis.tui.themes import THEMES
+    from rich.markdown import Markdown
 
-    r = Recap(building="the judge", done="the spec",
-              remaining="the wiring", ok=True)
+    r = Recap(task="the judge", line="the spec", next="the wiring", ok=True)
     console = Console(width=76, no_color=True)
     with console.capture() as cap:
-        console.print(render_recap(r, aegis_colors(THEMES["ink"])))
+        console.print(Markdown(r.block))
     body = [ln.strip() for ln in cap.get().splitlines() if ln.strip()]
-    # One line each for building / done / remaining, not one paragraph.
+    # One line each for task / outcome / next, not one paragraph.
     assert sum("the judge" in ln for ln in body) == 1
     joined = [ln for ln in body if "the judge" in ln][0]
     assert "the spec" not in joined and "the wiring" not in joined

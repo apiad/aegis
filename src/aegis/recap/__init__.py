@@ -1,8 +1,13 @@
 """`/recap` — where this turn, or this session, actually stands.
 
-Two schemas rather than one with optional fields: the automatic recap is
-one line about a turn, `/recap` is a short block about a session, and a
-schema serving two masters degrades both.
+One schema, one prompt, three windows. The turn recap, the mid-turn recap
+and `/recap` answer the same question — what the session is working
+toward, what just came of it, what is left — at three window sizes, so
+they share ``StandingRecap`` and ``SYSTEM``; only the window changes, and
+the mid-turn call adds that the turn is still running. The prompt speaks
+at the level of intent and outcome because the earlier ones asked for
+files and counts and got an inventory (see the unified-recap spec,
+2026-09-17).
 
 Gating lives in ``aegis.recap.gate``, not here — this module only knows
 how to ask. Best-effort by contract, like ``titlegen``: every failure
@@ -21,48 +26,43 @@ from aegis.digest.models import TurnFacts
 from aegis.digest.render import render_facts
 
 # Measured 2026-08-26: the window is NOT the cost — the prefix is (21,445
-# tokens before --setting-sources "", 6,926 after). A tight window buys
-# little, so this is sized for relevance rather than thrift: one turn is
-# what an end-of-turn line is about.
-TURN_WINDOW = dict(max_turns=1, budget_tokens=2_000, item_chars=200)
+# tokens before --setting-sources "", 6,926 after). Sized for relevance:
+# three turns keep the goal in view, measured at $0.016 per call
+# (2026-09-17 abstract-recap probe).
+TURN_WINDOW = dict(max_turns=3, budget_tokens=3_000, item_chars=300)
 
 # Sized for relevance rather than thrift. Measured 2026-09-16 on a real
 # 61-turn transcript: this window is ~2,600 tokens, and the whole call cost
 # 4,902 input tokens / $0.0162 from an empty directory ($0.0073 once the
 # prefix is cached), so the window is about half the input and most of a
-# cached call's cost. It stays this size anyway: a synthetic probe earlier
-# that day squeezed the window and got terser lines that named no files.
+# cached call's cost.
 IN_FLIGHT_WINDOW = dict(max_turns=2, budget_tokens=2_500, item_chars=240)
 
+# `/recap` is not the whole conversation: eight turns, measured at $0.035.
+SESSION_WINDOW = dict(max_turns=8, budget_tokens=8_000, item_chars=300)
 
-class TurnRecap(BaseModel):
-    line: str = Field(
-        description="ONE line, past tense, concrete. Name "
-        "files and counts. No preamble."
+
+class StandingRecap(BaseModel):
+    task: str = Field(
+        description="What the session is working toward, as a goal a person "
+        "would name in one short phrase. Not a file, not a command."
+    )
+    outcome: str = Field(
+        description="ONE sentence, at most 20 words: what was just solved, "
+        "decided, delivered or learned, at the level of the goal. No file "
+        "names, hashes, task ids, test counts or tool names unless that name "
+        "is the subject itself."
+    )
+    next: str = Field(
+        description="ONE short sentence: what is left, or what the session is "
+        "waiting for. Empty if nothing."
     )
     attention: Literal["needs_input", "error", "review", "waiting", "done"] = Field(
         description="needs_input: the turn ended on a question or a decision "
-        "for the operator. error: something failed. review: the turn presents "
+        "for the operator. error: something failed. review: it presents "
         "something for the operator to read, without waiting on it. waiting: "
-        "the agent waits on a monitor, a queue, a subagent or CI, not on the "
+        "it waits on a monitor, a queue, a subagent or CI, not on the "
         "operator. done: it reports finished work and needs nothing."
-    )
-
-
-class SessionRecap(BaseModel):
-    building: str = Field(description="what the session is working toward")
-    done: str = Field(description="what has actually landed")
-    remaining: str = Field(description="what is left")
-
-
-class FleetRecap(BaseModel):
-    done: str = Field(
-        description="ONE line, past tense: the last thing that "
-        "actually landed. Name files and counts. No preamble."
-    )
-    doing: str = Field(
-        description="ONE line, present tense: what the turn "
-        "currently running is working on."
     )
 
 
@@ -70,11 +70,10 @@ class FleetRecap(BaseModel):
 class Recap:
     """One recap, and what it cost."""
 
+    # The outcome. Named `line` because persisted `RecapNote`s already are.
     line: str = ""
-    building: str = ""
-    done: str = ""
-    doing: str = ""
-    remaining: str = ""
+    task: str = ""
+    next: str = ""
     attention: str = ""
     header: str = ""
     model: str = ""
@@ -85,28 +84,21 @@ class Recap:
 
     @property
     def text(self) -> str:
-        """The rendered body.
+        """The outcome: the body of a turn or mid-turn recap."""
+        return self.line
 
-        The session form is a **markdown list**, not newline-joined lines.
-        It is rendered through ``rich.markdown.Markdown``, which collapses
-        single newlines into spaces — so the plain-join version drew as one
-        run-on paragraph ("building: x done: y remaining: z") while every
-        substring assertion about it still passed. Caught by looking at the
-        rendered block rather than at ``text``.
-        """
-        if self.line:
-            return self.line
-        if not (self.building or self.done or self.doing or self.remaining):
-            return ""
+    @property
+    def block(self) -> str:
+        """`/recap`'s body: a markdown list, because Rich's Markdown joins
+        single newlines into one paragraph."""
         return "\n".join(
-            x
-            for x in (
-                f"- **building:** {self.building}" if self.building else "",
-                f"- **done:** {self.done}" if self.done else "",
-                f"- **doing:** {self.doing}" if self.doing else "",
-                f"- **remaining:** {self.remaining}" if self.remaining else "",
+            f"- **{name}:** {value}"
+            for name, value in (
+                ("task", self.task),
+                ("outcome", self.line),
+                ("next", self.next),
             )
-            if x
+            if value
         )
 
     @property
@@ -125,35 +117,39 @@ class Recap:
         return " · ".join(bits)
 
 
-_TURN_SYSTEM = (
-    "You write a single line saying what a coding agent's last turn did. "
-    "Past tense, concrete, no preamble, no praise. Prefer the FACTS block "
-    "over the agent's own narration — the agent describes what it meant "
-    "to do; the facts say what landed. Name files and counts."
-    " Also classify the turn's attention as one of needs_input, error, "
-    "review, waiting, done. A question to the operator is needs_input even "
-    "when the turn also landed work."
+SYSTEM = (
+    "You tell an operator, glancing at a dashboard, where a coding agent's "
+    "session stands. Speak at the level of intent and outcome: the problem "
+    "being solved, what got solved or decided, what is left. Never list "
+    "files, commits, hashes, task ids, ports, test counts, finding counts or "
+    "tool calls, and avoid numbers unless the number is the point (a budget "
+    "that ran out, a deadline). The FACTS block is only a guard against "
+    "claiming work that did not happen; do not report its contents. Prefer "
+    "what actually happened over what the agent said it would do. "
+    "LANGUAGE: write every field in the language of the operator's own "
+    "messages (the lines marked as the user), even when the agent answers in "
+    "another language. `task` names the goal, never a state like waiting. "
+    "`outcome` is at most 20 words. No preamble, no praise. A question to the "
+    "operator is needs_input even when the turn also landed work."
 )
 
-_SESSION_SYSTEM = (
-    "You summarize where a coding session stands, for an operator "
-    "returning to it. Three short fields: what is being built, what has "
-    "landed, what is left. Prefer the FACTS block over the agent's own "
-    "narration. No preamble, no praise."
-)
-
-_IN_FLIGHT_SYSTEM = (
-    "You say where a coding agent stands in the middle of a turn that has "
-    "not finished, for an operator glancing at a dashboard. Two fields: the "
-    "last thing that actually landed (past tense), and what the running "
-    "turn is doing now (present tense). Prefer the FACTS block over the "
-    "agent's own narration — the agent describes what it means to do; the "
-    "facts say what landed. Name files and counts. No preamble, no praise."
+IN_FLIGHT_ADDENDUM = (
+    " The turn is still running: `outcome` is what it is doing right now, "
+    "in the present tense."
 )
 
 
 async def _one(
-    schema, system, *, replay, facts, driver, agent, cwd, window_opts, on_driver=None
+    system,
+    *,
+    replay,
+    facts,
+    driver,
+    agent,
+    cwd,
+    window_opts,
+    previous_task: str = "",
+    on_driver=None,
 ) -> Recap:
     header = ""
     try:
@@ -163,18 +159,23 @@ async def _one(
         # input than the persisted replays the turn recap reads.
         window = assemble(replay, **window_opts)
         header = window.header
+        instructions = [
+            f"--- conversation ({window.header or 'no turns yet'}) ---\n"
+            f"{window.text}\n--- end ---",
+            render_facts(facts),
+        ]
+        if previous_task:
+            # Measured: without it, `task` wanders between phrasings of the
+            # same goal on consecutive turns.
+            instructions.append(
+                f"Previous task: {previous_task} — keep it unless the goal changed."
+            )
         if on_driver is not None:
             # No await between this and the call: a cancel from here on
             # lands inside the driver, where a started call is paid for.
             on_driver()
         gen = await driver.generate_detailed(
-            agent,
-            cwd,
-            schema,
-            system,
-            f"--- conversation ({window.header or 'no turns yet'}) ---\n"
-            f"{window.text}\n--- end ---",
-            render_facts(facts),
+            agent, cwd, StandingRecap, system, *instructions
         )
     except Exception as e:  # noqa: BLE001
         return Recap(header=header, error=f"{type(e).__name__}: {e}")
@@ -188,12 +189,10 @@ async def _one(
         )
     v = gen.value
     return Recap(
-        line=getattr(v, "line", ""),
-        building=getattr(v, "building", ""),
-        done=getattr(v, "done", ""),
-        doing=getattr(v, "doing", ""),
-        remaining=getattr(v, "remaining", ""),
-        attention=getattr(v, "attention", ""),
+        line=v.outcome,
+        task=v.task,
+        next=v.next,
+        attention=v.attention,
         header=window.header,
         model=gen.model,
         duration_ms=gen.duration_ms,
@@ -202,51 +201,62 @@ async def _one(
     )
 
 
-async def recap_turn(*, replay, facts: TurnFacts, driver, agent, cwd: str) -> Recap:
-    """One line about the turn that just ended."""
+async def recap_turn(
+    *, replay, facts: TurnFacts, driver, agent, cwd: str, previous_task: str = ""
+) -> Recap:
+    """Where the session stands after the turn that just ended."""
     return await _one(
-        TurnRecap,
-        _TURN_SYSTEM,
+        SYSTEM,
         replay=replay,
         facts=facts,
         driver=driver,
         agent=agent,
         cwd=cwd,
         window_opts=TURN_WINDOW,
+        previous_task=previous_task,
     )
 
 
-async def recap_session(*, replay, facts: TurnFacts, driver, agent, cwd: str) -> Recap:
-    """A short block about where the session stands."""
+async def recap_session(
+    *, replay, facts: TurnFacts, driver, agent, cwd: str, previous_task: str = ""
+) -> Recap:
+    """Where the session stands, over a wider window, for `/recap`."""
     return await _one(
-        SessionRecap,
-        _SESSION_SYSTEM,
+        SYSTEM,
         replay=replay,
         facts=facts,
         driver=driver,
         agent=agent,
         cwd=cwd,
-        window_opts={},
+        window_opts=SESSION_WINDOW,
+        previous_task=previous_task,
     )
 
 
 async def recap_in_flight(
-    *, replay, facts: TurnFacts, driver, agent, cwd: str, on_driver=None
+    *,
+    replay,
+    facts: TurnFacts,
+    driver,
+    agent,
+    cwd: str,
+    previous_task: str = "",
+    on_driver=None,
 ) -> Recap:
-    """Two lines about a turn still running: what landed, what it is doing.
+    """Where a turn still running stands: its outcome is what it is doing.
 
     ``on_driver`` is called just before the driver is, so a caller that
     cancels can tell a paid call from one that never started.
     """
     return await _one(
-        FleetRecap,
-        _IN_FLIGHT_SYSTEM,
+        SYSTEM + IN_FLIGHT_ADDENDUM,
         replay=replay,
         facts=facts,
         driver=driver,
         agent=agent,
         cwd=cwd,
         window_opts=IN_FLIGHT_WINDOW,
+        previous_task=previous_task,
         on_driver=on_driver,
     )
 
@@ -311,6 +321,7 @@ async def recap_for(
     cwd: str,
     session_scope: bool,
     root=None,
+    previous_task: str = "",
 ) -> Recap:
     """Resolve driver + billing profile + transcript, then ask."""
     got = await _resolve(
@@ -320,7 +331,14 @@ async def recap_for(
         return got
     driver, gen_agent, replay = got
     fn = recap_session if session_scope else recap_turn
-    return await fn(replay=replay, facts=facts, driver=driver, agent=gen_agent, cwd=cwd)
+    return await fn(
+        replay=replay,
+        facts=facts,
+        driver=driver,
+        agent=gen_agent,
+        cwd=cwd,
+        previous_task=previous_task,
+    )
 
 
 async def recap_in_flight_for(
@@ -332,6 +350,7 @@ async def recap_in_flight_for(
     agents: dict | None,
     cwd: str,
     root=None,
+    previous_task: str = "",
     on_driver=None,
 ) -> Recap:
     """``recap_for`` for a turn still running: same billing, same transcript.
@@ -356,5 +375,6 @@ async def recap_in_flight_for(
         driver=driver,
         agent=gen_agent,
         cwd=cwd,
+        previous_task=previous_task,
         on_driver=on_driver,
     )

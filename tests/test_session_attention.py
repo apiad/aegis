@@ -165,9 +165,9 @@ def test_the_recap_schema_lists_exactly_the_categories():
     from typing import get_args
 
     from aegis.attention import CATEGORIES
-    from aegis.recap import TurnRecap
+    from aegis.recap import StandingRecap
 
-    assert set(get_args(TurnRecap.model_fields["attention"].annotation)) == set(CATEGORIES)
+    assert set(get_args(StandingRecap.model_fields["attention"].annotation)) == set(CATEGORIES)
 
 
 def test_a_result_after_the_last_note_makes_the_note_stale(tmp_path):
