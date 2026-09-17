@@ -168,3 +168,118 @@ def test_the_recap_schema_lists_exactly_the_categories():
     from aegis.recap import TurnRecap
 
     assert set(get_args(TurnRecap.model_fields["attention"].annotation)) == set(CATEGORIES)
+
+
+def test_a_result_after_the_last_note_makes_the_note_stale(tmp_path):
+    _, fresh = _brain(tmp_path, _Harness())
+    fresh.recap_enabled = False
+    fresh.rehydrate_card(
+        [
+            Result(duration_ms=1, is_error=False),
+            RecapNote(line="which one?", attention="needs_input"),
+            Result(duration_ms=1, is_error=True),
+        ],
+        [1.0, 2.0, 3.0],
+    )
+    assert fresh.attention == "error"
+
+
+def test_an_answered_question_does_not_come_back_after_a_restart(tmp_path):
+    _, fresh = _brain(tmp_path, _Harness())
+    fresh.recap_enabled = False
+    fresh.rehydrate_card(
+        [
+            RecapNote(line="which one?", attention="needs_input"),
+            Result(duration_ms=1, is_error=False),
+        ],
+        [1.0, 2.0],
+    )
+    assert fresh.attention == "done"
+
+
+def test_a_restored_done_is_not_pending_in_a_fresh_view(tmp_path):
+    _, fresh = _brain(tmp_path, _Harness())
+    fresh.rehydrate_card(
+        [Result(duration_ms=1, is_error=False), RecapNote(line="x", attention="done")],
+        [1.0, 2.0],
+    )
+    assert fresh.attention == "done"
+    assert fresh.attention_seq == 0
+
+
+def test_a_restored_question_is_still_pending_in_a_fresh_view(tmp_path):
+    _, fresh = _brain(tmp_path, _Harness())
+    fresh.rehydrate_card(
+        [Result(duration_ms=1, is_error=False), RecapNote(line="x", attention="needs_input")],
+        [1.0, 2.0],
+    )
+    assert fresh.attention_seq == 1
+
+
+@pytest.mark.asyncio
+async def test_a_recap_agreeing_with_the_hard_category_does_not_bump_again(
+    tmp_path, monkeypatch
+):
+    _, s = _brain(tmp_path, _Harness())
+    _model_says(monkeypatch, "done")
+    await _turn(s, monkeypatch)
+    assert s.attention == "done"
+    assert s.attention_seq == 1
+
+
+@pytest.mark.asyncio
+async def test_the_resume_recap_is_never_drawn(tmp_path, monkeypatch):
+    _, s = _brain(tmp_path, _Harness())
+    drawn = []
+    s.add_recap_observer(lambda _s, r: drawn.append(r))
+    _model_says(monkeypatch, "needs_input")
+    s.rehydrate_card([Result(duration_ms=1, is_error=False)], [1.0])
+    await s._recap_task
+    assert drawn == []
+    assert s.attention == "needs_input"
+    notes = [e for e in replay_events(s.state_dir, s.log_id).events if isinstance(e, RecapNote)]
+    assert [n.attention for n in notes] == ["needs_input"]
+
+
+@pytest.mark.asyncio
+async def test_the_resume_recap_knows_the_last_turn_errored(tmp_path, monkeypatch):
+    _, s = _brain(tmp_path, _Harness())
+    _model_says(monkeypatch, "done")
+    s.rehydrate_card([Result(duration_ms=1, is_error=True)], [1.0])
+    await s._recap_task
+    assert s.attention == "error"
+
+
+@pytest.mark.asyncio
+async def test_the_hard_category_is_set_before_the_turn_end_state(tmp_path, monkeypatch):
+    _, s = _brain(tmp_path, _Harness())
+    s.attention = "needs_input"
+    seen = []
+    s.add_state_observer(
+        lambda _s, state, finished: finished and seen.append(_s.attention)
+    )
+    _model_says(monkeypatch, "done")
+    await _turn(s, monkeypatch)
+    assert seen == ["done"]
+
+
+@pytest.mark.asyncio
+async def test_a_turn_with_no_result_is_an_error_before_the_state(tmp_path, monkeypatch):
+    class _Silent(_Harness):
+        async def events(self):
+            return
+            yield
+
+    _, s = _brain(tmp_path, _Silent())
+    seen = []
+    s.add_state_observer(
+        lambda _s, state, finished: finished and seen.append(_s.attention)
+    )
+    _model_says(monkeypatch, "done")
+
+    async def build(**_kw):
+        return TurnFacts()
+
+    monkeypatch.setattr(s.digest, "build", build)
+    await s._run_turn("go")  # send_and_wait would wait for a Result forever
+    assert seen == ["error"]

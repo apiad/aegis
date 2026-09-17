@@ -2986,14 +2986,15 @@ class ConversationPane(Widget):
         bar.refresh_model(self._sidebar_model())
 
     def _state_label(self, core) -> str:
-        from aegis.attention import LABELS, is_pending
+        from aegis.attention import GLYPHS, LABELS
 
+        # Not filtered by the ack: the sidebar lives on the active pane,
+        # whose tab the tab bar acks every tick, so pending-ness would hide
+        # everything but ``waiting``. The ack is the tab mark's business.
         label = core.state.label
         category = getattr(core, "effective_attention", "") or ""
-        if core.state is AgentState.ready and is_pending(
-            category, getattr(core, "attention_seq", 0), self.attention_acked
-        ):
-            label = f"{label} · {LABELS[category]}"
+        if core.state is AgentState.ready and category in GLYPHS and category != "done":
+            label = f"{label} · {GLYPHS[category]} {LABELS[category]}"
         return label
 
     def _sidebar_model(self) -> SidebarModel:

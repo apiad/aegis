@@ -22,6 +22,15 @@ LABELS: dict[str, str] = {
     "done": "done",
 }
 
+# The marks without their styling, for plain-text places like the sidebar.
+GLYPHS: dict[str, str] = {
+    "needs_input": "?",
+    "error": "✗",
+    "review": "◆",
+    "waiting": "⧗",
+    "done": "✓",
+}
+
 
 def resolve(model: str | None, *, errored: bool, ephemeral: bool, waiting: bool) -> str:
     """The category a turn ends with. See the spec's precedence list."""

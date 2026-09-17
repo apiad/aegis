@@ -697,6 +697,8 @@ class AgentSession:
 
     async def _run_turn(self, text: str) -> None:
         """Unified path. Runs hooks, then harness, then observers."""
+        from aegis.attention import resolve
+
         # Substrate notices ride the turn rather than starting one. This is
         # the unified path — a typed message, an inbox batch, a monitor
         # callback, a loop tick and a reminder all arrive here — so the
@@ -755,8 +757,8 @@ class AgentSession:
             self._fire_event(fake_text)
             self._fire_event(res)
             self.metrics.commit(None, self._now())
-            self._emit_state(AgentState.ready, finished=True)
             self._set_attention("error")
+            self._emit_state(AgentState.ready, finished=True)
             self._chain_if_pending()
             return
 
@@ -822,6 +824,17 @@ class AgentSession:
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True
                     turn_errored = bool(ev.is_error)
+                    # The hard category before the turn-end state, so the
+                    # tab bar never repaints with the previous turn's; the
+                    # recap refines it, and a failed recap leaves it be.
+                    self._set_attention(
+                        resolve(
+                            None,
+                            errored=turn_errored,
+                            ephemeral=self.origin.ephemeral,
+                            waiting=self._waiting(),
+                        )
+                    )
                     self._emit_state(
                         AgentState.error if ev.is_error else AgentState.ready,
                         finished=True,
@@ -845,15 +858,16 @@ class AgentSession:
                 flush=True,
             )
             traceback.print_exception(e, file=sys.stderr)
+            self._set_attention("error")
             if not saw_result:
                 self.metrics.commit(None, self._now())
                 self._emit_state(AgentState.error, finished=True)
-            self._set_attention("error")
             self._chain_if_pending()
             return
 
         if not saw_result:
             self.metrics.commit(None, self._now())
+            self._set_attention("error")
             self._emit_state(AgentState.error, finished=True)
             turn_errored = True
 
@@ -875,18 +889,6 @@ class AgentSession:
                 self.on_facts(self, facts)
             except Exception:  # noqa: BLE001
                 log.exception("on_facts observer raised")
-        # The hard category first, so a refused or failed recap never leaves
-        # the previous turn's category behind; the recap refines it.
-        from aegis.attention import resolve
-
-        self._set_attention(
-            resolve(
-                None,
-                errored=turn_errored,
-                ephemeral=self.origin.ephemeral,
-                waiting=self._waiting(),
-            )
-        )
         self._maybe_recap(facts, errored=turn_errored)
 
         # 5. Post-turn hooks (fire-and-forget)
@@ -1011,9 +1013,12 @@ class AgentSession:
         cfg = self._generation_config()
         return FleetConfig() if cfg is None else cfg.fleet
 
-    def _set_attention(self, category: str) -> None:
+    def _set_attention(self, category: str, *, bump: bool = True) -> None:
+        """``bump`` makes the category pending in every view. A ``done``
+        restored on resume does not bump: nothing new happened."""
         self.attention = category
-        self.attention_seq += 1
+        if bump:
+            self.attention_seq += 1
 
     def _waiting(self) -> bool:
         probe = self.wait_probe
@@ -1051,7 +1056,11 @@ class AgentSession:
             self._recap_task.cancel()
         self._recap_task = None
 
-    async def _run_recap(self, facts, *, draw: bool, errored: bool = False) -> None:
+    async def _run_recap(
+        self, facts, *, draw: bool, errored: bool = False, resumed: bool = False
+    ) -> None:
+        """``resumed`` is the recap a restart pays for a log with no note:
+        the transcript is a replay, so it is never drawn."""
         from dataclasses import replace
 
         from aegis.attention import resolve
@@ -1087,9 +1096,14 @@ class AgentSession:
             and category == self.attention
         ):
             return
-        self._set_attention(category)
+        # A recap agreeing with the hard category is not news to a view
+        # that already saw it.
+        if category != self.attention:
+            self._set_attention(category, bump=not (resumed and category == "done"))
         self._last_recap_line = recap.line
         self._persist_recap(recap.line, category)
+        if resumed:
+            return
         if draw or category != "done":
             self._emit_recap(replace(recap, attention=category))
 
@@ -1327,12 +1341,20 @@ class AgentSession:
         last_line = ""
         last_attention = ""
         saw_result = False
+        last_errored = False
+        # A Result after the last note means a turn ended without writing
+        # one (a blocked hook, a harness error, a refused recap), so the
+        # note's category is stale and the Result decides.
+        result_after_note = False
         for i, ev in enumerate(events):
             if isinstance(ev, RecapNote):
                 last_line = ev.line
                 last_attention = ev.attention
+                result_after_note = False
             elif isinstance(ev, Result):
                 saw_result = True
+                last_errored = bool(ev.is_error)
+                result_after_note = True
                 self.metrics.commit(ev.usage, self._now())
                 continue
             elif isinstance(ev, ToolUse):
@@ -1352,14 +1374,18 @@ class AgentSession:
         self.metrics.cancel_turn(self._now())
         if last_line:
             self._last_recap_line = last_line
-            self._set_attention(last_attention)
+            if result_after_note:
+                last_attention = "error" if last_errored else "done"
+            self._set_attention(last_attention, bump=last_attention != "done")
         elif saw_result and self._agents is not None and self.recap_enabled:
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
                 return  # no loop to run the call on; the next turn recaps
             self._recap_task = asyncio.create_task(
-                self._run_recap(TurnFacts(), draw=False)
+                self._run_recap(
+                    TurnFacts(), draw=False, errored=last_errored, resumed=True
+                )
             )
 
     def rehydrate_plan(self, events, stamps) -> None:

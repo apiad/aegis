@@ -96,11 +96,40 @@ async def test_a_tick_during_teardown_finds_no_tab_bar_and_does_nothing():
         del app.query_one
 
 
-def test_the_sidebar_state_names_a_pending_category_until_acked():
+def test_the_sidebar_state_names_the_category_whether_or_not_acked():
     core = SimpleNamespace(
         state=AgentState.ready, effective_attention="needs_input", attention_seq=1
     )
     pane = SimpleNamespace(attention_acked=0)
-    assert ConversationPane._state_label(pane, core) == "idle · needs you"
-    pane.attention_acked = 1
-    assert ConversationPane._state_label(pane, core) == "idle"
+    assert ConversationPane._state_label(pane, core) == "idle · ? needs you"
+    pane.attention_acked = 1  # the tab bar acks the active tab every tick
+    assert ConversationPane._state_label(pane, core) == "idle · ? needs you"
+
+
+@pytest.mark.parametrize(
+    "category, tail", [("error", " · ✗ error"), ("review", " · ◆ review"),
+                       ("waiting", " · ⧗ waiting"), ("done", ""), ("", "")]
+)
+def test_the_sidebar_state_per_category(category, tail):
+    core = SimpleNamespace(state=AgentState.ready, effective_attention=category, attention_seq=1)
+    pane = SimpleNamespace(attention_acked=1)
+    assert ConversationPane._state_label(pane, core) == "idle" + tail
+
+
+def test_a_working_session_state_names_no_category():
+    core = SimpleNamespace(state=AgentState.working, effective_attention="error", attention_seq=1)
+    pane = SimpleNamespace(attention_acked=0)
+    assert ConversationPane._state_label(pane, core) == AgentState.working.label
+
+
+def test_acking_in_one_view_leaves_it_pending_in_another():
+    from aegis.tui.app import _attention_mark
+
+    core = SimpleNamespace(effective_attention="needs_input", attention_seq=1)
+    here = SimpleNamespace(_core=core, attention_acked=0)
+    there = SimpleNamespace(_core=core, attention_acked=0)
+
+    assert _attention_mark(here, True, C, False) == ""
+    assert here.attention_acked == 1
+    assert _attention_mark(there, False, C, False) != ""
+    assert there.attention_acked == 0
