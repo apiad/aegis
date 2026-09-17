@@ -195,6 +195,13 @@ class AgentSession:
         self._recap_task: asyncio.Task | None = None
         self._last_recap_line = ""
         self._card_rehydrated = False
+        # The last finished turn's attention category (aegis.attention),
+        # and a counter a view compares with what it has shown.
+        self.attention = ""
+        self.attention_seq = 0
+        # Set by SessionManager: does this session wait on a monitor, a
+        # queue callback or a session it spawned? None when nothing wires it.
+        self.wait_probe = None
         # The fleet dashboard's mid-turn recap. Paid, so it runs only while
         # a client watches this session (`fleet.recap: watched`): the
         # periodic check is armed by the first watcher and cancelled by the
@@ -749,6 +756,7 @@ class AgentSession:
             self._fire_event(res)
             self.metrics.commit(None, self._now())
             self._emit_state(AgentState.ready, finished=True)
+            self._set_attention("error")
             self._chain_if_pending()
             return
 
@@ -764,6 +772,7 @@ class AgentSession:
 
         # 3. Execution
         saw_result = False
+        turn_errored = False
         assistant_text_parts: list[str] = []
         # The digest's tail, excluding subagent narration. Kept apart from
         # assistant_text_parts, which PostTurnEvent consumes with its own
@@ -812,6 +821,7 @@ class AgentSession:
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True
+                    turn_errored = bool(ev.is_error)
                     self._emit_state(
                         AgentState.error if ev.is_error else AgentState.ready,
                         finished=True,
@@ -838,12 +848,14 @@ class AgentSession:
             if not saw_result:
                 self.metrics.commit(None, self._now())
                 self._emit_state(AgentState.error, finished=True)
+            self._set_attention("error")
             self._chain_if_pending()
             return
 
         if not saw_result:
             self.metrics.commit(None, self._now())
             self._emit_state(AgentState.error, finished=True)
+            turn_errored = True
 
         # 4. Turn facts — best-effort, never raises into the turn.
         try:
@@ -863,7 +875,19 @@ class AgentSession:
                 self.on_facts(self, facts)
             except Exception:  # noqa: BLE001
                 log.exception("on_facts observer raised")
-        self._maybe_recap(facts)
+        # The hard category first, so a refused or failed recap never leaves
+        # the previous turn's category behind; the recap refines it.
+        from aegis.attention import resolve
+
+        self._set_attention(
+            resolve(
+                None,
+                errored=turn_errored,
+                ephemeral=self.origin.ephemeral,
+                waiting=self._waiting(),
+            )
+        )
+        self._maybe_recap(facts, errored=turn_errored)
 
         # 5. Post-turn hooks (fire-and-forget)
         post_ev = PostTurnEvent(
@@ -987,7 +1011,28 @@ class AgentSession:
         cfg = self._generation_config()
         return FleetConfig() if cfg is None else cfg.fleet
 
-    def _maybe_recap(self, facts) -> None:
+    def _set_attention(self, category: str) -> None:
+        self.attention = category
+        self.attention_seq += 1
+
+    def _waiting(self) -> bool:
+        probe = self.wait_probe
+        if probe is None:
+            return False
+        try:
+            return bool(probe())
+        except Exception:  # noqa: BLE001 — a probe must never take a turn
+            log.exception("wait probe raised; treating as not waiting")
+            return False
+
+    @property
+    def effective_attention(self) -> str:
+        """``waiting`` holds only while the wait does."""
+        if self.attention == "waiting" and not self._waiting():
+            return "done"
+        return self.attention
+
+    def _maybe_recap(self, facts, *, errored: bool = False) -> None:
         """Fire a recap without making the turn wait for it. Every turn
         gets one; only a turn that moved the substrate draws it."""
         if self._agents is None:
@@ -996,7 +1041,7 @@ class AgentSession:
             return
         self._cancel_recap()
         self._recap_task = asyncio.create_task(
-            self._run_recap(facts, draw=should_draw_recap(facts))
+            self._run_recap(facts, draw=should_draw_recap(facts), errored=errored)
         )
 
     def _cancel_recap(self) -> None:
@@ -1006,7 +1051,11 @@ class AgentSession:
             self._recap_task.cancel()
         self._recap_task = None
 
-    async def _run_recap(self, facts, *, draw: bool) -> None:
+    async def _run_recap(self, facts, *, draw: bool, errored: bool = False) -> None:
+        from dataclasses import replace
+
+        from aegis.attention import resolve
+
         try:
             recap = await recap_for(
                 state_dir=self.state_dir,
@@ -1025,16 +1074,26 @@ class AgentSession:
             return
         if not recap.ok or not recap.line:
             return
-        # The identity guard: a line identical to the last one is noise,
+        category = resolve(
+            recap.attention,
+            errored=errored,
+            ephemeral=self.origin.ephemeral,
+            waiting=self._waiting(),
+        )
+        # The identity guard: the same line with the same category is noise,
         # which is the #56346 failure arriving by another road.
-        if recap.line.strip() == self._last_recap_line.strip():
+        if (
+            recap.line.strip() == self._last_recap_line.strip()
+            and category == self.attention
+        ):
             return
+        self._set_attention(category)
         self._last_recap_line = recap.line
-        self._persist_recap(recap.line)
-        if draw:
-            self._emit_recap(recap)
+        self._persist_recap(recap.line, category)
+        if draw or category != "done":
+            self._emit_recap(replace(recap, attention=category))
 
-    def _persist_recap(self, line: str) -> None:
+    def _persist_recap(self, line: str, attention: str) -> None:
         """Keep the line in the session log, so a restart can put it back
         on the card without paying for it again. A separate O_APPEND write,
         like the close marker: records cannot interleave with the event
@@ -1043,7 +1102,9 @@ class AgentSession:
         from aegis.state.session_log import append_event
 
         try:
-            append_event(self.state_dir, self.log_id, RecapNote(line=line))
+            append_event(
+                self.state_dir, self.log_id, RecapNote(line=line, attention=attention)
+            )
         except Exception:  # noqa: BLE001
             log.exception("could not persist the recap; continuing")
 
@@ -1264,10 +1325,12 @@ class AgentSession:
         from aegis.events import RecapNote
 
         last_line = ""
+        last_attention = ""
         saw_result = False
         for i, ev in enumerate(events):
             if isinstance(ev, RecapNote):
                 last_line = ev.line
+                last_attention = ev.attention
             elif isinstance(ev, Result):
                 saw_result = True
                 self.metrics.commit(ev.usage, self._now())
@@ -1289,6 +1352,7 @@ class AgentSession:
         self.metrics.cancel_turn(self._now())
         if last_line:
             self._last_recap_line = last_line
+            self._set_attention(last_attention)
         elif saw_result and self._agents is not None and self.recap_enabled:
             try:
                 asyncio.get_running_loop()

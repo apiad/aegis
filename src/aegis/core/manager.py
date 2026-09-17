@@ -140,6 +140,23 @@ class SessionManager:
     def attach_queue_manager(self, qm) -> None:
         self.queue_manager = qm
 
+    def waits_on(self, handle: str) -> bool:
+        """Whether ``handle`` waits on something that is not the operator: a
+        live monitor it armed, a queue callback owed to it, or a session it
+        spawned that is still working. Read by the turn's attention."""
+        from aegis.fleet.snapshot import _owed_callback
+        from aegis.tui.state import AgentState
+
+        mm = self.monitor_manager
+        if mm is not None and mm.snapshot(for_handle=handle):
+            return True
+        if _owed_callback(self, handle):
+            return True
+        return any(
+            getattr(s, "spawned_by", None) == handle and s.state is AgentState.working
+            for s in self._sessions
+        )
+
     def attach_monitor_manager(self, mm) -> None:
         self.monitor_manager = mm
 
@@ -307,6 +324,9 @@ class SessionManager:
         )
         s.spawned_by = spawned_by
         s.forked_from = forked_from
+        # Read at turn end, and live while a turn's category is `waiting`.
+        # Through the handle attribute, not `h`: a session can be renamed.
+        s.wait_probe = lambda s=s: self.waits_on(s.handle)
         if self._inbox is not None:
             self._inbox.bind_session(h, s)
         self._sessions.append(s)
