@@ -16,7 +16,10 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from aegis.fleet.models import QuotaGauge
 
 # Used only when the API omits its own `severity` for a window.
 WARNING_AT = 80.0
@@ -407,3 +410,30 @@ def quota_report(readings, *, now: datetime | None = None) -> list[str]:
         lines.append(provider.name)
         lines.extend(quota_lines(state, now=now))
     return lines
+
+
+def quota_gauges(readings, *, now: datetime) -> tuple[QuotaGauge, ...]:
+    """One gauge per bar window of every provider with a reading, in
+    ``bar_windows`` order. A provider with no snapshot (no credentials, or
+    nothing fetched yet) draws nothing rather than an empty bar."""
+    from aegis.fleet.models import QuotaGauge
+
+    out = []
+    for provider, state in readings:
+        snap = state.snapshot
+        if snap is None:
+            continue
+        for kind, short in provider.bar_windows:
+            w = snap.window(kind)
+            if w is None:
+                continue
+            resets = (w.resets_at - now).total_seconds() if w.resets_at else None
+            out.append(
+                QuotaGauge(
+                    label=f"{provider.label} {short}",
+                    percent=w.percent,
+                    severity=w.severity,
+                    resets_in_s=resets,
+                )
+            )
+    return tuple(out)

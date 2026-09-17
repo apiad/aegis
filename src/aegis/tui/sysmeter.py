@@ -23,11 +23,13 @@ from pathlib import Path
 HIGH_THRESHOLD = 90.0
 
 
-@dataclass
+@dataclass(frozen=True)
 class SystemStats:
     cpu: float  # system-wide CPU utilisation, 0–100
     ram: float  # virtual-memory utilisation, 0–100
     disk: float  # usage of the project-root filesystem, 0–100
+    ram_used_gb: float = 0.0
+    ram_total_gb: float = 0.0
 
 
 def sample_system(path: str | Path) -> SystemStats:
@@ -36,10 +38,13 @@ def sample_system(path: str | Path) -> SystemStats:
     0.0 and later ticks read real values."""
     import psutil
 
+    vm = psutil.virtual_memory()
     return SystemStats(
         cpu=float(psutil.cpu_percent(interval=None)),
-        ram=float(psutil.virtual_memory().percent),
+        ram=float(vm.percent),
         disk=float(psutil.disk_usage(str(path)).percent),
+        ram_used_gb=(vm.total - vm.available) / 2**30,
+        ram_total_gb=vm.total / 2**30,
     )
 
 

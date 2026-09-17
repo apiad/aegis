@@ -18,7 +18,14 @@ from collections import Counter
 from dataclasses import replace
 
 from aegis.budget.cost import compute
-from aegis.fleet.models import BandView, CardView, FleetSnapshot, Origin, RepoCount
+from aegis.fleet.models import (
+    BandView,
+    CardView,
+    FleetSnapshot,
+    MonitorRow,
+    Origin,
+    RepoCount,
+)
 from aegis.queue.schema import local_waiter
 from aegis.repos.render import _branch_cell, _churn, _counts
 
@@ -73,7 +80,29 @@ def _card(s, *, index: int, now: float, manager, repos) -> CardView:
         claims=_claims_for(manager, s.handle),
         monitor=_monitor_label(manager, s.handle),
         tab_index=index,
+        plan_tasks=tuple(getattr(s.plan_state(), "tasks", ()))
+        if hasattr(s, "plan_state")
+        else (),
+        monitors=tuple(
+            MonitorRow(
+                id=v.id,
+                description=v.description,
+                pct=v.pct,
+                eta_s=v.eta_s,
+                elapsed_s=v.elapsed_s,
+            )
+            for v in _monitors_for(manager, s.handle)
+        ),
+        avg_turn_s=_avg_turn(m),
+        ctx_tokens=m.last_true_input,
+        ctx_window=m.context_window,
     )
+
+
+def _avg_turn(m) -> float:
+    """Mean seconds over the metrics' recent generating turns; 0 when none."""
+    rates = list(getattr(m, "_turn_rates", ()))
+    return sum(sec for _out, sec in rates) / len(rates) if rates else 0.0
 
 
 def _band(cards, *, sessions, manager) -> BandView:

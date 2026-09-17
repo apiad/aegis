@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from aegis.plan.models import PlanTask
+
+if TYPE_CHECKING:
+    from aegis.tui.sysmeter import SystemStats
 
 # Kinds whose sessions the substrate closes when their unit of work ends:
 # a queue worker in QueueManager._finalize, a workflow subagent by the
@@ -43,6 +49,23 @@ class EventLine:
 
 
 @dataclass(frozen=True)
+class QuotaGauge:
+    label: str  # "cc 5h"
+    percent: float
+    severity: str  # normal | warning | critical
+    resets_in_s: float | None
+
+
+@dataclass(frozen=True)
+class MonitorRow:
+    id: str
+    description: str
+    pct: float | None  # None: no progress condition, drawn as a sweep
+    eta_s: float | None
+    elapsed_s: float
+
+
+@dataclass(frozen=True)
 class CardView:
     """One session as the dashboard sees it. Everything a card draws is
     here; the renderer reads no live object."""
@@ -71,6 +94,13 @@ class CardView:
     tab_index: int = 0  # 1-based; the card is that tab
     ghost_since: float | None = None  # set when an ephemeral session died
     ghost_s: float = 0.0  # how long ago it died; set by build_snapshot
+    plan_tasks: tuple[PlanTask, ...] = ()
+    monitors: tuple[MonitorRow, ...] = ()
+    avg_turn_s: float = 0.0
+    ctx_tokens: int = 0
+    ctx_window: int = 0
+    # The category pending for the viewing view; "" when nothing is pending.
+    attention: str = ""
 
 
 @dataclass(frozen=True)
@@ -109,6 +139,8 @@ class BandView:
     system: tuple[str, ...] = ()
     quota: tuple[str, ...] = ()
     build: tuple[str, ...] = ()
+    stats: SystemStats | None = None
+    gauges: tuple[QuotaGauge, ...] = ()
 
 
 @dataclass(frozen=True)

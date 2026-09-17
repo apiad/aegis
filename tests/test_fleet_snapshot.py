@@ -148,6 +148,9 @@ class FakeMonitors:
 class FakeMonitorView:
     description: str
     pct: float | None = None
+    id: str = "m"
+    eta_s: float | None = None
+    elapsed_s: float = 0.0
 
 
 @dataclass
