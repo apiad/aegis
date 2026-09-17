@@ -26,6 +26,20 @@ _BAR = "█"
 _EMPTY = "░"
 _EVENTS = 3  # the activity tail's depth
 _GLYPH = {"working": "✻", "error": "✗"}  # anything else reads as ready
+_ATTN_GLYPH = {
+    "needs_input": "?",
+    "error": "✗",
+    "review": "◆",
+    "waiting": "⧗",
+    "done": "✓",
+}
+_COUNTERS = (
+    ("needs_input", "need you"),
+    ("error", "error"),
+    ("review", "review"),
+    ("waiting", "waiting"),
+    ("done", "done"),
+)
 
 
 def bar(pct: float, cells: int, style: str, pal) -> Text:
@@ -389,4 +403,166 @@ def render_fleet(snapshot: FleetSnapshot, pal, width: int) -> Text:
                 t.append_text(lines[y])
             if y < height - 1 or n < len(rows) - 1:
                 t.append("\n")
+    return t
+
+
+def _gauge(
+    label: str,
+    pct: float,
+    value: str,
+    style: str,
+    cells: int,
+    pal,
+    *,
+    value_style: str | None = None,
+    tail: str = "",
+) -> Text:
+    """``label bar value tail`` in ``cells`` cells or fewer, never more."""
+    head = f"{label:<6}"
+    rest = f" {value}" + (f" {tail}" if tail else "")
+    bar_cells = max(3, cells - cell_len(head) - cell_len(rest) - 1)
+    t = Text(head, style=pal.muted)
+    t.append_text(bar(pct, bar_cells, style, pal))
+    t.append(f" {value}", style=value_style or pal.ink)
+    if tail:
+        t.append(f" {tail}", style=pal.muted)
+    t.truncate(cells)
+    return t
+
+
+def _rows_of(gauges: list[Text], per_row: int) -> Text:
+    t = Text()
+    for i in range(0, len(gauges), per_row):
+        if i:
+            t.append("\n")
+        for j, g in enumerate(gauges[i : i + per_row]):
+            if j:
+                t.append("  ")
+            t.append_text(g)
+    return t
+
+
+def _reset(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    s = max(0, int(seconds))
+    if s >= 3600:
+        return f"↻ {s // 3600}h{(s % 3600) // 60:02d}m"
+    if s >= 60:
+        return f"↻ {s // 60}m"
+    return f"↻ {s}s"
+
+
+def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
+    """The v2 band: host gauges, quota gauges (when any), then the attention
+    counters and totals. Under 110 columns the gauges go two per line."""
+    from aegis.attention import mark, style_for
+
+    band = snapshot.band
+    narrow = width < 110
+    t = Text()
+
+    per = 2 if narrow else 4
+    cells = (width - 2 * (per - 1)) // per
+    host: list[Text] = []
+    if band.stats is not None:
+        s = band.stats
+        ram_tail = (
+            f"{s.ram_used_gb:.1f}/{s.ram_total_gb:.0f}G" if s.ram_total_gb else ""
+        )
+        host += [
+            _gauge("CPU", s.cpu, f"{s.cpu:.0f}%", ctx_style(s.cpu, pal), cells, pal),
+            _gauge(
+                "RAM",
+                s.ram,
+                f"{s.ram:.0f}%",
+                ctx_style(s.ram, pal),
+                cells,
+                pal,
+                tail=ram_tail,
+            ),
+            _gauge("DSK", s.disk, f"{s.disk:.0f}%", ctx_style(s.disk, pal), cells, pal),
+        ]
+    host.append(
+        _gauge(
+            "CTX",
+            band.ctx_avg,
+            f"{band.ctx_avg:.0f}%",
+            ctx_style(band.ctx_avg, pal),
+            cells,
+            pal,
+            tail="avg",
+        )
+    )
+    t.append_text(_rows_of(host, per))
+    t.append("\n")
+
+    if band.gauges:
+        per_q = 2 if narrow else len(band.gauges)
+        qcells = (width - 2 * (per_q - 1)) // per_q
+        quota: list[Text] = []
+        for g in band.gauges:
+            style = severity_style(g.severity, pal)
+            value = f"{g.percent:.0f}%"
+            if g.severity == "critical":
+                value = blink(value, frame)
+            quota.append(
+                _gauge(
+                    g.label,
+                    g.percent,
+                    value,
+                    style,
+                    qcells,
+                    pal,
+                    value_style=style,
+                    tail=_reset(g.resets_in_s),
+                )
+            )
+        t.append_text(_rows_of(quota, per_q))
+        t.append("\n")
+
+    live = [c for c in snapshot.cards if c.ghost_since is None]
+    working = sum(1 for c in live if c.state == "working")
+    idle = [c for c in live if c.state != "working"]
+
+    def count(cat: str) -> int:
+        if cat == "error":
+            return sum(1 for c in idle if c.attention == "error" or c.state == "error")
+        if cat == "done":
+            return sum(
+                1 for c in idle if c.state != "error" and c.attention in ("", "done")
+            )
+        return sum(1 for c in idle if c.attention == cat and c.state != "error")
+
+    row = Text()
+    row.append(band.host, style=f"bold {pal.accent}")
+    row.append(" · ", style=pal.muted)
+    row.append(
+        f"✻ {working} working",
+        style=pulse(pal.working, frame, pal) if working else pal.muted,
+    )
+    row.append(" · ", style=pal.muted)
+    for cat, noun in _COUNTERS:
+        n = count(cat)
+        if n and cat in ("needs_input", "error"):
+            blink_off = cat == "needs_input" and frame % 2 == 1
+            row.append_text(Text.from_markup(mark(cat, pal, blink_off=blink_off)))
+            row.append(f" {n} {noun}", style=style_for(cat, pal))
+        else:
+            row.append(
+                f"{_ATTN_GLYPH[cat]} {n} {noun}", style=pal.ink if n else pal.muted
+            )
+        row.append(" · ", style=pal.muted)
+    tail = f"${band.cost_live:.2f} live"
+    if band.recap_calls:
+        tail += f" · recap ${band.recap_cost:.2f} / {band.recap_calls}"
+    running, configured = band.queues
+    tail += f" · queues {running}/{configured} · monitors {band.monitors}"
+    if band.build:
+        tail += f" · {Text.from_markup(band.build[-1]).plain}"
+    if band.clock:
+        tail += f" · {band.clock}"
+    row.append(tail, style=pal.muted)
+    row.truncate(width)
+    t.append_text(row)
     return t
