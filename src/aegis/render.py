@@ -43,7 +43,7 @@ _TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _ASIDE_BOX = box.Box("    \n▏   \n    \n▏   \n    \n    \n▏   \n    \n")
 
 
-def _aside(parts, colors) -> Panel:
+def _aside(parts, colors, border: str | None = None) -> Panel:
     """A block that sits *in* the transcript but is not the conversation.
 
     A `/btw` side note and an `@peer` answer both render their body as
@@ -61,7 +61,7 @@ def _aside(parts, colors) -> Panel:
     return Panel(
         Group(*parts),
         box=_ASIDE_BOX,
-        border_style=colors.rule,
+        border_style=border or colors.rule,
         style=f"on {colors.panel}",
         padding=(0, 1),
         expand=True,
@@ -396,26 +396,42 @@ def render_side_note(note, colors) -> Panel:
 def render_recap(recap, colors) -> Panel:
     """Visible block for a recap.
 
-    Transient by design, exactly as a side note is: this block lands in
-    the pane's ``_history`` and is **never appended to the session log**.
-    That is the mechanism behind "the recap never enters the agent's
-    context" — and it is also what stops recaps compounding, since a
-    logged recap would enter the window the *next* recap assembles and
-    every summary after it would be summarizing its own summaries.
+    The block itself lands in the pane's ``_history``; the recap line and
+    its attention category are persisted as a ``RecapNote``, which the
+    recap window skips. That skip is the mechanism behind "the recap never
+    enters the agent's context" — and it is also what stops recaps
+    compounding, since a recap in the window the *next* recap assembles
+    would make every summary after it summarize its own summaries.
+
+    On the ok path the header names the turn's attention category, and
+    the border takes its colour unless the turn is simply ``done``.
 
     Markdown on the ok path only, for the reason ``render_side_note``
     gives: the text is model prose, but an error is aegis speaking a fixed
     sentence and keeps its ``colors.error`` tint.
     """
     tint = colors.error if not recap.ok else colors.accent
-    parts: list[RenderableType] = [Text("recap", style=f"bold italic {tint}")]
+    header = Text("recap", style=f"bold italic {tint}")
+    border = None
+    if recap.ok and recap.attention:
+        from aegis.attention import LABELS, mark, style_for
+
+        header.append(" · ", style=colors.muted)
+        header.append_text(Text.from_markup(mark(recap.attention, colors)))
+        header.append(
+            f" {LABELS.get(recap.attention, recap.attention)}",
+            style=style_for(recap.attention, colors),
+        )
+        if recap.attention != "done":
+            border = style_for(recap.attention, colors)
+    parts: list[RenderableType] = [header]
     if recap.ok:
         parts.append(Markdown(recap.text))
     else:
         parts.append(Text(recap.error or "no answer", style=tint))
     if recap.footer:
         parts.append(Text(recap.footer, style=colors.muted))
-    return _aside(parts, colors)
+    return _aside(parts, colors, border)
 
 
 def render_peer_answer(answer, colors) -> Panel:
