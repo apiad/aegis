@@ -3,6 +3,10 @@
 # Wire in workflow fixtures (fake_bridge*, workflow_test_harness).
 from tests.conftest_workflows import *  # noqa: F401,F403,E402
 
+import asyncio
+import os
+import shutil
+
 import pytest
 import json
 from typing import Any, AsyncIterator
@@ -100,6 +104,38 @@ def no_real_provider_accounts(request, tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CREDS", str(tmp_path / "no-claude-creds.json"))
     monkeypatch.setenv("OPENCODE_AUTH", str(tmp_path / "no-opencode-auth.json"))
     monkeypatch.setattr("aegis.models._run_opencode_models", lambda: None)
+    _refuse_real_oneshot(monkeypatch)
+
+
+# Resolved once, before any test prepends a fake `claude` to PATH.
+_REAL_CLAUDE = shutil.which("claude")
+
+
+def _refuse_real_oneshot(monkeypatch):
+    """A hermetic test must never run the operator's real `claude -p`.
+
+    Since every finished turn is recapped (2026-09-16), any test that runs a
+    turn on a session holding an agent roster reaches the real one-shot
+    driver unless it patches `recap_for`. It billed the operator's account
+    and hung the event loop's teardown waiting on the call. Refused here
+    rather than patched per test, so a new test cannot forget. A test that
+    puts its own fake `claude` first on PATH, or patches
+    `create_subprocess_exec` itself, is unaffected.
+    """
+    real_exec = asyncio.create_subprocess_exec
+
+    async def guarded(program, *args, **kwargs):
+        resolved = shutil.which(program) if isinstance(program, str) else None
+        if (
+            _REAL_CLAUDE
+            and resolved
+            and os.path.realpath(resolved) == os.path.realpath(_REAL_CLAUDE)
+            and "-p" in args
+        ):
+            raise RuntimeError("hermetic test tried to run the real `claude -p`")
+        return await real_exec(program, *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", guarded)
 
 
 class MockQueue:
