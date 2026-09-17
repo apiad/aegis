@@ -51,8 +51,9 @@ zion · ✻ 2 working · ● 1 ready · ⧗ 1 waiting · ✗ 1 error · $41.20 l
   critical red with a blinking percentage. A provider with no credentials is
   omitted, not drawn empty. The data is the last `QuotaService.current()`;
   it is not polled any faster for F10.
-- **Row 3, counters.** The v1 state counters (disjoint, summing to the
-  total), live cost, recap spend, queues, monitors, the build and the clock.
+- **Row 3, counters.** Counts by turn attention (working, need you, error,
+  review, waiting, done; see `2026-09-17-aegis-turn-attention-design.md`),
+  live cost, recap spend, queues, monitors, the build and the clock.
 
 Under 110 columns the detail stacks under the list; the band's rows wrap
 their gauges two per line.
@@ -62,7 +63,7 @@ their gauges two per line.
 One item per live session, in tab order, then ghosts. An item is at least
 three lines, and every line wraps instead of being cut:
 
-1. state glyph, tab number, handle, a small context bar with its percentage,
+1. attention mark (or the pulsing state glyph while working), tab number, handle, a small context bar with its percentage,
    the live monitor count (`◉2`), and the turn time (working) or idle age;
 2. where: agent, repo, branch and churn, or, for an ephemeral worker, who made
    it and who gets the answer;
@@ -75,7 +76,7 @@ their dashed border and the "closed 12s ago" age.
 ### The detail
 
 The selected session, in full, with sections in this order: header (handle,
-state, turn time), title, where and uptime, **NOW**, **DID**, **MONITORS**,
+attention mark and label, state, turn time), title, where and uptime, **NOW**, **DID**, **MONITORS**,
 **GAUGES** (context with tokens, plan done/total, turn time against the
 session's average), **PLAN** (every task with its glyph), **ACTIVITY** (the
 last three tool calls), **SPEND · COORDINATION** (cost, claims, comms edges).
@@ -115,9 +116,10 @@ In auto mode the screen decides which session the detail shows:
   showed (a fingerprint: state, `did`, `doing`, plan done/total and current
   subject, the set of live monitor ids and their states). A session is *new*
   when its current fingerprint differs from the remembered one.
-- **Priority** among new sessions: error, then a monitor that finished or
-  failed, then a new `did` or plan movement, then a state change, then a new
-  `now`. Ties go to the session shown longest ago.
+- **Priority** among new sessions: `needs_input`, then `error`, then a monitor
+  that finished or failed, then `review`, then a new `did` or plan movement,
+  then a state change, then a new `now` (categories from the turn attention
+  spec). Ties go to the session shown longest ago.
 - **Pace.** A session stays at least 20 s. When some other session is new, the
   switch happens as soon as those 20 s have passed, so a change is on screen
   within 20-30 s of the check that sees it. With nothing new, the rotator
