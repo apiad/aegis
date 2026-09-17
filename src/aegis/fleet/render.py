@@ -28,6 +28,48 @@ _EVENTS = 3  # the activity tail's depth
 _GLYPH = {"working": "✻", "error": "✗"}  # anything else reads as ready
 
 
+def bar(pct: float, cells: int, style: str, pal) -> Text:
+    cells = max(0, cells)
+    filled = round(cells * max(0.0, min(100.0, pct)) / 100)
+    t = Text(_BAR * filled, style=style)
+    t.append(_EMPTY * (cells - filled), style=pal.rule)
+    return t
+
+
+def sweep_bar(cells: int, frame: int, pal) -> Text:
+    """An indeterminate bar: a block that moves one cell per frame."""
+    cells = max(1, cells)
+    block = max(1, cells // 4)
+    start = frame % cells
+    lit = {(start + i) % cells for i in range(block)}
+    t = Text()
+    for i in range(cells):
+        t.append(
+            _BAR if i in lit else _EMPTY, style=pal.accent if i in lit else pal.rule
+        )
+    return t
+
+
+def pulse(style: str, frame: int, pal) -> str:
+    return style if frame % 2 == 0 else pal.muted
+
+
+def blink(text: str, frame: int) -> str:
+    return text if frame % 2 == 0 else " " * cell_len(text)
+
+
+def severity_style(severity: str, pal) -> str:
+    return {"warning": pal.accent, "critical": pal.error}.get(severity, pal.ready)
+
+
+def ctx_style(pct: float, pal) -> str:
+    if pct > 80:
+        return pal.error
+    if pct > 60:
+        return pal.accent
+    return pal.ready
+
+
 def _bar(done: int, total: int, cells: int = 10) -> str:
     """A progress bar that never lies about zero: 0/10 draws no full cell,
     and 10/10 draws no empty one."""
