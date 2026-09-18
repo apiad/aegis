@@ -101,6 +101,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **`Ctrl+T` opens its tab in front, ready to type in.** The new tab
+  mounted behind the current one in every daemon view, so the next thing
+  typed went to the tab you were already in. Two routes mount a pane and
+  they race: the spawn that asked for the tab, and the brain's session
+  observer, which never asks for the foreground and wins. The spawn's
+  request is now honoured on a pane another route already mounted.
+
 - **A queue worker's card names the session that gets its answer.** A task
   enqueued locally with `aegis_enqueue` showed no `→` target on its F10
   card, because the card read the field only a remote peer's task fills.

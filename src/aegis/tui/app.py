@@ -1273,7 +1273,16 @@ class AegisApp(App):
         would give each view its own transcript and its own pending queue,
         so a message cancelled in one view would still be live in the other.
         """
-        if self.pane_for(session.handle) is not None:
+        existing = self.pane_for(session.handle)
+        if existing is not None:
+            # The pane is here, but the request to show it may not have
+            # been honoured yet: the observer worker mounts without a
+            # foreground and wins this race in every daemon view (see the
+            # note at the end of this method). Returning flat dropped the
+            # spawn's request on the floor, so Ctrl+T opened its tab behind
+            # the current one and the next thing typed went to the old tab.
+            if foreground:
+                self._activate(self._panes.index(existing))
             return
         cs = self._switcher()
         if cs is None:
@@ -1341,11 +1350,13 @@ class AegisApp(App):
         # Two routes mount a brain pane and they race by design. A bridged
         # `_spawn` mounts directly with foreground=True, and the brain's
         # session observer mounts through `run_worker`; whichever is second
-        # no-ops on the `pane_for` guard above. But `_on_brain_session`
-        # passes no foreground, so when the worker wins, the pane is hidden
-        # and nothing ever reveals it. Under `run_test` the direct call
-        # wins and this never appears. Under the real ViewDriver the worker
-        # wins, which is every actual `aegis`.
+        # meets the guard above, which forwards a foreground request onto
+        # the pane that is already there. This branch is the other half of
+        # that: `_on_brain_session` passes no foreground, so when the
+        # worker wins the mount, the pane arrives hidden and the reveal is
+        # the spawn's to ask for. Under `run_test` the direct call wins and
+        # the guard never fires. Under the real ViewDriver the worker wins,
+        # which is every actual `aegis`.
         #
         # Fixing it here rather than at the observer covers the other ways
         # a view can be handed its first session: another view's spawn, an

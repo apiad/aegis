@@ -185,14 +185,14 @@ class ScenarioContext:
         return [t["handle"] for t in sorted(tabs, key=lambda t: t["order"])]
 
     def new_tab(self, rig: Rig, *, old_text: str = "compositor") -> str:
-        """Open a tab with Ctrl+T and bring it on screen with Ctrl+Right.
+        """Open a tab with Ctrl+T, falling back to Ctrl+Right to reach it.
 
-        In a daemon view the new pane mounts in the background, because
-        ``_mount_brain_pane`` only foregrounds when told to and the observer
-        worker that wins the mount race never is. A new tab is appended
-        after the current one, so one Ctrl+Right reaches it; a build that
-        does foreground it is detected and no key is pressed. Keys, not a
-        click on the label: seven labels do not fit in 120 columns.
+        Ctrl+T foregrounds its own tab, so the fallback is for older
+        targets: they mount the new pane in the background, and a new tab
+        is appended after the current one, so one Ctrl+Right reaches it.
+        Keys, not a click on the label: seven labels do not fit in 120
+        columns. ``tabs.switch_ms`` is therefore sampled only on a target
+        that needs the key.
 
         The switch is confirmed on screen, never assumed. ``old_text`` is in
         every script's text, so the previous tab's transcript shows it and a
