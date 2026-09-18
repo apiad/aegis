@@ -110,6 +110,63 @@ def describe_tool(
     return summary or _loc_tail(locations) or name
 
 
+def diff_counts(old_text: str, new_text: str) -> tuple[int, int]:
+    """``(added, removed)`` line counts for an Edit/Write diff.
+
+    Counted over the whole pair, not through ``diff_window``: that helper
+    elides the common prefix and caps the visible rows at six, which is
+    right for a preview and wrong for a count.
+    """
+    import difflib
+
+    old_lines = old_text.splitlines() if old_text else []
+    new_lines = new_text.splitlines() if new_text else []
+    added = removed = 0
+    for line in difflib.ndiff(old_lines, new_lines):
+        if line.startswith("+ "):
+            added += 1
+        elif line.startswith("- "):
+            removed += 1
+    return added, removed
+
+
+def result_digest(name: str, result) -> str:
+    """The short verdict a tool call's single row carries after its glyph.
+
+    One line, never more: the transcript gives a call exactly one row and
+    the full output is a click away. ``result`` is the folded
+    ``ToolResult``, or None while the call is still running — in flight
+    there is no verdict, only a spinner.
+
+    Pure — no Rich, no HTML.
+    """
+    if result is None:
+        return ""
+    text = result.text or ""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    # An error does not have the shape the tool's success digest reads: a
+    # failed Read is a message, not a line count.
+    if result.is_error:
+        return _trunc(lines[0], 60) if lines else "error"
+    if result.diff is not None:
+        _path, old, new = result.diff
+        added, removed = diff_counts(old, new)
+        return f"+{added} −{removed}" if removed else f"+{added}"
+    if name == "Read":
+        n = len(text.splitlines())
+        return f"{n} line{'s' if n != 1 else ''}"
+    if name in ("Grep", "Glob"):
+        n = len(lines)
+        return f"{n} match{'es' if n != 1 else ''}" if n else "no matches"
+    if not lines:
+        return "ok"
+    # Bash's verdict lives on its LAST line — "3629 passed", "Successfully
+    # installed", "error: cannot find" — and first-line-wins would show the
+    # progress bar instead. The cost is that `ls` and `cat` show their last
+    # line rather than their first, which is noise and not a lie.
+    return _trunc(lines[-1] if name == "Bash" else lines[0], 60)
+
+
 def tool_label(
     name: str, raw_input: dict | None, summary: str = "", locations=()
 ) -> str:
