@@ -465,7 +465,7 @@ class CopyableBlock(Static):
         self._tokens: list[str] | None = None
         # Textual tooltip floats above the widget on hover — no
         # layout shift, no extra row inside the block.
-        tip = "click to expand args" if tool_call_id is not None else "click to copy"
+        tip = "click to open the call" if tool_call_id is not None else "click to copy"
         if file_target is not None:
             tip = f"{tip} | ctrl+click to open the file"
         elif remote_path is not None:
@@ -2882,6 +2882,48 @@ class ConversationPane(Widget):
         self, event: "CopyableBlock.ToolExpandToggle"
     ) -> None:
         event.stop()
+        self._open_tool_detail(event.tool_call_id)
+
+    def _open_tool_detail(self, tool_call_id: str) -> None:
+        from aegis.tui.tool_detail import ToolDetailScreen
+
+        rec = self.tool_record(tool_call_id)
+        if rec is None:
+            return
+        use = rec.events[0]
+        result = rec.events[1] if len(rec.events) > 1 else None
+        track = self._tools.get(tool_call_id)
+        screen = ToolDetailScreen(
+            use, result, track.elapsed if track is not None else None, self._palette
+        )
+        screen._on_step = lambda delta: self._step_tool_detail(screen, delta)
+        self.app.push_screen(screen)
+
+    def _step_tool_detail(self, screen, delta: int) -> None:
+        """n / p: swap the window's contents for the next or previous tool
+        call in the transcript, without closing it.
+
+        The ends are walls rather than a wrap: arriving back at the first
+        call of the turn after pressing `n` at the last one reads as a
+        glitch, not as navigation."""
+        ids = [
+            rec.tool_call_id for rec in self._history if rec.tool_call_id and rec.events
+        ]
+        current = getattr(screen._use, "tool_call_id", None)
+        if current not in ids:
+            return
+        nxt = ids.index(current) + delta
+        if not (0 <= nxt < len(ids)):
+            return
+        rec = self.tool_record(ids[nxt])
+        if rec is None:
+            return
+        track = self._tools.get(ids[nxt])
+        screen.show(
+            rec.events[0],
+            rec.events[1] if len(rec.events) > 1 else None,
+            track.elapsed if track is not None else None,
+        )
 
     # --- subagent (Task) grouping ----------------------------------
 

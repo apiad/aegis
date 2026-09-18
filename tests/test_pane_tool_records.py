@@ -47,15 +47,22 @@ async def test_a_replayed_call_resolves_the_same_way(pane_app):
 
 
 @pytest.mark.asyncio
-async def test_an_evicted_call_still_resolves(pane_app):
+async def test_an_evicted_call_still_resolves(pane_app, monkeypatch):
     # Eviction moves _window_start and unmounts widgets; it never drops a
-    # record. A call from 400 blocks ago must still open.
+    # record, so the first call still opens once it is long gone from the
+    # screen. The window is shrunk rather than filled with 300 real blocks:
+    # this is about the mechanism, and paying two seconds to reach a
+    # threshold would make it the suite's slowest test for one assertion.
+    import aegis.tui.pane as pane_mod
+
+    monkeypatch.setattr(pane_mod, "N_MAX", 20)
+    monkeypatch.setattr(pane_mod, "EVICT_BATCH", 10)
     async with pane_app() as (pane, pilot):
-        for i in range(400):
+        for i in range(40):
             pane._on_core_event(None, _use(f"t{i}"))
             pane._on_core_event(None, _res(f"t{i}"))
         await pilot.pause()
-        assert pane._window_start > 0
+        assert pane._window_start > 0, "nothing was evicted — the test proves nothing"
         assert pane.tool_record("t0") is not None
 
 
