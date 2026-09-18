@@ -394,3 +394,64 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
         assert renders_to_nothing(ev) == (render_event(ev, C) is None), (
             f"{type(ev).__name__}: renders_to_nothing and render_event "
             f"disagree")
+
+
+# --- the three-column tool line ---------------------------------------
+# A tool call gets exactly one row: label, verdict + digest, then the
+# elapsed time right-aligned in its own column. Everything the row cannot
+# hold lives behind the click, in ToolDetailScreen.
+
+
+def test_tool_line_carries_digest_and_elapsed_on_one_row():
+    ev = ToolUse(name="Bash", summary="", kind="execute",
+                 raw_input={"description": "run the test suite",
+                            "command": "uv run pytest -q"})
+    res = ToolResult(text="3629 passed", is_error=False)
+    out = as_text(render_tool_use(ev, C, elapsed=12.4, result=res, width=80))
+    rows = [r for r in out.splitlines() if r.strip()]
+    assert len(rows) == 1
+    assert "run the test suite" in rows[0]
+    assert "3629 passed" in rows[0]
+    assert rows[0].rstrip().endswith("12.4s")
+
+
+def test_tool_line_marks_an_error():
+    ev = ToolUse(name="Read", summary="", kind="read",
+                 raw_input={"file_path": "/nope.py"})
+    res = ToolResult(text="File does not exist", is_error=True)
+    out = as_text(render_tool_use(ev, C, elapsed=0.1, result=res, width=80))
+    assert "✗" in out and "✓" not in out
+    assert "File does not exist" in out
+
+
+def test_running_tool_line_has_a_spinner_and_no_digest():
+    ev = ToolUse(name="Bash", summary="", kind="execute",
+                 raw_input={"description": "sleep", "command": "sleep 9"})
+    out = as_text(render_tool_use(ev, C, elapsed=3.2, running=True, width=80))
+    rows = [r for r in out.splitlines() if r.strip()]
+    assert len(rows) == 1
+    assert "3.2s" in rows[0]
+    assert "✓" not in rows[0] and "✗" not in rows[0]
+
+
+def test_sub_second_elapsed_is_shown():
+    # The old line hid anything under 1s. A right-hand column that appears
+    # and disappears jitters, and 0.3s is information.
+    ev = ToolUse(name="Read", summary="", kind="read",
+                 raw_input={"file_path": "/a/render.py"})
+    res = ToolResult(text="x\ny", is_error=False)
+    out = as_text(render_tool_use(ev, C, elapsed=0.3, result=res, width=80))
+    assert "0.3s" in out
+
+
+def test_tool_line_stays_one_row_at_a_narrow_width():
+    # A line that wraps is the whole feature failing.
+    ev = ToolUse(name="Bash", summary="", kind="execute",
+                 raw_input={"description": "a very long description " * 6,
+                            "command": "echo " + "x" * 200})
+    res = ToolResult(text="y" * 200, is_error=False)
+    con = Console(record=True, width=40)
+    con.print(render_tool_use(ev, C, elapsed=1.5, result=res, width=40))
+    rows = [r for r in con.export_text().splitlines() if r.strip()]
+    assert len(rows) == 1
+    assert rows[0].rstrip().endswith("1.5s")

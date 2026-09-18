@@ -25,7 +25,7 @@ from aegis.render_shared import (
     PLAN_STATUS_GLYPH,
     describe_tool,
     diff_window,
-    format_tool_args,
+    result_digest,
     result_parts,
     tool_glyph,
 )
@@ -118,6 +118,9 @@ def _fmt_dur(secs: float) -> str:
     return f"{m}m{s:02d}s"
 
 
+_ELAPSED_W = 7  # "  12.4s" / " 3m04s" — the widest _fmt_dur output
+
+
 def render_tool_use(
     ev,
     colors,
@@ -125,30 +128,60 @@ def render_tool_use(
     elapsed: float | None = None,
     running: bool = False,
     frame: int = 0,
-    expanded: bool = False,
+    result=None,
+    width: int | None = None,
 ) -> RenderableType:
-    """One tool-call line: kind icon + human description, with an optional
-    per-tool spinner+timer (while running), a frozen duration (once done, if
-    ≥1s), and the full args block (when expanded). The args stay collapsed by
-    default — the pane expands them on click."""
+    """One tool call, one row: glyph + label, then the verdict and its
+    digest, then the elapsed time in a right-hand column.
+
+    Exactly one row is the contract. The full input and output live behind
+    the click, in ``ToolDetailScreen`` — a transcript that grew a dozen rows
+    per call could not be skimmed, and the rows it grew carried the first
+    100 characters of the output, which is where a Read shows its imports
+    and a Bash shows a progress bar.
+
+    ``width`` is the transcript's, and is what lets the elapsed column line
+    up down the whole transcript; without it the stamp just trails the text,
+    which is what a replayed block gets when no width is known.
+    """
     icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
     desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
     # A call into the aegis layer wears the layer's own colour, so a
     # transcript shows at a glance where agents were talking to each other.
     style = colors.comms if aegis_glyph(ev.name, ev.raw_input or {}) else colors.accent
-    line = Text.assemble((f"{icon} ", style), desc)
-    if running and elapsed is not None:
-        spin = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)]
-        line.append(f"  {spin} {_fmt_dur(elapsed)}", style=colors.muted)
-    elif not running and elapsed is not None and elapsed >= 1.0:
-        line.append(f"  · {_fmt_dur(elapsed)}", style=colors.muted)
-    if expanded:
-        args = format_tool_args(ev.name, ev.raw_input, ev.summary)
-        if args:
-            body = Text()
-            for ln in args.splitlines():
-                body.append(f"    {ln}\n", style=colors.muted)
-            return Group(line, body)
+
+    line = Text(no_wrap=True, overflow="ellipsis", end="")
+    line.append(f"{icon} ", style=style)
+    line.append(desc)
+
+    if running:
+        verdict, vstyle = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)], colors.working
+    elif result is None:
+        verdict, vstyle = "", colors.muted
+    elif result.is_error:
+        verdict, vstyle = "✗", colors.err
+    else:
+        verdict, vstyle = "✓", colors.ok
+    digest = "" if running else result_digest(ev.name, result)
+    if verdict or digest:
+        line.append("  ")
+        if verdict:
+            line.append(verdict, style=vstyle)
+        if digest:
+            line.append(f" {digest}", style=colors.muted)
+
+    if elapsed is None:
+        return line
+    stamp = _fmt_dur(elapsed)
+    if width is None:
+        line.append(f"  {stamp}", style=colors.muted)
+        return line
+    # Truncate before padding: pad_right on an already-too-long line would
+    # not shorten it, and the stamp would wrap onto a second row.
+    body_w = max(1, width - _ELAPSED_W)
+    line.truncate(body_w, overflow="ellipsis")
+    line.pad_right(max(0, body_w - line.cell_len))
+    line.append(stamp.rjust(_ELAPSED_W), style=colors.muted)
     return line
 
 
