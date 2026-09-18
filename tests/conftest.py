@@ -401,3 +401,65 @@ async def live_session_manager(tmp_path):
     finally:
         await mgr.close_all()
         await mcp.stop()
+
+
+@pytest.fixture
+def pane_app():
+    """A booted AegisApp and its first ConversationPane.
+
+    ``app._panes[0]`` under ``app.run_test()`` is how the other pane tests
+    reach one (see tests/test_background_costs.py). Events go in through
+    ``_on_core_event(_core, ev)``, the same entry the SessionManager uses.
+    Passing ``events`` replays them off a fake log instead, which is the
+    resume path — a different code path from the live one, and the one
+    that used to leave a tool block unclickable.
+    """
+    from contextlib import asynccontextmanager
+
+    from aegis.config import Agent
+    from aegis.events import Result
+    from aegis.state.session_log import EventReplay
+    from aegis.tui.app import AegisApp
+
+    class FakeSession:
+        async def start(self):
+            pass
+
+        async def send(self, text):
+            pass
+
+        async def events(self):
+            yield Result(duration_ms=1, is_error=False)
+
+        async def close(self):
+            pass
+
+    class FakeMCP:
+        url = "http://127.0.0.1:0/mcp/"
+
+        def bind(self, bridge):
+            pass
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    @asynccontextmanager
+    async def _make(events=()):
+        agent = Agent(harness="claude-code", model="opus", effort="high",
+                      permission="auto")
+        app = AegisApp({"default": agent}, "default",
+                       lambda *a, **kw: FakeSession(), FakeMCP())
+        async with app.run_test() as pilot:
+            pane = app._panes[0]
+            if events:
+                pane._replay = EventReplay(events=list(events),
+                                           interrupted=False)
+                pane._replayed = False
+                pane._mount_replay()
+            await pilot.pause()
+            yield pane, pilot
+
+    return _make

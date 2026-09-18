@@ -136,23 +136,3 @@ async def test_attaching_a_tool_result_still_asks_for_layout():
 
         assert spy.counts.get("CopyableBlock", 0) >= 1, (
             f"attaching a result skipped layout: {spy.counts}")
-
-
-@pytest.mark.asyncio
-async def test_expanding_a_tool_block_still_asks_for_layout():
-    app = _app()
-    async with app.run_test() as pilot:
-        pane = app._panes[0]
-        pane._on_core_event(None, ToolUse(
-            name="Bash", summary="ls", kind="execute", tool_call_id="c1",
-            raw_input={"command": "ls -la", "description": "list files"}))
-        await pilot.pause()
-        track = pane._tools["c1"]
-
-        with _LayoutSpy() as spy:
-            track.expanded = True
-            pane._render_tool_block(track, scroll=True)
-            await pilot.pause()
-
-        assert spy.counts.get("CopyableBlock", 0) >= 1, (
-            f"expanding args skipped layout: {spy.counts}")

@@ -147,17 +147,19 @@ class BlockRecord:
 
 @dataclass(slots=True)
 class _ToolTrack:
-    """Live state for one tool call: enough to re-render its block with a
-    ticking timer while running, a frozen duration once done, and the full
-    args when expanded."""
+    """Live state for one tool call: enough to re-render its single row with
+    a ticking timer while running and a frozen duration once done.
+
+    The full input and output are NOT here — they are the events on the
+    ``BlockRecord``, which is the one source ``ToolDetailScreen`` reads, so
+    a replayed call and a live one open identically."""
 
     ev: object  # the ToolUse event
     idx: int  # history index of its block
     start: float  # time.monotonic() at dispatch
     done: bool = False
     elapsed: float | None = None  # frozen duration once done
-    result_r: RenderableType | None = None
-    expanded: bool = False
+    result_ev: object | None = None  # the folded ToolResult
 
 
 @dataclass(slots=True)
@@ -1392,6 +1394,11 @@ class ConversationPane(Widget):
                     None,
                     _payload_for_event(ev),
                     False,
+                    # A replayed tool call carries its id too, so its block
+                    # opens the same detail window a live one does. Without
+                    # it the click fell through to copy and a scrolled-back
+                    # call could not be opened at all.
+                    ev.tool_call_id if isinstance(ev, ToolUse) else None,
                     events=[ev],
                     file_target=(
                         file_target(
@@ -1422,6 +1429,14 @@ class ConversationPane(Widget):
         # disk, in the window between constructing the pane and showing it.
         # Assigning over it dropped the turn an agent produced while a view
         # was attaching, and dropped it silently.
+        # Records are PREPENDED, so anything already indexed moves down by
+        # exactly len(records); then the replay's own map goes in. One map
+        # for both paths — a second, divergent one is how the replayed half
+        # of a transcript ends up behaving differently from the live half.
+        self._tool_use_idx = {
+            tid: idx + len(records) for tid, idx in self._tool_use_idx.items()
+        }
+        self._tool_use_idx.update(use_idx)
         self._history = records + self._history
         self._window_start = max(0, len(records) - REPLAY_TAIL)
         self._window_end = len(records)
@@ -1431,6 +1446,7 @@ class ConversationPane(Widget):
                 rec.materialize(self._palette),
                 rec.payload,
                 tight=rec.tight,
+                tool_call_id=rec.tool_call_id,
                 file_target=rec.file_target,
             )
             t.mount(block)
@@ -1904,10 +1920,16 @@ class ConversationPane(Widget):
         tool_call_id: str | None = None,
         file_target: FileTarget | None = None,
         remote_path: str | None = None,
+        events: list | None = None,
     ) -> CopyableBlock:
         self._history.append(
             BlockRecord(
-                renderable, text_payload, tight, tool_call_id, file_target=file_target
+                renderable,
+                text_payload,
+                tight,
+                tool_call_id,
+                events=events,
+                file_target=file_target,
             )
         )
         block = CopyableBlock(
@@ -2547,11 +2569,16 @@ class ConversationPane(Widget):
             pass  # folded into its ToolUse block
         elif isinstance(ev, ToolUse) and ev.tool_call_id:
             self._flush_streaming()
-            # Open a live track: render the line with a running spinner+timer
-            # and make the block click-to-expand its args.
+            # Open a live track: render the row with a running spinner+timer
+            # and make the block click-to-open its detail window.
             track = _ToolTrack(ev=ev, idx=len(self._history), start=time.monotonic())
             renderable = render_tool_use(
-                ev, self._palette, elapsed=0.0, running=True, frame=self._spin_frame
+                ev,
+                self._palette,
+                elapsed=0.0,
+                running=True,
+                frame=self._spin_frame,
+                width=self._transcript().size.width or 80,
             )
             self._mount_block(
                 renderable,
@@ -2561,6 +2588,9 @@ class ConversationPane(Widget):
                     ev.name, ev.raw_input, ev.locations, host=self._host
                 ),
                 remote_path=self._remote_path_for(ev),
+                # The record carries the event itself, not just its
+                # rendering: it is what the detail window reads.
+                events=[ev],
             )
             # Remember this call's block so its (possibly out-of-order,
             # parallel) ToolResult folds in below instead of appending.
@@ -2637,14 +2667,14 @@ class ConversationPane(Widget):
         if track is None:
             return False
         self._flush_streaming()
-        result_r = render_event(ev, self._palette)
-        if result_r is None:
-            result_r = Text("")
         # Freeze the timer and attach the result to the track, then re-render.
+        # The EVENT is kept, not a rendering of it: the row shows a digest and
+        # the detail window shows the whole thing, and both read from here.
         track.done = True
         track.elapsed = time.monotonic() - track.start
-        track.result_r = result_r
+        track.result_ev = ev
         rec = self._history[track.idx]
+        rec.events = (rec.events or []) + [ev]
         rec.payload = f"{rec.payload}\n{_payload_for_event(ev)}"
         self._render_tool_block(track, scroll=True)
         if not self._any_spinner_running():
@@ -2802,15 +2832,15 @@ class ConversationPane(Widget):
         expanding args genuinely grows the block and keeps the default."""
         running = not track.done
         elapsed = (time.monotonic() - track.start) if running else track.elapsed
-        line = render_tool_use(
+        rend = render_tool_use(
             track.ev,
             self._palette,
             elapsed=elapsed,
             running=running,
             frame=self._spin_frame,
-            expanded=track.expanded,
+            result=track.result_ev,
+            width=self._transcript().size.width or 80,
         )
-        rend = Group(line, track.result_r) if track.result_r is not None else line
         rec = self._history[track.idx]
         rec.renderable = rend
         pos = track.idx - self._window_start
@@ -2836,15 +2866,22 @@ class ConversationPane(Widget):
         if not self._any_spinner_running():
             self._stop_tool_timer()
 
+    def tool_record(self, tool_call_id: str) -> "BlockRecord | None":
+        """The transcript record for a tool call, live or replayed.
+
+        History indexes are stable: eviction moves ``_window_start`` and
+        unmounts widgets (``_evict_top``) but never drops a record, so a
+        call from 400 blocks ago still resolves."""
+        idx = self._tool_use_idx.get(tool_call_id)
+        if idx is None or not (0 <= idx < len(self._history)):
+            return None
+        rec = self._history[idx]
+        return rec if rec.events else None
+
     def on_copyable_block_tool_expand_toggle(
         self, event: "CopyableBlock.ToolExpandToggle"
     ) -> None:
         event.stop()
-        track = self._tools.get(event.tool_call_id)
-        if track is None:
-            return
-        track.expanded = not track.expanded
-        self._render_tool_block(track, scroll=True)
 
     # --- subagent (Task) grouping ----------------------------------
 

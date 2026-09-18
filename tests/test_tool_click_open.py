@@ -201,4 +201,3 @@ async def test_plain_click_on_a_streamed_read_opens_nothing(tmp_path: Path):
         for _ in range(4):
             await pilot.pause()
         assert [p for p in app._panes if isinstance(p, FileTab)] == []
-        assert pane._tools["c1"].expanded   # plain click still expands args

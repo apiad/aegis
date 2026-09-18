@@ -5,7 +5,6 @@ from rich.console import Console
 from aegis.config import Agent
 from aegis.events import ToolResult, ToolUse
 from aegis.tui.app import AegisApp
-from aegis.tui.pane import CopyableBlock
 from aegis.tui.state import AgentState
 
 
@@ -74,33 +73,8 @@ async def test_tool_result_folds_freezes_timer_and_shows_result():
         track = pane._tools["c1"]
         assert track.done and track.elapsed is not None
         assert pane._tool_timer is None             # no runners left → stopped
-        assert "file-a" in _text_at(pane, track.idx)
-
-
-@pytest.mark.asyncio
-async def test_click_expands_and_collapses_args():
-    app = _app()
-    async with app.run_test():
-        pane = app._panes[0]
-        cmd = "echo " + "x" * 40 + " && echo UNIQUE_TAIL_MARKER"
-        pane._on_core_event(None, ToolUse(
-            name="Bash", summary="echo", kind="execute", tool_call_id="c1",
-            raw_input={"command": cmd, "description": "list files"}))
-        idx = pane._tools["c1"].idx
-        # Collapsed: long command is truncated, the tail marker is hidden.
-        assert "UNIQUE_TAIL_MARKER" not in _text_at(pane, idx)
-
-        pane.on_copyable_block_tool_expand_toggle(
-            CopyableBlock.ToolExpandToggle("c1"))
-        assert pane._tools["c1"].expanded
-        expanded = _text_at(pane, idx)
-        assert "UNIQUE_TAIL_MARKER" in expanded       # full command revealed
-        assert "# list files" in expanded             # description comment
-
-        pane.on_copyable_block_tool_expand_toggle(
-            CopyableBlock.ToolExpandToggle("c1"))
-        assert not pane._tools["c1"].expanded
-        assert "UNIQUE_TAIL_MARKER" not in _text_at(pane, idx)  # collapsed
+        # The row carries the digest — for Bash, the LAST non-empty line.
+        assert "file-b" in _text_at(pane, track.idx)
 
 
 @pytest.mark.asyncio
