@@ -2578,7 +2578,7 @@ class ConversationPane(Widget):
                 elapsed=0.0,
                 running=True,
                 frame=self._spin_frame,
-                width=self._transcript().size.width or 80,
+                column=True,
             )
             self._mount_block(
                 renderable,
@@ -2839,7 +2839,7 @@ class ConversationPane(Widget):
             running=running,
             frame=self._spin_frame,
             result=track.result_ev,
-            width=self._transcript().size.width or 80,
+            column=True,
         )
         rec = self._history[track.idx]
         rec.renderable = rend
@@ -2888,10 +2888,9 @@ class ConversationPane(Widget):
         from aegis.tui.tool_detail import ToolDetailScreen
 
         rec = self.tool_record(tool_call_id)
-        if rec is None:
+        if rec is None or not rec.events:
             return
-        use = rec.events[0]
-        result = rec.events[1] if len(rec.events) > 1 else None
+        use, result = rec.events[0], (rec.events[1] if len(rec.events) > 1 else None)
         track = self._tools.get(tool_call_id)
         screen = ToolDetailScreen(
             use, result, track.elapsed if track is not None else None, self._palette
@@ -2916,7 +2915,7 @@ class ConversationPane(Widget):
         if not (0 <= nxt < len(ids)):
             return
         rec = self.tool_record(ids[nxt])
-        if rec is None:
+        if rec is None or not rec.events:
             return
         track = self._tools.get(ids[nxt])
         screen.show(

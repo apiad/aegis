@@ -74,3 +74,51 @@ async def test_the_result_does_not_get_its_own_block(pane_app):
         pane._on_core_event(None, _res())
         await pilot.pause()
         assert len(pane._history) == before + 1
+
+
+def _screen_rows(app) -> list[str]:
+    """What the compositor actually paints, row by row.
+
+    Console.print of one renderable is not this: it tolerates a Text with
+    end="", where Textual gives the block no height and paints nothing, and
+    it is handed a width where the real block gets less. Both of those
+    shipped past the unit tests and were caught by driving the app.
+    """
+    return [
+        "".join(seg.text for seg in strip).rstrip()
+        for strip in app.screen._compositor.render_strips()
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_row_is_painted_and_is_one_row(pane_app):
+    async with pane_app() as (pane, pilot):
+        pane._on_core_event(None, _use("t1"))
+        pane._on_core_event(None, _res("t1", "3629 passed"))
+        await pilot.pause()
+        rows = _screen_rows(pane.app)
+        hits = [r for r in rows if "run tests" in r]
+        assert hits, f"the tool row was never painted: {rows}"
+        assert len(hits) == 1, f"the row was painted more than once: {hits}"
+        # Label, digest and stamp all on that one row, stamp last.
+        assert "3629 passed" in hits[0]
+        assert hits[0].rstrip().endswith("s"), hits[0]
+
+
+@pytest.mark.asyncio
+async def test_the_stamp_does_not_wrap_at_a_narrow_width(pane_app):
+    # The stamp used to be padded to the TRANSCRIPT's width, which is wider
+    # than the width a block gets — so it landed past the edge and wrapped
+    # onto a row of its own. Narrow is where that shows first.
+    async with pane_app() as (pane, pilot):
+        pane.app.screen.styles.width = 56
+        await pilot.pause()
+        pane._on_core_event(None, _use("t1"))
+        pane._on_core_event(None, _res("t1", "3629 passed"))
+        await pilot.pause()
+        rows = _screen_rows(pane.app)
+        hits = [r for r in rows if "run tests" in r]
+        assert len(hits) == 1, f"the row did not survive a narrow width: {rows}"
+        assert hits[0].rstrip().endswith("s"), (
+            f"the elapsed stamp left its row: {hits[0]!r}"
+        )

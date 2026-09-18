@@ -118,7 +118,50 @@ def _fmt_dur(secs: float) -> str:
     return f"{m}m{s:02d}s"
 
 
-_ELAPSED_W = 7  # "  12.4s" / " 3m04s" — the widest _fmt_dur output
+_ELAPSED_W = 7  # "  12.4s" / "  3m04s" — the widest _fmt_dur output
+
+
+class _ToolRow:
+    """A tool call's label and its elapsed stamp, on one row, with the stamp
+    right-aligned at the width the row is actually painted at.
+
+    The padding has to happen at paint time. The only width a caller can
+    measure is the transcript's, and a block gets less than that — its own
+    padding, and the scrollbar when there is one — so padding to a width
+    passed in put the stamp one cell past the edge and wrapped it onto a row
+    of its own, which is the one thing this line may never do. Caught by
+    driving the real app, not by a unit test, which had handed itself the
+    same wrong number twice.
+
+    A ``Table.grid`` right-aligns at paint time too and reads better, but it
+    costs 0.49 ms/row against 0.29 here (width 100, 4,000 rows, zion
+    2026-09-18) — 1.7x, on the renderable a transcript has most of.
+    """
+
+    __slots__ = ("line", "stamp")
+
+    def __init__(self, line: Text, stamp: Text) -> None:
+        self.line = line
+        self.stamp = stamp
+
+    def __rich_console__(self, console, options):
+        body_w = max(1, options.max_width - _ELAPSED_W)
+        line = self.line.copy()
+        # The label Text carries end="" so the no-column path can append to
+        # it. Here it is the whole row, and a row that does not end has no
+        # height: Textual mounted the block and painted nothing.
+        line.end = "\n"
+        # Truncate before padding: pad_right on an already-too-long line
+        # would not shorten it.
+        line.truncate(body_w, overflow="ellipsis")
+        line.pad_right(max(0, body_w - line.cell_len))
+        line.append_text(self.stamp)
+        yield line
+
+    def __rich_measure__(self, console, options):
+        from rich.measure import Measurement
+
+        return Measurement(_ELAPSED_W + 2, options.max_width)
 
 
 def render_tool_use(
@@ -129,7 +172,7 @@ def render_tool_use(
     running: bool = False,
     frame: int = 0,
     result=None,
-    width: int | None = None,
+    column: bool = False,
 ) -> RenderableType:
     """One tool call, one row: glyph + label, then the verdict and its
     digest, then the elapsed time in a right-hand column.
@@ -140,9 +183,9 @@ def render_tool_use(
     100 characters of the output, which is where a Read shows its imports
     and a Bash shows a progress bar.
 
-    ``width`` is the transcript's, and is what lets the elapsed column line
-    up down the whole transcript; without it the stamp just trails the text,
-    which is what a replayed block gets when no width is known.
+    ``column=True`` puts the elapsed time in a right-hand column that lines
+    up down the whole transcript; the live pane asks for it. Off, the stamp
+    just trails the text, which is what a bare Console.print gets.
     """
     icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
     desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
@@ -172,17 +215,12 @@ def render_tool_use(
 
     if elapsed is None:
         return line
-    stamp = _fmt_dur(elapsed)
-    if width is None:
-        line.append(f"  {stamp}", style=colors.muted)
+    stamp = Text(_fmt_dur(elapsed).rjust(_ELAPSED_W), style=colors.muted, no_wrap=True)
+    if not column:
+        line.append("  ")
+        line.append_text(stamp)
         return line
-    # Truncate before padding: pad_right on an already-too-long line would
-    # not shorten it, and the stamp would wrap onto a second row.
-    body_w = max(1, width - _ELAPSED_W)
-    line.truncate(body_w, overflow="ellipsis")
-    line.pad_right(max(0, body_w - line.cell_len))
-    line.append(stamp.rjust(_ELAPSED_W), style=colors.muted)
-    return line
+    return _ToolRow(line, stamp)
 
 
 def _render_diff(diff: tuple[str, str, str], colors, max_lines: int = 6) -> "Text":
