@@ -267,10 +267,14 @@ def anchor_line(text: str, anchor: str) -> int | None:
     return None
 
 
-def format_tool_args(name: str, raw_input: dict | None, summary: str = "") -> str:
-    """The full-args view revealed when a collapsed tool call is expanded.
+def format_tool_args(
+    name: str, raw_input: dict | None, summary: str = "", cap: int | None = 500
+) -> str:
+    """The full-args view of a tool call, shown in its detail window.
     Bash shows its command verbatim (with the description as a leading
-    comment); other tools show ``key: value`` lines with long values capped.
+    comment); other tools show ``key: value`` lines with long values capped
+    at ``cap`` characters — ``cap=None`` for the window itself, which is the
+    one place that wants every character.
     Pure — no Rich, no HTML."""
     import json
 
@@ -288,8 +292,8 @@ def format_tool_args(name: str, raw_input: dict | None, summary: str = "") -> st
         val = (
             v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
         )
-        if len(val) > 500:
-            val = val[:500] + "…"
+        if cap is not None and len(val) > cap:
+            val = val[:cap] + "…"
         lines.append(f"{k}: {val}")
     return "\n".join(lines)
 
