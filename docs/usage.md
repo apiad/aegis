@@ -240,9 +240,14 @@ Each agent message, tool call, and tool result is a separate
 verbatim to your clipboard — useful for grabbing tool outputs, error
 messages, or generated code snippets.
 
-A tool-call block clicks to expand its full arguments instead. On a
-`Read`, `Write`, or `Edit` block, **`Ctrl+click` opens the file that
-call touched** in a `FileTab` — a `Read` with an offset and an `Edit`
+A tool-call block is **one row** — what ran, how it went, and how long it
+took. **Click it** to open the call in a window holding its whole input and
+whole output: `↑↓`/`PgUp`/`PgDn` scroll, `c` copies the output, `f` writes
+it to a file and opens it in a tab (what you want for anything past a few
+thousand lines), `n` and `p` step to the next and previous call without
+closing, `Esc` closes. A call replayed from an earlier session opens the
+same way. On a `Read`, `Write`, or `Edit` block, **`Ctrl+click` opens the
+file that call touched** in a `FileTab` — a `Read` with an offset and an `Edit`
 both land on their line (the edit's line is found by looking for the
 text it replaced; if the file has moved on too far, the file still
 opens, at the top). `Ctrl+click` on a backtick-wrapped filename in

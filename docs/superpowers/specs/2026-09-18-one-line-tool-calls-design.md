@@ -2,7 +2,7 @@
 
 *Design — 2026-09-18.*
 
-*Status: not implemented.*
+*Status: implemented 2026-09-18, `bb50d70`..`52d4280`.*
 
 Scope is the Textual TUI. `src/aegis/web/` is superseded by the
 TUI-over-web refactor (stage 6 of

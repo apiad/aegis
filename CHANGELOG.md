@@ -7,6 +7,18 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Changed
 
+- **One row per tool call.** The transcript gives a tool call a single
+  line: what ran, a verdict digest (`3629 passed`, `+12 −3`, `no matches`,
+  `501 lines`), and the elapsed time in a right-hand column. Clicking it
+  opens the full input and full output in a scrollable window — `c` copies
+  the output, `f` hands it to a file tab, `n` and `p` step through the
+  turn's calls. This replaces the folded result line, the six-row diff
+  preview and the inline argument expansion, which between them cost up to
+  a dozen rows per call and showed the first 100 characters of the output,
+  which is where a read shows its imports and a command shows its progress
+  bar. A tool call replayed from an earlier session is now clickable too;
+  it never was.
+
 - **The recap says what is being solved, not which files changed.** One
   format for the end-of-turn recap, the `now` line and `/recap`: the task,
   the outcome in at most 20 words, and what comes next, written at the level
