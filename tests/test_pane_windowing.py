@@ -1,4 +1,5 @@
 """Transcript windowing: bounded mounted widget count, scroll-up reloads."""
+
 import pytest
 
 from aegis.config import Agent
@@ -8,45 +9,59 @@ from aegis.tui.pane import CopyableBlock
 
 
 def _agent():
-    return Agent(harness="claude-code", model="opus",
-                 effort="high", permission="auto")
+    return Agent(harness="claude-code", model="opus", effort="high", permission="auto")
 
 
 class FakeSession:
     def __init__(self):
         self.sent = []
         self.started = self.closed = False
-    async def start(self): self.started = True
-    async def send(self, text): self.sent.append(text)
+
+    async def start(self):
+        self.started = True
+
+    async def send(self, text):
+        self.sent.append(text)
+
     async def events(self):
         if False:
             yield  # pragma: no cover
-    async def close(self): self.closed = True
+
+    async def close(self):
+        self.closed = True
 
 
 class FakeMCP:
     url = "http://127.0.0.1:0/mcp/"
+
     def __init__(self):
         self.started = self.stopped = False
         self.bound = None
-    def bind(self, bridge): self.bound = bridge
-    async def start(self): self.started = True
-    async def stop(self): self.stopped = True
+
+    def bind(self, bridge):
+        self.bound = bridge
+
+    async def start(self):
+        self.started = True
+
+    async def stop(self):
+        self.stopped = True
 
 
 def _factory(*sessions):
     it = iter(sessions or (FakeSession(),))
+
     def make(agent, mcp_url, handle):
         try:
             return next(it)
         except StopIteration:
             return FakeSession()
+
     return make
 
 
 def _app():
-    return AegisApp({"default": _agent()}, "default",
-                    _factory(), FakeMCP())
+    return AegisApp({"default": _agent()}, "default", _factory(), FakeMCP())
 
 
 @pytest.mark.asyncio
@@ -85,8 +100,7 @@ async def test_replay_populates_full_history_but_mounts_only_tail():
         assert len(pane._mounted_blocks) == REPLAY_TAIL
         assert pane._window_start == len(pane._history) - REPLAY_TAIL
         # The mounted tail is the *last* REPLAY_TAIL records, in order.
-        assert (pane._mounted_blocks[-1].text_payload()
-                == pane._history[-1].payload)
+        assert pane._mounted_blocks[-1].text_payload() == pane._history[-1].payload
 
 
 @pytest.mark.slow
@@ -96,13 +110,15 @@ async def test_scroll_up_reloads_older_blocks():
     import asyncio
     from textual.containers import VerticalScroll
     from aegis.tui.pane import N_MAX, LOAD_BATCH, DEBOUNCE_S
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         # Build a history big enough that eviction has happened.
         for i in range(N_MAX + 200):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"f{i}.py", kind="read"))
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read")
+            )
         await pilot.pause()
         await pilot.pause()
         start_before = pane._window_start
@@ -127,12 +143,14 @@ async def test_load_older_is_idempotent_while_pending():
     import asyncio
     from textual.containers import VerticalScroll
     from aegis.tui.pane import N_MAX, LOAD_BATCH, DEBOUNCE_S
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         for i in range(N_MAX + 250):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"f{i}.py", kind="read"))
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read")
+            )
         await pilot.pause()
         await pilot.pause()
         start_before = pane._window_start
@@ -154,13 +172,15 @@ async def test_eviction_caps_mounted_widget_count():
     """Once history exceeds N_MAX and user is at the bottom, eviction
     keeps the mounted CopyableBlock count bounded."""
     from aegis.tui.pane import N_MAX
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         # Pump enough non-streaming events to exceed N_MAX.
         for i in range(N_MAX + 80):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"f{i}.py", kind="read"))
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read")
+            )
         await pilot.pause()
         await pilot.pause()
         assert len(pane._history) == N_MAX + 80
@@ -176,13 +196,15 @@ async def test_no_eviction_while_user_scrolled_up():
     """User reading old content does not get yanked when new events arrive."""
     from textual.containers import VerticalScroll
     from aegis.tui.pane import N_MAX
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         # Fill close to but under N_MAX so no eviction has run yet.
         for i in range(N_MAX - 10):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"a{i}.py", kind="read"))
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"a{i}.py", kind="read")
+            )
         await pilot.pause()
         await pilot.pause()
         # Scroll up.
@@ -193,8 +215,9 @@ async def test_no_eviction_while_user_scrolled_up():
         start_before = pane._window_start
         # Pump more events that, with sticky=True, would have triggered eviction.
         for i in range(50):
-            pane._on_core_event(None, ToolUse(
-                name="Read", summary=f"b{i}.py", kind="read"))
+            pane._on_core_event(
+                None, ToolUse(name="Read", summary=f"b{i}.py", kind="read")
+            )
         await pilot.pause()
         # No eviction happened — user's scroll position protected.
         assert pane._window_start == start_before
@@ -241,8 +264,8 @@ async def test_replay_renders_only_the_blocks_it_mounts():
         finally:
             pane_mod.render_event = real
 
-        assert len(pane._history) == 500          # full history retained
-        assert len(rendered) <= REPLAY_TAIL       # only the mounted tail
+        assert len(pane._history) == 500  # full history retained
+        assert len(rendered) <= REPLAY_TAIL  # only the mounted tail
         # And the un-mounted ones still render correctly on demand.
         assert pane._history[1].payload == "message number 0"
         assert pane._history[1].materialize(pane._palette) is not None
@@ -252,6 +275,7 @@ async def test_replay_renders_only_the_blocks_it_mounts():
 async def test_sticky_bottom_flag_starts_true_and_flips_on_scroll_up():
     """Pane starts sticky; scrolling away from the bottom flips the flag."""
     from textual.containers import VerticalScroll
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
@@ -261,7 +285,8 @@ async def test_sticky_bottom_flag_starts_true_and_flips_on_scroll_up():
         # Pump enough events to make the transcript scrollable.
         for i in range(60):
             pane._on_core_event(
-                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read"))
+                None, ToolUse(name="Read", summary=f"f{i}.py", kind="read")
+            )
         await pilot.pause()
         await pilot.pause()
 
@@ -291,24 +316,39 @@ async def test_streaming_updates_history_record_in_place():
         assert pane._history[0].payload == "hello world"
 
 
+async def _settle(pilot, predicate, tries: int = 60):
+    """Pump the event loop until ``predicate()`` holds.
+
+    Two `pilot.pause()` calls are enough for the compositor to lay out a
+    grown block on an idle dev machine and are not enough on a loaded CI
+    runner, where the two streaming tests below failed on three of four
+    consecutive runs with `max_scroll_y` still 0. Waiting for the condition
+    asserts the behaviour instead of the host's speed.
+    """
+    for _ in range(tries):
+        if predicate():
+            return
+        await pilot.pause()
+    raise AssertionError("condition never held; the pane never laid out")
+
+
 @pytest.mark.asyncio
 async def test_streaming_follows_bottom_while_sticky():
     """As a single message streams and its block grows past the viewport, the
     view stays pinned to the bottom so new text is always visible — as long as
     the user hasn't scrolled up."""
     from textual.containers import VerticalScroll
+
     app = _app()
     async with app.run_test(size=(80, 24)) as pilot:
         pane = app._panes[0]
         t = pane.query_one("#transcript", VerticalScroll)
         # Stream a tall message one line-delta at a time.
         for i in range(60):
-            pane._on_core_event(
-                None, AssistantText(text=f"line {i}\n", usage=None))
-        await pilot.pause()
-        await pilot.pause()
+            pane._on_core_event(None, AssistantText(text=f"line {i}\n", usage=None))
+        await _settle(pilot, lambda: t.max_scroll_y > 0)
         assert pane._stick_to_bottom is True
-        assert t.max_scroll_y > 0            # the block overflows the viewport
+        assert t.max_scroll_y > 0  # the block overflows the viewport
         assert t.scroll_y == t.max_scroll_y  # ...and we followed it to the end
 
 
@@ -317,23 +357,23 @@ async def test_streaming_does_not_yank_when_scrolled_up():
     """If the user scrolled up to read, streaming new text must NOT drag the
     viewport back down."""
     from textual.containers import VerticalScroll
+
     app = _app()
     async with app.run_test(size=(80, 24)) as pilot:
         pane = app._panes[0]
         t = pane.query_one("#transcript", VerticalScroll)
         for i in range(60):
-            pane._on_core_event(
-                None, AssistantText(text=f"line {i}\n", usage=None))
-        await pilot.pause()
-        await pilot.pause()
+            pane._on_core_event(None, AssistantText(text=f"line {i}\n", usage=None))
+        # The scroll below is a no-op until the block actually overflows, and
+        # a no-op scroll fires no event, so sticky would stay True.
+        await _settle(pilot, lambda: t.max_scroll_y > 0)
         # User scrolls up.
         t.scroll_y = 0
-        await pilot.pause()
+        await _settle(pilot, lambda: pane._stick_to_bottom is False)
         assert pane._stick_to_bottom is False
         # More text streams in.
         for i in range(60, 90):
-            pane._on_core_event(
-                None, AssistantText(text=f"line {i}\n", usage=None))
+            pane._on_core_event(None, AssistantText(text=f"line {i}\n", usage=None))
         await pilot.pause()
         # Still parked at the top — not yanked.
         assert t.scroll_y == 0
@@ -347,6 +387,7 @@ async def test_streaming_uses_cheap_text_then_markdown_on_flush():
     preserved."""
     from rich.markdown import Markdown
     from rich.text import Text
+
     app = _app()
     async with app.run_test():
         pane = app._panes[0]
@@ -384,6 +425,7 @@ async def test_parallel_tool_results_fold_into_their_use():
     order). Each result must fold into its OWN use block by tool_call_id —
     not pile up as trailing blocks."""
     from aegis.events import ToolResult
+
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
@@ -394,14 +436,18 @@ async def test_parallel_tool_results_fold_into_their_use():
         pane._window_start = 0
         pane._tool_use_idx.clear()
         # Two parallel uses, then results in REVERSE order.
-        pane._on_core_event(None, ToolUse(
-            name="Read", summary="a.py", kind="read", tool_call_id="A"))
-        pane._on_core_event(None, ToolUse(
-            name="Read", summary="b.py", kind="read", tool_call_id="B"))
-        pane._on_core_event(None, ToolResult(
-            text="result-of-B", is_error=False, tool_call_id="B"))
-        pane._on_core_event(None, ToolResult(
-            text="result-of-A", is_error=False, tool_call_id="A"))
+        pane._on_core_event(
+            None, ToolUse(name="Read", summary="a.py", kind="read", tool_call_id="A")
+        )
+        pane._on_core_event(
+            None, ToolUse(name="Read", summary="b.py", kind="read", tool_call_id="B")
+        )
+        pane._on_core_event(
+            None, ToolResult(text="result-of-B", is_error=False, tool_call_id="B")
+        )
+        pane._on_core_event(
+            None, ToolResult(text="result-of-A", is_error=False, tool_call_id="A")
+        )
         await pilot.pause()
         # One block per call, in use order — results folded in, not appended.
         assert len(pane._history) == 2
@@ -416,6 +462,7 @@ async def test_tool_result_without_known_use_appends():
     """A ToolResult with no matching use (e.g. use scrolled out) falls back
     to a standalone block rather than being dropped."""
     from aegis.events import ToolResult
+
     app = _app()
     async with app.run_test():
         pane = app._panes[0]
@@ -425,7 +472,8 @@ async def test_tool_result_without_known_use_appends():
         pane._mounted_blocks.clear()
         pane._window_start = 0
         pane._tool_use_idx.clear()
-        pane._on_core_event(None, ToolResult(
-            text="orphan", is_error=False, tool_call_id="ZZZ"))
+        pane._on_core_event(
+            None, ToolResult(text="orphan", is_error=False, tool_call_id="ZZZ")
+        )
         assert len(pane._history) == 1
         assert "orphan" in pane._history[0].payload
