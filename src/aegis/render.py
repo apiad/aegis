@@ -23,11 +23,11 @@ from aegis.events import (
 from aegis.comms.descriptors import aegis_glyph
 from aegis.render_shared import (
     PLAN_STATUS_GLYPH,
-    describe_tool,
     diff_window,
     result_digest,
     result_parts,
     tool_glyph,
+    tool_label,
 )
 
 # Per-tool-call spinner (mirrors the turn-level WorkingIndicator glyphs).
@@ -121,11 +121,27 @@ def _fmt_dur(secs: float) -> str:
 _ELAPSED_W = 7  # "  12.4s" / "  3m04s" — the widest _fmt_dur output
 
 
-class _ToolRow:
-    """A tool call's label and its elapsed stamp, on one row, with the stamp
-    right-aligned at the width the row is actually painted at.
+# The icon's pulse while a call is in flight. The ticker runs at 10 Hz, so
+# five frames on and five off reads as a 1 Hz blink — a cursor's rhythm, not
+# a strobe.
+_PULSE_FRAMES = 5
 
-    The padding has to happen at paint time. The only width a caller can
+_LABEL_FRAC = 0.42  # share of the row the label may occupy
+_LABEL_MIN = 16
+_LABEL_MAX = 48
+
+
+class _ToolRow:
+    """One tool call as three columns: what it was, how it went, how long.
+
+    The middle column is the point of the row. A transcript is read to find
+    out what came *back* — what passed, what failed, how many matches — and
+    the label is only there to say which call that was. So the label gets a
+    bounded column and gives way first; the result keeps the rest. The line
+    used to be one string truncated from the right, which clipped the result
+    and kept the argument, exactly backwards (Alex, 2026-09-21).
+
+    Both columns are laid out at paint time. The only width a caller can
     measure is the transcript's, and a block gets less than that — its own
     padding, and the scrollbar when there is one — so padding to a width
     passed in put the stamp one cell past the edge and wrapped it onto a row
@@ -133,30 +149,39 @@ class _ToolRow:
     driving the real app, not by a unit test, which had handed itself the
     same wrong number twice.
 
-    A ``Table.grid`` right-aligns at paint time too and reads better, but it
-    costs 0.49 ms/row against 0.29 here (width 100, 4,000 rows, zion
-    2026-09-18) — 1.7x, on the renderable a transcript has most of.
+    A ``Table.grid`` does this too and reads better, but it costs 0.49 ms/row
+    against 0.29 here (width 100, 4,000 rows, zion 2026-09-18) — 1.7x, on the
+    renderable a transcript has most of.
     """
 
-    __slots__ = ("line", "stamp")
+    __slots__ = ("label", "verdict", "stamp")
 
-    def __init__(self, line: Text, stamp: Text) -> None:
-        self.line = line
+    def __init__(self, label: Text, verdict: Text, stamp: Text) -> None:
+        self.label = label
+        self.verdict = verdict
         self.stamp = stamp
 
     def __rich_console__(self, console, options):
         body_w = max(1, options.max_width - _ELAPSED_W)
-        line = self.line.copy()
+        label_w = min(_LABEL_MAX, max(_LABEL_MIN, int(body_w * _LABEL_FRAC)))
+        label_w = min(label_w, body_w)
+
+        row = self.label.copy()
         # The label Text carries end="" so the no-column path can append to
         # it. Here it is the whole row, and a row that does not end has no
         # height: Textual mounted the block and painted nothing.
-        line.end = "\n"
+        row.end = "\n"
         # Truncate before padding: pad_right on an already-too-long line
         # would not shorten it.
-        line.truncate(body_w, overflow="ellipsis")
-        line.pad_right(max(0, body_w - line.cell_len))
-        line.append_text(self.stamp)
-        yield line
+        row.truncate(label_w, overflow="ellipsis")
+        row.pad_right(max(0, label_w - row.cell_len))
+
+        verdict = self.verdict.copy()
+        verdict.truncate(max(0, body_w - label_w), overflow="ellipsis")
+        row.append_text(verdict)
+        row.pad_right(max(0, body_w - row.cell_len))
+        row.append_text(self.stamp)
+        yield row
 
     def __rich_measure__(self, console, options):
         from rich.measure import Measurement
@@ -188,39 +213,58 @@ def render_tool_use(
     just trails the text, which is what a bare Console.print gets.
     """
     icon = tool_glyph(ev.name, ev.kind, ev.raw_input)
-    desc = describe_tool(ev.name, ev.raw_input, ev.summary, ev.locations)
+    # The LABEL, not describe_tool: which call this was, with none of what
+    # was fed to it. A row exists to show the result.
+    desc = tool_label(ev.name, ev.raw_input, ev.summary, ev.locations)
     # A call into the aegis layer wears the layer's own colour, so a
     # transcript shows at a glance where agents were talking to each other.
     style = colors.comms if aegis_glyph(ev.name, ev.raw_input or {}) else colors.accent
+    if running:
+        # The icon IS the running indicator: it pulses in flight and settles
+        # the moment the call returns. A terminal's own blink attribute
+        # (SGR 5) is ignored or mangled by plenty of terminals, so the pulse
+        # is ours — `dim` for half of each cycle, off the same 10 Hz ticker
+        # that moves the elapsed digits, which lands on ~1 Hz.
+        if (frame // _PULSE_FRAMES) % 2:
+            style = f"dim {style}"
 
     line = Text(no_wrap=True, overflow="ellipsis", end="")
     line.append(f"{icon} ", style=style)
     line.append(desc)
 
     if running:
-        verdict, vstyle = _TOOL_SPINNER[frame % len(_TOOL_SPINNER)], colors.working
+        # Nothing in the middle column while it runs. That space is where
+        # the result lands, and a spinner sitting in it is one more thing
+        # to look past on a row whose whole job is the result.
+        mark, vstyle = "", colors.muted
     elif result is None:
-        verdict, vstyle = "", colors.muted
+        mark, vstyle = "", colors.muted
     elif result.is_error:
-        verdict, vstyle = "✗", colors.err
+        mark, vstyle = "✗", colors.err
     else:
-        verdict, vstyle = "✓", colors.ok
+        mark, vstyle = "✓", colors.ok
     digest = "" if running else result_digest(ev.name, result)
-    if verdict or digest:
-        line.append("  ")
-        if verdict:
-            line.append(verdict, style=vstyle)
-        if digest:
-            line.append(f" {digest}", style=colors.muted)
+
+    verdict = Text(no_wrap=True, overflow="ellipsis", end="")
+    if mark:
+        verdict.append(mark, style=vstyle)
+    if digest:
+        verdict.append(f" {digest}" if mark else digest, style=colors.muted)
 
     if elapsed is None:
+        if verdict.cell_len:
+            line.append("  ")
+            line.append_text(verdict)
         return line
     stamp = Text(_fmt_dur(elapsed).rjust(_ELAPSED_W), style=colors.muted, no_wrap=True)
     if not column:
+        if verdict.cell_len:
+            line.append("  ")
+            line.append_text(verdict)
         line.append("  ")
         line.append_text(stamp)
         return line
-    return _ToolRow(line, stamp)
+    return _ToolRow(line, verdict, stamp)
 
 
 def _render_diff(diff: tuple[str, str, str], colors, max_lines: int = 6) -> "Text":

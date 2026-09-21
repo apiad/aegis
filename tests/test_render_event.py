@@ -1,7 +1,14 @@
 from rich.console import Console
 from aegis.events import (
-    AgentPlan, AssistantText, AssistantThinking, PlanEntry, ToolUse,
-    ToolResult, Result, SystemInit, Unknown,
+    AgentPlan,
+    AssistantText,
+    AssistantThinking,
+    PlanEntry,
+    ToolUse,
+    ToolResult,
+    Result,
+    SystemInit,
+    Unknown,
 )
 from aegis.render import render_event, render_tool_use, render_user_line
 from aegis.tui.themes import aegis_colors, INK
@@ -23,8 +30,7 @@ def test_assistant_text_is_renderable():
 def test_thought_uses_token_estimate_when_present():
     # Claude redacts the thinking text (empty) but reports the estimate —
     # the summary must show it, not fall back to ~1 tok.
-    out = as_text(render_event(
-        AssistantThinking(text="", token_estimate=6050), C))
+    out = as_text(render_event(AssistantThinking(text="", token_estimate=6050), C))
     assert "thought" in out
     assert "6k tok" in out and "1 tok" not in out
 
@@ -32,110 +38,135 @@ def test_thought_uses_token_estimate_when_present():
 def test_thought_falls_back_to_length_when_no_estimate():
     # Harnesses that stream the reasoning text (no estimate) keep the
     # ~4-chars/token heuristic.
-    out = as_text(render_event(
-        AssistantThinking(text="x" * 400, token_estimate=0), C))
+    out = as_text(render_event(AssistantThinking(text="x" * 400, token_estimate=0), C))
     assert "100 tok" in out
 
 
 def test_tool_use_one_liner():
-    out = as_text(render_event(
-        ToolUse(name="Read", summary="foo.py",
-                raw_input={"file_path": "a/foo.py"}), C))
+    out = as_text(
+        render_event(
+            ToolUse(name="Read", summary="foo.py", raw_input={"file_path": "a/foo.py"}),
+            C,
+        )
+    )
     assert "read foo.py" in out
     assert out.count("\n") <= 2
 
 
 def test_tool_use_kind_read_renders_book_icon():
-    out = as_text(render_event(
-        ToolUse(name="Read", summary="foo.py", kind="read",
-                raw_input={"file_path": "a/foo.py"}), C))
+    out = as_text(
+        render_event(
+            ToolUse(
+                name="Read",
+                summary="foo.py",
+                kind="read",
+                raw_input={"file_path": "a/foo.py"},
+            ),
+            C,
+        )
+    )
     assert "📖" in out
     assert "read foo.py" in out
 
 
 def test_tool_use_bash_shows_description():
-    out = as_text(render_event(
-        ToolUse(name="Bash", summary="uv run pytest", kind="execute",
-                raw_input={"command": "uv run pytest",
-                           "description": "Run the suite"}), C))
+    out = as_text(
+        render_event(
+            ToolUse(
+                name="Bash",
+                summary="uv run pytest",
+                kind="execute",
+                raw_input={"command": "uv run pytest", "description": "Run the suite"},
+            ),
+            C,
+        )
+    )
     assert "Run the suite" in out and "Bash" not in out
 
 
 def test_tool_use_kind_execute_renders_terminal_icon():
-    out = as_text(render_event(
-        ToolUse(name="Bash", summary="echo hi", kind="execute"), C))
+    out = as_text(
+        render_event(ToolUse(name="Bash", summary="echo hi", kind="execute"), C)
+    )
     assert "⌬" in out
 
 
 def test_tool_use_kind_edit_renders_pencil():
-    out = as_text(render_event(
-        ToolUse(name="Edit", summary="x.py", kind="edit"), C))
+    out = as_text(render_event(ToolUse(name="Edit", summary="x.py", kind="edit"), C))
     assert "✏" in out  # variation selector intentionally not asserted
 
 
 def test_tool_use_kind_search_renders_magnifier():
-    out = as_text(render_event(
-        ToolUse(name="Grep", summary="foo", kind="search"), C))
+    out = as_text(render_event(ToolUse(name="Grep", summary="foo", kind="search"), C))
     assert "🔎" in out
 
 
 def test_tool_use_kind_think_renders_sparkle():
-    out = as_text(render_event(
-        ToolUse(name="Task", summary="plan", kind="think"), C))
+    out = as_text(render_event(ToolUse(name="Task", summary="plan", kind="think"), C))
     assert "✻" in out
 
 
 def test_tool_use_no_kind_falls_back_to_dot():
-    out = as_text(render_event(
-        ToolUse(name="MysteryTool", summary="x"), C))
+    out = as_text(render_event(ToolUse(name="MysteryTool", summary="x"), C))
     assert "⏺" in out  # current behavior
 
 
 def test_tool_use_unknown_kind_also_falls_back():
-    out = as_text(render_event(
-        ToolUse(name="X", summary="y", kind="bogus"), C))
+    out = as_text(render_event(ToolUse(name="X", summary="y", kind="bogus"), C))
     assert "⏺" in out
 
 
 def test_tool_use_location_pathhint_shortens_long_path():
-    out = as_text(render_event(
-        ToolUse(name="Read", summary="",
+    out = as_text(
+        render_event(
+            ToolUse(
+                name="Read",
+                summary="",
                 kind="read",
-                locations=(("/very/deep/nested/path/foo.py", None),)), C))
+                locations=(("/very/deep/nested/path/foo.py", None),),
+            ),
+            C,
+        )
+    )
     assert "foo.py" in out
     # No need to assert the absence of /very — the renderer might show
     # the full path; what matters is the tail is visible.
 
 
 def test_tool_use_location_with_line_appended():
-    out = as_text(render_event(
-        ToolUse(name="Read", summary="",
-                kind="read",
-                locations=(("foo.py", 42),)), C))
+    out = as_text(
+        render_event(
+            ToolUse(name="Read", summary="", kind="read", locations=(("foo.py", 42),)),
+            C,
+        )
+    )
     assert "foo.py" in out
     assert "42" in out
 
 
 def test_tool_use_falls_back_to_summary_when_no_location():
-    out = as_text(render_event(
-        ToolUse(name="Bash", summary="echo hi", kind="execute"), C))
+    out = as_text(
+        render_event(ToolUse(name="Bash", summary="echo hi", kind="execute"), C)
+    )
     assert "echo hi" in out
 
 
 def test_agent_plan_renders_status_glyphs():
-    plan = AgentPlan(entries=(
-        PlanEntry(content="alpha", status="completed"),
-        PlanEntry(content="beta", status="in_progress"),
-        PlanEntry(content="gamma", status="pending"),
-    ))
+    plan = AgentPlan(
+        entries=(
+            PlanEntry(content="alpha", status="completed"),
+            PlanEntry(content="beta", status="in_progress"),
+            PlanEntry(content="gamma", status="pending"),
+        )
+    )
     out = as_text(render_event(plan, C))
     # Each entry's content appears, each with its corresponding glyph.
     assert "alpha" in out
     assert "beta" in out
     assert "gamma" in out
-    assert "●" in out   # completed
-    assert "◐" in out   # in_progress
-    assert "○" in out   # pending
+    assert "●" in out  # completed
+    assert "◐" in out  # in_progress
+    assert "○" in out  # pending
 
 
 def test_agent_plan_empty_renders_label():
@@ -147,12 +178,14 @@ def test_agent_plan_empty_renders_label():
 
 def test_agent_plan_completed_count_visible():
     """Header summarizes progress so the eye catches it at a glance."""
-    plan = AgentPlan(entries=(
-        PlanEntry(content="a", status="completed"),
-        PlanEntry(content="b", status="completed"),
-        PlanEntry(content="c", status="in_progress"),
-        PlanEntry(content="d", status="pending"),
-    ))
+    plan = AgentPlan(
+        entries=(
+            PlanEntry(content="a", status="completed"),
+            PlanEntry(content="b", status="completed"),
+            PlanEntry(content="c", status="in_progress"),
+            PlanEntry(content="d", status="pending"),
+        )
+    )
     out = as_text(render_event(plan, C))
     assert "2/4" in out or "2 of 4" in out
 
@@ -160,13 +193,17 @@ def test_agent_plan_completed_count_visible():
 def test_tool_result_with_diff_renders_unified_preview():
     """ToolResult.diff shows up as a small unified-style block — minus
     lines for old, plus lines for new — under the success/error line."""
-    out = as_text(render_event(
-        ToolResult(
-            text="ok",
-            is_error=False,
-            kind="edit",
-            diff=("x.py", "alpha\nbeta\n", "alpha\nGAMMA\nbeta\n"),
-        ), C))
+    out = as_text(
+        render_event(
+            ToolResult(
+                text="ok",
+                is_error=False,
+                kind="edit",
+                diff=("x.py", "alpha\nbeta\n", "alpha\nGAMMA\nbeta\n"),
+            ),
+            C,
+        )
+    )
     # The path is referenced.
     assert "x.py" in out
     # Removed line marker present (- gamma).
@@ -178,13 +215,17 @@ def test_tool_result_with_diff_renders_unified_preview():
 def test_tool_result_diff_pure_addition():
     """Write case — old is empty, new has the full content. Should
     render the new content as additions only."""
-    out = as_text(render_event(
-        ToolResult(
-            text="ok",
-            is_error=False,
-            kind="edit",
-            diff=("new.py", "", "first\nsecond\n"),
-        ), C))
+    out = as_text(
+        render_event(
+            ToolResult(
+                text="ok",
+                is_error=False,
+                kind="edit",
+                diff=("new.py", "", "first\nsecond\n"),
+            ),
+            C,
+        )
+    )
     assert "new.py" in out
     assert "first" in out
 
@@ -192,8 +233,7 @@ def test_tool_result_diff_pure_addition():
 def test_tool_result_without_diff_renders_legacy_one_liner():
     """Backward compat: ToolResult without diff renders the same
     single-line ok/error preview as before."""
-    out = as_text(render_event(
-        ToolResult(text="bar", is_error=False, kind="read"), C))
+    out = as_text(render_event(ToolResult(text="bar", is_error=False, kind="read"), C))
     assert "ok" in out.lower() or "└" in out
     # No diff gutter when there's no diff.
 
@@ -204,9 +244,12 @@ def test_tool_result_diff_truncates_long_changes():
     transcript block."""
     old = "".join(f"line-old-{i}\n" for i in range(40))
     new = "".join(f"line-new-{i}\n" for i in range(40))
-    out = as_text(render_event(
-        ToolResult(text="ok", is_error=False, kind="edit",
-                   diff=("x.py", old, new)), C))
+    out = as_text(
+        render_event(
+            ToolResult(text="ok", is_error=False, kind="edit", diff=("x.py", old, new)),
+            C,
+        )
+    )
     # Total rendered lines stays bounded (< 20 visible).
     assert out.count("\n") < 20
 
@@ -214,9 +257,17 @@ def test_tool_result_diff_truncates_long_changes():
 def test_tool_use_hint_suppressed_when_equal_to_name():
     """ACP titles often equal the filename ("target.txt"); the pathhint
     derives the same string from locations[0]. Don't render both."""
-    out = as_text(render_event(
-        ToolUse(name="target.txt", summary="", kind="read",
-                locations=(("/some/path/target.txt", None),)), C))
+    out = as_text(
+        render_event(
+            ToolUse(
+                name="target.txt",
+                summary="",
+                kind="read",
+                locations=(("/some/path/target.txt", None),),
+            ),
+            C,
+        )
+    )
     # The name shows once; no parenthetical duplicate.
     assert out.count("target.txt") == 1
 
@@ -224,8 +275,9 @@ def test_tool_use_hint_suppressed_when_equal_to_name():
 def test_running_tool_timer_shows_subsecond():
     """Live per-tool timer ticks in tenths (like the WorkingIndicator),
     not whole seconds — so the digits visibly move at the 0.1s cadence."""
-    ev = ToolUse(name="Bash", summary="sleep", kind="execute",
-                 raw_input={"command": "sleep 5"})
+    ev = ToolUse(
+        name="Bash", summary="sleep", kind="execute", raw_input={"command": "sleep 5"}
+    )
     out = as_text(render_tool_use(ev, C, elapsed=3.4, running=True, frame=0))
     assert "3.4s" in out
 
@@ -233,15 +285,17 @@ def test_running_tool_timer_shows_subsecond():
 def test_frozen_tool_duration_keeps_subsecond():
     """Once folded, the duration freezes at the tenths value last shown —
     no jump back to a rounded whole second."""
-    ev = ToolUse(name="Bash", summary="sleep", kind="execute",
-                 raw_input={"command": "sleep 5"})
+    ev = ToolUse(
+        name="Bash", summary="sleep", kind="execute", raw_input={"command": "sleep 5"}
+    )
     out = as_text(render_tool_use(ev, C, elapsed=3.4, running=False))
     assert "3.4s" in out
 
 
 def test_tool_duration_minutes_unchanged():
-    ev = ToolUse(name="Bash", summary="build", kind="execute",
-                 raw_input={"command": "make"})
+    ev = ToolUse(
+        name="Bash", summary="build", kind="execute", raw_input={"command": "make"}
+    )
     out = as_text(render_tool_use(ev, C, elapsed=125.0, running=True, frame=0))
     assert "2m05s" in out
 
@@ -281,38 +335,51 @@ def test_result_shows_cost_when_populated():
     (status_line.metrics._fmt_cost) — sub-cent → '0.X¢', whole cents
     under $1 → 'N¢', dollars otherwise → '$N.NN'."""
     # 1.23¢ → "1¢" (whole cents under $1)
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False, cost_usd=0.0123), C))
+    out = as_text(
+        render_event(Result(duration_ms=1000, is_error=False, cost_usd=0.0123), C)
+    )
     assert "1¢" in out
     # 0.5¢ → "0.5¢" (sub-cent)
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False, cost_usd=0.005), C))
+    out = as_text(
+        render_event(Result(duration_ms=1000, is_error=False, cost_usd=0.005), C)
+    )
     assert "0.5¢" in out
     # $1.23 → "$1.23" (dollars)
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False, cost_usd=1.23), C))
+    out = as_text(
+        render_event(Result(duration_ms=1000, is_error=False, cost_usd=1.23), C)
+    )
     assert "$1.23" in out
 
 
 def test_result_shows_stop_reason_when_non_default():
     """end_turn is the boring case — don't pollute. max_tokens /
     refusal / cancelled mean something happened that should be visible."""
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False,
-               stop_reason="max_tokens"), C))
+    out = as_text(
+        render_event(
+            Result(duration_ms=1000, is_error=False, stop_reason="max_tokens"), C
+        )
+    )
     assert "max_tokens" in out
 
 
 def test_result_omits_end_turn_stop_reason():
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False, stop_reason="end_turn"), C))
+    out = as_text(
+        render_event(
+            Result(duration_ms=1000, is_error=False, stop_reason="end_turn"), C
+        )
+    )
     assert "end_turn" not in out
 
 
 def test_result_combines_cost_and_stop_reason():
-    out = as_text(render_event(
-        Result(duration_ms=1000, is_error=False,
-               cost_usd=0.05, stop_reason="refusal"), C))
+    out = as_text(
+        render_event(
+            Result(
+                duration_ms=1000, is_error=False, cost_usd=0.05, stop_reason="refusal"
+            ),
+            C,
+        )
+    )
     assert "5¢" in out
     assert "refusal" in out
 
@@ -326,14 +393,14 @@ def test_render_user_line_has_accent_prefix_and_bg():
     line = render_user_line("hello", C, width=40)
     plain = line.plain
     assert plain.startswith("› hello")
-    assert len(plain) == 40                      # padded to full width band
+    assert len(plain) == 40  # padded to full width band
     # the line's base style carries the lighter user background
     assert C.user_bg.lstrip("#").lower() in str(line.style).lower()
 
 
 def test_render_user_line_no_width_not_padded():
     line = render_user_line("hi", C)
-    assert line.plain == "› hi"                   # no width → no pad
+    assert line.plain == "› hi"  # no width → no pad
 
 
 def test_user_message_renders_as_the_live_user_line():
@@ -341,6 +408,7 @@ def test_user_message_renders_as_the_live_user_line():
     time — same glyph, same tint — or a reopened conversation looks like a
     different UI than the one you were just using."""
     from aegis.events import UserMessage
+
     out = as_text(render_event(UserMessage(text="work on aegis"), C))
     assert "work on aegis" in out
     assert out.strip().startswith("›")
@@ -363,7 +431,7 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
     samples = [
         SystemInit(session_id="s"),
         AssistantText(text="hi"),
-        AssistantText(text="   "),          # blank → renders to nothing
+        AssistantText(text="   "),  # blank → renders to nothing
         AssistantThinking(text="pondering"),
         ThinkingTokens(estimated=10, delta=10),
         ToolUse(name="Read", summary="f.py"),
@@ -374,13 +442,18 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
         # status-bar ✂ counter, not the transcript. A visual
         # "── compacted ──" separator is deferred (see the design spec's
         # out-of-scope list); it would be an addition to BOTH functions.
-        CompactBoundary(trigger="auto", pre_tokens=999_917,
-                        post_tokens=15_022),
+        CompactBoundary(trigger="auto", pre_tokens=999_917, post_tokens=15_022),
         Result(duration_ms=1, is_error=False),
         UserMessage(text="work on aegis"),
         Unknown(raw="{}"),
-        SessionMeta(handle="h", profile="p", provider="v", cwd="/tmp",
-                    created_at="2026-07-31T00:00:00Z", origin="user"),
+        SessionMeta(
+            handle="h",
+            profile="p",
+            provider="v",
+            cwd="/tmp",
+            created_at="2026-07-31T00:00:00Z",
+            origin="user",
+        ),
         SessionClosed(closed_at="2026-07-31T00:00:00Z", reason="done"),
         # The card's persisted recap: never part of the conversation.
         RecapNote(line="Wrote 3 tests."),
@@ -388,12 +461,13 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
     covered = {type(s) for s in samples}
     declared = set(typing.get_args(Event))
     assert covered == declared, (
-        f"add a sample for {declared - covered or covered - declared}")
+        f"add a sample for {declared - covered or covered - declared}"
+    )
 
     for ev in samples:
         assert renders_to_nothing(ev) == (render_event(ev, C) is None), (
-            f"{type(ev).__name__}: renders_to_nothing and render_event "
-            f"disagree")
+            f"{type(ev).__name__}: renders_to_nothing and render_event disagree"
+        )
 
 
 # --- the three-column tool line ---------------------------------------
@@ -403,9 +477,12 @@ def test_renders_to_nothing_matches_render_event_for_every_event_type():
 
 
 def test_tool_line_carries_digest_and_elapsed_on_one_row():
-    ev = ToolUse(name="Bash", summary="", kind="execute",
-                 raw_input={"description": "run the test suite",
-                            "command": "uv run pytest -q"})
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "run the test suite", "command": "uv run pytest -q"},
+    )
     res = ToolResult(text="3629 passed", is_error=False)
     out = as_text(render_tool_use(ev, C, elapsed=12.4, result=res, column=True))
     rows = [r for r in out.splitlines() if r.strip()]
@@ -416,8 +493,9 @@ def test_tool_line_carries_digest_and_elapsed_on_one_row():
 
 
 def test_tool_line_marks_an_error():
-    ev = ToolUse(name="Read", summary="", kind="read",
-                 raw_input={"file_path": "/nope.py"})
+    ev = ToolUse(
+        name="Read", summary="", kind="read", raw_input={"file_path": "/nope.py"}
+    )
     res = ToolResult(text="File does not exist", is_error=True)
     out = as_text(render_tool_use(ev, C, elapsed=0.1, result=res, column=True))
     assert "✗" in out and "✓" not in out
@@ -425,8 +503,12 @@ def test_tool_line_marks_an_error():
 
 
 def test_running_tool_line_has_a_spinner_and_no_digest():
-    ev = ToolUse(name="Bash", summary="", kind="execute",
-                 raw_input={"description": "sleep", "command": "sleep 9"})
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "sleep", "command": "sleep 9"},
+    )
     out = as_text(render_tool_use(ev, C, elapsed=3.2, running=True, column=True))
     rows = [r for r in out.splitlines() if r.strip()]
     assert len(rows) == 1
@@ -437,8 +519,9 @@ def test_running_tool_line_has_a_spinner_and_no_digest():
 def test_sub_second_elapsed_is_shown():
     # The old line hid anything under 1s. A right-hand column that appears
     # and disappears jitters, and 0.3s is information.
-    ev = ToolUse(name="Read", summary="", kind="read",
-                 raw_input={"file_path": "/a/render.py"})
+    ev = ToolUse(
+        name="Read", summary="", kind="read", raw_input={"file_path": "/a/render.py"}
+    )
     res = ToolResult(text="x\ny", is_error=False)
     out = as_text(render_tool_use(ev, C, elapsed=0.3, result=res, column=True))
     assert "0.3s" in out
@@ -446,12 +529,153 @@ def test_sub_second_elapsed_is_shown():
 
 def test_tool_line_stays_one_row_at_a_narrow_width():
     # A line that wraps is the whole feature failing.
-    ev = ToolUse(name="Bash", summary="", kind="execute",
-                 raw_input={"description": "a very long description " * 6,
-                            "command": "echo " + "x" * 200})
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={
+            "description": "a very long description " * 6,
+            "command": "echo " + "x" * 200,
+        },
+    )
     res = ToolResult(text="y" * 200, is_error=False)
     con = Console(record=True, width=40)
     con.print(render_tool_use(ev, C, elapsed=1.5, result=res, column=True))
     rows = [r for r in con.export_text().splitlines() if r.strip()]
     assert len(rows) == 1
     assert rows[0].rstrip().endswith("1.5s")
+
+
+# --- the result owns the row -------------------------------------------
+
+
+def _row(ev, res, width, **kw):
+    con = Console(record=True, width=width)
+    con.print(render_tool_use(ev, C, elapsed=12.4, result=res, column=True, **kw))
+    return [r for r in con.export_text().splitlines() if r.strip()]
+
+
+def test_the_row_shows_no_command_only_the_description():
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={
+            "description": "run the test suite",
+            "command": "uv run pytest -q tests/",
+        },
+    )
+    res = ToolResult(text="3629 passed, 1 xfailed in 11.82s", is_error=False)
+    rows = _row(ev, res, 100)
+    assert len(rows) == 1
+    assert "run the test suite" in rows[0]
+    assert "pytest" not in rows[0], "the command is input; it belongs in the window"
+    assert "3629 passed, 1 xfailed in 11.82s" in rows[0]
+
+
+def test_a_long_label_is_clipped_before_the_digest_is():
+    # The result is what the row is for. When the two compete for width the
+    # label gives way — it used to be the other way round, because the whole
+    # line was truncated from the right and the digest sat there.
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "a very long description " * 5, "command": "true"},
+    )
+    res = ToolResult(text="3629 passed, 1 xfailed in 11.82s", is_error=False)
+    rows = _row(ev, res, 100)
+    assert len(rows) == 1
+    assert "3629 passed, 1 xfailed in 11.82s" in rows[0], rows[0]
+    assert "…" in rows[0], "the label should have been clipped"
+
+
+def test_the_digest_starts_at_the_same_column_for_every_row():
+    # Aligned columns are the whole point of a strip you skim.
+    short = ToolUse(
+        name="Read", summary="", kind="read", raw_input={"file_path": "/a/b.py"}
+    )
+    long = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={
+            "description": "a somewhat longer description here",
+            "command": "true",
+        },
+    )
+    res = ToolResult(text="ok", is_error=False)
+    a = _row(short, res, 100)[0]
+    b = _row(long, res, 100)[0]
+    # Cells, not characters: 📖 is one character and two columns wide, so
+    # str.index disagrees with where the terminal actually puts the mark.
+    from rich.cells import cell_len
+
+    assert cell_len(a[: a.index("✓")]) == cell_len(b[: b.index("✓")]), f"{a!r}\n{b!r}"
+
+
+def test_a_long_digest_is_clipped_to_its_column_not_wrapped():
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "build", "command": "true"},
+    )
+    res = ToolResult(text="y" * 400, is_error=False)
+    rows = _row(ev, res, 100)
+    assert len(rows) == 1
+
+
+# --- the icon is the running indicator ---------------------------------
+
+
+def _icon_style(renderable) -> str:
+    """The style on the leading glyph span of a tool row."""
+    label = getattr(renderable, "label", renderable)
+    return str(label.spans[0].style)
+
+
+def _running(frame):
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "run the test suite", "command": "true"},
+    )
+    return render_tool_use(ev, C, elapsed=3.2, running=True, frame=frame, column=True)
+
+
+def test_the_icon_pulses_while_the_call_runs():
+    # A terminal's own blink attribute (SGR 5) is ignored or rendered badly
+    # by plenty of terminals, so the pulse is the renderer's: the icon
+    # alternates with `dim` off the 10 Hz ticker that drives the timer.
+    on = {_icon_style(_running(f)) for f in range(0, 5)}
+    off = {_icon_style(_running(f)) for f in range(5, 10)}
+    assert len(on) == 1 and len(off) == 1, (on, off)
+    assert "dim" in off.pop()
+    assert "dim" not in on.pop()
+
+
+def test_the_icon_settles_when_the_call_returns():
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "run the test suite", "command": "true"},
+    )
+    res = ToolResult(text="3629 passed", is_error=False)
+    for frame in range(0, 20):
+        r = render_tool_use(ev, C, elapsed=3.2, result=res, frame=frame, column=True)
+        assert "dim" not in _icon_style(r), f"still pulsing at frame {frame}"
+
+
+def test_a_running_row_keeps_its_middle_column_clear():
+    # The spinner used to sit where the result lands. The icon carries the
+    # running state now, so the column stays empty until there is a verdict
+    # to put in it.
+    con = Console(record=True, width=100)
+    con.print(_running(3))
+    row = [r for r in con.export_text().splitlines() if r.strip()][0]
+    assert "3.2s" in row
+    assert not any(g in row for g in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"), row
+    assert "✓" not in row and "✗" not in row
