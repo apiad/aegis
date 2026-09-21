@@ -196,6 +196,7 @@ def _encode_inner(ev: Event) -> dict:
             "attention": ev.attention,
             "task": ev.task,
             "next": ev.next,
+            "suggestion": ev.suggestion,
         }
     raise ValueError(f"unknown event type: {type(ev).__name__}")
 
@@ -334,5 +335,6 @@ def _decode_inner(d: dict) -> Event:
             attention=d.get("attention", "done"),
             task=d.get("task", ""),
             next=d.get("next", ""),
+            suggestion=d.get("suggestion", ""),
         )
     raise ValueError(f"unknown event type tag: {t!r}")

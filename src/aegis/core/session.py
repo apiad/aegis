@@ -198,6 +198,14 @@ class AgentSession:
         # phrasing holds across turns, and the step it named after it.
         self._last_recap_task = ""
         self._last_recap_next = ""
+        # The operator's drafted next message, for the input box. It gets
+        # its own observers rather than riding the recap's: the recap's
+        # draw gate keeps a conversation of pure questions free of repeated
+        # blocks, and a turn that moved nothing is exactly the turn that
+        # ended on a question — so the suggestion has to arrive where the
+        # block deliberately does not.
+        self.suggestion = ""
+        self._suggestion_observers: list = []
         self._card_rehydrated = False
         # The last finished turn's attention category (aegis.attention),
         # and a counter a view compares with what it has shown.
@@ -476,6 +484,9 @@ class AgentSession:
             # Each turn waits recap_after_s for its first recap, however
             # recently the last turn had one.
             self._fleet_last_started = None
+            # A reply drafted for the turn before last is worse than none —
+            # the same reasoning that cancels an in-flight recap.
+            self._emit_suggestion("")
         elif state is not AgentState.working:
             self._turn_started_at = None
             # A late answer describes a turn that has already closed, and
@@ -667,6 +678,28 @@ class AgentSession:
     def add_recap_observer(self, cb) -> None:
         """Subscribe an additional recap callback. Fires after ``on_recap``."""
         self._recap_observers.append(cb)
+
+    def add_suggestion_observer(self, cb) -> None:
+        """Subscribe to the drafted next message. ``cb(session, text)``,
+        where ``text`` is ``""`` when the suggestion is cleared."""
+        self._suggestion_observers.append(cb)
+
+    def remove_suggestion_observer(self, cb) -> None:
+        """Unsubscribe a suggestion callback. Idempotent."""
+        with contextlib.suppress(ValueError):
+            self._suggestion_observers.remove(cb)
+
+    def _emit_suggestion(self, text: str) -> None:
+        """Only on a change: most turns have no suggestion, and re-sending
+        the same empty string would wake every view for nothing."""
+        if text == self.suggestion:
+            return
+        self.suggestion = text
+        for cb in list(self._suggestion_observers):
+            try:
+                cb(self, text)
+            except Exception:  # noqa: BLE001
+                log.exception("suggestion observer raised")
 
     def _emit_loop(self, reason: str) -> None:
         if self.on_loop is not None:
@@ -1088,6 +1121,11 @@ class AgentSession:
             return
         if not recap.ok or not recap.line:
             return
+        # In front of the identity guard and the draw gate below. A repeated
+        # recap line still carries a fresh suggestion, and the turn that
+        # repeats itself is the one most likely to want one.
+        if not resumed:
+            self._emit_suggestion(recap.suggestion.strip())
         category = resolve(
             recap.attention,
             errored=errored,
@@ -1106,7 +1144,11 @@ class AgentSession:
             if recap.next.strip() != self._last_recap_next.strip():
                 self._last_recap_next = recap.next
                 self._persist_recap(
-                    recap.line, category, task=recap.task, next=recap.next
+                    recap.line,
+                    category,
+                    task=recap.task,
+                    next=recap.next,
+                    suggestion=recap.suggestion,
                 )
             return
         # A recap agreeing with the hard category is not news to a view
@@ -1116,14 +1158,26 @@ class AgentSession:
         self._last_recap_line = recap.line
         self._last_recap_task = recap.task
         self._last_recap_next = recap.next
-        self._persist_recap(recap.line, category, task=recap.task, next=recap.next)
+        self._persist_recap(
+            recap.line,
+            category,
+            task=recap.task,
+            next=recap.next,
+            suggestion=recap.suggestion,
+        )
         if resumed:
             return
         if draw or category != "done":
             self._emit_recap(replace(recap, attention=category))
 
     def _persist_recap(
-        self, line: str, attention: str, *, task: str = "", next: str = ""
+        self,
+        line: str,
+        attention: str,
+        *,
+        task: str = "",
+        next: str = "",
+        suggestion: str = "",
     ) -> None:
         """Keep the line in the session log, so a restart can put it back
         on the card without paying for it again. A separate O_APPEND write,
@@ -1136,7 +1190,13 @@ class AgentSession:
             append_event(
                 self.state_dir,
                 self.log_id,
-                RecapNote(line=line, attention=attention, task=task, next=next),
+                RecapNote(
+                    line=line,
+                    attention=attention,
+                    task=task,
+                    next=next,
+                    suggestion=suggestion,
+                ),
             )
         except Exception:  # noqa: BLE001
             log.exception("could not persist the recap; continuing")
