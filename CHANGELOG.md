@@ -41,6 +41,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **`aegis doctor --dedupe` drops the duplicate records a second writer
+  left behind.** Transcripts written while a pane held a second log writer
+  hold each event twice or three times, and replay draws them that many
+  times. Content alone cannot tell a copy from a repeat — `SystemInit`
+  reappears on every resume and `ContextUpdate` repeats by design, and over
+  a corpus of 817 logs a content-only match flagged 375 repeats, 224 of them
+  legitimate. What identifies the accident is that one `_fire_event` call
+  drove every writer, so the copies are adjacent and share an instant. The
+  rewrite is atomic and keeps the original.
+
 - **The input box drafts your next message.** When a turn ends on a
   proposal waiting for a go-ahead, the reply you would most likely type
   appears as dim text in the empty box; `Tab` accepts it, any other key

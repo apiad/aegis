@@ -125,6 +125,27 @@ rules:
       in: "docs/drivers.md"
       wrap: '`${entity}`'
 
+  # Landed red at 3 while cutting v0.38.0: `doctor`, `bench` and `token` had
+  # all shipped with no mention in any user-facing doc — `aegis bench` was a
+  # six-subcommand family documented only in its own spec. That is the same
+  # failure the release know-how records at v0.29.0, and it was found by hand
+  # both times, during the release, which is the worst moment to find it.
+  #
+  # Two registration shapes, because Typer has two: `app.add_typer(..., name=)`
+  # for a subcommand group, and `@app.command()` on a function whose name is
+  # the command (`@app.command("ls")` when they differ).
+  #
+  # `wrap:` demands `aegis <cmd>`, not the bare word. Under `as: mention` this
+  # rule is worthless: `serve`, `config`, `usage`, `models` and `logs` are all
+  # ordinary English and every one of them is green off an unrelated sentence.
+  - name: "every CLI command is documented"
+    extract:
+      file: "src/aegis/cli.py"
+      regex: '(?:app\.add_typer\([^)]*?name="([a-z-]+)"|@app\.command\("([a-z-]+)"\)|@app\.command\(\)\s*\ndef ([a-z_]+)\()'
+    require:
+      in: ["README.md", "docs/*.md"]
+      wrap: 'aegis ${entity}\b'
+
   # `${entity}:` asks for the key as a doc would write it, which is what
   # separates a documented section from a passing mention: under `as: mention`
   # this reported 4, and `schedules:` was green off the bare word in an

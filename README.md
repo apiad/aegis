@@ -587,7 +587,8 @@ full-screen **TUI** for local development, and an installable, mobile-first
 **web/PWA** client for remote development over a flaky link (and locally
 too). Both render the same transcripts with identical fidelity; sessions
 are shared across them. `aegis web` ensures a token, opens your browser,
-and serves the client.
+and serves the client; `aegis token` prints that token (creating one on
+first use) for a client you are pointing at the server by hand.
 
 With no `.aegis.yaml` in the directory, `aegis` drops you straight
 into the TUI ConfigPanel — press `a` to add your first agent and

@@ -649,6 +649,52 @@ Limitations:
 - **Workers not resumed.** Queue workers and workflow runs are not part
   of the workspace snapshot; only interactive tabs are restored.
 
+## Repairing stored conversations (`aegis doctor`)
+
+Transcripts are append-only JSONL, so a crash mid-write, or two writers on
+one log, leaves damage that replay has to step over. `aegis doctor` reports
+that damage and, with a flag, fixes it. With no flags it only reports.
+
+```bash
+aegis doctor                  # report: damaged records, duplicates, legacy logs
+aegis doctor --dedupe         # drop records a second writer left behind
+aegis doctor --repair         # rewrite a damaged log from its readable records
+aegis doctor --split          # split a legacy log that holds several sessions
+aegis doctor --archive        # gzip closed transcripts older than --archive-days
+```
+
+`--dedupe` drops records that are adjacent, identical and share an instant —
+the signature of two writers on one file — and keeps the original. `--archive`
+defaults to 90 days and gzips in place; archived transcripts stay readable and
+resumable, so this is a disk-space move rather than a retirement.
+
+## Benchmarks (`aegis bench`)
+
+`aegis bench` drives a real `aegis serve` and a real client in a pty and
+measures what actually reaches the terminal: frame latency, loop lag, CPU and
+memory. It is the only honest way to claim anything here got faster, because
+the cost that matters is the one paid between a token arriving and a cell
+changing.
+
+```bash
+aegis bench run --quick                 # a fast subset, one repeat
+aegis bench run                         # the default scenarios, 3 repeats
+aegis bench list                        # scenarios, and recent runs
+aegis bench compare RUN --baseline latest-release
+aegis bench history -s block-stream     # saved summaries for this host
+aegis bench selftest                    # prove the rig sees an injected regression
+```
+
+Each repeat builds a throwaway world under `/tmp/aegis-bench-*` with its own
+daemon and a fake agent on `PATH`, so it never touches the daemon you are
+using. Runs land in `~/.aegis/bench/runs/<run-id>/`; `AEGIS_BENCH_HOME` moves
+that root. `--save` copies the summary into `bench/history/<host>/`, which is
+what `compare --baseline latest-release` and `history` read.
+
+`compare` exits 1 when a metric regressed, so it works as a gate. Run it on a
+quiet machine — `run` warns when the host is over 50% busy, and a busy run does
+not compare.
+
 ## The aegis log (`aegis logs`)
 
 The session transcripts record what each **agent** said. `aegis.log`
