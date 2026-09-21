@@ -7,9 +7,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Changed
 
-- **One row per tool call.** The transcript gives a tool call a single
-  line: what ran, a verdict digest (`3629 passed`, `+12 −3`, `no matches`,
-  `501 lines`), and the elapsed time in a right-hand column. Clicking it
+- **One row per tool call, and the row shows the result.** The transcript
+  gives a tool call a single line: which call it was, a verdict digest
+  (`3629 passed`, `+12 −3`, `no matches`, `501 lines`), and the elapsed
+  time in a right-hand column. The label carries no input — not the Bash
+  command, not the string an edit replaced, not the directory a grep
+  searched — and it is what gives way when the row runs out of width, so
+  the result is never the thing that gets clipped. Verdicts start at the
+  same cell on every row. While a call is in flight its **icon pulses**
+  and the middle column stays clear; the icon settles and the result lands
+  there the moment it returns. Clicking it
   opens the full input and full output in a scrollable window — `c` copies
   the output, `f` hands it to a file tab, `n` and `p` step through the
   turn's calls. This replaces the folded result line, the six-row diff

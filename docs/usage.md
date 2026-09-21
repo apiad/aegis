@@ -240,8 +240,12 @@ Each agent message, tool call, and tool result is a separate
 verbatim to your clipboard — useful for grabbing tool outputs, error
 messages, or generated code snippets.
 
-A tool-call block is **one row** — what ran, how it went, and how long it
-took. **Click it** to open the call in a window holding its whole input and
+A tool-call block is **one row** — which call it was, how it went, and how
+long it took. The row is laid out for the *result*: the label carries no
+arguments and clips before the result does, and every verdict starts at the
+same column, so a turn reads as a strip you can scan straight down. While a
+call is running its icon pulses and the middle of the row stays empty; the
+icon settles and the result appears there when it returns. **Click it** to open the call in a window holding its whole input and
 whole output: `↑↓`/`PgUp`/`PgDn` scroll, `c` copies the output, `f` writes
 it to a file and opens it in a tab (what you want for anything past a few
 thousand lines), `n` and `p` step to the next and previous call without

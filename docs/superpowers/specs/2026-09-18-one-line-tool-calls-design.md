@@ -2,7 +2,9 @@
 
 *Design — 2026-09-18.*
 
-*Status: implemented 2026-09-18, `bb50d70`..`52d4280`.*
+*Status: implemented 2026-09-18, `bb50d70`..`0154e40`. Amended
+2026-09-21 after Alex read a real transcript: the label carries no input,
+the result owns the width, and the icon is the running indicator.*
 
 Scope is the Textual TUI. `src/aegis/web/` is superseded by the
 TUI-over-web refactor (stage 6 of
@@ -65,23 +67,49 @@ one) and `result` (the folded `ToolResult` event, or `None` while the
 call is in flight). Its `expanded` parameter goes away with the inline
 expansion it served.
 
-Three columns:
+Three columns, and **the label yields first**:
 
 | column | content | width |
 |---|---|---|
-| label | `tool_glyph` + `describe_tool`, unchanged | flexible, clipped with `…` |
-| verdict | `✓` / `✗` / spinner, then the digest | flexible, clipped |
+| label | `tool_glyph` + `tool_label` | 42% of the row, 16–48 cells, clipped with `…` |
+| verdict | `✓` / `✗`, then the digest | the rest, clipped last |
 | elapsed | `_fmt_dur`, right-aligned | 7 |
 
-The label keeps `describe_tool`, not `tool_label`. `tool_label` exists
-for the fleet dashboard's activity tail, where a Bash command is noise;
-in a transcript the command is what you scan for when something broke,
-and it is the second half of the Bash label.
+The first version laid the row out as one string truncated from the
+right, which meant the *result* was what got cut when a long label ran
+out of room — backwards for a row that exists to show the result. The
+label now has a bounded column and gives way; the digest keeps the rest,
+and starts at the same cell on every row so the verdicts read as a
+column you can scan straight down.
 
-While a call runs there is no verdict and no digest — spinner and
-elapsed, as today. The elapsed no longer hides below 1s: a right-hand
-column that appears and disappears jitters, and a `0.3s` read is
-information.
+The label is `tool_label`, and it carries **no input**. This reverses the
+first version of this spec, which argued the Bash command was worth the
+space because it is what you scan for when something broke. It is not:
+you scan for the *result*, and the command ate the width the result
+needed (Alex, 2026-09-21: "why am i seeing so much the actual command
+when what i want is to see at a glance the result"). It was also already
+the rule for the fleet tail, from 2026-09-17, and this spec failed to
+carry it across.
+
+So `tool_label` drops the Bash command, the string an Edit replaced, and
+the directory a Grep searched — all arguments. A query or a pattern
+stays: that is which search this was, not an argument you would go
+looking for later. All of it is in the detail window.
+
+While a call runs, **the icon is the running indicator**: it alternates
+with `dim` at 1 Hz, off the same 10 Hz ticker that moves the elapsed
+digits, and settles the moment the result lands. The braille spinner that
+used to sit in the verdict column is gone — it occupied exactly the space
+the result wants, on a row whose whole job is the result. A running row
+is icon, label, empty middle, ticking elapsed.
+
+The pulse is the renderer's own, not the terminal's `blink` attribute
+(SGR 5), which plenty of terminals ignore or mangle. Rich resolves `dim`
+to a darker colour rather than emitting SGR 2, so it survives terminals
+that drop the attribute too.
+
+The elapsed no longer hides below 1s: a right-hand column that appears
+and disappears jitters, and a `0.3s` read is information.
 
 ### The digest
 
