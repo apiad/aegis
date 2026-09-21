@@ -10,7 +10,7 @@ from aegis.events import (
     SystemInit,
     Unknown,
 )
-from aegis.render import render_event, render_tool_use, render_user_line
+from aegis.render import render_event, render_tool_use, render_user_block
 from aegis.tui.themes import aegis_colors, INK
 
 C = aegis_colors(INK)
@@ -389,30 +389,41 @@ def test_systeminit_and_unknown_are_none():
     assert render_event(Unknown(raw="{}"), C) is None
 
 
-def test_render_user_line_has_accent_prefix_and_bg():
-    line = render_user_line("hello", C, width=40)
-    plain = line.plain
-    assert plain.startswith("› hello")
-    assert len(plain) == 40  # padded to full width band
-    # the line's base style carries the lighter user background
-    assert C.user_bg.lstrip("#").lower() in str(line.style).lower()
+def test_render_user_block_is_a_panel_on_the_user_background():
+    from rich.panel import Panel
+
+    block = render_user_block("hello", C, width=40)
+    assert isinstance(block, Panel)
+    assert C.user_bg.lstrip("#").lower() in str(block.style).lower()
+    assert "› hello" in as_text(block)
 
 
-def test_render_user_line_no_width_not_padded():
-    line = render_user_line("hi", C)
-    assert line.plain == "› hi"  # no width → no pad
+def test_render_user_block_renders_markdown():
+    """A prompt is prose, and carries lists, fences and backticks."""
+    out = as_text(render_user_block("- one\n- two", C))
+    # A list renders as a list, not as two lines that start with a hyphen.
+    assert "•" in out
+    assert "one" in out and "two" in out
 
 
-def test_user_message_renders_as_the_live_user_line():
-    """Replay must reproduce the line the live pane already mounts at send
-    time — same glyph, same tint — or a reopened conversation looks like a
+def test_render_user_block_is_not_the_aside_surface():
+    """An aside means "in the transcript but not the conversation" — a /btw
+    note, a peer answer, a recap. The operator's message IS the
+    conversation and must not read as one of those."""
+    block = render_user_block("hello", C)
+    assert C.panel.lstrip("#").lower() not in str(block.style).lower()
+
+
+def test_user_message_renders_as_the_live_user_block():
+    """Replay must reproduce the block the live pane mounts at send time —
+    same glyph, same surface — or a reopened conversation looks like a
     different UI than the one you were just using."""
     from aegis.events import UserMessage
 
     out = as_text(render_event(UserMessage(text="work on aegis"), C))
     assert "work on aegis" in out
-    assert out.strip().startswith("›")
-    assert out == as_text(render_user_line("work on aegis", C))
+    assert "›" in out
+    assert out == as_text(render_user_block("work on aegis", C))
 
 
 def test_renders_to_nothing_matches_render_event_for_every_event_type():

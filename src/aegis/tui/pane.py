@@ -40,7 +40,7 @@ from aegis.render import (
     render_event,
     render_inbox_block,
     render_tool_use,
-    render_user_line,
+    render_user_block,
     renders_to_nothing,
 )
 from aegis.render_shared import FileTarget, file_target, format_age
@@ -2342,7 +2342,7 @@ class ConversationPane(Widget):
         self._record_first_user_message(text)
         self._flush_streaming()
         width = self._transcript().size.width or 80
-        self._mount_block(render_user_line(text, self._palette, width), text)
+        self._mount_block(render_user_block(text, self._palette, width), text)
         self._start_indicator()
         self.run_worker(self._core.send(text), group="turn", exclusive=True)
 
@@ -2470,7 +2470,7 @@ class ConversationPane(Widget):
                 strip.remove_msg(msg)
                 self._flush_streaming()
                 self._mount_block(
-                    render_user_line(msg.body, self._palette, width), msg.body
+                    render_user_block(msg.body, self._palette, width), msg.body
                 )
 
     def _put_recap(

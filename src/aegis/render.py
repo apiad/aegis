@@ -42,6 +42,12 @@ _TOOL_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # invisible and only the background did any work.
 _ASIDE_BOX = box.Box("    \n▏   \n    \n▏   \n    \n    \n▏   \n    \n")
 
+# A heavier left edge than the aside's, in the operator's own accent. The
+# two blocks share proportions so they read as siblings; they must not
+# share a surface, because an aside means "not the conversation" and the
+# operator's message is the conversation.
+_USER_BOX = box.Box("    \n┃   \n    \n┃   \n    \n    \n┃   \n    \n")
+
 
 def _aside(parts, colors, border: str | None = None) -> Panel:
     """A block that sits *in* the transcript but is not the conversation.
@@ -431,24 +437,46 @@ def render_event(
         # Width is unknown here, so the tint band ends at the text rather
         # than running full-width; the live pane passes its own width.
         text = ev.text.strip()
-        return render_user_line(text, colors) if text else None
+        return render_user_block(text, colors) if text else None
     if isinstance(ev, (SystemInit, Unknown)):
         return None
     return None
 
 
-def render_user_line(text: str, colors, width: int | None = None) -> Text:
-    """The user's message line: accent `›` prefix on a lighter band.
+def render_user_block(text: str, colors, width: int | None = None) -> Panel:
+    """The operator's own message: an accent `›` header over a Markdown body.
 
-    The whole line carries `colors.user_bg`; padded to `width` (when known)
-    so the tint reads as a full-width band, not just behind the glyphs.
+    Markdown, because a prompt is prose and carries fenced blocks, lists and
+    backticks. The cost is that `snake_case` loses its underscores and
+    `**/*.py` turns bold — a trade taken deliberately (2026-09-21
+    input-suggestion spec), so a mangled glob is a known cost, not a defect.
+
+    Deliberately not ``_aside``: that surface means "in the transcript but
+    not the conversation", and this is the conversation. Same proportions,
+    its own box and colours.
+
+    ``width`` is accepted and ignored. The panel expands to its container,
+    which is what the old single-line band had to fake by padding.
     """
-    line = Text(style=f"{colors.user} on {colors.user_bg}")
-    line.append("› ", style=f"bold {colors.user} on {colors.user_bg}")
-    line.append(text, style=f"{colors.user} on {colors.user_bg}")
-    if width and width > line.cell_len:
-        line.pad_right(width - line.cell_len)
-    return line
+    # A grid, not a Group: the glyph belongs on the body's first line, and
+    # stacking it would spend a whole row of the transcript per message.
+    # The per-row cost a Table.grid carries over a plain Text (see
+    # ``_ToolRow``) does not matter here — there is one of these per turn,
+    # against thousands of tool rows.
+    from rich.table import Table
+
+    grid = Table.grid(padding=(0, 1))
+    grid.add_column(width=1, no_wrap=True)
+    grid.add_column(ratio=1, overflow="fold")
+    grid.add_row(Text("›", style=f"bold {colors.user}"), Markdown(text))
+    return Panel(
+        grid,
+        box=_USER_BOX,
+        border_style=colors.user,
+        style=f"on {colors.user_bg}",
+        padding=(0, 1),
+        expand=True,
+    )
 
 
 def render_command_block(result, colors, width: int | None = None) -> Text:
