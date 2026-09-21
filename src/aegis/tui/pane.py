@@ -974,6 +974,10 @@ class ConversationPane(Widget):
             self._core.add_recap_observer(self._on_recap)
         else:
             self._core.on_recap = self._on_recap
+        # The drafted reply is not the recap: it arrives on turns whose
+        # recap is deliberately not drawn, so it has its own subscription.
+        if hasattr(self._core, "add_suggestion_observer"):
+            self._core.add_suggestion_observer(self._on_suggestion)
         # RemotePaneCore has no log of its own; fall back to the handle so
         # the attribute always answers.
         self.log_id: str = getattr(self._core, "log_id", None) or handle
@@ -1243,6 +1247,7 @@ class ConversationPane(Widget):
             ("remove_dispatch_observer", self._on_core_dispatch),
             ("remove_loop_observer", self._on_loop_change),
             ("remove_recap_observer", self._on_recap),
+            ("remove_suggestion_observer", self._on_suggestion),
         ):
             fn = getattr(self._core, remove, None)
             if fn is not None:
@@ -2487,6 +2492,19 @@ class ConversationPane(Widget):
             f"recap: {body}\n{recap.footer}".strip(),
             at_idx=at_idx,
         )
+
+    def _on_suggestion(self, _core, text: str) -> None:
+        """Observer slot for the drafted next message.
+
+        Best-effort: this runs off Textual's own dispatch, so a pruned pane
+        logs and returns rather than raising into the session's emit loop.
+        """
+        try:
+            self.input_widget().suggestion = text
+        except Exception:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).debug("no input box for the suggestion")
 
     def _on_recap(self, _core, recap) -> None:
         """Observer slot for the automatic end-of-turn recap.
