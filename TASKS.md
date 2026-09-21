@@ -4,8 +4,9 @@ Working roadmap for what's next. Shipped history lives in `CHANGELOG.md`;
 the public roadmap is `docs/roadmap.md`. This file is the scratch /
 priority list — keep it terse and current.
 
-Current release: **v0.37.0**. (This header read v0.32.0 until 2026-09-09 —
-if you are editing this file, check it still matches `pyproject.toml`.)
+Current release: **v0.38.0** (2026-09-21). (This header read v0.32.0 until
+2026-09-09 and v0.37.0 until 2026-09-21 — if you are editing this file, check
+it still matches `pyproject.toml`.)
 
 ## → v1.0
 
