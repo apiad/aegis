@@ -5,17 +5,6 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
-### Added
-
-- **The input box drafts your next message.** When a turn ends on a
-  proposal waiting for a go-ahead, the reply you would most likely type
-  appears as dim text in the empty box; `Tab` accepts it, any other key
-  replaces it. Nothing enters the box until you press `Tab`. It rides the
-  end-of-turn recap as a fifth field, so it costs no extra call and follows
-  `recap:` in `.aegis.yaml`. The prompt was calibrated against 40 real turn
-  boundaries: it stays quiet on most turns, because after a turn that
-  reports finished work you usually start something new.
-
 ### Changed
 
 - **Your own message renders as a panel.** It was one tinted line whose
@@ -51,6 +40,16 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   eight turns instead of the whole conversation.
 
 ### Added
+
+- **The input box drafts your next message.** When a turn ends on a
+  proposal waiting for a go-ahead, the reply you would most likely type
+  appears as dim text in the empty box; `Tab` accepts it, any other key
+  replaces it. Nothing enters the box until you press `Tab`. It rides the
+  end-of-turn recap as a fifth field, so it costs no extra call and follows
+  `recap:` in `.aegis.yaml`. The prompt was calibrated against 40 real turn
+  boundaries: it stays quiet on most turns, because after a turn that
+  reports finished work you usually start something new.
+
 
 - **Each turn says whether it needs you.** The end-of-turn recap classifies
   the turn as needs you, error, review, waiting or done. The model proposes
