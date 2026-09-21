@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-21
+
 ### Changed
 
 - **Your own message renders as a panel.** It was one tinted line whose
