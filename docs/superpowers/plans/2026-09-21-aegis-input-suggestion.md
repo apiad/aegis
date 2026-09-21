@@ -17,13 +17,24 @@ Textual already renders dim and already clears on the first keystroke.
 
 **Spec:** `docs/superpowers/specs/2026-09-21-aegis-input-suggestion-design.md`
 
+> **Executed 2026-09-21.** Three deviations from the plan as written, all
+> recorded in the commits:
+> - Task 2's probe glob was wrong (`sessions/2026-*.jsonl`; the logs are
+>   `2026...Z-<handle>.jsonl`). Caught by the no-spend dry run in step 2,
+>   which is why that step exists.
+> - Task 3 needed a fourth file: `state/event_codec.py` writes and reads
+>   `RecapNote` field by field, so the dataclass default made the round trip
+>   look fine while persistence silently dropped the value.
+> - Task 6's `›` moved from a stacked header into a two-column grid. As a
+>   header it spent a whole transcript row per message.
+
 ## Global Constraints
 
 - Python 3.13+, `uv` only, never pip.
 - The gate is `make test` verbatim (`-n auto -m "not slow" --max-unmarked-duration=3`). Bare `pytest` skips the duration budget and goes green on a test that `make test` fails.
 - Shared checkout: stage named paths, `git commit -- <paths>`, never `git add -A`, never `--amend`.
 - Conventional commits, English, one logical change each.
-- `suggestion` is one line, at most 12 words: a Textual placeholder renders on the first row and truncates.
+- `suggestion` is one line, at most ten words (twelve in the plan as written; the probe tightened it): a Textual placeholder renders on the first row and truncates.
 - The recap's existing draw gate (`should_draw_recap`) does not change. Only a new, separate notification is added.
 - No second model call. The suggestion is a field on the call that already fires every turn.
 - The aegis web client is out of scope entirely; it is being retired.
@@ -39,7 +50,7 @@ Textual already renders dim and already clears on the first keystroke.
 **Interfaces:**
 - Produces: `StandingRecap.suggestion: str`; `Recap.suggestion: str` (default `""`); module constant `SUGGESTION_RULE: str` appended to `SYSTEM`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The recap's fifth field: a draft of the operator's own next message."""
@@ -72,12 +83,12 @@ def test_prompt_tells_the_model_to_write_as_the_operator():
     assert "Leave it empty" in SYSTEM
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_recap_suggestion.py -q`
 Expected: FAIL — `StandingRecap` has no `suggestion`, `Recap` has no `suggestion`, `SYSTEM` lacks the rule.
 
-- [ ] **Step 3: Add the field to both models**
+- [x] **Step 3: Add the field to both models**
 
 In `src/aegis/recap/__init__.py`, add to `StandingRecap` after `next`:
 
@@ -98,7 +109,7 @@ Add to the `Recap` dataclass, after `next: str = ""`:
     suggestion: str = ""
 ```
 
-- [ ] **Step 4: Add the prompt rule**
+- [x] **Step 4: Add the prompt rule**
 
 In the same file, after the `SYSTEM` string, add:
 
@@ -123,7 +134,7 @@ SUGGESTION_RULE = (
 SYSTEM = SYSTEM + SUGGESTION_RULE
 ```
 
-- [ ] **Step 5: Carry the value out of `_one`**
+- [x] **Step 5: Carry the value out of `_one`**
 
 In `_one`, the success return adds one line:
 
@@ -138,12 +149,12 @@ In `_one`, the success return adds one line:
     )
 ```
 
-- [ ] **Step 6: Run the test and the recap suite**
+- [x] **Step 6: Run the test and the recap suite**
 
 Run: `uv run pytest tests/test_recap_suggestion.py tests/test_recap_unified.py tests/test_recap_generate.py tests/test_recap_command.py -q`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/test_recap_suggestion.py
@@ -173,7 +184,7 @@ starting point and is expected to move.
 - Consumes: `aegis.recap.recap_turn`, `Recap.suggestion` from Task 1.
 - Produces: nothing importable. Its output is a reading.
 
-- [ ] **Step 1: Write the probe**
+- [x] **Step 1: Write the probe**
 
 The probe walks real session logs, finds every point where a turn ended and the
 operator's next message followed, generates a recap from the prefix **only**,
@@ -302,7 +313,7 @@ async def main():
 asyncio.run(main())
 ```
 
-- [ ] **Step 2: Sanity-check case selection without spending anything**
+- [x] **Step 2: Sanity-check case selection without spending anything**
 
 Run, from `repos/aegis`:
 
@@ -322,7 +333,7 @@ typing, not like queue notices. If they don't, widen `SUBSTRATE` and re-run.
 This step costs nothing; do not skip it, because a probe that spent $0.60 on
 queue callbacks is a probe that has to be run twice.
 
-- [ ] **Step 3: Run the probe**
+- [x] **Step 3: Run the probe**
 
 ```bash
 cd /home/apiad/Workspace/.playground/reply-suggestion-probe && uv run --project /home/apiad/Workspace/repos/aegis python probe.py
@@ -330,7 +341,7 @@ cd /home/apiad/Workspace/.playground/reply-suggestion-probe && uv run --project 
 
 Expected: `N boundaries · M suggested · $0.xx`, and `results.md` on disk.
 
-- [ ] **Step 4: Read the results and answer three questions in writing**
+- [x] **Step 4: Read the results and answer three questions in writing**
 
 Append a `## Reading` section to `results.md` answering, in order:
 
@@ -343,7 +354,7 @@ Append a `## Reading` section to `results.md` answering, in order:
    `outcome` lines in `.playground/recap-abstract-probe/results-real.md`, which
    were generated by the same function before the fifth field existed.
 
-- [ ] **Step 5: Tune the prompt if the reading says to, then re-run**
+- [x] **Step 5: Tune the prompt if the reading says to, then re-run**
 
 If either failure rate is unacceptable, edit `SUGGESTION_RULE` in
 `src/aegis/recap/__init__.py` and repeat steps 3–4. Record each iteration as a
@@ -354,7 +365,7 @@ If `outcome` degraded, the spec's fallback applies: split `suggestion` into its
 own call and pay the second $0.016. That is a change to Task 1 and this plan,
 so stop and say so rather than improvising it.
 
-- [ ] **Step 6: Commit the tuned prompt, if it changed**
+- [x] **Step 6: Commit the tuned prompt, if it changed**
 
 ```bash
 git commit -F - -- src/aegis/recap/__init__.py <<'EOF'
@@ -384,7 +395,7 @@ numbers in the commit message instead.
   `AgentSession.add_suggestion_observer(cb)` / `remove_suggestion_observer(cb)`,
   where `cb(session, suggestion: str)` — called with `""` to clear.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The suggestion reaches a view on every turn, including the quiet ones."""
@@ -435,12 +446,12 @@ patch `recap_for` directly, do that instead of adding a fixture, and rewrite
 these three tests to match. **The test shape is negotiable; the three
 behaviours are not.**
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_recap_suggestion_flow.py -q`
 Expected: FAIL — `RecapNote` has no `suggestion`, session has no observer API.
 
-- [ ] **Step 3: Add the field to `RecapNote`**
+- [x] **Step 3: Add the field to `RecapNote`**
 
 In `src/aegis/events.py`, add after `next: str = ""`:
 
@@ -451,7 +462,7 @@ In `src/aegis/events.py`, add after `next: str = ""`:
 and extend the docstring's last sentence to name it alongside `task` and
 `next`, since it has the same older-records-read-as-empty property.
 
-- [ ] **Step 4: Add the observer list and the emit**
+- [x] **Step 4: Add the observer list and the emit**
 
 In `AgentSession.__init__`, beside `self._recap_observers`:
 
@@ -489,7 +500,7 @@ Methods beside `add_recap_observer`:
                 log.exception("suggestion observer raised")
 ```
 
-- [ ] **Step 5: Clear it when a turn starts**
+- [x] **Step 5: Clear it when a turn starts**
 
 In `_emit_state`, inside the `if state is AgentState.working and was is not AgentState.working:` branch, after `self._fleet_last_started = None`:
 
@@ -499,7 +510,7 @@ In `_emit_state`, inside the `if state is AgentState.working and was is not Agen
             self._emit_suggestion("")
 ```
 
-- [ ] **Step 6: Fire it from `_run_recap`, and persist it**
+- [x] **Step 6: Fire it from `_run_recap`, and persist it**
 
 In `_run_recap`, the early-return identity guard already returns before the
 draw. Emit the suggestion **before** that guard, right after the `if not
@@ -530,12 +541,12 @@ Thread it through both `_persist_recap` call sites and the method itself:
 passing `suggestion=suggestion` into the `RecapNote(...)` construction, and
 `suggestion=recap.suggestion` at both call sites.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `uv run pytest tests/test_recap_suggestion_flow.py tests/test_recap_unified.py tests/test_session_recap_fields.py tests/test_recap_attention_schema.py -q`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add tests/test_recap_suggestion_flow.py
@@ -563,7 +574,7 @@ EOF
 - Produces: `GrowingInput.suggestion` property (get/set, `str`);
   `GrowingInput.PLACEHOLDER: str` class constant holding `"type a message…"`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The suggestion is the widget's placeholder — dim, and gone on a keystroke."""
@@ -620,12 +631,12 @@ def test_submitting_clears_a_stale_suggestion():
     assert w.suggestion == ""
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_growing_input_suggestion.py -q`
 Expected: FAIL — no `PLACEHOLDER`, no `suggestion`, no `accept_suggestion`.
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 In `GrowingInput`, add the class constant beside `MAX_LINES`:
 
@@ -687,12 +698,12 @@ In `_on_key`, after the `key_interceptor` block and before the `enter` branch:
             return
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_growing_input_suggestion.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Prove the Tab interception cannot silently stop working**
+- [x] **Step 5: Prove the Tab interception cannot silently stop working**
 
 The gate here is easy to write and worthless if it cannot fail. Temporarily
 change the `_on_key` condition to `if False and ...`, run the suite, and
@@ -705,7 +716,7 @@ If no test went red while the branch was disabled, the suite is not covering
 the key path — add a test that drives `_on_key` with a `tab` event before
 moving on.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_growing_input_suggestion.py
@@ -733,7 +744,7 @@ EOF
 **Interfaces:**
 - Consumes: `AgentSession.add_suggestion_observer` (Task 3), `GrowingInput.suggestion` (Task 4).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """The pane hands the session's drafted reply to its input box."""
@@ -781,12 +792,12 @@ def test_growing_input_is_the_real_target():
     assert isinstance(GrowingInput.suggestion, property)
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `uv run pytest tests/test_pane_suggestion.py -q`
 Expected: FAIL — `ConversationPane` has no `_on_suggestion`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `pane.py`, beside the existing recap subscription (around line 973):
 
@@ -816,13 +827,13 @@ Add to the release list around line 1245:
             ("remove_suggestion_observer", self._on_suggestion),
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_pane_suggestion.py tests/test_pane_observer_release.py -q`
 Expected: PASS. `test_pane_observer_release.py` is the one that proves a
 detached view stops paying; if it asserts on an exact observer count, update it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_pane_suggestion.py
@@ -845,7 +856,7 @@ EOF
 **Interfaces:**
 - Produces: `render_user_block(text: str, colors, width: int | None = None) -> Panel`. `render_user_line` is removed, not deprecated — three call sites and two tests, all in this repo.
 
-- [ ] **Step 1: Rewrite the two existing tests to describe a panel**
+- [x] **Step 1: Rewrite the two existing tests to describe a panel**
 
 Replace `test_render_user_line_has_accent_prefix_and_bg` and
 `test_render_user_line_no_width_not_padded` in `tests/test_render_event.py`
@@ -881,12 +892,12 @@ def test_render_user_block_is_not_the_aside_surface():
 Update the line-415 assertion (`as_text(render_user_line(...))`) to call
 `render_user_block` and compare rendered text rather than a `Text` object.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 Run: `uv run pytest tests/test_render_event.py -q -k user`
 Expected: FAIL — `render_user_block` is not defined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/aegis/render.py`, beside `_ASIDE_BOX`:
 
@@ -927,21 +938,21 @@ def render_user_block(text: str, colors, width: int | None = None) -> Panel:
 In `render_event`, change the `UserMessage` branch to call
 `render_user_block(text, colors)`.
 
-- [ ] **Step 4: Update the two pane call sites**
+- [x] **Step 4: Update the two pane call sites**
 
 `pane.py:2340` and `pane.py:2468`: change `render_user_line` to
 `render_user_block` (both already pass `width`, which is now ignored but
 harmless — leave the argument, so the call sites stay uniform with the other
 width-taking renderers). Update the import at `pane.py:43`.
 
-- [ ] **Step 5: Run the render and pane suites**
+- [x] **Step 5: Run the render and pane suites**
 
 Run: `uv run pytest tests/test_render_event.py tests/test_pane_replay.py tests/test_pane_hot_path.py tests/test_pane_reflow_cost.py -q`
 Expected: PASS. `test_pane_reflow_cost.py` is the one that would catch a panel
 costing more to lay out than a `Text` — if it fails, that is a real finding,
 not a test to relax.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -F - -- src/aegis/render.py src/aegis/tui/pane.py tests/test_render_event.py <<'EOF'
@@ -966,13 +977,13 @@ EOF
 - Modify: `docs/superpowers/specs/2026-09-21-aegis-input-suggestion-design.md` (status header)
 - Modify: `docs/superpowers/plans/2026-09-21-aegis-input-suggestion.md` (check the boxes)
 
-- [ ] **Step 1: Run the full gate**
+- [x] **Step 1: Run the full gate**
 
 Run: `make check`
 Expected: green. Not `pytest` on its own — `make test` adds
 `--max-unmarked-duration=3`, which a bare run skips.
 
-- [ ] **Step 2: Exercise it the way a user reaches it**
+- [x] **Step 2: Exercise it the way a user reaches it**
 
 Green tests against a daemon that booted before the change prove nothing.
 Restart the daemon so it is running this code, open a session in the TUI, ask
@@ -987,7 +998,7 @@ it a question, and confirm with your own eyes:
 Write down which of the five you saw. If a step could not be checked, say so
 in those words rather than rounding up to "working".
 
-- [ ] **Step 3: CHANGELOG entry**
+- [x] **Step 3: CHANGELOG entry**
 
 Under the unreleased heading, in the repo's existing voice:
 
@@ -1000,20 +1011,20 @@ Under the unreleased heading, in the repo's existing voice:
   a single tinted line — fenced blocks, lists and backticks now render.
 ```
 
-- [ ] **Step 4: Document the key**
+- [x] **Step 4: Document the key**
 
 In `docs/usage.md`, wherever the input box's keys are listed (`enter`,
 `alt+enter`, `shift+enter`), add `tab` — accepts the drafted reply when the
 box is empty, focus-next otherwise.
 
-- [ ] **Step 5: Flip the spec status and check this plan's boxes**
+- [x] **Step 5: Flip the spec status and check this plan's boxes**
 
 The spec header moves from `designed 2026-09-21, not yet implemented` to
 `implemented <date>, per docs/superpowers/plans/2026-09-21-aegis-input-suggestion.md`,
 in the same commit as the checked boxes. A stale status header misleads the
 next `/workon`.
 
-- [ ] **Step 6: Run `rift check`, then commit and push**
+- [x] **Step 6: Run `rift check`, then commit and push**
 
 ```bash
 rift check

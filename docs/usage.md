@@ -8,6 +8,7 @@
 | Key | Action |
 |---|---|
 | `Enter` | Send the input |
+| `Tab` | Accept the drafted reply when the input box is empty and one is offered (see [the drafted reply](#the-drafted-reply)); focus-next otherwise |
 | `Ctrl+T` | New tab with the default agent profile |
 | `Ctrl+N` | New tab — pick an agent profile from a modal |
 | `Ctrl+W` | Close the active tab (closing the last quits) |
@@ -28,6 +29,23 @@
 | `Alt+End` | Back to the live tail (and follow the running turn again) |
 | `Click on a block` | Copy that message / tool result to clipboard |
 | `Ctrl+Q` | Quit |
+
+## The drafted reply
+
+When a turn ends, aegis sometimes offers the message you would most likely
+type next. It appears as dim text in an empty input box; `Tab` accepts it,
+and typing anything replaces it. Nothing enters the box until you press
+`Tab`, so a suggestion you ignore costs one keystroke.
+
+It is a fifth field on the end-of-turn recap rather than a call of its own,
+so it adds nothing to what a turn costs. It follows `recap:` in
+`.aegis.yaml` — turn the recap off and the suggestions go with it.
+
+Most turns get no suggestion, which is deliberate. The prompt was calibrated
+against 40 real turn boundaries, and it offers one mainly where the agent
+proposed one specific thing and is waiting for a go-ahead. After a turn that
+simply reports finished work you usually start something new, and no model
+can guess what.
 
 ## Input prefixes: `!` shell and `/` commands
 

@@ -1,10 +1,12 @@
 # The suggested reply, and the operator's own block
 
-> **Status:** designed 2026-09-21, not yet implemented. Extends the recap
-> schema of `2026-09-17-aegis-unified-recap-design.md` with a fifth field and
-> changes when a recap result reaches a view. Calibration lives in
+> **Status:** implemented 2026-09-21, per
+> `docs/superpowers/plans/2026-09-21-aegis-input-suggestion.md`. Extends the
+> recap schema of `2026-09-17-aegis-unified-recap-design.md` with a fifth
+> field and changes when a recap result reaches a view. Calibration lives in
 > `.playground/reply-suggestion-probe/` (workspace playground, not in this
-> repo).
+> repo): three runs over 40 real turn boundaries, $2.09, reading in
+> `results-v3.md`. The prompt that shipped is v3.
 
 ## Why
 
@@ -55,25 +57,21 @@ redesign.
 
 ### The prompt addendum
 
-Appended to `SYSTEM`, after the existing language rule:
+`SUGGESTION_RULE`, appended to `SYSTEM`. The text that ships is in
+`src/aegis/recap/__init__.py` and is not restated here — it went through
+three measured revisions and the code is the only copy that cannot drift.
+Every clause in it is a probe finding, and the comment above it says which.
 
-> SUGGESTION: `suggestion` is a draft of the operator's *own* next message,
-> written as if they typed it — first person, their language, their register,
-> their length. Copy how the `user:` lines in the window actually sound:
-> if they are short and blunt, be short and blunt. Unlike the other fields it
-> may name a file, a command or a number, because the operator's messages do.
-> At most 12 words, one line, no trailing punctuation flourish. Leave it
-> empty unless the next message is genuinely obvious: a question was asked, a
-> choice was offered, work was presented for approval, or the session is one
-> plain step from continuing. An empty suggestion is the correct answer most
-> of the time.
+Two properties the UI depends on:
 
-Two properties worth naming because the UI depends on both:
-
-- **One line, twelve words.** A Textual placeholder renders on the first row
-  and truncates. The cap is not a style preference; it is the widget.
+- **One line, ten words.** A Textual placeholder renders on the first row
+  and truncates. The cap is not a style preference; it is the widget. It is
+  written as a filter rather than a limit — a draft over ten words is the
+  wrong *kind* of suggestion and gets dropped — because the over-long drafts
+  turned out to be exactly the invented-content failures.
 - **Empty is the default.** A wrong suggestion costs more than a missing one,
-  because the operator has to read it, reject it, and then type anyway.
+  because the operator has to read it, reject it, and then type anyway. It
+  stays quiet on 18 of 40 real boundaries.
 
 ### How a suggestion reaches the box
 
@@ -134,10 +132,11 @@ Three call sites move: `render_event` (replay) and the two mount points in
 `pane.py`. `test_render_event.py`'s assertions on the old single-line form
 move with them.
 
-**Known cost, accepted.** Markdown eats `snake_case` underscores and turns
-`**/*.py` bold. The operator asked for full Markdown and fenced blocks,
-lists and backticks are worth more than the occasional mangled glob — a
-fenced block renders correctly regardless. Recorded here so the first
+**Known cost, accepted — and smaller than feared.** Markdown can eat
+`snake_case` underscores and turn `**/*.py` bold. Checked against Rich's
+renderer once it was built: both of those survive, because Rich does not
+apply intraword emphasis. Something will still get mangled eventually;
+fenced blocks, lists and backticks are worth it. Recorded so the first
 mangled path is a known trade and not a bug report.
 
 ## Calibration
@@ -163,6 +162,25 @@ What the results have to answer, in order:
 
 The prompt addendum above is the starting point, not the answer. It is
 expected to change once before implementation lands.
+
+**It changed twice.** The v1 trigger was backwards: naming "a question was
+asked" as the case to suggest on made the model invent answers to open
+design questions (9 of its 13 suggestions), while the four boundaries whose
+real reply was pure assent got nothing. v2 named the case that actually
+predicts a reply — the agent proposed one thing and waits for a go-ahead —
+and v3 closed three leaks: the agent's voice in the operator's box ("I'll
+take #1"), English into a Spanish session, and the word cap being ignored.
+The cap became a filter rather than a limit, which is the clause that did
+the most work: a draft over ten words is the wrong kind of suggestion, and
+the over-long drafts were exactly the invented-content failures.
+
+Hit rate on offered suggestions: 31% -> 30% -> **41%**. Capitalised
+7/13 -> **0/22**; ending in a period 8/13 -> **0/22**, against Alex's own 40
+replies, of which 0 do either.
+
+`outcome` did not degrade — same word count and number density as the
+pre-change baseline in `.playground/recap-abstract-probe/results-real.md`.
+The fallback below was not needed.
 
 ## Out of scope
 
