@@ -110,6 +110,13 @@ def describe_tool(
     return summary or _loc_tail(locations) or name
 
 
+# How much of a result the row may carry before the row clips it itself.
+# Generous on purpose: the layout owns the width, and a number here that is
+# smaller than the column wastes a wide terminal. Small enough to bound the
+# work of formatting a 2 MB result into a line nobody will read.
+DIGEST_MAX = 200
+
+
 def diff_counts(old_text: str, new_text: str) -> tuple[int, int]:
     """``(added, removed)`` line counts for an Edit/Write diff.
 
@@ -147,7 +154,7 @@ def result_digest(name: str, result) -> str:
     # An error does not have the shape the tool's success digest reads: a
     # failed Read is a message, not a line count.
     if result.is_error:
-        return _trunc(lines[0], 60) if lines else "error"
+        return _trunc(lines[0], DIGEST_MAX) if lines else "error"
     if result.diff is not None:
         _path, old, new = result.diff
         added, removed = diff_counts(old, new)
@@ -164,25 +171,49 @@ def result_digest(name: str, result) -> str:
     # installed", "error: cannot find" — and first-line-wins would show the
     # progress bar instead. The cost is that `ls` and `cat` show their last
     # line rather than their first, which is noise and not a lie.
-    return _trunc(lines[-1] if name == "Bash" else lines[0], 60)
+    return _trunc(lines[-1] if name == "Bash" else lines[0], DIGEST_MAX)
 
 
 def tool_label(
     name: str, raw_input: dict | None, summary: str = "", locations=()
 ) -> str:
-    """The shortest honest name for a tool call: what a dashboard row shows.
+    """The shortest honest name for a tool call: which call this was, and
+    nothing about what was fed to it.
 
-    ``describe_tool`` is the transcript's line and pairs a Bash description
-    with its command, which is exactly the detail an activity tail should
-    not carry (Alex, 2026-09-17: "solo el label, no todo el bash"). Here the
-    description wins alone, and a command with no description is cut.
+    This is what a transcript row and a dashboard row both show. The rule is
+    **no input**: the command, the string an edit replaced and the directory
+    a grep searched are all arguments, and they belong in the call's detail
+    window, not on the one line whose job is the *result* (Alex, 2026-09-17:
+    "solo el label, no todo el bash"; 2026-09-21: "why am i seeing so much
+    the actual command when what i want is to see at a glance the result").
+
+    A search is the exception that proves it: a query or a pattern is which
+    search this was, not an argument you would go looking for later, so it
+    stays.
+
+    ``describe_tool`` remains the fuller line — a Bash description *and* its
+    command, an edit *and* its replaced text — for the places that want it.
     """
     inp = raw_input or {}
-    if name == "Bash" and aegis_describe(name, inp) is None:
+    if aegis_describe(name, inp) is not None:
+        return describe_tool(name, raw_input, summary, locations)
+
+    if name == "Bash":
         desc = inp.get("description")
         if desc:
             return str(desc)
         return _trunc(inp.get("command", "") or summary, 60)
+
+    if name == "Edit":
+        p = inp.get("file_path", "")
+        tail = p.rsplit("/", 1)[-1] if p else _loc_tail(locations)
+        return f"edit {tail}" if tail else (summary or "edit")
+
+    if name in ("Grep", "Glob"):
+        pat = inp.get("pattern", "")
+        verb = "grep" if name == "Grep" else "glob"
+        return f"{verb} {pat!r}" if pat else (summary or verb)
+
     return describe_tool(name, raw_input, summary, locations)
 
 

@@ -71,6 +71,62 @@ def test_digest_of_a_silent_result_is_ok():
 
 
 def test_digest_clips_a_long_line():
-    r = ToolResult(text="x" * 200, is_error=False)
+    # The row clips the digest to its own column; this bound only stops us
+    # formatting a 2 MB result into a line nobody will read.
+    r = ToolResult(text="x" * 5000, is_error=False)
     out = result_digest("Bash", r)
-    assert len(out) <= 60 and out.endswith("…")
+    assert len(out) <= 200 and out.endswith("…")
+
+
+# --- the row's label carries no input ----------------------------------
+# What a transcript row is for is the RESULT. The label says which call it
+# was; the command, the replaced string and the search path are input, and
+# they belong in the detail window (Alex, 2026-09-21: "why am i seeing so
+# much the actual command when what i want is to see at a glance the
+# result").
+
+from aegis.render_shared import tool_label
+
+
+def test_a_bash_label_is_the_description_not_the_command():
+    lbl = tool_label(
+        "Bash",
+        {"description": "run the test suite", "command": "uv run pytest -q tests/"},
+    )
+    assert lbl == "run the test suite"
+    assert "pytest" not in lbl
+
+
+def test_a_bash_label_falls_back_to_the_command_when_undescribed():
+    lbl = tool_label("Bash", {"command": "ls -la /tmp"})
+    assert lbl == "ls -la /tmp"
+
+
+def test_an_edit_label_names_the_file_not_the_replaced_text():
+    lbl = tool_label(
+        "Edit",
+        {
+            "file_path": "/a/b/pane.py",
+            "old_string": "running = not track.done",
+            "new_string": "running = False",
+        },
+    )
+    assert lbl == "edit pane.py"
+    assert "track.done" not in lbl
+
+
+def test_a_grep_label_keeps_the_pattern_and_drops_the_path():
+    # The pattern is which search this was; the path is where it looked.
+    lbl = tool_label("Grep", {"pattern": "expanded", "path": "src/aegis/tui/pane.py"})
+    assert lbl == "grep 'expanded'"
+
+
+def test_a_read_label_is_the_file():
+    assert tool_label("Read", {"file_path": "/a/b/render.py"}) == "read render.py"
+
+
+def test_a_websearch_label_keeps_its_query():
+    # For a search the query IS the identity of the call, not an argument
+    # you would go looking for later.
+    lbl = tool_label("WebSearch", {"query": "textual compositor render strips"})
+    assert "textual compositor" in lbl
