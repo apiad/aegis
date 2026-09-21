@@ -57,6 +57,12 @@ class StandingRecap(BaseModel):
         description="ONE short sentence: what is left, or what the session is "
         "waiting for. Empty if nothing."
     )
+    suggestion: str = Field(
+        default="",
+        description="A draft of the OPERATOR's own next message, written as "
+        "if they typed it: first person, their language, their register. "
+        "Empty when there is no obvious next message.",
+    )
     attention: Literal["needs_input", "error", "review", "waiting", "done"] = Field(
         description="needs_input: the turn ended on a question or a decision "
         "for the operator. error: something failed. review: it presents "
@@ -74,6 +80,9 @@ class Recap:
     line: str = ""
     task: str = ""
     next: str = ""
+    # A draft of the operator's next message, for the input box. Empty is
+    # the common case and the correct one.
+    suggestion: str = ""
     attention: str = ""
     header: str = ""
     model: str = ""
@@ -132,6 +141,25 @@ SYSTEM = (
     "`outcome` is at most 20 words. No preamble, no praise. A question to the "
     "operator is needs_input even when the turn also landed work."
 )
+
+# The suggestion speaks in the operator's voice, which is the opposite of
+# everything above it — so it is spelled out as its own paragraph rather
+# than folded into SYSTEM's sentence about the other fields. Its only
+# calibration material is the `user:` lines the window already carries.
+SUGGESTION_RULE = (
+    " SUGGESTION: `suggestion` is a draft of the operator's own next "
+    "message, written as if they typed it — first person, their language, "
+    "their register, their length. Copy how the `user:` lines in the window "
+    "actually sound: if they are short and blunt, be short and blunt. "
+    "Unlike the other fields it may name a file, a command or a number, "
+    "because the operator's messages do. At most 12 words, one line. Leave "
+    "it empty unless the next message is genuinely obvious: a question was "
+    "asked, a choice was offered, work was presented for approval, or the "
+    "session is one plain step from continuing. An empty suggestion is the "
+    "correct answer most of the time."
+)
+
+SYSTEM = SYSTEM + SUGGESTION_RULE
 
 IN_FLIGHT_ADDENDUM = (
     " The turn is still running: `outcome` is what it is doing right now, "
@@ -192,6 +220,7 @@ async def _one(
         line=v.outcome,
         task=v.task,
         next=v.next,
+        suggestion=v.suggestion,
         attention=v.attention,
         header=window.header,
         model=gen.model,
