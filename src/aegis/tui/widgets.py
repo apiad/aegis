@@ -23,6 +23,10 @@ class GrowingInput(TextArea):
 
     MAX_LINES = 5
 
+    # The hint shown when there is nothing else to show. A suggestion takes
+    # its place while the box is empty, and it comes back when there isn't one.
+    PLACEHOLDER = "type a message…"
+
     class Submitted(Message):
         def __init__(
             self, sender: "GrowingInput", value: str, kind: str = "enqueue"
@@ -51,6 +55,12 @@ class GrowingInput(TextArea):
         # Optional key hook: returns True if it consumed the key (the command
         # palette uses this to grab Up/Down/Tab/Enter/Esc while it is open).
         self.key_interceptor = None
+        # The drafted next message, shown as the placeholder so Textual's own
+        # dimming and its clear-on-keystroke do the work. Nothing enters the
+        # document until Tab, which is why history recall, the palette's key
+        # interceptor and the voice lock need to know nothing about it.
+        self._suggestion = ""
+        self._base_placeholder = placeholder or self.PLACEHOLDER
 
     @property
     def value(self) -> str:
@@ -60,6 +70,30 @@ class GrowingInput(TextArea):
     def value(self, v: str) -> None:
         self.text = v
         self._resize_to_content()
+
+    @property
+    def suggestion(self) -> str:
+        """The drafted next message, or ``""``."""
+        return self._suggestion
+
+    @suggestion.setter
+    def suggestion(self, text: str) -> None:
+        # Only into an empty box. The placeholder is invisible behind text,
+        # so a suggestion set over a half-typed message would be a Tab away
+        # from replacing it with no warning on screen.
+        text = (text or "").strip() if not self.text.strip() else ""
+        self._suggestion = text
+        self.placeholder = text or self._base_placeholder
+
+    def accept_suggestion(self) -> bool:
+        """Fill the box with the suggestion. False when there was none."""
+        text = self._suggestion
+        if not text:
+            return False
+        self.suggestion = ""
+        self.value = text
+        self.move_cursor(self.document.end)
+        return True
 
     @property
     def locked(self) -> bool:
@@ -122,6 +156,8 @@ class GrowingInput(TextArea):
         self.post_message(self.Submitted(self, self.text, kind))
 
     def _record_history(self, text: str) -> None:
+        # Sending answers whatever the suggestion was for.
+        self.suggestion = ""
         text = text.strip()
         if text and (not self._history or self._history[-1] != text):
             self._history.append(text)
@@ -157,6 +193,13 @@ class GrowingInput(TextArea):
         if self.key_interceptor is not None and self.key_interceptor(event):
             event.stop()
             event.prevent_default()
+            return
+        if event.key == "tab" and self._suggestion and not self.text.strip():
+            # Only with a live suggestion in an empty box; every other Tab
+            # keeps the widget's `tab_behavior="focus"`.
+            event.stop()
+            event.prevent_default()
+            self.accept_suggestion()
             return
         if event.key == "enter":
             event.stop()
