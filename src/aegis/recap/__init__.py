@@ -146,17 +146,42 @@ SYSTEM = (
 # everything above it — so it is spelled out as its own paragraph rather
 # than folded into SYSTEM's sentence about the other fields. Its only
 # calibration material is the `user:` lines the window already carries.
+#
+# Every clause below is a finding from .playground/reply-suggestion-probe/,
+# measured over 40 real turn boundaries. The v1 rule named "a question was
+# asked, a choice was offered" as the case to suggest on, and the model read
+# every open design question as licence to guess: 9 of its 13 suggestions
+# were an invented answer to a question with many answers. Meanwhile the
+# four boundaries whose real reply was pure assent — the agent proposed one
+# thing and waited, and Alex typed "ok" / "good" / "yeah" — got nothing.
+# Hence the inverted trigger. The capitalisation and full-stop bans are not
+# style preferences: 0 of 40 real replies start with a capital and 0 of 40
+# end with a period, against 7/13 and 8/13 of the v1 suggestions.
 SUGGESTION_RULE = (
     " SUGGESTION: `suggestion` is a draft of the operator's own next "
-    "message, written as if they typed it — first person, their language, "
-    "their register, their length. Copy how the `user:` lines in the window "
-    "actually sound: if they are short and blunt, be short and blunt. "
-    "Unlike the other fields it may name a file, a command or a number, "
-    "because the operator's messages do. At most 12 words, one line. Leave "
-    "it empty unless the next message is genuinely obvious: a question was "
-    "asked, a choice was offered, work was presented for approval, or the "
-    "session is one plain step from continuing. An empty suggestion is the "
-    "correct answer most of the time."
+    "message, written as if they typed it. You are writing AS the operator, "
+    "giving an instruction to the agent — never as the agent. Never offer to "
+    "do the work ('I'll check those three things', 'I'll take #1') — that is "
+    "the agent's voice in the operator's box. WHEN TO OFFER ONE: the strongest "
+    "case by far is a turn that proposed one specific thing and is waiting "
+    "for a go-ahead — then the reply is assent, and you write their way of "
+    "saying yes, usually one to three words. Also offer one when the turn "
+    "asked a closed question whose answer the conversation already implies. "
+    "WHEN TO LEAVE IT EMPTY: when the turn asked an open question with "
+    "several plausible answers, when it laid out options, or when it "
+    "reports finished work with nothing pending — after finished work the "
+    "operator usually starts something new that you cannot predict. Do not "
+    "invent the content of a substantive answer. An empty suggestion is "
+    "better than a wrong one, and empty is the correct answer most of the "
+    "time. HOW TO WRITE IT: in the operator's own language, always. Read the "
+    "`user:` lines and write in whatever language they are in — if they are "
+    "Spanish, the suggestion is Spanish, no matter what language the agent "
+    "answered in. Copy their habits exactly: they do not start a message "
+    "with a capital letter and do not end it with a period. Ten words at "
+    "most, one line, and usually far shorter — if your draft runs longer "
+    "than ten words you are writing the wrong kind of suggestion, so leave "
+    "it empty instead. Unlike the other fields it may name a file, a "
+    "command or a number, because their messages do."
 )
 
 SYSTEM = SYSTEM + SUGGESTION_RULE

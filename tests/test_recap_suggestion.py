@@ -25,8 +25,18 @@ def test_recap_dataclass_carries_the_suggestion():
 
 
 def test_prompt_tells_the_model_to_write_as_the_operator():
-    # The rule that makes the field a draft reply rather than a fourth summary.
-    assert "first person" in SYSTEM
-    assert "12 words" in SYSTEM
+    """Each assertion is a probe finding that cost money to learn.
+
+    Measured over 40 real turn boundaries
+    (`.playground/reply-suggestion-probe/`): the trigger has to name the
+    waiting-for-a-go-ahead case, because a rule that says "a question was
+    asked" made the model invent answers to open questions; and the
+    capitalisation and full-stop bans are the measured habit of the
+    operator's own messages, 0 of 40 of which break either.
+    """
+    assert "waiting for a go-ahead" in SYSTEM
+    assert "capital letter" in SYSTEM
+    assert "end it with a period" in SYSTEM
+    assert "Ten words at most" in SYSTEM
     # Empty is the default answer; a wrong suggestion costs more than none.
-    assert "Leave it empty" in SYSTEM
+    assert "LEAVE IT EMPTY" in SYSTEM
