@@ -135,7 +135,7 @@ def _event(ev: EventLine) -> str:
     return f"{time.strftime('%H:%M', time.localtime(ev.at))} {ev.summary or ev.tool}"
 
 
-def _gauge(
+def gauge(
     label: str,
     pct: float,
     value: str,
@@ -159,7 +159,7 @@ def _gauge(
     return t
 
 
-def _rows_of(gauges: list[Text], per_row: int) -> Text:
+def rows_of(gauges: list[Text], per_row: int) -> Text:
     t = Text()
     for i in range(0, len(gauges), per_row):
         if i:
@@ -171,7 +171,7 @@ def _rows_of(gauges: list[Text], per_row: int) -> Text:
     return t
 
 
-def _reset(seconds: float | None) -> str:
+def reset_in(seconds: float | None) -> str:
     if seconds is None:
         return ""
     s = max(0, int(seconds))
@@ -200,8 +200,8 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
             f"{s.ram_used_gb:.1f}/{s.ram_total_gb:.0f}G" if s.ram_total_gb else ""
         )
         host += [
-            _gauge("CPU", s.cpu, f"{s.cpu:.0f}%", ctx_style(s.cpu, pal), cells, pal),
-            _gauge(
+            gauge("CPU", s.cpu, f"{s.cpu:.0f}%", ctx_style(s.cpu, pal), cells, pal),
+            gauge(
                 "RAM",
                 s.ram,
                 f"{s.ram:.0f}%",
@@ -210,10 +210,10 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
                 pal,
                 tail=ram_tail,
             ),
-            _gauge("DSK", s.disk, f"{s.disk:.0f}%", ctx_style(s.disk, pal), cells, pal),
+            gauge("DSK", s.disk, f"{s.disk:.0f}%", ctx_style(s.disk, pal), cells, pal),
         ]
     host.append(
-        _gauge(
+        gauge(
             "CTX",
             band.ctx_avg,
             f"{band.ctx_avg:.0f}%",
@@ -223,7 +223,7 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
             tail="avg",
         )
     )
-    t.append_text(_rows_of(host, per))
+    t.append_text(rows_of(host, per))
     t.append("\n")
 
     if band.gauges:
@@ -236,7 +236,7 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
             if g.severity == "critical":
                 value = blink(value, frame)
             quota.append(
-                _gauge(
+                gauge(
                     g.label,
                     g.percent,
                     value,
@@ -244,10 +244,10 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
                     qcells,
                     pal,
                     value_style=style,
-                    tail=_reset(g.resets_in_s),
+                    tail=reset_in(g.resets_in_s),
                 )
             )
-        t.append_text(_rows_of(quota, per_q))
+        t.append_text(rows_of(quota, per_q))
         t.append("\n")
 
     live = [c for c in snapshot.cards if c.ghost_since is None]

@@ -1,7 +1,8 @@
 from rich.cells import cell_len
+from rich.text import Text
 
 from aegis.fleet.models import BandView, CardView, FleetSnapshot, QuotaGauge
-from aegis.fleet.render import render_band
+from aegis.fleet.render import gauge, render_band, reset_in, rows_of
 from aegis.tui.sysmeter import SystemStats
 from aegis.tui.themes import INK, aegis_colors
 
@@ -108,3 +109,23 @@ def test_quota_gauges_wrap_two_per_line_on_a_narrow_screen():
     first_quota = lines[2]
     assert sum(label in first_quota for label in ("cc 5h", "oc mo", "oc wk")) == 2
     assert lines[3].startswith("oc wk")
+
+
+def test_a_gauge_is_one_row_and_never_wider_than_its_budget():
+    """The property the whole sidebar redesign rests on: a gauge replaces a
+    text row rather than adding one, so it must be exactly one row, and it
+    must fit the column it was given or the section below it shifts."""
+    for cells in range(10, 61):
+        g = gauge("CTX", 71.0, "71%", P.accent, cells, P, tail="142k/200k")
+        assert "\n" not in g.plain
+        assert cell_len(g.plain) <= cells, f"overflowed at {cells}"
+
+
+def test_reset_in_is_empty_for_an_unknown_reset():
+    assert reset_in(None) == ""
+    assert reset_in(3840) == "↻ 1h04m"
+
+
+def test_rows_of_pairs_gauges_two_to_a_line():
+    a, b, c = (Text("a"), Text("b"), Text("c"))
+    assert rows_of([a, b, c], 2).plain.split("\n") == ["a  b", "c"]
