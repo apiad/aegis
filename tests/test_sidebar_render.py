@@ -9,7 +9,7 @@ from rich.cells import cell_len
 from aegis.monitor.schema import MonitorView
 from aegis.plan import PlanState, PlanTask
 from aegis.queue.digest import QueueView, Snapshot
-from aegis.tui.sidebar import SidebarModel, heading, render_sidebar
+from aegis.tui.sidebar import SidebarModel, heading, heading_fits, render_sidebar
 from aegis.tui.themes import INK, aegis_colors
 
 C = aegis_colors(INK)          # house pattern — see tests/test_render_event.py
@@ -17,6 +17,12 @@ C = aegis_colors(INK)          # house pattern — see tests/test_render_event.p
 
 def as_text(renderable) -> str:
     return renderable.plain
+
+
+def heads(rendered: str) -> list[str]:
+    """The section names, read off the rule headings. A heading is a rule
+    now, not a bare word, so `ln.isupper()` no longer finds one."""
+    return [ln.split()[1] for ln in rendered.split("\n") if ln.startswith("── ")]
 
 
 def test_an_empty_model_renders_nothing():
@@ -42,11 +48,11 @@ def test_a_section_with_no_content_omits_its_heading():
     assert "CONTEXT" not in out
 
 
-def test_sections_are_separated_by_one_blank_row():
+def test_sections_are_separated_by_the_rule_and_nothing_else():
     m = SidebarModel(state_label="idle", metrics=("$1.84",))
     lines = as_text(render_sidebar(m, C, 40)).split("\n")
-    assert "" in lines
-    assert lines.count("") == 1
+    assert "" not in lines, "a blank row survived between two sections"
+    assert sum(1 for ln in lines if ln.startswith("── ")) == 2
 
 
 def test_connection_warning_leads_the_session_section():
@@ -57,7 +63,7 @@ def test_connection_warning_leads_the_session_section():
                      connection=("⚠ disconnected — reconnecting…",
                                  "⚠ disconnected"))
     lines = [ln for ln in as_text(render_sidebar(m, C, 40)).split("\n") if ln]
-    assert lines[0] == "SESSION"
+    assert lines[0].startswith("── SESSION")
     assert lines[1].startswith("⚠ disconnected")
 
 
@@ -72,13 +78,36 @@ def test_a_narrow_column_takes_a_narrower_tier():
     assert "⚠ disconnected" in as_text(render_sidebar(m, C, 20))
 
 
-def test_heading_right_aligns_its_counter():
-    assert as_text(heading("PLAN", C, 20, right="3/7")) == \
-        "PLAN             3/7"
+def test_a_heading_is_a_rule_that_fills_its_width():
+    assert as_text(heading("PLAN", C, 20)) == "── PLAN ────────────"
 
 
-def test_heading_without_a_counter_is_just_the_word():
-    assert as_text(heading("SESSION", C, 20)) == "SESSION"
+def test_a_heading_with_a_counter_puts_it_at_the_far_end():
+    assert as_text(heading("PLAN", C, 20, right="3/7")) == "── PLAN ──────── 3/7"
+
+
+def test_a_heading_drops_a_counter_it_cannot_seat():
+    """Below RULE_FLOOR rule cells the heading would read as a word, a gap
+    and a label with nothing joining them — the shape this change removes.
+    The counter is dropped and the rule stays whole."""
+    assert not heading_fits("MONITORS", 18, "✻ working… · ◐ thinking")
+    assert as_text(heading("MONITORS", C, 18, right="✻ working… · ◐ thinking")) == \
+        "── MONITORS ──────"
+
+
+def test_a_heading_measures_in_cells_not_characters():
+    """A wide counter must not push the rule past the column.
+
+    The input is synthetic, and deliberately so: every glyph aegis puts in
+    this slot today (✻ ◐ ⚠ ✓ ✗ ◆ ⧗) is East Asian Ambiguous, which Rich
+    measures as one cell — so `len` and `cell_len` agree on all of them and
+    no real value can tell the two apart. `right` is not aegis's to choose
+    forever, though: it carries a state label, and a harness that returns a
+    wide one would overflow the column silently, because Textual clips
+    without saying so. A CJK counter is the smallest input that fails if
+    this function ever goes back to counting characters.
+    """
+    assert cell_len(as_text(heading("REPOS", C, 30, right="項目 2"))) == 30
 
 
 # --- the four sections that reuse an existing renderer ------------------
@@ -130,10 +159,11 @@ def test_monitors_section_shows_the_bar():
 
 def test_system_section_is_last():
     m = SidebarModel(state_label="idle", system=("cpu 34% ram 61%",))
-    lines = [ln for ln in as_text(render_sidebar(m, C, 40)).split("\n") if ln]
-    assert lines[0] == "SESSION"
-    assert "SYSTEM" in lines
-    assert lines.index("SYSTEM") == len(lines) - 2
+    out = as_text(render_sidebar(m, C, 40))
+    lines = [ln for ln in out.split("\n") if ln]
+    assert heads(out) == ["SESSION", "SYSTEM"]
+    assert [i for i, ln in enumerate(lines)
+            if ln.startswith("── SYSTEM")] == [len(lines) - 2]
 
 
 def test_system_section_carries_clock_cwd_and_build_under_the_meters():
@@ -144,11 +174,11 @@ def test_system_section_carries_clock_cwd_and_build_under_the_meters():
                      cwd=("CWD ~/Workspace/repos/aegis",),
                      build=("aegis 0.21.0+d35b07a",))
     lines = [ln for ln in as_text(render_sidebar(m, C, 60)).split("\n") if ln]
-    assert lines == ["SYSTEM",
-                     "CPU 34% · RAM 61% · DSK 12%",
-                     "2026-08-11 11:03 CDT · en_US.UTF-8",
-                     "CWD ~/Workspace/repos/aegis",
-                     "aegis 0.21.0+d35b07a"]
+    assert lines[0].startswith("── SYSTEM")
+    assert lines[1:] == ["CPU 34% · RAM 61% · DSK 12%",
+                         "2026-08-11 11:03 CDT · en_US.UTF-8",
+                         "CWD ~/Workspace/repos/aegis",
+                         "aegis 0.21.0+d35b07a"]
 
 
 def test_system_section_renders_without_the_meters():
@@ -169,11 +199,8 @@ def test_full_model_renders_every_section_in_volatility_order():
         monitors=[MonitorView(id="m1", description="pytest", state="running",
                               pct=62.0, eta_s=None, elapsed_s=30.0)],
         system=("cpu 34%",))
-    lines = [ln for ln in as_text(render_sidebar(m, C, 40)).split("\n") if ln]
-    heads = [ln.split()[0] for ln in lines
-             if ln.split() and ln.split()[0].isupper()]
-    assert heads == ["SESSION", "CONTEXT", "PLAN", "QUEUES",
-                     "MONITORS", "SYSTEM"]
+    assert heads(as_text(render_sidebar(m, C, 40))) == [
+        "SESSION", "CONTEXT", "PLAN", "QUEUES", "MONITORS", "SYSTEM"]
 
 
 # -- fitting the width -------------------------------------------------

@@ -70,18 +70,51 @@ class SidebarModel:
     build: tuple[str, ...] = ()
 
 
-def heading(text: str, palette, width: int, right: str = "") -> Text:
-    """A section heading, optionally with a right-aligned counter.
+# Below this many rule cells a heading with a counter reads as a word, a
+# gap and a label with nothing joining them — which is the shape this
+# redesign exists to remove. The counter is dropped instead, and its
+# section puts the value back on a row of its own.
+RULE_FLOOR = 3
 
-    Padded in cells rather than characters — the counter is ASCII, but the
-    budget it is padded against is shared with rows that are not.
+_LEAD = "── "
+
+
+def _rule_cells(text: str, width: int, right: str) -> int:
+    """Rule cells left once the lead, the name, the counter and the single
+    space on each side of the rule are paid for. Negative means it does not
+    fit at all."""
+    return width - cell_len(_LEAD) - cell_len(text) - 1 - cell_len(right) - 1
+
+
+def heading_fits(text: str, width: int, right: str) -> bool:
+    """Whether ``right`` will be seated in this heading. A section that has
+    somewhere else to put the value asks first."""
+    return bool(right) and _rule_cells(text, width, right) >= RULE_FLOOR
+
+
+def heading(text: str, palette, width: int, right: str = "") -> Text:
+    """A section heading drawn as a rule, optionally seating a value at the
+    far end.
+
+    The rule is what separates one section from the next, which is why
+    ``render_sidebar`` no longer spends a blank row on it. The name is
+    ``palette.ink`` rather than ``palette.muted``: it is the structure of
+    the column and must not be the quietest thing in it.
+
+    Measured in cells, not characters — the name is ASCII but the value is
+    routinely not (``✻ working``, ``✓5``), and Rich draws cells.
     """
-    out = Text(text, style=f"bold {palette.muted}")
-    if right:
-        pad = width - cell_len(text) - cell_len(right)
-        if pad >= 1:
-            out.append(" " * pad)
-            out.append(right, style=palette.muted)
+    out = Text(_LEAD, style=palette.rule)
+    out.append(text, style=f"bold {palette.ink}")
+    if heading_fits(text, width, right):
+        out.append(
+            " " + "─" * _rule_cells(text, width, right) + " ", style=palette.rule
+        )
+        out.append(right, style=palette.muted)
+        return out
+    fill = width - cell_len(_LEAD) - cell_len(text) - 1
+    if fill > 0:
+        out.append(" " + "─" * fill, style=palette.rule)
     return out
 
 
@@ -234,7 +267,7 @@ def render_sidebar(model: SidebarModel, palette, width: int) -> Text:
     out = Text()
     for i, b in enumerate(blocks):
         if i:
-            out.append("\n\n")
+            out.append("\n")
         out.append_text(b)
     return out
 
