@@ -469,3 +469,25 @@ def test_cwd_and_build_survive_a_column_too_narrow_for_both_on_one_row():
 def test_no_stats_falls_back_to_the_system_tier():
     m = SidebarModel(stats=None, system=("cpu 34% ram 61% disk 82%",))
     assert "cpu 34%" in as_text(render_sidebar(m, C, 56))
+
+
+# --- QUEUES: saturation as a bar ---------------------------------------
+
+
+def test_a_queue_row_leads_with_its_saturation():
+    m = SidebarModel(queues=Snapshot(queues=(
+        QueueView(name="build", agent="claude", running=1, max_parallel=2,
+                  queued=3, ok=5, err=0),
+    )))
+    row = [ln for ln in as_text(render_sidebar(m, C, 56)).split("\n")
+           if "build" in ln][0]
+    assert "█" in row and "●1/2" in row
+    assert cell_len(row) <= 56
+
+
+def test_a_queue_with_no_parallelism_configured_does_not_divide_by_zero():
+    m = SidebarModel(queues=Snapshot(queues=(
+        QueueView(name="idle", agent="claude", running=0, max_parallel=0,
+                  queued=0, ok=0, err=0),
+    )))
+    assert "idle" in as_text(render_sidebar(m, C, 56))

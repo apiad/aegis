@@ -27,6 +27,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from aegis.fleet.render import (
+    bar,
     ctx_style,
     gauge,
     reset_in,
@@ -296,14 +297,39 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
     return _block(head, list(body.split("\n", allow_blank=False))[1:])
 
 
+_QBAR = 9
+# Below this, a bar is too short to read as a proportion; the row drops it
+# and looks exactly as it did before this change.
+_QBAR_FLOOR = 4
+
+
 def _queues(m: SidebarModel, palette, width: int) -> Text | None:
     snap = m.queues
     if snap is None or not snap.queues:
         return None
-    return _block(
-        heading("QUEUES", palette, width),
-        [format_q(q, palette, width) for q in snap.queues],
-    )
+    rows = []
+    for q in snap.queues:
+        # `format_q` is shared with the collapsed QueueStrip, so the bar is
+        # prefixed here rather than added inside it.
+        #
+        # Sized from what is actually spare, not from a constant. A queue
+        # row's counters (`●3/4 ○17 ✓128 ✗6`) do not compress — `format_q`
+        # gives the NAME away and keeps every number — so on a narrow column
+        # the row is already at its floor and a fixed-width bar pushes it
+        # over. Below _QBAR_FLOOR cells there is no bar at all, which is
+        # exactly today's row.
+        body = format_q(q, palette, width)
+        cells = min(_QBAR, width - body.cell_len - 1)
+        if cells < _QBAR_FLOOR:
+            rows.append(body)
+            continue
+        pct = 100 * q.running / q.max_parallel if q.max_parallel else 0
+        row = Text()
+        row.append_text(bar(pct, cells, palette.work, palette))
+        row.append(" ")
+        row.append_text(format_q(q, palette, width - cells - 1))
+        rows.append(row)
+    return _block(heading("QUEUES", palette, width), rows)
 
 
 def _monitors(m: SidebarModel, palette, width: int) -> Text | None:
