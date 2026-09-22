@@ -13,6 +13,7 @@ from aegis.plan import PlanState, PlanTask
 from aegis.queue.digest import QueueView, Snapshot
 from aegis.tui.sidebar import SidebarModel, heading, heading_fits, render_sidebar
 from aegis.tui.metrics import ContextGauge
+from aegis.tui.sysmeter import SystemStats
 from aegis.tui.themes import INK, aegis_colors
 
 C = aegis_colors(INK)          # house pattern — see tests/test_render_event.py
@@ -426,3 +427,45 @@ def test_no_context_window_falls_back_to_the_metrics_tier():
     out = as_text(render_sidebar(m, C, 56))
     assert "$1.84" in out
     assert "CTX" not in out
+
+
+# --- SYSTEM: three meters as bars, the two static rows merged ----------
+
+
+def _sys_rows(m, width):
+    return [ln for ln in as_text(render_sidebar(m, C, width)).split("\n")
+            if ln and not ln.startswith("── ")]
+
+
+def test_system_draws_three_meters_as_bars_on_two_rows():
+    m = SidebarModel(stats=SystemStats(cpu=34.0, ram=61.0, disk=82.0))
+    rows = _sys_rows(m, 56)
+    assert len(rows) == 2
+    assert "CPU" in rows[0] and "RAM" in rows[0]
+    assert "DSK" in rows[1]
+    assert "█" in rows[0]
+
+
+def test_a_narrow_column_puts_one_meter_per_row():
+    m = SidebarModel(stats=SystemStats(cpu=34.0, ram=61.0, disk=82.0))
+    assert len(_sys_rows(m, 26)) == 3
+
+
+def test_cwd_and_build_survive_a_column_too_narrow_for_both_on_one_row():
+    """Merging them onto one row was tried and reverted. `fit_rows` drops a
+    segment whose narrowest tier overflows rather than truncating it, so a
+    merged row takes BOTH answers down together on a narrow column — and
+    these two are the questions a stale checkout makes you ask, which is the
+    worst pair to lose. Separate rows cost one row and lose nothing.
+    """
+    m = SidebarModel(cwd=("CWD /tmp/pytest-of-apiad/test_a_very_long_name_0",
+                          "CWD test_a_very_long_name_0"),
+                     build=("aegis 0.38.0+abc1234", "0.38.0"))
+    rows = _sys_rows(m, 36)
+    assert any("test_a_very_long_name_0" in r for r in rows)
+    assert any("0.38.0" in r for r in rows)
+
+
+def test_no_stats_falls_back_to_the_system_tier():
+    m = SidebarModel(stats=None, system=("cpu 34% ram 61% disk 82%",))
+    assert "cpu 34%" in as_text(render_sidebar(m, C, 56))

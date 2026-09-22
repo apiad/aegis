@@ -26,7 +26,13 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from aegis.fleet.render import ctx_style, gauge, reset_in, severity_style
+from aegis.fleet.render import (
+    ctx_style,
+    gauge,
+    reset_in,
+    rows_of,
+    severity_style,
+)
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
@@ -324,18 +330,53 @@ def _repos(m: SidebarModel, palette, width: int) -> Text | None:
     return _block(head, list(body.split("\n", allow_blank=False)))
 
 
+# Two gauges to a row above this width, one below: at 26 cells a pair of
+# labelled bars leaves three cells each for the bar itself.
+_PAIR_WIDTH = 40
+
+
+
+
 def _system(m: SidebarModel, palette, width: int) -> Text | None:
     # The section ordering applied one level down: the meters move every
     # tick, the clock every minute, the last two never. The pair at the
     # bottom is the pair you go looking for rather than notice — which
     # directory this aegis is rooted at, and which build of it is running.
-    segs = [
-        Segment("system", m.system, 0),
-        Segment("clock", m.clock, 0),
-        Segment("cwd", m.cwd, 0),
-        Segment("build", m.build, 0),
-    ]
-    rows = _rows(segs, palette, width)
+    rows: list[Text] = []
+    if m.stats is not None:
+        per = 2 if width >= _PAIR_WIDTH else 1
+        cells = (width - 2 * (per - 1)) // per
+        ram_tail = (
+            f"{m.stats.ram_used_gb:.1f}/{m.stats.ram_total_gb:.0f}G"
+            if m.stats.ram_total_gb
+            else ""
+        )
+        meters = [
+            gauge("CPU", m.stats.cpu, f"{m.stats.cpu:.0f}%",
+                  ctx_style(m.stats.cpu, palette), cells, palette),
+            gauge("RAM", m.stats.ram, f"{m.stats.ram:.0f}%",
+                  ctx_style(m.stats.ram, palette), cells, palette, tail=ram_tail),
+            gauge("DSK", m.stats.disk, f"{m.stats.disk:.0f}%",
+                  ctx_style(m.stats.disk, palette), cells, palette),
+        ]
+        rows += list(rows_of(meters, per).split("\n", allow_blank=False))
+    else:
+        rows += _rows([Segment("system", m.system, 0)], palette, width)
+    rows += _rows([Segment("clock", m.clock, 0)], palette, width)
+    # Kept, and kept on separate rows. They never change, but they are the
+    # two questions a stale checkout makes you ask — which directory this
+    # aegis is rooted at and which build is running.
+    #
+    # Merging them onto one row was tried and reverted: a pair costs more
+    # cells than either half, `fit_rows` drops a segment whose narrowest
+    # tier overflows rather than truncating it, and so on a narrow column
+    # the merged row took BOTH answers down together. Measured at a 36-cell
+    # sidebar on a 31-character directory name: the pair needs 44 cells, the
+    # path alone 35. One row is not worth losing the answer at exactly the
+    # width where it is least reconstructible.
+    rows += _rows(
+        [Segment("cwd", m.cwd, 0), Segment("build", m.build, 0)], palette, width
+    )
     if not rows:
         return None
     return _block(heading("SYSTEM", palette, width), rows)
