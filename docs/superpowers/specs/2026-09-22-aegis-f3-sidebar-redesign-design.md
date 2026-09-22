@@ -119,7 +119,7 @@ build  █████░░░░  ●1/2 ○3 ✓5
 review ░░░░░░░░░  ●0/1 ✓2 ✗1
 ── MONITORS ─────────────────────────────────────────
 pytest        ██████░░░░  62%  ETA 1:40
-docker build  ░░██░░░░░░  7:10
+docker build  ⣾ 7:10
 ── REPOS ───────────────────────────────────────── 2
 ● aegis   main  ~3 ↑2  +180 -22   deep-dijkstra
 · warden  main  ↓1
@@ -290,6 +290,13 @@ and one per row below that, using `rows_of(gauges, per_row)` from the fleet
 renderer for the pairing. The clock keeps its place beside the disk gauge.
 
 ### One bar glyph, not two
+
+An indeterminate monitor keeps its spinner (`⣾ 7:10`) rather than gaining a
+sweep bar. `sweep_bar` needs a `frame` to move, `format_mon` has no frame
+parameter, and adding one would ripple into the collapsed `MonitorStrip` that
+this spec is not redesigning. The spinner already says "running, no progress
+condition" in three cells.
+
 
 `monitor_strip._bar` draws `▓`/`░` at a fixed eight cells;
 `fleet.render.bar` draws `█`/`░` at a caller-chosen width with the empty half
