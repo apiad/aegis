@@ -6,10 +6,13 @@ An empty section renders nothing at all — not a heading over a blank.
 """
 from rich.cells import cell_len
 
+from aegis.fleet.models import QuotaGauge
+from aegis.fleet.render import ctx_style
 from aegis.monitor.schema import MonitorView
 from aegis.plan import PlanState, PlanTask
 from aegis.queue.digest import QueueView, Snapshot
 from aegis.tui.sidebar import SidebarModel, heading, heading_fits, render_sidebar
+from aegis.tui.metrics import ContextGauge
 from aegis.tui.themes import INK, aegis_colors
 
 C = aegis_colors(INK)          # house pattern — see tests/test_render_event.py
@@ -379,3 +382,47 @@ def test_a_loop_without_a_status_falls_back_to_its_tier():
     """A remote pane gets the rendered string and no dict."""
     m = SidebarModel(state_label="idle", loop=("⟳ loop 3/20",))
     assert "⟳ loop 3/20" in as_text(render_sidebar(m, C, 56))
+
+
+# --- CONTEXT: the window and the quota as bars --------------------------
+
+
+def test_context_draws_a_bar_for_the_window():
+    m = SidebarModel(ctx=ContextGauge(pct=71, live=142_000, window=200_000))
+    out = as_text(render_sidebar(m, C, 56))
+    assert "CTX" in out and "█" in out and "71%" in out
+    assert "142k/200k" in out
+
+
+def test_the_context_bar_takes_its_colour_from_the_pressure():
+    """Asserted on `ctx_style` rather than on Rich spans: the behaviour under
+    test is that pressure picks the colour, and reaching into a Text's span
+    list couples the test to Rich internals instead."""
+    assert ctx_style(95, C) == C.error
+    assert ctx_style(65, C) == C.accent
+    assert ctx_style(20, C) == C.ready
+
+
+def test_quota_draws_one_bar_per_window_with_its_reset():
+    m = SidebarModel(quota_gauges=(
+        QuotaGauge(label="cc 5h", percent=47.0, severity="normal",
+                   resets_in_s=11040),
+    ))
+    out = as_text(render_sidebar(m, C, 56))
+    assert "cc 5h" in out and "47%" in out and "↻ 3h04m" in out
+
+
+def test_no_quota_reading_falls_back_to_the_tier_not_to_a_zero_bar():
+    """No credentials configured. A 0% bar would claim a reading of zero
+    rather than no reading at all."""
+    m = SidebarModel(quota=("quota unavailable",), quota_gauges=())
+    out = as_text(render_sidebar(m, C, 56))
+    assert "quota unavailable" in out
+    assert "0%" not in out
+
+
+def test_no_context_window_falls_back_to_the_metrics_tier():
+    m = SidebarModel(ctx=None, metrics=("↑142k ↓8.2k · $1.84 · 1:20",))
+    out = as_text(render_sidebar(m, C, 56))
+    assert "$1.84" in out
+    assert "CTX" not in out

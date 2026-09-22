@@ -26,13 +26,14 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from aegis.fleet.render import gauge
+from aegis.fleet.render import ctx_style, gauge, reset_in, severity_style
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
 from aegis.repos.models import RepoView
 from aegis.repos.render import render_repos
 from aegis.tui.fit import Segment, fit_rows
+from aegis.tui.metrics import _fmt_tokens
 from aegis.tui.monitor_strip import format_mon
 from aegis.tui.strip import format_q
 
@@ -211,8 +212,47 @@ def _session(m: SidebarModel, palette, width: int) -> Text | None:
 
 
 def _context(m: SidebarModel, palette, width: int) -> Text | None:
-    segs = [Segment("metrics", m.metrics, 0), Segment("quota", m.quota, 0)]
-    rows = _rows(segs, palette, width)
+    rows: list[Text] = []
+    if m.ctx is not None:
+        rows.append(
+            gauge(
+                "CTX",
+                m.ctx.pct,
+                f"{m.ctx.pct:.0f}%",
+                ctx_style(m.ctx.pct, palette),
+                width,
+                palette,
+                tail=f"{_fmt_tokens(m.ctx.live)}/{_fmt_tokens(m.ctx.window)}",
+            )
+        )
+    for q in m.quota_gauges:
+        style = severity_style(q.severity, palette)
+        rows.append(
+            gauge(
+                q.label,
+                q.percent,
+                f"{q.percent:.0f}%",
+                style,
+                width,
+                palette,
+                value_style=style,
+                tail=reset_in(q.resets_in_s),
+            )
+        )
+    # The gauge takes the fraction; the leftover tier takes the rest. T3 is
+    # the narrowest form `render_tiers` returns and is what is left once the
+    # context percentage has its own row above. A pane with no gauge falls
+    # all the way back and shows the widest tier it can fit instead.
+    if m.metrics:
+        rows += _rows(
+            [Segment("metrics", m.metrics[-1:] if m.ctx else m.metrics, 0)],
+            palette,
+            width,
+        )
+    # No reading falls back to the tier, never to a 0% bar: a zero bar claims
+    # a reading of zero rather than no reading at all.
+    if not m.quota_gauges:
+        rows += _rows([Segment("quota", m.quota, 0)], palette, width)
     if not rows:
         return None
     return _block(heading("CONTEXT", palette, width), rows)
