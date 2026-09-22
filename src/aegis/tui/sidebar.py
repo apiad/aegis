@@ -37,6 +37,7 @@ from aegis.fleet.render import (
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
+from aegis.plan.window import window
 from aegis.repos.models import RepoView
 from aegis.repos.render import render_repos
 from aegis.tui.fit import Segment, fit_rows
@@ -268,15 +269,32 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
 def _plan(m: SidebarModel, palette, width: int) -> Text | None:
     if not m.plan and not m.subplans:
         return None
-    # PlanState already computes both — do not re-derive them.
+    # PlanState already computes both — do not re-derive them, and read them
+    # off the WHOLE plan: the window's own counts describe the window.
     done = m.plan.done if m.plan else 0
     total = m.plan.total if m.plan else 0
+    shown, hidden = window(m.plan or PlanState())
+    # Subplans are NOT windowed, though the spec asked for it. `PlanState`
+    # derives `done` and `total` from its tasks, and `render_plan_dock`
+    # prints them in the `└ subagent d/t` header — so handing it a truncated
+    # subplan makes that header report the window's progress as if it were
+    # the subagent's. `1/2` became `0/1`. A count that lies is worse than
+    # the rows it saves, and making it truthful means changing
+    # `render_plan_dock`'s signature, which is another change than this one.
+    rows: list[Text] = []
+    if total:
+        rows.append(
+            gauge(
+                "", 100 * done / total, f"{100 * done // total}%",
+                palette.ok, width, palette,
+            )
+        )
     # render_plan_dock verbatim: it already space-separates the circles
     # (East Asian Ambiguous — Rich measures one cell, terminals draw two,
     # neighbours overlap) and budgets labels at width - 9. Re-implementing
     # rows here would re-pay both bugs.
     body = render_plan_dock(
-        m.plan or PlanState(),
+        shown,
         palette,
         working=m.plan_working,
         frame=m.plan_frame,
@@ -294,7 +312,10 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
     # renderer with its own contract in `tests/test_plan_render.py` (the
     # header and the `(no plan)` body are both asserted there), and this
     # is a fact about framing it in a section, not about how a row looks.
-    return _block(head, list(body.split("\n", allow_blank=False))[1:])
+    rows += list(body.split("\n", allow_blank=False))[1:]
+    if hidden:
+        rows.append(Text(f"   +{hidden} more", style=palette.muted))
+    return _block(head, rows)
 
 
 _QBAR = 9

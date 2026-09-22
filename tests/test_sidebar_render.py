@@ -491,3 +491,16 @@ def test_a_queue_with_no_parallelism_configured_does_not_divide_by_zero():
                   queued=0, ok=0, err=0),
     )))
     assert "idle" in as_text(render_sidebar(m, C, 56))
+
+
+def test_a_long_plan_does_not_evict_the_sections_below_it():
+    tasks = tuple(PlanTask(key=str(i), subject=f"task {i}",
+                           status="in_progress" if i == 10 else "pending")
+                  for i in range(20))
+    m = SidebarModel(plan=PlanState(tasks=tasks),
+                     system=("cpu 34% ram 61% disk 82%",))
+    out = as_text(render_sidebar(m, C, 56))
+    assert "SYSTEM" in out
+    assert "+16 more" in out
+    assert "task 10" in out
+    assert "task 0" not in out
