@@ -1101,7 +1101,10 @@ class ConversationPane(Widget):
         # App-pushed status segments, cached for the sidebar: the bar is
         # write-only, and the sidebar rebuilds its whole model on refresh.
         self._system_tiers: tuple[str, ...] = ()
+        self._system_stats = None
         self._quota_tiers: tuple[str, ...] = ()
+        self._quota_gauges: tuple = ()
+        self._loop_status: dict | None = None
         self._loop_tiers: tuple[str, ...] = ()
         self._connection_tiers: tuple[str, ...] = ()
         # Subscription handles held for the pane's lifetime (see on_unmount).
@@ -1499,17 +1502,25 @@ class ConversationPane(Widget):
             bar.set_session_title(getattr(self._core, "title", ""))
         self._refresh_sidebar()
 
-    def set_system(self, text) -> None:
-        """Push the system-stats segment (sampled app-side) to the StatusBar."""
+    def set_system(self, text, stats=None) -> None:
+        """Push the system-stats segment (sampled app-side) to the StatusBar.
+
+        ``stats`` is the same sample the tiers were rendered from, kept for
+        the sidebar's gauges. Optional so a caller that has not been updated
+        — and a pane class that never gets one — keeps working.
+        """
         self._system_tiers = tuple(text or ())
+        if stats is not None:
+            self._system_stats = stats
         bar = self._bar()
         if bar is not None:
             bar.set_system(text)
         self._refresh_sidebar()
 
-    def set_quota(self, tiers) -> None:
+    def set_quota(self, tiers, gauges=()) -> None:
         """Push the quota segment (sampled app-side) to the StatusBar."""
         self._quota_tiers = tuple(tiers or ())
+        self._quota_gauges = tuple(gauges or ())
         bar = self._bar()
         if bar is not None:
             bar.set_quota(tiers)
@@ -2527,9 +2538,11 @@ class ConversationPane(Widget):
         capped, interrupted, killed by a harness error — should say so rather
         than just vanishing from the status bar.
         """
+        status = state.status() if state is not None else None
+        self._loop_status = status
         bar = self._bar()
         if bar is not None:
-            bar.set_loop(state.status() if state is not None else None)
+            bar.set_loop(status)
             # Reuse the bar's own tier construction rather than duplicating
             # the format string in two places.
             self._loop_tiers = bar._loop
@@ -3113,6 +3126,9 @@ class ConversationPane(Widget):
             loop=self._loop_tiers,
             metrics=tuple(core.metrics.render_tiers(time.monotonic(), self._palette)),
             quota=self._quota_tiers,
+            ctx=core.metrics.gauge(),
+            quota_gauges=self._quota_gauges,
+            loop_status=self._loop_status,
             plan=core.plan_state(),
             subplans=core.subplan_states(),
             plan_working=core.plan.working,
@@ -3125,6 +3141,7 @@ class ConversationPane(Widget):
             else [],
             now_line=getattr(getattr(core, "fleet_recap", None), "line", "") or "",
             system=self._system_tiers,
+            stats=self._system_stats,
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
             # and `metrics` above already reads a live clock at this exact

@@ -123,3 +123,38 @@ async def test_the_open_sidebar_carries_todays_date():
         pane.toggle_task_dock()
         await pilot.pause()
         assert datetime.now().strftime("%Y-%m-%d") in _painted(pane)
+
+
+@pytest.mark.asyncio
+async def test_the_sidebar_receives_system_numbers_not_only_strings():
+    """The gauge sections cannot draw a bar for a percentage handed to them
+    as the string `cpu 34%`. This asserts the values arrive; the sections
+    that draw them are asserted in their own tests."""
+    app = _app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        pane = app._panes[0]
+        pane.toggle_task_dock()
+        # Driven, not waited for: `_tick` is on a 1s interval and the push to
+        # the active pane is what this test is about, not how long the
+        # interval is.
+        app._tick()
+        await pilot.pause()
+        model = pane._sidebar_model()
+        assert model.stats is not None, "the app tick never pushed SystemStats"
+        assert 0.0 <= model.stats.cpu <= 100.0
+
+
+@pytest.mark.asyncio
+async def test_a_pane_that_was_never_pushed_numbers_still_renders():
+    """The remote case: tiers populated, every numeric field empty. Nothing
+    may render blank and nothing may raise."""
+    app = _app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        pane = app._panes[0]
+        pane.set_system(("cpu 34% ram 61% disk 82%",))
+        pane.set_quota(("quota 47% · resets in 3h",))
+        pane.toggle_task_dock()
+        await pilot.pause()
+        painted = _painted(pane)
+        assert "cpu 34%" in painted
+        assert "quota 47%" in painted

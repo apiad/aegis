@@ -1601,8 +1601,10 @@ class AegisApp(App):
         the daemon host spends the same account, so the local reading is the
         right one.
         """
+        from datetime import datetime
+
         from aegis.tui.state import AgentState
-        from aegis.usage.quota import format_quota_bar
+        from aegis.usage.quota import format_quota_bar, quota_gauges
         from aegis.usage.quota_providers import PROVIDERS, for_harness
 
         for service in self.quota_services.values():
@@ -1628,10 +1630,12 @@ class AegisApp(App):
                     exclusive=False,
                 )
 
-        tiers = format_quota_bar(
-            [(p, self.quota_services[p.name].current()) for p in PROVIDERS],
-            self._palette,
-        )
+        # Hoisted: the tiers and the gauges are two renders of one reading,
+        # and sampling them separately would let the bar and the column
+        # disagree about the same window.
+        readings = [(p, self.quota_services[p.name].current()) for p in PROVIDERS]
+        tiers = format_quota_bar(readings, self._palette)
+        gauges = quota_gauges(readings, now=datetime.now().astimezone())
         if active is None or not hasattr(active, "set_quota"):
             # Held for the fleet band, which F10 can open over any tab. No
             # pane holds it, so the next agent pane in front is painted.
@@ -1641,9 +1645,12 @@ class AegisApp(App):
         # repaint per tick for nothing. The pane is compared by identity and
         # held, not keyed by id(): a freed pane's id can be reused, and the
         # collision would silently skip the new pane's first paint.
+        # Compared on the tiers only: the gauges derive from the same
+        # readings, so tiers unchanged means gauges unchanged, and comparing
+        # the floats too would repaint on a digit the tier rounds away.
         if self._quota_pane is not active or self._quota_last != tiers:
             self._quota_pane, self._quota_last = active, tiers
-            active.set_quota(tiers)
+            active.set_quota(tiers, gauges)
 
     def _tick(self) -> None:
         import contextlib
@@ -1671,7 +1678,7 @@ class AegisApp(App):
             self._system_stats = stats
             self._system_last = format_system_tiers(stats, self._palette)
             if active is not None and hasattr(active, "set_system"):
-                active.set_system(self._system_last)
+                active.set_system(self._system_last, stats)
         with contextlib.suppress(Exception):
             self._quota_tick(active)
 

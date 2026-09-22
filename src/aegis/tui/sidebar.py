@@ -56,6 +56,12 @@ class SidebarModel:
     # CONTEXT
     metrics: tuple[str, ...] = ()
     quota: tuple[str, ...] = ()
+    # The same two as numbers. The tuples above stay: StatusBar still eats
+    # them, and a remote pane is handed strings and nothing else, so a
+    # section draws a gauge when it has the number and falls back to its
+    # tier row when it does not.
+    ctx: object | None = None  # aegis.tui.metrics.ContextGauge
+    quota_gauges: tuple = ()  # aegis.fleet.models.QuotaGauge
     # PLAN
     plan: PlanState | None = None
     subplans: dict = field(default_factory=dict)
@@ -69,6 +75,7 @@ class SidebarModel:
     repos: list[RepoView] = field(default_factory=list)
     # SYSTEM
     system: tuple[str, ...] = ()
+    stats: object | None = None  # aegis.tui.sysmeter.SystemStats
     clock: tuple[str, ...] = ()
     cwd: tuple[str, ...] = ()
     build: tuple[str, ...] = ()
