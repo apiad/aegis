@@ -266,10 +266,10 @@ def test_the_monitor_tail_yields_before_the_description_does():
                     pct=42.0, eta_s=930.0)
 
     wide = as_text(render_sidebar(SidebarModel(monitors=[v]), C, 60))
-    assert "▓" in wide and "42%" in wide and "ETA 15:30" in wide
+    assert "█" in wide and "42%" in wide and "ETA 15:30" in wide
 
     narrow = as_text(render_sidebar(SidebarModel(monitors=[v]), C, 26))
-    assert "▓" not in narrow          # the bar goes first
+    assert "█" not in narrow          # the bar goes first
     assert "42%" in narrow            # the number is the last thing kept
     assert "…" in narrow              # and only then is the label cut
     row = narrow.split("\n")[-1]

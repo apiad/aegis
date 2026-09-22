@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from aegis.monitor.schema import MonitorView
-from aegis.tui.monitor_strip import _bar, render_monitors
+from aegis.tui.monitor_strip import format_mon, render_monitors
 from aegis.tui.themes import INK, aegis_colors
 
 
@@ -49,6 +49,24 @@ def test_multiple_monitors_stack_one_per_line():
 
 
 def test_bar_fill_ratio():
-    assert _bar(0, width=8) == "░" * 8
-    assert _bar(100, width=8) == "▓" * 8
-    assert _bar(50, width=8) == "▓" * 4 + "░" * 4
+    """Through the public row now: `_bar` is gone and the shared
+    `fleet.render.bar` draws it, so the fill ratio is asserted where a
+    reader can see it rather than on a private helper."""
+    def bar_of(pct):
+        v = MonitorView(id="m", description="x", state="watching",
+                        pct=pct, eta_s=None, elapsed_s=1)
+        row = format_mon(v, _p(), 56).plain
+        return "".join(ch for ch in row if ch in "█░")
+
+    assert bar_of(0) == "░" * 8
+    assert bar_of(100) == "█" * 8
+    assert bar_of(50) == "█" * 4 + "░" * 4
+
+
+def test_a_monitor_bar_is_drawn_the_way_every_other_bar_is():
+    """One glyph in the program. A strip that disagrees with the sidebar
+    about what a bar looks like is the fault this change removes."""
+    v = MonitorView(id="m", description="pytest", state="watching",
+                    pct=62.0, eta_s=100, elapsed_s=160)
+    row = format_mon(v, _p(), 56).plain
+    assert "█" in row and "▓" not in row

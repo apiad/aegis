@@ -12,6 +12,7 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.widgets import Static
 
+from aegis.fleet.render import bar as _shared_bar
 from aegis.monitor.schema import MonitorView
 from aegis.tui.fit import truncate_cells
 
@@ -21,10 +22,10 @@ def _fmt_dur(seconds: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-def _bar(pct: float, width: int = 8) -> str:
-    fill = int(round(pct / 100.0 * width))
-    fill = max(0, min(width, fill))
-    return "▓" * fill + "░" * (width - fill)
+# One bar glyph in the program: `fleet.render.bar` draws every other one,
+# and a strip that disagrees with the sidebar about what a bar looks like is
+# its own small bug.
+_BAR_CELLS = 8
 
 
 # A description narrower than this says nothing — "the full h…" does not
@@ -52,13 +53,23 @@ def _tail_tiers(v: MonitorView, palette) -> list[Text]:
             t((f"  ⣾ {dur}", palette.muted)),
         ]
 
+    def with_bar(*parts: tuple[str, str]) -> Text:
+        """The widest tier. Built directly rather than through ``t``: the
+        bar is already a styled ``Text`` and ``t`` takes (text, style)
+        pairs."""
+        out = Text("  ")
+        out.append_text(_shared_bar(v.pct, _BAR_CELLS, palette.work, palette))
+        out.append(" ")
+        for text, style in parts:
+            out.append(text, style=style)
+        return out
+
     pct = (f"{v.pct:.0f}%", palette.ink)
-    bar = (f"  {_bar(v.pct)} ", palette.work)
     if v.eta_s is None:
-        return [t(bar, pct), t(("  ", palette.muted), pct)]
+        return [with_bar(pct), t(("  ", palette.muted), pct)]
     eta = (f" · ETA {_fmt_dur(v.eta_s)}", palette.muted)
     return [
-        t(bar, pct, eta),
+        with_bar(pct, eta),
         t(("  ", palette.muted), pct, eta),
         t(("  ", palette.muted), pct),
     ]
