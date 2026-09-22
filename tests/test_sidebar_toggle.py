@@ -161,7 +161,7 @@ async def test_a_disconnect_leads_the_session_section():
         pane.toggle_task_dock()
         await pilot.pause()
         lines = [ln for ln in _sidebar_text(pane).split("\n") if ln]
-        assert lines[0] == "SESSION"
+        assert lines[0].startswith("── SESSION")
         assert lines[1].startswith("⚠ disconnected")
 
 
@@ -296,26 +296,26 @@ def _with_plan(pane, *entries):
 
 
 @pytest.mark.asyncio
-async def test_the_plan_section_leaves_one_blank_row_like_every_other():
+async def test_the_plan_section_leaves_no_blank_row_behind_it():
     """`render_plan_dock` ends every row with a newline, so the block it
-    returns carries a trailing one. Pasted between the sidebar's own
-    "\\n\\n" separators that renders as two blank rows after PLAN and one
-    after each of its five siblings — a gap that reads as a missing
-    section rather than as spacing."""
+    returns carries a trailing one, and the PLAN section has to trim it.
+
+    Sections are separated by their rule now, not by a blank row, so the
+    assertion is the strong form: the column has no blank rows at all, and
+    a stray one can only have come from a block that did not trim."""
     app = _app()
     async with app.run_test() as pilot:
         pane = app._panes[0]
         pane.toggle_task_dock()
         # SYSTEM after it: a trailing blank at the very end of the column
         # is invisible, so PLAN has to be followed by something for the
-        # doubled gap to exist at all.
+        # stray row to exist at all.
         pane.set_system(("cpu 34%",))
         _with_plan(pane, ("alpha", "completed"), ("beta", "in_progress"))
         await pilot.pause()
         lines = _sidebar_text(pane).split("\n")
-        assert "SYSTEM" in lines
-        assert not any(a == "" and b == ""
-                       for a, b in zip(lines, lines[1:])), lines
+        assert any(ln.startswith("── SYSTEM") for ln in lines), lines
+        assert "" not in lines, lines
 
 
 @pytest.mark.asyncio
