@@ -92,8 +92,8 @@ The second line reads as a new row of the section.
 
 ## The shape
 
-Twenty-nine rows for the same session, twenty-eight when the recap line fits
-without wrapping. Eight rows of slack on a 40-row terminal, with bars
+Thirty rows for the same session, twenty-nine when the recap line fits
+without wrapping. Seven rows of slack on a 40-row terminal, with bars
 throughout, and a `PLAN` section that stays six rows whether the plan has five
 tasks or fifty.
 
@@ -126,7 +126,8 @@ docker build  ⣾ 7:10
 ── SYSTEM ───────────────────────────────────────────
 CPU ███░░░░ 34%   RAM ██████░ 61%
 DSK ████████ 82%              Mon 22 Sep · 18:41
-CWD …/repos/aegis · aegis 0.38.0
+CWD …/repos/aegis
+aegis 0.38.0
 ```
 
 ## Components
@@ -260,7 +261,7 @@ for the other reason: `render_plan_dock` has a contract asserted in
 selecting which tasks to show is a different question from how a task row
 looks. Two pure functions, each with one job, each testable without the other.
 
-### `SYSTEM` merges its two static rows instead of dropping them
+### `SYSTEM` keeps its two static rows
 
 An earlier draft of this spec cut `cwd` and `build` outright, on the grounds
 that they never change and cost two permanent rows. That was wrong twice over,
@@ -280,10 +281,16 @@ on a 40-row terminal. Spending two of them to keep information is the right
 trade in a redesign whose whole complaint is that rows were being spent on
 chrome.
 
-So: `cwd` and `build` merge onto one row, `CWD …/repos/aegis · aegis 0.38.0`,
-narrowing by `format_cwd`'s existing tiers first since the build string is the
-shorter and less compressible half. One row saved instead of two, the decision
-and its test both intact.
+A first draft merged them onto one row to save one of the two. That was also
+wrong, and implementation is what showed it: a merged tier is wider than either
+half, and `fit_rows` **drops** a segment whose narrowest tier overflows rather
+than truncating it, so on a narrow column the merged row took both answers down
+together. Measured at a 36-cell sidebar with a 31-character directory name, the
+pair needs 44 cells and the path alone needs 35 — and the painted column showed
+neither.
+
+So they keep a row each. One row of the eight this redesign buys, spent to keep
+an answer at exactly the width where it is least reconstructible.
 
 The three meters become two rows of gauges, two per row at 40 cells or wider
 and one per row below that, using `rows_of(gauges, per_row)` from the fleet
@@ -328,9 +335,9 @@ segment rather than wrapping it.
 | `QUEUES` | 3 | 3 |
 | `MONITORS` | 3 | 3 |
 | `REPOS` | 3 | 3 |
-| `SYSTEM` | 5 | 4 |
+| `SYSTEM` | 5 | 5 |
 | blank separators | 6 | 0 |
-| **total** | **35** | **28–29** |
+| **total** | **35** | **29–30** |
 
 `SESSION` loses its state row to the rule's right slot and gains the recap's
 continuation when the recap is long, so it is the one section whose height
@@ -340,7 +347,7 @@ depends on the data rather than on the section list.
 which is what lets the context line become a gauge. `PLAN` holds at six for
 this five-task plan and stops growing past it.
 
-The twenty-task plan that does not fit today renders in the same 29 rows.
+The twenty-task plan that does not fit today renders in the same 30 rows.
 
 ## Testing
 
