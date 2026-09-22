@@ -20,6 +20,21 @@ def context_window_for(harness: str, model: str) -> int:
     return get_context_window(harness, model)
 
 
+@dataclass(frozen=True)
+class ContextGauge:
+    """The context meter as numbers, for a caller that draws a bar.
+
+    Three fields, because three is what exists. There is no turn counter on
+    ``SessionMetrics`` — the neighbouring quantities are ``tool_calls``,
+    ``turn_seconds`` and ``session_seconds`` — so a caller wanting the rest
+    of the meter takes a rendered tier rather than expecting fields here.
+    """
+
+    pct: float
+    live: int
+    window: int
+
+
 def _fmt_tokens(n: int) -> str:
     if n < 1000:
         return str(n)
@@ -245,6 +260,23 @@ class SessionMetrics:
         """Widest form of the status-line metrics segment."""
         return self.render_tiers(now, colors)[0]
 
+    def gauge(self) -> ContextGauge | None:
+        """The context meter, or None when no window was ever reported.
+
+        The arithmetic lives here rather than inside ``render_tiers`` so the
+        percentage is computed once for both callers. ``render_tiers`` baked
+        it into markup, which left the sidebar trying to draw a bar for a
+        number it had only ever seen as the string ``ctx 142k (71%)``.
+        """
+        if self.context_window <= 0:
+            return None
+        live = self.p_in if self._provisional else self.last_true_input
+        return ContextGauge(
+            pct=round(100 * live / self.context_window),
+            live=live,
+            window=self.context_window,
+        )
+
     def render_tiers(self, now: float, colors=None) -> tuple[str, str, str, str]:
         """Four progressively narrower forms of the metrics segment.
 
@@ -280,9 +312,9 @@ class SessionMetrics:
         if self.tool_errors:
             tool += f" ({self.tool_errors} err)"
         ctx = ctx_short = ""
-        if self.context_window > 0:
-            live = self.p_in if self._provisional else self.last_true_input
-            ctx_pct = round(100 * live / self.context_window)
+        g = self.gauge()
+        if g is not None:
+            live, ctx_pct = g.live, g.pct
             # Rich markup rather than a fifth return value: the tuple goes
             # straight to StatusBar.set_metrics -> _tiers(), which reads
             # every element as a tier, so a fifth would render as a fifth

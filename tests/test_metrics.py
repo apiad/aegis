@@ -1,5 +1,5 @@
 from aegis.events import TokenUsage
-from aegis.tui.metrics import SessionMetrics, context_window_for
+from aegis.tui.metrics import ContextGauge, SessionMetrics, context_window_for
 from aegis.tui.themes import INK, aegis_colors
 
 
@@ -554,3 +554,24 @@ def test_scissors_glyph_is_single_width():
     double-width glyph would overflow the bar by one column per use."""
     from rich.cells import cell_len
     assert cell_len("✂") == 1
+
+
+# --- the context gauge, as numbers -------------------------------------
+
+
+def test_gauge_is_none_without_a_context_window():
+    """A harness that never reported a window. None, not a ZeroDivisionError
+    and not a 0% bar — a 0% bar claims a reading of zero rather than no
+    reading at all."""
+    m = SessionMetrics()
+    assert m.context_window == 0
+    assert m.gauge() is None
+
+
+def test_gauge_agrees_with_the_percentage_in_the_tier_string():
+    m = SessionMetrics(context_window=200_000, last_true_input=142_000)
+    g = m.gauge()
+    assert isinstance(g, ContextGauge)
+    assert g.live == 142_000 and g.window == 200_000
+    assert g.pct == 71
+    assert "(71%)" in m.render_tiers(0.0)[0]
