@@ -39,7 +39,7 @@ rows to find the word above them.
 
 | section | quantity | drawn as |
 |---|---|---|
-| `CONTEXT` | `142k/200k` | text |
+| `CONTEXT` | `ctx 142k (71%)` | text |
 | `CONTEXT` | `quota 47%` | text |
 | `PLAN` | `1/5` | text, in the heading's right slot |
 | `QUEUES` | `●1/2` | text |
@@ -52,7 +52,8 @@ than a number. The column is 56 cells wide at its default 34% and has the room.
 ### `CONTEXT` and `SYSTEM` are still status-bar rows
 
 Both build `Segment` tiers and hand them to `fit_rows`, so they render as
-dot-separated lines: `142k/200k · $1.84 · 12 turns`, `cpu 34% ram 61% disk 82%`.
+dot-separated lines: `↑142k (38% cached) ↓8.2k · ctx 142k (71%) · $1.84 · ⚒ 34 ·
+1:20 / 42:10`, `cpu 34% ram 61% disk 82%`.
 
 That compression is correct in `StatusBar`, where `fit()` has one row and must
 degrade by priority. In a column with thirty rows it is a habit rather than a
@@ -106,7 +107,7 @@ now   reading pane.py to find where the recap
 ── CONTEXT ──────────────────────────────────────────
 CTX   ████████████░░░░  71%  142k/200k
 QUOTA █████░░░░░░░░░░░  47%  ↻ 3h04m
-COST  $1.84 · 12 turns
+COST  ↑142k ↓8.2k · $1.84 · 1:20
 ── PLAN ────────────────────────────────────────  1/5
       ███░░░░░░░░░░░░░  20%
 ●  parse the recap header                      0:42
@@ -203,9 +204,17 @@ than to a blank.
 **`ContextGauge`.** `Metrics.render_tiers` computes `ctx_pct` at
 `metrics.py:285` and then bakes it into a markup string. Extract the
 arithmetic into `Metrics.gauge() -> ContextGauge | None`, a frozen dataclass
-of `(pct, live_tokens, window, cost, turns)`, and have `render_tiers` call it.
-The percentage is then computed once for both callers instead of being
-recovered from a string by the second one.
+of `(pct, live_tokens, window)`, and have `render_tiers` call it. The
+percentage is then computed once for both callers instead of being recovered
+from a string by the second one.
+
+Three fields and no more, because those are the three that exist. There is no
+turn counter on `Metrics` — the closest things are `tool_calls`, `turn_seconds`
+and `session_seconds` — so the `COST` row is not a new render at all: it is
+`metrics` tier T3, the narrowest one `render_tiers` already returns
+(`↑142k ↓8.2k · $1.84 · 1:20`). The gauge takes the fraction; the leftover tier
+takes the rest. It repeats the input-token count the gauge also shows, which is
+the price of not inventing a fifth tier for one caller.
 
 **Quota and system.** `AegisApp._quota_tick` already builds the tier tuple and
 calls `active.set_quota(tiers)`; it also has the readings that
@@ -242,9 +251,13 @@ the `+k more` count cover the rest. A fan-out's question is which subagent is
 still grinding, and the current task of each answers it.
 
 The windowing is a pure function over `PlanState` with its own test, kept out
-of `render_plan_dock`: that renderer has a contract asserted in
-`tests/test_plan_render.py` and is also reached from the collapsed `PlanStrip`,
-which is not being redesigned.
+of `render_plan_dock`. `render_plan_dock` has exactly one production caller —
+`sidebar._plan` — so folding the window into it would in fact be safe for the
+collapsed mode, which draws through `render_plan_strip` instead. It stays out
+for the other reason: `render_plan_dock` has a contract asserted in
+`tests/test_plan_render.py` covering its header and its `(no plan)` body, and
+selecting which tasks to show is a different question from how a task row
+looks. Two pure functions, each with one job, each testable without the other.
 
 ### `SYSTEM` sheds its two static rows
 
