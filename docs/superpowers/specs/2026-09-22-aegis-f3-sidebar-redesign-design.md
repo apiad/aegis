@@ -92,10 +92,18 @@ The second line reads as a new row of the section.
 
 ## The shape
 
-Thirty rows for the same session, twenty-nine when the recap line fits
-without wrapping. Seven rows of slack on a 40-row terminal, with bars
-throughout, and a `PLAN` section that stays six rows whether the plan has five
-tasks or fifty.
+Measured on one busy session — a twenty-task plan, two queues, two monitors,
+two repos, five quota windows — at all three widths, before and after:
+
+| width | before | after |
+|---|---|---|
+| 56 | 50 | 32 |
+| 40 | 49 | 33 |
+| 26 | 48 | 35 |
+
+A 40-row terminal gives the column 37 rows. It used to need 48-50 and
+scrolled; it now fits, and `PLAN` stays six rows whether the plan has five
+tasks or fifty. The narrow case is the worst because the recap wraps.
 
 ```
 ── SESSION ─────────────────────────────── ✻ working
@@ -261,6 +269,21 @@ for the other reason: `render_plan_dock` has a contract asserted in
 selecting which tasks to show is a different question from how a task row
 looks. Two pure functions, each with one job, each testable without the other.
 
+### `CONTEXT` shows one quota gauge per provider, not one per window
+
+Found by running the thing rather than by modelling it. A live session on
+zion shows **five** quota gauges — two providers with five bar windows
+between them — where the design's mockup showed one. The old status-bar tier
+packed all five into a single row (`⧗ cc 5h 2% · wk 14% │ oc 5h 0% …`), so a
+row each turned a four-row section into an eight-row one and took the whole
+redesign's saving back.
+
+`_binding_quota` keeps the window closest to exhaustion per provider. The
+question this segment answers, in `_quota_tick`'s own words, is "which rail
+should I launch on", and that is decided by the window nearest its limit —
+not by the five-hour one because it happens to be listed first. The rest are
+one `/usage` away.
+
 ### `SYSTEM` keeps its two static rows
 
 An earlier draft of this spec cut `cwd` and `build` outright, on the grounds
@@ -327,27 +350,21 @@ segment rather than wrapping it.
 
 ## Row budget
 
-| section | now | after |
-|---|---|---|
-| `SESSION` | 6 | 5, +1 when the recap wraps |
-| `CONTEXT` | 3 | 4 |
-| `PLAN` | 6 | 6 |
-| `QUEUES` | 3 | 3 |
-| `MONITORS` | 3 | 3 |
-| `REPOS` | 3 | 3 |
-| `SYSTEM` | 5 | 5 |
-| blank separators | 6 | 0 |
-| **total** | **35** | **29–30** |
 
-`SESSION` loses its state row to the rule's right slot and gains the recap's
-continuation when the recap is long, so it is the one section whose height
-depends on the data rather than on the section list.
+Where the rows went: six to the blank separators the rule replaces, and the
+rest to `PLAN`, which used to print all twenty tasks and now prints six rows
+for any plan length. `CONTEXT` is the one section that grew — the context
+percentage gets its own gauge row, so cost and turn time move onto theirs —
+and it would have grown by four more had the quota kept a row per window.
 
-`CONTEXT` gains a row: cost and turns move off the context line onto their own,
-which is what lets the context line become a gauge. `PLAN` holds at six for
-this five-task plan and stops growing past it.
+`SESSION` is the one section whose height depends on the data rather than on
+the section list: it loses its state row to the rule's right slot and gains
+the recap's continuation when the recap is long.
 
-The twenty-task plan that does not fit today renders in the same 30 rows.
+The ceiling is a test. `tests/test_sidebar_render.py` renders the model above
+at all three widths and fails over 36 rows, and the assertion is
+mutation-checked: restoring the blank separators turns it red at every
+width.
 
 ## Testing
 

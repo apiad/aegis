@@ -243,6 +243,32 @@ def _session(m: SidebarModel, palette, width: int) -> Text | None:
     )
 
 
+def _binding_quota(gauges: tuple[QuotaGauge, ...]) -> list[QuotaGauge]:
+    """One gauge per provider: the window closest to exhaustion.
+
+    A real session has five of these — two providers with five bar windows
+    between them — and a row each turned a section that used to cost four
+    rows into one that costs eight. Measured against a live TUI on zion,
+    not against a model: a one-gauge fixture understated CONTEXT by four
+    rows and made the whole redesign look like it fit when it did not.
+
+    Showing the worst window rather than the first is what keeps the row
+    useful. The question this segment answers is which rail you can launch
+    on, and that is decided by the window nearest its limit, not by the
+    five-hour one because it happens to be listed first. The others are one
+    `/usage` away.
+
+    Grouped on the provider half of the label (`cc 5h` -> `cc`), which is
+    how `quota_gauges` composes it in `aegis/usage/quota.py`.
+    """
+    worst: dict[str, QuotaGauge] = {}
+    for g in gauges:
+        key = g.label.split()[0]
+        if key not in worst or g.percent > worst[key].percent:
+            worst[key] = g
+    return list(worst.values())
+
+
 def _context(m: SidebarModel, palette, width: int) -> Text | None:
     rows: list[Text] = []
     if m.ctx is not None:
@@ -257,7 +283,7 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
                 tail=f"{_fmt_tokens(m.ctx.live)}/{_fmt_tokens(m.ctx.window)}",
             )
         )
-    for q in m.quota_gauges:
+    for q in _binding_quota(m.quota_gauges):
         style = severity_style(q.severity, palette)
         rows.append(
             gauge(

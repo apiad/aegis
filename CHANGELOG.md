@@ -14,8 +14,14 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   and no longer cost a blank row each, and `PLAN` shows a window around the
   current task rather than every task: a twenty-task plan used to push
   `QUEUES`, `MONITORS`, `REPOS` and `SYSTEM` off the bottom of the column
-  entirely. A busy session went from 35 rows to 28, which fits a 40-row
-  terminal with slack instead of two rows of headroom.
+  entirely. Measured on one busy session at three widths, the column went
+  from 48-50 rows to 32-35 — a 40-row terminal gives it 37, so it used to
+  overflow and scroll and now it fits.
+- **Quota shows the window closest to exhaustion, one per provider**, rather
+  than every window. Five bar windows across two providers is what a real
+  session has, and a row each cost four rows the column does not have. The
+  binding window is the one that decides which rail you can launch on; the
+  rest are one `/usage` away.
 - **Monitor bars draw `█` rather than `▓`**, in the collapsed strip as well
   as the sidebar, so every bar in aegis is drawn the same way.
 
