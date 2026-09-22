@@ -5,6 +5,25 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Changed
+
+- **The `F3` sidebar draws its fractions as bars.** Context, quota, loop,
+  plan progress, queue saturation and the three host meters are gauges now,
+  sharing the renderer the `F10` fleet band already used — so the two
+  dashboards read as one program rather than two. Section headings are rules
+  and no longer cost a blank row each, and `PLAN` shows a window around the
+  current task rather than every task: a twenty-task plan used to push
+  `QUEUES`, `MONITORS`, `REPOS` and `SYSTEM` off the bottom of the column
+  entirely. A busy session went from 35 rows to 28, which fits a 40-row
+  terminal with slack instead of two rows of headroom.
+- **Monitor bars draw `█` rather than `▓`**, in the collapsed strip as well
+  as the sidebar, so every bar in aegis is drawn the same way.
+
+### Fixed
+
+- The sidebar's `now` recap line wrapped flush left, so its continuation
+  read as a separate row of the section. It hangs under its label now.
+
 ## [0.38.0] - 2026-09-21
 
 ### Changed

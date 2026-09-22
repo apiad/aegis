@@ -53,12 +53,18 @@ def _tail_tiers(v: MonitorView, palette) -> list[Text]:
             t((f"  ⣾ {dur}", palette.muted)),
         ]
 
+    # Bound out here, not read off `v` inside the closure: the
+    # `if v.pct is None` branch above narrows the attribute, but that
+    # narrowing does not reach into a nested function, so the checker sees
+    # `float | None` at the call.
+    pct_value = v.pct
+
     def with_bar(*parts: tuple[str, str]) -> Text:
         """The widest tier. Built directly rather than through ``t``: the
         bar is already a styled ``Text`` and ``t`` takes (text, style)
         pairs."""
         out = Text("  ")
-        out.append_text(_shared_bar(v.pct, _BAR_CELLS, palette.work, palette))
+        out.append_text(_shared_bar(pct_value, _BAR_CELLS, palette.work, palette))
         out.append(" ")
         for text, style in parts:
             out.append(text, style=style)

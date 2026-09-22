@@ -27,8 +27,11 @@ class FakePane:
         self.handle = f"pane-{harness}"
         self.quota_tiers = None
 
-    def set_quota(self, tiers):
+    def set_quota(self, tiers, gauges=()):
+        # `gauges` is the same reading as `tiers`, in numbers, for the
+        # sidebar's bars. Defaulted here the way the real pane defaults it.
         self.quota_tiers = tiers
+        self.quota_gauges = gauges
 
 
 class FakeService:

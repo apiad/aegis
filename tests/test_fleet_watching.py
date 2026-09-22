@@ -174,7 +174,9 @@ async def test_a_delivered_recap_refreshes_the_now_line(tmp_path):
         core.fleet_recap = recap
         cb(core, recap)
         assert bar._model.now_line == "wiring the watcher"
-        assert "now wiring the watcher" in bar.plain()
+        # The label is padded to the gauge label column, so the recap lines
+        # up with CTX/QUOTA/LOOP rather than sitting two cells to their left.
+        assert "now   wiring the watcher" in bar.plain()
 
 
 # --- the daemon shape: a view over a brain, detached ---

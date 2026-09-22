@@ -4,6 +4,7 @@ Sections are ordered by volatility, highest first: on a short terminal the
 panel scrolls, and what you see without scrolling should be what moves.
 An empty section renders nothing at all — not a heading over a blank.
 """
+import pytest
 from rich.cells import cell_len
 
 from aegis.fleet.models import QuotaGauge
@@ -504,3 +505,73 @@ def test_a_long_plan_does_not_evict_the_sections_below_it():
     assert "+16 more" in out
     assert "task 10" in out
     assert "task 0" not in out
+
+
+# --- the row budget ----------------------------------------------------
+
+# A 40-row terminal gives the sidebar 37 content rows: one to the TabBar,
+# one to each SIDEBAR_PAD_Y. Before this redesign a session this size
+# rendered 35 of them. The ceiling is what keeps the slack real.
+ROW_CEILING = 31
+
+
+def _full_model():
+    """A realistic busy session: the shape the budget was measured against."""
+    return SidebarModel(
+        title="fix the eviction race",
+        identity=("opus · high · local",),
+        state_label="✻ working… · ◐ thinking",
+        loop_status={"iteration": 3, "max_iterations": 20},
+        now_line="reading pane.py to find where the recap lands",
+        ctx=ContextGauge(pct=71, live=142_000, window=200_000),
+        metrics=("↑142k ↓8.2k · $1.84 · 1:20",),
+        quota_gauges=(QuotaGauge(label="cc 5h", percent=47.0,
+                                 severity="normal", resets_in_s=11040),),
+        plan=PlanState(tasks=tuple(
+            PlanTask(key=str(i), subject=f"a task with a realistic subject {i}",
+                     status="in_progress" if i == 10 else "pending")
+            for i in range(20))),
+        queues=Snapshot(queues=(
+            QueueView(name="build", agent="claude", running=1, max_parallel=2,
+                      queued=3, ok=5, err=0),
+            QueueView(name="review", agent="claude", running=0, max_parallel=1,
+                      queued=0, ok=2, err=1),
+        )),
+        monitors=[
+            MonitorView(id="m1", description="pytest", state="watching",
+                        pct=62.0, eta_s=100, elapsed_s=160),
+            MonitorView(id="m2", description="docker build the web image",
+                        state="watching", pct=None, eta_s=None, elapsed_s=430),
+        ],
+        stats=SystemStats(cpu=34.0, ram=61.0, disk=82.0),
+        clock=("Mon 22 Sep · 18:41",),
+        cwd=("CWD ~/Workspace/repos/aegis",),
+        build=("aegis 0.38.0",),
+    )
+
+
+@pytest.mark.parametrize("width", [56, 40, 26])
+def test_a_busy_session_fits_a_forty_row_terminal(width):
+    rows = as_text(render_sidebar(_full_model(), C, width)).split("\n")
+    assert len(rows) <= ROW_CEILING, f"{len(rows)} rows at width {width}"
+
+
+@pytest.mark.parametrize("width", [56, 40, 26])
+def test_no_row_is_wider_than_the_column(width):
+    """Textual clips silently, which is why `fit` exists. A gauge that
+    overflows does not look like an overflow — it looks like the row below
+    it moved."""
+    for row in as_text(render_sidebar(_full_model(), C, width)).split("\n"):
+        assert cell_len(row) <= width, repr(row)
+
+
+def test_a_gauge_bar_does_not_sprawl_across_a_wide_column():
+    """A gauge spends every spare cell on its bar, so on a wide column a
+    3/20 counter drew a 45-cell bar — more ink than the number it
+    illustrates, with the value pushed to the far edge away from its label.
+    The fleet band never hits this because it fits four gauges to a row.
+    """
+    m = SidebarModel(loop_status={"iteration": 3, "max_iterations": 20})
+    row = [ln for ln in as_text(render_sidebar(m, C, 80)).split("\n")
+           if "LOOP" in ln][0]
+    assert cell_len(row) <= 36

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from rich.cells import cell_len
 from rich.text import Text
@@ -45,6 +46,17 @@ from aegis.tui.metrics import _fmt_tokens
 from aegis.tui.monitor_strip import format_mon
 from aegis.tui.strip import format_q
 
+if TYPE_CHECKING:
+    # Typing-only: this module is a pure renderer and these three are
+    # data classes owned by the planes that sample them. Importing them
+    # for real would tie the renderer to the fleet band, the queue digest
+    # and psutil; under TYPE_CHECKING the checker can still narrow
+    # `ctx.pct` and `stats.cpu` instead of seeing `object`.
+    from aegis.fleet.models import QuotaGauge
+    from aegis.queue.digest import Snapshot
+    from aegis.tui.metrics import ContextGauge
+    from aegis.tui.sysmeter import SystemStats
+
 
 @dataclass
 class SidebarModel:
@@ -69,22 +81,22 @@ class SidebarModel:
     # them, and a remote pane is handed strings and nothing else, so a
     # section draws a gauge when it has the number and falls back to its
     # tier row when it does not.
-    ctx: object | None = None  # aegis.tui.metrics.ContextGauge
-    quota_gauges: tuple = ()  # aegis.fleet.models.QuotaGauge
+    ctx: ContextGauge | None = None
+    quota_gauges: tuple[QuotaGauge, ...] = ()
     # PLAN
     plan: PlanState | None = None
     subplans: dict = field(default_factory=dict)
     plan_working: bool = False
     plan_frame: int = 0
     # QUEUES
-    queues: object | None = None  # aegis.queue.digest.Snapshot
+    queues: Snapshot | None = None
     # MONITORS
     monitors: list[MonitorView] = field(default_factory=list)
     # REPOS
     repos: list[RepoView] = field(default_factory=list)
     # SYSTEM
     system: tuple[str, ...] = ()
-    stats: object | None = None  # aegis.tui.sysmeter.SystemStats
+    stats: SystemStats | None = None
     clock: tuple[str, ...] = ()
     cwd: tuple[str, ...] = ()
     build: tuple[str, ...] = ()
@@ -97,6 +109,14 @@ class SidebarModel:
 RULE_FLOOR = 3
 
 _LEAD = "── "
+
+# A full-width gauge spends every spare cell on its bar, which on a 56-cell
+# column draws a 45-cell bar for a 3/20 counter — more ink than the number
+# it is illustrating, and it pushes the value to the far edge away from its
+# label. The fleet band never hits this because it fits four gauges to a
+# row. Capped here so the bar stays a glance and the label, bar and value
+# read as one group. The SYSTEM meters set their own width by pairing.
+_GAUGE_MAX = 36
 
 
 def _rule_cells(text: str, width: int, right: str) -> int:
@@ -204,7 +224,11 @@ def _session(m: SidebarModel, palette, width: int) -> Text | None:
         i, n = m.loop_status["iteration"], m.loop_status["max_iterations"]
         rows.append(
             gauge(
-                "LOOP", 100 * i / n if n else 0, f"{i}/{n}", palette.accent, width,
+                "LOOP",
+                100 * i / n if n else 0,
+                f"{i}/{n}",
+                palette.accent,
+                min(width, _GAUGE_MAX),
                 palette,
             )
         )
@@ -228,7 +252,7 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
                 m.ctx.pct,
                 f"{m.ctx.pct:.0f}%",
                 ctx_style(m.ctx.pct, palette),
-                width,
+                min(width, _GAUGE_MAX),
                 palette,
                 tail=f"{_fmt_tokens(m.ctx.live)}/{_fmt_tokens(m.ctx.window)}",
             )
@@ -241,7 +265,7 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
                 q.percent,
                 f"{q.percent:.0f}%",
                 style,
-                width,
+                min(width, _GAUGE_MAX),
                 palette,
                 value_style=style,
                 tail=reset_in(q.resets_in_s),
@@ -285,8 +309,12 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
     if total:
         rows.append(
             gauge(
-                "", 100 * done / total, f"{100 * done // total}%",
-                palette.ok, width, palette,
+                "",
+                100 * done / total,
+                f"{100 * done // total}%",
+                palette.ok,
+                min(width, _GAUGE_MAX),
+                palette,
             )
         )
     # render_plan_dock verbatim: it already space-separates the circles
@@ -382,8 +410,6 @@ def _repos(m: SidebarModel, palette, width: int) -> Text | None:
 _PAIR_WIDTH = 40
 
 
-
-
 def _system(m: SidebarModel, palette, width: int) -> Text | None:
     # The section ordering applied one level down: the meters move every
     # tick, the clock every minute, the last two never. The pair at the
@@ -399,12 +425,31 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
             else ""
         )
         meters = [
-            gauge("CPU", m.stats.cpu, f"{m.stats.cpu:.0f}%",
-                  ctx_style(m.stats.cpu, palette), cells, palette),
-            gauge("RAM", m.stats.ram, f"{m.stats.ram:.0f}%",
-                  ctx_style(m.stats.ram, palette), cells, palette, tail=ram_tail),
-            gauge("DSK", m.stats.disk, f"{m.stats.disk:.0f}%",
-                  ctx_style(m.stats.disk, palette), cells, palette),
+            gauge(
+                "CPU",
+                m.stats.cpu,
+                f"{m.stats.cpu:.0f}%",
+                ctx_style(m.stats.cpu, palette),
+                cells,
+                palette,
+            ),
+            gauge(
+                "RAM",
+                m.stats.ram,
+                f"{m.stats.ram:.0f}%",
+                ctx_style(m.stats.ram, palette),
+                cells,
+                palette,
+                tail=ram_tail,
+            ),
+            gauge(
+                "DSK",
+                m.stats.disk,
+                f"{m.stats.disk:.0f}%",
+                ctx_style(m.stats.disk, palette),
+                cells,
+                palette,
+            ),
         ]
         rows += list(rows_of(meters, per).split("\n", allow_blank=False))
     else:
