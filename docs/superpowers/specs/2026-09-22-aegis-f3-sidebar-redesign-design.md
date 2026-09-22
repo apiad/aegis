@@ -92,8 +92,8 @@ The second line reads as a new row of the section.
 
 ## The shape
 
-Twenty-eight rows for the same session, twenty-seven when the recap line fits
-without wrapping. Nine rows of slack on a 40-row terminal, with bars
+Twenty-nine rows for the same session, twenty-eight when the recap line fits
+without wrapping. Eight rows of slack on a 40-row terminal, with bars
 throughout, and a `PLAN` section that stays six rows whether the plan has five
 tasks or fifty.
 
@@ -126,6 +126,7 @@ docker build  ░░██░░░░░░  7:10
 ── SYSTEM ───────────────────────────────────────────
 CPU ███░░░░ 34%   RAM ██████░ 61%
 DSK ████████ 82%              Mon 22 Sep · 18:41
+CWD …/repos/aegis · aegis 0.38.0
 ```
 
 ## Components
@@ -259,16 +260,34 @@ for the other reason: `render_plan_dock` has a contract asserted in
 selecting which tasks to show is a different question from how a task row
 looks. Two pure functions, each with one job, each testable without the other.
 
-### `SYSTEM` sheds its two static rows
+### `SYSTEM` merges its two static rows instead of dropping them
 
-`cwd` and `build` never change during a session. They cost two permanent rows
-to answer a question asked once, and the fleet band already carries the build.
-Drop both from the section; `format_cwd` and `format_build` stay in
-`sysmeter.py` for the band and for `StatusBar`.
+An earlier draft of this spec cut `cwd` and `build` outright, on the grounds
+that they never change and cost two permanent rows. That was wrong twice over,
+and the reversal is worth recording because the reasoning is the point.
+
+The `2026-08-07` spec put them there deliberately: "the pair at the bottom is
+the pair you go looking for rather than notice — which directory this aegis is
+rooted at, and which build of it is running."
+`tests/test_sidebar_system.py::test_the_open_sidebar_answers_where_and_which_build`
+defends that decision, and its docstring names the question they answer: "the
+two questions a stale checkout makes you ask, on screen instead of in a shell."
+Cutting them would have reversed a documented decision and deleted the test
+guarding it, for two rows.
+
+And the two rows are not needed. The rest of this spec buys nine rows of slack
+on a 40-row terminal. Spending two of them to keep information is the right
+trade in a redesign whose whole complaint is that rows were being spent on
+chrome.
+
+So: `cwd` and `build` merge onto one row, `CWD …/repos/aegis · aegis 0.38.0`,
+narrowing by `format_cwd`'s existing tiers first since the build string is the
+shorter and less compressible half. One row saved instead of two, the decision
+and its test both intact.
 
 The three meters become two rows of gauges, two per row at 40 cells or wider
-and one per row below that, using `_rows_of(gauges, per_row)` from the fleet
-renderer for the pairing. The clock keeps its place on the last row.
+and one per row below that, using `rows_of(gauges, per_row)` from the fleet
+renderer for the pairing. The clock keeps its place beside the disk gauge.
 
 ### One bar glyph, not two
 
@@ -302,9 +321,9 @@ segment rather than wrapping it.
 | `QUEUES` | 3 | 3 |
 | `MONITORS` | 3 | 3 |
 | `REPOS` | 3 | 3 |
-| `SYSTEM` | 5 | 3 |
+| `SYSTEM` | 5 | 4 |
 | blank separators | 6 | 0 |
-| **total** | **35** | **27–28** |
+| **total** | **35** | **28–29** |
 
 `SESSION` loses its state row to the rule's right slot and gains the recap's
 continuation when the recap is long, so it is the one section whose height
@@ -314,7 +333,7 @@ depends on the data rather than on the section list.
 which is what lets the context line become a gauge. `PLAN` holds at six for
 this five-task plan and stops growing past it.
 
-The twenty-task plan that does not fit today renders in the same 28 rows.
+The twenty-task plan that does not fit today renders in the same 29 rows.
 
 ## Testing
 
