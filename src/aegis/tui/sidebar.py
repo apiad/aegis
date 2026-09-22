@@ -26,6 +26,7 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from aegis.fleet.render import gauge
 from aegis.monitor.schema import MonitorView
 from aegis.plan.models import PlanState
 from aegis.plan.render import render_plan_dock
@@ -47,6 +48,9 @@ class SidebarModel:
     identity: tuple[str, ...] = ()
     state_label: str = ""
     loop: tuple[str, ...] = ()
+    # The loop's own numbers, for the gauge. The tier tuple above stays for
+    # a remote pane, which is handed the rendered string and no dict.
+    loop_status: dict | None = None
     # The mid-turn recap's `doing`, while someone watches a working session.
     now_line: str = ""
     # CONTEXT
@@ -131,27 +135,72 @@ def _block(head: Text, rows: list[Text]) -> Text:
     return out
 
 
+_RECAP_LABEL = "now   "
+
+
+def _recap_rows(line: str, palette, width: int) -> list[Text]:
+    """The mid-turn recap, wrapped with a hanging indent.
+
+    Wrapped rather than tiered: ``fit_rows`` drops a segment whose narrowest
+    tier overflows, and a recap sentence is routinely wider than the column.
+    Rich has no hanging-indent option on ``Text``, so the fold is explicit —
+    without it the continuation lands flush left and reads as a new row of
+    the section.
+    """
+    if not line:
+        return []
+    body = max(8, width - cell_len(_RECAP_LABEL))
+    chunks, cur = [], ""
+    for w in line.split():
+        nxt = f"{cur} {w}".strip()
+        if cell_len(nxt) > body and cur:
+            chunks.append(cur)
+            cur = w
+        else:
+            cur = nxt
+    if cur:
+        chunks.append(cur)
+    rows = []
+    for i, chunk in enumerate(chunks):
+        t = Text(
+            _RECAP_LABEL if i == 0 else " " * cell_len(_RECAP_LABEL),
+            style=palette.muted,
+        )
+        t.append(chunk, style=palette.working)
+        rows.append(t)
+    return rows
+
+
 def _session(m: SidebarModel, palette, width: int) -> Text | None:
     # Connection leads: a disconnected session is a fact about the session,
     # and it is the one segment that demands action. Under its own heading
     # at some scroll offset it would be worse than the bar it replaces.
+    seated = heading_fits("SESSION", width, m.state_label)
     segs = [
         Segment("connection", m.connection, 0),
         Segment("title", (m.title,) if m.title else (), 0),
         Segment("identity", m.identity, 0),
-        Segment("state", (m.state_label,) if m.state_label else (), 0),
-        Segment("loop", m.loop, 0),
+        # Seated in the heading when it fits; otherwise it keeps its row.
+        Segment("state", () if seated or not m.state_label else (m.state_label,), 0),
     ]
     rows = _rows(segs, palette, width)
-    if m.now_line:
-        # Wrapped, not tiered: fit_rows drops a row whose narrowest tier
-        # overflows, and a recap sentence is usually wider than the column.
-        now = Text("now ", style=palette.muted)
-        now.append(m.now_line, style=palette.working)
-        rows.append(now)
-    if not rows:
+    if m.loop_status:
+        i, n = m.loop_status["iteration"], m.loop_status["max_iterations"]
+        rows.append(
+            gauge(
+                "LOOP", 100 * i / n if n else 0, f"{i}/{n}", palette.accent, width,
+                palette,
+            )
+        )
+    else:
+        rows += _rows([Segment("loop", m.loop, 0)], palette, width)
+    rows += _recap_rows(m.now_line, palette, width)
+    if not rows and not m.state_label:
         return None
-    return _block(heading("SESSION", palette, width), rows)
+    return _block(
+        heading("SESSION", palette, width, right=m.state_label if seated else ""),
+        rows,
+    )
 
 
 def _context(m: SidebarModel, palette, width: int) -> Text | None:

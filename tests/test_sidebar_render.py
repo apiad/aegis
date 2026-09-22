@@ -330,9 +330,52 @@ def test_the_now_line_rides_in_the_session_section():
     m = SidebarModel(title="t", now_line="wiring the fleet watcher")
     out = as_text(render_sidebar(m, C, 40))
     assert "SESSION" in out
-    assert "now wiring the fleet watcher" in out
+    # The label is padded to the gauge label column, so the recap lines up
+    # with CTX/QUOTA/LOOP rather than sitting two cells to their left.
+    assert "now   wiring the fleet watcher" in out
 
 
 def test_no_recap_draws_no_now_line():
     out = as_text(render_sidebar(SidebarModel(title="t"), C, 40))
     assert "now" not in out
+
+
+# --- SESSION: the heading slot, the recap fold, the loop gauge ----------
+
+
+def test_the_state_label_rides_the_session_heading():
+    m = SidebarModel(title="fix the eviction race", state_label="✻ working")
+    lines = as_text(render_sidebar(m, C, 56)).split("\n")
+    assert lines[0].startswith("── SESSION")
+    assert lines[0].endswith("✻ working")
+    assert "✻ working" not in lines[1]
+
+
+def test_a_state_label_too_long_for_the_heading_keeps_its_own_row():
+    m = SidebarModel(title="t", state_label="✻ working… · ◐ thinking")
+    lines = [ln for ln in as_text(render_sidebar(m, C, 26)).split("\n") if ln]
+    assert "✻ working… · ◐ thinking" not in lines[0]
+    assert "✻ working… · ◐ thinking" in lines
+
+
+def test_the_recap_continuation_is_indented_under_its_label():
+    m = SidebarModel(state_label="idle",
+                     now_line="reading pane.py to find where the recap lands")
+    rows = [ln for ln in as_text(render_sidebar(m, C, 26)).split("\n")
+            if ln and not ln.startswith("── ")]
+    tail = [r for r in rows if r.startswith("      ")]
+    assert tail, "the recap wrapped flush left"
+    assert all(cell_len(r) <= 26 for r in rows)
+
+
+def test_the_loop_draws_a_bar():
+    m = SidebarModel(state_label="idle",
+                     loop_status={"iteration": 3, "max_iterations": 20})
+    out = as_text(render_sidebar(m, C, 56))
+    assert "LOOP" in out and "█" in out and "3/20" in out
+
+
+def test_a_loop_without_a_status_falls_back_to_its_tier():
+    """A remote pane gets the rendered string and no dict."""
+    m = SidebarModel(state_label="idle", loop=("⟳ loop 3/20",))
+    assert "⟳ loop 3/20" in as_text(render_sidebar(m, C, 56))
