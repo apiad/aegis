@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-22-aegis-f3-sidebar-redesign-design.md`
 
+**Status:** executed 2026-09-23, all eleven tasks (`ce73953..280479a`). A
+fresh-context review found four defects, each fixed with a test that failed
+first. Where the implementation departed from a task, the commit message says
+so and why — the notable ones are the CWD/BUILD merge (reverted), subplan
+windowing (dropped, it made the `└ subagent d/t` header lie) and the quota
+section (one gauge per provider, not per window).
+
 ## Global Constraints
 
 - Python 3.13 or newer. Use `uv`, never pip.
@@ -67,7 +74,7 @@ Tests live beside the existing ones: `tests/test_sidebar_render.py` (pure render
   - `bar(pct: float, cells: int, style: str, pal) -> Text` (already public)
   - `ctx_style(pct: float, pal) -> str` (already public)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_fleet_v2_band.py`:
 
@@ -97,12 +104,12 @@ def test_rows_of_pairs_gauges_two_to_a_line():
 
 Add the imports the file needs at the top if absent: `from rich.cells import cell_len` and `from rich.text import Text`. The palette fixture in this file is already `P = aegis_colors(INK)`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_fleet_v2_band.py -q -k "gauge or reset_in or rows_of"`
 Expected: FAIL with `ImportError: cannot import name 'gauge' from 'aegis.fleet.render'`
 
-- [ ] **Step 3: Rename the three helpers and their call sites**
+- [x] **Step 3: Rename the three helpers and their call sites**
 
 In `src/aegis/fleet/render.py`, rename the definitions `_gauge` → `gauge`, `_rows_of` → `rows_of`, `_reset` → `reset_in`. Then update every call inside `render_band`: there are four `_gauge(` calls in the host-gauge block, one in the quota loop, two `_rows_of(` calls, and one `_reset(` call.
 
@@ -120,12 +127,12 @@ uv run rg -n "_gauge|_rows_of|_reset\b" src/ tests/
 
 The `rg` must print nothing. If it prints a hit in another file, that file imported a private name and needs the same rename.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_fleet_v2_band.py tests/test_fleet_v2_motion.py tests/test_fleet_screen.py -q`
 Expected: PASS, including every pre-existing fleet test — this is a rename, so any red here means a call site was missed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/fleet/render.py tests/test_fleet_v2_band.py <<'MSG'
@@ -156,7 +163,7 @@ The single largest win: six rows bought, and the structure stops being dimmer th
   - `heading(text: str, palette, width: int, right: str = "") -> Text` — same signature, new output
   - `heading_fits(text: str, width: int, right: str) -> bool` — whether `right` will be accepted into the heading, used by Task 3
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Replace the two existing heading tests in `tests/test_sidebar_render.py` (`test_heading_right_aligns_its_counter` and `test_heading_without_a_counter_is_just_the_word`) with:
 
@@ -193,12 +200,12 @@ def test_sections_are_separated_by_the_rule_and_nothing_else():
 
 Update the import line to pull in `heading_fits`, and delete `test_sections_are_separated_by_one_blank_row`, which asserts the behaviour being removed.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k "heading or separated"`
 Expected: FAIL — `ImportError` on `heading_fits`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/aegis/tui/sidebar.py`, replace `heading()` with:
 
@@ -257,12 +264,12 @@ Then in `render_sidebar`, change the separator:
             out.append("\n")
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q`
 Expected: PASS. Other tests in this file may fail on the blank-line change; fix those assertions, they are asserting the old separator.
 
-- [ ] **Step 5: Mutation-check the cell measurement**
+- [x] **Step 5: Mutation-check the cell measurement**
 
 The `cell_len` in `_rule_cells` is the kind of correctness a test can silently stop covering. Break it on purpose:
 
@@ -279,7 +286,7 @@ git checkout -- src/aegis/tui/sidebar.py
 
 and re-apply Step 3 (or `git stash pop` if you prefer; the point is the file returns to the Step 3 state).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py tests/test_sidebar_render.py <<'MSG'
@@ -308,7 +315,7 @@ MSG
 - Consumes: `heading_fits` and `heading` from Task 2; `gauge` from Task 1.
 - Produces: `SidebarModel.loop_status: dict | None = None` — `{"iteration": int, "max_iterations": int}`, the same dict `StatusBar.set_loop` already receives.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_the_state_label_rides_the_session_heading():
@@ -349,12 +356,12 @@ def test_a_loop_without_a_status_falls_back_to_its_tier():
     assert "⟳ loop 3/20" in as_text(render_sidebar(m, C, 56))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k "state_label or recap_continuation or loop"`
 Expected: FAIL — `SidebarModel` has no `loop_status`, and the state label is still on its own row.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add the field to `SidebarModel`, under the `# SESSION` comment:
 
@@ -433,12 +440,12 @@ def _recap_rows(line: str, palette, width: int) -> list[Text]:
 
 Add `from aegis.fleet.render import gauge` to the imports.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q`
 Expected: PASS. `test_connection_warning_leads_the_session_section` asserts `lines[0] == "SESSION"` and now needs `lines[0].startswith("── SESSION")`; fix it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py tests/test_sidebar_render.py <<'MSG'
@@ -472,7 +479,7 @@ MSG
 
 The class is `SessionMetrics` (`src/aegis/tui/metrics.py:58`), a plain `@dataclass`, and it owns `context_window`, `last_true_input`, `p_in` and `_provisional`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_metrics.py`:
 
@@ -500,12 +507,12 @@ def test_gauge_agrees_with_the_percentage_in_the_tier_string():
 
 Use whatever constructor the file's existing tests use; `SessionMetrics` is a dataclass, so keyword fields work.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_metrics.py -q -k gauge`
 Expected: FAIL — `ImportError: cannot import name 'ContextGauge'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add near the top of `src/aegis/tui/metrics.py`, after the imports:
 
@@ -557,12 +564,12 @@ Then rewrite the block at line 283 to call it:
             # (the existing tag / body / body_short lines follow unchanged)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_metrics.py tests/test_statusbar_fit.py -q`
 Expected: PASS. The status-bar tests are the regression guard: if the extracted arithmetic disagrees with the old inline version by even a rounding step, a tier string changes and those tests say so.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/metrics.py tests/test_metrics.py <<'MSG'
@@ -600,7 +607,7 @@ The wiring task. No visible change lands here; the next three tasks depend on it
 
 Both new parameters default, so a caller that has not been updated keeps working — which matters because `set_system` and `set_quota` are reached through `hasattr` checks in `app.py`, and a remote pane class may not implement them at all.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_sidebar_system.py`:
 
@@ -636,12 +643,12 @@ async def test_a_pane_that_was_never_pushed_numbers_still_renders():
         assert "quota 47%" in painted
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_system.py -q -k "numbers or never_pushed"`
 Expected: FAIL — `AttributeError: 'SidebarModel' object has no attribute 'stats'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/aegis/tui/sidebar.py`, add to `SidebarModel` beside the tier tuples they accompany:
 
@@ -740,12 +747,12 @@ and pass `gauges` at the `active.set_quota(tiers)` call site. Import with the ot
 
 Note the push-on-change guard immediately above that call compares `self._quota_last != tiers`. Leave it comparing tiers only: the gauges are derived from the same readings, so tiers unchanged means gauges unchanged, and adding a second comparison would repaint on a float that moved in a digit the tier rounds away.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_system.py tests/test_sidebar_toggle.py tests/test_sidebar_repos.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py src/aegis/tui/pane.py src/aegis/tui/app.py tests/test_sidebar_system.py <<'MSG'
@@ -776,7 +783,7 @@ MSG
 - Consumes: `gauge`, `reset_in`, `ctx_style` (Task 1); `ContextGauge` (Task 4); `SidebarModel.ctx` and `.quota_gauges` (Task 5).
 - Produces: nothing new.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 from aegis.fleet.models import QuotaGauge
@@ -824,12 +831,12 @@ def test_no_context_window_falls_back_to_the_metrics_tier():
     assert "CTX" not in out
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k "context or quota"`
 Expected: FAIL — no `CTX` label is rendered.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 def _context(m: SidebarModel, palette, width: int) -> Text | None:
@@ -868,12 +875,12 @@ from aegis.tui.metrics import _fmt_tokens
 
 `_fmt_tokens` is private by name but already imported by four other modules (`render.py`, `render_html.py`, `pane.py` twice); follow the established practice rather than renaming it across five files for this change.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py tests/test_sidebar_render.py <<'MSG'
@@ -904,7 +911,7 @@ MSG
 
 The existing test `test_the_open_sidebar_answers_where_and_which_build` must keep passing. `cwd` and `build` merge onto one row rather than being cut — see the spec's reasoning; they are the two questions a stale checkout makes you ask.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `tests/test_sidebar_render.py`:
 
@@ -942,12 +949,12 @@ def test_no_stats_falls_back_to_the_system_tier():
     assert "cpu 34%" in as_text(render_sidebar(m, C, 56))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k "system or cwd_and_build or meter"`
 Expected: FAIL — `CPU` is not rendered as a label.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # Two gauges to a row above this width, one below: at 26 cells a pair of
@@ -992,12 +999,12 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
 
 Add `rows_of` to the `aegis.fleet.render` import.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_render.py tests/test_sidebar_system.py -q`
 Expected: PASS, including `test_the_open_sidebar_answers_where_and_which_build` — that test reads a row containing `CWD` and asserts `BUILD` is somewhere in the paint, and the merged row satisfies both.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py tests/test_sidebar_render.py <<'MSG'
@@ -1026,7 +1033,7 @@ MSG
 - Consumes: `bar` (Task 1).
 - Produces: nothing new. `format_q` in `strip.py` is **not** touched — it is shared with the collapsed `QueueStrip`, which is out of scope. The bar is prefixed at the composition site, the way `_repos` already composes its own heading around `render_repos`'s rows.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_a_queue_row_leads_with_its_saturation():
@@ -1048,12 +1055,12 @@ def test_a_queue_with_no_parallelism_configured_does_not_divide_by_zero():
     assert "idle" in as_text(render_sidebar(m, C, 56))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k queue`
 Expected: FAIL — no `█` in the row.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 _QBAR = 9
@@ -1079,12 +1086,12 @@ def _queues(m: SidebarModel, palette, width: int) -> Text | None:
 
 Add `bar` to the `aegis.fleet.render` import.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_sidebar_render.py tests/test_tui_strip.py -q`
 Expected: PASS. `test_tui_strip.py` is the guard that `format_q` was not touched.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/sidebar.py tests/test_sidebar_render.py <<'MSG'
@@ -1113,7 +1120,7 @@ This is the one change that lands **outside** the open F3 mode: `format_mon` is 
 - Consumes: `bar` (Task 1).
 - Produces: nothing new. `format_mon(v, palette, width=None) -> Text` keeps its signature.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_a_monitor_bar_is_drawn_the_way_every_other_bar_is():
@@ -1125,12 +1132,12 @@ def test_a_monitor_bar_is_drawn_the_way_every_other_bar_is():
     assert "█" in row and "▓" not in row
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_monitor_strip.py -q -k every_other_bar`
 Expected: FAIL — `assert '█' in row`, the row contains `▓`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Delete `_bar` from `src/aegis/tui/monitor_strip.py` and use the shared one inside `_tail_tiers`:
 
@@ -1162,12 +1169,12 @@ Replace the `bar = (f"  {_bar(v.pct)} ", palette.work)` tuple. `_tail_tiers`'s l
     ]
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_monitor_strip.py tests/test_sidebar_render.py -q`
 Expected: PASS. Any pre-existing test asserting `▓` is asserting the old glyph; update it to `█`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -F - -- src/aegis/tui/monitor_strip.py tests/test_monitor_strip.py <<'MSG'
@@ -1202,7 +1209,7 @@ The section that can currently evict four others. Twenty tasks is twenty rows; a
 
 `render_plan_dock` keeps its current signature and contract. The window is a separate pure function: `render_plan_dock` has a contract asserted in `tests/test_plan_render.py` covering its header and its `(no plan)` body, and selecting which tasks to show is a different question from how a task row looks.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_plan_window.py`:
 
@@ -1272,12 +1279,12 @@ def test_the_window_preserves_the_whole_plans_counts():
     assert full.total == 20 and w.total == 4
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_plan_window.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'aegis.plan.window'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/aegis/plan/window.py`:
 
@@ -1375,12 +1382,12 @@ def _plan(m: SidebarModel, palette, width: int) -> Text | None:
 
 Add `from aegis.plan.window import window` to the imports.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_plan_window.py tests/test_sidebar_render.py tests/test_plan_render.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Add the sidebar-level test and run it**
+- [x] **Step 5: Add the sidebar-level test and run it**
 
 ```python
 def test_a_long_plan_does_not_evict_the_sections_below_it():
@@ -1399,7 +1406,7 @@ def test_a_long_plan_does_not_evict_the_sections_below_it():
 Run: `uv run pytest tests/test_sidebar_render.py -q -k evict`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -F - -- src/aegis/plan/window.py src/aegis/tui/sidebar.py tests/test_plan_window.py tests/test_sidebar_render.py <<'MSG'
@@ -1431,7 +1438,7 @@ A budget nobody measures regresses the first time a section grows. This makes th
 - Consumes: every task above.
 - Produces: nothing.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 # A 40-row terminal gives the sidebar 37 content rows: one to the TabBar,
@@ -1493,12 +1500,12 @@ def test_no_row_is_wider_than_the_column(width):
 
 Add `import pytest` if the file lacks it.
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 Run: `uv run pytest tests/test_sidebar_render.py -q -k "forty_row or wider_than"`
 Expected: PASS. If the row count exceeds 31, do not raise the ceiling — find which section grew and fix it. The ceiling is the deliverable.
 
-- [ ] **Step 3: Mutation-check the budget test**
+- [x] **Step 3: Mutation-check the budget test**
 
 A ceiling test that cannot fail is worth less than none, because it licenses shipping.
 
@@ -1515,14 +1522,14 @@ git checkout -- src/aegis/tui/sidebar.py
 
 Expected: FAIL while mutated (the blank separators come back, six rows over), PASS again after the checkout.
 
-- [ ] **Step 4: Run the whole gate**
+- [x] **Step 4: Run the whole gate**
 
 Run: `make check`
 Expected: every stage green. Run it as the target, not as a bare `pytest` — `make test` adds `--max-unmarked-duration=3`, and a bare run goes green on a suite the gate fails.
 
 Note: the full suite flakes one or two inotify tests on zion. A failure in `tests/test_watch*.py` or similar that passes on a re-run alone is that flake, not this change. Anything in `tests/test_sidebar*`, `tests/test_plan*`, `tests/test_fleet*`, `tests/test_monitor*`, `tests/test_tui_strip.py` or `tests/test_metrics.py` is this change.
 
-- [ ] **Step 5: Exercise it the way a user reaches it**
+- [x] **Step 5: Exercise it the way a user reaches it**
 
 `make check` passing is not done. Start a daemon **after** the change, attach at 40 rows, press `F3`, and confirm against the spec's mockup:
 
@@ -1536,7 +1543,7 @@ Check, in the running TUI: the headings are rules and there are no blank rows be
 
 Green tests against a daemon that booted before the change prove nothing about the change.
 
-- [ ] **Step 6: Write the CHANGELOG entry and commit**
+- [x] **Step 6: Write the CHANGELOG entry and commit**
 
 Add under the unreleased heading in `CHANGELOG.md`:
 

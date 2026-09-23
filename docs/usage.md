@@ -437,12 +437,54 @@ minute of work it actually got rather than nine hours of idling. The
 in-progress circle spins on exactly that condition, so the rotation is a
 literal rendering of the clock running.
 
-Press **`F3`** (or type `/tasks`) for the **dock** beside the transcript:
-one row per task with its working time, and any subagent's plan nested
-underneath. It is a mode, and the mode is app-wide — every tab opens it
-together, and a tab you open later comes up already in it — which is what makes a fan-out legible, since it shows which
-of several parallel agents is still grinding. A task that never started
-reads `—`, not `0:00`; the two mean different things.
+Press **`F3`** (or type `/tasks`) for the **sidebar** beside the
+transcript. It is a mode, and the mode is app-wide — every tab opens it
+together, and a tab you open later comes up already in it.
+
+Every section is headed by a rule, and every proportion the column knows
+is drawn as a bar rather than spelled out:
+
+```
+── SESSION ───────────────────── ✻ working… · ◐ thinking
+fix the eviction race
+opus · high · local
+LOOP  ████░░░░░░░░░░░░░░░░░░░░ 3/20
+now   reading pane.py to find where the recap lands
+── CONTEXT ─────────────────────────────────────────────
+CTX   ███████████░░░░ 71% 142k/200k
+cc wk ██░░░░░░░░░░░░░░ 14% ↻ 54h19m
+↑142k ↓8.2k · $1.84 · 1:20
+── PLAN ─────────────────────────────────────────── 8/20
+      ███████████░░░░░░░░░░░░░░ 40%
+● parse the recap header                            0:42
+◐ writing the streaming parser                      1:20
+○ wire the strip into the pane                         —
+   +16 more
+── QUEUES ──────────────────────────────────────────────
+████░░░░░ build ●1/2 ○3 ✓5
+── MONITORS ────────────────────────────────────────────
+pytest  █████░░░ 62% · ETA 1:40
+```
+
+**PLAN** is one row per task with its working time, and any subagent's
+plan nested underneath — which is what makes a fan-out legible, since it
+shows which of several parallel agents is still grinding. A task that
+never started reads `—`, not `0:00`; the two mean different things.
+
+The section shows a **window** around the current task, not the whole
+plan: one finished task above it, the next two below, and `+k more` for
+the rest. A twenty-task plan used to be twenty rows, which pushed
+`QUEUES`, `MONITORS`, `REPOS` and `SYSTEM` off the bottom of the column —
+the sections placed low precisely because they are stable, not because
+they matter least. With nothing in progress the window sits on the
+boundary between what is finished and what is not, so the row you need is
+the outstanding one rather than the three you closed an hour ago.
+
+**CONTEXT** shows the context window as a bar that turns amber past 60%
+and red past 80%, then one quota bar per provider — the window closest to
+exhaustion, which is the one that decides which rail you can launch on.
+The rest are one `/usage` away. The row underneath carries the tokens,
+the cost and the turn time.
 
 The plan survives a restart: a resumed session replays its own transcript
 and comes back with the tasks *and* their banked time intact.
@@ -451,7 +493,7 @@ Above it sits **REPOS** — which git repos the live agents are actually
 writing to:
 
 ```
-REPOS                              2
+── REPOS ─────────────────────────────────────────────── 2
 ● aegis        main ~6 ↑6  calm-hopper
 ● Workspace    main ~2
 ```
@@ -474,9 +516,10 @@ repo on a remote [execution host](hosts.md) is listed but never probed —
 the same path names a different tree there, so a local `git status` would
 answer confidently and wrongly.
 
-The panel's foot is a **SYSTEM** block: the CPU/RAM/disk meters, then the
-date, time and locale, the directory this aegis is rooted at, and the build
-it is actually running (`aegis 0.32.0+b78cb3d`). The last two are the pair
+The panel's foot is a **SYSTEM** block: the CPU/RAM/disk meters as bars,
+two to a row on a wide column and one per row on a narrow one, then the
+date, time and locale, the directory this aegis is rooted at, and the
+build it is actually running (`aegis 0.32.0+b78cb3d`). The last two are the pair
 you go looking for rather than notice — under an editable checkout that
 keeps moving, "which version am I running" and "which version is on disk"
 diverge the moment a commit lands beneath a live TUI.

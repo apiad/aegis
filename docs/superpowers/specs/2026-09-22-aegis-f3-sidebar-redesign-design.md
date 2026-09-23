@@ -1,6 +1,6 @@
 # F3 sidebar — rules, gauges, and a plan that cannot run away
 
-**Status:** proposed 2026-09-22
+**Status:** implemented 2026-09-23 (`ce73953..280479a`), shipped in v0.39.0
 **Scope:** TUI only. The open `F3` mode. Nothing about the collapsed mode
 (`QueueStrip`, `MonitorStrip`, `PlanStrip`, `StatusBar`) is redesigned here,
 which is the same boundary `2026-08-07-aegis-f3-side-dashboard-design.md` drew.

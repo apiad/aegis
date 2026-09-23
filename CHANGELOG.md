@@ -5,6 +5,8 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-09-23
+
 ### Changed
 
 - **The `F3` sidebar draws its fractions as bars.** Context, quota, loop,
@@ -29,6 +31,17 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 - The sidebar's `now` recap line wrapped flush left, so its continuation
   read as a separate row of the section. It hangs under its label now.
+
+### Performance
+
+- The redesign costs no rendering time. `bench/history/zion/0.39.0.json`
+  shows `render.tick_ms.max` and `startup.daemon_boot_ms` up against the
+  0.38.0 baseline, but that baseline was recorded on a quiet machine and
+  this one was not (`host.load_per_core.max` 0.14 against 1.20). Measured
+  the controlled way instead — 0.38.0 from PyPI and this tree, same
+  machine, minutes apart — the resize scenario's worst tick went 329 ms to
+  182 ms and daemon boot 4,685 ms to 2,585 ms, with `sidebar.settle_ms.p50`
+  unchanged at 698 ms.
 
 ## [0.38.0] - 2026-09-21
 
