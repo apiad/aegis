@@ -46,6 +46,18 @@ if TYPE_CHECKING:  # aegis.views imports this module; keep it type-only
 SessionFactory = Callable[[Agent, str, str], HarnessSession]
 
 
+def _reset_bucket(gauge) -> int | None:
+    """A quota window's reset time, rounded to the minute it renders as.
+
+    The countdown the sidebar draws is minutes (`↻ 3h04m`), so this is the
+    granularity at which it actually changes. Comparing `resets_in_s` raw
+    would make every tick a repaint; ignoring it entirely froze the
+    countdown, which is what this exists to stop.
+    """
+    secs = gauge.resets_in_s
+    return None if secs is None else int(secs) // 60
+
+
 def _plan_roll_up(core):
     """A session's plan roll-up, or None when it has no plan.
 
@@ -342,6 +354,7 @@ class AegisApp(App):
     # avoid a Textual boot, so anything the tick path reads must exist
     # without __init__ having run.
     _quota_last = None
+    _quota_stamp = None
     _system_stats = None
     _quota_pane = None
     _system_last: tuple[str, ...] = ()
@@ -467,6 +480,7 @@ class AegisApp(App):
         # Pane that already had the empty quota segment pushed to it, so the
         # 1 Hz tick doesn't re-push a value that cannot change.
         self._quota_last = None
+        self._quota_stamp = None
         self._quota_pane = None
         # Rate-limits the turn-finished bell (see BELL_INTERVAL_S).
         self._last_bell: float = float("-inf")
@@ -1640,16 +1654,31 @@ class AegisApp(App):
             # Held for the fleet band, which F10 can open over any tab. No
             # pane holds it, so the next agent pane in front is painted.
             self._quota_pane, self._quota_last = None, tiers
+            self._quota_stamp = None
             return
         # Push only on change — re-delivering a value that has not moved is a
         # repaint per tick for nothing. The pane is compared by identity and
         # held, not keyed by id(): a freed pane's id can be reused, and the
         # collision would silently skip the new pane's first paint.
-        # Compared on the tiers only: the gauges derive from the same
-        # readings, so tiers unchanged means gauges unchanged, and comparing
-        # the floats too would repaint on a digit the tier rounds away.
-        if self._quota_pane is not active or self._quota_last != tiers:
+        #
+        # The gauges are part of what "moved" means, not a derivative of the
+        # tiers. `resets_in_s` is recomputed against a live clock every tick
+        # while `format_quota_bar` prints no countdown at normal severity, so
+        # gating on the tier text alone froze the sidebar's `↻ 3h04m` for as
+        # long as the rounded percent held — minutes on a busy session, and
+        # indefinitely on an idle one.
+        #
+        # Bucketed to the minute rather than compared raw: the countdown is
+        # rendered in minutes, so a float that moved by a tick is not a
+        # change anyone can see, and comparing it raw would repaint every
+        # second for nothing.
+        # `_quota_last` stays the tiers: the fleet band reads it as the held
+        # value when no pane is in front. Change detection gets its own
+        # field rather than overloading that one.
+        stamp = (tiers, tuple((g.label, g.percent, _reset_bucket(g)) for g in gauges))
+        if self._quota_pane is not active or self._quota_stamp != stamp:
             self._quota_pane, self._quota_last = active, tiers
+            self._quota_stamp = stamp
             active.set_quota(tiers, gauges)
 
     def _tick(self) -> None:

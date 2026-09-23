@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from rich.cells import cell_len
+from rich.cells import cell_len, set_cell_size
 from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
@@ -194,6 +194,14 @@ def _recap_rows(line: str, palette, width: int) -> list[Text]:
             cur = w
         else:
             cur = nxt
+        # A single token wider than the column has to be cut, because
+        # breaking on spaces alone cannot place it: an agent recap carries
+        # a path or a URL routinely, and emitting one whole put a 64-cell
+        # row in a 40-cell column — the flush-left overflow this function
+        # exists to remove, reintroduced by its own wrap loop.
+        while cell_len(cur) > body:
+            chunks.append(set_cell_size(cur, body))
+            cur = cur[len(set_cell_size(cur, body)) :]
     if cur:
         chunks.append(cur)
     rows = []
@@ -445,9 +453,16 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
     if m.stats is not None:
         per = 2 if width >= _PAIR_WIDTH else 1
         cells = (width - 2 * (per - 1)) // per
+        # The absolute figure only when the meters are one per row. Paired,
+        # it costs RAM eight cells that CPU and DSK do not spend, which
+        # squeezed RAM's bar to `gauge`'s three-cell floor beside an
+        # eleven-cell CPU bar — so the pair could not be read as a pair,
+        # which is the only reason to put them on one row. Worse, at 40-43
+        # cells `gauge` truncated the tail itself and drew `9.8/1`, which
+        # does not read as clipped: it reads as a plausible wrong ratio.
         ram_tail = (
             f"{m.stats.ram_used_gb:.1f}/{m.stats.ram_total_gb:.0f}G"
-            if m.stats.ram_total_gb
+            if m.stats.ram_total_gb and per == 1
             else ""
         )
         meters = [

@@ -247,12 +247,19 @@ a window, plus a summary gauge:
 
 1. A `gauge` row: `done/total` as a bar with a percentage.
 2. The **current** task, with one completed task above it and up to two pending
-   below. When no task is in progress, the window is the first three pending.
+   below — four task rows, not three. With no task in progress the window
+   anchors on the boundary between what is finished and what is not, never on
+   "is anything unfinished": the latter took the head of any plan with a single
+   incomplete task, so a 20-task plan with 19 done showed three tasks finished
+   an hour ago and hid the only outstanding one. That state is reachable at
+   every task boundary, because the harness marks one task completed before it
+   marks the next in progress.
 3. `+k more` on `palette.muted` when tasks fall outside the window, counting
    both directions.
 
-Five rows for any plan. A plan under four tasks renders every task and no
-`+k more`, so short plans look exactly as they do today.
+Seven rows for any plan — heading, gauge, four tasks, `+k more`. A plan of
+four tasks or fewer renders every task and no `+k more`, so short plans look
+exactly as they do today.
 
 Subplans are the one case that does not fit a fixed window: a fan-out with
 three subagents has three nested headers before any task. Window each subplan
@@ -299,10 +306,10 @@ two questions a stale checkout makes you ask, on screen instead of in a shell."
 Cutting them would have reversed a documented decision and deleted the test
 guarding it, for two rows.
 
-And the two rows are not needed. The rest of this spec buys nine rows of slack
-on a 40-row terminal. Spending two of them to keep information is the right
-trade in a redesign whose whole complaint is that rows were being spent on
-chrome.
+And the two rows are affordable. Measured after the fact the margin is
+narrower than this paragraph first claimed — five rows of slack at width 56
+and two at 26, not nine — but the trade stands: a redesign whose complaint is
+rows spent on chrome should not pay for the saving by deleting information.
 
 A first draft merged them onto one row to save one of the two. That was also
 wrong, and implementation is what showed it: a merged tier is wider than either
@@ -317,7 +324,14 @@ an answer at exactly the width where it is least reconstructible.
 
 The three meters become two rows of gauges, two per row at 40 cells or wider
 and one per row below that, using `rows_of(gauges, per_row)` from the fleet
-renderer for the pairing. The clock keeps its place beside the disk gauge.
+renderer for the pairing. The clock takes a row of its own rather than sitting
+beside the disk gauge: paired, the meters already fill their row.
+
+RAM's `9.8/16G` tail shows only when the meters are one per row. Paired it
+costs eight cells that CPU and DSK do not spend, which squeezed RAM's bar to
+`gauge`'s three-cell floor beside an eleven-cell CPU bar — and at 40-43 cells
+`gauge` truncated the tail itself to `9.8/1`, which does not read as clipped
+but as a plausible wrong ratio.
 
 ### One bar glyph, not two
 

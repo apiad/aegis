@@ -40,16 +40,29 @@ def window(
 
     current = next((i for i, t in enumerate(tasks) if t.status == "in_progress"), None)
     if current is not None:
-        lo = max(0, current - before)
-        hi = min(len(tasks), current + after + 1)
+        lo = current - before
+        n = span
     else:
         # One row shorter with no current task: the extra row exists to mark
         # where you are, and there is nowhere to mark.
         n = span - 1
-        # Not started asks what comes first; finished asks what just
-        # happened. Head in the first case, tail in the second.
-        lo = 0 if any(t.status != "completed" for t in tasks) else len(tasks) - n
-        lo = max(0, lo)
-        hi = min(len(tasks), lo + n)
+        # Anchored on the boundary between what is finished and what is
+        # not, never on "is anything unfinished". Keying off the latter
+        # took the HEAD of any plan with a single incomplete task — so a
+        # 20-task plan with 19 done showed three tasks finished an hour ago
+        # and hid the only outstanding one. That state is reachable at
+        # every task boundary, because the harness marks one completed
+        # before it marks the next in progress.
+        first_open = next(
+            (i for i, t in enumerate(tasks) if t.status != "completed"), None
+        )
+        # Nothing open: the plan is finished and the interesting end is the
+        # one that just closed.
+        lo = len(tasks) - n if first_open is None else first_open - before
 
+    # Slid back rather than truncated when the window runs off the end: the
+    # window exists to spend a fixed number of rows, and a plan that got
+    # SHORTER on screen as it neared completion was leaving them unused.
+    lo = max(0, min(lo, len(tasks) - n))
+    hi = lo + n
     return PlanState(tasks=tasks[lo:hi]), len(tasks) - (hi - lo)

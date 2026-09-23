@@ -61,3 +61,27 @@ def test_the_window_preserves_the_whole_plans_counts():
     full = _plan(20, current=10)
     w, _ = window(full)
     assert full.total == 20 and w.total == 4
+
+
+def test_a_half_done_plan_between_tasks_shows_what_is_outstanding():
+    """Reachable at every task boundary: the harness marks one completed
+    before it marks the next in_progress, so `current` is momentarily None
+    on a plan that is well under way. Taking the head then showed three
+    tasks finished an hour ago and hid the only outstanding one, in the
+    section whose whole purpose is what is happening now."""
+    tasks = tuple(
+        PlanTask(key=str(i), subject=f"task {i}",
+                 status="completed" if i < 19 else "pending")
+        for i in range(20))
+    w, hidden = window(PlanState(tasks=tasks))
+    assert any(t.status == "pending" for t in w.tasks), [t.key for t in w.tasks]
+    assert w.tasks[-1].key == "19"
+
+
+def test_a_plan_stopped_midway_shows_the_boundary_not_the_beginning():
+    tasks = tuple(
+        PlanTask(key=str(i), subject=f"task {i}",
+                 status="completed" if i < 10 else "pending")
+        for i in range(20))
+    w, _ = window(PlanState(tasks=tasks))
+    assert [t.key for t in w.tasks] == ["9", "10", "11"]

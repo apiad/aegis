@@ -4,6 +4,8 @@ Quota is an account property, so the bar is *not* gated on which agents are
 open — the whole point is to tell you which rail to launch on before there is
 an agent to ask. Pane harnesses only route the turn-end refresh.
 """
+from datetime import datetime, timedelta, timezone
+
 from aegis.themes import AegisColors
 from aegis.tui.app import AegisApp
 from aegis.tui.fit import strip_markup
@@ -64,6 +66,7 @@ def _app(panes, *, claude=None, opencode=None, remote=False):
     app._palette = COLORS
     app._quota_states = {}
     app._quota_last = None
+    app._quota_stamp = None
     app._quota_pane = None
     app.quota_services = {
         "claude": FakeService(claude if claude is not None
@@ -208,3 +211,35 @@ def test_an_agent_pane_after_a_terminal_tab_is_still_painted():
     app._quota_tick(TerminalLike())
     app._quota_tick(pane)
     assert pane.quota_tiers == app._quota_last
+
+
+def test_a_moving_reset_reaches_the_sidebar_even_when_the_tier_text_does_not():
+    """The push was gated on the tier string alone, on the reasoning that
+    the gauges derive from the same reading. They do — but `resets_in_s` is
+    recomputed against a live clock every tick, while `format_quota_bar`
+    prints no countdown at normal severity. So the tier text sits still for
+    minutes on a busy session and forever on an idle one, and the sidebar
+    kept painting a countdown that had stopped counting.
+    """
+    def _state(hours):
+        at = datetime.now(timezone.utc) + timedelta(hours=hours)
+        return QuotaState(snapshot=QuotaSnapshot(windows=(
+            QuotaWindow("session", 64.0, "normal", at, True),
+            QuotaWindow("rolling", 64.0, "normal", at, True),
+        ), fetched_at=0.0))
+
+    pane = FakePane("claude-code")
+    app = _app([], claude=_state(3), opencode=_state(3))
+    app._quota_tick(pane)
+    first = tuple(g.resets_in_s for g in pane.quota_gauges)
+    assert first and all(s is not None for s in first)
+
+    # Same percentages, so the same tier text — only the clock moved.
+    tiers_before = pane.quota_tiers
+    app.quota_services["claude"] = FakeService(_state(1))
+    app.quota_services["opencode-go"] = FakeService(_state(1))
+    app._quota_tick(pane)
+
+    assert pane.quota_tiers == tiers_before, "the tier text must not have moved"
+    second = tuple(g.resets_in_s for g in pane.quota_gauges)
+    assert second[0] < first[0] - 3000, (first, second)

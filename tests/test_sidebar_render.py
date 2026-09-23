@@ -849,3 +849,47 @@ def test_quota_shows_the_window_closest_to_exhaustion_per_provider():
     assert len(rows) == 2
     assert any("cc wk" in r and "14%" in r for r in rows)
     assert any("oc wk" in r and "7%" in r for r in rows)
+
+
+# --- findings from the whole-branch review -----------------------------
+
+
+def test_a_recap_with_one_long_token_still_fits_the_column():
+    """`_recap_rows` broke only on spaces, so a path or a URL — which agent
+    recaps carry routinely — was emitted whole and overflowed, reproducing
+    the flush-left wrap this change exists to fix."""
+    m = SidebarModel(
+        now_line="reading /home/apiad/Workspace/repos/aegis/src/aegis/tui/sidebar.py now"
+    )
+    rows = [ln for ln in as_text(render_sidebar(m, C, 40)).split("\n")
+            if ln and not ln.startswith("── ")]
+    for r in rows:
+        assert cell_len(r) <= 40, repr(r)
+    # And every continuation still hangs under the label.
+    assert all(r.startswith("      ") for r in rows[1:]), rows
+
+
+def test_the_ram_tail_is_dropped_rather_than_cut_to_a_wrong_number():
+    """At 40-43 cells the paired RAM gauge had no room for `9.8/16G` and
+    `gauge` truncated it to `9.8/1` — which does not read as clipped, it
+    reads as a plausible wrong ratio."""
+    m = SidebarModel(stats=SystemStats(cpu=34.0, ram=61.0, disk=82.0,
+                                       ram_used_gb=9.8, ram_total_gb=16.0))
+    for width in range(26, 60):
+        row = next(ln for ln in as_text(render_sidebar(m, C, width)).split("\n")
+                   if "RAM" in ln)
+        if "9.8" in row:
+            assert "9.8/16G" in row, f"at {width}: {row!r}"
+
+
+def test_paired_meters_get_the_same_bar_length():
+    """Side by side, CPU's bar ran to 11 cells while RAM's was squeezed to
+    the 3-cell floor by its own tail — so the pair could not be scanned as
+    a pair, which is the whole reason for putting them on one row."""
+    m = SidebarModel(stats=SystemStats(cpu=34.0, ram=61.0, disk=82.0,
+                                       ram_used_gb=9.8, ram_total_gb=16.0))
+    row = next(ln for ln in as_text(render_sidebar(m, C, 56)).split("\n")
+               if "CPU" in ln)
+    cpu, ram = row.split("RAM")
+    assert cpu.count("\u2588") + cpu.count("\u2591") == \
+        ram.count("\u2588") + ram.count("\u2591"), row
