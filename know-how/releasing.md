@@ -41,8 +41,23 @@ Then confirm the gate is satisfied — this must print nothing about needing
 an update:
 
 ```bash
-uv sync --locked
+uv sync --inexact --locked --extra voice --group dev --group docs
 ```
+
+### `uv sync --locked` on its own strips the venv
+
+A bare `uv sync` resolves to *exactly* the locked default set, so it
+**uninstalls** everything outside it — at v0.39.0 that was 37 packages,
+taking the `voice` extra (`harpio`, `sounddevice`) and the whole `docs`
+group with it. The step passes, the gate is satisfied, and `mkdocs` and
+push-to-talk are gone until someone notices.
+
+`--inexact` is what stops it: verify the lock without touching anything
+the lock does not mention. If you have already run the bare form, put the
+venv back with the same flags and check by module name, not distribution
+name — `harpio` imports as `harp` and `mkdocs-material` as `material`, so
+`import harpio` fails on a perfectly good install and sends you chasing a
+problem that is not there.
 
 ## Before tagging: record the benchmark
 
@@ -109,7 +124,9 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
    coverage diff above, and after closing any doc gaps it exposes.
 3. Bump `version` in `pyproject.toml`.
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
-   then `uv sync --locked` to verify.
+   then verify with
+   `uv sync --inexact --locked --extra voice --group dev --group docs`.
+   The bare form passes too, and takes 37 packages with it — see above.
 5. Run the fast suite locally: `uv run python -m pytest -q -m "not live"`.
    It is expected to be green: the old "1-2 TUI/watchdog tests flake on
    the inotify limit" caveat was a leak plus two teardown races, fixed in
@@ -118,7 +135,23 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
 8. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
 9. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.
-10. Verify PyPI (index lags ~30s): `curl -s https://pypi.org/pypi/aegis-harness/json | jq -r .info.version`.
+10. Verify PyPI by **installing it**, not by asking the JSON API:
+
+    ```bash
+    uv venv /tmp/pypi-check -q
+    uv pip install --python /tmp/pypi-check/bin/python --no-cache aegis-harness==X.Y.Z
+    /tmp/pypi-check/bin/aegis --version
+    ```
+
+    The three PyPI surfaces disagree for minutes and answer different
+    questions. At v0.39.0 the simple index listed both files while
+    `/pypi/<name>/json` still said the previous version and
+    `/project/<name>/X.Y.Z/` returned 503 — PyPI was on *Partially Degraded
+    Service* (`status.python.org`), and a resolver pointed at one CDN node
+    still could not see the release. Only the install answers "can a user
+    get this". Read its exit code directly: piping it through `tail` and
+    then testing `$?` reports `tail`'s status and turns a failed install
+    green.
 
 ## Recovering a failed publish
 
