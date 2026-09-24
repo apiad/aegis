@@ -474,7 +474,15 @@ harness, so trusting it would apply a silent multiplier to some sessions and not
 others. Either number is an API list-price equivalent, not an invoice.
 
 `--json` also caches its result to `<state>/cost/<repo>.json`, which is what the
-`aegis_repo_cost` MCP tool reads.
+`aegis_repo_cost` MCP tool reads. The plain table run does not write it, so a
+windowed run cannot quietly replace the figure an agent is served; the cache is
+keyed by the repo's bare name, so the payload carries the path and the window
+that produced it.
+
+The store is the project root's, found from the invoking directory rather than
+from the repo path you named, so `--state` is how you point it elsewhere. A run
+that read no transcripts at all says so above its figures instead of reporting a
+free repo.
 
 ## Themes
 

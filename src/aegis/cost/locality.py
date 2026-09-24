@@ -17,7 +17,6 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-REPO_RE = re.compile(r"repos/([A-Za-z0-9._-]+)")
 _WT_RE = re.compile(r"-wt-[A-Za-z0-9_-]+$")
 
 # A module is the first path segment, except inside a monorepo container,
@@ -134,6 +133,19 @@ NO_MODULE = "(no module)"
 WHOLE_REPO = "(whole repo)"
 
 
+def mention_re(container: str) -> re.Pattern[str]:
+    """The pattern that recognises a sibling repo named in a transcript record.
+
+    ``container`` is the name of the directory the repos sit in — ``repos`` in
+    this workspace, whatever it is elsewhere. It is a parameter and not the
+    literal ``repos/`` it started as: aegis ships on PyPI and takes a path
+    precisely because it has no such convention, and hard-coding one made every
+    mention-only session score 0 for anyone with a different layout, with
+    output that looked plausible.
+    """
+    return re.compile(rf"{re.escape(container)}/([A-Za-z0-9._-]+)")
+
+
 def repo_roots(repo_path: Path) -> tuple[str, ...]:
     """The strings a cwd must start with to count as inside this repo.
 
@@ -153,14 +165,17 @@ def cwd_inside(cwd: str | None, roots: tuple[str, ...]) -> bool:
     return cwd.startswith(wt_prefix)
 
 
-def repos_mentioned(text: str, fold: str | None = None) -> set[str]:
-    """Every ``repos/<name>`` in one record, worktree suffixes folded away.
+def repos_mentioned(
+    text: str, pattern: re.Pattern[str], fold: str | None = None
+) -> set[str]:
+    """Every ``<container>/<name>`` in one record, worktree suffixes folded away.
 
-    ``fold`` names the repo under measurement: any mention starting with it
-    (``aegis-wt-slice2``) folds onto it.
+    ``pattern`` comes from :func:`mention_re`. ``fold`` names the repo under
+    measurement: any mention starting with it (``aegis-wt-slice2``) folds onto
+    it.
     """
     found: set[str] = set()
-    for match in REPO_RE.finditer(text):
+    for match in pattern.finditer(text):
         name = match.group(1)
         if fold and name.startswith(fold):
             name = fold

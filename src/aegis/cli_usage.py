@@ -90,9 +90,12 @@ def repo_cost(
         typer.echo(f"not a git repo: {target}")
         raise typer.Exit(2)
     result = measure(target, options)
-    if options.state_dir:
-        write_cache(options.state_dir, result)
     if as_json:
+        # Only --json caches, as documented. Writing on every run would let a
+        # windowed table run silently replace the figure aegis_repo_cost serves,
+        # with nothing in the payload marking it as windowed.
+        if options.state_dir:
+            write_cache(options.state_dir, result)
         typer.echo(json.dumps(result.to_dict(), indent=1, default=str))
     else:
         typer.echo("\n".join(repo_lines(result)))

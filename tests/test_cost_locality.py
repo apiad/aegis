@@ -3,6 +3,7 @@ from pathlib import Path
 from aegis.cost.locality import (
     classify,
     cwd_inside,
+    mention_re,
     module_of,
     repo_roots,
     repos_mentioned,
@@ -29,8 +30,15 @@ def test_cwd_substring_does_not_count_as_the_repo(tmp_path):
 
 def test_worktree_mentions_fold_onto_the_repo():
     text = "editing repos/aegis-wt-slice2/src/x.py and repos/une-tools/app.py"
-    assert repos_mentioned(text, fold="aegis") == {"aegis", "une-tools"}
-    assert repos_mentioned(text) == {"aegis", "une-tools"}
+    pattern = mention_re("repos")
+    assert repos_mentioned(text, pattern, fold="aegis") == {"aegis", "une-tools"}
+    assert repos_mentioned(text, pattern) == {"aegis", "une-tools"}
+
+
+def test_the_container_directory_is_a_parameter_not_a_hardcoded_repos():
+    text = "editing projects/widget/src/main.py and repos/aegis/src/cli.py"
+    assert repos_mentioned(text, mention_re("projects")) == {"widget"}
+    assert repos_mentioned(text, mention_re("repos")) == {"aegis"}
 
 
 def test_share_is_the_record_ratio_when_cwd_is_elsewhere():

@@ -638,12 +638,22 @@ def repo_cost_payload(state_dir: Path, repo: str, *, now: str | None = None) -> 
         age = round((at - generated).total_seconds() / 3600, 2)
     return {
         "repo": data.get("repo", repo),
+        # The window and the path travel with the figure. The cache is keyed by
+        # bare repo name, so a windowed run and a full one write the same file,
+        # and two repos sharing a basename collide. A caller told only the
+        # dollars cannot tell a month from a project.
+        "path": data.get("path"),
+        "since": data.get("since"),
+        "until": data.get("until"),
         "cost_usd": data.get("cost_usd"),
         "strict_usd": data.get("strict_usd"),
         "coverage": data.get("coverage"),
         "hours": data.get("hours"),
         "commits": (data.get("git") or {}).get("n_commits"),
         "modules": dict(list((data.get("modules") or {}).items())[:10]),
+        # Work the price registry had no rate for. Without it an agent reads a
+        # repo built on OpenCode as cheap.
+        "unpriced": data.get("unpriced") or {},
         "generated": data.get("generated"),
         "cache_age_hours": age,
         "note": "API list-price equivalents, not an invoice",

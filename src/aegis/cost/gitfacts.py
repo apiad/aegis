@@ -71,33 +71,20 @@ def coverage(dates: list[str], first_seen: str | None) -> float:
     return sum(1 for d in dates if d >= cut) / len(dates)
 
 
-def git_facts(
-    repo_path: Path,
-    *,
-    since: str | None = None,
-    until: str | None = None,
-    split_dirs: frozenset[str] = SPLIT_DIRS,
-    exclude: tuple[str, ...] = (),
-) -> GitFacts:
-    window: list[str] = []
-    if since:
-        window.append(f"--since={since}")
-    if until:
-        window.append(f"--until={until} 23:59:59")
-    raw = _sh(
-        repo_path,
-        "log",
-        "--all",
-        "--no-merges",
-        "--date=iso-strict",
-        f"--format=%H{SEP}%ad{SEP}%an{SEP}%s",
-        "--numstat",
-        *window,
-    )
+def parse_log(raw: str, *, exclude: tuple[str, ...] = ()) -> list[dict]:
+    """Parse ``git log --format=...%s --numstat`` output into commit dicts.
 
+    Pure, and separate from ``git_facts`` because trap 2 is a parsing rule and a
+    test that goes through a real repo cannot see it: a commit whose subject
+    holds a \x1e still yields a findable header either way, and only the subject
+    comes back truncated. Feed this function a raw string to check the rule.
+
+    Two things are load-bearing and must stay together. ``SEP`` is \x01, and the
+    split is ``split("\n")`` — Python also breaks lines on \x1c-\x1e, so a
+    \x1e separator parsed with ``splitlines()`` returns zero commits, silently.
+    """
     commits: list[dict] = []
     current: dict | None = None
-    # NB: split on "\n", never splitlines(). See the module docstring.
     for line in raw.split("\n"):
         if SEP in line:
             if current:
@@ -125,6 +112,34 @@ def git_facts(
                 )
     if current:
         commits.append(current)
+    return commits
+
+
+def git_facts(
+    repo_path: Path,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    split_dirs: frozenset[str] = SPLIT_DIRS,
+    exclude: tuple[str, ...] = (),
+) -> GitFacts:
+    window: list[str] = []
+    if since:
+        window.append(f"--since={since}")
+    if until:
+        window.append(f"--until={until} 23:59:59")
+    raw = _sh(
+        repo_path,
+        "log",
+        "--all",
+        "--no-merges",
+        "--date=iso-strict",
+        f"--format=%H{SEP}%ad{SEP}%an{SEP}%s",
+        "--numstat",
+        *window,
+    )
+
+    commits = parse_log(raw, exclude=exclude)
 
     weeks: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     types: collections.Counter = collections.Counter()

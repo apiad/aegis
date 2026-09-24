@@ -32,10 +32,16 @@ which is what the next section describes.
 **Cost.** Token counts priced against the model registry, reported as
 API-list-price equivalents. The invoice is a flat-rate subscription, so the
 dollar figure exists to compare weeks and modules against each other, and to
-price the same work somewhere that does pay per token. `Result.cost_usd` is
-reported alongside as a cross-check, never as the headline, because it is absent
-from the two foreign stores and because its cumulative-with-resets semantics are
-a claude-code detail that ACP does not share.
+price the same work somewhere that does pay per token.
+
+`Result.cost_usd` is not read at all. An earlier draft of this spec asked for it
+beside the token-priced figure as a cross-check; that was dropped during
+implementation, because a column present for claude-code sessions and blank for
+the two foreign stores, whose per-turn-versus-cumulative meaning also differs by
+harness, is a second number a reader must be taught to distrust. `docs/usage.md`
+explains the gap between `aegis usage` and `aegis usage repo` in prose instead,
+and the cross-check that actually ran was against the predecessor tool: 0.14% on
+`aegis` over sixteen weeks, recorded in the workspace know-how.
 
 **Volume.** Commits, churn per module, and lines in the tree today, each
 classified into code, prose, data and binary.
@@ -196,5 +202,6 @@ same window, and the docs must say why rather than let a reader discover it.
 `aegis usage` reports claude-code's own billed `cost_usd` over
 `<state>/sessions/` alone. `aegis usage repo` reports token math at list price
 over four stores. The gap is the two foreign stores plus the pricing method, and
-printing the billed figure beside the token-priced one in the same table is what
-makes the gap inspectable instead of alarming.
+`docs/usage.md` carries that
+explanation in its own paragraph, which is what makes the gap inspectable
+instead of alarming.

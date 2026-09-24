@@ -23,6 +23,7 @@ from __future__ import annotations
 import collections
 import gzip
 import json
+import logging
 import re
 import time
 from collections.abc import Iterable
@@ -35,6 +36,7 @@ from aegis.cost.locality import (
     NOISE_DIRS,
     ROOT_MODULE,
     SPLIT_DIRS,
+    mention_re,
     module_of,
     repos_mentioned,
 )
@@ -44,6 +46,8 @@ from aegis.usage.aggregate import resolve_prices
 # 5-minute one; the aegis event stream does not split them, so the share is
 # taken from the claude-code rows read in the same run.
 CACHE_1H_MULT = 2
+
+log = logging.getLogger(__name__)
 
 _PER_MESSAGE_EVENTS = ("AssistantThinking", "AssistantText", "ToolUse")
 
@@ -143,18 +147,25 @@ class Scanner:
         repo: str | None,
         repo_path: Path,
         *,
+        container: str,
         since: str | None = None,
         until: str | None = None,
         split_dirs: frozenset[str] = SPLIT_DIRS,
     ) -> None:
         self.repo = repo
         self.repo_path = Path(repo_path)
+        #: The directory sibling repos live in, so a mention is recognised by
+        #: the layout in front of us rather than by a hard-coded ``repos/``.
+        self.mention_re = mention_re(container)
         self.multi = repo is None
         self.since = since
         self.until = until
         self.split_dirs = split_dirs
         self.sessions: dict[str, SessionScan] = {}
         self.seen: set[str] = set()
+        #: session key -> read-by-message verdict, so two copies of one session
+        #: cannot be read two different ways. See scan_aegis.
+        self._verdict: dict[str, bool] = {}
         self.first_seen: str | None = None
         self.elapsed_s: float = 0.0
         self.module_re = (
@@ -193,7 +204,7 @@ class Scanner:
         return scan
 
     def _note_paths(self, scan: SessionScan, text: str) -> None:
-        names = repos_mentioned(text, fold=self.repo)
+        names = repos_mentioned(text, self.mention_re, fold=self.repo)
         for name in names:
             scan.repo_records[name] += 1
         if not self.multi and self.repo in names and self.module_re is not None:
@@ -263,7 +274,21 @@ class Scanner:
         except OSError:
             return
         with handle:
-            for line in handle:
+            # gzip only discovers truncation while decompressing, inside this
+            # loop, and raises EOFError, which is not an OSError. A
+            # claude-import run killed partway through leaves exactly that
+            # file, and DESIGN.md's rule is that a damaged file never takes a
+            # session down: keep whatever decompressed and move on.
+            while True:
+                try:
+                    line = next(handle, None)
+                except Exception:  # noqa: BLE001 — truncated / corrupt archive
+                    log.warning(
+                        "damaged transcript archive, keeping what parsed: %s", path
+                    )
+                    return
+                if line is None:
+                    return
                 try:
                     record = json.loads(line)
                 except (ValueError, TypeError):
@@ -325,31 +350,47 @@ class Scanner:
         except OSError:
             return
 
-        by_message = any(
+        key = f"aegis:{path.stem}"
+        # The verdict is per SESSION, not per file. One session can exist in
+        # both sessions/ and backfill/ under the same stem, and the two copies
+        # can disagree: if one is read by message and the other by Result, the
+        # two key spaces do not collide and the same turn is counted twice.
+        # First file to decide wins for the whole session.
+        file_says_by_message = any(
             (rec.get("event") or {}).get("t") in _PER_MESSAGE_EVENTS
             and (rec.get("event") or {}).get("usage")
             for rec, _ in records
         )
-
-        key = f"aegis:{path.stem}"
+        by_message = self._verdict.setdefault(key, file_says_by_message)
         model, provider, cwd, scan = DEFAULT_MODEL, DEFAULT_PROVIDER, None, None
         result_index = 0
+        # The session header is read before the window filter, never after.
+        # SessionMeta and SystemInit are the only record of a session's
+        # provider, model and cwd — per-message events carry none of the three
+        # — and they sit at the session's start. A --since that lands after
+        # them would otherwise reprice the whole session at the default model's
+        # rate and lose its cwd, dropping it from share 1.0 to the record
+        # ratio. Both are silent.
+        for record, _ in records:
+            event = record.get("event") or {}
+            if event.get("t") == "SessionMeta":
+                cwd = event.get("cwd") or cwd
+                provider = event.get("provider") or provider
+            elif event.get("t") == "SystemInit":
+                model = event.get("model") or model
+
         for record, line in records:
             event = record.get("event") or {}
             kind = event.get("t")
             ts = record.get("aegis_ts")
             if not in_window(ts, self.since, self.until):
                 continue
-            if kind == "SessionMeta":
-                cwd = event.get("cwd") or cwd
-                provider = event.get("provider") or provider
             if scan is None:
                 scan = self._session(key, "aegis", cwd, provider)
             elif cwd and not scan.cwd:
                 scan.cwd = cwd
             self._note_paths(scan, line)
-            if kind == "SystemInit":
-                model = event.get("model") or model
+            if kind in ("SessionMeta", "SystemInit"):
                 continue
 
             if by_message:
@@ -392,14 +433,23 @@ class Scanner:
         *,
         foreign: bool = True,
     ) -> float:
+        """Read every store. ``claude_roots`` is ``(path, source, prefix)``.
+
+        ``foreign=False`` drops the stores aegis does not own, which is
+        ``~/.claude/projects`` and nothing else. A root the user named with
+        ``--extra-root`` carries source ``"extra"`` and is always read: it was
+        asked for explicitly, and dropping it silently returns 0.00 USD to
+        someone measuring only a synced host.
+        """
         started = time.monotonic()
         claude_files: list[tuple[Path, str, str]] = []
-        if foreign:
-            for root, source, prefix in claude_roots:
-                if root.exists():
-                    claude_files += [
-                        (f, source, prefix) for f in sorted(root.rglob("*.jsonl"))
-                    ]
+        for root, source, prefix in claude_roots:
+            if not foreign and source != "extra":
+                continue
+            if root.exists():
+                claude_files += [
+                    (f, source, prefix) for f in sorted(root.rglob("*.jsonl"))
+                ]
         gz_files: list[Path] = []
         aegis_files: list[Path] = []
         if state_dir:

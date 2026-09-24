@@ -181,3 +181,141 @@ def test_an_unpriceable_session_is_declared_not_swallowed(cost_tree, monkeypatch
     # 5,600 tokens to "0 M" makes the line say nothing.
     assert "5,600 tokens" in result.output
     assert "0 M tokens" not in result.output
+
+
+def test_a_zero_denominator_prints_na_not_a_number_nine_orders_out(
+    cost_tree, monkeypatch
+):
+    """max(hours, 1e-9) turns a division by zero into 5,000,000,000.00. A narrow
+    window or a prose-only repo hits it, and a unit cost that wrong is worse
+    than no unit cost."""
+    import json as _json
+
+    sessions = cost_tree / ".aegis" / "state" / "sessions"
+    # One call, so no gap between calls exists and assisted hours are zero.
+    sessions.joinpath("single.jsonl").write_text(
+        "\n".join(
+            _json.dumps({"v": 1, "aegis_ts": ts, "event": event})
+            for ts, event in [
+                ("2026-06-04T09:00:00.000000Z",
+                 {"t": "SessionMeta", "handle": "single", "provider": "claude-code",
+                  "cwd": str(cost_tree / "repos" / "aegis")}),
+                ("2026-06-04T09:00:01.000000Z",
+                 {"t": "SystemInit", "model": "claude-opus-4-7"}),
+                ("2026-06-04T09:00:02.000000Z",
+                 {"t": "AssistantText", "text": "x", "message_id": "solo",
+                  "usage": {"input": 1000, "cache_creation": 0, "cache_read": 0,
+                            "output": 0}}),
+            ]
+        )
+        + "\n"
+    )
+    monkeypatch.chdir(cost_tree)
+
+    result = runner.invoke(
+        app,
+        ["repo", str(cost_tree / "repos" / "aegis"), "--no-foreign",
+         "--since", "2026-06-04",
+         "--state", str(cost_tree / ".aegis" / "state")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "per assisted hour     n/a" in result.output
+    assert "per 1k code lines     n/a" in result.output
+    assert "5,000,000,000" not in result.output
+    # Raw tokens on the headline too: "0 M" next to a real dollar figure is a
+    # report contradicting itself.
+    assert "1,000 tokens" in result.output
+
+
+def test_a_state_dir_with_no_transcripts_says_so_instead_of_reporting_zero(
+    cost_tree, monkeypatch, tmp_path
+):
+    """The target is named by absolute path, so nothing signals that the answer
+    came from a store chosen by the shell's cwd. An empty store must not look
+    like a free repo."""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repo", str(cost_tree / "repos" / "aegis"), "--no-foreign",
+         "--state", str(tmp_path / "empty-state")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "no transcripts found" in result.output
+
+
+def test_the_cache_is_written_only_when_json_is_asked_for(cost_tree, monkeypatch):
+    """The docs and the spec both say --json caches. Writing on every run means a
+    windowed table run silently replaces the figure the MCP tool serves."""
+    monkeypatch.chdir(cost_tree)
+    state = cost_tree / ".aegis" / "state"
+    args = ["repo", str(cost_tree / "repos" / "aegis"), "--no-foreign",
+            "--state", str(state)]
+
+    assert runner.invoke(app, args).exit_code == 0
+    assert not (state / "cost" / "aegis.json").exists()
+
+    assert runner.invoke(app, [*args, "--json"]).exit_code == 0
+    assert (state / "cost" / "aegis.json").exists()
+
+
+def test_a_sweep_reports_unpriced_work_instead_of_a_silent_zero(
+    cost_tree, monkeypatch
+):
+    """`aegis usage repos` is the command built for cross-repo comparison. A repo
+    whose sessions have no rate must not appear as 0.00 with nothing said, which
+    is trap 6 reintroduced one command over."""
+    import json as _json
+
+    sessions = cost_tree / ".aegis" / "state" / "sessions"
+    sessions.joinpath("oc.jsonl").write_text(
+        "\n".join(
+            _json.dumps({"v": 1, "aegis_ts": ts, "event": event})
+            for ts, event in [
+                ("2026-06-05T09:00:00.000000Z",
+                 {"t": "SessionMeta", "handle": "oc", "provider": "opencode",
+                  "cwd": str(cost_tree / "repos" / "une-tools")}),
+                ("2026-06-05T09:00:01.000000Z",
+                 {"t": "SystemInit", "model": "OpenCode"}),
+                ("2026-06-05T09:05:00.000000Z",
+                 {"t": "Result", "duration_ms": 1000, "is_error": False,
+                  "usage": {"input": 1000, "cache_creation": 0,
+                            "cache_read": 14_000_000, "output": 200}}),
+            ]
+        )
+        + "\n"
+    )
+    monkeypatch.chdir(cost_tree)
+
+    result = runner.invoke(
+        app,
+        ["repos", str(cost_tree / "repos"), "--no-foreign",
+         "--state", str(cost_tree / ".aegis" / "state")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "unpriced" in result.output.lower()
+    assert "14,001,200" in result.output
+
+
+def test_sweep_json_does_not_present_uncomputed_fields_as_zero(
+    cost_tree, monkeypatch
+):
+    """A consumer reading strict_usd: 0.0 concludes the strict attribution is
+    zero, which is the error bar the whole measurement exists to publish."""
+    monkeypatch.chdir(cost_tree)
+
+    result = runner.invoke(
+        app,
+        ["repos", str(cost_tree / "repos"), "--no-foreign",
+         "--state", str(cost_tree / ".aegis" / "state"), "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    rows = json.loads(result.output)
+    assert rows and rows[0]["strict_usd"] is None
+    assert rows[0]["workspace_usd"] is None
+    assert rows[0]["bands"] is None
+    assert rows[0]["cost_usd"] is not None

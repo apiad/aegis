@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from aegis.cost.gitfacts import coverage, git_facts
+from aegis.cost.gitfacts import coverage, git_facts, parse_log
 from aegis.cost.locality import SPLIT_DIRS
 
 
@@ -56,6 +56,7 @@ def test_record_separator_in_a_subject_does_not_swallow_commits(repo):
     facts = git_facts(repo, since=None, until=None, split_dirs=SPLIT_DIRS, exclude=())
 
     assert facts.n_commits == 3
+    assert facts.types["fix"]["commits"] == 1
 
 
 def test_a_binary_never_counts_as_a_line_of_text(repo):
@@ -134,3 +135,19 @@ def test_a_window_after_every_commit_yields_no_commits_and_full_coverage(repo):
     assert facts.dates == []
     assert facts.first is None and facts.last is None
     assert coverage(facts.dates, "2026-05-29T00:00:00Z") == 1.0
+
+
+def test_a_record_separator_in_a_subject_survives_the_parser():
+    """Trap 2, at the level the rule lives on. The \x01 below is written out
+    literally rather than read from gitfacts.SEP: changing the constant must
+    break this test, and building the fixture from it would hide that."""
+    raw = (
+        "abc123\x012026-06-02T12:00:00+00:00\x01Tester\x01fix: a \x1e b \x1c c\n"
+        "3\t1\tsrc/main.py\n"
+    )
+
+    commits = parse_log(raw)
+
+    assert len(commits) == 1
+    assert commits[0]["subject"] == "fix: a \x1e b \x1c c"
+    assert commits[0]["files"] == [(3, 1, "src/main.py")]

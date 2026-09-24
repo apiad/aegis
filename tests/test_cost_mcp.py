@@ -39,3 +39,39 @@ def test_repo_cost_tool_says_where_it_looked_when_there_is_no_cache(tmp_path):
     assert "error" in payload
     assert "aegis.json" in payload["error"]
     assert "refresh" in payload["error"]
+
+
+def test_the_payload_carries_the_window_that_produced_it(tmp_path):
+    """A windowed run overwrites the same cache file as a full run, so an agent
+    handed a figure with no since/until cannot tell a month from a project. That
+    is trap 4 in a different costume."""
+    state = tmp_path / "state"
+    path = cache_path(state, "aegis")
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "repo": "aegis",
+                "path": "/home/apiad/Workspace/repos/aegis",
+                "since": "2026-08-01",
+                "until": "2026-08-31",
+                "cost_usd": 12.0,
+                "strict_usd": 11.0,
+                "coverage": 1.0,
+                "hours": 3.0,
+                "generated": "2026-09-24T12:00:00+00:00",
+                "modules": {},
+                "unpriced": {"sessions": 2.0, "calls": 5, "tokens": 45694},
+                "git": {"n_commits": 7},
+            }
+        )
+    )
+
+    payload = repo_cost_payload(state, "aegis", now="2026-09-24T12:00:00+00:00")
+
+    assert payload["since"] == "2026-08-01"
+    assert payload["until"] == "2026-08-31"
+    assert payload["path"] == "/home/apiad/Workspace/repos/aegis"
+    # Unpriced work travels too: an agent told only the dollars would read a
+    # repo built on OpenCode as cheap.
+    assert payload["unpriced"]["tokens"] == 45694

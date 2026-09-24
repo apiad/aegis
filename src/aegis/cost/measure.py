@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import collections
 import json
+import os
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -71,24 +72,31 @@ class RepoCost:
     until: str | None
     generated: str
     cost_usd: float
-    strict_usd: float
-    workspace_usd: float
-    tokens: dict[str, float]
+    # ``None``, never 0.0, for anything a given path did not compute. `sweep`
+    # skips the per-session breakdowns, and a consumer reading strict_usd: 0.0
+    # would conclude the strict attribution is zero — which is the error bar the
+    # whole measurement exists to publish.
+    strict_usd: float | None
+    workspace_usd: float | None
+    tokens: dict[str, float] | None
     calls: float
-    sessions: float
+    sessions: float | None
     hours: float
     coverage: float
     first_seen: str | None
-    weeks: dict[str, dict[str, float]]
-    modules: dict[str, float]
-    models: dict[str, float]
-    sources: dict[str, float]
+    weeks: dict[str, dict[str, float]] | None
+    modules: dict[str, float] | None
+    models: dict[str, float] | None
+    sources: dict[str, float] | None
     # Calls and tokens the price registry had no rate for, attributed the same
     # way as cost. Reported rather than folded into zero: see Scanner._add.
     unpriced: dict[str, float]
-    bands: dict[str, dict[str, float]]
+    bands: dict[str, dict[str, float]] | None
     git: GitFacts
     elapsed_s: float
+    # The store the figures came from, so a report can say where it looked when
+    # it found nothing.
+    state_dir: str | None = None
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -142,6 +150,7 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
     scanner = Scanner(
         name,
         repo_path,
+        container=repo_path.parent.name,
         since=options.since,
         until=options.until,
         split_dirs=options.split_dirs,
@@ -242,6 +251,7 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
         bands={k: dict(v) for k, v in bands.items()},
         git=facts,
         elapsed_s=scanner.elapsed_s,
+        state_dir=str(options.state_dir) if options.state_dir else None,
     )
 
 
@@ -257,6 +267,7 @@ def sweep(directory: Path, options: CostOptions) -> list[RepoCost]:
     scanner = Scanner(
         None,
         directory,
+        container=directory.name,
         since=options.since,
         until=options.until,
         split_dirs=options.split_dirs,
@@ -292,6 +303,7 @@ def sweep(directory: Path, options: CostOptions) -> list[RepoCost]:
             continue  # a broken repo must not stop the sweep
         roots_for_repo = repo_roots(repo_path)
         cost = calls = hours = 0.0
+        unpriced: collections.Counter = collections.Counter()
         for scan, own_cost, own_calls, own_hours in precomputed:
             share = session_share(
                 repo_path.name, scan.repo_records, scan.cwd, roots_for_repo
@@ -301,6 +313,10 @@ def sweep(directory: Path, options: CostOptions) -> list[RepoCost]:
             cost += own_cost * share
             calls += own_calls * share
             hours += own_hours * share
+            if scan.unpriced:
+                unpriced["sessions"] += share
+                for key in ("calls", "tokens"):
+                    unpriced[key] += scan.unpriced[key] * share
         out.append(
             RepoCost(
                 repo=repo_path.name,
@@ -309,22 +325,23 @@ def sweep(directory: Path, options: CostOptions) -> list[RepoCost]:
                 until=options.until,
                 generated=generated,
                 cost_usd=cost,
-                strict_usd=0.0,
-                workspace_usd=0.0,
-                tokens={},
+                strict_usd=None,
+                workspace_usd=None,
+                tokens=None,
                 calls=calls,
-                sessions=0.0,
+                sessions=None,
                 hours=hours,
                 coverage=coverage(facts.dates, scanner.first_seen),
                 first_seen=scanner.first_seen,
-                weeks={},
-                modules={},
-                models={},
-                sources={},
-                unpriced={},
-                bands={},
+                weeks=None,
+                modules=None,
+                models=None,
+                sources=None,
+                unpriced=dict(unpriced),
+                bands=None,
                 git=facts,
                 elapsed_s=scanner.elapsed_s,
+                state_dir=str(options.state_dir) if options.state_dir else None,
             )
         )
     out.sort(key=lambda r: -r.cost_usd)
@@ -336,9 +353,18 @@ def cache_path(state_dir: Path, repo: str) -> Path:
 
 
 def write_cache(state_dir: Path, result: RepoCost) -> Path:
+    """Write the cache, atomically.
+
+    Other agents share this state directory and read the same path. An
+    in-place truncate-and-rewrite lets a concurrent reader see a partial file,
+    which ``read_cache`` swallows and reports as "no cached measurement" — a
+    wrong answer rather than a slow one.
+    """
     path = cache_path(state_dir, result.repo)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result.to_dict(), indent=1, default=str))
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(result.to_dict(), indent=1, default=str))
+    os.replace(tmp, path)
     return path
 
 

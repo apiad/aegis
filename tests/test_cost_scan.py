@@ -61,7 +61,7 @@ def test_an_acp_session_is_priced_from_its_result_not_from_its_messages(tmp_path
     repo_path.mkdir(parents=True)
     state = _state_with_acp_session(tmp_path, repo_path)
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([], state, foreign=False)
 
     session = next(iter(scanner.sessions.values()))
@@ -128,7 +128,7 @@ def test_a_claude_code_session_is_read_by_message_not_by_result(tmp_path):
         + "\n"
     )
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([], state, foreign=False)
 
     session = next(iter(scanner.sessions.values()))
@@ -173,7 +173,7 @@ def test_the_same_message_in_two_stores_is_counted_once(tmp_path):
     with gzip.open(state / "claude-import" / "s1.jsonl.gz", "wt") as fh:
         fh.write(line + "\n")
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([(projects, "claude", "c")], state, foreign=True)
 
     total_calls = sum(
@@ -190,7 +190,7 @@ def test_no_foreign_skips_the_home_projects_store(tmp_path):
     projects.mkdir(parents=True)
     (projects / "s1.jsonl").write_text(_claude_record(repo_path) + "\n")
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([(projects, "claude", "c")], None, foreign=False)
 
     assert scanner.sessions == {}
@@ -206,7 +206,7 @@ def test_a_truncated_json_line_does_not_stop_the_scan(tmp_path):
         '{"timestamp": "2026-06-01T11:0\n' + _claude_record(repo_path) + "\n"
     )
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([(projects, "claude", "c")], None, foreign=True)
 
     assert len(scanner.seen) == 1
@@ -234,7 +234,7 @@ def test_a_gemini_session_is_priced_at_gemini_rates_not_at_zero_or_opus(tmp_path
         ]) + "\n"
     )
 
-    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
     scanner.run([], state, foreign=False)
 
     session = next(iter(scanner.sessions.values()))
@@ -245,5 +245,92 @@ def test_a_gemini_session_is_priced_at_gemini_rates_not_at_zero_or_opus(tmp_path
     gemini = resolve_prices("gemini", "gemini-3-pro")
     opus = resolve_prices("claude-code", "opus")
     assert gemini is not None and opus is not None
+    assert cost == pytest.approx(float(gemini.input), rel=1e-9)
+    assert cost != pytest.approx(float(opus.input), rel=1e-9)
+
+
+def test_a_truncated_gzip_archive_does_not_take_the_command_down(tmp_path):
+    """DESIGN.md: a damaged file never takes a session down. gzip only finds
+    truncation while decompressing, inside the read loop, and raises EOFError,
+    which is not an OSError — so guarding only the open() call lets a
+    claude-import run that was killed partway through abort the whole
+    measurement with a traceback."""
+    repo_path = tmp_path / "repos" / "aegis"
+    repo_path.mkdir(parents=True)
+    state = tmp_path / ".aegis" / "state"
+    (state / "claude-import").mkdir(parents=True)
+
+    archive = state / "claude-import" / "s1.jsonl.gz"
+    with gzip.open(archive, "wt") as fh:
+        for i in range(200):
+            fh.write(
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-01T12:00:00.000Z",
+                        "type": "assistant",
+                        "sessionId": "s1",
+                        "cwd": str(repo_path),
+                        "message": {
+                            "id": f"msg_{i}",
+                            "model": "claude-opus-4-7",
+                            "usage": {"input_tokens": 10, "output_tokens": 20},
+                        },
+                    }
+                )
+                + "\n"
+            )
+    whole = archive.read_bytes()
+    archive.write_bytes(whole[: len(whole) // 2])
+
+    scanner = Scanner("aegis", repo_path, container="repos", since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner.run([], state, foreign=False)  # must not raise
+
+    # Whatever decompressed before the truncation is kept.
+    assert len(scanner.seen) > 0
+
+
+def _gemini_session_across_midnight(tmp_path, repo_path):
+    state = tmp_path / ".aegis" / "state"
+    (state / "sessions").mkdir(parents=True)
+    (state / "sessions" / "merry-minsky.jsonl").write_text(
+        "\n".join([
+            _ev("2026-08-06T23:50:00.000000Z", t="SessionMeta", handle="merry-minsky",
+                provider="gemini", cwd=str(repo_path)),
+            _ev("2026-08-06T23:50:01.000000Z", t="SystemInit", model="gemini-3-pro"),
+            _ev("2026-08-07T00:10:00.000000Z", t="Result", duration_ms=1000,
+                is_error=False,
+                usage={"input": 1_000_000, "cache_creation": 0, "cache_read": 0,
+                       "output": 0}),
+        ]) + "\n"
+    )
+    return state
+
+
+def test_a_window_that_cuts_the_session_header_keeps_its_provider_and_cwd(tmp_path):
+    """SessionMeta and SystemInit are the only place a session's provider, model
+    and cwd are recorded, and per-message events never carry a model. Applying
+    the --since filter before reading them silently reprices the session at the
+    default model's rate and drops its cwd, which also drops it from share 1.0
+    to the record ratio. 217 of 1,169 session logs in this workspace span a day
+    boundary, so any --since on one of those days trips it — including the
+    --since the tool's own coverage warning tells the reader to pass."""
+    repo_path = tmp_path / "repos" / "aegis"
+    repo_path.mkdir(parents=True)
+    state = _gemini_session_across_midnight(tmp_path, repo_path)
+
+    from aegis.usage.aggregate import resolve_prices
+
+    gemini = resolve_prices("gemini", "gemini-3-pro")
+    opus = resolve_prices("claude-code", "opus")
+    assert gemini is not None and opus is not None and gemini.input != opus.input
+
+    scanner = Scanner("aegis", repo_path, container="repos", since="2026-08-07", until=None,
+                      split_dirs=SPLIT_DIRS)
+    scanner.run([], state, foreign=False)
+
+    session = next(iter(scanner.sessions.values()))
+    cost = sum(c["cost_micro"] for c in session.usage.values()) / 1e6
+    assert session.provider == "gemini"
+    assert session.cwd == str(repo_path)
     assert cost == pytest.approx(float(gemini.input), rel=1e-9)
     assert cost != pytest.approx(float(opus.input), rel=1e-9)
