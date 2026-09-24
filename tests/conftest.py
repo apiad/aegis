@@ -463,3 +463,106 @@ def pane_app():
             yield pane, pilot
 
     return _make
+
+
+# ---------------------------------------------------------------------------
+# aegis usage repo / aegis usage repos — a two-repo workspace with three
+# aegis sessions: one inside the target repo, one mixed, one entirely
+# elsewhere. Shared by tests/test_cost_measure.py and tests/test_cost_cli.py.
+# ---------------------------------------------------------------------------
+
+
+def _cost_commit(repo, message, paths, date):
+    import subprocess
+
+    stamp = f"{date}T12:00:00+00:00"
+    subprocess.run(
+        ("git", "add", "--", *paths), cwd=repo, check=True, capture_output=True
+    )
+    subprocess.run(
+        ("git", "commit", "-q", "-m", message),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(repo),
+            "GIT_AUTHOR_DATE": stamp,
+            "GIT_COMMITTER_DATE": stamp,
+            "GIT_AUTHOR_NAME": "Tester",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "Tester",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+
+
+@pytest.fixture
+def cost_tree(tmp_path):
+    import json
+    import subprocess
+
+    def ev(ts, **event):
+        return json.dumps({"v": 1, "aegis_ts": ts, "event": event})
+
+    def usage(n):
+        return {"input": n, "cache_creation": 0, "cache_read": n * 10, "output": n}
+
+    for name in ("aegis", "une-tools"):
+        repo = tmp_path / "repos" / name
+        repo.mkdir(parents=True)
+        subprocess.run(
+            ("git", "init", "-q", "-b", "main"), cwd=repo, check=True,
+            capture_output=True,
+        )
+        for key, value in (("user.email", "t@example.com"), ("user.name", "Tester")):
+            subprocess.run(
+                ("git", "config", key, value), cwd=repo, check=True,
+                capture_output=True,
+            )
+        (repo / "src").mkdir()
+        (repo / "src" / "main.py").write_text("a = 1\n")
+        _cost_commit(repo, "feat: start", ("src/main.py",), "2026-06-01")
+
+    sessions = tmp_path / ".aegis" / "state" / "sessions"
+    sessions.mkdir(parents=True)
+    # Working inside the target repo: share 1.0.
+    (sessions / "inside.jsonl").write_text(
+        "\n".join([
+            ev("2026-06-02T10:00:00.000000Z", t="SessionMeta", handle="inside",
+               provider="claude-code", cwd=str(tmp_path / "repos" / "aegis")),
+            ev("2026-06-02T10:00:01.000000Z", t="SystemInit",
+               model="claude-opus-4-7"),
+            ev("2026-06-02T10:00:02.000000Z", t="AssistantText", text="x",
+               message_id="m1", usage=usage(1000)),
+        ]) + "\n"
+    )
+    # Two records name aegis, one names une-tools: share 2/3. Locality
+    # counts records, so m2's two aegis paths are still one record.
+    (sessions / "mixed.jsonl").write_text(
+        "\n".join([
+            ev("2026-06-02T11:00:00.000000Z", t="SessionMeta", handle="mixed",
+               provider="claude-code", cwd=str(tmp_path)),
+            ev("2026-06-02T11:00:01.000000Z", t="SystemInit",
+               model="claude-opus-4-7"),
+            ev("2026-06-02T11:00:02.000000Z", t="AssistantText",
+               text="repos/aegis/src/a.py repos/aegis/src/b.py",
+               message_id="m2", usage=usage(1000)),
+            ev("2026-06-02T11:00:03.000000Z", t="AssistantText",
+               text="repos/aegis/src/c.py", message_id="m3", usage=usage(1)),
+            ev("2026-06-02T11:00:04.000000Z", t="AssistantText",
+               text="repos/une-tools/app.py", message_id="m4", usage=usage(1)),
+        ]) + "\n"
+    )
+    # Never names the target repo: share 0.
+    (sessions / "elsewhere.jsonl").write_text(
+        "\n".join([
+            ev("2026-06-02T12:00:00.000000Z", t="SessionMeta", handle="elsewhere",
+               provider="claude-code", cwd=str(tmp_path)),
+            ev("2026-06-02T12:00:01.000000Z", t="SystemInit",
+               model="claude-opus-4-7"),
+            ev("2026-06-02T12:00:02.000000Z", t="AssistantText",
+               text="repos/une-tools/app.py", message_id="m5", usage=usage(1000)),
+        ]) + "\n"
+    )
+    return tmp_path
