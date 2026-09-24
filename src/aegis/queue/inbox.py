@@ -1,8 +1,9 @@
 """InboxRouter — per-handle delivery channel.
 
 Pokes a live ``AgentSession`` when bound, otherwise buffers in-memory pending.
-JSONL writethrough (the state-dir parameter) lands in VS2; this VS1 build is
-memory-only.
+Every delivery is written through to ``<state_dir>/inboxes/<handle>.jsonl``
+before the poke, so a crash between the two still leaves the message on disk.
+A router built without a state dir keeps nothing and is memory-only.
 """
 
 from __future__ import annotations

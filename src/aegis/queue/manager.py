@@ -3,7 +3,9 @@
 One owner per `aegis serve` (or interactive) process. Pure FIFO per queue +
 max-parallel cap + dispatch-on-event. No background loop: dispatch is
 checked synchronously on every enqueue and on every worker completion.
-Persistence + restart replay land in VS2; this build is memory-only.
+Every lifecycle event is appended to ``<state_dir>/queues/<queue>.jsonl``, and
+``start()`` replays that log on boot so a task interrupted by a crash is
+resolved rather than lost. A manager built without a state dir keeps nothing.
 """
 
 from __future__ import annotations
@@ -177,7 +179,8 @@ class QueueManager:
     def _log(self, queue: str, event: dict) -> None:
         """Persist one lifecycle event to the queue's JSONL log.
 
-        No-op when state_dir is not configured (VS1 in-memory mode).
+        A no-op when no state dir was configured. Only test doubles and
+        embedded callers reach that branch; both brain paths hand one over.
         """
         if self._state_dir is None:
             return
@@ -764,7 +767,7 @@ class QueueManager:
             pass
         self._try_dispatch(task.queue)
 
-    # ----- VS2 lifecycle hooks --------------------------------------
+    # ----- boot and shutdown ----------------------------------------
     async def start(self) -> None:
         """Replay persisted state on boot. Tasks that were dispatched but
         never reached completed/failed are marked ``failed:interrupted``
