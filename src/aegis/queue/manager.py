@@ -179,8 +179,9 @@ class QueueManager:
     def _log(self, queue: str, event: dict) -> None:
         """Persist one lifecycle event to the queue's JSONL log.
 
-        A no-op when no state dir was configured. Only test doubles and
-        embedded callers reach that branch; both brain paths hand one over.
+        A no-op when no state dir was configured. Only test doubles reach
+        that branch: every in-repo construction site hands one over, and
+        `tests/core/test_stateful_planes_wired.py` fails if one stops.
         """
         if self._state_dir is None:
             return
