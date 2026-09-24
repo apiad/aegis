@@ -264,6 +264,16 @@ def load_config(root: Path) -> AegisConfig:
                 f"{base}: queues[{qname!r}].max_parallel must be an int "
                 f">= 1 (got {qspec.max_parallel!r})."
             )
+        if not isinstance(qspec.max_attempts, int) or qspec.max_attempts < 1:
+            raise ConfigError(
+                f"{base}: queues[{qname!r}].max_attempts must be an int "
+                f">= 1 (got {qspec.max_attempts!r})."
+            )
+        if not isinstance(qspec.recoverable_ttl_s, int) or qspec.recoverable_ttl_s < 0:
+            raise ConfigError(
+                f"{base}: queues[{qname!r}].recoverable_ttl_s must be an int "
+                f">= 0 (got {qspec.recoverable_ttl_s!r})."
+            )
 
     # An agent profile may name a default execution host; it must exist.
     for aname, aprofile in agents.items():

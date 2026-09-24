@@ -238,6 +238,10 @@ queues:
   kept before it is closed and its task failed. `0` keeps parked
   sessions forever.
 
+Both are validated at boot like `max_parallel`: a non-int, a
+`max_attempts` below `1`, or a negative `recoverable_ttl_s` aborts
+`aegis` with an error naming the queue and the key.
+
 ### Budgets (optional)
 
 Add a `budgets:` list to cap rolling USD spend or output-token volume

@@ -127,3 +127,83 @@ queues:
     q = load_queues(root)["work"]
     assert q.max_attempts == 1
     assert q.recoverable_ttl_s == 0
+
+
+def test_non_int_max_attempts_fails_loud(tmp_path):
+    root = _write(tmp_path, """
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: x
+    max_parallel: 1
+    max_attempts: two
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(root)
+    assert "max_attempts" in str(ei.value) and ">= 1" in str(ei.value)
+
+
+def test_zero_max_attempts_fails_loud(tmp_path):
+    root = _write(tmp_path, """
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: x
+    max_parallel: 1
+    max_attempts: 0
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(root)
+    assert "max_attempts" in str(ei.value) and ">= 1" in str(ei.value)
+
+
+def test_non_int_recoverable_ttl_fails_loud(tmp_path):
+    root = _write(tmp_path, """
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: x
+    max_parallel: 1
+    recoverable_ttl_s: a day
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(root)
+    assert "recoverable_ttl_s" in str(ei.value) and ">= 0" in str(ei.value)
+
+
+def test_negative_recoverable_ttl_fails_loud(tmp_path):
+    root = _write(tmp_path, """
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: x
+    max_parallel: 1
+    recoverable_ttl_s: -1
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(root)
+    assert "recoverable_ttl_s" in str(ei.value) and ">= 0" in str(ei.value)
