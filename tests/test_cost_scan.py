@@ -1,5 +1,7 @@
 import gzip
 import json
+
+import pytest
 from pathlib import Path
 
 from aegis.cost.locality import SPLIT_DIRS
@@ -68,8 +70,12 @@ def test_an_acp_session_is_priced_from_its_result_not_from_its_messages(tmp_path
         for counter in session.usage.values()
     )
     assert tokens == 91 + 163 + 45440
-    cost = sum(counter["cost_micro"] for counter in session.usage.values())
-    assert cost > 0
+    # This session's recorded model is "OpenCode", a harness name the price
+    # registry has no entry for, so the call is counted and declared unpriced
+    # rather than charged zero.
+    assert session.unpriced["calls"] == 1
+    assert session.unpriced["tokens"] == 91 + 163 + 45440
+    assert sum(c["cost_micro"] for c in session.usage.values()) == 0
 
 
 def test_a_claude_code_session_is_read_by_message_not_by_result(tmp_path):
@@ -204,3 +210,40 @@ def test_a_truncated_json_line_does_not_stop_the_scan(tmp_path):
     scanner.run([(projects, "claude", "c")], None, foreign=True)
 
     assert len(scanner.seen) == 1
+
+
+def test_a_gemini_session_is_priced_at_gemini_rates_not_at_zero_or_opus(tmp_path):
+    """The price registry keys prices by provider, and there is no `gemini`
+    model under `claude-code`. Collapsing a model to an opus/sonnet/haiku/gemini
+    family and always asking claude-code for the price returns None for Gemini
+    and silently charges nothing; defaulting to opus instead would overcharge it
+    several times over."""
+    repo_path = tmp_path / "repos" / "aegis"
+    repo_path.mkdir(parents=True)
+    state = tmp_path / ".aegis" / "state"
+    (state / "sessions").mkdir(parents=True)
+    (state / "sessions" / "merry-minsky.jsonl").write_text(
+        "\n".join([
+            _ev("2026-08-07T12:00:00.000000Z", t="SessionMeta", handle="merry-minsky",
+                provider="gemini", cwd=str(repo_path)),
+            _ev("2026-08-07T12:00:01.000000Z", t="SystemInit", model="gemini-3-pro"),
+            _ev("2026-08-07T12:05:00.000000Z", t="Result", duration_ms=1000,
+                is_error=False,
+                usage={"input": 1_000_000, "cache_creation": 0, "cache_read": 0,
+                       "output": 0}),
+        ]) + "\n"
+    )
+
+    scanner = Scanner("aegis", repo_path, since=None, until=None, split_dirs=SPLIT_DIRS)
+    scanner.run([], state, foreign=False)
+
+    session = next(iter(scanner.sessions.values()))
+    cost = sum(c["cost_micro"] for c in session.usage.values()) / 1e6
+
+    from aegis.usage.aggregate import resolve_prices
+
+    gemini = resolve_prices("gemini", "gemini-3-pro")
+    opus = resolve_prices("claude-code", "opus")
+    assert gemini is not None and opus is not None
+    assert cost == pytest.approx(float(gemini.input), rel=1e-9)
+    assert cost != pytest.approx(float(opus.input), rel=1e-9)

@@ -46,13 +46,16 @@ from aegis.usage.aggregate import resolve_prices
 CACHE_1H_MULT = 2
 
 _PER_MESSAGE_EVENTS = ("AssistantThinking", "AssistantText", "ToolUse")
-_FAMILIES = ("opus", "sonnet", "haiku", "gemini")
+
+DEFAULT_PROVIDER = "claude-code"
+DEFAULT_MODEL = "opus"
 
 
 @dataclass
 class SessionScan:
     key: str
     source: str
+    provider: str = DEFAULT_PROVIDER
     cwd: str | None = None
     first_ts: str | None = None
     last_ts: str | None = None
@@ -61,6 +64,9 @@ class SessionScan:
     modules: collections.Counter = field(default_factory=collections.Counter)
     usage: dict[tuple[str, str], collections.Counter] = field(default_factory=dict)
     timestamps: list[str] = field(default_factory=list)
+    # Calls and tokens whose (provider, model) has no price in the registry.
+    # Counted, never charged: see Scanner._add.
+    unpriced: collections.Counter = field(default_factory=collections.Counter)
 
 
 def iso_week(ts: str) -> str:
@@ -77,14 +83,6 @@ def in_window(ts: str | None, since: str | None, until: str | None) -> bool:
     if since and day < since:
         return False
     return not (until and day > until)
-
-
-def family(model: str | None, default: str = "opus") -> str:
-    low = (model or "").lower()
-    for name in _FAMILIES:
-        if name in low:
-            return name
-    return default
 
 
 def active_hours(timestamps: list[str], cap: int = 300) -> dict[str, float]:
@@ -106,11 +104,25 @@ def active_hours(timestamps: list[str], cap: int = 300) -> dict[str, float]:
 
 
 def _cost_of(
-    fam: str, inp: int, out: int, cc5: int, cc1: int, cache_read: int
-) -> float:
-    prices = resolve_prices("claude-code", fam)
+    provider: str,
+    model: str,
+    inp: int,
+    out: int,
+    cc5: int,
+    cc1: int,
+    cache_read: int,
+) -> float | None:
+    """Price one call. ``resolve_prices`` tries an exact name, then an alias,
+    then an opus/sonnet/haiku/gemini substring within that provider.
+
+    The provider is not optional. Prices are keyed by provider and there is no
+    ``gemini`` model under ``claude-code``, so asking claude-code for every
+    price returns None for a Gemini session and charges it nothing, while
+    falling back to the default model would charge it at Opus rates.
+    """
+    prices = resolve_prices(provider, model)
     if prices is None:
-        return 0.0
+        return None
     return (
         float(
             inp * prices.input
@@ -164,10 +176,18 @@ class Scanner:
         )
 
     # -- accumulation ----------------------------------------------------
-    def _session(self, key: str, source: str, cwd: str | None) -> SessionScan:
+    def _session(
+        self,
+        key: str,
+        source: str,
+        cwd: str | None,
+        provider: str = DEFAULT_PROVIDER,
+    ) -> SessionScan:
         scan = self.sessions.get(key)
         if scan is None:
-            scan = self.sessions[key] = SessionScan(key=key, source=source, cwd=cwd)
+            scan = self.sessions[key] = SessionScan(
+                key=key, source=source, provider=provider, cwd=cwd
+            )
         if cwd and not scan.cwd:
             scan.cwd = cwd
         return scan
@@ -195,7 +215,7 @@ class Scanner:
         self,
         scan: SessionScan,
         ts: str,
-        fam: str,
+        model: str,
         *,
         inp: int,
         out: int,
@@ -211,16 +231,25 @@ class Scanner:
                 scan.first_ts = ts
             if not scan.last_ts or ts > scan.last_ts:
                 scan.last_ts = ts
-        bucket = scan.usage.setdefault((iso_week(ts), fam), collections.Counter())
+        bucket = scan.usage.setdefault((iso_week(ts), model), collections.Counter())
         bucket["input"] += inp
         bucket["output"] += out
         bucket["cc5"] += cc5
         bucket["cc1"] += cc1
         bucket["cache_read"] += cache_read
         bucket["calls"] += 1
-        bucket["cost_micro"] += int(
-            round(_cost_of(fam, inp, out, cc5, cc1, cache_read) * 1e6)
-        )
+        cost = _cost_of(scan.provider, model, inp, out, cc5, cc1, cache_read)
+        if cost is None:
+            # No price for this provider and model, and both wrong answers are
+            # silent: charging zero makes the work look free, charging the
+            # default model's rate makes a Gemini turn cost Opus money. Real
+            # data forces the case — OpenCode records model "OpenCode" and
+            # Gemini records none at all — so the tokens are counted here and
+            # reported as unpriced.
+            scan.unpriced["calls"] += 1
+            scan.unpriced["tokens"] += inp + out + cc5 + cc1 + cache_read
+            return
+        bucket["cost_micro"] += int(round(cost * 1e6))
 
     # -- claude-code transcripts (plain or gzipped) ----------------------
     def scan_claude(self, path: Path, source: str, prefix: str) -> None:
@@ -266,7 +295,7 @@ class Scanner:
                 self._add(
                     scan,
                     ts or "",
-                    family(message.get("model")),
+                    message.get("model") or DEFAULT_MODEL,
                     inp=usage.get("input_tokens", 0) or 0,
                     out=usage.get("output_tokens", 0) or 0,
                     cc5=cc5,
@@ -303,7 +332,7 @@ class Scanner:
         )
 
         key = f"aegis:{path.stem}"
-        model, cwd, scan = "opus", None, None
+        model, provider, cwd, scan = DEFAULT_MODEL, DEFAULT_PROVIDER, None, None
         result_index = 0
         for record, line in records:
             event = record.get("event") or {}
@@ -313,8 +342,9 @@ class Scanner:
                 continue
             if kind == "SessionMeta":
                 cwd = event.get("cwd") or cwd
+                provider = event.get("provider") or provider
             if scan is None:
-                scan = self._session(key, "aegis", cwd)
+                scan = self._session(key, "aegis", cwd, provider)
             elif cwd and not scan.cwd:
                 scan.cwd = cwd
             self._note_paths(scan, line)
@@ -346,7 +376,7 @@ class Scanner:
             self._add(
                 scan,
                 ts or "",
-                family(event.get("model") or model),
+                event.get("model") or model,
                 inp=usage.get("input", 0) or 0,
                 out=usage.get("output", 0) or 0,
                 cc5=creation - cc1,

@@ -60,6 +60,17 @@ def repo_lines(result: RepoCost) -> list[str]:
         for module, value in list(result.modules.items())[:14]:
             lines.append(f"  {module:<28} {_usd(value):>12}")
         lines.append("")
+    if result.unpriced:
+        lines += [
+            "unpriced work (counted, not charged)",
+            f"  {result.unpriced.get('sessions', 0):.1f} sessions, "
+            f"{_num(result.unpriced.get('calls', 0))} calls, "
+            f"{_num(result.unpriced.get('tokens', 0) / 1e6)} M tokens have no rate "
+            "in the model registry",
+            "  A session whose recorded model is a harness name (OpenCode) or "
+            "absent (Gemini) cannot be priced.",
+            "",
+        ]
     lines.append("attribution bands (the error bar)")
     for band, row in result.bands.items():
         lines.append(

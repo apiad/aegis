@@ -119,3 +119,60 @@ def test_a_sweep_inside_an_outer_git_repo_still_skips_a_non_git_child(
     assert result.exit_code == 0, result.output
     assert "scratch" not in result.output
     assert "across 2 repos" in result.output
+
+
+def test_an_unpriceable_session_is_declared_not_swallowed(cost_tree, monkeypatch):
+    """A session whose model the registry has no rate for must show up as
+    unpriced work. Charging it zero would make real work look free, which is
+    the same failure mode as an uncovered commit window."""
+    import json as _json
+
+    sessions = cost_tree / ".aegis" / "state" / "sessions"
+    sessions.joinpath("opencode.jsonl").write_text(
+        "\n".join(
+            _json.dumps({"v": 1, "aegis_ts": ts, "event": event})
+            for ts, event in [
+                (
+                    "2026-06-02T13:00:00.000000Z",
+                    {
+                        "t": "SessionMeta",
+                        "handle": "opencode",
+                        "provider": "opencode",
+                        "cwd": str(cost_tree / "repos" / "aegis"),
+                    },
+                ),
+                ("2026-06-02T13:00:01.000000Z", {"t": "SystemInit", "model": "OpenCode"}),
+                (
+                    "2026-06-02T13:05:00.000000Z",
+                    {
+                        "t": "Result",
+                        "duration_ms": 1000,
+                        "is_error": False,
+                        "usage": {
+                            "input": 500,
+                            "cache_creation": 0,
+                            "cache_read": 5000,
+                            "output": 100,
+                        },
+                    },
+                ),
+            ]
+        )
+        + "\n"
+    )
+    monkeypatch.chdir(cost_tree)
+
+    result = runner.invoke(
+        app,
+        [
+            "repo",
+            str(cost_tree / "repos" / "aegis"),
+            "--no-foreign",
+            "--state",
+            str(cost_tree / ".aegis" / "state"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "unpriced work (counted, not charged)" in result.output
+    assert "1.0 sessions" in result.output

@@ -160,6 +160,7 @@ def test_build_server_registers_all_aegis_tools():
         "aegis_schedule_show", "aegis_schedule_remove",
         "aegis_schedule_logs",
         "aegis_budget_status",
+        "aegis_repo_cost",
         "aegis_view_file",
         "aegis_remind", "aegis_reminders", "aegis_reminder_cancel",
         "aegis_loop_stop",

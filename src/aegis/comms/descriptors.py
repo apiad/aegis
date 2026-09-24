@@ -422,6 +422,7 @@ _PALE_ARGS: dict[str, tuple[str, ...]] = {
     "canvas_read": ("name",),
     "term_read": ("name",),
     "task_status": ("task_id",),
+    "repo_cost": ("repo",),
     "workflow_status": ("workflow_id",),
     "workflow_cancel": ("workflow_id",),
     "group_status": ("group",),
@@ -458,6 +459,7 @@ _INTROSPECTION_VERBS = (
     "term_read",
     "task_status",
     "budget_status",
+    "repo_cost",
     "workflow_status",
     "group_status",
 )

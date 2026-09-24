@@ -1,6 +1,8 @@
 # Measuring what a repo cost to build — design
 
-**Status:** accepted 2026-09-24, unimplemented.
+**Status:** implemented 2026-09-24. `src/aegis/cost/`, `aegis usage repo`,
+`aegis usage repos`, `aegis_repo_cost`. Plan and its rulings:
+`docs/superpowers/plans/2026-09-24-repo-cost-measurement.md`.
 
 `aegis usage` answers "what did my sessions cost, by month, by model, by tool".
 It cannot answer "what did *this repository* cost to build", because an agent
@@ -10,7 +12,8 @@ tokens. This spec adds that second cut.
 The arithmetic already exists and is in production: `bin/dev-cost-report` in the
 Workspace repo produced the 35-page cost report that `repos/une-tools` ships to
 its funders. What follows moves its engine into aegis and leaves its narration
-outside. The five traps that tool paid for are restated here because a
+outside. The five traps that tool paid for are restated here, with a sixth this
+work found, because a
 reimplementation that loses them is a regression even with a green suite.
 
 ## Why this belongs in aegis
@@ -128,7 +131,23 @@ side and the output records what was dropped.
 carries a `message_id` but `usage: null`. A per-message reader takes the dedup
 key, adds zeros, and moves on. Measured on this workspace's store 2026-09-24: 6
 of 780 sessions are ACP, and all 6 price at zero under the `bin/dev-cost-report`
-reader. The `Result` path above is the fix.
+reader. The `Result` path above is the fix for the token counts.
+
+Pricing them is a second half, and it forced a change to this spec during
+implementation. Prices are keyed by provider, and there is no `gemini` model
+under `claude-code`, so collapsing a model to an opus/sonnet/haiku/gemini family
+and always asking `claude-code` for the rate returns nothing for a Gemini
+session. Every call is therefore priced by its session's own
+`SessionMeta.provider` and its recorded model name, which `resolve_prices`
+already resolves through an exact name, an alias, then a family substring within
+that provider.
+
+That still leaves calls with no rate at all, because the recorded model is not
+always a model: OpenCode writes `model: "OpenCode"`, the harness's own name, and
+the one Gemini session in this store writes none. Their tokens are counted and
+reported under **unpriced work**, never charged. Both alternatives are silent
+and both are wrong — zero makes real work look free, and falling back to the
+default model charges a Gemini turn at Opus rates.
 
 ## Commands
 

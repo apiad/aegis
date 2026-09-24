@@ -405,6 +405,77 @@ token-priced estimate, flagged `~est`. The model per session comes from
 each log's `SystemInit.model`; sessions predating that field are attributed
 to the `.aegis.yaml` `default_agent`'s model.
 
+### What a repo cost to build
+
+Where the dashboard above slices cost by month, model and tool, these two
+subcommands slice it by **repository**, and join it with git:
+
+```
+aegis usage repo <path>            # cost, volume, coverage, attribution bands
+aegis usage repo <path> --json     # the full structure, for a downstream report
+aegis usage repos <dir>            # every git repo directly under <dir>, one table
+```
+
+Shared options: `--since` / `--until` for the window, `--no-foreign` to skip
+`~/.claude/projects`, `--exclude <glob>` (repeatable) to drop paths from the git
+side, `--split <dirs>` for monorepo containers whose children are separate
+modules, `--extra-root <dir>` for another machine's transcripts, and `--state`
+to point at a state directory other than this project's.
+
+The repo is named by a **path**, not by a bare name. aegis has three roots that
+do not coincide when it is embedded, so inferring a directory from a name would
+resolve against the wrong one.
+
+**Attribution is by locality.** A session carries no project label, so for each
+record in a transcript aegis notes which repositories it mentions; a session's
+share of a repo is the fraction of its repo-mentioning records that name that
+one, and a session whose working directory is already inside the repo counts
+whole. The distribution comes out almost binary in practice, which is what makes
+the method defensible rather than a guess.
+
+Two rules run on every measurement and the output reports both. **Proportional**
+gives every session its share. **Strict** counts only sessions above 0.8, and
+counts them whole. The band between them is the error bar, and the
+`attribution bands` table at the bottom of the output shows where the sessions
+fell, so a reader can see how much of the total came from genuinely mixed work.
+
+**Coverage** is the share of the repo's commits that fall inside the window the
+transcripts actually cover. It matters because git counts every commit a repo
+ever had while cost only exists from the oldest surviving transcript, so a repo
+whose work predates that floor comes out looking free. Below 98% the output says
+so and names the floor; `aegis usage repos` flags every repo under 80% and tells
+you the `--since` that makes the rows comparable.
+
+Four transcript stores are read, deduplicated globally. Three are aegis's own
+(`sessions/`, `backfill/`, `claude-import/`) and one is foreign:
+`~/.claude/projects`, which claude-code purges after thirty days. Within one
+aegis session log, the reader chooses its path once: if any per-message event
+carries token counts it reads by message, and otherwise it reads the turn's
+`Result`. Both are needed. A claude-code session reports its counts twice and
+reading both would double it, while an ACP session (OpenCode, Gemini) carries
+`usage: null` on its messages and the real counts only on `Result`, so a
+message-only reader prices it at zero without complaining.
+
+Every call is priced by its session's own provider and recorded model name, not
+by a model family, because rates are keyed by provider and there is no `gemini`
+model under `claude-code`. Some calls still have no rate, because the recorded
+model is sometimes not a model: OpenCode writes `OpenCode` and Gemini writes
+nothing. Their tokens are counted and listed under **unpriced work**, never
+charged, since charging zero would make real work look free and falling back to
+a default model would bill a Gemini turn at Opus rates.
+
+**Why this does not match `aegis usage`.** The two commands will report different
+dollars for the same window, and the difference is not a bug in either. `aegis
+usage` reports claude-code's own billed `cost_usd` over `<state>/sessions/`
+alone. `aegis usage repo` prices token counts against the model registry over
+all four stores, and never reads `cost_usd`: it is absent from the two foreign
+stores, and whether it means a per-turn or a cumulative figure differs by
+harness, so trusting it would apply a silent multiplier to some sessions and not
+others. Either number is an API list-price equivalent, not an invoice.
+
+`--json` also caches its result to `<state>/cost/<repo>.json`, which is what the
+`aegis_repo_cost` MCP tool reads.
+
 ## Themes
 
 The default **Ink** theme is calm near-black with one amber accent.

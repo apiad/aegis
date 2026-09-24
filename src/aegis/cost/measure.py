@@ -81,8 +81,11 @@ class RepoCost:
     first_seen: str | None
     weeks: dict[str, dict[str, float]]
     modules: dict[str, float]
-    families: dict[str, float]
+    models: dict[str, float]
     sources: dict[str, float]
+    # Calls and tokens the price registry had no rate for, attributed the same
+    # way as cost. Reported rather than folded into zero: see Scanner._add.
+    unpriced: dict[str, float]
     bands: dict[str, dict[str, float]]
     git: GitFacts
     elapsed_s: float
@@ -153,10 +156,11 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
     roots_for_repo = repo_roots(repo_path)
     weeks: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     modules: collections.Counter = collections.Counter()
-    families: collections.Counter = collections.Counter()
+    models: collections.Counter = collections.Counter()
     sources: collections.Counter = collections.Counter()
     totals: collections.Counter = collections.Counter()
     bands: dict[str, collections.Counter] = {b: collections.Counter() for b in BANDS}
+    unpriced: collections.Counter = collections.Counter()
     n_sessions = strict_usd = workspace_usd = hours = 0.0
 
     for scan in scanner.sessions.values():
@@ -173,11 +177,15 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
             continue
 
         n_sessions += share
+        if scan.unpriced:
+            unpriced["sessions"] += share
+            for key in ("calls", "tokens"):
+                unpriced[key] += scan.unpriced[key] * share
         for week, seconds in active_hours(scan.timestamps).items():
             weeks[week]["active_s"] += seconds * share
             hours += seconds * share / 3600
         mine_cost = 0.0
-        for (week, fam), bucket in scan.usage.items():
+        for (week, model), bucket in scan.usage.items():
             cost = bucket["cost_micro"] / 1e6 * share
             tokens = (
                 bucket["input"]
@@ -189,7 +197,7 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
             weeks[week]["cost"] += cost
             weeks[week]["tokens"] += tokens
             weeks[week]["calls"] += bucket["calls"] * share
-            families[fam] += cost
+            models[model] += cost
             for key in ("input", "output", "cc5", "cc1", "cache_read"):
                 totals[key] += bucket[key] * share
             totals["cost"] += cost
@@ -228,8 +236,9 @@ def measure(repo_path: Path, options: CostOptions) -> RepoCost:
         first_seen=scanner.first_seen,
         weeks={k: dict(v) for k, v in sorted(weeks.items())},
         modules=dict(modules.most_common()),
-        families=dict(families),
+        models=dict(models.most_common()),
         sources=dict(sources),
+        unpriced=dict(unpriced),
         bands={k: dict(v) for k, v in bands.items()},
         git=facts,
         elapsed_s=scanner.elapsed_s,
@@ -310,8 +319,9 @@ def sweep(directory: Path, options: CostOptions) -> list[RepoCost]:
                 first_seen=scanner.first_seen,
                 weeks={},
                 modules={},
-                families={},
+                models={},
                 sources={},
+                unpriced={},
                 bands={},
                 git=facts,
                 elapsed_s=scanner.elapsed_s,

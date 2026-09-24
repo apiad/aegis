@@ -5,6 +5,28 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Added
+
+- **`aegis usage repo <path>` and `aegis usage repos <dir>` measure what a
+  repository cost to build.** Token counts priced against the model registry
+  across all four transcript stores (`sessions/`, `backfill/`,
+  `claude-import/` and claude-code's own `~/.claude/projects`), deduplicated
+  globally, attributed to one repo by locality, and joined with classified git
+  history. Both attribution rules are reported, proportional and strict, so the
+  output carries its own error bar; so is transcript coverage, because git counts
+  every commit a repo ever had while cost only exists from the oldest surviving
+  transcript, and a repo whose work predates that floor otherwise comes out
+  looking free. `aegis_repo_cost` serves the cached answer to agents with its age
+  in hours. Within one aegis session log the reader picks its path once: by
+  message when the messages carry token counts, by `Result` otherwise, because an
+  ACP session (OpenCode, Gemini) carries `usage: null` on its messages and a
+  message-only reader priced all six of this workspace's ACP sessions at zero
+  without complaining. Calls are priced by their session's own provider and
+  recorded model rather than by a model family, since rates are keyed by
+  provider and `claude-code` has no `gemini` entry; calls whose recorded model is
+  not a model at all (OpenCode writes `OpenCode`, Gemini writes nothing) are
+  counted under **unpriced work** instead of being charged zero.
+
 ## [0.39.0] - 2026-09-23
 
 ### Changed
