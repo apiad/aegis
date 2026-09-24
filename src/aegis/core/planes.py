@@ -57,3 +57,18 @@ NOT_VIEW_FACING: dict[str, str] = {
         "through MCP tools, not through this object"
     ),
 }
+
+#: Planes whose constructor takes a `state_dir` and which persist nothing
+#: without one. Each pair is (constructor name, module path relative to the
+#: aegis package) of a BRAIN path that must hand it a directory.
+#:
+#: QueueManager and InboxRouter were built without it in both brain paths
+#: from the day persistence landed, so the queue never wrote a record and
+#: its replay never ran. Nothing said so, because every test that
+#: covered the replay constructed the manager itself.
+STATEFUL_PLANES: tuple[tuple[str, str], ...] = (
+    ("QueueManager", "cli.py"),
+    ("InboxRouter", "cli.py"),
+    ("QueueManager", "tui/app.py"),
+    ("InboxRouter", "tui/app.py"),
+)

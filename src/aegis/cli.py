@@ -695,7 +695,7 @@ async def _serve(
     """
     from aegis.queue import InboxRouter, QueueManager
 
-    inbox = InboxRouter()
+    inbox = InboxRouter(state_dir=roots.state_dir)
     mgr = SessionManager(
         agents,
         default_agent,
@@ -705,7 +705,7 @@ async def _serve(
         hosts=hosts or {},
         roots=roots,
     )
-    qm = QueueManager(queues or {}, mgr, inbox)
+    qm = QueueManager(queues or {}, mgr, inbox, state_dir=roots.state_dir)
     mgr.attach_queue_manager(qm)
     from aegis.monitor import MonitorManager
 

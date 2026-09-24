@@ -647,9 +647,12 @@ class AegisApp(App):
         and the per-pane inbox binding lives in _spawn. A bridged app never
         calls this: it adopts the brain's (see __init__).
         """
-        self.inbox_router = InboxRouter()
+        self.inbox_router = InboxRouter(state_dir=self._state_dir)
         self.queue_manager = QueueManager(
-            self._queues, _SessionManagerAdapter(self), self.inbox_router
+            self._queues,
+            _SessionManagerAdapter(self),
+            self.inbox_router,
+            state_dir=self._state_dir,
         )
         # Process-monitor plane — polls agent-supplied bash and wakes the
         # agent on the outcome (interrupting a busy turn). AegisApp is the
