@@ -1354,13 +1354,19 @@ In `src/aegis/queue/manager.py`, in `_finalize`, after the `_still_working` bloc
 
         task, said = self._workers[session.handle]
         q = self._queues[task.queue]
+        # INCREMENT FIRST, then classify. `attempts` means "bad turn-ends
+        # INCLUDING this one", which is the convention Task 3's tests pin
+        # (`classify(attempts=1, max_attempts=1) is terminal`). Classifying
+        # on the pre-increment count gives every queue one extra rebuild and
+        # makes `max_attempts: 1` retry once instead of parking on the first
+        # stall, which is the opposite of what the spec documents it to mean.
+        bumped = replace(task, attempts=task.attempts + 1)
         outcome = classify(
             st,
-            attempts=task.attempts,
+            attempts=bumped.attempts,
             max_attempts=q.max_attempts,
         )
         if outcome is Outcome.transient:
-            bumped = replace(task, attempts=task.attempts + 1)
             self._workers[session.handle] = (bumped, said)
             self._all[task.id] = bumped
             self._inflight[task.queue] = [
@@ -1396,7 +1402,27 @@ In `src/aegis/queue/manager.py`, in `_finalize`, after the `_still_working` bloc
             if not ok:
                 await self._park(session, bumped, reason="rebuild failed")
             return
+        if outcome is Outcome.terminal:
+            # Attempts exhausted. Because the increment happens above, every
+            # bad turn end reaching here has attempts >= max_attempts >= 1,
+            # so this arm IS the park path — without it the method falls
+            # through to the old pop/close/fail flow and the worker is
+            # destroyed, which is the whole behaviour being removed.
+            await self._park(
+                session,
+                bumped,
+                reason=f"stalled {bumped.attempts} time(s); attempts exhausted",
+            )
+            return
+        # Outcome.done falls through to the existing completion path below,
+        # unchanged.
 ```
+
+A consequence worth stating: with both arms in place, `_finalize` can no longer
+produce the `failed` status. Every bad turn end either stalls or parks, and the
+spec says so outright — "the `failed` task state becomes nearly unreachable."
+`failed` still arrives from `cancel()`, from the TTL reaper in Task 10, and from
+the replay in Task 9.
 
 Import `NUDGE_STALL` alongside `classify` and `rebuild`. Note the argument order — `rebuild(sm, handle, *, nudge)`, not `(session, sm, task)` — and note that the park call passes `bumped`, not `task`, so the parked record carries the attempt that just failed.
 
