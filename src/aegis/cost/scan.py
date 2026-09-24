@@ -157,7 +157,8 @@ class Scanner:
         names = [m for m in modules if m and not m.startswith("(")]
         if not names:
             return
-        alt = "|".join(re.escape(m) for m in sorted(names, key=len, reverse=True))
+        longest_first = sorted(names, key=lambda name: -len(name))
+        alt = "|".join(re.escape(name) for name in longest_first)
         self.bare_re = re.compile(
             r"(?:^|[\s\"'(,:=\\])((?:" + alt + r")/[A-Za-z0-9._/-]*)"
         )
