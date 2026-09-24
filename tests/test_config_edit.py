@@ -203,6 +203,33 @@ def test_add_queue_with_budgets(tmp_path: Path) -> None:
     assert "output_tokens:" in text
 
 
+def test_add_queue_with_recovery_keys(tmp_path: Path) -> None:
+    add_agent(tmp_path, "main",
+              provider="claude-code", model="opus", effort="high")
+    add_queue(tmp_path, "impl", agent="main", max_parallel=1,
+              max_attempts=3, recoverable_ttl_s=0)
+    text = (tmp_path / ".aegis.yaml").read_text()
+    assert "max_attempts: 3" in text
+    assert "recoverable_ttl_s: 0" in text
+
+
+def test_add_queue_omits_recovery_keys_when_unset(tmp_path: Path) -> None:
+    add_agent(tmp_path, "main",
+              provider="claude-code", model="opus", effort="high")
+    add_queue(tmp_path, "impl", agent="main", max_parallel=1)
+    text = (tmp_path / ".aegis.yaml").read_text()
+    assert "max_attempts" not in text
+    assert "recoverable_ttl_s" not in text
+
+
+def test_add_queue_rejects_zero_max_attempts(tmp_path: Path) -> None:
+    add_agent(tmp_path, "main",
+              provider="claude-code", model="opus", effort="high")
+    with pytest.raises(ConfigError, match="max_attempts"):
+        add_queue(tmp_path, "impl", agent="main", max_parallel=1,
+                  max_attempts=0)
+
+
 def test_add_queue_rejects_unknown_agent(tmp_path: Path) -> None:
     add_agent(tmp_path, "main",
               provider="claude-code", model="opus", effort="high")

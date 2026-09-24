@@ -321,9 +321,16 @@ def add_queue(
     agent: str,
     max_parallel: int,
     budgets: list[dict[str, Any]] | None = None,
+    max_attempts: int | None = None,
+    recoverable_ttl_s: int | None = None,
 ) -> None:
     """Add a queue to .aegis.yaml. Fails loud on unknown agent ref,
-    duplicate name, or bad max_parallel."""
+    duplicate name, or bad max_parallel.
+
+    `max_attempts` and `recoverable_ttl_s` are written only when passed,
+    so a queue created without them carries the loader's defaults rather
+    than a pinned copy of today's numbers.
+    """
     base = root / ".aegis.yaml"
     data = _load(base)
     queues = data.setdefault("queues", {})
@@ -332,6 +339,10 @@ def add_queue(
     entry: dict[str, Any] = {"agent": agent, "max_parallel": max_parallel}
     if budgets:
         entry["budgets"] = list(budgets)
+    if max_attempts is not None:
+        entry["max_attempts"] = max_attempts
+    if recoverable_ttl_s is not None:
+        entry["recoverable_ttl_s"] = recoverable_ttl_s
     queues[name] = entry
     payload = _validate_and_dump(root, data)
     _atomic_write(base, payload)
