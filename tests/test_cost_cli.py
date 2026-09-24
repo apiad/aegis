@@ -176,3 +176,8 @@ def test_an_unpriceable_session_is_declared_not_swallowed(cost_tree, monkeypatch
     assert result.exit_code == 0, result.output
     assert "unpriced work (counted, not charged)" in result.output
     assert "1.0 sessions" in result.output
+    # The raw token count, not millions. This line exists to say how much work
+    # is unaccounted for, and the counts are small by construction: rounding
+    # 5,600 tokens to "0 M" makes the line say nothing.
+    assert "5,600 tokens" in result.output
+    assert "0 M tokens" not in result.output

@@ -65,7 +65,10 @@ def repo_lines(result: RepoCost) -> list[str]:
             "unpriced work (counted, not charged)",
             f"  {result.unpriced.get('sessions', 0):.1f} sessions, "
             f"{_num(result.unpriced.get('calls', 0))} calls, "
-            f"{_num(result.unpriced.get('tokens', 0) / 1e6)} M tokens have no rate "
+            # Raw tokens, not millions: these counts are small by construction
+            # and the whole point of the line is how much work is unaccounted
+            # for, which "0 M" does not say.
+            f"{_num(result.unpriced.get('tokens', 0))} tokens have no rate "
             "in the model registry",
             "  A session whose recorded model is a harness name (OpenCode) or "
             "absent (Gemini) cannot be priced.",
