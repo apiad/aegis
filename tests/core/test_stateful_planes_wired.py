@@ -35,10 +35,14 @@ def test_every_stateful_plane_is_constructed_with_a_state_dir():
         calls = _calls_to(module_path, ctor)
         assert calls, f"no {ctor}(...) call found in {module_path}"
         for call in calls:
-            if not any(kw.arg == "state_dir" for kw in call.keywords):
-                offenders.append(f"{module_path}:{call.lineno} {ctor}(...)")
+            where = f"{module_path}:{call.lineno} {ctor}(...)"
+            passed = next((kw for kw in call.keywords if kw.arg == "state_dir"), None)
+            if passed is None:
+                offenders.append(f"{where} has no state_dir keyword")
+            elif isinstance(passed.value, ast.Constant) and passed.value.value is None:
+                offenders.append(f"{where} passes state_dir, but its value is None")
     assert not offenders, (
-        "stateful planes constructed without state_dir:\n  "
+        "stateful planes constructed without a state directory:\n  "
         + "\n  ".join(offenders)
         + "\nA plane built without it silently persists nothing, and its "
           "replay never runs."
