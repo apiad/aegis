@@ -5,10 +5,11 @@
 whose analysis of the three causes still stands and is not repeated here.
 **Scope:** one new module (`src/aegis/core/recovery.py`), one extracted module
 (`src/aegis/queue/replay.py`), changes to `src/aegis/queue/manager.py`,
-`src/aegis/queue/inbox.py`, the two brain-boot paths, one new `Origin.kind`, two
+`src/aegis/queue/inbox.py`, one new keyword on `SessionManager.reconnect`, one
+new field on `AgentSession`, the two brain-boot paths, one new `Origin.kind`, two
 new task states, two per-queue config keys, two MCP tools, two TUI commands and a
 read-only `aegis queue` CLI. No driver changes: every driver already advertises
-resume.
+resume, and `AgentSession.adopt` already does the rebuilding.
 
 ## What this buys
 
@@ -66,9 +67,42 @@ def classify(state, *, attempts, max_attempts,
 def resumable_from(session) -> Resumable | None
     """None until the harness has reported a session id."""
 
-async def respawn(sm, resumable, *, handle, origin, nudge) -> Session
-    """Rebuild the conversation and hand it one turn telling it what happened."""
+async def rebuild(sm, handle, *, nudge) -> bool
+    """Replace the dead harness under `handle` in place, resuming its
+    conversation, then hand it one turn saying what happened.
+    False when it cannot be done."""
+
+async def restore(sm, task, *, nudge) -> str | None
+    """After a restart: adopt the session already standing under the task's
+    worker handle, or rebuild it from the recorded Resumable. Returns the
+    handle, or None when neither is possible."""
 ```
+
+### Rebuild in place, never respawn
+
+The naive version spawns a fresh session under the old worker's handle. That is
+a crash. Pane removal is asynchronous — `app.py:1429` drops a closed session's
+pane through `run_worker(self._drop_brain_pane(...))` — so after `close()`
+returns, `#pane-<handle>` may still be mounted, and mounting a second one is
+`DuplicateIds`, which takes the whole app down. `_resume_from_history` carries a
+long comment about precisely this hazard (`app.py:1856`).
+
+`AgentSession.adopt` (`session.py:339`) is the way through, and it already exists
+for a neighbouring reason: `SessionManager.reconnect` uses it to rebuild a
+dropped *remote* harness. It replaces the subprocess underneath a live session,
+and its docstring lists what survives — "handle, log_id, inbox binding, metrics,
+observers, transcript. Only the process at the bottom is new."
+
+Observers surviving is the part that matters here. The queue's `on_event` and
+`on_state` stay attached across a rebuild, so there is nothing to re-wire and no
+window in which a worker is running unobserved.
+
+One change is needed: `SessionManager.reconnect` refuses a local session
+(`manager.py:454`, "reconnect is for remote sessions"). That guard belongs to the
+manual `/reconnect` command, not to the mechanism — `resume_from` is how every
+boot resume works, locally included. `reconnect` gains `allow_local: bool =
+False`, and recovery passes `True`. The manual command's behaviour does not
+change.
 
 ### The classifier is a budget, not a taxonomy
 
@@ -153,10 +187,10 @@ On `Outcome.transient`:
   held.
 - Say nothing to the producer. A blip that recovers in four seconds is not news,
   and waking a producer agent for it costs a turn.
-- Increment `attempts` and call `recovery.respawn` against the recorded
-  `Resumable`, with a nudge turn: *"Your aegis session was interrupted mid-task
-  (<reason>). Your conversation is intact. Continue the task from where you
-  were."*
+- Increment `attempts` and call `recovery.rebuild`, which swaps the harness
+  underneath the same session and delivers a nudge turn: *"Your aegis session
+  was interrupted mid-task (<reason>). Your conversation is intact. Continue the
+  task from where you were."*
 
 The slot is held for the duration of the retries and no longer. That window is
 the whole risk in this design: `max_parallel` defaults to 1
@@ -242,12 +276,31 @@ Replay, per task:
 
 | on disk | action |
 |---|---|
-| `dispatched` or `stalled`, with `Resumable`, attempts left | `respawn` with the nudge; re-attach observers; stays `dispatched` |
+| `dispatched` or `stalled`, with `Resumable`, attempts left | `restore` with the nudge; stays `dispatched` |
 | `dispatched` or `stalled`, no `Resumable` | `recoverable`, with "the worker never reached a turn boundary; no conversation to resume" |
 | `dispatched` or `stalled`, attempts exhausted | `recoverable` |
 | `recoverable` | unchanged, no callback — the producer was told once already |
 | `pending` | re-queued at head of FIFO, as today |
 | `completed` / `failed` / `cancelled` | rehydrated, as today |
+
+### The restart race with `plan_resume`
+
+A queue worker is an ordinary tab in `workspace.json` with a `session_id`, and
+`plan_resume` does not filter by origin. So at boot the TUI restores the dead
+worker's session *and* the queue replay wants to rebuild it, and whichever runs
+second mounts a second pane under a handle the first already holds. That is the
+same `DuplicateIds` crash from a different direction, and the ordering between
+`qm.start()` (`cli.py:753`) and the front end's boot resume is not fixed.
+
+`recovery.restore` resolves it by looking before it builds: if
+`sm.get(worker_handle)` already returns a session, the replay adopts that one and
+re-attaches its observers rather than creating anything. Only when the handle is
+unoccupied does it spawn with `resume_from` and the recorded `log_id`.
+
+That also fixes the orphan described in the analysis spec, where a restart left
+the worker's tab alive with its full conversation while the queue had declared
+its task failed and never looked at it again. The session it finds standing there
+*is* the worker, and re-attaching is the whole of the repair.
 
 **A task is never re-run from its payload automatically.** A worker that got
 halfway may have committed, pushed, deployed or sent mail, and re-running its
@@ -336,6 +389,11 @@ One structural test beyond those: every member of `_LIFECYCLE_EVENTS` has an ent
 in the event-to-status map and every value of that map has a replay branch. Both
 halves, because the failure is a task that silently stops existing and the
 producer that waits on it forever.
+
+And two for the crash hazards, because both take the whole app down rather than
+failing a task: a rebuild mounts no second pane and the handle count does not
+change, and a replay against a handle `plan_resume` has already restored adopts
+it instead of spawning.
 
 Two that matter more than the rest:
 
