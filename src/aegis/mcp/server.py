@@ -5,6 +5,7 @@ import dataclasses
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 from fastmcp import FastMCP
 
@@ -607,6 +608,46 @@ def make_handoff(bridge):
         return f"landed at {target_handle}"
 
     return aegis_handoff
+
+
+def repo_cost_payload(state_dir: Path, repo: str, *, now: str | None = None) -> dict:
+    """The cached repo-cost summary plus how old it is, or an error naming the
+    file it looked for.
+
+    A full sweep reads 3,672 transcript files in 60 seconds of single-threaded
+    CPU on this workspace, which is too long for a call that blocks an agent's
+    turn. The tool serves the last computed answer and says how stale it is;
+    ``refresh=True`` pays the minute.
+    """
+    from datetime import datetime, timezone
+
+    from aegis.cost.measure import cache_path, read_cache
+
+    data = read_cache(state_dir, repo)
+    if data is None:
+        return {
+            "error": f"no cached measurement at {cache_path(state_dir, repo)}; "
+            "run `aegis usage repo <path>` or call this tool with refresh=true"
+        }
+    at = datetime.now(timezone.utc) if now is None else datetime.fromisoformat(now)
+    try:
+        generated = datetime.fromisoformat(data["generated"])
+    except (KeyError, ValueError, TypeError):
+        age = None
+    else:
+        age = round((at - generated).total_seconds() / 3600, 2)
+    return {
+        "repo": data.get("repo", repo),
+        "cost_usd": data.get("cost_usd"),
+        "strict_usd": data.get("strict_usd"),
+        "coverage": data.get("coverage"),
+        "hours": data.get("hours"),
+        "commits": (data.get("git") or {}).get("n_commits"),
+        "modules": dict(list((data.get("modules") or {}).items())[:10]),
+        "generated": data.get("generated"),
+        "cache_age_hours": age,
+        "note": "API list-price equivalents, not an invoice",
+    }
 
 
 def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
@@ -2476,6 +2517,37 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
             "checks": [_ser(c) for c in d.checks],
             "blocked_by": [_ser(c) for c in d.blocked_by],
         }
+
+    @server.tool
+    async def aegis_repo_cost(
+        repo: str, from_handle: str, refresh: bool = False
+    ) -> dict:
+        """What a repository cost to build: tokens at list price, attributed to
+        that repo by locality, plus its commits and transcript coverage.
+
+        Serves the last computed answer with its age in hours, because a full
+        recomputation reads thousands of transcript files and takes about a
+        minute. Pass a path in ``repo`` to recompute with refresh=true, or a
+        bare repo name to read the cache. refresh=true pays that minute; ask
+        for it only when this morning's figure will not do.
+        """
+        # AppBridge's Protocol types state_root as `object` with a "# Path"
+        # comment; the cast is that comment, made checkable.
+        state_dir = cast(Path, bridge.state_root)
+        if not refresh:
+            return repo_cost_payload(state_dir, Path(repo).name)
+
+        from aegis.cost import CostOptions, measure
+        from aegis.cost.measure import write_cache
+
+        target = Path(repo)
+        if not (target / ".git").exists():
+            return {"error": f"not a git repo: {target}; refresh needs a path"}
+        result = await asyncio.to_thread(
+            measure, target, CostOptions(state_dir=state_dir)
+        )
+        write_cache(state_dir, result)
+        return repo_cost_payload(state_dir, result.repo)
 
     @server.tool
     async def aegis_task_status(task_id: str) -> dict:
