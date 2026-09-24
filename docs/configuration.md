@@ -220,6 +220,24 @@ the substrate spawns a worker of that profile to run the payload.
 Validation is fail-loud at boot: unknown agent refs or non-positive
 caps cause `aegis` to abort with a clear error.
 
+Two more keys bound what happens when a worker's turn ends badly:
+
+```yaml
+queues:
+  impl:
+    agent: opus
+    max_parallel: 2
+    max_attempts: 2
+    recoverable_ttl_s: 86400
+```
+
+- `max_attempts` (default `2`) — turn ends a worker gets before its
+  task is parked. `1` disables the automatic rebuild and parks on the
+  first stall.
+- `recoverable_ttl_s` (default `86400`) — seconds a parked session is
+  kept before it is closed and its task failed. `0` keeps parked
+  sessions forever.
+
 ### Budgets (optional)
 
 Add a `budgets:` list to cap rolling USD spend or output-token volume

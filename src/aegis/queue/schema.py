@@ -101,6 +101,8 @@ class Queue:
     provider: str = ""  # populated from agent_profile at config-load
     model: str = ""  # populated from agent_profile at config-load
     budgets: list[Budget] = field(default_factory=list)
+    max_attempts: int = 2
+    recoverable_ttl_s: int = 86400
 
 
 @dataclass(frozen=True)

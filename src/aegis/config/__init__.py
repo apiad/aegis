@@ -218,5 +218,7 @@ def load_queues(root: Path | None = None) -> "dict[str, Queue]":
             provider=agent.harness,
             model=agent.model,
             budgets=budgets,
+            max_attempts=qspec.max_attempts,
+            recoverable_ttl_s=qspec.recoverable_ttl_s,
         )
     return out

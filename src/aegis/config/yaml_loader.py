@@ -51,6 +51,12 @@ class QueueSpec:
     agent: str
     max_parallel: int = 1
     budgets: list[dict[str, Any]] | None = None
+    #: Turn ends a worker gets before its task is parked. 1 disables the
+    #: automatic rebuild and parks on the first stall.
+    max_attempts: int = 2
+    #: Seconds a parked session is kept before it is closed and its task
+    #: is failed. 0 keeps parked sessions forever.
+    recoverable_ttl_s: int = 86400
 
 
 @dataclass

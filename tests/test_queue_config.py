@@ -91,3 +91,39 @@ queues:
     with pytest.raises(ConfigError) as ei:
         load_queues(root)
     assert "impl" in str(ei.value) and "ghost" in str(ei.value)
+
+
+def test_queue_carries_recovery_defaults(tmp_path):
+    root = _write(tmp_path, """
+default_agent: impl
+agents:
+  impl:
+    harness: claude-code
+    model: opus
+queues:
+  work:
+    agent: impl
+    max_parallel: 1
+""")
+    q = load_queues(root)["work"]
+    assert q.max_attempts == 2
+    assert q.recoverable_ttl_s == 86400
+
+
+def test_queue_recovery_keys_are_overridable(tmp_path):
+    root = _write(tmp_path, """
+default_agent: impl
+agents:
+  impl:
+    harness: claude-code
+    model: opus
+queues:
+  work:
+    agent: impl
+    max_parallel: 1
+    max_attempts: 1
+    recoverable_ttl_s: 0
+""")
+    q = load_queues(root)["work"]
+    assert q.max_attempts == 1
+    assert q.recoverable_ttl_s == 0
