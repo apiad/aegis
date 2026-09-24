@@ -1,0 +1,75 @@
+"""Recovering an ephemeral agent whose turn ended badly.
+
+An ephemeral agent (`fleet.models.EPHEMERAL_KINDS`: queue, workflow,
+group) used to be closed the moment a turn ended in anything but
+`ready`, and closing is irreversible — the session leaves the roster,
+its MCP token is revoked, its pane is dropped, and its conversation stops
+being reachable by any path aegis offers. A dropped SSH link to an
+execution host arrives here as `Result(is_error=True)`, so a tunnel blip
+destroyed an hour of context.
+
+This module holds the three things every caller needs and none of the
+state: the retry budget, the record that makes a conversation
+rebuildable, and the rebuild itself. `QueueManager` is the first caller;
+`WorkflowEngine` and the group runtime are meant to be the next, which is
+why nothing here knows what a task is.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+
+from aegis.tui.state import AgentState
+
+
+@dataclass(frozen=True)
+class Resumable:
+    """Everything needed to rebuild a worker's conversation.
+
+    `session_id` is the harness's own conversation id, latched by the
+    driver on its first SystemInit. Without it there is nothing to
+    resume, which is why it is recorded the moment it appears rather
+    than at the end of a turn: a worker whose harness dies before any
+    turn boundary is exactly the case the record exists for.
+    """
+
+    session_id: str
+    agent_profile: str
+    provider: str
+    cwd: str
+    host: str
+
+
+class Outcome(StrEnum):
+    done = "done"
+    transient = "transient"
+    terminal = "terminal"
+
+
+def classify(
+    state: AgentState,
+    *,
+    attempts: int,
+    max_attempts: int,
+    cancelled: bool = False,
+    over_budget: bool = False,
+) -> Outcome:
+    """What a turn ending means for the task behind it.
+
+    `transient` is the DEFAULT arm, deliberately. The tempting version
+    enumerates the recoverable reasons — link_lost, a harness exception,
+    a stream with no Result, a rate limit — and calls the rest terminal.
+    That list needs a cross-harness vocabulary for failure that does not
+    exist, and being wrong about it fails closed: it goes terminal where
+    it should have retried, which is indistinguishable from the bug this
+    plane exists to fix. The budget does the limiting instead, and the
+    diagnostic fields go in the log to be read rather than branched on.
+    """
+    if state is AgentState.ready:
+        return Outcome.done
+    if cancelled or over_budget:
+        return Outcome.terminal
+    if attempts >= max_attempts:
+        return Outcome.terminal
+    return Outcome.transient
