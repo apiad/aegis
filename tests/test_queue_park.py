@@ -240,3 +240,76 @@ async def test_a_double_finalize_after_parking_parks_once(
         "the producer was told twice about one park"
     assert [o for o in outcomes if o == "recoverable"] == ["recoverable"]
     assert qm._all[tid].attempts == 1, "one interruption, one spent attempt"
+
+
+async def test_cancelling_a_parked_task_leaves_its_session_alive(
+    queue_rig_max_attempts_1, tmp_path,
+):
+    """`recoverable` was absent from cancel's terminal set, so a parked task
+    took the in-flight branch and `close`d the conversation parking exists
+    to keep — the ephemeral-close arriving through the cancel door.
+
+    Cancelling still WORKS: `recoverable` is not terminal, and a producer
+    told to read-or-resume needs a way to decline. It is the session that
+    must survive.
+    """
+    qm, sm = queue_rig_max_attempts_1
+    tid, h = _start(qm, sm)
+    await sm.fail(h, text="halfway")
+    assert qm.status(tid)["status"] == "recoverable"
+
+    res = await qm.cancel(tid)
+
+    assert res == {"ok": True, "status": "cancelled", "was": "parked",
+                   "worker_handle": h, "session_kept": True}
+    assert qm.status(tid)["status"] == "cancelled"
+    assert h not in sm.closed, \
+        "cancelling the task destroyed the parked conversation"
+    assert sm.get(h) is not None, "the session left the roster"
+    assert sm.get(h).origin.kind == "parked", \
+        "the surviving session is still parked, not re-ephemeralised"
+
+
+async def test_cancelling_a_parked_task_tells_the_producer_once(
+    queue_rig_max_attempts_1,
+):
+    """One notice per transition. The park notice said "read it or resume
+    it"; this one says the queue has let go and the session is still
+    there — not a second copy of the first."""
+    qm, sm = queue_rig_max_attempts_1
+    tid, h = _start(qm, sm)
+    await sm.fail(h, text="halfway")
+
+    await qm.cancel(tid)
+
+    bodies = [m.body for m in sm.inbox_for("producer")]
+    assert len(bodies) == 2, "one park notice, one cancellation notice"
+    assert "aegis_task_resume" in bodies[0]
+    assert "will not be resumed" in bodies[1]
+    assert h in bodies[1], "names the session that survived"
+    assert "aegis_task_resume" not in bodies[1], \
+        "still offering a resume the cancellation just withdrew"
+
+
+async def test_cancelling_a_parked_task_does_not_recount_its_cost(
+    queue_rig_max_attempts_1, tmp_path,
+):
+    """`_park` already wrote this worker's spend. The cancellation record
+    must not carry a second copy of the same cumulative metrics.
+
+    This one does not die when the parked branch is deleted — the in-flight
+    path it falls through to writes an empty cost too. It kills the other
+    mutant: `_cancel_parked` growing a `self._cost_dict(...)` call by
+    copy-paste from the completion path, which would double this worker's
+    tokens for anything summing the log.
+    """
+    qm, sm = queue_rig_max_attempts_1
+    tid, h = _start(qm, sm)
+    await sm.fail(h, text="halfway")
+
+    await qm.cancel(tid)
+
+    priced = [r for r in _log(tmp_path, "recoverable") + _log(tmp_path, "failed")
+              if r.get("cost")]
+    assert len(priced) == 1
+    assert priced[0]["event"] == "recoverable"

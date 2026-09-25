@@ -213,7 +213,8 @@ BRIEFING = (
     "  - aegis_task_status(task_id) : inspect a previously-enqueued "
     "task. Use when callback was false or you want to poll mid-flight.\n"
     "  - aegis_cancel(task_id) : cancel a task — drop it if still pending, "
-    "or interrupt + close its worker if in-flight. Idempotent.\n"
+    "or interrupt + close its worker if in-flight. A parked (recoverable) "
+    "task cancels without touching its session. Idempotent.\n"
     "  - aegis_delegate(queue, payload, from_handle, timeout_s?) : the "
     "synchronous shape — enqueue and block until the worker finishes, "
     "returning its result directly (no inbox callback).\n"
@@ -2583,8 +2584,14 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         (``status="error"``, body ``"cancelled"``) is delivered to the
         producer so an awaiting caller unblocks.
 
+        A ``recoverable`` (parked) task cancels too — it says "nobody is
+        going to resume this" — but its session is left alive with the
+        conversation intact, because that is what parking is for. Close it
+        by handle with ``aegis_close`` if you want it gone.
+
         Returns {"ok": true, "status": "cancelled", "was": "pending"|
-        "in_flight"}. Idempotent: already-terminal tasks return
+        "in_flight"|"parked"}; the parked case adds "worker_handle" and
+        "session_kept": true. Idempotent: already-terminal tasks return
         {"ok": true, "status": <terminal>, "note": "already terminal"}.
         Unknown task_id returns {"ok": false, "error": …}.
         """

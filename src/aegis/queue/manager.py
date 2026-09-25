@@ -306,14 +306,17 @@ class QueueManager:
 
     async def cancel(self, task_id: str) -> dict:
         """Cancel a task. Pending → dropped from the FIFO; in-flight → the
-        worker is interrupted and closed. Marks the task ``cancelled`` and,
-        if it had a callback, delivers one error notice to the producer so an
-        awaiting caller unblocks. Idempotent for already-terminal tasks."""
+        worker is interrupted and closed; parked → the task is cancelled and
+        its session is left alone. Marks the task ``cancelled`` and, if it had
+        a callback, delivers one error notice to the producer so an awaiting
+        caller unblocks. Idempotent for already-terminal tasks."""
         t = self._all.get(task_id)
         if t is None:
             return {"ok": False, "error": f"unknown task {task_id!r}"}
         if t.status in ("completed", "failed", "cancelled"):
             return {"ok": True, "status": t.status, "note": "already terminal"}
+        if t.status == "recoverable":
+            return await self._cancel_parked(t)
 
         worker_handle = t.worker_handle
         last_text = ""
@@ -393,6 +396,91 @@ class QueueManager:
             "ok": True,
             "status": "cancelled",
             "was": ("pending" if t.status == "pending" else "in_flight"),
+        }
+
+    async def _cancel_parked(self, t: Task) -> dict:
+        """Cancel a parked task without touching the session it parked.
+
+        `recoverable` is deliberately not terminal — `run()` reports it as
+        its own status precisely so a caller is not told "failed" about work
+        one `aegis_task_resume` would continue — so cancelling one has to
+        mean something rather than returning "already terminal". It means
+        nobody is going to resume it: the task goes to `cancelled` and the
+        queue stops offering it. Refusing instead would leave the producer
+        holding an instruction it cannot decline, with no way to dispose of
+        the task at all.
+
+        **The session is left strictly alone, and that is the whole point of
+        this branch.** Falling through to the in-flight path above would
+        `interrupt` and `close` the very conversation parking exists to
+        keep — the ephemeral-close this change removed from the finalizer,
+        arriving through the cancel door instead. Cancelling a task is a
+        statement about the queue's intent, not a licence to destroy a
+        session that `close_guard` now protects like any other. Whoever
+        wants the session gone closes it by handle, through the guard.
+
+        Nothing about the slot happens here either: `_park` already popped
+        the worker, dropped the task from `_inflight` and re-dispatched, so
+        there is no worker to interrupt and no slot to free.
+        """
+        cancelled = Task(
+            **{
+                **t.__dict__,
+                "status": "cancelled",
+                "completed_at": self._now(),
+            }
+        )
+        self._all[t.id] = cancelled
+        self._log(
+            t.queue,
+            {
+                "event": "failed",
+                "task_id": t.id,
+                "result": cancelled.result,
+                "error": "cancelled while parked",
+                "completed_at": cancelled.completed_at,
+                # No cost. `_park` already wrote this task's spend on its
+                # `recoverable` record, and a second copy of the same
+                # cumulative metrics would make a summing consumer count
+                # the worker's tokens twice.
+                "cost": {},
+            },
+        )
+        self._emit(
+            QueueCompleted(
+                task_id=t.id,
+                queue=t.queue,
+                outcome="interrupted",
+                result=cancelled.result,
+                error="cancelled while parked",
+                completed_at=cancelled.completed_at,
+            )
+        )
+        if t.callback:
+            # Not a duplicate of the park notice — a correction to it. The
+            # producer was told to read or resume this worker; it now needs
+            # to know the queue has let go, and that the session it was
+            # pointed at is still there to read.
+            msg = InboxMessage(
+                sender=sender_queue(t.queue),
+                timestamp=self._now(),
+                body=(
+                    f"cancelled while parked — the task will not be resumed. "
+                    f"Its session {t.worker_handle!r} is still alive with the "
+                    f"conversation intact; read it with "
+                    f"aegis_read_peer({t.worker_handle!r}), or close it by "
+                    f"handle when you are done with it."
+                ),
+                task_id=t.id,
+                status="error",
+            )
+            await self._inbox.deliver(_handle_of(t.enqueued_by), msg)
+        return {
+            "ok": True,
+            "status": "cancelled",
+            "was": "parked",
+            "worker_handle": t.worker_handle,
+            "session_kept": True,
         }
 
     async def run(
