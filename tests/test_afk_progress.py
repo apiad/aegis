@@ -369,3 +369,49 @@ async def test_a_failed_board_write_is_logged_not_raised(monkeypatch) -> None:
     )
     assert await prog.run_progress(engine, CFG, now=NOW) == "updated 0 card(s)"
     assert engine.logged and "Progress" in engine.logged[0]
+
+
+def test_replace_section_preserves_the_marker_when_the_section_is_last() -> None:
+    """The production shape: no Result section yet, so Plan is the last
+    section and the marker follows it. The first version's lookahead had no
+    `### ` to stop at and swallowed the marker — which cost a live run its
+    task id, orphaned a worker that had already committed, and blocked the
+    card with a dirty-tree reason nobody could act on.
+
+    The earlier test put `### Result` after `### Plan`, so the bug could not
+    appear in it.
+    """
+    from aegis.workflows.builtins.afk.render import replace_section
+
+    body = (
+        "### Coordinator\n\nStarted at 2026-09-25T23:18:56+00:00.\n\n"
+        "### Plan\n\n_(no plan reported)_\n\n"
+        "<!-- aegis-afk task=t-1 tick=2026-09-25T23:18:56+00:00 attempt=1 "
+        "gate='make check' -->"
+    )
+    out = replace_section(body, "Plan", "- [x] read AGENTS.md")
+
+    assert "task=t-1" in out
+    assert "gate='make check'" in out
+    assert "- [x] read AGENTS.md" in out
+    assert "_(no plan reported)_" not in out
+    assert "Started at 2026-09-25T23:18:56+00:00." in out
+
+
+def test_the_marker_survives_a_full_round_trip_of_section_rewrites() -> None:
+    """Whatever order the two schedules write in, the marker must still parse
+    afterwards. This is the invariant the state machine rests on."""
+    from aegis.workflows.builtins.afk.board import parse_marker, render_marker
+    from aegis.workflows.builtins.afk.render import card_comment, replace_section
+
+    marker = render_marker(
+        task="t-9", tick="2026-09-25T00:00:00Z", attempt=1, gate="make check"
+    )
+    body = card_comment(coordinator="started", plan="", result="", marker=marker)
+    for _ in range(3):
+        body = replace_section(body, "Plan", "- [ ] step")
+        body = replace_section(body, "Coordinator", "still going")
+    parsed = parse_marker(body)
+    assert parsed["task"] == "t-9"
+    assert parsed["gate"] == "make check"
+    assert parsed["attempt"] == "1"

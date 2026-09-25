@@ -23,7 +23,13 @@ def card_comment(*, coordinator: str, plan: str, result: str, marker: str) -> st
     return "\n\n".join(parts)
 
 
-_SECTION_RE_TEMPLATE = r"(?ms)^### {name}\n(.*?)(?=^### |\Z)"
+# A section ends at the next heading, at the bookkeeping marker, or at the
+# end of the body. The marker terminator is not optional: the last section
+# has no heading after it, so without it a rewrite of that section eats the
+# marker — which cost a live run its task id, orphaned a worker that had
+# already committed, and blocked the card with a dirty-tree reason nobody
+# could act on.
+_SECTION_RE_TEMPLATE = r"(?ms)^### {name}\n(.*?)(?=^### |^<!-- aegis-afk|\Z)"
 
 
 def replace_section(body: str, section: str, new_body: str) -> str:
@@ -32,6 +38,9 @@ def replace_section(body: str, section: str, new_body: str) -> str:
     The progress schedule owns Plan and nothing else. Rewriting the whole
     comment from the progress tick would erase the Coordinator and Result
     sections, which it has no way to reconstruct.
+
+    Whatever follows the last section — in practice the ``aegis-afk`` marker,
+    which is the only cross-tick state there is — is preserved.
     """
     pattern = re.compile(_SECTION_RE_TEMPLATE.format(name=re.escape(section)))
     replacement = f"### {section}\n\n{new_body.strip()}\n\n"
