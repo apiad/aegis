@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import record_parks
+
 from aegis.config.roots import AegisRoots
 from aegis.workflow import WorkflowEngine
 
@@ -203,10 +205,20 @@ async def test_delegate_returns_worker_result_text(tmp_path):
 
 
 async def test_delegate_worker_failure_raises_workflow_error(tmp_path):
-    e, sm, _qm, _inbox = _engine_with_queue(tmp_path)
+    # `max_attempts=1` plus the `_park` stand-in: a bad turn end now stalls
+    # and rebuilds unless the budget is spent, so on the default budget this
+    # delegate waits forever for a callback the queue no longer sends.
+    sm = _StubSM()
+    inbox = InboxRouter()
+    qm = QueueManager(
+        {"impl": Queue(name="impl", agent_profile="default",
+                       max_parallel=1, max_attempts=1)},
+        sm, inbox, handle_factory=lambda used: "w1")
+    e, sm, qm, _inbox = _engine_with_queue(tmp_path, sm=sm, inbox=inbox, qm=qm)
+    record_parks(qm)
     sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
     with pytest.raises(WorkflowError, match="task .* failed"):
-        await e.delegate("impl", "fail me")
+        await asyncio.wait_for(e.delegate("impl", "fail me"), 2)
 
 
 async def test_delegate_unknown_queue_raises_workflow_error(tmp_path):

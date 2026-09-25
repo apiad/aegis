@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import asyncio
+from types import SimpleNamespace
 
 from aegis.core.session import AgentSession
 from aegis.events import AssistantText, Result, SystemInit
@@ -30,6 +31,22 @@ from aegis.tui.state import AgentState
 
 
 HANG = object()  # sentinel: harness's event stream blocks forever
+
+
+class StubMonitors:
+    """The monitor plane ``close_guard.gather_facts`` reads.
+
+    Only the one method it calls. Exists so a test can put a worker into
+    the state that matters most for the stall arm: ended its turn in order
+    to WAIT, which must defer rather than rebuild.
+    """
+
+    def __init__(self, armed: dict[str, list]):
+        self._armed = armed
+
+    def snapshot(self, *, for_handle: str | None = None) -> list:
+        return list(self._armed.get(for_handle, []))
+
 
 
 class FakeHarness:
@@ -94,6 +111,9 @@ class StubSM:
         self.reconnected: list[str] = []
         # handle -> every InboxMessage that reached that session.
         self._delivered: dict[str, list] = {}
+        # handle -> live monitors it armed, read through `monitor_manager`.
+        self._monitors: dict[str, list] = {}
+        self.monitor_manager = StubMonitors(self._monitors)
         # Every session ever spawned, including closed ones. `close` drops a
         # session from the ROSTER, but the AgentSession object outlives it
         # with its observers still attached — which is how a late SystemInit
@@ -130,6 +150,38 @@ class StubSM:
                 return s
         return None
 
+    def list_sessions(self):
+        """The roster plane, which `close_guard.gather_facts` reads first.
+
+        Without it every fact came back empty and `_still_working` returned
+        "not waiting" for every worker — so a test claiming to prove the
+        deferral takes precedence over the stall arm would have passed with
+        the precedence check deleted. `state` is deliberately not the
+        terminal state: the finalizer passes that in itself, because by the
+        time it looks the roster may already disagree.
+        """
+        return [
+            SimpleNamespace(
+                handle=s.handle,
+                agent_slug=getattr(s, "agent_slug", ""),
+                state="ready",
+                active=True,
+                unseen=False,
+                spawned_by=None,
+            )
+            for s in self._sessions
+        ]
+
+    def arm_monitor(self, handle):
+        """Make this worker read as still waiting on something.
+
+        A live monitor is the canonical reason a turn ending means nothing:
+        the briefing tells an agent to end its turn and be woken.
+        """
+        self._monitors.setdefault(handle, []).append(
+            SimpleNamespace(monitor_id="m1", handle=handle)
+        )
+
     def _session_for(self, handle):
         s = self._ever.get(handle)
         if s is None:
@@ -141,14 +193,22 @@ class StubSM:
         self._sessions = [s for s in self._sessions if s.handle != handle]
 
     async def reconnect(self, handle, *, allow_local=False):
-        """The seam ``recovery.rebuild`` goes through. No harness is
-        actually swapped: the stub's session already survives, which is
-        the property under test, and a real swap would need a second
-        script per handle for no gain."""
+        """The seam ``recovery.rebuild`` goes through.
+
+        Adopts a fresh HangingHarness, the way the real one adopts a fresh
+        resumed process: everything aegis owns survives the swap, and the
+        rebuilt worker is mid-task, so it does NOT end its turn on its own.
+        Letting the original FakeHarness stand meant the nudge replayed its
+        leftover script and the "recovered" worker completed cleanly four
+        lines after the stall — every stall test then measured a
+        completion.
+        """
         if self.rebuild_fails:
             raise ValueError(f"{handle} has no session id to resume from")
-        if self.get(handle) is None:
+        s = self.get(handle)
+        if s is None:
             raise ValueError(f"unknown session {handle!r}")
+        s.adopt(HangingHarness())
         self.reconnected.append(handle)
         return f"reconnected {handle} on local"
 

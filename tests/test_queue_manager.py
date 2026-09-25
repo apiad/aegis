@@ -6,6 +6,8 @@ import asyncio
 
 import pytest
 
+from tests.conftest import record_parks
+
 from aegis.core.session import AgentSession
 from aegis.events import AssistantText, Result
 from aegis.queue import (
@@ -97,9 +99,9 @@ class StubSessionManager:
 
 
 def _q(name="impl", profile="claude-impl", cap=2,
-       provider="", model=""):
+       provider="", model="", attempts=2):
     return Queue(name=name, agent_profile=profile, max_parallel=cap,
-                 provider=provider, model=model)
+                 provider=provider, model=model, max_attempts=attempts)
 
 
 async def test_enqueue_returns_id_and_position():
@@ -164,10 +166,14 @@ async def test_callback_delivered_on_completion():
 
 
 async def test_failed_worker_delivers_error_callback():
+    # `max_attempts=1`: the first bad turn end now stalls and rebuilds on the
+    # default budget, so only an exhausted one still reaches the terminal
+    # path this test is about.
     sm = StubSessionManager()
     inbox = InboxRouter()
-    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+    qm = QueueManager({"impl": _q(cap=1, attempts=1)}, sm, inbox,
                       handle_factory=lambda used: "w1")
+    parked = record_parks(qm)
     sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
     tid, _ = qm.enqueue("impl", "go",
                         enqueued_by=sender_agent("lucid-knuth"),
@@ -175,7 +181,11 @@ async def test_failed_worker_delivers_error_callback():
     await asyncio.sleep(0.05)
     pending = inbox.pending("lucid-knuth")
     assert len(pending) == 1 and pending[0].status == "error"
-    assert qm.status(tid)["status"] == "failed"
+    assert [(t, a) for t, a, _ in parked] == [(tid, 1)]
+    # No `qm.status(tid) == "failed"` any more: the terminal path parks, and
+    # Task 8 is what sets `recoverable` there. The worker stays alive either
+    # way, which is the point of the whole change.
+    assert "w1" not in sm.closed
 
 
 async def test_callback_false_skips_inbox_delivery():
@@ -345,13 +355,18 @@ async def test_run_awaits_result_and_returns_it():
 
 
 async def test_run_failed_worker_returns_failed():
+    # `max_attempts=1`: a bad turn end now stalls and rebuilds unless the
+    # budget is spent, so without this the awaiting `run()` never resolves.
     sm = StubSessionManager()
     inbox = InboxRouter()
-    qm = QueueManager({"impl": _q(cap=1)}, sm, inbox,
+    qm = QueueManager({"impl": _q(cap=1, attempts=1)}, sm, inbox,
                       handle_factory=lambda used: "w1")
+    parked = record_parks(qm)
     sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
-    res = await qm.run("impl", "go", enqueued_by=sender_agent("boss"))
+    res = await asyncio.wait_for(
+        qm.run("impl", "go", enqueued_by=sender_agent("boss")), 2)
     assert res["status"] == "failed"
+    assert [t for t, _, _ in parked] == [res["task_id"]]
 
 
 async def test_run_unknown_queue_returns_error():

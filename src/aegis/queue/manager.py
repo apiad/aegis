@@ -714,6 +714,11 @@ class QueueManager:
             return []
         return still_working_reasons(facts)
 
+    async def _park(self, session, task, *, reason: str) -> None:
+        """Retire a worker whose budget is spent, keeping the conversation
+        reachable. Lands in Task 8 of the ephemeral-agent-recovery plan."""
+        raise NotImplementedError("_park lands in Task 8")
+
     async def _finalize(self, session, st) -> None:
         if session.handle not in self._workers:
             return
@@ -739,6 +744,87 @@ class QueueManager:
                 },
             )
             return
+        if session.state is AgentState.working:
+            # This callback is about a turn the session has already moved on
+            # from, so acting on it would spend an attempt on an interruption
+            # that is already handled. One interruption can end a turn twice —
+            # a harness reporting both an error and a stream end fires the
+            # finished-state callback twice — and the stall arm deliberately
+            # puts the worker BACK in `_workers`, so the duplicate used to
+            # read as a second bad turn end. On the default budget of 2 that
+            # parked a worker on its first blip, having rebuilt it once.
+            #
+            # A concurrency flag around the stall arm does not cover this: the
+            # arm can run start to finish without yielding, so the flag is
+            # already cleared by the time the duplicate's task body runs. The
+            # session's own state is the durable signal, and it is the same
+            # reasoning `_still_working` uses — a worker mid-turn is not a
+            # worker that finished.
+            return
+        from aegis.core.recovery import NUDGE_STALL, Outcome, classify, rebuild
+
+        task, said = self._workers[session.handle]
+        q = self._queues[task.queue]
+        # INCREMENT FIRST, then classify. `attempts` means "bad turn-ends
+        # INCLUDING this one", which is the convention `classify` documents
+        # and its tests pin (`classify(attempts=1, max_attempts=1)` is
+        # terminal). Classifying on the pre-increment count gives every queue
+        # one extra rebuild and makes `max_attempts: 1` retry once instead of
+        # parking on the first stall, the opposite of what the config
+        # documents it to mean.
+        bumped = replace(task, attempts=task.attempts + 1)
+        outcome = classify(st, attempts=bumped.attempts,
+                           max_attempts=q.max_attempts)
+        if outcome is Outcome.transient:
+            self._workers[session.handle] = (bumped, said)
+            self._all[task.id] = bumped
+            self._inflight[task.queue] = [
+                (bumped if x.id == task.id else x)
+                for x in self._inflight[task.queue]
+            ]
+            reason = (
+                getattr(session, "last_stop_reason", None)
+                or repr(getattr(session, "last_error", None) or None)
+                or "the turn ended without a result"
+            )
+            self._log(
+                task.queue,
+                {
+                    "event": "stalled",
+                    "task_id": task.id,
+                    "worker_handle": session.handle,
+                    "attempt": bumped.attempts,
+                    "last_text": said,
+                    "stop_reason": getattr(session, "last_stop_reason", None),
+                    "error": repr(getattr(session, "last_error", None) or None),
+                    "at": self._now(),
+                },
+            )
+            # The task stays `dispatched` and the slot stays held, for the
+            # rebuild window and no longer. `max_attempts` is what keeps that
+            # from being "hold until resolved" with extra steps.
+            ok = await rebuild(
+                self._sm,
+                session.handle,
+                nudge=NUDGE_STALL.format(reason=reason),
+            )
+            if not ok:
+                await self._park(session, bumped, reason="rebuild failed")
+            return
+        if outcome is Outcome.terminal:
+            # Attempts exhausted. Because the increment happens above, every
+            # bad turn end reaching here has attempts >= max_attempts >= 1, so
+            # this arm IS the park path. Without it the method falls through
+            # to the pop/close/fail flow below and the worker is destroyed,
+            # which is the whole behaviour being removed.
+            await self._park(
+                session,
+                bumped,
+                reason=(f"stalled {bumped.attempts} time(s); "
+                        f"attempts exhausted"),
+            )
+            return
+        # Outcome.done falls through to the completion path below.
         task, last_text = self._workers.pop(session.handle)
         self._chunk_run.pop(session.handle, None)
         ok = st is AgentState.ready

@@ -8,6 +8,7 @@ import pytest
 from aegis.events import Result, TokenUsage
 from aegis.queue import InboxRouter, Queue, QueueManager, sender_agent
 
+from tests.conftest import record_parks
 from tests.test_queue_manager import StubSessionManager, AssistantText
 
 
@@ -75,27 +76,41 @@ async def test_unknown_model_records_error_instead_of_crashing(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_failed_record_also_carries_cost(tmp_path):
+async def test_a_bad_turn_end_writes_no_cost_record(tmp_path):
+    """Was `test_failed_record_also_carries_cost`, and it is a tripwire now.
+
+    `_finalize` no longer produces a `failed` record from a bad turn end: it
+    stalls and rebuilds, or parks once `max_attempts` is spent. The
+    `stalled` record does not carry cost and neither does the `recoverable`
+    record Task 8 writes, so the tokens a worker burned before it stalled go
+    unaccounted for. Pinned here so the gap is visible instead of silent.
+
+    When it is closed, close it on `recoverable`, which is written once per
+    task — not on `stalled`, which is written once per attempt and would
+    make a summing consumer count the same turn several times. Flip this
+    test then; it going red is the intended signal.
+    """
     sm = StubSessionManager()
     inbox = InboxRouter()
     qm = QueueManager(
         {"impl": Queue(name="impl", agent_profile="opus", max_parallel=1,
-                       provider="claude-code", model="opus")},
+                       provider="claude-code", model="opus",
+                       max_attempts=1)},
         sm, inbox, state_dir=tmp_path,
         handle_factory=lambda used: "w1",
     )
+    parked = record_parks(qm)
     usage = TokenUsage(input=1_000, output=500, cache_read=0,
                        cache_creation=0)
     sm.script("w1",
               [AssistantText(text="oops"),
                Result(duration_ms=1, is_error=True, usage=usage)])
-    qm.enqueue("impl", "x", enqueued_by=sender_agent("p"), callback=False)
+    tid, _ = qm.enqueue("impl", "x", enqueued_by=sender_agent("p"),
+                        callback=False)
     await asyncio.sleep(0.1)
 
+    assert [t for t, _, _ in parked] == [tid]
     log = tmp_path / "queues" / "impl.jsonl"
     records = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
-    done = [r for r in records if r.get("event") in ("completed", "failed")]
-    assert len(done) == 1
-    assert done[0]["event"] == "failed"
-    assert "cost" in done[0]
-    assert Decimal(done[0]["cost"]["usd"]) > Decimal("0")
+    assert not [r for r in records if r.get("event") in ("completed", "failed")]
+    assert not [r for r in records if "cost" in r]
