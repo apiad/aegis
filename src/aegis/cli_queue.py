@@ -12,7 +12,7 @@ the JSONL log instead would be lying about a worker it never touched.
 
 The two surfaces that CAN act are the two already bound to a brain: the
 MCP tools (``aegis_task_resume`` / ``aegis_task_retry``) and the TUI slash
-commands (``/queue``, ``/resume``). Giving the CLI an acting verb needs a
+commands (``/queues tasks``, ``/resume``). Giving the CLI an acting verb needs a
 request/response daemon protocol first; that is a change to
 ``daemon/server.py``, not a command added beside these two.
 

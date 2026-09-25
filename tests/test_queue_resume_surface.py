@@ -4,8 +4,8 @@ Three planes, and the split between them is not arbitrary. The daemon's
 unix socket is a view-attachment stream, not request/response RPC, so only
 the two surfaces already bound to a live brain can ACT — MCP
 (`aegis_task_resume` / `aegis_task_retry`) and the TUI's slash commands
-(`/queue`, `/resume`). `aegis queue` is a separate process reading the
-JSONL log, so it can only READ.
+(`/queues tasks`, `/resume`). `aegis queue` is a separate process reading
+the JSONL log, so it can only READ.
 """
 
 from __future__ import annotations
@@ -392,16 +392,16 @@ def _ctx(qm):
     return CommandContext(bridge=_Bridge(), handle="me")
 
 
-async def test_slash_queue_lists_a_parked_task_with_its_id(parked_rig):
+async def test_slash_queues_tasks_lists_a_parked_task_with_its_id(parked_rig):
     qm, sm, tid, handle, _ = parked_rig
-    res = await dispatch("/queue", _ctx(qm))
+    res = await dispatch("/queues tasks", _ctx(qm))
     assert res.ok
     assert tid in res.body and "recoverable" in res.body and handle in res.body
 
 
-async def test_slash_queue_on_an_unknown_queue_errors(parked_rig):
+async def test_slash_queues_tasks_on_an_unknown_queue_errors(parked_rig):
     qm, sm, tid, handle, _ = parked_rig
-    res = await dispatch("/queue ghost", _ctx(qm))
+    res = await dispatch("/queues tasks ghost", _ctx(qm))
     assert not res.ok
 
 

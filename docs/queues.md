@@ -141,7 +141,7 @@ sent mail, so re-running its prompt is a second execution rather than a
 recovery — something only a caller who has decided the conversation is
 not worth continuing should ask for.
 
-In the TUI, `/queue` lists tasks with their full ids and `/resume
+In the TUI, `/queues tasks` lists tasks with their full ids and `/resume
 <task_id>` is the same door as `aegis_task_resume`. Resume is refused —
 with a reason, never a traceback — when the task is not parked, when its
 session is gone (the tab was closed, or the TTL reaper got there first),

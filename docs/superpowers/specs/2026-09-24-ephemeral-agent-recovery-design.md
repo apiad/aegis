@@ -337,7 +337,7 @@ daemon protocol, which is not in this change.
 So the acting surfaces are the two that are already bound to the brain:
 
 - **MCP:** `aegis_task_resume(task_id)` and `aegis_task_retry(task_id)`.
-- **TUI:** `/queue` to list tasks and their states, `/resume <task_id>`. Both
+- **TUI:** `/queues tasks` to list tasks and their states, `/resume <task_id>`. Both
   follow the `/enqueue` shape in `commands/builtins/core.py`.
 
 And the CLI stays read-only, over the JSONL log, which works standalone and is

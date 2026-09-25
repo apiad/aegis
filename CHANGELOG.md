@@ -47,7 +47,7 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
-- **`aegis_task_resume` and `aegis_task_retry`, `/queue` and `/resume`, and a
+- **`aegis_task_resume` and `aegis_task_retry`, `/queues tasks` and `/resume`, and a
   read-only `aegis queue ls|show`** — the surfaces for acting on a parked worker.
   `aegis_task_resume(task_id)` rebuilds the harness under the same session and
   tells it to continue, with the retry budget reset: an operator who looked at
@@ -56,10 +56,11 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   the separate, explicit door — it re-runs the original payload as a NEW task and
   closes the parked session — and resume never falls back to it, because
   re-running a half-finished worker's prompt is a second execution rather than a
-  recovery. `/queue [<queue>]` lists tasks with their full ids (that is what
-  `/resume` takes) and `/resume <task_id>` is the same door from the TUI; `/queue`
-  is back under a different meaning than the one it was retired with, `/queues`
-  being the configured queues and `/queue` the tasks on them. The CLI is
+  recovery. `/queues tasks [<queue>]` lists tasks with their full ids (that is
+  what `/resume` takes) and `/resume <task_id>` is the same door from the TUI.
+  The contents of a collection are a subverb rather than the singular noun, so
+  `/queue` stays retired: it was the old name for `/queues`, and a singular noun
+  listing a different collection sits beside `/queues` on every `/qu`. The CLI is
   deliberately read-only: the daemon socket is a view-attachment stream rather
   than request/response RPC, so a standalone process cannot ask a live brain to
   rebuild anything, and a `resume` subcommand could only edit the log and lie

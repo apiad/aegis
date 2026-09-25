@@ -606,9 +606,13 @@ def make_queue_rig(tmp_path, *, max_attempts=2, recoverable_ttl_s=86400,
 
 
 def worker_handle(qm, task_id):
-    """The handle dispatch minted for this task. `status()` does not carry
-    it, and a test that hardcoded `w1` would lie the moment a rig
-    dispatched twice."""
+    """The handle dispatch minted for this task, read off the record.
+
+    `status()` carries `worker_handle` too, but only a test that is ABOUT
+    that field should go through it — everything else wants the handle
+    without also depending on how `status()` renders one. A test that
+    hardcoded `w1` would lie the moment a rig dispatched twice.
+    """
     return qm._all[task_id].worker_handle
 
 

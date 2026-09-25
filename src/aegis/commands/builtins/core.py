@@ -1,4 +1,4 @@
-"""Phase 1 builtin slash commands: /help, /sessions, /agents, /spawn, /queue,
+"""Phase 1 builtin slash commands: /help, /sessions, /agents, /spawn, /queues,
 /enqueue.
 
 Each is a thin call into the ``AppBridge`` (``ctx.bridge``) — the same
@@ -465,8 +465,12 @@ async def _queue(ctx: CommandContext, args) -> CommandResult:
                 )
         plural = "" if len(names) == 1 else "s"
         return CommandResult(True, f"{len(names)} queue{plural}", "\n".join(lines))
+    if sub == "tasks":
+        return await _queue_tasks(ctx, args.get("name"))
     if sub != "new":
-        return CommandResult(False, "usage: /queues new <name> [agent] [--ephemeral]")
+        return CommandResult(
+            False, "usage: /queues [tasks [<queue>] | new <name> [agent] [--ephemeral]]"
+        )
     name = args.get("name")
     if not name:
         return CommandResult(False, "usage: /queues new <name> [agent] [--ephemeral]")
@@ -545,9 +549,15 @@ _STATUS_ORDER = ("recoverable", "dispatched", "pending")
 _TERMINAL_SHOWN = 10
 
 
-async def _queue_ls(ctx: CommandContext, args) -> CommandResult:
+async def _queue_tasks(ctx: CommandContext, which: str | None) -> CommandResult:
+    """`/queues tasks [<queue>]` — the tasks on a queue, not the queues.
+
+    A subverb rather than a command of its own. `/queue` was retired when
+    collection nouns went plural, and bringing the singular back under a
+    new meaning puts the one command that contradicts that rule next to
+    `/queues` in the palette on every `/qu`.
+    """
     qm = ctx.bridge.queue_manager
-    which = args.get("queue")
     known = qm.list_queues()
     if which and which not in known:
         return CommandResult(
@@ -710,31 +720,22 @@ for _cmd in (
     ),
     SlashCommand(
         "queues",
-        "list or create queues",
-        "/queues [new <name> [agent] [--ephemeral]]",
+        "list or create queues, or list one's tasks",
+        "/queues [tasks [<queue>] | new <name> [agent] [--ephemeral]]",
         _queue,
         spec=ArgSpec(
             positionals=(
-                Arg("subverb", required=False, completer=("list", "new")),
-                Arg("name", required=False),
+                Arg("subverb", required=False, completer=("list", "tasks", "new")),
+                Arg(
+                    "name",
+                    required=False,
+                    # Right for `tasks`, and for `new` it is the list of
+                    # names already taken — the same trade `/groups` makes.
+                    completer=lambda b: b.queue_manager.list_queues(),
+                ),
                 Arg("agent", required=False, completer=_agent_choices),
             ),
             flags=(Flag("ephemeral", takes_value=False),),
-        ),
-    ),
-    SlashCommand(
-        "queue",
-        "list queue tasks and their states",
-        "/queue [<queue>]",
-        _queue_ls,
-        spec=ArgSpec(
-            positionals=(
-                Arg(
-                    "queue",
-                    required=False,
-                    completer=lambda b: b.queue_manager.list_queues(),
-                ),
-            )
         ),
     ),
     SlashCommand(
