@@ -1,6 +1,6 @@
 # Ephemeral Agent Recovery Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A queue worker that ends a turn badly is rebuilt in place and told to continue, and when that runs out of attempts it is parked as an ordinary session holding its whole conversation, instead of being closed and lost.
 
@@ -49,7 +49,7 @@ The persistence plane has never run in production because two brain paths constr
 - Consumes: nothing.
 - Produces: `aegis.core.planes.STATEFUL_PLANES: tuple[tuple[str, str], ...]` — pairs of `(constructor_name, brain_module_path)`. Nothing later depends on it; later tasks depend on the queue log actually being written.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/core/test_stateful_planes_wired.py`:
 
@@ -101,7 +101,7 @@ def test_every_stateful_plane_is_constructed_with_a_state_dir():
     )
 ```
 
-- [ ] **Step 2: Add the inventory entry so the test can run**
+- [x] **Step 2: Add the inventory entry so the test can run**
 
 Append to `src/aegis/core/planes.py`:
 
@@ -122,12 +122,12 @@ STATEFUL_PLANES: tuple[tuple[str, str], ...] = (
 )
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `uv run pytest tests/core/test_stateful_planes_wired.py -v`
 Expected: FAIL, listing `cli.py:698 InboxRouter(...)`, `cli.py:708 QueueManager(...)`, `tui/app.py:650 InboxRouter(...)`, `tui/app.py:651 QueueManager(...)`.
 
-- [ ] **Step 4: Wire `_serve`**
+- [x] **Step 4: Wire `_serve`**
 
 In `src/aegis/cli.py`, in `_serve`, replace:
 
@@ -153,7 +153,7 @@ with:
     qm = QueueManager(queues or {}, mgr, inbox, state_dir=roots.state_dir)
 ```
 
-- [ ] **Step 5: Wire the standalone TUI**
+- [x] **Step 5: Wire the standalone TUI**
 
 In `src/aegis/tui/app.py`, in the plane-building constructor, replace:
 
@@ -176,23 +176,23 @@ with:
         )
 ```
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [x] **Step 6: Run the test to verify it passes**
 
 Run: `uv run pytest tests/core/test_stateful_planes_wired.py -v`
 Expected: PASS.
 
-- [ ] **Step 7: Mutation-test the gate**
+- [x] **Step 7: Mutation-test the gate**
 
 Temporarily remove `state_dir=roots.state_dir` from the `QueueManager(...)` call in `cli.py`. Run the test again. Expected: FAIL naming `cli.py` and that line. Then put it back and confirm PASS.
 
 A gate that cannot fail is worth less than no gate, and the one this replaces was green for months against a plane production never built. Do not skip this step.
 
-- [ ] **Step 8: Run the full gate**
+- [x] **Step 8: Run the full gate**
 
 Run: `make test`
 Expected: PASS (ignore up to two inotify flakes; re-run that file alone to confirm).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git commit -- src/aegis/core/planes.py src/aegis/cli.py src/aegis/tui/app.py tests/core/test_stateful_planes_wired.py -m "fix(queue): hand both brain paths a state_dir, and gate it
@@ -220,7 +220,7 @@ trusting a call site, because a call site is what went wrong."
 - Consumes: nothing.
 - Produces: `Queue.max_attempts: int` (default `2`) and `Queue.recoverable_ttl_s: int` (default `86400`), both read by Tasks 7, 8 and 9.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_queue_config.py`:
 
@@ -263,12 +263,12 @@ def test_queue_recovery_keys_are_overridable(tmp_path):
     assert q.recoverable_ttl_s == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_config.py -k recovery -v`
 Expected: FAIL with `AttributeError: 'Queue' object has no attribute 'max_attempts'`.
 
-- [ ] **Step 3: Add the fields**
+- [x] **Step 3: Add the fields**
 
 In `src/aegis/config/yaml_loader.py`, in `QueueSpec`:
 
@@ -307,16 +307,16 @@ In `src/aegis/config/__init__.py`, in `load_queues`, extend the `Queue(...)` con
         )
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_config.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Document the keys**
+- [x] **Step 5: Document the keys**
 
 Find the docs page that documents the `queues:` config section (`grep -rl "max_parallel" docs/`). Add both keys to its table or list, with the defaults and the one-line meaning from the spec. Then run `rift check`; the "every config section is documented" rule must not gain a new miss.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/config/yaml_loader.py src/aegis/config/__init__.py src/aegis/queue/schema.py docs tests/test_queue_config.py -m "feat(queue): per-queue max_attempts and recoverable_ttl_s
@@ -343,7 +343,7 @@ Pure data and one pure function. No I/O, no session, no queue.
   - `Outcome` — `StrEnum` with members `done`, `transient`, `terminal`.
   - `classify(state, *, attempts: int, max_attempts: int, cancelled: bool = False, over_budget: bool = False) -> Outcome`, used by Task 7.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/core/test_recovery_classify.py`:
 
@@ -407,12 +407,12 @@ def test_every_non_ready_state_is_transient_while_budget_remains(state):
     assert classify(state, attempts=0, max_attempts=2) is Outcome.transient
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/core/test_recovery_classify.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.core.recovery'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/aegis/core/recovery.py`:
 
@@ -494,12 +494,12 @@ def classify(
     return Outcome.transient
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_recovery_classify.py -v`
 Expected: PASS, 8 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -- src/aegis/core/recovery.py tests/core/test_recovery_classify.py -m "feat(core): recovery plane — Resumable, Outcome, classify
@@ -527,7 +527,7 @@ reasons that fails closed when it is wrong."
   - `AgentSession.last_stop_reason: str | None` — `None` until a `Result` carries one.
   - `recovery.resumable_from(session) -> Resumable | None`, used by Tasks 6 and 8.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/core/test_recovery_resumable.py`:
 
@@ -580,12 +580,12 @@ def test_missing_place_falls_back_to_local():
     assert r is not None and r.host == "local" and r.cwd == ""
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/core/test_recovery_resumable.py -v`
 Expected: FAIL with `ImportError: cannot import name 'resumable_from'`.
 
-- [ ] **Step 3: Add `resumable_from`**
+- [x] **Step 3: Add `resumable_from`**
 
 Append to `src/aegis/core/recovery.py`:
 
@@ -612,12 +612,12 @@ def resumable_from(session) -> Resumable | None:
     )
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_recovery_resumable.py -v`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Write the failing test for `last_stop_reason`**
+- [x] **Step 5: Write the failing test for `last_stop_reason`**
 
 First find how this repo already builds an `AgentSession` in a test: `grep -rn "AgentSession(" tests/ | head`. Use that helper rather than a new double. Then append to `tests/core/test_recovery_resumable.py`, substituting that helper for `make_session()`:
 
@@ -657,7 +657,7 @@ async def test_last_stop_reason_latches_in_both_turn_loops():
 
 `run_turn_emitting` stands for whatever the repo's existing helper is for driving a fake event stream through a session — reuse it, do not write a new one.
 
-- [ ] **Step 6: Latch the field**
+- [x] **Step 6: Latch the field**
 
 In `src/aegis/core/session.py`, beside `self.last_error` (around line 328):
 
@@ -679,17 +679,17 @@ In BOTH turn loops (around `:860-880` and `:1670-1690`), inside the `if isinstan
 
 Both loops, not one. Grep for `saw_result = True` to find them; there are two, and a recovery that works in one code path and not the other is worse than neither.
 
-- [ ] **Step 7: Run to verify it passes**
+- [x] **Step 7: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_recovery_resumable.py -v`
 Expected: PASS.
 
-- [ ] **Step 8: Run the full gate**
+- [x] **Step 8: Run the full gate**
 
 Run: `make test`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git commit -- src/aegis/core/session.py src/aegis/core/recovery.py tests/core/test_recovery_resumable.py -m "feat(core): latch last_stop_reason, add resumable_from
@@ -714,7 +714,7 @@ The rebuild mechanism already exists for dropped remote links. Recovery needs it
 - Consumes: nothing from earlier tasks.
 - Produces: `SessionManager.reconnect(handle: str, *, allow_local: bool = False) -> str`, used by Task 6.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/core/test_reconnect_allow_local.py`:
 
@@ -754,12 +754,12 @@ async def test_a_session_with_no_id_is_refused_even_with_allow_local(
 
 Build the two fixtures from the existing brain test double. `tests/brain.py` is the shared helper; read it and follow its pattern rather than inventing a new double. The fixtures need a `SessionManager` holding one local session with `session_id` set (and one with it unset) and a `_make_session` factory that returns a fresh stub.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/core/test_reconnect_allow_local.py -v`
 Expected: FAIL — `test_local_session_is_allowed_when_asked` raises `ValueError` because `allow_local` is not a parameter.
 
-- [ ] **Step 3: Add the parameter**
+- [x] **Step 3: Add the parameter**
 
 In `src/aegis/core/manager.py`, change the signature and the guard:
 
@@ -794,17 +794,17 @@ In `src/aegis/core/manager.py`, change the signature and the guard:
 
 Leave the rest of the method unchanged.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_reconnect_allow_local.py -v`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Confirm the manual command is unchanged**
+- [x] **Step 5: Confirm the manual command is unchanged**
 
 Run: `uv run pytest tests/ -k reconnect -v`
 Expected: PASS — every pre-existing reconnect test still passes, because the default is `False`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/core/manager.py tests/core/test_reconnect_allow_local.py -m "feat(core): reconnect(allow_local=True) for the recovery plane
@@ -834,7 +834,7 @@ so /reconnect still refuses a local session."
   - The three nudge strings, in `core/recovery.py`, used by Tasks 7, 9, 11.
   - `queue_rig` and the extended `StubSM`, used by Tasks 7, 8, 9, 10, 11.
 
-- [ ] **Step 0: Build the shared test rig first**
+- [x] **Step 0: Build the shared test rig first**
 
 Tasks 6 through 11 all drive a `QueueManager` through a stubbed session
 manager. Build it once. `tests/test_queue_e2e.py` already has `StubSM` — read
@@ -902,7 +902,7 @@ The remaining fixtures (`parked_rig`, `parked_rig_ttl_zero`,
 `parked_rig_completed`, `replay_rig*`) build on these; define each in the test
 file that first uses it, driving `_make_rig` to the state its name describes.
 
-- [ ] **Step 1: Write the failing test for the record**
+- [x] **Step 1: Write the failing test for the record**
 
 Create `tests/test_queue_worker_session_record.py`:
 
@@ -975,12 +975,12 @@ async def test_a_late_record_does_not_resurrect_a_terminal_task(
 
 `queue_rig` is a fixture you add to `tests/conftest.py` (or a local one): a `QueueManager` with `state_dir=tmp_path`, one queue `impl` with `max_parallel=1`, and the `StubSM` double already used by `tests/test_queue_e2e.py`. Extend that stub with `emit_system_init(handle, session_id)` and `finish(handle, text)` helpers rather than writing a second double — read `tests/test_queue_e2e.py` first and reuse `StubSM`.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_worker_session_record.py -v`
 Expected: FAIL — no `worker_session` records are written.
 
-- [ ] **Step 3: Add the Task fields**
+- [x] **Step 3: Add the Task fields**
 
 In `src/aegis/queue/schema.py`, in `Task`:
 
@@ -997,7 +997,7 @@ In `src/aegis/queue/schema.py`, in `Task`:
 
 Add `from aegis.core.recovery import Resumable` at the top of `schema.py`.
 
-- [ ] **Step 4: Latch and record in the observer**
+- [x] **Step 4: Latch and record in the observer**
 
 In `src/aegis/queue/manager.py`, inside `_attach_observers`'s `on_event`, before the `isinstance(ev, AssistantText)` branch:
 
@@ -1045,12 +1045,12 @@ In `src/aegis/queue/manager.py`, inside `_attach_observers`'s `on_event`, before
 
 The `if h not in self._workers: return` guard is what makes Review Focus 3 pass: a finalized task has been popped from `_workers`, so a late record finds nothing.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_worker_session_record.py -v`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 6: Write the failing test for `rebuild`**
+- [x] **Step 6: Write the failing test for `rebuild`**
 
 Create `tests/core/test_recovery_rebuild.py`:
 
@@ -1113,12 +1113,12 @@ async def test_rebuild_does_not_nudge_when_the_rebuild_failed(
     assert not mgr.get(handle).delivered_bodies
 ```
 
-- [ ] **Step 7: Run to verify it fails**
+- [x] **Step 7: Run to verify it fails**
 
 Run: `uv run pytest tests/core/test_recovery_rebuild.py -v`
 Expected: FAIL with `ImportError: cannot import name 'rebuild'`.
 
-- [ ] **Step 8: Implement `rebuild`**
+- [x] **Step 8: Implement `rebuild`**
 
 Append to `src/aegis/core/recovery.py`:
 
@@ -1159,7 +1159,7 @@ async def rebuild(sm, handle: str, *, nudge: str) -> bool:
     return True
 ```
 
-- [ ] **Step 8b: Add the three nudge strings**
+- [x] **Step 8b: Add the three nudge strings**
 
 Also in `src/aegis/core/recovery.py`, so every caller says the same thing:
 
@@ -1190,12 +1190,12 @@ NUDGE_OPERATOR = (
 process that died, so a worker resumed after a restart is waiting on a wake
 that will never come.
 
-- [ ] **Step 9: Run to verify it passes**
+- [x] **Step 9: Run to verify it passes**
 
 Run: `uv run pytest tests/core/test_recovery_rebuild.py -v`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 10: Run the full gate and commit**
+- [x] **Step 10: Run the full gate and commit**
 
 Run: `make test`
 
@@ -1221,7 +1221,7 @@ race the async pane drop and crash on DuplicateIds."
 - Consumes: `classify`, `Outcome` (Task 3); `rebuild` (Task 6); `Queue.max_attempts` (Task 2).
 - Produces: a `stalled` JSONL record; `Task.attempts` incremented in place; task stays `dispatched`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_queue_stall.py`:
 
@@ -1340,12 +1340,12 @@ async def test_a_clean_end_still_completes(queue_rig):
 
 Extend `StubSM` with `fail(handle, text, stop_reason=None, emit_twice=False)` and `inbox_for(handle)`.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_stall.py -v`
 Expected: FAIL — the worker is closed and the task is `failed`.
 
-- [ ] **Step 3: Add the stall arm**
+- [x] **Step 3: Add the stall arm**
 
 In `src/aegis/queue/manager.py`, in `_finalize`, after the `_still_working` block and before `task, last_text = self._workers.pop(...)`:
 
@@ -1428,17 +1428,17 @@ Import `NUDGE_STALL` alongside `classify` and `rebuild`. Note the argument order
 
 `_park` lands in Task 8. For this task, stub it as a method raising `NotImplementedError`; every test in this file has budget left and a working rebuild, so none reaches it.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_stall.py -v`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Confirm nothing else regressed**
+- [x] **Step 5: Confirm nothing else regressed**
 
 Run: `uv run pytest tests/ -k queue -v`
 Expected: PASS. If `test_failed_worker_delivers_error_callback` (`tests/test_queue_manager.py:166`) now fails, that is correct and expected: a failed worker no longer delivers an error callback on the first bad turn. Update it to set `max_attempts=1` on its queue so it still pins the terminal path, and leave a one-line comment saying why.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -- src/aegis/queue/manager.py tests/test_queue_stall.py tests/test_queue_manager.py -m "feat(queue): stall and rebuild instead of closing on a bad turn end
@@ -1462,7 +1462,7 @@ loop that wedges the queue."
 - Consumes: Task 7's stall arm.
 - Produces: `QueueManager._park(session, task, *, reason) -> None`; a `recoverable` JSONL record; `Origin(kind="parked", by=<queue>, detail=<task_id>)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_queue_park.py`:
 
@@ -1578,12 +1578,12 @@ async def test_a_worker_with_no_session_id_parks_immediately(queue_rig):
     assert "no conversation to resume" in sm.inbox_for("producer")[0].body
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_park.py -v`
 Expected: FAIL — `_park` raises `NotImplementedError` from Task 7's stub.
 
-- [ ] **Step 3: Implement `_park`**
+- [x] **Step 3: Implement `_park`**
 
 Replace the Task 7 stub in `src/aegis/queue/manager.py`:
 
@@ -1669,7 +1669,7 @@ Add `"recoverable"` to `QueueCompleted.outcome`'s `Literal` in `src/aegis/queue/
     parked_at: float | None = None
 ```
 
-- [ ] **Step 4: Park immediately when there is nothing to rebuild**
+- [x] **Step 4: Park immediately when there is nothing to rebuild**
 
 In the stall arm from Task 7, before incrementing attempts:
 
@@ -1686,12 +1686,12 @@ In the stall arm from Task 7, before incrementing attempts:
             return
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_park.py -v`
 Expected: PASS, 8 tests.
 
-- [ ] **Step 6: Run the full gate and commit**
+- [x] **Step 6: Run the full gate and commit**
 
 Run: `make test`
 
@@ -1724,7 +1724,7 @@ field, rather than a new session state."
   - `aegis.queue.replay.replay(qm) -> None` — what `QueueManager.start` now calls.
   - `recovery.restore(sm, task, *, nudge) -> str | None`.
 
-- [ ] **Step 1: Write the failing structural test**
+- [x] **Step 1: Write the failing structural test**
 
 Create `tests/test_queue_replay.py`:
 
@@ -1764,7 +1764,7 @@ def test_resumed_maps_back_to_dispatched():
     assert EVENT_STATUS["resumed"] == "dispatched"
 ```
 
-- [ ] **Step 2: Write the failing behavioural tests**
+- [x] **Step 2: Write the failing behavioural tests**
 
 Append to `tests/test_queue_replay.py`:
 
@@ -1839,12 +1839,12 @@ async def test_pending_is_still_requeued_at_head_of_fifo(replay_rig_pending):
 
 Build each `replay_rig*` fixture by hand-writing a queue JSONL, the way `tests/test_queue_e2e.py:149` already does. Read that test first and copy its shape.
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_replay.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.queue.replay'`.
 
-- [ ] **Step 4: Create `replay.py`**
+- [x] **Step 4: Create `replay.py`**
 
 Create `src/aegis/queue/replay.py`. Move `QueueManager.start`'s body and `_mark_interrupted` into module-level functions taking `qm`. Add at the top:
 
@@ -1882,7 +1882,7 @@ REPLAY_BRANCHES: frozenset[str] = frozenset(
 
 Add `"stalled"`, `"resumed"` and `"recoverable"` to `_LIFECYCLE_EVENTS` in `manager.py`. Change the status assignment in the record loop from `tasks[tid]["status"] = rec["event"]` to `tasks[tid]["status"] = EVENT_STATUS[rec["event"]]`.
 
-- [ ] **Step 5: Implement `restore`**
+- [x] **Step 5: Implement `restore`**
 
 Append to `src/aegis/core/recovery.py`:
 
@@ -1933,7 +1933,7 @@ async def restore(sm, task, *, nudge: str) -> str | None:
 
 Import `Origin` from `aegis.fleet.models` at the top of `recovery.py`.
 
-- [ ] **Step 6: Wire the replay branches**
+- [x] **Step 6: Wire the replay branches**
 
 In `replay.py`, in the per-task loop, replace the single `dispatched` branch:
 
@@ -1975,17 +1975,17 @@ In `replay.py`, in the per-task loop, replace the single `dispatched` branch:
 
 Write `_task_from_record` and `_park_from_replay` as module-level helpers in `replay.py`; `_park_from_replay` does what `QueueManager._park` does minus the session (there is none to re-origin when the rebuild failed).
 
-- [ ] **Step 7: Run to verify it passes**
+- [x] **Step 7: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_replay.py -v`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 8: Confirm the pre-existing replay tests still pass**
+- [x] **Step 8: Confirm the pre-existing replay tests still pass**
 
 Run: `uv run pytest tests/test_queue_e2e.py tests/test_queue_persistence.py tests/test_queue_worker_waiting.py -v`
 Expected: PASS. `test_restart_replays_handwritten_log_into_failed_interrupted` now has a `dispatched` record with no `worker_session`, so it should park rather than fail-interrupt. Update its assertion to `recoverable` and add a comment saying the old behaviour was the loss this change removes.
 
-- [ ] **Step 9: Run the full gate and commit**
+- [x] **Step 9: Run the full gate and commit**
 
 Run: `make check`
 
@@ -2012,7 +2012,7 @@ restored rather than mounting a second pane under a held handle."
 - Consumes: `Queue.recoverable_ttl_s` (Task 2), `_park` (Task 8).
 - Produces: `QueueManager.reap_parked(now_epoch: float) -> list[str]` — the task ids it failed.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_queue_park_ttl.py`:
 
@@ -2058,12 +2058,12 @@ async def test_the_discard_is_announced_to_the_producer(parked_rig):
     assert "discarded" in body and tid in body
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_park_ttl.py -v`
 Expected: FAIL with `AttributeError: 'QueueManager' object has no attribute 'reap_parked'`.
 
-- [ ] **Step 3: Implement `reap_parked`**
+- [x] **Step 3: Implement `reap_parked`**
 
 `Task.parked_at` and its write in `_park` both landed in Task 8. Add to `QueueManager`:
 
@@ -2117,16 +2117,16 @@ Expected: FAIL with `AttributeError: 'QueueManager' object has no attribute 'rea
         return reaped
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_park_ttl.py -v`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Call it periodically**
+- [x] **Step 5: Call it periodically**
 
 In `_serve`, find the existing periodic task list (near the `IdleReaper` construction around `cli.py:872`). Add a task that calls `qm.reap_parked(time.time())` every 300 seconds. Follow the `IdleReaper` shape: a small class or a coroutine with a `stop` event, so shutdown is clean.
 
-- [ ] **Step 6: Run the gate and commit**
+- [x] **Step 6: Run the gate and commit**
 
 Run: `make test`
 
@@ -2157,7 +2157,7 @@ removes."
 
 **Note on the CLI:** the daemon's unix socket is a view-attachment stream (`daemon/server.py`), not request/response RPC, so a standalone CLI cannot ask a live brain to rebuild anything. `aegis queue` is **read-only**, over the JSONL log. Do not add an acting subcommand; that needs a daemon protocol and is out of scope.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_queue_resume_surface.py`:
 
@@ -2204,12 +2204,12 @@ async def test_resume_on_a_completed_task_is_refused(parked_rig_completed):
     assert res["ok"] is False
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/test_queue_resume_surface.py -v`
 Expected: FAIL with `AttributeError: 'QueueManager' object has no attribute 'resume_task'`.
 
-- [ ] **Step 3: Implement `resume_task` and `retry_task`**
+- [x] **Step 3: Implement `resume_task` and `retry_task`**
 
 ```python
     async def resume_task(self, task_id: str) -> dict:
@@ -2256,12 +2256,12 @@ Expected: FAIL with `AttributeError: 'QueueManager' object has no attribute 'res
 
 `retry_task` is the explicit re-run: refuse unless the task is terminal or recoverable, close any parked session, then `enqueue` the original payload as a new task and return its id. Keep the two separate; never make `resume` fall back to re-running, because a worker that got halfway may already have committed and pushed.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/test_queue_resume_surface.py -v`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Add the MCP tools**
+- [x] **Step 5: Add the MCP tools**
 
 Beside `aegis_task_status` in `src/aegis/mcp/server.py`:
 
@@ -2296,7 +2296,7 @@ Beside `aegis_task_status` in `src/aegis/mcp/server.py`:
 
 Add both to the briefing string near `:212`, in the same voice as `aegis_task_status` and `aegis_cancel`.
 
-- [ ] **Step 6: Add the TUI commands**
+- [x] **Step 6: Add the TUI commands**
 
 In `src/aegis/commands/builtins/core.py`, beside the `/enqueue` `SlashCommand`:
 
@@ -2322,7 +2322,7 @@ In `src/aegis/commands/builtins/core.py`, beside the `/enqueue` `SlashCommand`:
 
 Write `_queue_ls` and `_queue_resume` as `async def (ctx, args) -> CommandResult`, following the shape of `_enqueue` in the same file.
 
-- [ ] **Step 7: Add the read-only CLI**
+- [x] **Step 7: Add the read-only CLI**
 
 Create `src/aegis/cli_queue.py` with `ls` and `show`, reading `.aegis/state/queues/*.jsonl` through `aegis.queue.jsonl.read_records` and folding per task with `aegis.queue.replay.EVENT_STATUS`. Follow `cli_schedule.py` for the Typer and table shape. Register in `cli.py`:
 
@@ -2334,14 +2334,14 @@ app.add_typer(_queue_app, name="queue")
 
 Add a module docstring saying why acting subcommands are absent (the socket is a view stream, not RPC), so nobody adds `aegis queue resume` without reading that first.
 
-- [ ] **Step 8: Document everything new**
+- [x] **Step 8: Document everything new**
 
 `rift check` enforces "every slash command is documented", "every CLI command is documented" and "every aegis_ tool named in a doc is a real tool". Add `aegis_task_resume`, `aegis_task_retry`, `/queue`, `/resume` and `aegis queue ls|show` to the right pages under `docs/`. Add a `CHANGELOG.md` entry covering the whole feature.
 
 Run: `rift check`
 Expected: 0 errors, and no new warnings beyond the pre-existing `preview` / `scheduler` config misses.
 
-- [ ] **Step 9: Run the full gate and commit**
+- [x] **Step 9: Run the full gate and commit**
 
 Run: `make check`
 
@@ -2364,7 +2364,7 @@ Nothing above proves the feature works. Every test so far runs against a double,
 **Files:**
 - Create: `know-how/recovering-a-dead-worker.md`
 
-- [ ] **Step 1: Boot a real daemon started AFTER the change**
+- [x] **Step 1: Boot a real daemon started AFTER the change**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -2373,15 +2373,15 @@ uv run aegis serve --views &
 
 `AGENTS.md`: green tests against a daemon that booted before the change prove nothing about the change.
 
-- [ ] **Step 2: Attach and enqueue a long task**
+- [x] **Step 2: Attach and enqueue a long task**
 
 Attach a TUI, then `/enqueue <queue> Count slowly from 1 to 300, one number per line, pausing a second between each.`
 
-- [ ] **Step 3: Kill the worker's harness process mid-turn**
+- [x] **Step 3: Kill the worker's harness process mid-turn**
 
 Find the worker's `claude` subprocess by PID (`pgrep -af claude | grep <something specific to it>`) and `kill <PID>`. **Kill by PID, never `pkill -f` a pattern that matches your own command line.**
 
-- [ ] **Step 4: Observe, and write down what you see**
+- [x] **Step 4: Observe, and write down what you see**
 
 Confirm all four, by looking at the screen:
 
@@ -2390,23 +2390,23 @@ Confirm all four, by looking at the screen:
 3. `.aegis/state/queues/<queue>.jsonl` contains `worker_session` and `stalled` records.
 4. A second enqueued task did not start while the first was stalled.
 
-- [ ] **Step 5: Exhaust the budget and confirm parking**
+- [x] **Step 5: Exhaust the budget and confirm parking**
 
 Kill the harness twice more. Confirm the tab survives, its label shows it is parked, the queue dispatched the next task, and the producer got exactly one message naming the task id and `aegis_task_resume`.
 
-- [ ] **Step 6: Resume it**
+- [x] **Step 6: Resume it**
 
 Run `/resume <task_id>` in the TUI. Confirm the worker starts working again in the same tab.
 
-- [ ] **Step 7: Restart the daemon mid-task**
+- [x] **Step 7: Restart the daemon mid-task**
 
 Enqueue another long task, let it run, stop the daemon, start it again, attach. Confirm the worker comes back in one tab (not two — two means the `plan_resume` race is live and Task 9 is wrong) and continues.
 
-- [ ] **Step 8: Write the know-how doc**
+- [x] **Step 8: Write the know-how doc**
 
 Create `know-how/recovering-a-dead-worker.md` with a single-line `when:` in the frontmatter, covering: how to tell a stalled worker from a parked one, how to read a parked worker's conversation before deciding, when to `resume` versus `retry`, and where the queue log lives. `rift check` enforces the `when:` line, and `AGENTS.md` must not name the doc.
 
-- [ ] **Step 9: Final gate and commit**
+- [x] **Step 9: Final gate and commit**
 
 Run: `make check`
 Expected: all green.

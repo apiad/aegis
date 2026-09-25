@@ -1,6 +1,6 @@
 # Ephemeral agent recovery — stall, resume, park
 
-**Status:** designed 2026-09-24, not implemented. Supersedes the fix section of
+**Status:** implemented 2026-09-25, verified against a real `claude` harness killed mid-turn by PID (stall, rebuild, park, resume and the restart replay). Supersedes the fix section of
 [2026-09-24-queue-worker-recovery-design.md](2026-09-24-queue-worker-recovery-design.md),
 whose analysis of the three causes still stands and is not repeated here.
 **Scope:** one new module (`src/aegis/core/recovery.py`), one extracted module
