@@ -109,6 +109,11 @@ class StubSM:
         # Flipped on to make `recovery.rebuild` fail at its first step.
         self.rebuild_fails = False
         self.reconnected: list[str] = []
+        # Every handle this manager was asked to BUILD, in order. A restart
+        # replay that re-ran a task's payload, or that spawned onto a handle
+        # the front end had already restored, shows up here and nowhere
+        # else — both are silent against the roster alone.
+        self.spawned: list[str] = []
         # handle -> every InboxMessage that reached that session.
         self._delivered: dict[str, list] = {}
         # handle -> live monitors it armed, read through `monitor_manager`.
@@ -125,7 +130,17 @@ class StubSM:
     def script(self, handle, events):
         self._scripts[handle] = events
 
-    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None):
+    def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None,
+              resume_from=None, host=None, cwd=None):
+        """``resume_from``/``host``/``cwd`` are what ``recovery.restore``
+        passes when it rebuilds a worker from its recorded Resumable. The
+        real seam is ``SessionManager._sync_spawn``, which takes all three;
+        the async ``spawn`` takes neither ``resume_from`` nor a return
+        value a caller can observe, which is why both go through the sync
+        one."""
+        self.spawned.append(handle)
+        self.resumed_from = resume_from
+        self.spawned_cwd = cwd
         script = self._scripts.get(
             handle,
             [AssistantText(text="ok"),
@@ -139,6 +154,25 @@ class StubSM:
         s.add_inbox_observer(lambda _s, msg: seen.append(msg))
         if opening_prompt is not None and self._autostart:
             asyncio.create_task(s.send(opening_prompt))
+        return s
+
+    def preload_session(self, handle, *, session_id=None, slug="claude-impl",
+                        script=None):
+        """A worker tab the front end's ``plan_resume`` already restored.
+
+        A queue worker is an ordinary entry in ``workspace.json`` with a
+        ``session_id``, and ``plan_resume`` does not filter by origin, so
+        by the time the queue replays its log the worker may already be
+        standing. Built directly rather than through ``spawn`` so
+        ``spawned`` keeps meaning "the replay built this".
+        """
+        harness = HangingHarness() if script is None else FakeHarness(script)
+        harness.session_id = session_id
+        s = AgentSession(harness, None, slug, handle, project_root=Path.cwd())
+        self._sessions.append(s)
+        self._ever[handle] = s
+        seen = self._delivered.setdefault(handle, [])
+        s.add_inbox_observer(lambda _s, msg: seen.append(msg))
         return s
 
     def get(self, handle):
