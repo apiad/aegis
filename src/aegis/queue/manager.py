@@ -1003,11 +1003,17 @@ class QueueManager:
                 (bumped if x.id == task.id else x)
                 for x in self._inflight[task.queue]
             ]
-            reason = (
-                getattr(session, "last_stop_reason", None)
-                or repr(getattr(session, "last_error", None) or None)
-                or "the turn ended without a result"
-            )
+            stop_reason = getattr(session, "last_stop_reason", None)
+            exc = getattr(session, "last_error", None)
+            # Rendered once, because this cannot be an `or` chain over the
+            # raw values: `repr(None)` is the STRING "None", which is truthy,
+            # so the third fallback was unreachable and the nudge read "Your
+            # aegis session was interrupted mid-task (None)." for precisely
+            # the case that text names — a stream that ended with no Result
+            # has `last_stop_reason` cleared per turn and no exception to
+            # report. The record carried the same "None" where it meant null.
+            rendered = None if exc is None else f"{type(exc).__name__}: {exc}"
+            reason = stop_reason or rendered or "the turn ended without a result"
             self._log(
                 task.queue,
                 {
@@ -1016,8 +1022,8 @@ class QueueManager:
                     "worker_handle": session.handle,
                     "attempt": bumped.attempts,
                     "last_text": said,
-                    "stop_reason": getattr(session, "last_stop_reason", None),
-                    "error": repr(getattr(session, "last_error", None) or None),
+                    "stop_reason": stop_reason,
+                    "error": rendered,
                     "at": self._now(),
                 },
             )

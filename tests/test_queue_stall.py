@@ -63,6 +63,60 @@ async def test_a_rebuilt_worker_is_told_to_continue(queue_rig):
     assert "do not start over" in bodies[-1]
 
 
+# A bad turn end carries a stop_reason, an exception, or neither, and the
+# three say WHY differently. Only the first case had a test, which is how
+# `repr(None)` — the string "None", which is truthy — stood in the reason
+# chain as an unreachable-fallback bug: the nudge for a stream that ended
+# with no Result read "interrupted mid-task (None)" and the record carried
+# "None" where it meant null.
+
+
+async def test_a_stop_reason_is_what_the_nudge_and_the_record_say(
+    queue_rig, tmp_path,
+):
+    qm, sm = queue_rig
+    _tid, h = _start(qm, sm)
+
+    await sm.fail(h, text="halfway", stop_reason="link_lost")
+
+    assert "mid-task (link_lost)" in sm.inbox_for(h)[-1].body
+    rec = _log(tmp_path, "stalled")[0]
+    assert rec["stop_reason"] == "link_lost"
+    assert rec["error"] is None, "no exception happened; this must be null"
+
+
+async def test_an_exception_is_rendered_rather_than_repred_as_none(
+    queue_rig, tmp_path,
+):
+    """The harness raised and there is no Result, so no stop_reason. The
+    exception is the only thing that can name this failure."""
+    qm, sm = queue_rig
+    _tid, h = _start(qm, sm)
+
+    await sm.fail(h, text="halfway", error=ConnectionResetError("tunnel died"))
+
+    body = sm.inbox_for(h)[-1].body
+    assert "mid-task (ConnectionResetError: tunnel died)" in body
+    rec = _log(tmp_path, "stalled")[0]
+    assert rec["stop_reason"] is None
+    assert rec["error"] == "ConnectionResetError: tunnel died"
+
+
+async def test_no_reason_at_all_reaches_the_no_result_text(queue_rig, tmp_path):
+    """The case the third fallback was written for and could never reach."""
+    qm, sm = queue_rig
+    _tid, h = _start(qm, sm)
+
+    await sm.fail(h, text="halfway")
+
+    body = sm.inbox_for(h)[-1].body
+    assert "mid-task (the turn ended without a result)" in body
+    assert "None" not in body, "the dead repr(None) fallback is back"
+    rec = _log(tmp_path, "stalled")[0]
+    assert rec["stop_reason"] is None
+    assert rec["error"] is None, "'None' the string is not null"
+
+
 async def test_a_stall_holds_the_max_parallel_slot(queue_rig):
     """Held only for the rebuild window. Releasing it here would run two
     workers for one queue with max_parallel=1."""

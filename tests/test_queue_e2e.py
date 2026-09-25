@@ -222,24 +222,33 @@ class StubSM:
         s._session.session_id = session_id
         s._fire_event(SystemInit(session_id=session_id))
 
-    async def fail(self, handle, text="", *, stop_reason=None,
+    async def fail(self, handle, text="", *, stop_reason=None, error=None,
                    emit_twice=False):
         """End this worker's turn badly. ``emit_twice`` fires the state
         callback a second time, the way a harness that reports both an
-        error and a stream end does."""
+        error and a stream end does.
+
+        ``stop_reason`` and ``error`` are the two things the recovery plane
+        reads to say WHY, and a bad turn end can carry either, both or
+        neither — a stream that simply stops has no stop_reason and no
+        exception. `_run_turn` sets the first from the Result and the second
+        from its except clause, so a test that wants one drives it here.
+        """
         await self._end_turn(handle, text, AgentState.error,
-                            stop_reason=stop_reason, emit_twice=emit_twice)
+                            stop_reason=stop_reason, error=error,
+                            emit_twice=emit_twice)
 
     async def finish(self, handle, text=""):
         """End this worker's turn cleanly."""
         await self._end_turn(handle, text, AgentState.ready)
 
     async def _end_turn(self, handle, text, state, *, stop_reason=None,
-                        emit_twice=False):
+                        error=None, emit_twice=False):
         s = self._session_for(handle)
         if text:
             s._fire_event(AssistantText(text=text))
         s.last_stop_reason = stop_reason
+        s.last_error = error
         s._emit_state(state, finished=True)
         if emit_twice:
             s._emit_state(state, finished=True)

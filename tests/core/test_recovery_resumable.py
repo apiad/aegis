@@ -263,3 +263,107 @@ async def test_last_stop_reason_is_cleared_in_the_unsolicited_drain_too():
     assert s.last_stop_reason is None, (
         "the drain consumed a turn that produced no Result"
     )
+
+
+# --------------------------------------------------------------------------
+# last_error. Same contract as last_stop_reason and for the same reason: the
+# queue writes it into the stall log and the nudge as WHY this turn ended,
+# so a value carried over from an earlier turn reads as evidence.
+# --------------------------------------------------------------------------
+
+
+class RaisingThenFakeSession(FakeSession):
+    """A harness that dies mid-stream on its first turn and behaves on the
+    second — `PerTurnFakeSession` cannot express a turn that raises, and the
+    except clause in `_run_turn` is the only thing that ever sets
+    `last_error`."""
+
+    def __init__(self, second_turn):
+        super().__init__([])
+        self._turn = 0
+        self._second = list(second_turn)
+
+    async def events(self):
+        self._turn += 1
+        if self._turn == 1:
+            await asyncio.sleep(0)
+            yield AssistantText(text="got this far")
+            raise ConnectionResetError("tunnel died")
+        for e in self._second:
+            await asyncio.sleep(0)
+            yield e
+
+
+async def test_last_error_latches_from_a_harness_exception():
+    s = _agent_session(RaisingThenFakeSession([]))
+    await s.send("one")
+    await s._task
+    assert isinstance(s.last_error, ConnectionResetError)
+
+
+async def test_last_error_is_cleared_at_the_start_of_each_turn():
+    """The field was only ever assigned, never cleared — `adopt` does not
+    touch it either — so a later turn that ended on a plain error Result
+    with no stop_reason made the recovery plane name an exception from some
+    earlier turn as this stall's cause."""
+    s = _agent_session(RaisingThenFakeSession([
+        Result(duration_ms=1, is_error=True, stop_reason=None),
+    ]))
+
+    await s.send("one")
+    await s._task
+    assert isinstance(s.last_error, ConnectionResetError)
+
+    await s.send("two")
+    await s._task
+    assert s.last_error is None, (
+        "this turn raised nothing, so there is no exception to report — "
+        "the previous turn's is not a substitute"
+    )
+
+
+async def test_last_error_is_cleared_in_the_unsolicited_drain_too():
+    """Both live loops clear, for the same reason both loops set it.
+
+    The exception is planted after the prompted turn has finished and the
+    drain event is fed after that, so nothing but the drain can be what
+    cleared it — planting it before `send` would be cleared by `_run_turn`
+    and the test would pass with the drain's own line deleted.
+    """
+    s = _agent_session(WakeableFakeSession([
+        AssistantText(text="first"),
+        Result(duration_ms=1, is_error=False, stop_reason="end_turn"),
+    ]))
+    s._idle_poll_seconds = 0.01  # same load-flakiness as the tests above
+    await s.send("hello")
+    await s._task
+
+    s.last_error = ConnectionResetError("from a turn already over")
+    s._session.feed(AssistantText(text="monitor-wake"))  # drain, no Result
+
+    for _ in range(200):
+        if not s._session.has_pending_event():
+            break
+        await asyncio.sleep(0.01)
+    assert not s._session.has_pending_event(), "the drain never ran"
+    assert s.last_error is None, "the drain ran a turn that raised nothing"
+
+
+async def test_rehydrate_card_leaves_both_diagnostics_alone():
+    """`rehydrate_card` replays a SAVED log to repaint a card. Clearing
+    there would stamp this process's state onto a conversation it is only
+    reading — the reason the clear belongs in the two live loops and
+    nowhere else."""
+    s = _agent_session(FakeSession([]))
+    boom = ConnectionResetError("this process, this turn")
+    s.last_error = boom
+    s.last_stop_reason = "link_lost"
+
+    s.rehydrate_card(
+        [AssistantText(text="replayed"),
+         Result(duration_ms=1, is_error=False, stop_reason="end_turn")],
+        [1.0, 2.0],
+    )
+
+    assert s.last_error is boom
+    assert s.last_stop_reason == "link_lost"

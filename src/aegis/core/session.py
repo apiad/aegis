@@ -324,7 +324,10 @@ class AgentSession:
         self._extra_dispatch_observers: list[DispatchCb] = []
         self._extra_close_observers: list[CloseCb] = []
         # Captured by _run_turn's except clause for postmortem inspection.
-        # None until a harness error occurs; replaced on each new error.
+        # None until a harness error occurs, and cleared at the top of every
+        # live turn alongside `last_stop_reason` — a value that only ever
+        # got assigned made the recovery plane blame this turn's stall on an
+        # exception from an earlier one.
         self.last_error: Exception | None = None
         #: stop_reason of the most recent Result, or None. Diagnostic only:
         #: the recovery plane records it and does not branch on it, because
@@ -756,7 +759,15 @@ class AgentSession:
         # Result at all — the case recovery exists for — would otherwise
         # leave the previous turn's reason standing, and the stall log
         # would record it as this failure's cause.
+        #
+        # `last_error` for the same reason, and it needed saying twice: it
+        # is only ever ASSIGNED, by the except clause below, so a turn that
+        # ends on a plain error Result with no stop_reason inherited an
+        # exception from some earlier turn and the recovery plane reported
+        # it as this stall's cause. `adopt` does not touch it either, so a
+        # rebuild carried the stale one across too.
         self.last_stop_reason = None
+        self.last_error = None
         self.digest.reset()
         self._cancel_recap()
         turn_started = self._now()
@@ -1657,6 +1668,7 @@ class AgentSession:
         is mid-stream, not waiting on input."""
         self._unsolicited = True
         self.last_stop_reason = None  # per turn; see _run_turn
+        self.last_error = None  # likewise
         saw_result = False
         try:
             async for ev in self._session.events():
