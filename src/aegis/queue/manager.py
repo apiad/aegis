@@ -52,8 +52,22 @@ from aegis.tui.state import AgentState
 
 # The events that define where a task IS. Everything else a queue log
 # carries is diagnostic and must not move the task's status on replay —
-# see the comment in `start()`.
-_LIFECYCLE_EVENTS = frozenset({"enqueued", "dispatched", "completed", "failed"})
+# see the comment in `queue.replay.replay`.
+#
+# Membership is NOT the status: `queue.replay.EVENT_STATUS` maps each of
+# these to one, and `stalled`/`resumed` both map back to `dispatched`. A
+# structural test fails if an event is added here without a mapping.
+_LIFECYCLE_EVENTS = frozenset(
+    {
+        "enqueued",
+        "dispatched",
+        "stalled",
+        "resumed",
+        "recoverable",
+        "completed",
+        "failed",
+    }
+)
 
 # "no assistant-text run is open for this worker". Distinct from a run
 # whose message_id is None, which is a real run (the pre-slice-2 claude
@@ -844,6 +858,21 @@ class QueueManager:
         except Exception as e:  # noqa: BLE001 — don't let cost break finalizer
             return {"error": "compute_failed", "detail": str(e)}
 
+    def _session_under(self, handle):
+        """The session standing under ``handle``, or None.
+
+        Guarded rather than direct: this runs against every test double
+        that stands in for a session manager, and a probe that raised here
+        would strand the task it was asked about.
+        """
+        getter = getattr(self._sm, "get", None)
+        if not handle or getter is None:
+            return None
+        try:
+            return getter(handle)
+        except Exception:  # noqa: BLE001 — a failed probe reads as "gone"
+            return None
+
     async def _park(self, session, task: Task, *, reason: str) -> None:
         """Promote a worker out of being disposable and free its slot.
 
@@ -863,6 +892,11 @@ class QueueManager:
         everything else about parking still applies.
         """
         handle = session.handle if session is not None else task.worker_handle
+        # What to tell the producer turns on whether there is a conversation
+        # to point it at, which is a question about the roster and not about
+        # this call's argument: `_park(None, …)` is also how a finalizer
+        # parks a task whose session is alive and simply not in hand.
+        held = session if session is not None else self._session_under(handle)
         self._workers.pop(handle, None)
         self._chunk_run.pop(handle, None)
         parked = replace(
@@ -914,12 +948,24 @@ class QueueManager:
             msg = InboxMessage(
                 sender=sender_queue(task.queue),
                 timestamp=self._now(),
+                # What to tell the producer depends on whether there is a
+                # conversation to point it at. The restart replay parks
+                # tasks whose worker died with the process and left no
+                # session id to resume from: there is nothing under the
+                # handle, and telling the producer to read it costs it a
+                # turn and a wrong conclusion.
                 body=(
                     f"worker stalled and could not be recovered: {reason}. "
-                    f"Its session is parked as {handle!r} with the "
-                    f"conversation intact. Read it with "
-                    f"aegis_read_peer({handle!r}), or put it back to work "
-                    f"with aegis_task_resume({task.id!r})."
+                    + (
+                        f"Its session is parked as {handle!r} with the "
+                        f"conversation intact. Read it with "
+                        f"aegis_read_peer({handle!r}), or put it back to "
+                        f"work with aegis_task_resume({task.id!r})."
+                        if held is not None
+                        else "Its worker did not survive, so there is no "
+                        "conversation left to read; the task stays parked "
+                        "for the operator to decide on."
+                    )
                 ),
                 task_id=task.id,
                 status="error",
@@ -1120,130 +1166,18 @@ class QueueManager:
 
     # ----- boot and shutdown ----------------------------------------
     async def start(self) -> None:
-        """Replay persisted state on boot. Tasks that were dispatched but
-        never reached completed/failed are marked ``failed:interrupted``
-        and a failure callback is delivered to the producer's inbox
-        (durable on disk even if no live session is bound). Pending-at-
-        crash tasks are re-queued at head-of-FIFO."""
-        if self._state_dir is None:
-            return
-        from aegis.queue.jsonl import read_records
+        """Rebuild this manager's state from its logs on boot.
 
-        qdir = Path(self._state_dir) / "queues"
-        if not qdir.exists():
-            return
-        for path in sorted(qdir.glob("*.jsonl")):
-            queue_name = path.stem
-            if queue_name not in self._queues:
-                # Orphaned log from a removed queue — leave the file
-                # untouched; reading other queues' logs is unaffected.
-                continue
-            # Per-task latest-aggregate view. Last event wins for status;
-            # all fields merged so the final dict has enqueued metadata
-            # plus dispatched/completed extras.
-            tasks: dict[str, dict] = {}
-            for rec in read_records(path):
-                tid = rec.get("task_id")
-                if tid is None:
-                    continue
-                tasks.setdefault(tid, {}).update(rec)
-                # Only a LIFECYCLE event moves the status. Diagnostic
-                # records (`deferred`, `waiting_probe_failed`) merge their
-                # fields and leave the task where it was — a deferred task
-                # is still `dispatched`, and replaying it as anything else
-                # matches no branch below, so the task disappears from
-                # `_all` with no `failed:interrupted` and no callback. The
-                # producer then blocks forever on a task the substrate has
-                # forgotten: the fix for one hang, introducing another.
-                if rec["event"] in _LIFECYCLE_EVENTS:
-                    tasks[tid]["status"] = rec["event"]
-            for tid, r in tasks.items():
-                if r["status"] == "dispatched":
-                    await self._mark_interrupted(queue_name, tid, r)
-                elif r["status"] in ("completed", "failed"):
-                    self._all[tid] = Task(
-                        id=tid,
-                        queue=queue_name,
-                        payload=r.get("payload", ""),
-                        enqueued_by=r.get("enqueued_by", "system"),
-                        enqueued_at=r.get("enqueued_at", self._now()),
-                        callback=bool(r.get("callback", False)),
-                        status=r["status"],
-                        worker_handle=r.get("worker_handle"),
-                        result=r.get("result"),
-                        error=r.get("error"),
-                        completed_at=r.get("completed_at"),
-                    )
-                elif r["status"] == "enqueued":
-                    t = Task(
-                        id=tid,
-                        queue=queue_name,
-                        payload=r.get("payload", ""),
-                        enqueued_by=r.get("enqueued_by", "system"),
-                        enqueued_at=r.get("enqueued_at", self._now()),
-                        callback=bool(r.get("callback", False)),
-                        status="pending",
-                    )
-                    self._all[tid] = t
-                    self._pending[queue_name].append(t)
-        # Kick dispatch on every queue we just rehydrated.
-        for q in list(self._queues):
-            self._try_dispatch(q)
+        The work is in `queue.replay`: a task that was in flight when the
+        process died has its worker put back, or is parked with the
+        conversation intact, and pending-at-crash tasks are re-queued at
+        head-of-FIFO. Nothing is ever re-run from its payload.
+        """
+        from aegis.queue.replay import replay
+
+        await replay(self)
 
     async def stop(self) -> None:
         # Symmetry with start(); nothing to flush in v1 (writes are
         # synchronous on each transition).
         return
-
-    async def _mark_interrupted(self, queue: str, tid: str, last: dict) -> None:
-        completed = Task(
-            id=tid,
-            queue=queue,
-            payload=last.get("payload", ""),
-            enqueued_by=last.get("enqueued_by", "system"),
-            enqueued_at=last.get("enqueued_at", self._now()),
-            callback=bool(last.get("callback", False)),
-            status="failed",
-            worker_handle=last.get("worker_handle"),
-            result=last.get("last_text") or None,
-            error="interrupted: aegis restarted mid-flight",
-            completed_at=self._now(),
-        )
-        self._all[tid] = completed
-        self._log(
-            queue,
-            {
-                "event": "failed",
-                "task_id": tid,
-                "result": None,
-                "error": completed.error,
-                "completed_at": completed.completed_at,
-            },
-        )
-        self._emit(
-            QueueCompleted(
-                task_id=tid,
-                queue=queue,
-                outcome="interrupted",
-                result=None,
-                error=completed.error,
-                completed_at=completed.completed_at,
-            )
-        )
-        if completed.callback:
-            msg = InboxMessage(
-                sender=sender_queue(queue),
-                timestamp=self._now(),
-                # Whatever the log kept of the worker before the process
-                # died — written by the `deferred` record, so a worker
-                # that was waiting has words here and one that never
-                # reached a turn boundary honestly has none.
-                body=_with_last_message(
-                    completed.error or "interrupted",
-                    last.get("last_text", ""),
-                    none_note="nothing of the worker survived the restart",
-                ),
-                task_id=tid,
-                status="error",
-            )
-            await self._inbox.deliver(_handle_of(completed.enqueued_by), msg)

@@ -168,3 +168,74 @@ async def rebuild(sm, handle: str, *, nudge: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return True
+
+
+async def restore(sm, task, *, nudge: str) -> str | None:
+    """Put a worker back after a daemon restart: adopt the session already
+    standing under its handle, or rebuild it from the recorded `Resumable`.
+    Returns the handle, or None when the task has to park instead.
+
+    Looking before building is not an optimisation. A queue worker is an
+    ordinary tab in `workspace.json` with a `session_id`, and `plan_resume`
+    does not filter by origin, so at boot the front end restores the worker
+    and this wants to as well. Whichever ran second would mount a second
+    `#pane-<handle>`, which is `DuplicateIds` and the whole app.
+
+    Adopting a session the front end restored also repairs the orphan the
+    old code left: the tab came back with its full conversation while the
+    queue had declared its task failed and never looked at it again.
+
+    The one function here that reads a task's shape, and it reads four
+    fields by duck typing — handle, rebuild record, queue and id — because
+    the alternative is four positional arguments every caller unpacks
+    identically.
+    """
+    handle = getattr(task, "worker_handle", None)
+    if not handle:
+        return None
+    if sm.get(handle) is not None:
+        return handle if await rebuild(sm, handle, nudge=nudge) else None
+    r = task.resumable
+    if r is None:
+        return None
+    if not r.cwd:
+        # Defensive, not a live bug: a real AgentSession always has a
+        # place (`session.py` falls back to `Place("local", project_root)`),
+        # so an empty cwd means a record this cannot trust. Spawning with
+        # `cwd=None` would land the recovered worker in the DEFAULT tree
+        # rather than the one it was working in, and a worker that resumes
+        # mid-task in the wrong directory commits, deletes or deploys
+        # there. Park instead of guessing.
+        return None
+    # Imported here for the same reason `rebuild` does it: `queue.schema`
+    # imports `Resumable` from this module, so a top-level import closes
+    # the cycle.
+    from aegis.fleet.models import Origin
+    from aegis.queue.schema import InboxMessage, local_waiter, now_iso, sender_substrate
+
+    try:
+        # The sync seam, as the queue's own dispatch uses: the async
+        # `AppBridge.spawn` is for workflow and takes no `resume_from`.
+        sync_spawn = getattr(sm, "_sync_spawn", sm.spawn)
+        sync_spawn(
+            r.agent_profile,
+            handle=handle,
+            resume_from=r.session_id,
+            host=None if r.host == "local" else r.host,
+            cwd=r.cwd,
+            origin=Origin(
+                kind="queue",
+                by=task.queue,
+                detail=task.id[-4:],
+                returns_to=local_waiter(task) or task.callback_to or "",
+            ),
+        )
+    except Exception:  # noqa: BLE001 — an unrecoverable task parks
+        return None
+    s = sm.get(handle)
+    if s is None:
+        return None
+    await s.deliver(
+        InboxMessage(sender=sender_substrate(), timestamp=now_iso(), body=nudge)
+    )
+    return handle
