@@ -191,15 +191,20 @@ async def test_a_held_file_claim_does_not_defer():
 # ---------- the deferred record must replay ------------------------------
 
 @pytest.mark.asyncio
-async def test_a_deferred_task_replays_as_interrupted_not_dropped(tmp_path):
+async def test_a_deferred_task_replays_as_parked_not_dropped(tmp_path):
     """Boot replay keys on the last event's name, so a diagnostic record
     that is not a lifecycle event silently steals the task's status.
 
     A task whose log ends at `deferred` was in flight when the process
     died. Matching no branch, it vanishes from `_all` entirely: no
-    `failed:interrupted`, no callback, and a producer blocked forever on
-    a task the substrate has forgotten. Adding the record without this is
-    how the fix for one hang introduces another.
+    status, no callback, and a producer blocked forever on a task the
+    substrate has forgotten. Adding the record without this is how the
+    fix for one hang introduces another.
+
+    It replays as `recoverable` rather than `failed` since the restart
+    replay stopped destroying interrupted work; this log carries no
+    `worker_session` record, so there is no conversation id to resume
+    from and the task parks.
     """
     from aegis.queue.jsonl import append_record
 
@@ -221,7 +226,7 @@ async def test_a_deferred_task_replays_as_interrupted_not_dropped(tmp_path):
 
     st = qm.status("t1")
     assert st is not None, "the task was dropped on replay"
-    assert st["status"] == "failed"
+    assert st["status"] == "recoverable"
     assert inbox.pending("producer"), "the producer never got its callback"
 
 

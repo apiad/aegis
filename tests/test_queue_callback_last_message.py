@@ -10,8 +10,9 @@ Two other paths end a worker, and both used to throw its words away:
 - `cancel()` sent the producer the literal string "cancelled". A worker
   that had done twenty minutes of work and said so was reduced to one
   word, and the producer had no way to know anything had happened.
-- `_mark_interrupted()` (boot replay after a crash) sent the canned
-  restart notice. Nothing of the worker survived the process.
+- boot replay after a crash sent the canned restart notice. Nothing of
+  the worker survived the process. It now parks the task instead of
+  failing it, and the notice still has to carry what the log kept.
 
 And a worker that ends having emitted no assistant text at all produced
 an *empty* callback body — indistinguishable, in an inbox, from a
@@ -281,9 +282,9 @@ async def test_a_worker_that_says_nothing_gets_an_honest_callback():
 # ---------- crash replay -------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_interrupted_replay_carries_what_the_log_kept(tmp_path):
+async def test_parked_replay_carries_what_the_log_kept(tmp_path):
     """A worker deferred at least once, so its words reached the log
-    before the process died. The restart notice carries them."""
+    before the process died. The park notice carries them."""
     from aegis.queue.jsonl import append_record
 
     log = tmp_path / "queues" / "impl.jsonl"
@@ -302,7 +303,7 @@ async def test_interrupted_replay_carries_what_the_log_kept(tmp_path):
                       state_dir=tmp_path)
     await qm.start()
     body = inbox.pending("producer")[-1].body
-    assert "interrupted" in body.lower()
+    assert "could not be recovered" in body.lower()
     assert SAID in body
     # And on the task too, for a producer that reads status instead of
     # the one inbox message it may already have consumed.
@@ -310,7 +311,7 @@ async def test_interrupted_replay_carries_what_the_log_kept(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_interrupted_replay_with_nothing_kept_claims_nothing(tmp_path):
+async def test_parked_replay_with_nothing_kept_claims_nothing(tmp_path):
     """Died before it said anything. The notice must not imply otherwise."""
     from aegis.queue.jsonl import append_record
 
@@ -327,5 +328,6 @@ async def test_interrupted_replay_with_nothing_kept_claims_nothing(tmp_path):
                       state_dir=tmp_path)
     await qm.start()
     body = inbox.pending("producer")[-1].body
-    assert "interrupted" in body.lower()
+    assert "could not be recovered" in body.lower()
+    assert "last message" not in body.lower()
     assert body.strip()

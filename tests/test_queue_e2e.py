@@ -359,10 +359,19 @@ async def test_e2e_enqueue_to_callback_wakes_producer():
     assert "vivid-laplace" in sm.closed
 
 
-async def test_restart_replays_handwritten_log_into_failed_interrupted(tmp_path):
+async def test_restart_replays_handwritten_log_into_recoverable(tmp_path):
     """Deterministic isolation of the replay machinery: write a queue log
     by hand (enqueued + dispatched, no completion) and assert start()
-    marks it failed:interrupted with a callback in the producer's inbox."""
+    parks it with a callback in the producer's inbox.
+
+    This used to assert `failed: interrupted`, and that WAS the loss this
+    change removes: a task in flight at the crash was declared lost while
+    its worker's tab came back from `plan_resume` with the whole
+    conversation in it. The log here has no `worker_session` record, so
+    there is genuinely no conversation id to resume from and the task
+    parks rather than resuming — but it is parked and still reachable,
+    not failed.
+    """
     from aegis.queue.jsonl import append_record, read_records
 
     qfile = tmp_path / "queues" / "impl.jsonl"
@@ -382,26 +391,32 @@ async def test_restart_replays_handwritten_log_into_failed_interrupted(tmp_path)
     await qm.start()
 
     st = qm.status("01TID1")
-    assert st["status"] == "failed"
-    assert "interrupted" in (st["error"] or "")
+    assert st["status"] == "recoverable"
+    assert "no conversation to resume" in (st["error"] or "")
 
-    # Failure callback persisted to the producer's inbox file.
+    # Callback persisted to the producer's inbox file, so a producer that
+    # was not running when the queue replayed still learns what happened.
     inbox_log = read_records(tmp_path / "inboxes" / "lucid-knuth.jsonl")
     assert any(
         r.get("task_id") == "01TID1" and r.get("status") == "error"
         for r in inbox_log)
 
-    # The replay also appended a "failed" record to the queue log so
-    # subsequent restarts treat it as completed (idempotent).
+    # The replay also appended a "recoverable" record to the queue log, so
+    # the next restart reads the task as parked and says nothing again.
     qlog = read_records(qfile)
-    assert qlog[-1]["event"] == "failed"
+    assert qlog[-1]["event"] == "recoverable"
     assert qlog[-1]["task_id"] == "01TID1"
 
 
 async def test_restart_round_trip_crashes_in_flight_and_recovers(tmp_path):
     """Full round-trip: enqueue → dispatch (worker hangs) → 'crash' →
     fresh QueueManager.start() against the same state_dir reads the log
-    and produces failed:interrupted + callback in the inbox file."""
+    and parks the task, with a callback in the inbox file.
+
+    The hanging worker never reports a SystemInit, so no `worker_session`
+    record reaches the log and there is no conversation id to resume
+    from. Parked, not failed: the difference is whether the operator can
+    still act on it."""
     from aegis.queue.jsonl import read_records
 
     # --- Round 1: enqueue + dispatch, then walk away ---
@@ -432,8 +447,8 @@ async def test_restart_round_trip_crashes_in_flight_and_recovers(tmp_path):
     await qm2.start()
 
     st = qm2.status(tid)
-    assert st["status"] == "failed"
-    assert "interrupted" in (st["error"] or "")
+    assert st["status"] == "recoverable"
+    assert "no conversation to resume" in (st["error"] or "")
 
     inbox_log = read_records(tmp_path / "inboxes" / "lucid-knuth.jsonl")
     assert any(r.get("task_id") == tid and r.get("status") == "error"

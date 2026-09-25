@@ -897,7 +897,13 @@ class QueueManager:
         # this call's argument: `_park(None, …)` is also how a finalizer
         # parks a task whose session is alive and simply not in hand.
         held = session if session is not None else self._session_under(handle)
-        self._workers.pop(handle, None)
+        # Whatever this worker last said, read on the way out rather than
+        # thrown away with the accumulator: from the live one here, or —
+        # after a restart, where there is no accumulator — from what the
+        # log kept of it. A producer handed only the outcome cannot tell
+        # that twenty minutes of work happened at all.
+        _, said = self._workers.pop(handle, (None, ""))
+        said = (said or task.result or "").strip()
         self._chunk_run.pop(handle, None)
         parked = replace(
             task,
@@ -966,6 +972,7 @@ class QueueManager:
                         "conversation left to read; the task stays parked "
                         "for the operator to decide on."
                     )
+                    + (f"\n\nIts last message was:\n\n{said}" if said else "")
                 ),
                 task_id=task.id,
                 status="error",
