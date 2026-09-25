@@ -464,3 +464,59 @@ def test_the_cli_has_no_acting_subcommand():
 
     names = {c.name for c in typer.main.get_command(app).commands.values()}
     assert names == {"ls", "show"}
+
+
+# --------------------------------------------------------------------------
+# The flagship path: park -> restart -> resume -> finish
+# --------------------------------------------------------------------------
+
+
+async def test_a_worker_parked_through_replay_can_finish_after_a_resume(tmp_path):
+    """The path the whole feature is for, and the one `parked_rig` cannot
+    reach: the park happened during REPLAY, not in this process.
+
+    A task parked in-process still carries the observers dispatch attached,
+    so `resume_task` never needed to re-attach them and the in-process test
+    passes either way. A task parked by replay has none — `_park` popped
+    `_workers` and nothing put the queue's `on_event`/`on_state` back — so a
+    resume without `_attach_observers` produces a worker that runs, says it
+    is done, and is never heard: the task stays `dispatched` forever, the
+    producer's callback never fires, and the only `max_parallel` slot is
+    held for the life of the process.
+
+    In standalone TUI mode this is the NORMAL path, not an edge case:
+    `app.py` replays the queue before it resumes agent tabs, so every parked
+    task rehydrates with no session of its own.
+    """
+    from tests.test_queue_replay import (
+        DISPATCHED,
+        ENQUEUED,
+        TID,
+        WORKER,
+        _rig,
+        _stalled,
+        _worker_session,
+    )
+
+    qm, sm, _ = _rig(
+        tmp_path,
+        [ENQUEUED, DISPATCHED, _worker_session(tmp_path), _stalled(2)],
+        max_attempts=2,
+    )
+    # The front end's `plan_resume` got there first, which is what leaves a
+    # live session under the handle for the replay to park onto.
+    sm.preload_session(WORKER, session_id="sess-1")
+    await qm.start()
+    assert qm.status(TID)["status"] == "recoverable"
+
+    assert (await qm.resume_task(TID))["ok"] is True
+    await sm.finish(WORKER, text="finished after the restart")
+
+    assert qm.status(TID)["status"] == "completed", (
+        "the worker ended its turn and the queue never saw it"
+    )
+    assert qm.status(TID)["result"] == "finished after the restart"
+
+    # The consequence the status hides: a slot that is never given back.
+    nxt, _ = qm.enqueue("impl", "next", enqueued_by="agent:producer")
+    assert qm.status(nxt)["status"] == "dispatched"

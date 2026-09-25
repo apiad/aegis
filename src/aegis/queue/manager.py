@@ -15,6 +15,7 @@ import contextlib
 import json
 import logging
 import time
+import weakref
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -147,6 +148,15 @@ class QueueManager:
         # than inside its tuple so the (task, last_text) shape every
         # other call site unpacks stays a 2-tuple.
         self._chunk_run: dict[str, object] = {}
+        # Every session this manager has already hung its on_event /
+        # on_state pair on. Keyed by the SESSION, not by its handle, and
+        # weak so a closed session drops out on its own: a handle-keyed
+        # set would need a discard at every place a worker retires, and a
+        # single missed one silently reproduces the bug this guards —
+        # a handle minted again for a later worker that then runs
+        # unobserved. Identity membership is what is wanted here, and
+        # AgentSession hashes by identity.
+        self._observed: weakref.WeakSet = weakref.WeakSet()
         # lifecycle observers — see subscribe()
         self._observers: list[QueueObserver] = []
         # optional sink for live assistant-text forwarding (e.g. QueueDigest)
@@ -574,12 +584,25 @@ class QueueManager:
             status="dispatched",
             attempts=0,
             error=None,
+            # The parked worker's last words were the task's `result` while
+            # it was parked, which is right for a terminal status and wrong
+            # the moment it is running again: a producer polling `status`
+            # mid-run would read the words that got it parked as the answer.
+            result=None,
             completed_at=None,
             parked_at=None,
         )
         self._all[task_id] = resumed
         self._inflight[t.queue].append(resumed)
         self._workers[handle] = (resumed, "")
+        # A task parked by the restart replay has no observers on its
+        # session: `_park` popped `_workers` and the replay never put the
+        # pair back. Without this the resumed worker runs, finishes, and is
+        # never heard — the task stays `dispatched`, the producer's callback
+        # never fires, and its `max_parallel` slot is held forever. Safe to
+        # call for an in-process park too, because `_attach_observers` is
+        # idempotent per session.
+        self._attach_observers(s, resumed)
         # Back to `queue`, which puts the session back inside
         # `EPHEMERAL_KINDS`: it is disposable again while it works, and
         # `_park` is what promotes it back out if this run stalls too.
@@ -881,6 +904,18 @@ class QueueManager:
             self._attach_observers(session, dispatched)
 
     def _attach_observers(self, session, task: Task) -> None:
+        """Hang the queue's event and state observers on a worker session.
+
+        Idempotent, because `resume_task` cannot tell whether the session
+        it is putting back to work still carries them. A worker parked
+        in-process keeps the pair dispatch attached — `_park` leaves the
+        session alone — while one parked by the restart replay has none,
+        and an unconditional call would double the assistant-text capture
+        for the first to fix the second.
+        """
+        if session in self._observed:
+            return
+        self._observed.add(session)
         # add_event_observer / add_state_observer (not the primary on_event /
         # on_state slots) so the substrate composes cleanly with a frontend
         # that already claimed the primary hooks for its renderer — notably
