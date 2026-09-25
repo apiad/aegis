@@ -215,6 +215,20 @@ BRIEFING = (
     "  - aegis_cancel(task_id) : cancel a task — drop it if still pending, "
     "or interrupt + close its worker if in-flight. A parked (recoverable) "
     "task cancels without touching its session. Idempotent.\n"
+    "  - aegis_task_resume(task_id) : put a PARKED worker back to work. A "
+    "worker whose turn ended badly past its retry budget is parked rather "
+    "than closed — its session stays alive holding the whole conversation, "
+    "and its task sits in `recoverable` naming the handle. This rebuilds "
+    "the harness under that same session and tells it to continue, so "
+    "nothing it had worked out is lost. Read it first with "
+    "aegis_read_peer(<worker_handle>) if you want to know what state it "
+    "got into.\n"
+    "  - aegis_task_retry(task_id) : re-run a finished task from its "
+    "ORIGINAL PAYLOAD, as a new task. Deliberately distinct from "
+    "aegis_task_resume and never automatic: a worker that got halfway may "
+    "already have committed, pushed, deployed or sent mail, so re-running "
+    "its prompt is a second execution rather than a recovery. Retrying a "
+    "parked task closes its session. Returns the new task_id.\n"
     "  - aegis_delegate(queue, payload, from_handle, timeout_s?) : the "
     "synchronous shape — enqueue and block until the worker finishes, "
     "returning its result directly (no inbox callback).\n"
@@ -2564,15 +2578,60 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
     async def aegis_task_status(task_id: str) -> dict:
         """Inspect a previously-enqueued task by its task_id.
 
-        Returns {"status": "pending"|"dispatched"|"completed"|"failed", …}
-        with result/error/completed_at/queued_position fields when set.
-        Returns {"status": "unknown"} if the task_id is not known to this
-        aegis instance.
+        Returns {"status": "pending"|"dispatched"|"completed"|"failed"|
+        "recoverable"|"cancelled", …} with result/error/completed_at/
+        queued_position/worker_handle fields when set. Returns
+        {"status": "unknown"} if the task_id is not known to this aegis
+        instance.
+
+        ``recoverable`` means the worker stalled past its retry budget and
+        was PARKED: its session is alive under ``worker_handle`` with the
+        conversation intact, and the task is one ``aegis_task_resume``
+        from continuing. It is not a failure, and the work is not lost.
         """
         st = bridge.queue_manager.status(task_id)
         if st is None:
             return {"status": "unknown"}
         return st
+
+    @server.tool
+    async def aegis_task_resume(task_id: str) -> dict:
+        """Put a parked queue worker back to work on its task.
+
+        A worker whose turn ended badly too many times is PARKED rather
+        than closed: its session stays alive holding the whole
+        conversation, and its task sits in ``recoverable``. This rebuilds
+        the harness under that same session and tells it to continue, so
+        nothing it had worked out is lost. The retry budget starts over —
+        you looked at it and said go, which is new information.
+
+        Read it first with ``aegis_read_peer(<worker_handle>)`` if you want
+        to know what state it got into. Use ``aegis_task_retry`` instead
+        when the conversation is not worth resuming.
+
+        Returns {"ok": true, "status": "dispatched", "worker_handle": …},
+        or {"ok": false, "error": …} when the task is not parked, its
+        session is gone, or its queue has no free slot.
+        """
+        return await bridge.queue_manager.resume_task(task_id)
+
+    @server.tool
+    async def aegis_task_retry(task_id: str) -> dict:
+        """Re-run a task from its original payload as a NEW task.
+
+        Deliberately distinct from ``aegis_task_resume``, and never
+        automatic: a worker that got halfway may already have committed,
+        pushed, deployed or sent mail, so re-running its prompt is a second
+        execution rather than a recovery. Only ask for this once you have
+        decided the first attempt's conversation is not worth continuing.
+
+        Retrying a parked task closes its session and ends the old task;
+        retrying a completed, failed or cancelled one just enqueues the
+        payload again. Returns {"ok": true, "task_id": <new id>,
+        "queued_position": …}, or {"ok": false, "error": …} for a task
+        that has not finished yet.
+        """
+        return await bridge.queue_manager.retry_task(task_id)
 
     @server.tool
     async def aegis_cancel(task_id: str) -> dict:

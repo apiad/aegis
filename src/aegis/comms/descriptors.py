@@ -136,6 +136,14 @@ def _d_cancel(a: dict) -> str:
     return _s(a, "task_id")
 
 
+def _d_task_resume(a: dict) -> str:
+    return _join("resume", _s(a, "task_id"))
+
+
+def _d_task_retry(a: dict) -> str:
+    return _join("re-run", _s(a, "task_id"))
+
+
 def _lines(text: str) -> int:
     return len(str(text or "").splitlines())
 
@@ -255,6 +263,16 @@ DESCRIPTORS: dict[str, AegisToolDescriptor] = {
     ),
     "cancel": AegisToolDescriptor(
         "cancel", CONVERSATION, "⇎", _d_cancel, _target_at("queue", "task_id")
+    ),
+    # Not introspection: both put a worker back on a task. `resume` keeps
+    # the parked conversation and gets its own glyph, because in a
+    # transcript the difference between continuing a session and starting a
+    # second execution of the same payload is the thing worth seeing.
+    "task_resume": AegisToolDescriptor(
+        "task_resume", CONVERSATION, "↻", _d_task_resume, _target_at("queue", "task_id")
+    ),
+    "task_retry": AegisToolDescriptor(
+        "task_retry", CONVERSATION, "⇉", _d_task_retry, _target_at("queue", "task_id")
     ),
     # --- shared surfaces ---
     "canvas_open": AegisToolDescriptor(

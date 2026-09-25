@@ -538,6 +538,82 @@ async def _enqueue(ctx: CommandContext, args) -> CommandResult:
     return CommandResult(True, f"queued task {tid}", f"queue {queue} · position {pos}")
 
 
+#: Tasks needing a decision first, then live ones, then history. A parked
+#: task is the only row anyone has to act on, so it does not sort under
+#: however many completed ones a busy queue has behind it.
+_STATUS_ORDER = ("recoverable", "dispatched", "pending")
+_TERMINAL_SHOWN = 10
+
+
+async def _queue_ls(ctx: CommandContext, args) -> CommandResult:
+    qm = ctx.bridge.queue_manager
+    which = args.get("queue")
+    known = qm.list_queues()
+    if which and which not in known:
+        return CommandResult(
+            False,
+            f"unknown queue: {which!r}",
+            "known: " + (", ".join(known) or "none configured"),
+        )
+    tasks = qm.tasks(which)
+    live = [t for t in tasks if t.status in _STATUS_ORDER]
+    live.sort(key=lambda t: _STATUS_ORDER.index(t.status))
+    done = [t for t in tasks if t.status not in _STATUS_ORDER][:_TERMINAL_SHOWN]
+    rows = live + done
+    if not rows:
+        where = f"queue {which}" if which else "any queue"
+        return CommandResult(True, f"no tasks on {where}")
+    lines = [
+        f"{t.status:<12} {t.id}  {t.queue}  "
+        f"{t.worker_handle or '—':<16} {_summary(t.payload)}"
+        for t in rows
+    ]
+    # The full task id is in every row on purpose: it is what /resume
+    # takes, and the dashboard's `queue#<last4>` label is not enough to
+    # address one.
+    if any(t.status == "recoverable" for t in rows):
+        lines.append("")
+        lines.append("parked workers are still alive — /resume <task_id>")
+    return CommandResult(True, f"{len(rows)} task(s)", "\n".join(lines))
+
+
+def _summary(payload: str, limit: int = 48) -> str:
+    first = next((ln for ln in payload.splitlines() if ln.strip()), "")
+    return first if len(first) <= limit else first[: limit - 1] + "…"
+
+
+async def _queue_resume(ctx: CommandContext, args) -> CommandResult:
+    """Rebuild a parked worker's harness and tell it to carry on.
+
+    Never re-runs a payload. A worker that got halfway may already have
+    committed, pushed or deployed, so the re-run door is a separate one
+    (``aegis_task_retry``) that a caller has to walk through on purpose.
+    """
+    task_id = args["task_id"]
+    res = await ctx.bridge.queue_manager.resume_task(task_id)
+    if not res.get("ok"):
+        return CommandResult(False, "resume refused", res.get("error", ""))
+    return CommandResult(
+        True,
+        f"resumed task {task_id}",
+        f"{res['worker_handle']} is back on it, with its conversation intact",
+    )
+
+
+def _parked_tasks(bridge) -> list:
+    """Palette completer for /resume: the ids that can actually be resumed,
+    each labelled with its worker so the operator picks by what it was
+    doing rather than by ULID."""
+    qm = getattr(bridge, "queue_manager", None)
+    if qm is None:
+        return []
+    return [
+        (t.id, f"{t.queue} · {t.worker_handle or '—'} · {_summary(t.payload, 40)}")
+        for t in qm.tasks()
+        if t.status == "recoverable"
+    ]
+
+
 for _cmd in (
     SlashCommand("help", "list slash commands", "/help", _help),
     SlashCommand("sessions", "list live agent sessions", "/sessions", _sessions),
@@ -645,6 +721,28 @@ for _cmd in (
             ),
             flags=(Flag("ephemeral", takes_value=False),),
         ),
+    ),
+    SlashCommand(
+        "queue",
+        "list queue tasks and their states",
+        "/queue [<queue>]",
+        _queue_ls,
+        spec=ArgSpec(
+            positionals=(
+                Arg(
+                    "queue",
+                    required=False,
+                    completer=lambda b: b.queue_manager.list_queues(),
+                ),
+            )
+        ),
+    ),
+    SlashCommand(
+        "resume",
+        "put a parked queue worker back to work",
+        "/resume <task_id>",
+        _queue_resume,
+        spec=ArgSpec(positionals=(Arg("task_id", completer=_parked_tasks),)),
     ),
     SlashCommand(
         "enqueue",

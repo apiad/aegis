@@ -62,6 +62,10 @@ from aegis.cli_bench import app as _bench_app  # noqa: E402
 
 app.add_typer(_bench_app, name="bench")
 
+from aegis.cli_queue import app as _queue_app  # noqa: E402
+
+app.add_typer(_queue_app, name="queue")
+
 
 def _session_factory(cwd: str, hosts=None):
     """The SessionFactory every entry point hands SessionManager.

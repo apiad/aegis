@@ -28,6 +28,9 @@ class FakeQueueManager:
         self.enqueued.append((queue, payload))
         return ("task-1", 0)
 
+    def tasks(self, queue=None):
+        return []
+
 
 class FakeBridge:
     def __init__(self):
@@ -419,10 +422,21 @@ async def test_queues_bare_lists():
     assert "opus" in res.body
 
 
-async def test_queue_old_name_is_gone():
-    res = await dispatch("/queue", _ctx())
-    assert res.ok is False
-    assert "unknown command" in res.title
+async def test_queue_and_queues_are_different_commands():
+    """`/queue` was the old name for `/queues` and was retired; it is back
+    with a DIFFERENT meaning — the tasks on a queue, not the configured
+    queues. The pair is what this pins, because confusing them is the
+    failure the retirement was protecting against."""
+    bridge = FakeBridge()
+    from aegis.queue import Queue
+    bridge.queue_manager._queues = {
+        "build": Queue(name="build", agent_profile="opus", max_parallel=2)}
+    ctx = CommandContext(bridge=bridge, handle="me")
+    tasks = await dispatch("/queue", ctx)
+    queues = await dispatch("/queues", ctx)
+    assert tasks.ok and queues.ok
+    assert "no tasks" in tasks.title
+    assert "opus" in queues.body           # the config, not the tasks
 
 
 async def test_enqueue_drops_task():
