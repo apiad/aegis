@@ -57,6 +57,10 @@ def classify(
 ) -> Outcome:
     """What a turn ending means for the task behind it.
 
+    `attempts` is the number of bad turn ends this task's worker has had
+    INCLUDING the one being classified, so a caller increments its
+    counter BEFORE calling: `max_attempts=1` means one try and no retry.
+
     `transient` is the DEFAULT arm, deliberately. The tempting version
     enumerates the recoverable reasons — link_lost, a harness exception,
     a stream with no Result, a rate limit — and calls the rest terminal.
