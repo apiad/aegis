@@ -411,7 +411,11 @@ class QueueManager:
         (the result is the return value, not an inbox message) and resolves
         on a one-shot completion subscription — no polling. Returns
         ``{task_id, status, result?, error?}`` where status is
-        ``completed`` / ``failed``. Unknown queue → ``{"error": …}``.
+        ``completed`` / ``failed`` / ``recoverable``. A ``recoverable``
+        result also carries ``worker_handle``: the worker stalled past its
+        attempts, its session is parked with the conversation intact, and
+        the caller can read it or resume the task rather than give up.
+        Unknown queue → ``{"error": …}``.
 
         With ``timeout`` set, gives up after that many seconds and returns
         ``{task_id, status: "timeout"}`` — the worker keeps running (use
@@ -755,12 +759,14 @@ class QueueManager:
     async def _park(self, session, task: Task, *, reason: str) -> None:
         """Promote a worker out of being disposable and free its slot.
 
-        Leaving `EPHEMERAL_KINDS` is the whole mechanism, and it buys three
+        Leaving `EPHEMERAL_KINDS` is the whole mechanism, and it buys two
         behaviours rather than a new session state: `GhostBook` stops reading
-        the session as a departure and stops fading it after `GHOST_TTL`,
+        the session as a departure and stops fading it after `GHOST_TTL`, and
         `close_guard` starts protecting it the way it protects every
-        non-disposable session, and `plan_resume` restores it across a daemon
-        restart with no special case. The origin keeps `by` and `detail`, so
+        non-disposable session. Surviving a daemon restart is not one of
+        them — workspace persistence has no ephemeral filter, so an unparked
+        queue worker was already snapshotted and already restored by
+        `plan_resume`. The origin keeps `by` and `detail`, so
         the parked session still names the queue and the task it was working
         — which is what `aegis_task_resume` looks it up by.
 
