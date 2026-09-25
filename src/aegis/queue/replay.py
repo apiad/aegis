@@ -125,8 +125,7 @@ async def _restore_or_park(qm, queue_name: str, tid: str, r: dict) -> None:
             qm,
             task,
             reason=(
-                "the worker never reached a turn boundary; "
-                "no conversation to resume"
+                "the worker never reached a turn boundary; no conversation to resume"
                 if task.resumable is None
                 else f"stalled {task.attempts} time(s) before the restart"
             ),

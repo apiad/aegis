@@ -79,9 +79,18 @@ callback that says exactly that.
 ## Restart safety
 
 On startup the substrate replays each queue's JSONL log
-(`.aegis/state/queues/<queue>.jsonl`). Tasks that were in flight when
-the process died get marked `failed:interrupted` so the producer's
-inbox eventually receives a clean error rather than waiting forever.
+(`.aegis/state/queues/<queue>.jsonl`). A task that was in flight when
+the process died has its worker put back: the conversation is resumed
+from the id the harness reported, the worker is told that aegis
+restarted and that it is still on the same task, and the task stays
+dispatched. When there is nothing to resume from, or the task had
+already spent its `max_attempts`, it is parked as `recoverable`
+instead, and the producer's inbox receives a notice saying where the
+conversation is rather than waiting forever.
+
+A task is **never re-run from its payload**. A worker that got halfway
+may already have committed, pushed or deployed, so replaying its prompt
+would be a second execution rather than a recovery.
 
 ## Why callbacks, not polling
 
