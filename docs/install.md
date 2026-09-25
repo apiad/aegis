@@ -77,6 +77,24 @@ uv run aegis            # run from the working tree
 uv run pytest -m "not live"
 ```
 
+### Putting a working-tree aegis on `PATH`
+
+`uv run aegis` only works from inside the checkout, and a shell alias is
+invisible to every subprocess — so anything that shells out to `aegis` will not
+find it. Symlink the venv's entry point into a directory already on `PATH`:
+
+```bash
+ln -s "$PWD/.venv/bin/aegis" ~/.local/bin/aegis
+```
+
+That is the same executable in the same environment, so `aegis` typed in a
+shell and `aegis` invoked by a program are one program with one dependency set.
+`uv tool install --editable .` also puts it on `PATH`, but it builds aegis a
+second environment whose dependencies are resolved separately from
+`.venv`, which means `aegis serve` can boot under a different Textual or
+FastMCP depending on how it was launched. For a working tree, prefer the
+symlink.
+
 The hermetic test suite runs in ~15s with no external dependencies.
 The `live` marker exists for tests that spawn a real `claude`, `gemini`,
 or `opencode` subprocess — those auto-skip when the corresponding CLI
