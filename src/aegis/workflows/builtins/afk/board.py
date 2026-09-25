@@ -10,6 +10,7 @@ operator's board, so they are read verbatim.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field as dc_field
 from typing import Awaitable, Callable
 
@@ -191,3 +192,129 @@ async def fetch_board(
         )
     )
     return parse_schema(project_id, fields_raw), cards
+
+
+COMMENT_LIMIT = 65536
+MARKER_RE = re.compile(r"<!--\s*aegis-afk\s+(?P<kv>[^>]*?)\s*-->")
+_FENCE_RE = re.compile(r"```.*?```", re.S)
+
+
+class BoardError(RuntimeError):
+    """A board read or write did not happen. The caller must not move a card
+    on the strength of a write that failed."""
+
+
+def render_marker(**kv: object) -> str:
+    inner = " ".join(f"{k}={v}" for k, v in kv.items())
+    return f"<!-- aegis-afk {inner} -->"
+
+
+def parse_marker(body: str) -> dict[str, str]:
+    """The coordinator's own bookkeeping, or {}.
+
+    Fenced blocks are stripped first: a card documenting this feature quotes
+    the marker, and reading an example back as state would point the reaper
+    at a task id that never existed.
+    """
+    m = MARKER_RE.search(_FENCE_RE.sub("", body or ""))
+    if not m:
+        return {}
+    out: dict[str, str] = {}
+    for tok in m.group("kv").split():
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            out[k] = v
+    return out
+
+
+def truncate_comment(body: str, *, limit: int = COMMENT_LIMIT) -> str:
+    """GitHub rejects a comment body over `limit`. A silent rejection stops
+    the card updating with nothing to read, so cut and say that we cut."""
+    if len(body) <= limit:
+        return body
+    note = "\n\n_(truncated: the full report exceeded GitHub's comment limit)_"
+    return body[: limit - len(note)] + note
+
+
+async def set_field(
+    run: Runner, schema: Schema, card: Card, *, field: str, value: str | None
+) -> None:
+    field_id = schema.field_ids.get(field)
+    if field_id is None:
+        raise BoardError(f"board has no field named {field!r}")
+    argv = [
+        "gh",
+        "project",
+        "item-edit",
+        "--id",
+        card.item_id,
+        "--project-id",
+        schema.project_id,
+        "--field-id",
+        field_id,
+    ]
+    if value is None:
+        argv.append("--clear")
+    elif field in schema.option_ids:
+        option_id = schema.option_ids[field].get(value)
+        if option_id is None:
+            raise BoardError(
+                f"{field!r} has no option named {value!r} "
+                f"(options: {sorted(schema.option_ids[field])})"
+            )
+        argv += ["--single-select-option-id", option_id]
+    else:
+        argv += ["--text", value]
+    try:
+        await run(argv)
+    except Exception as e:  # noqa: BLE001 - transport failures are all alike here
+        raise BoardError(f"setting {field!r} on #{card.number}: {e}") from e
+
+
+async def upsert_comment(run: Runner, card: Card, *, body: str) -> str:
+    """Rewrite the coordinator's pinned comment in place, or create it.
+
+    Found by marker rather than `gh issue comment --edit-last`: that flag
+    targets the authenticated user's most recent comment, and the coordinator
+    authenticates as the operator, so once the operator replies to a card
+    --edit-last would overwrite their reply.
+    """
+    body = truncate_comment(body)
+    try:
+        raw = await run(
+            [
+                "gh",
+                "api",
+                f"repos/{card.repo}/issues/{card.number}/comments",
+                "--paginate",
+            ]
+        )
+        existing = json.loads(raw)
+        mine = next((c for c in existing if parse_marker(c.get("body") or "")), None)
+        if mine is None:
+            await run(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{card.repo}/issues/{card.number}/comments",
+                    "-f",
+                    f"body={body}",
+                ]
+            )
+            return "created"
+        await run(
+            [
+                "gh",
+                "api",
+                "-X",
+                "PATCH",
+                f"repos/{card.repo}/issues/comments/{mine['id']}",
+                "-f",
+                f"body={body}",
+            ]
+        )
+        return "edited"
+    except BoardError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise BoardError(f"commenting on #{card.number}: {e}") from e
