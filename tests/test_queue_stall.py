@@ -9,7 +9,7 @@ destroyed an hour of context on a tunnel blip.
 from __future__ import annotations
 
 from aegis.queue.jsonl import read_records
-from tests.conftest import make_queue_rig, record_parks, worker_handle
+from tests.conftest import make_queue_rig, worker_handle
 
 
 def _log(tmp_path, event):
@@ -153,7 +153,6 @@ async def test_a_double_finalize_spends_one_attempt(tmp_path):
     a single blip using the whole budget. Hence `_stalling`.
     """
     qm, sm = make_queue_rig(tmp_path)
-    parked = record_parks(qm)
     tid, h = _start(qm, sm)
 
     await sm.fail(h, text="halfway", emit_twice=True)
@@ -161,7 +160,8 @@ async def test_a_double_finalize_spends_one_attempt(tmp_path):
     assert len(_log(tmp_path, "stalled")) == 1
     assert qm._all[tid].attempts == 1
     assert sm.reconnected == [h], "one interruption, one rebuild"
-    assert parked == [], "one blip must not spend the whole budget"
+    assert not _log(tmp_path, "recoverable"), \
+        "one blip must not spend the whole budget"
 
 
 async def test_a_worker_waiting_on_a_monitor_defers_not_stalls(queue_rig,

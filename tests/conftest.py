@@ -605,55 +605,6 @@ def make_queue_rig(tmp_path, *, max_attempts=2, recoverable_ttl_s=86400,
     return qm, sm
 
 
-def record_parks(qm):
-    """Stand in for `QueueManager._park`, which lands in Task 8 of the
-    ephemeral-agent-recovery plan. Returns the list it appends to.
-
-    After Task 7 `_finalize` cannot produce `failed` from a bad turn end: it
-    stalls and rebuilds, or parks once `max_attempts` is spent. Tests that
-    pin the terminal path therefore need something on the other end of it in
-    the meantime, and two of the callers they exercise BLOCK until it
-    arrives — `QueueManager.run` on a `QueueCompleted`, and
-    `WorkflowEngine.delegate` on an error callback — so a no-op recorder
-    hangs them. This does the two things the real `_park` does that anyone
-    is waiting for, and nothing else: no `recoverable` status, no `parked`
-    origin, no slot release. Delete it when Task 8 lands; the tests using it
-    are written to pass unchanged once it is real.
-    """
-    from aegis.queue.manager import _handle_of
-    from aegis.queue.events import QueueCompleted
-    from aegis.queue.schema import InboxMessage, sender_queue
-
-    parked: list[tuple[str, int, str]] = []
-
-    async def park(session, task, *, reason):
-        parked.append((task.id, task.attempts, reason))
-        qm._emit(
-            QueueCompleted(
-                task_id=task.id,
-                queue=task.queue,
-                outcome="recoverable",
-                result=None,
-                error=reason,
-                completed_at=qm._now(),
-            )
-        )
-        if task.callback:
-            await qm._inbox.deliver(
-                _handle_of(task.enqueued_by),
-                InboxMessage(
-                    sender=sender_queue(task.queue),
-                    timestamp=qm._now(),
-                    body=reason,
-                    task_id=task.id,
-                    status="error",
-                ),
-            )
-
-    qm._park = park
-    return parked
-
-
 def worker_handle(qm, task_id):
     """The handle dispatch minted for this task. `status()` does not carry
     it, and a test that hardcoded `w1` would lie the moment a rig

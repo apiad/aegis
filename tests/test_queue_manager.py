@@ -6,8 +6,6 @@ import asyncio
 
 import pytest
 
-from tests.conftest import record_parks
-
 from aegis.core.session import AgentSession
 from aegis.events import AssistantText, Result
 from aegis.queue import (
@@ -173,7 +171,6 @@ async def test_failed_worker_delivers_error_callback():
     inbox = InboxRouter()
     qm = QueueManager({"impl": _q(cap=1, attempts=1)}, sm, inbox,
                       handle_factory=lambda used: "w1")
-    parked = record_parks(qm)
     sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
     tid, _ = qm.enqueue("impl", "go",
                         enqueued_by=sender_agent("lucid-knuth"),
@@ -181,10 +178,10 @@ async def test_failed_worker_delivers_error_callback():
     await asyncio.sleep(0.05)
     pending = inbox.pending("lucid-knuth")
     assert len(pending) == 1 and pending[0].status == "error"
-    assert [(t, a) for t, a, _ in parked] == [(tid, 1)]
-    # No `qm.status(tid) == "failed"` any more: the terminal path parks, and
-    # Task 8 is what sets `recoverable` there. The worker stays alive either
-    # way, which is the point of the whole change.
+    # Not `failed` any more: the terminal path parks. The worker stays alive
+    # either way, which is the point of the whole change.
+    assert qm.status(tid)["status"] == "recoverable"
+    assert "exhausted" in qm.status(tid)["error"]
     assert "w1" not in sm.closed
 
 
@@ -361,12 +358,15 @@ async def test_run_failed_worker_returns_failed():
     inbox = InboxRouter()
     qm = QueueManager({"impl": _q(cap=1, attempts=1)}, sm, inbox,
                       handle_factory=lambda used: "w1")
-    parked = record_parks(qm)
     sm.script("w1", [Result(duration_ms=1, is_error=True, usage=None)])
     res = await asyncio.wait_for(
         qm.run("impl", "go", enqueued_by=sender_agent("boss")), 2)
-    assert res["status"] == "failed"
-    assert [t for t, _, _ in parked] == [res["task_id"]]
+    # `recoverable`, not `failed`: the worker is parked with its conversation
+    # intact, and the caller has to learn that it can resume rather than that
+    # the work is lost.
+    assert res["status"] == "recoverable"
+    assert res["worker_handle"] == "w1"
+    assert qm.status(res["task_id"])["status"] == "recoverable"
 
 
 async def test_run_unknown_queue_returns_error():

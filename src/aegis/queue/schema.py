@@ -128,6 +128,10 @@ class Task:
     attempts: int = 0
     #: What a rebuild needs, once the harness has reported a session id.
     resumable: Resumable | None = None
+    #: Epoch seconds at which this task was parked, or None. Read by the
+    #: recoverable-TTL reaper; kept apart from ``completed_at``, which is an
+    #: ISO string for humans and would cost a parse on every reaper tick.
+    parked_at: float | None = None
 
 
 def local_waiter(task: Task) -> str | None:

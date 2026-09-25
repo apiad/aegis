@@ -38,7 +38,11 @@ class QueueStarted:
 class QueueCompleted:
     task_id: str
     queue: str
-    outcome: Literal["completed", "failed", "interrupted"]
+    # "recoverable" is a PARKED worker, not a failure: its session is alive
+    # with the conversation intact and `aegis_task_resume` can put it back to
+    # work. A consumer that folds it into "failed" tells its caller the work
+    # is lost when it is one call from continuing.
+    outcome: Literal["completed", "failed", "interrupted", "recoverable"]
     result: str | None
     error: str | None
     completed_at: str

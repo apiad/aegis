@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -446,13 +447,25 @@ class QueueManager:
                     ev = await fut
             except asyncio.TimeoutError:
                 return {"task_id": tid, "status": "timeout"}
-            status = "completed" if ev.outcome == "completed" else "failed"
-            return {
+            # `recoverable` is a third status, not a flavour of failure. The
+            # worker is parked with its conversation intact, so a delegating
+            # caller told "failed" would give up on work that is one
+            # `aegis_task_resume` from continuing.
+            status = (
+                ev.outcome
+                if ev.outcome in ("completed", "recoverable")
+                else "failed"
+            )
+            out = {
                 "task_id": tid,
                 "status": status,
                 "result": ev.result,
                 "error": ev.error,
             }
+            if status == "recoverable":
+                parked = self._all.get(tid)
+                out["worker_handle"] = parked.worker_handle if parked else None
+            return out
         finally:
             unsub()
 
@@ -714,10 +727,111 @@ class QueueManager:
             return []
         return still_working_reasons(facts)
 
-    async def _park(self, session, task, *, reason: str) -> None:
-        """Retire a worker whose budget is spent, keeping the conversation
-        reachable. Lands in Task 8 of the ephemeral-agent-recovery plan."""
-        raise NotImplementedError("_park lands in Task 8")
+    def _cost_dict(self, session, queue: str) -> dict:
+        """What this worker's tokens cost, priced for its queue's model.
+
+        Shared by the completion path and `_park`, so a parked worker's spend
+        is accounted for exactly once — on `recoverable`, which is written
+        once per task, and never on `stalled`, which is written once per
+        attempt against cumulative session metrics and would make a summing
+        consumer count the same turn several times.
+
+        Never raises: a finalizer that dies on a missing price strands the
+        task it was closing out.
+        """
+        q = self._queues[queue]
+        try:
+            metrics = getattr(session, "metrics", None)
+            return _compute_cost(
+                _adapt_metrics(metrics),
+                provider=q.provider,
+                model=q.model,
+            ).as_dict()
+        except UnknownPriceError as e:
+            return {"error": "unknown_model", "detail": str(e)}
+        except Exception as e:  # noqa: BLE001 — don't let cost break finalizer
+            return {"error": "compute_failed", "detail": str(e)}
+
+    async def _park(self, session, task: Task, *, reason: str) -> None:
+        """Promote a worker out of being disposable and free its slot.
+
+        Leaving `EPHEMERAL_KINDS` is the whole mechanism, and it buys three
+        behaviours rather than a new session state: `GhostBook` stops reading
+        the session as a departure and stops fading it after `GHOST_TTL`,
+        `close_guard` starts protecting it the way it protects every
+        non-disposable session, and `plan_resume` restores it across a daemon
+        restart with no special case. The origin keeps `by` and `detail`, so
+        the parked session still names the queue and the task it was working
+        — which is what `aegis_task_resume` looks it up by.
+
+        `session` is None when the restart replay parks a task whose worker
+        died with the process: there is no live session to re-origin, and
+        everything else about parking still applies.
+        """
+        handle = session.handle if session is not None else task.worker_handle
+        self._workers.pop(handle, None)
+        self._chunk_run.pop(handle, None)
+        parked = replace(
+            task,
+            status="recoverable",
+            worker_handle=handle,
+            error=reason,
+            completed_at=self._now(),
+            parked_at=time.time(),
+        )
+        self._all[task.id] = parked
+        self._inflight[task.queue] = [
+            t for t in self._inflight[task.queue] if t.id != task.id
+        ]
+        if session is not None:
+            # No `contextlib.suppress` around this. It is a plain attribute
+            # set on an AgentSession and cannot fail, and swallowing it would
+            # hide the one outcome that matters: an origin still reading as
+            # ephemeral means the GhostBook fades the session the operator was
+            # just handed, which is the whole bug being fixed. The guard above
+            # is what handles "no live session", not an exception handler.
+            session.origin = Origin(
+                kind="parked", by=task.queue, detail=task.id
+            )
+        self._log(
+            task.queue,
+            {
+                "event": "recoverable",
+                "task_id": task.id,
+                "worker_handle": handle,
+                "attempts": task.attempts,
+                "error": reason,
+                "completed_at": parked.completed_at,
+                "parked_at": parked.parked_at,
+                "cost": self._cost_dict(session, task.queue),
+            },
+        )
+        self._emit(
+            QueueCompleted(
+                task_id=task.id,
+                queue=task.queue,
+                outcome="recoverable",
+                result=None,
+                error=reason,
+                completed_at=parked.completed_at,
+            )
+        )
+        if task.callback:
+            msg = InboxMessage(
+                sender=sender_queue(task.queue),
+                timestamp=self._now(),
+                body=(
+                    f"worker stalled and could not be recovered: {reason}. "
+                    f"Its session is parked as {handle!r} with the "
+                    f"conversation intact. Read it with "
+                    f"aegis_read_peer({handle!r}), or put it back to work "
+                    f"with aegis_task_resume({task.id!r})."
+                ),
+                task_id=task.id,
+                status="error",
+            )
+            await self._inbox.deliver(_handle_of(task.enqueued_by), msg)
+        self._try_dispatch(task.queue)
 
     async def _finalize(self, session, st) -> None:
         if session.handle not in self._workers:
@@ -775,6 +889,19 @@ class QueueManager:
         bumped = replace(task, attempts=task.attempts + 1)
         outcome = classify(st, attempts=bumped.attempts,
                            max_attempts=q.max_attempts)
+        if outcome is Outcome.transient and task.resumable is None:
+            # No session id was ever reported, so there is no conversation to
+            # resume and the retry budget is irrelevant — rebuilding would
+            # fail the same way every time while holding the slot. Parks on
+            # the UNBUMPED task: spending attempts on an impossibility would
+            # report a retry that never happened.
+            await self._park(
+                session,
+                task,
+                reason=("the worker never reached a turn boundary; "
+                        "no conversation to resume"),
+            )
+            return
         if outcome is Outcome.transient:
             self._workers[session.handle] = (bumped, said)
             self._all[task.id] = bumped
@@ -844,18 +971,7 @@ class QueueManager:
         self._inflight[task.queue] = [
             t for t in self._inflight[task.queue] if t.id != task.id
         ]
-        q = self._queues[task.queue]
-        try:
-            metrics = getattr(session, "metrics", None)
-            cost_dict = _compute_cost(
-                _adapt_metrics(metrics),
-                provider=q.provider,
-                model=q.model,
-            ).as_dict()
-        except UnknownPriceError as e:
-            cost_dict = {"error": "unknown_model", "detail": str(e)}
-        except Exception as e:  # noqa: BLE001 — don't let cost break finalizer
-            cost_dict = {"error": "compute_failed", "detail": str(e)}
+        cost_dict = self._cost_dict(session, task.queue)
         self._log(
             task.queue,
             {
