@@ -1,10 +1,27 @@
 # A board full of prompts should empty itself while you sleep
 
-**Status:** designed 2026-09-25, not implemented. Slices 1–3 plus the
-quota gate are planned in
-`docs/superpowers/plans/2026-09-25-afk-coordinator-slices-1-3.md`; the
-quota gate moved forward from slice 4 so that plan's deliverable is
-something you can switch on. Slices 4–7 get their own plan.
+**Status:** slices 1–3 plus the quota gate **implemented** 2026-09-25
+(`601c605`..`d1daa0c`, 118 tests), from
+`docs/superpowers/plans/2026-09-25-afk-coordinator-slices-1-3.md`. The quota
+gate moved forward from slice 4 so that plan's deliverable was something you
+could switch on. Not yet built: the dispatch rails, the coordinator agent,
+`worktree` isolation, the reviewer stage, stall *notification* (stall
+*detection* is in), and `notify_cmd` — slices 4–7, which get their own plan.
+
+Three things the build corrected in this design. They are folded into the
+sections below, and recorded here because each was a defect the spec's own
+prose would have reproduced:
+
+- **Marker values are shell-quoted.** The marker is a `key=value` list, so
+  the `gate=make check` the coordinator writes for itself read back as
+  `gate=make`, and it would have re-run a different command from the one it
+  gave the worker — the one comparison this design exists to make.
+- **`PlanSnapshot.updated_at` is an ISO string**, not an epoch float
+  (`plan/tracker.py:115`). Stall detection has to parse it, and an
+  unparseable clock reads as fresh rather than putting a false stall on a
+  card.
+- **Archived items come back from `items()`.** A card archived to get it off
+  the board was read back as work to do.
 **Scope:** one new built-in workflow package
 (`src/aegis/workflows/builtins/afk/`) registering two workflows, two new methods
 on `WorkflowEngine` (`task_status`, `plan_state`), one new field on the dict

@@ -20,6 +20,27 @@ plan replaces it with an agent behind the rails this plan builds.
 
 **Spec:** `docs/superpowers/specs/2026-09-25-afk-coordinator-design.md`
 
+**Status:** Tasks 1–9 landed 2026-09-25 (`601c605`..`d1daa0c`), 118 tests.
+Task 10 in progress; Task 11 (the run against a real board) is outstanding and
+is the one that decides whether this is actually done — everything green so far
+is green against fakes.
+
+Four defects were found during the build that this plan's own code contained.
+Each is fixed in the repo; the plan text below is left as written so the
+mutation steps still read correctly against what they were guarding:
+
+| Where | What |
+|---|---|
+| Task 6 | `git status --porcelain` output was `.strip()`ed before slicing `ln[3:]`, cutting one character into the first path |
+| Task 8 | the marker could not carry a gate command containing a space, making the lying-gate check measure the wrong command |
+| Task 8 | the reap tests reached the pinned comment through a private helper the fixture could not replace, so every reap test crashed into a broad `except` and three passed for the wrong reason |
+| Task 9 | `format_rollup` did float arithmetic on an ISO-string timestamp, raising on every real card |
+
+A fifth, in this plan's own instructions rather than its code: several mutation
+steps say to confirm an edit landed with `git diff`. That prints nothing for an
+**untracked** file and confirms nothing either way. Use `grep -n` on the changed
+line when the module is new.
+
 **Scope note:** the spec lists seven slices. This plan covers 1–3 plus the quota
 gate, which the spec puts in slice 4. The gate moved forward because this plan's
 deliverable is something you can switch on, and switching on an ungated loop
