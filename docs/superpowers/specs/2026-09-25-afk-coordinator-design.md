@@ -1,6 +1,10 @@
 # A board full of prompts should empty itself while you sleep
 
-**Status:** designed 2026-09-25, not implemented.
+**Status:** designed 2026-09-25, not implemented. Slices 1–3 plus the
+quota gate are planned in
+`docs/superpowers/plans/2026-09-25-afk-coordinator-slices-1-3.md`; the
+quota gate moved forward from slice 4 so that plan's deliverable is
+something you can switch on. Slices 4–7 get their own plan.
 **Scope:** one new built-in workflow package
 (`src/aegis/workflows/builtins/afk/`) registering two workflows, two new methods
 on `WorkflowEngine` (`task_status`, `plan_state`), one new field on the dict
