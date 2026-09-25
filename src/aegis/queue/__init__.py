@@ -10,7 +10,7 @@ from aegis.queue.events import (
 )
 from aegis.queue.inbox import InboxRouter
 from aegis.queue.loop import LoopService
-from aegis.queue.manager import QueueManager
+from aegis.queue.manager import ParkReaper, QueueManager
 from aegis.queue.reminder import ReminderService
 from aegis.queue.schema import (
     Delivery,
@@ -33,6 +33,7 @@ __all__ = [
     "InboxMessage",
     "InboxRouter",
     "LoopService",
+    "ParkReaper",
     "Queue",
     "QueueCompleted",
     "QueueDigest",

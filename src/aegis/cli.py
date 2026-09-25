@@ -693,7 +693,7 @@ async def _serve(
     the bridge at `start()` and a front end rebinds the plane to itself
     first; starting early would serve the wrong bridge.
     """
-    from aegis.queue import InboxRouter, QueueManager
+    from aegis.queue import InboxRouter, ParkReaper, QueueManager
 
     inbox = InboxRouter(state_dir=roots.state_dir)
     mgr = SessionManager(
@@ -821,6 +821,10 @@ async def _serve(
     tasks = []
     view_registry = None
     socket_server = None
+    # The deadline on a parked conversation. Unconditional, not inside the
+    # `views` branch below: a parked worker pins the daemon open and fills
+    # the tab bar in every shape `serve` takes, not only the socket one.
+    tasks.append(asyncio.create_task(ParkReaper(qm, stop=stop).run()))
     if views:
         # The daemon. A registry of views over this one brain, published on
         # a unix socket that `aegis attach` pipes. `ui` is the OTHER shape

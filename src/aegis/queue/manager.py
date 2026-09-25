@@ -980,6 +980,94 @@ class QueueManager:
             await self._inbox.deliver(_handle_of(task.enqueued_by), msg)
         self._try_dispatch(task.queue)
 
+    async def reap_parked(self, now_epoch: float) -> list[str]:
+        """Close parked sessions past their queue's `recoverable_ttl_s` and
+        fail their tasks. Returns the task ids reaped.
+
+        Parking is not free: a parked session is a real session, and
+        `IdleReaper` reaps the daemon only after a contiguous run of zero
+        views AND zero sessions, so one forgotten worker pins the daemon
+        open indefinitely and sits in the tab bar. Over a week of queue
+        work with a few genuine failures that is a row of dead tabs and a
+        laptop daemon that never exits.
+
+        What the deadline costs is a conversation, and it says so: a
+        bounded, announced loss after a full day in which anyone could have
+        read or resumed it is a different thing from the silent loss four
+        seconds after a dropped link that this whole plane removes.
+        `recoverable_ttl_s = 0` disables it, for a host where keeping them
+        forever is what you want.
+
+        Takes `now` rather than reading the clock so a test does not have
+        to sleep for a day.
+        """
+        reaped: list[str] = []
+        for tid, t in list(self._all.items()):
+            if t.status != "recoverable" or t.parked_at is None:
+                continue
+            q = self._queues.get(t.queue)
+            if q is None:
+                # The queue was dropped from the config while a task of its
+                # was parked. Nothing here knows what deadline to apply, and
+                # guessing one would discard a conversation on a default.
+                continue
+            ttl = q.recoverable_ttl_s
+            if ttl <= 0 or now_epoch - t.parked_at < ttl:
+                continue
+            hours = int((now_epoch - t.parked_at) // 3600)
+            failed = replace(
+                t,
+                status="failed",
+                error=f"parked conversation discarded after {hours}h unread",
+                completed_at=self._now(),
+            )
+            self._all[tid] = failed
+            self._log(
+                t.queue,
+                {
+                    "event": "failed",
+                    "task_id": tid,
+                    "result": None,
+                    "error": failed.error,
+                    "completed_at": failed.completed_at,
+                    # No cost. `_park` already wrote this task's spend on its
+                    # `recoverable` record, and a second copy of the same
+                    # cumulative metrics would make a summing consumer count
+                    # the worker's tokens twice.
+                    "cost": {},
+                },
+            )
+            self._emit(
+                QueueCompleted(
+                    task_id=tid,
+                    queue=t.queue,
+                    outcome="failed",
+                    result=None,
+                    error=failed.error,
+                    completed_at=failed.completed_at,
+                )
+            )
+            if t.callback:
+                await self._inbox.deliver(
+                    _handle_of(t.enqueued_by),
+                    InboxMessage(
+                        sender=sender_queue(t.queue),
+                        timestamp=self._now(),
+                        body=(
+                            f"the parked session for task {tid} was "
+                            f"discarded after {hours}h unread; its "
+                            f"conversation is gone"
+                        ),
+                        task_id=tid,
+                        status="error",
+                    ),
+                )
+            if t.worker_handle:
+                with contextlib.suppress(Exception):
+                    await self._sm.close(t.worker_handle)
+            reaped.append(tid)
+        return reaped
+
     async def _finalize(self, session, st) -> None:
         if session.handle not in self._workers:
             return
@@ -1188,3 +1276,43 @@ class QueueManager:
         # Symmetry with start(); nothing to flush in v1 (writes are
         # synchronous on each transition).
         return
+
+
+class ParkReaper:
+    """Runs `QueueManager.reap_parked` on a clock for the process's life.
+
+    Same shape as `IdleReaper` (daemon/lifecycle.py), and the coupling is
+    the same story told from the other end: IdleReaper will not reap a
+    daemon while any session stands, and a parked worker is a session.
+    Without something driving the deadline on a timer, `recoverable_ttl_s`
+    is a rule nobody ever checks — the only caller would be whichever
+    operator happened to look, which is precisely the operator this exists
+    to stop needing.
+
+    Five minutes, against a default deadline of a day: the interval only
+    bounds how late a discard is, and a tighter one buys nothing but
+    wakeups on an idle daemon.
+    """
+
+    def __init__(self, qm, *, stop: asyncio.Event, interval_s: float = 300.0):
+        self._qm = qm
+        self._stop = stop
+        self._interval = interval_s
+
+    async def run(self) -> None:
+        while not self._stop.is_set():
+            await asyncio.sleep(self._interval)
+            try:
+                reaped = await self._qm.reap_parked(time.time())
+            except Exception:  # noqa: BLE001
+                # One malformed task must not stop the reaper for the rest
+                # of the process's life — that is the forgotten-worker bug
+                # back, with a traceback nobody reads.
+                logging.getLogger(__name__).exception("reaping parked sessions")
+                continue
+            if reaped:
+                logging.getLogger(__name__).info(
+                    "discarded %d parked session(s) past their ttl: %s",
+                    len(reaped),
+                    ", ".join(reaped),
+                )

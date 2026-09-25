@@ -625,3 +625,39 @@ def queue_rig_max_attempts_1(tmp_path):
 @pytest.fixture
 def queue_rig_rebuild_always_fails(tmp_path):
     return make_queue_rig(tmp_path, max_attempts=1, rebuild_fails=True)
+
+
+async def _park_one(tmp_path, *, recoverable_ttl_s):
+    """A rig whose single task is already parked, plus what a reaper test
+    needs to address it: the task id, its worker's handle, and the epoch
+    `_park` stamped on it.
+
+    `parked_at` is read off the record rather than taken from the clock
+    here. `_park` stamps its own `time.time()`, so a test that called the
+    clock itself would be off by however long dispatch took — small, but
+    the whole point of `reap_parked(now)` is that the deadline arithmetic
+    is exact rather than approximately right.
+    """
+    qm, sm = make_queue_rig(tmp_path, max_attempts=1,
+                            recoverable_ttl_s=recoverable_ttl_s)
+    tid, _ = qm.enqueue("impl", "go", enqueued_by="agent:producer",
+                        callback=True)
+    handle = worker_handle(qm, tid)
+    # Without a session id there is nothing to resume, and the finalizer
+    # takes the "never reached a turn boundary" arm instead of the
+    # attempts-exhausted one. Both park, but only this one is the shape a
+    # forgotten worker actually has.
+    sm.emit_system_init(handle, session_id="sess-1")
+    await sm.fail(handle, text="halfway")
+    assert qm.status(tid)["status"] == "recoverable"
+    return qm, sm, tid, handle, qm._all[tid].parked_at
+
+
+@pytest.fixture
+async def parked_rig(tmp_path):
+    return await _park_one(tmp_path, recoverable_ttl_s=86400)
+
+
+@pytest.fixture
+async def parked_rig_ttl_zero(tmp_path):
+    return await _park_one(tmp_path, recoverable_ttl_s=0)
