@@ -466,6 +466,26 @@ class SessionManager:
         if reasons:
             raise ValueError("; ".join(reasons))
 
+        # Stop the in-flight turn before the harness under it is replaced.
+        # `close` cancels and awaits `_task`; `adopt` never did, and on the
+        # recovery path the finalizer that calls us is scheduled from inside
+        # the stream loop and runs from the dead turn's `digest.build` await
+        # — so that turn is parked mid-epilogue and resumes into
+        # `_chain_if_pending`, which starts a SECOND turn on the harness we
+        # just adopted and overwrites `_task`. Two turns on one session, and
+        # a `ready` from either one takes the queue's completion path and
+        # closes a worker that is still mid-task. It belongs here rather than
+        # in `recovery.rebuild` because the invariant is `adopt`'s, not the
+        # recovery plane's, and `reconnect` is the only caller of `adopt`:
+        # the manual /reconnect command needs it just as much and gets a
+        # no-op, its turn having died with the link.
+        # Before `_session.close()` on purpose, so the reader is gone before
+        # the driver's queue goes away under it — same order as `interrupt`.
+        turn = s._task
+        if turn is not None and not turn.done():
+            turn.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await turn
         with contextlib.suppress(Exception):
             await s._session.close()
         url = self._mcp.url if self._mcp is not None else ""
