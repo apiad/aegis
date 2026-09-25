@@ -13,6 +13,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+from aegis.config import Agent
 from aegis.core.recovery import Resumable, resumable_from
 from aegis.core.session import AgentSession
 from aegis.events import AssistantText, Result
@@ -119,8 +120,13 @@ class WakeableFakeSession(FakeSession):
 
 
 def _agent_session(harness):
-    return AgentSession(harness, agent=None, agent_slug="default",
-                        handle="h1", project_root=Path.cwd())
+    # A real Agent, not None: `provider` is read off `Agent.harness`, and
+    # it is the one field of four that no other real-session test pins. With
+    # agent=None, renaming `Agent.harness` reddened only the namespace
+    # doubles above, which agree with any attribute name at all.
+    return AgentSession(harness, agent=Agent(harness="claude-code"),
+                        agent_slug="default", handle="h1",
+                        project_root=Path.cwd())
 
 
 def test_reads_the_field_names_a_real_session_actually_has():
@@ -132,6 +138,7 @@ def test_reads_the_field_names_a_real_session_actually_has():
     assert r is not None
     assert r.session_id == "sess-real"
     assert r.agent_profile == "default"
+    assert r.provider == "claude-code"
     assert r.host == "local"
     assert r.cwd == str(Path.cwd())
 
@@ -174,6 +181,10 @@ async def test_last_stop_reason_latches_in_the_unsolicited_drain():
         AssistantText(text="first"),
         Result(duration_ms=1, is_error=False, stop_reason="end_turn"),
     ]))
+    # The poll loop below is a budget in wall-clock; the drain's own cadence
+    # is `_idle_poll_seconds`, 0.25 by default, which leaves four cycles on a
+    # box under load. Shrink the cadence rather than widening the budget.
+    s._idle_poll_seconds = 0.01
     s._session.feed(
         AssistantText(text="monitor-wake"),
         Result(duration_ms=1, is_error=True, stop_reason="link_lost"),
@@ -235,6 +246,7 @@ async def test_last_stop_reason_is_cleared_in_the_unsolicited_drain_too():
         AssistantText(text="first"),
         Result(duration_ms=1, is_error=True, stop_reason="link_lost"),
     ]))
+    s._idle_poll_seconds = 0.01  # same load-flakiness as the test above
     s._session.feed(AssistantText(text="monitor-wake"))  # drain, no Result
     await s.send("hello")
     await s._task
