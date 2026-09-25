@@ -78,7 +78,7 @@ def eligible(
     repo_root: Path,
     running_repos: set[str],
     status_field: str = "Status",
-    repo_field: str = "Repo",
+    repo_field: str = "Target repo",
 ) -> list[Card]:
     """Cards that could be started right now.
 

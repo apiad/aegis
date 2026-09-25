@@ -46,17 +46,23 @@ The coordinator writes two fields and reads the rest.
 | Field | Type | Who writes it |
 |---|---|---|
 | `Status` | single-select | you set `Todo`; the coordinator moves it after that |
-| `Repo` | single-select | you — its options are the whitelist |
+| `Target repo` | single-select | you — its options are the whitelist |
 | `Priority` | single-select | you |
 | `Deadline` | date | you, optionally |
 | `Progress` | text | `afk_progress` |
+
+!!! note "Why not just call it `Repo`?"
+    GitHub Projects rejects both `Repo` and `Repository` as reserved
+    field names, so a board using the obvious name cannot be created
+    at all. If you prefer another name, set `field_names.repo`.
+
 
 `Status` must carry every option the coordinator writes, or the write fails
 and the card stays where it was: `Todo`, `Running`, `Needs review`, `Blocked`
 and `Failed`. Add `Done` as well — the coordinator never sets it, but you
 will want somewhere to put a card you have reviewed.
 
-`Repo` is a single-select rather than free text on purpose. A card can only
+`Target repo` is a single-select rather than free text on purpose. A card can only
 name a repo you put on the list, and the path it resolves to is checked
 against the root a second time before any worker is dispatched, so a card
 cannot point a worker at a tree you never opted in to.
@@ -163,7 +169,7 @@ coordinators working one board will fight over it.
 ## Starting a card
 
 A card is eligible when the issue is open, its `Status` is `Todo` or
-`Waiting`, its `Repo` resolves to a directory under `repo_root`, and no other
+`Waiting`, its `Target repo` resolves to a directory under `repo_root`, and no other
 card in that repo is already running. One worker per repo at a time: two
 agents in one checkout would stage each other's half-written files.
 

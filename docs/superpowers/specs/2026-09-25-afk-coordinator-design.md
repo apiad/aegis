@@ -149,7 +149,7 @@ Four fields the human sets:
 | Field | Type | Means |
 |---|---|---|
 | `Status` | single-select | the state machine, below |
-| `Repo` | single-select | which checkout the work happens in |
+| `Target repo` | single-select | which checkout the work happens in (**not** `Repo` — GitHub reserves that name and `Repository`) |
 | `Priority` | single-select | input to ranking |
 | `Deadline` | date, optional | what makes "must happen now" mechanical rather than a judgement call |
 
@@ -160,7 +160,7 @@ One more field, written only by the coordinator:
 | `Progress` | text | the running plan roll-up, e.g. `4/9 · running the gate · 12m` |
 | `Waiting on` | text | why a deferred card is not running: `#12 (schema)`, `capacity`, `quota` |
 
-`Repo` is a single-select rather than free text on purpose: **its option list is
+`Target repo` is a single-select rather than free text on purpose: **its option list is
 the whitelist.** A card naming a repo that is not an option cannot be created,
 so a typo can never point a worker at a tree you did not opt in. The coordinator
 refuses a card whose `Repo` does not resolve to a directory under `repo_root`,

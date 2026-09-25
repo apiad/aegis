@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from aegis.workflows.builtins.afk.tick import FIELDS as _F
+
+# Bound from the module rather than written out, so renaming the
+# default field name cannot silently decouple these fixtures.
+REPO_FIELD = _F["repo"]
+
 import pytest
 
 from aegis.usage.quota import QuotaSnapshot, QuotaState, QuotaWindow
@@ -17,7 +23,7 @@ from aegis.workflows.builtins.afk.report import Report
 
 FIELDS = {
     "status": "Status",
-    "repo": "Repo",
+    "repo": REPO_FIELD,
     "priority": "Priority",
     "deadline": "Deadline",
     "progress": "Progress",
@@ -143,10 +149,10 @@ def test_eligible_takes_todo_and_waiting(tmp_path) -> None:
     excluding it strands every card it ever deferred."""
     (tmp_path / "a").mkdir()
     cards = [
-        _card(1, Status="Todo", Repo="a"),
-        _card(2, Status="Waiting", Repo="a"),
-        _card(3, Status="Running", Repo="a"),
-        _card(4, Status="Done", Repo="a"),
+        _card(1, **{"Status": "Todo", REPO_FIELD: "a"}),
+        _card(2, **{"Status": "Waiting", REPO_FIELD: "a"}),
+        _card(3, **{"Status": "Running", REPO_FIELD: "a"}),
+        _card(4, **{"Status": "Done", REPO_FIELD: "a"}),
     ]
     got = eligible(
         cards, status_names=STATUSES, repo_root=tmp_path, running_repos=set()
@@ -157,7 +163,10 @@ def test_eligible_takes_todo_and_waiting(tmp_path) -> None:
 def test_eligible_excludes_a_repo_already_running(tmp_path) -> None:
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()
-    cards = [_card(1, Status="Todo", Repo="a"), _card(2, Status="Todo", Repo="b")]
+    cards = [
+        _card(1, **{"Status": "Todo", REPO_FIELD: "a"}),
+        _card(2, **{"Status": "Todo", REPO_FIELD: "b"}),
+    ]
     got = eligible(
         cards, status_names=STATUSES, repo_root=tmp_path, running_repos={"a"}
     )
@@ -165,7 +174,7 @@ def test_eligible_excludes_a_repo_already_running(tmp_path) -> None:
 
 
 def test_eligible_excludes_a_card_with_an_unresolvable_repo(tmp_path) -> None:
-    cards = [_card(1, Status="Todo", Repo="never-cloned")]
+    cards = [_card(1, **{"Status": "Todo", REPO_FIELD: "never-cloned"})]
     assert (
         eligible(cards, status_names=STATUSES, repo_root=tmp_path, running_repos=set())
         == []
@@ -182,7 +191,7 @@ def test_eligible_excludes_a_closed_issue(tmp_path) -> None:
         title="t",
         body="b",
         state="CLOSED",
-        fields={"Status": "Todo", "Repo": "a"},
+        fields={"Status": "Todo", REPO_FIELD: "a"},
     )
     assert (
         eligible([card], status_names=STATUSES, repo_root=tmp_path, running_repos=set())

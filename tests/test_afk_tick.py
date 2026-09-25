@@ -1,5 +1,12 @@
 """The reconciler: reap, gate, start."""
+
 from __future__ import annotations
+
+from aegis.workflows.builtins.afk.tick import FIELDS as _F
+
+# Bound from the module rather than written out, so renaming the
+# default field name cannot silently decouple these fixtures.
+REPO_FIELD = _F["repo"]
 
 import json
 
@@ -10,13 +17,28 @@ from aegis.workflows.builtins.afk.board import Card, Schema, parse_marker, rende
 
 SCHEMA = Schema(
     project_id="PVT_p",
-    field_ids={"Status": "F_s", "Repo": "F_r", "Priority": "F_p",
-               "Deadline": "F_d", "Progress": "F_g", "Waiting on": "F_w"},
+    field_ids={
+        "Status": "F_s",
+        REPO_FIELD: "F_r",
+        "Priority": "F_p",
+        "Deadline": "F_d",
+        "Progress": "F_g",
+        "Waiting on": "F_w",
+    },
     option_ids={
-        "Status": {n: f"o_{n}" for n in
-                   ("Todo", "Waiting", "Running", "Needs review",
-                    "Blocked", "Failed", "Done")},
-        "Repo": {"aegis": "o_aegis"},
+        "Status": {
+            n: f"o_{n}"
+            for n in (
+                "Todo",
+                "Waiting",
+                "Running",
+                "Needs review",
+                "Blocked",
+                "Failed",
+                "Done",
+            )
+        },
+        REPO_FIELD: {"aegis": "o_aegis"},
     },
 )
 
@@ -53,10 +75,17 @@ class FakeEngine:
 
 def _cfg(tmp_path, **over):
     cfg = {
-        "owner": "o", "owner_type": "org", "project": 3,
-        "repo_root": str(tmp_path), "worker_queue": "afk",
-        "max_in_flight": 5, "weekly_stop_at": 60, "session_stop_at": 70,
-        "max_attempts": 2, "review_changed_files": 5, "vague_body_chars": 400,
+        "owner": "o",
+        "owner_type": "org",
+        "project": 3,
+        "repo_root": str(tmp_path),
+        "worker_queue": "afk",
+        "max_in_flight": 5,
+        "weekly_stop_at": 60,
+        "session_stop_at": 70,
+        "max_attempts": 2,
+        "review_changed_files": 5,
+        "vague_body_chars": 400,
         "acceptance_markers": ("done when",),
         "gate_commands": ("make check", "make test"),
         "priority_order": ("Urgent", "Important", "Normal"),
@@ -66,10 +95,16 @@ def _cfg(tmp_path, **over):
 
 
 def _card(number, status, *, repo="aegis", body="- [ ] do it"):
-    return Card(item_id=f"I{number}", number=number, repo="o/r",
-                url=f"https://github.com/o/r/issues/{number}",
-                title=f"card {number}", body=body, state="OPEN",
-                fields={"Status": status, "Repo": repo})
+    return Card(
+        item_id=f"I{number}",
+        number=number,
+        repo="o/r",
+        url=f"https://github.com/o/r/issues/{number}",
+        title=f"card {number}",
+        body=body,
+        state="OPEN",
+        fields={"Status": status, REPO_FIELD: repo},
+    )
 
 
 def _marker(task, attempt=1, gate="make check"):
@@ -115,12 +150,17 @@ def board(monkeypatch, tmp_path):
 
 def _quota(weekly, session, failure=""):
     from aegis.usage.quota import QuotaSnapshot, QuotaState, QuotaWindow
+
     return QuotaState(
         snapshot=QuotaSnapshot(
-            windows=(QuotaWindow("weekly_all", weekly, "normal", None, True),
-                     QuotaWindow("session", session, "normal", None, True)),
-            fetched_at=0.0),
-        failure=failure)
+            windows=(
+                QuotaWindow("weekly_all", weekly, "normal", None, True),
+                QuotaWindow("session", session, "normal", None, True),
+            ),
+            fetched_at=0.0,
+        ),
+        failure=failure,
+    )
 
 
 @pytest.mark.asyncio
@@ -173,11 +213,14 @@ async def test_reaps_a_green_report_to_needs_review(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    report = ("```aegis-report\nstatus: needs-review\nsummary: did it\n"
-              "gate: make check -> 0\nchanged: 1\n```")
-    engine = FakeEngine(tasks={"t-1": {"status": "completed", "result": report,
-                                       "worker_handle": "w1"}},
-                        bash_results={"make check": {"exit": 0, "stdout": ""}})
+    report = (
+        "```aegis-report\nstatus: needs-review\nsummary: did it\n"
+        "gate: make check -> 0\nchanged: 1\n```"
+    )
+    engine = FakeEngine(
+        tasks={"t-1": {"status": "completed", "result": report, "worker_handle": "w1"}},
+        bash_results={"make check": {"exit": 0, "stdout": ""}},
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert (1, "Status", "Needs review") in board["fields"]
 
@@ -189,12 +232,14 @@ async def test_a_lying_gate_lands_in_failed(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    report = ("```aegis-report\nstatus: needs-review\nsummary: did it\n"
-              "gate: make check -> 0\nchanged: 1\n```")
+    report = (
+        "```aegis-report\nstatus: needs-review\nsummary: did it\n"
+        "gate: make check -> 0\nchanged: 1\n```"
+    )
     engine = FakeEngine(
-        tasks={"t-1": {"status": "completed", "result": report,
-                       "worker_handle": "w1"}},
-        bash_results={"make check": {"exit": 1, "stdout": "2 tests failed"}})
+        tasks={"t-1": {"status": "completed", "result": report, "worker_handle": "w1"}},
+        bash_results={"make check": {"exit": 1, "stdout": "2 tests failed"}},
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert "make check" in engine.bashed
     assert (1, "Status", "Failed") in board["fields"]
@@ -209,12 +254,14 @@ async def test_an_honest_red_gate_also_lands_in_failed(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    report = ("```aegis-report\nstatus: failed\nsummary: could not fix it\n"
-              "gate: make check -> 1\n```")
+    report = (
+        "```aegis-report\nstatus: failed\nsummary: could not fix it\n"
+        "gate: make check -> 1\n```"
+    )
     engine = FakeEngine(
-        tasks={"t-1": {"status": "completed", "result": report,
-                       "worker_handle": "w1"}},
-        bash_results={"make check": {"exit": 1, "stdout": "2 tests failed"}})
+        tasks={"t-1": {"status": "completed", "result": report, "worker_handle": "w1"}},
+        bash_results={"make check": {"exit": 1, "stdout": "2 tests failed"}},
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert (1, "Status", "Failed") in board["fields"]
     assert "disagree" not in board["comments"][1].lower()
@@ -227,12 +274,14 @@ async def test_an_honest_green_report_reaches_needs_review(board, tmp_path) -> N
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    report = ("```aegis-report\nstatus: needs-review\nsummary: did it\n"
-              "gate: make check -> 0\nchanged: 1\n```")
+    report = (
+        "```aegis-report\nstatus: needs-review\nsummary: did it\n"
+        "gate: make check -> 0\nchanged: 1\n```"
+    )
     engine = FakeEngine(
-        tasks={"t-1": {"status": "completed", "result": report,
-                       "worker_handle": "w1"}},
-        bash_results={"make check": {"exit": 0, "stdout": ""}})
+        tasks={"t-1": {"status": "completed", "result": report, "worker_handle": "w1"}},
+        bash_results={"make check": {"exit": 0, "stdout": ""}},
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert (1, "Status", "Needs review") in board["fields"]
 
@@ -242,9 +291,15 @@ async def test_an_unparseable_report_lands_in_failed(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(tasks={"t-1": {"status": "completed",
-                                       "result": "I finished, trust me.",
-                                       "worker_handle": "w1"}})
+    engine = FakeEngine(
+        tasks={
+            "t-1": {
+                "status": "completed",
+                "result": "I finished, trust me.",
+                "worker_handle": "w1",
+            }
+        }
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert (1, "Status", "Failed") in board["fields"]
     assert "trust me" in board["comments"][1]
@@ -267,24 +322,33 @@ async def test_an_orphan_past_max_attempts_is_blocked(board, tmp_path) -> None:
     board["comments"][1] = _marker("t-gone", attempt=2)
     board["quota"] = _quota(10, 10)
     engine = FakeEngine(tasks={})
-    await tick_mod.run_tick(engine, _cfg(tmp_path, max_attempts=2),
-                            now="2026-09-25T02:00:00Z")
+    await tick_mod.run_tick(
+        engine, _cfg(tmp_path, max_attempts=2), now="2026-09-25T02:00:00Z"
+    )
     assert (1, "Status", "Blocked") in board["fields"]
 
 
 @pytest.mark.asyncio
-async def test_a_running_card_whose_issue_vanished_does_not_raise(board, tmp_path) -> None:
+async def test_a_running_card_whose_issue_vanished_does_not_raise(
+    board, tmp_path
+) -> None:
     """A card removed from the project or whose issue was closed between
     ticks must not take the whole tick down with it."""
-    card = Card(item_id="I1", number=1, repo="o/r", url="u", title="t",
-                body="b", state="CLOSED", fields={"Status": "Running",
-                                                  "Repo": "aegis"})
+    card = Card(
+        item_id="I1",
+        number=1,
+        repo="o/r",
+        url="u",
+        title="t",
+        body="b",
+        state="CLOSED",
+        fields={"Status": "Running", REPO_FIELD: "aegis"},
+    )
     board["cards"] = [card]
     board["comments"][1] = _marker("t-gone")
     board["quota"] = _quota(10, 10)
     engine = FakeEngine(tasks={})
-    out = await tick_mod.run_tick(engine, _cfg(tmp_path),
-                                  now="2026-09-25T02:00:00Z")
+    out = await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert isinstance(out, str)
 
 
@@ -293,8 +357,9 @@ async def test_still_running_card_is_left_alone(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(tasks={"t-1": {"status": "running", "result": None,
-                                       "worker_handle": "w1"}})
+    engine = FakeEngine(
+        tasks={"t-1": {"status": "running", "result": None, "worker_handle": "w1"}}
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert board["fields"] == []
 
@@ -304,8 +369,9 @@ async def test_one_card_per_repo(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Running"), _card(2, "Todo")]
     board["comments"][1] = _marker("t-1")
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(tasks={"t-1": {"status": "running", "result": None,
-                                       "worker_handle": "w1"}})
+    engine = FakeEngine(
+        tasks={"t-1": {"status": "running", "result": None, "worker_handle": "w1"}}
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert engine.enqueued == []
 
@@ -315,12 +381,13 @@ async def test_max_in_flight_caps_starts(board, tmp_path) -> None:
     for n in range(1, 5):
         (tmp_path / f"r{n}").mkdir()
         (tmp_path / f"r{n}" / "Makefile").write_text("check:\n\t@echo ok\n")
-    SCHEMA.option_ids["Repo"].update({f"r{n}": f"o_r{n}" for n in range(1, 5)})
+    SCHEMA.option_ids[REPO_FIELD].update({f"r{n}": f"o_r{n}" for n in range(1, 5)})
     board["cards"] = [_card(n, "Todo", repo=f"r{n}") for n in range(1, 5)]
     board["quota"] = _quota(10, 10)
     engine = FakeEngine()
-    await tick_mod.run_tick(engine, _cfg(tmp_path, max_in_flight=2),
-                            now="2026-09-25T02:00:00Z")
+    await tick_mod.run_tick(
+        engine, _cfg(tmp_path, max_in_flight=2), now="2026-09-25T02:00:00Z"
+    )
     assert len(engine.enqueued) == 2
 
 
@@ -331,10 +398,10 @@ async def test_an_unauthenticated_gh_touches_no_card(board, tmp_path) -> None:
     expensive half runs and the recorded half does not."""
     board["cards"] = [_card(1, "Todo")]
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(bash_results={
-        "gh auth status": {"exit": 1, "stdout": "not logged in"}})
-    out = await tick_mod.run_tick(engine, _cfg(tmp_path),
-                                  now="2026-09-25T02:00:00Z")
+    engine = FakeEngine(
+        bash_results={"gh auth status": {"exit": 1, "stdout": "not logged in"}}
+    )
+    out = await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert engine.enqueued == []
     assert board["fields"] == []
     assert "aborted" in out
@@ -344,10 +411,12 @@ async def test_an_unauthenticated_gh_touches_no_card(board, tmp_path) -> None:
 async def test_a_gh_token_without_project_scope_aborts(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Todo")]
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(bash_results={
-        "gh auth status": {"exit": 0, "stdout": "Token scopes: 'repo', 'gist'"}})
-    out = await tick_mod.run_tick(engine, _cfg(tmp_path),
-                                  now="2026-09-25T02:00:00Z")
+    engine = FakeEngine(
+        bash_results={
+            "gh auth status": {"exit": 0, "stdout": "Token scopes: 'repo', 'gist'"}
+        }
+    )
+    out = await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert engine.enqueued == []
     assert "project" in out
 
@@ -356,8 +425,9 @@ async def test_a_gh_token_without_project_scope_aborts(board, tmp_path) -> None:
 async def test_a_dirty_tree_blocks_the_card(board, tmp_path) -> None:
     board["cards"] = [_card(1, "Todo")]
     board["quota"] = _quota(10, 10)
-    engine = FakeEngine(bash_results={
-        "status --porcelain": {"exit": 0, "stdout": " M src/a.py\n"}})
+    engine = FakeEngine(
+        bash_results={"status --porcelain": {"exit": 0, "stdout": " M src/a.py\n"}}
+    )
     await tick_mod.run_tick(engine, _cfg(tmp_path), now="2026-09-25T02:00:00Z")
     assert engine.enqueued == []
     assert (1, "Status", "Blocked") in board["fields"]
@@ -371,8 +441,8 @@ async def test_fetch_comment_reads_the_marked_comment_over_gh(tmp_path) -> None:
     recovering a task id would ship uncovered."""
     card = _card(7, "Running")
     body = _marker("t-7")
-    payload = json.dumps([{"id": 1, "body": "a human reply"},
-                          {"id": 2, "body": body}])
-    engine = FakeEngine(bash_results={"issues/7/comments": {"exit": 0,
-                                                           "stdout": payload}})
+    payload = json.dumps([{"id": 1, "body": "a human reply"}, {"id": 2, "body": body}])
+    engine = FakeEngine(
+        bash_results={"issues/7/comments": {"exit": 0, "stdout": payload}}
+    )
     assert await tick_mod.fetch_comment(engine, card) == body

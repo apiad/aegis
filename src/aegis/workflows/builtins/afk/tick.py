@@ -42,7 +42,10 @@ STATUSES = {
 }
 FIELDS = {
     "status": "Status",
-    "repo": "Repo",
+    # Not "Repo": GitHub Projects refuses that name and "Repository" as
+    # reserved values, so a board carrying the documented default could
+    # not be built at all. Verified against the live API 2026-09-25.
+    "repo": "Target repo",
     "priority": "Priority",
     "deadline": "Deadline",
     "progress": "Progress",
