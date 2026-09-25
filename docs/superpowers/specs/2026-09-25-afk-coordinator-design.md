@@ -217,12 +217,15 @@ untouched.
 The workflow assembles a briefing and hands it to the coordinator agent in one
 turn. The briefing carries:
 
-- every card: number, title, body, `Repo`, `Priority`, `Deadline`, `Status`, and
-  the coordinator's own notes from previous ticks;
+- every card in `Todo` and `Waiting`: number, title, body, `Repo`, `Priority`,
+  `Deadline`, `Status`, `Waiting on`, and the coordinator's own notes from
+  previous ticks;
 - everything in flight: which card, how long, and its plan roll-up, so the agent
   can see that card 12 has been on "run the gate" for 25 minutes;
 - what finished since the last tick and how it ended;
-- the quota reading and the remaining capacity;
+- the quota reading and the remaining capacity. The gate in step 3 already
+  passed or the agent would not have been asked, so this is context for being
+  conservative near the line, not a decision to re-make;
 - the repo whitelist with each repo's isolation mode.
 
 The board is the agent's memory. Its own prior notes come back to it every tick,
@@ -254,12 +257,17 @@ notes: |
 ```
 ````
 
-`start` is a proposal. `wait` is the agent deferring something it could have
-started, which is always permitted. `hold` sends a card to `Blocked` for you.
+`start` is a proposal. `wait` moves the card to `Waiting` and writes its reason
+into `Waiting on`; deferring is always permitted, and a `Waiting` card is
+reconsidered on every later tick. `hold` sends the card to `Blocked`, which is
+your inbox. A card the agent mentions in none of the three keeps its current
+status untouched.
 
 Then the rails run, in code, over that block:
 
-- a card that was not in the briefing, or is not in `Todo`, is dropped;
+- a card that was not in the briefing, or is in neither `Todo` nor `Waiting`,
+  is dropped. `Waiting` must be eligible: it is the agent's own deferral, and a
+  rail that only admitted `Todo` would strand every card the agent deferred;
 - `start` is truncated to `min(max_in_flight, queue headroom)` minus what is
   already `Running`;
 - two starts naming the same `Repo` are refused unless that repo's isolation is
