@@ -1,10 +1,11 @@
 """Parking promotes a worker out of being disposable.
 
-Leaving EPHEMERAL_KINDS is the whole mechanism, and it buys three
-behaviours rather than adding a session state: GhostBook stops reading the
-session as a departure and stops fading it after GHOST_TTL, close_guard
-starts protecting it like any other session, and plan_resume restores it
-across a restart with no special case.
+Leaving EPHEMERAL_KINDS is the whole mechanism, and it buys two behaviours
+rather than adding a session state: GhostBook stops reading the session as
+a departure and stops fading it after GHOST_TTL, and close_guard starts
+protecting it like any other session. Surviving a restart is not one of
+them — workspace persistence has no ephemeral filter, so an unparked queue
+worker was already being restored.
 """
 from __future__ import annotations
 
@@ -207,3 +208,35 @@ async def test_run_reports_parking_as_its_own_status(tmp_path):
     assert res["status"] == "recoverable"
     assert res["worker_handle"] == qm._all[res["task_id"]].worker_handle
     assert res["worker_handle"] not in sm.closed
+
+
+async def test_a_double_finalize_after_parking_parks_once(
+    queue_rig_max_attempts_1, tmp_path,
+):
+    """`_park` pops the handle out of `_workers`, and that pop is the only
+    thing standing between one interruption and two parks.
+
+    One bad turn end can fire the finished-state callback twice — a harness
+    reporting both an error and a stream end does exactly that. The first
+    call parks. Without the pop the second finds the worker still in
+    `_workers`, still reads as a bad turn end, and parks the same task
+    again: a second `recoverable` record with a second copy of the
+    cumulative cost, a second `QueueCompleted`, and a second inbox message
+    telling the producer to go resume a task it has already been told
+    about. `_finalize`'s opening guard is what makes the duplicate a
+    no-op, and it can only fire because the pop happened.
+    """
+    qm, sm = queue_rig_max_attempts_1
+    tid, h = _start(qm, sm)
+    outcomes = []
+    qm.subscribe(lambda ev: outcomes.append(getattr(ev, "outcome", None)))
+
+    await sm.fail(h, text="halfway", emit_twice=True)
+
+    recoverable = _log(tmp_path, "recoverable")
+    assert len(recoverable) == 1, \
+        "the same task was parked twice; its cost is now double-counted"
+    assert len(sm.inbox_for("producer")) == 1, \
+        "the producer was told twice about one park"
+    assert [o for o in outcomes if o == "recoverable"] == ["recoverable"]
+    assert qm._all[tid].attempts == 1, "one interruption, one spent attempt"
