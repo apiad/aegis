@@ -3506,6 +3506,7 @@ class _SessionManagerAdapter:
         host: str | None = None,
         cwd: str | None = None,
         origin: "Origin | None" = None,
+        resume_from: str | None = None,
     ):
         _refuse_when_bridged(self._app)
         from aegis.core.manager import _overlay_agent
@@ -3515,10 +3516,19 @@ class _SessionManagerAdapter:
         )
         h = self._app._mint_handle(handle)
         place = self._app._resolve_place(agent, host, cwd)
+        # `resume_from` is `recovery.restore`'s cold-rebuild branch: a
+        # queue worker whose pane the front end did NOT restore, put back
+        # on the conversation id the harness reported. Without it here the
+        # standalone TUI could only ever park such a task — `restore`
+        # reaches this through `getattr(sm, "_sync_spawn", sm.spawn)`, and
+        # the real `SessionManager._sync_spawn` has taken it all along.
+        # Passed only when set, so the pre-hosts `(profile, url, handle)`
+        # factory signature keeps working.
+        factory_kwargs = self._app._factory_kwargs(place)
+        if resume_from is not None:
+            factory_kwargs["resume_from"] = resume_from
         pane = ConversationPane(
-            self._app._make_session(
-                agent, self._app._mcp.url, h, **self._app._factory_kwargs(place)
-            ),
+            self._app._make_session(agent, self._app._mcp.url, h, **factory_kwargs),
             agent,
             slug,
             h,

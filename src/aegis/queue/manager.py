@@ -316,7 +316,24 @@ class QueueManager:
             "error": t.error,
             "completed_at": t.completed_at,
             "queued_position": self._position_of(t),
+            # Both other ways of learning a task went `recoverable` —
+            # `run()`'s return and the park notice — name the worker, and
+            # without it here a producer that enqueued with callback=False
+            # and polls gets a status it cannot act on: it can neither read
+            # the parked conversation nor tell which session to resume.
+            "worker_handle": t.worker_handle,
         }
+
+    def tasks(self, queue: str | None = None) -> list[Task]:
+        """Every task this manager knows, newest first, optionally one
+        queue's. The ids are ULIDs, so sorting them IS sorting by time.
+
+        The index `status()` answers from, read whole: a frontend listing
+        tasks wants the parked ones too, and those are in neither
+        `_pending` nor `_inflight`.
+        """
+        out = [t for t in self._all.values() if queue is None or t.queue == queue]
+        return sorted(out, key=lambda t: t.id, reverse=True)
 
     async def cancel(self, task_id: str) -> dict:
         """Cancel a task. Pending → dropped from the FIFO; in-flight → the
@@ -495,6 +512,185 @@ class QueueManager:
             "was": "parked",
             "worker_handle": t.worker_handle,
             "session_kept": True,
+        }
+
+    async def resume_task(self, task_id: str) -> dict:
+        """Put a parked worker back to work on its task.
+
+        The operator (or an agent acting for one) has read the parked
+        conversation and decided it is worth continuing. The session is
+        still standing with everything in it, so this rebuilds the harness
+        under the SAME handle, re-origins it back to `queue` so the
+        finalizer owns it again, and nudges it to carry on.
+
+        `attempts` goes back to 0, deliberately. A resume is new
+        information — somebody looked at the worker and said go — and
+        charging the new run for the old run's failures parks it again on
+        its first stall, which is a resume that does nothing.
+
+        Never falls back to re-running the payload when the session is
+        gone: a worker that got halfway may already have committed,
+        pushed, deployed or sent mail, so that would be a second
+        execution rather than a recovery. `retry_task` is that, said out
+        loud, by a caller who meant it.
+        """
+        from aegis.core.recovery import NUDGE_OPERATOR, rebuild
+
+        t = self._all.get(task_id)
+        if t is None:
+            return {"ok": False, "error": f"unknown task {task_id!r}"}
+        if t.status != "recoverable":
+            return {
+                "ok": False,
+                "error": f"task {task_id} is {t.status}, not recoverable",
+            }
+        handle = t.worker_handle
+        s = self._session_under(handle)
+        if s is None:
+            # The operator closed the tab, or the TTL reaper took it. The
+            # task still names a handle; there is simply nothing under it.
+            # An error dict, not a traceback out of an MCP tool.
+            return {
+                "ok": False,
+                "error": (
+                    f"the parked session {handle!r} is no longer live; "
+                    f"use aegis_task_retry to re-run the task from its payload"
+                ),
+            }
+        q = self._queues[t.queue]
+        if len(self._inflight[t.queue]) >= q.max_parallel:
+            # Parking freed the slot on the way in, so resuming has to take
+            # one back. Refusing is the only honest answer: putting the
+            # worker back anyway would run `max_parallel + 1` sessions
+            # against the provider that the cap exists to bound.
+            return {
+                "ok": False,
+                "error": (
+                    f"queue {t.queue!r} is at max_parallel; try again when a slot frees"
+                ),
+            }
+        resumed = replace(
+            t,
+            status="dispatched",
+            attempts=0,
+            error=None,
+            completed_at=None,
+            parked_at=None,
+        )
+        self._all[task_id] = resumed
+        self._inflight[t.queue].append(resumed)
+        self._workers[handle] = (resumed, "")
+        # Back to `queue`, which puts the session back inside
+        # `EPHEMERAL_KINDS`: it is disposable again while it works, and
+        # `_park` is what promotes it back out if this run stalls too.
+        s.origin = Origin(
+            kind="queue",
+            by=t.queue,
+            detail=task_id[-4:],
+            returns_to=local_waiter(resumed) or resumed.callback_to or "",
+        )
+        self._log(
+            t.queue,
+            {
+                "event": "resumed",
+                "task_id": task_id,
+                "worker_handle": handle,
+                "at": self._now(),
+            },
+        )
+        self._emit(
+            QueueDispatched(
+                task_id=task_id,
+                queue=t.queue,
+                worker_handle=handle,
+                agent_slug=q.agent_profile,
+            )
+        )
+        if not await rebuild(self._sm, handle, nudge=NUDGE_OPERATOR):
+            # Straight back where it came from, rather than left dispatched
+            # holding a slot no worker is standing in.
+            await self._park(s, resumed, reason="rebuild failed on resume")
+            return {"ok": False, "error": "could not rebuild the harness"}
+        return {"ok": True, "status": "dispatched", "worker_handle": handle}
+
+    async def retry_task(self, task_id: str) -> dict:
+        """Re-run a finished task's payload as a NEW task. Returns its id.
+
+        Kept strictly apart from `resume_task`, and never reached by
+        falling out of one: re-running a payload is a SECOND EXECUTION of
+        whatever the first worker did, and the first worker may already
+        have committed, pushed, deployed or sent mail. Only a caller that
+        has decided the conversation is not worth resuming asks for this.
+
+        Retrying a parked task says exactly that, so its session is closed
+        and the old task goes terminal — leaving it `recoverable` would
+        offer a resume that now competes with the retry, and would keep the
+        TTL reaper watching a session that is already gone.
+        """
+        t = self._all.get(task_id)
+        if t is None:
+            return {"ok": False, "error": f"unknown task {task_id!r}"}
+        if t.status not in ("recoverable", "completed", "failed", "cancelled"):
+            return {
+                "ok": False,
+                "error": (
+                    f"task {task_id} is {t.status} and has not finished; "
+                    f"cancel it first if you want to start over"
+                ),
+            }
+        closed = None
+        if t.status == "recoverable":
+            superseded = replace(
+                t,
+                status="failed",
+                error="superseded by a retry",
+                completed_at=self._now(),
+            )
+            self._all[task_id] = superseded
+            self._log(
+                t.queue,
+                {
+                    "event": "failed",
+                    "task_id": task_id,
+                    "result": superseded.result,
+                    "error": superseded.error,
+                    "completed_at": superseded.completed_at,
+                    # No cost. `_park` already wrote this task's spend on
+                    # its `recoverable` record.
+                    "cost": {},
+                },
+            )
+            self._emit(
+                QueueCompleted(
+                    task_id=task_id,
+                    queue=t.queue,
+                    outcome="failed",
+                    result=superseded.result,
+                    error=superseded.error,
+                    completed_at=superseded.completed_at,
+                )
+            )
+            if t.worker_handle:
+                with contextlib.suppress(Exception):
+                    await self._sm.close(t.worker_handle)
+                closed = t.worker_handle
+        result = self.enqueue(
+            t.queue,
+            t.payload,
+            enqueued_by=t.enqueued_by,
+            callback=t.callback,
+            callback_to=t.callback_to,
+            callback_handle=t.callback_handle,
+        )
+        if isinstance(result, dict):  # budget rejection etc.
+            return {"ok": False, **result}
+        new_id, position = result
+        return {
+            "ok": True,
+            "task_id": new_id,
+            "queued_position": position,
+            "retried": task_id,
+            "closed_session": closed,
         }
 
     async def run(
@@ -909,6 +1105,14 @@ class QueueManager:
             task,
             status="recoverable",
             worker_handle=handle,
+            # What it said IS the task's result now. `_task_from_record`
+            # reads `recoverable` as terminal, so it takes `result` off the
+            # record and ignores `last_text`; left off, a parked worker's
+            # words survived one restart (the `deferred` record still had
+            # them) and were gone after the second — by which time the TTL
+            # reaper may have taken the conversation, and those words were
+            # the only thing left of it.
+            result=said or None,
             error=reason,
             completed_at=self._now(),
             parked_at=time.time(),
@@ -934,6 +1138,7 @@ class QueueManager:
                 "task_id": task.id,
                 "worker_handle": handle,
                 "attempts": task.attempts,
+                "result": parked.result,
                 "error": reason,
                 "completed_at": parked.completed_at,
                 "parked_at": parked.parked_at,
@@ -945,7 +1150,7 @@ class QueueManager:
                 task_id=task.id,
                 queue=task.queue,
                 outcome="recoverable",
-                result=None,
+                result=parked.result,
                 error=reason,
                 completed_at=parked.completed_at,
             )
