@@ -26,7 +26,6 @@ DEFAULTS = {
     "acceptance_markers": ("done when", "acceptance"),
     "gate_commands": ("make check", "make test"),
     "priority_order": ("Urgent", "Important", "Normal"),
-    "allow_auto_done": False,
     "stall_after_s": 1800,
 }
 # `notify_cmd` is deliberately absent. The spec puts notification in slice 7,

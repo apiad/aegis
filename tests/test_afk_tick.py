@@ -60,7 +60,6 @@ def _cfg(tmp_path, **over):
         "acceptance_markers": ("done when",),
         "gate_commands": ("make check", "make test"),
         "priority_order": ("Urgent", "Important", "Normal"),
-        "allow_auto_done": False,
     }
     cfg.update(over)
     return cfg

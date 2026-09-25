@@ -47,6 +47,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **The `afk` and `afk_progress` built-in workflows** — an unattended coordinator
+  that works a GitHub Project of prompt cards. Each issue body is a
+  self-contained prompt; `afk` hands one to a queue worker, and on a later tick
+  re-runs the repo's own gate itself and moves the card on what it measured
+  rather than on what the worker claimed. A red gate is `Failed` whatever the
+  report says, and a final message carrying no parseable `aegis-report` block is
+  `Failed` too. Nothing reaches `Done` without a person: the furthest a worker
+  may claim is `needs-review`.
+
+  The board is the only state either workflow keeps — the task id lives in a
+  marker on the card's pinned comment — so a crash costs one tick. Before
+  starting anything the coordinator reads the live Claude subscription windows
+  and starts nothing above `weekly_stop_at` or `session_stop_at`, or when the
+  reading cannot be taken at all; reaping runs first either way, so a closed
+  window still lets finished work land. `afk_progress` costs no agent calls and
+  runs at a much tighter cadence, mirroring each worker's task list onto its
+  card and flagging a plan untouched for `stall_after_s`. It writes only
+  `Progress` and the comment's `Plan` section, so the two schedules never
+  contend. Enable both by naming `afk` in `workflows:`. See `docs/afk.md`,
+  which also lists what the design specifies and the code does not do yet —
+  notification, and the `Waiting` status.
+
+- **`WorkflowEngine.task_status()` and `WorkflowEngine.plan_state()`**, and
+  `QueueManager.status()` now carries `worker_handle`. A workflow that enqueues
+  with `callback=False` and returns had no way to learn what became of the task
+  on a later run, which is the shape every reconciler needs.
+
 - **`aegis_task_resume` and `aegis_task_retry`, `/queues tasks` and `/resume`, and a
   read-only `aegis queue ls|show`** — the surfaces for acting on a parked worker.
   `aegis_task_resume(task_id)` rebuilds the harness under the same session and

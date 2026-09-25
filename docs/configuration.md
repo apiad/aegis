@@ -368,6 +368,11 @@ workflows:
   - my_builtin
 ```
 
+`afk` is the AFK coordinator, which works a GitHub Project of prompt
+cards unattended — see [AFK coordinator](afk.md). Naming it registers
+both `afk` and `afk_progress`, and that page lists the schedule args the
+two of them take.
+
 A **dynamic** workflow — one an agent composes at call time rather than
 one you wrote — is gated on how many agents its plan projects:
 

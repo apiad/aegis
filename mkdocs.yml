@@ -84,6 +84,7 @@ nav:
       - Canvas: canvas.md
       - Terminals: terminals.md
       - Workflows: workflows.md
+      - AFK coordinator: afk.md
       - Groups: groups.md
       - Execution hosts: hosts.md
       - Remote plane: remote.md

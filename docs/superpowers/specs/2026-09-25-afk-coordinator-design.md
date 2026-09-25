@@ -47,9 +47,11 @@ network partition and a rewritten config.
 It never creates cards. Humans and interactive agents fill `Todo`; the
 coordinator takes, orders, defers and moves. It never blocks on a person — `engine.ask_human` is
 forbidden inside it, because a coordinator waiting for an answer at 3am is a
-coordinator that did nothing all night. By default it never marks work `Done`; the
-furthest it moves a successful card is `Needs review`. `allow_auto_done` exists
-for operators who want a worker's own `done` honoured, and is off.
+coordinator that did nothing all night. It never marks work `Done`; the furthest it
+moves a successful card is `Needs review`. An `allow_auto_done` knob was
+designed and deliberately not built: it was a config key read by nothing, and
+by this package's own rule about `notify_cmd`, a key that is documented and
+does nothing is worse than an absent one.
 
 ## The agent decides, the code refuses
 
@@ -391,8 +393,7 @@ notes: |
 Notes on the fields:
 
 - `status` has no `done`. A worker cannot mark its own work finished; the
-  furthest it can claim is `needs-review`. `allow_auto_done` (default `false`)
-  exists for people who disagree.
+  furthest it can claim is `needs-review`.
 - `gate` records the command **and** the exit code the worker saw. The
   coordinator re-runs the same command and compares. A disagreement is the
   interesting case, and it is the one the tests target.
@@ -564,7 +565,6 @@ schedules:
       worktree_root: /home/apiad/.cache/aegis-afk-worktrees
       repos:                 # isolation per repo; absent means `checkout`
         enciclopedia: worktree
-      allow_auto_done: false
       notify_cmd: ""         # e.g. bin/notify-telegram.sh; empty disables
       field_names:           # for boards that are not in English
         status: Status
