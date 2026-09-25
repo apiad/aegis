@@ -7,9 +7,11 @@ modules, which hold no aegis state and are testable on their own.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 
 from aegis.workflow import workflow
+from aegis.workflows.builtins.afk.progress import run_progress
 from aegis.workflows.builtins.afk.tick import run_tick
 
 DEFAULTS = {
@@ -44,3 +46,14 @@ async def afk(engine, **kwargs) -> str:
     cfg["project"] = int(str(cfg["project"]))
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return await run_tick(engine, cfg, now=now)
+
+
+@workflow("afk_progress")
+async def afk_progress(engine, **kwargs) -> str:
+    """Mirror each running worker's task list onto its card. No agent calls."""
+    cfg = {**DEFAULTS, **engine.config, **kwargs}
+    for required in ("owner", "project"):
+        if not cfg.get(required):
+            raise ValueError(f"afk_progress workflow needs {required!r} in its args")
+    cfg["project"] = int(str(cfg["project"]))
+    return await run_progress(engine, cfg, now=time.time())
