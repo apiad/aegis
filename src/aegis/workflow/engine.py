@@ -180,6 +180,21 @@ class WorkflowEngine:
     def list_agents(self) -> list[str]:
         return self._bridge.list_agents()
 
+    def task_status(self, task_id: str) -> dict | None:
+        """A previously enqueued task's state, or None if unknown.
+
+        The reconciler shape depends on this: a workflow that enqueues with
+        ``callback=False`` and returns has no other way to learn what became
+        of the task on a later run.
+        """
+        return self._queue.status(task_id)
+
+    def plan_state(self, handle: str):
+        """A live session's full task list — the drill-down behind
+        ``aegis_peer_plan``. ``SessionInfo.plan`` already carries the roll-up;
+        this is for rendering the checklist itself."""
+        return self._bridge.plan_state(handle)
+
     # ── log ──────────────────────────────────────────────────────────
     def log(self, message: str) -> None:
         """Single-line narration. Writes to stderr + JSONL under state_dir.
