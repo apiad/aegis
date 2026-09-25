@@ -4,6 +4,7 @@
 from tests.conftest_workflows import *  # noqa: F401,F403,E402
 
 import asyncio
+import itertools
 import os
 import shutil
 
@@ -566,3 +567,61 @@ def cost_tree(tmp_path):
         ]) + "\n"
     )
     return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# The queue recovery rig. Tasks 6-11 of the ephemeral-agent-recovery plan all
+# drive a real QueueManager through the StubSM double from
+# tests/test_queue_e2e.py, so the wiring is built once here.
+# ---------------------------------------------------------------------------
+
+
+def make_queue_rig(tmp_path, *, max_attempts=2, recoverable_ttl_s=86400,
+                   rebuild_fails=False):
+    """A QueueManager with one `impl` queue, persisting under tmp_path.
+
+    Workers do NOT autostart: a test ends their turn by hand with
+    `sm.finish(...)` / `sm.fail(...)`, which is the only way to reach a bad
+    turn end at all. Handles are `w1`, `w2`, … in dispatch order, so a log
+    read in a failure message is legible.
+    """
+    # Aliased: this module already binds `Queue` to asyncio's at import.
+    from aegis.queue import InboxRouter, QueueManager
+    from aegis.queue.schema import Queue as QueueSpec
+    from tests.test_queue_e2e import StubSM
+
+    sm = StubSM(autostart=False)
+    sm.rebuild_fails = rebuild_fails
+    inbox = InboxRouter(state_dir=tmp_path)
+    sm.inbox = inbox
+    minted = itertools.count(1)
+    qm = QueueManager(
+        {"impl": QueueSpec(name="impl", agent_profile="claude-impl",
+                           max_parallel=1, max_attempts=max_attempts,
+                           recoverable_ttl_s=recoverable_ttl_s)},
+        sm, inbox, state_dir=tmp_path,
+        handle_factory=lambda used: f"w{next(minted)}",
+    )
+    return qm, sm
+
+
+def worker_handle(qm, task_id):
+    """The handle dispatch minted for this task. `status()` does not carry
+    it, and a test that hardcoded `w1` would lie the moment a rig
+    dispatched twice."""
+    return qm._all[task_id].worker_handle
+
+
+@pytest.fixture
+def queue_rig(tmp_path):
+    return make_queue_rig(tmp_path)
+
+
+@pytest.fixture
+def queue_rig_max_attempts_1(tmp_path):
+    return make_queue_rig(tmp_path, max_attempts=1)
+
+
+@pytest.fixture
+def queue_rig_rebuild_always_fails(tmp_path):
+    return make_queue_rig(tmp_path, max_attempts=1, rebuild_fails=True)

@@ -19,13 +19,14 @@ from pathlib import Path
 import asyncio
 
 from aegis.core.session import AgentSession
-from aegis.events import AssistantText, Result
+from aegis.events import AssistantText, Result, SystemInit
 from aegis.queue import (
     InboxRouter,
     Queue,
     QueueManager,
     sender_agent,
 )
+from aegis.tui.state import AgentState
 
 
 HANG = object()  # sentinel: harness's event stream blocks forever
@@ -36,6 +37,10 @@ class FakeHarness:
         self._events = list(events)
         self.sent: list[str] = []
         self.started = self.closed = False
+        # A real driver latches this on its first SystemInit; without the
+        # attribute `AgentSession.session_id` raises, which the recovery
+        # probe swallows into "not resumable".
+        self.session_id = None
 
     async def start(self): self.started = True
     async def send(self, t): self.sent.append(t)
@@ -55,6 +60,7 @@ class HangingHarness:
     def __init__(self):
         self.sent: list[str] = []
         self.started = self.closed = False
+        self.session_id = None
 
     async def start(self): self.started = True
     async def send(self, t): self.sent.append(t)
@@ -67,10 +73,34 @@ class HangingHarness:
 
 
 class StubSM:
-    def __init__(self):
+    """A session manager for the queue's sake: spawn, close, reconnect, and
+    the seams a test needs to drive a worker's turn by hand.
+
+    ``autostart=False`` is what the recovery fixtures use. With it on, a
+    spawned worker immediately runs its scripted turn to completion, which
+    makes ``fail()`` unreachable — the task is already terminal by the time
+    a test can end its turn badly.
+    """
+
+    def __init__(self, *, autostart: bool = True):
         self._sessions: list[AgentSession] = []
         self._scripts: dict[str, list] = {}
         self.closed: list[str] = []
+        self._autostart = autostart
+        # Set by _make_rig in tests/conftest.py.
+        self.inbox = None
+        # Flipped on to make `recovery.rebuild` fail at its first step.
+        self.rebuild_fails = False
+        self.reconnected: list[str] = []
+        # handle -> every InboxMessage that reached that session.
+        self._delivered: dict[str, list] = {}
+        # Every session ever spawned, including closed ones. `close` drops a
+        # session from the ROSTER, but the AgentSession object outlives it
+        # with its observers still attached — which is how a late SystemInit
+        # reaches the queue at all. The driving helpers resolve through
+        # here; `get` stays roster-accurate, because `recovery.rebuild`
+        # depends on it returning None for a handle that is gone.
+        self._ever: dict[str, AgentSession] = {}
 
     def script(self, handle, events):
         self._scripts[handle] = events
@@ -84,13 +114,93 @@ class StubSM:
         harness = HangingHarness() if script is HANG else FakeHarness(script)
         s = AgentSession(harness, None, slug, handle, project_root=Path.cwd())
         self._sessions.append(s)
-        if opening_prompt is not None:
+        self._ever[handle] = s
+        seen = self._delivered.setdefault(handle, [])
+        s.add_inbox_observer(lambda _s, msg: seen.append(msg))
+        if opening_prompt is not None and self._autostart:
             asyncio.create_task(s.send(opening_prompt))
+        return s
+
+    def get(self, handle):
+        """``recovery.rebuild`` calls this after reconnect, to deliver the
+        nudge onto the session it just rebuilt. Roster-accurate: None once
+        the handle has been closed."""
+        for s in self._sessions:
+            if s.handle == handle:
+                return s
+        return None
+
+    def _session_for(self, handle):
+        s = self._ever.get(handle)
+        if s is None:
+            raise AssertionError(f"no stub session was ever spawned for {handle!r}")
         return s
 
     async def close(self, handle):
         self.closed.append(handle)
         self._sessions = [s for s in self._sessions if s.handle != handle]
+
+    async def reconnect(self, handle, *, allow_local=False):
+        """The seam ``recovery.rebuild`` goes through. No harness is
+        actually swapped: the stub's session already survives, which is
+        the property under test, and a real swap would need a second
+        script per handle for no gain."""
+        if self.rebuild_fails:
+            raise ValueError(f"{handle} has no session id to resume from")
+        if self.get(handle) is None:
+            raise ValueError(f"unknown session {handle!r}")
+        self.reconnected.append(handle)
+        return f"reconnected {handle} on local"
+
+    # ----- driving a worker's turn by hand --------------------------------
+
+    def emit_system_init(self, handle, session_id):
+        """What a harness reports the moment it comes up. Synchronous: the
+        queue's event observer runs inline, so the record is on disk by
+        the time this returns."""
+        s = self._session_for(handle)
+        s._session.session_id = session_id
+        s._fire_event(SystemInit(session_id=session_id))
+
+    async def fail(self, handle, text="", *, stop_reason=None,
+                   emit_twice=False):
+        """End this worker's turn badly. ``emit_twice`` fires the state
+        callback a second time, the way a harness that reports both an
+        error and a stream end does."""
+        await self._end_turn(handle, text, AgentState.error,
+                            stop_reason=stop_reason, emit_twice=emit_twice)
+
+    async def finish(self, handle, text=""):
+        """End this worker's turn cleanly."""
+        await self._end_turn(handle, text, AgentState.ready)
+
+    async def _end_turn(self, handle, text, state, *, stop_reason=None,
+                        emit_twice=False):
+        s = self._session_for(handle)
+        if text:
+            s._fire_event(AssistantText(text=text))
+        s.last_stop_reason = stop_reason
+        s._emit_state(state, finished=True)
+        if emit_twice:
+            s._emit_state(state, finished=True)
+        await _settle()
+
+    def inbox_for(self, handle):
+        """Every InboxMessage that reached this handle: one delivered onto
+        a live worker session, or — for a producer with no session bound —
+        whatever the router is holding for it."""
+        if handle in self._ever:
+            return list(self._delivered.get(handle, []))
+        return list(self.inbox.pending(handle)) if self.inbox else []
+
+
+async def _settle(cycles: int = 50):
+    """Let the finalizer chain run. ``on_state`` schedules ``_finalize``
+    as a task, which awaits the inbox and the close; none of that touches
+    real I/O, so yielding the loop a bounded number of times is
+    deterministic rather than a timeout in disguise."""
+    for _ in range(cycles):
+        await asyncio.sleep(0)
 
 
 async def test_e2e_enqueue_to_callback_wakes_producer():

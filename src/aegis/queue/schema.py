@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from aegis.budget.budgets import Budget
+from aegis.core.recovery import Resumable
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -121,6 +122,12 @@ class Task:
     completed_at: str | None = None
     callback_to: str | None = None
     callback_handle: str | None = None
+    #: Turn ends this task's worker has had that were not clean. Carried
+    #: across a rebuild, deliberately: resetting it on respawn is an
+    #: unbounded retry loop holding the queue's max_parallel slot.
+    attempts: int = 0
+    #: What a rebuild needs, once the harness has reported a session id.
+    resumable: Resumable | None = None
 
 
 def local_waiter(task: Task) -> str | None:

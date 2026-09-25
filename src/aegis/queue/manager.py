@@ -22,7 +22,7 @@ from pathlib import Path
 from aegis.budget.cost import compute as _compute_cost
 from aegis.budget.evaluator import evaluate_budgets
 from aegis.budget.prices import UnknownPriceError
-from aegis.events import AssistantText
+from aegis.events import AssistantText, SystemInit
 from aegis.fleet.models import Origin
 from aegis.queue.events import (
     QueueCompleted,
@@ -618,6 +618,8 @@ class QueueManager:
                         pass
             else:
                 self._chunk_run[h] = _NO_RUN
+                if isinstance(ev, SystemInit):
+                    self._record_worker_session(h, session)
 
         def on_state(_s, st, finished):
             if not finished:
@@ -626,6 +628,52 @@ class QueueManager:
 
         session.add_event_observer(on_event)
         session.add_state_observer(on_state)
+
+    def _record_worker_session(self, handle: str, session) -> None:
+        """Latch what a rebuild needs, at FIRST SIGHT of the session id.
+
+        Deliberately not at turn end: a worker whose harness dies before
+        it ever reaches a turn boundary never reaches `_finalize`, and
+        that is precisely the case this record exists for. Written later,
+        it would be missing exactly when it is needed.
+
+        Written once. A rebuild reports a SystemInit of its own, and a
+        second identical record is a duplicate that replay would have to
+        de-duplicate. `worker_session` is NOT in `_LIFECYCLE_EVENTS`, so
+        replay merges its fields and leaves the task's status alone.
+        """
+        if handle not in self._workers:
+            # Finalized and popped already: a late record has no task to
+            # attach to, and must not resurrect a terminal one.
+            return
+        task, said = self._workers[handle]
+        if task.resumable is not None:
+            return
+        from aegis.core.recovery import resumable_from
+
+        r = resumable_from(session)
+        if r is None:
+            return
+        task = replace(task, resumable=r)
+        self._workers[handle] = (task, said)
+        self._all[task.id] = task
+        self._inflight[task.queue] = [
+            task if x.id == task.id else x for x in self._inflight[task.queue]
+        ]
+        self._log(
+            task.queue,
+            {
+                "event": "worker_session",
+                "task_id": task.id,
+                "worker_handle": handle,
+                "session_id": r.session_id,
+                "agent_profile": r.agent_profile,
+                "provider": r.provider,
+                "cwd": r.cwd,
+                "host": r.host,
+                "at": self._now(),
+            },
+        )
 
     def _still_working(self, handle: str, st) -> list[str]:
         """Why this worker's turn ending does not mean it is finished.
