@@ -101,6 +101,34 @@ def test_parse_items_drops_draft_issues() -> None:
     assert [c.number for c in cards] == [12]
 
 
+def test_parse_items_drops_archived_items() -> None:
+    """`items()` returns archived items alongside live ones. A card archived
+    to get it off the board would otherwise be read back as work to do and
+    handed to a worker."""
+    payload = json.loads(json.dumps(ITEMS_PAYLOAD))
+    nodes = payload["data"]["organization"]["projectV2"]["items"]["nodes"]
+    nodes[0]["isArchived"] = True
+    _, cards = parse_items(payload)
+    assert cards == []
+
+
+def test_parse_items_keeps_unarchived_items() -> None:
+    payload = json.loads(json.dumps(ITEMS_PAYLOAD))
+    payload["data"]["organization"]["projectV2"]["items"]["nodes"][0][
+        "isArchived"
+    ] = False
+    _, cards = parse_items(payload)
+    assert [c.number for c in cards] == [12]
+
+
+def test_items_query_asks_for_is_archived() -> None:
+    """The filter is only as good as the field being selected. A query that
+    never asks for isArchived makes every item read as unarchived."""
+    from aegis.workflows.builtins.afk.board import ITEMS_QUERY
+
+    assert "isArchived" in ITEMS_QUERY
+
+
 def test_parse_items_handles_an_empty_board() -> None:
     payload = {
         "data": {

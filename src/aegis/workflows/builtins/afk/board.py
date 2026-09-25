@@ -24,6 +24,7 @@ query($owner:String!,$num:Int!,$cursor:String){
         pageInfo{hasNextPage endCursor}
         nodes{
           id
+          isArchived
           content{
             __typename
             ... on Issue { number title body url state repository{nameWithOwner} }
@@ -99,10 +100,17 @@ def _field_values(raw_nodes: list[dict]) -> dict[str, str]:
 
 def parse_items(payload: dict) -> tuple[str, list[Card]]:
     """(project_id, cards). Draft issues are dropped: they have no comment
-    thread, and the report is the most valuable thing produced per card."""
+    thread, and the report is the most valuable thing produced per card.
+
+    Archived items are dropped too. `items()` returns them alongside live
+    ones, so a card archived to get it off the board would otherwise be read
+    back as work to do and dispatched to a worker.
+    """
     project = _root(payload)
     cards: list[Card] = []
     for node in project["items"]["nodes"]:
+        if node.get("isArchived"):
+            continue
         content = node.get("content") or {}
         if content.get("__typename") != "Issue":
             continue
