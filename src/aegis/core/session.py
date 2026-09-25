@@ -353,6 +353,22 @@ class AgentSession:
         """
         self._session = session
         self.state = AgentState.ready
+        # The new harness has no process yet — every driver spawns lazily in
+        # `start()`, which `_run_turn` calls only while this flag is False.
+        # Left set from the dead process's life, the next turn goes straight
+        # to `send()` and the claude driver asserts on `self._proc`: the turn
+        # dies before a byte reaches the model, and a `recovery.rebuild` that
+        # reported success has swapped in a harness that never ran. Against a
+        # real claude that arrived as a second bad turn end milliseconds after
+        # the first, spending the whole retry budget on one SIGKILL.
+        self._started = False
+        # `rehydrate_card` reads `_started` as "has run a turn in this
+        # process" and would now replay the log into a session whose metrics
+        # and transcript survived the swap, adding the log's totals on top of
+        # the live ones. Close that window here rather than widening the
+        # guard, because the answer is about this session's history and not
+        # about which process is under it.
+        self._card_rehydrated = True
         # Set directly, not through _emit_state, so clear here what a turn
         # end clears: the old process's recap is about a turn that is gone.
         self._cancel_fleet_recap()

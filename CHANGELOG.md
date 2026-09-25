@@ -116,6 +116,22 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   not a model at all (OpenCode writes `OpenCode`, Gemini writes nothing) are
   counted under **unpriced work** instead of being charged zero.
 
+### Fixed
+
+- **A rebuilt harness now actually starts.** `AgentSession.adopt` swaps the
+  process under a live session, and `_run_turn` calls `start()` only while
+  `_started` is False — a flag `adopt` left set from the dead process's life.
+  The next turn went straight to `send()` on a driver that had never spawned
+  (the claude driver asserts on `self._proc` there), so the turn died before a
+  byte reached the model while `recovery.rebuild` reported success. Against a
+  real `claude` killed mid-count, that arrived as a second bad turn end
+  milliseconds after the first: one SIGKILL spent the whole retry budget and
+  parked the task the recovery plane had just saved, and `aegis_task_resume`
+  then refused it because the empty driver had no conversation id to resume
+  from. Every test of the path passed, because every stub harness starts
+  lazily and tolerates a `send` with no process behind it. The same flag also
+  governs the manual `/reconnect` repair of a dropped remote link.
+
 ## [0.39.0] - 2026-09-23
 
 ### Changed
