@@ -752,6 +752,11 @@ class AgentSession:
             self._emit_dispatch(notices)
             text = f"{_render_batch(notices)}\n\n{text}"
         self._unsolicited = False  # a real, prompted turn
+        # Cleared per turn, not just overwritten: a turn that dies with no
+        # Result at all — the case recovery exists for — would otherwise
+        # leave the previous turn's reason standing, and the stall log
+        # would record it as this failure's cause.
+        self.last_stop_reason = None
         self.digest.reset()
         self._cancel_recap()
         turn_started = self._now()
@@ -1651,6 +1656,7 @@ class AgentSession:
         Skips pre/post-turn hooks and ``session.send()`` — the harness
         is mid-stream, not waiting on input."""
         self._unsolicited = True
+        self.last_stop_reason = None  # per turn; see _run_turn
         saw_result = False
         try:
             async for ev in self._session.events():

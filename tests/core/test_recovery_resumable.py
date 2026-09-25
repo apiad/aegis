@@ -186,3 +186,68 @@ async def test_last_stop_reason_latches_in_the_unsolicited_drain():
         await asyncio.sleep(0.01)
     assert s.last_stop_reason == "link_lost", (
         "the unsolicited drain must latch the reason too")
+
+
+class PerTurnFakeSession(FakeSession):
+    """A harness that hands out a different batch of events per turn, so a
+    test can run two turns against one session. `FakeSession` replays the
+    same list every time `events()` is called, which cannot express "the
+    second turn died mid-stream"."""
+
+    def __init__(self, turns, session_id=None):
+        super().__init__([], session_id=session_id)
+        self._turns = [list(t) for t in turns]
+
+    async def events(self):
+        batch = self._turns.pop(0) if self._turns else []
+        for e in batch:
+            await asyncio.sleep(0)
+            yield e
+
+
+async def test_last_stop_reason_is_cleared_at_the_start_of_each_turn():
+    """A turn that dies with no Result at all is precisely the case the
+    recovery plane exists for. If the field still holds the PREVIOUS
+    turn's reason, the stall log records it as this failure's cause — a
+    stale reason reads as evidence, which is worse than an empty one."""
+    s = _agent_session(PerTurnFakeSession([
+        [Result(duration_ms=1, is_error=True, stop_reason="link_lost")],
+        [AssistantText(text="stream died here")],  # no Result at all
+    ]))
+
+    await s.send("one")
+    await s._task
+    assert s.last_stop_reason == "link_lost"
+
+    await s.send("two")
+    await s._task
+    assert s.last_stop_reason is None, (
+        "the second turn produced no Result, so its stop reason is "
+        "unknown, not the first turn's"
+    )
+
+
+async def test_last_stop_reason_is_cleared_in_the_unsolicited_drain_too():
+    """Both live loops clear, for the same reason both latch: recording a
+    stale reason on one path and not the other makes the log look
+    complete when it is not."""
+    s = _agent_session(WakeableFakeSession([
+        AssistantText(text="first"),
+        Result(duration_ms=1, is_error=True, stop_reason="link_lost"),
+    ]))
+    s._session.feed(AssistantText(text="monitor-wake"))  # drain, no Result
+    await s.send("hello")
+    await s._task
+
+    # No mid-flight assertion that the field still reads "link_lost": the
+    # drain starts before `_task` resolves, so that would race its clear.
+    # Draining the fed event is the signal the second loop actually ran,
+    # and without it the field would still hold turn one's reason.
+    for _ in range(200):
+        if not s._session.has_pending_event():
+            break
+        await asyncio.sleep(0.01)
+    assert not s._session.has_pending_event(), "the drain never ran"
+    assert s.last_stop_reason is None, (
+        "the drain consumed a turn that produced no Result"
+    )
