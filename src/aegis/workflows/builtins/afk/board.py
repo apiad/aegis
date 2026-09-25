@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from dataclasses import dataclass, field as dc_field
 from typing import Awaitable, Callable
 
@@ -205,8 +206,22 @@ class BoardError(RuntimeError):
 
 
 def render_marker(**kv: object) -> str:
-    inner = " ".join(f"{k}={v}" for k, v in kv.items())
-    return f"<!-- aegis-afk {inner} -->"
+    """The coordinator's bookkeeping, as an HTML comment.
+
+    Values are shell-quoted, so one containing a space survives the round
+    trip. Without that, ``gate=make check`` parses back as ``gate=make``:
+    the coordinator would re-run a different command from the one it gave
+    the worker and measure the wrong thing, which is the one comparison
+    this whole design exists to make.
+    """
+    parts = []
+    for k, v in kv.items():
+        text = str(v)
+        if "-->" in text:
+            # Would terminate the comment early and strand every later key.
+            raise BoardError(f"marker value for {k!r} contains '-->'")
+        parts.append(f"{k}={shlex.quote(text)}")
+    return f"<!-- aegis-afk {' '.join(parts)} -->"
 
 
 def parse_marker(body: str) -> dict[str, str]:
@@ -220,7 +235,14 @@ def parse_marker(body: str) -> dict[str, str]:
     if not m:
         return {}
     out: dict[str, str] = {}
-    for tok in m.group("kv").split():
+    try:
+        tokens = shlex.split(m.group("kv"))
+    except ValueError:
+        # An unbalanced quote someone hand-edited in. No state is better
+        # than half of it: a partial marker would point the reaper at a
+        # task id with no gate beside it.
+        return {}
+    for tok in tokens:
         if "=" in tok:
             k, v = tok.split("=", 1)
             out[k] = v
