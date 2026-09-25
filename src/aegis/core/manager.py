@@ -476,9 +476,11 @@ class SessionManager:
         # a `ready` from either one takes the queue's completion path and
         # closes a worker that is still mid-task. It belongs here rather than
         # in `recovery.rebuild` because the invariant is `adopt`'s, not the
-        # recovery plane's, and `reconnect` is the only caller of `adopt`:
-        # the manual /reconnect command needs it just as much and gets a
-        # no-op, its turn having died with the link.
+        # recovery plane's: the manual /reconnect command needs it just as
+        # much and gets a no-op, its turn having died with the link. There
+        # are exactly two callers of `adopt` — this one and
+        # `AegisApp.reconnect` (tui/app.py), which is the same repair for
+        # standalone TUI mode and carries the same cancel.
         # Before `_session.close()` on purpose, so the reader is gone before
         # the driver's queue goes away under it — same order as `interrupt`.
         turn = s._task

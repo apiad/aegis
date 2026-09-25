@@ -152,7 +152,7 @@ async def test_reconnect_in_a_view_goes_to_the_brain(tmp_path, monkeypatch):
     reg, mgr, _calls = _reg(tmp_path)
     seen: list[str] = []
 
-    async def fake_reconnect(handle):
+    async def fake_reconnect(handle, *, allow_local=False):
         seen.append(handle)
         return f"reconnected {handle}"
 

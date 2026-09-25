@@ -2743,21 +2743,28 @@ class AegisApp(App):
         )
         return sess.handle
 
-    async def reconnect(self, handle: str) -> str:
+    async def reconnect(self, handle: str, *, allow_local: bool = False) -> str:
         """AppBridge-shaped: rebuild a dropped remote pane's harness.
 
         The remote harness keeps its own conversation store, so this
         re-runs it on the same host and resumes the same conversation id
         in the SAME pane — handle, transcript, observers and scrollback
         all survive, because only the process underneath is replaced.
+
+        `allow_local` waives the remote-only refusal, for the same reason
+        `SessionManager.reconnect` has it: that refusal belongs to the
+        manual /reconnect command, documented as a remote-link repair,
+        while the mechanism underneath is provider-level resume_from and
+        works locally. The recovery plane is the caller that needs it.
         """
+        import asyncio
         import contextlib
 
         mgr = getattr(self, "manager", None)
         if mgr is not None:
             # Bridged: the harness belongs to the brain's session, and the
             # new one needs a token only the brain can mint.
-            return await mgr.reconnect(handle)
+            return await mgr.reconnect(handle, allow_local=allow_local)
         pane = next(
             (p for p in self._panes if getattr(p, "handle", None) == handle), None
         )
@@ -2766,7 +2773,9 @@ class AegisApp(App):
         core = pane._core
         place = getattr(core, "place", None)
         reasons: list[str] = []
-        if place is None or place.is_local:
+        if place is None:
+            reasons.append(f"{handle} has no place to reconnect on")
+        elif place.is_local and not allow_local:
             reasons.append(f"{handle} runs local — reconnect is for remote sessions")
         sid = core.session_id
         if not sid:
@@ -2774,6 +2783,20 @@ class AegisApp(App):
         if reasons:
             raise ValueError("; ".join(reasons))
 
+        # Stop the in-flight turn before the harness under it is replaced.
+        # The same invariant `SessionManager.reconnect` enforces, for the
+        # same reason: `adopt` does not cancel `_task`, and on the recovery
+        # path the finalizer that calls us runs from inside the dead turn's
+        # epilogue, so that turn resumes into `_chain_if_pending`, starts a
+        # SECOND turn on the harness just adopted, and a `ready` from either
+        # one takes the queue's completion path and closes a worker that is
+        # still mid-task. The manual /reconnect command needs it too and
+        # gets a no-op, its turn having died with the link.
+        turn = core._task
+        if turn is not None and not turn.done():
+            turn.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await turn
         with contextlib.suppress(Exception):
             await core._session.close()
         raw = self._make_session(
@@ -3607,6 +3630,38 @@ class _SessionManagerAdapter:
         self._app._refresh_tabbar()
         if opening_prompt is not None:
             pane._submit(opening_prompt)
+
+    def get(self, handle: str):
+        """The session standing under `handle`, or None.
+
+        `recovery.rebuild` resolves the session it just rebuilt through
+        this to deliver the nudge onto it, and `recovery.restore` reads it
+        to tell "the front end already restored this worker" from "nothing
+        is standing here". Roster-accurate by construction: a closed pane
+        is off `_panes`.
+        """
+        for p in self._app._panes:
+            if getattr(p, "handle", None) == handle:
+                return p._core
+        return None
+
+    async def reconnect(self, handle: str, *, allow_local: bool = False) -> str:
+        """Rebuild the harness under `handle`, keeping the conversation.
+
+        Delegation rather than a third implementation. `AegisApp.reconnect`
+        is already standalone mode's reconnect — it is what the manual
+        /reconnect command runs — so writing the rebuild out again here
+        would leave this mode with two copies that drift, which is the
+        shape of the bug this method exists to close: without it
+        `recovery.rebuild` raised AttributeError, had it swallowed by its
+        own `except Exception`, and parked every stalled worker on the
+        first stall while every test passed against a stubbed manager.
+
+        `allow_local` and the in-flight-turn cancel were added to
+        `AegisApp.reconnect` for this caller; the manual command wanted the
+        cancel just as much.
+        """
+        return await self._app.reconnect(handle, allow_local=allow_local)
 
     async def close(self, handle: str) -> None:
         pane = next((p for p in self._app._panes if p.handle == handle), None)

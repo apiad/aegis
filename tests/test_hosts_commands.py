@@ -408,6 +408,9 @@ async def test_the_tui_can_reconnect_a_dropped_remote_pane():
     core = SimpleNamespace(
         place=Place("vps", "/w"), session_id="sid-1",
         agent=object(), _session=_Session(),
+        # No turn in flight. `reconnect` cancels one before adopting, so
+        # the double has to carry the slot a real AgentSession has.
+        _task=None,
         adopt=adopted.append)
     pane = SimpleNamespace(handle="a-b", _core=core)
 
