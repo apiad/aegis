@@ -10,8 +10,6 @@ JSONL log, so it can only READ.
 
 from __future__ import annotations
 
-import inspect
-
 import pytest
 
 from aegis.commands import CommandContext, dispatch
@@ -278,15 +276,38 @@ async def test_a_session_manager_without_the_resume_seam_parks(tmp_path):
     assert narrow.spawned == []
 
 
-def test_the_tui_session_adapter_can_cold_rebuild_a_worker():
+async def test_the_tui_session_adapter_can_cold_rebuild_a_worker(pane_app):
     """The capability half of the same story: parking is the safe
     degradation, but the standalone TUI should still be able to rebuild a
     worker whose pane the front end did not restore. `restore` reaches the
-    adapter through `getattr(sm, "_sync_spawn", sm.spawn)`."""
+    adapter through `getattr(sm, "_sync_spawn", sm.spawn)`.
+
+    Driven through the adapter rather than read off its signature. Accepting
+    `resume_from` and doing nothing with it is exactly the shape this
+    capability regressed into before, and a signature check stays green
+    through it: the session is built by `_make_session(**factory_kwargs)`,
+    so the only thing that proves the worker comes back on its own
+    conversation is the factory receiving the id.
+    """
     from aegis.tui.app import _SessionManagerAdapter
 
-    params = inspect.signature(_SessionManagerAdapter.spawn).parameters
-    assert {"resume_from", "host", "cwd"} <= set(params)
+    async with pane_app() as (pane, pilot):
+        app = pane.app
+        seen: list[dict] = []
+        built = app._make_session
+
+        def recording(agent, mcp_url, handle, **kwargs):
+            seen.append(kwargs)
+            return built(agent, mcp_url, handle)
+
+        app._make_session = recording
+        _SessionManagerAdapter(app).spawn(
+            "default", handle="w-cold", resume_from="sess-1"
+        )
+        await pilot.pause()
+
+        assert seen, "the adapter never built a session"
+        assert seen[-1].get("resume_from") == "sess-1"
 
 
 # --------------------------------------------------------------------------
