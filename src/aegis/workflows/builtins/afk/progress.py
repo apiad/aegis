@@ -14,6 +14,7 @@ import json
 from datetime import datetime
 
 from aegis.workflows.builtins.afk.board import (
+    run_gh,
     BoardError,
     fetch_board,
     parse_marker,
@@ -93,16 +94,6 @@ def format_plan(state) -> str:
     return "\n".join(lines)
 
 
-async def _gh(engine, argv: list[str]) -> str:
-    quoted = " ".join(
-        a if a.startswith("-") or a.isalnum() else json.dumps(a) for a in argv
-    )
-    res = await engine.bash(quoted)
-    if res.get("exit") != 0:
-        raise BoardError(f"{argv[:3]} exited {res.get('exit')}")
-    return res.get("stdout") or ""
-
-
 async def read_marker(engine, card) -> dict[str, str]:
     """The coordinator's marker plus the comment body it came from.
 
@@ -110,7 +101,7 @@ async def read_marker(engine, card) -> dict[str, str]:
     rewriting the comment from scratch here would erase the Coordinator and
     Result sections, which this schedule has no way to reconstruct.
     """
-    raw = await _gh(
+    raw = await run_gh(
         engine,
         ["gh", "api", f"repos/{card.repo}/issues/{card.number}/comments", "--paginate"],
     )
@@ -140,7 +131,7 @@ def snapshot_for(engine, handle: str | None):
 
 async def run_progress(engine, cfg: dict, *, now: float) -> str:
     schema, cards = await fetch_board(
-        lambda argv: _gh(engine, argv),
+        lambda argv: run_gh(engine, argv),
         owner=cfg["owner"],
         owner_type=cfg["owner_type"],
         project=cfg["project"],
@@ -167,7 +158,7 @@ async def run_progress(engine, cfg: dict, *, now: float) -> str:
                 continue
 
             await set_field(
-                lambda argv: _gh(engine, argv),
+                lambda argv: run_gh(engine, argv),
                 schema,
                 card,
                 field=progress_field,
@@ -177,7 +168,7 @@ async def run_progress(engine, cfg: dict, *, now: float) -> str:
             if body:
                 plan = engine.plan_state(handle) if handle else None
                 await upsert_comment(
-                    lambda argv: _gh(engine, argv),
+                    lambda argv: run_gh(engine, argv),
                     card,
                     body=replace_section(body, "Plan", format_plan(plan)),
                 )

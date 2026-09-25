@@ -258,6 +258,32 @@ def truncate_comment(body: str, *, limit: int = COMMENT_LIMIT) -> str:
     return body[: limit - len(note)] + note
 
 
+def gh_command(argv: list[str]) -> str:
+    """An argv list as one shell command line.
+
+    Every token is `shlex.quote`d, which is not decoration. The previous
+    version quoted with `json.dumps`, i.e. double quotes, and bash expands
+    inside those: the GraphQL query lost its newlines to literal `\\n` AND
+    lost `$owner`, `$num` and `$cursor` to parameter expansion, so the API
+    answered `UNKNOWN_CHAR ("n") at [1, 1]`. Single quotes pass both through.
+    """
+    return " ".join(shlex.quote(a) for a in argv)
+
+
+async def run_gh(engine, argv: list[str]) -> str:
+    """Run a `gh` command through the engine's bash and return stdout.
+
+    Raises BoardError on a non-zero exit, so a caller never moves a card on
+    the strength of a read or write that did not happen.
+    """
+    res = await engine.bash(gh_command(argv))
+    if res.get("exit") != 0:
+        raise BoardError(
+            f"{argv[:3]} exited {res.get('exit')}: {str(res.get('stdout'))[:300]}"
+        )
+    return res.get("stdout") or ""
+
+
 async def set_field(
     run: Runner, schema: Schema, card: Card, *, field: str, value: str | None
 ) -> None:

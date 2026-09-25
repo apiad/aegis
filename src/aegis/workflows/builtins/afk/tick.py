@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from aegis.workflows.builtins.afk.board import (
+    run_gh,
     BoardError,
     fetch_board,
     parse_marker,
@@ -80,18 +81,6 @@ def _fields(cfg: dict) -> dict[str, str]:
     return {**FIELDS, **(cfg.get("field_names") or {})}
 
 
-async def _gh(engine, argv: list[str]) -> str:
-    quoted = " ".join(
-        a if a.startswith("-") or a.isalnum() else json.dumps(a) for a in argv
-    )
-    res = await engine.bash(quoted)
-    if res.get("exit") != 0:
-        raise BoardError(
-            f"{argv[:3]} exited {res.get('exit')}: {str(res.get('stdout'))[:300]}"
-        )
-    return res.get("stdout") or ""
-
-
 async def fetch_comment(engine, card) -> str:
     """The coordinator's own pinned comment on a card, or "".
 
@@ -100,7 +89,7 @@ async def fetch_comment(engine, card) -> str:
     coordinator authenticates as the operator, whose other comments are not
     state.
     """
-    raw = await _gh(
+    raw = await run_gh(
         engine,
         ["gh", "api", f"repos/{card.repo}/issues/{card.number}/comments", "--paginate"],
     )
@@ -118,7 +107,7 @@ async def _write_card(
     with no explanation on it."""
     plan = ""  # the progress schedule owns the plan section
     await upsert_comment(
-        lambda argv: _gh(engine, argv),
+        lambda argv: run_gh(engine, argv),
         card,
         body=card_comment(
             coordinator=coordinator, plan=plan, result=result, marker=marker
@@ -126,7 +115,7 @@ async def _write_card(
     )
     if status:
         await set_field(
-            lambda argv: _gh(engine, argv),
+            lambda argv: run_gh(engine, argv),
             schema,
             card,
             field=fields["status"],
@@ -160,7 +149,7 @@ async def run_tick(engine, cfg: dict, *, now: str) -> str:
     repo_root = Path(cfg["repo_root"])
 
     schema, cards = await fetch_board(
-        lambda argv: _gh(engine, argv),
+        lambda argv: run_gh(engine, argv),
         owner=cfg["owner"],
         owner_type=cfg["owner_type"],
         project=cfg["project"],

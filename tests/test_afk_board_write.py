@@ -176,3 +176,48 @@ async def test_upsert_comment_surfaces_a_gh_failure_as_boarderror() -> None:
 
     with pytest.raises(BoardError, match="rate limit"):
         await upsert_comment(run, CARD, body="hi")
+
+
+def test_gh_command_survives_a_real_shell() -> None:
+    """A multiline argument carrying `$vars` must reach the program intact.
+
+    This is the GraphQL query. The first version quoted with `json.dumps`,
+    i.e. double quotes, and bash expands inside those: the newlines became
+    literal backslash-n and `$owner`/`$num`/`$cursor` were expanded away, so
+    the API answered `UNKNOWN_CHAR ("n") at [1, 1]`. No fake-bash test could
+    catch it — the fakes never compose a command line.
+    """
+    import subprocess
+
+    from aegis.workflows.builtins.afk.board import gh_command
+
+    payload = 'query($owner:String!,$num:Int!){\n  thing(x:"y")\n}'
+    line = gh_command(["printf", "%s", payload])
+    out = subprocess.run(["bash", "-c", line], capture_output=True, text=True)
+    assert out.returncode == 0
+    assert out.stdout == payload
+
+
+def test_the_items_query_itself_survives_a_real_shell() -> None:
+    """The actual query, not a stand-in. It carries three `$` variables and
+    forty newlines, and it is the one string that must not be mangled."""
+    import subprocess
+
+    from aegis.workflows.builtins.afk.board import ITEMS_QUERY, gh_command
+
+    line = gh_command(["printf", "%s", ITEMS_QUERY])
+    out = subprocess.run(["bash", "-c", line], capture_output=True, text=True)
+    assert out.stdout == ITEMS_QUERY
+    assert "$owner" in out.stdout and "$cursor" in out.stdout
+
+
+@pytest.mark.asyncio
+async def test_run_gh_raises_boarderror_on_a_nonzero_exit() -> None:
+    from aegis.workflows.builtins.afk.board import run_gh
+
+    class E:
+        async def bash(self, cmd, **kw):
+            return {"exit": 1, "stdout": "gh: rate limited"}
+
+    with pytest.raises(BoardError, match="rate limited"):
+        await run_gh(E(), ["gh", "api", "graphql"])
