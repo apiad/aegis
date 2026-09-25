@@ -24,11 +24,52 @@ network partition and a rewritten config.
 ## What it is not
 
 It never creates cards. Humans and interactive agents fill `Todo`; the
-coordinator takes and moves. It never blocks on a person — `engine.ask_human` is
+coordinator takes, orders, defers and moves. It never blocks on a person — `engine.ask_human` is
 forbidden inside it, because a coordinator waiting for an answer at 3am is a
 coordinator that did nothing all night. By default it never marks work `Done`; the
 furthest it moves a successful card is `Needs review`. `allow_auto_done` exists
 for operators who want a worker's own `done` honoured, and is off.
+
+## The agent decides, the code refuses
+
+The coordinator is an agent, not a decision table. Each tick it reads the whole
+board, everything in flight and how far along it is, and decides: what to start
+now, in what order, how many at once, what to defer and why, what is waiting on
+what, and what to write on each card so you understand the state without asking.
+It also writes each worker's brief itself, so a card can be dispatched with the
+context the agent knows and the card's author did not spell out — the related
+pull request, the sibling card that just landed, the file the last attempt broke.
+
+That only works if the agent cannot do damage while being clever, so the whole
+design rests on one rule:
+
+> **The agent may only move in the conservative direction.** It can decline to
+> start a card the rails would permit. It cannot start one the rails refuse. It
+> can ask for a review the triggers did not require. It cannot waive one they
+> did.
+
+Everything the agent produces is a *proposal*. Deterministic code validates it
+and performs it. The split:
+
+| The agent decides | The code enforces, and the agent cannot override |
+|---|---|
+| which cards run now, and in what order | the quota gate |
+| how many run at once, up to capacity | `max_in_flight` and queue headroom |
+| whether card B must wait for card A | `Repo` resolves inside `repo_root` |
+| what each worker's brief says | the clean-tree refusal |
+| what each card's narration says | the report contract in every payload |
+| that a card needs review | that a triggered card gets one |
+| that a card should be held for a human | that a red gate is `Failed` |
+
+**The coordinator agent writes nothing.** Not the board, not a repo, not a file.
+It is handed state and returns a plan; every write in this system is performed by
+the workflow. That is what makes it safe to give the agent broad read access to
+the repos so it can actually look at the code a card talks about before deciding.
+
+A proposal that violates a rail is not a crash. The offending entry is dropped,
+the remainder proceeds, and **the refusal is written onto that card** — so a
+coordinator repeatedly trying something the rails won't allow is visible to you
+rather than buried in a log.
 
 ## Shape: a reconciler, not a loop
 
@@ -94,6 +135,7 @@ One more field, written only by the coordinator:
 | Field | Type | Means |
 |---|---|---|
 | `Progress` | text | the running plan roll-up, e.g. `4/9 · running the gate · 12m` |
+| `Waiting on` | text | why a deferred card is not running: `#12 (schema)`, `capacity`, `quota` |
 
 `Repo` is a single-select rather than free text on purpose: **its option list is
 the whitelist.** A card naming a repo that is not an option cannot be created,
@@ -106,11 +148,19 @@ rather than guessing from the prose.
 | Status | Written by | Means |
 |---|---|---|
 | `Todo` | human, or the coordinator on orphan recovery | eligible |
+| `Waiting` | coordinator | eligible, deliberately deferred; will be reconsidered |
 | `Running` | coordinator | a queue task is in flight |
 | `Needs review` | coordinator | gate green, your turn |
-| `Blocked` | coordinator | could not start (dirty tree, bad `Repo`, no gate) |
+| `Blocked` | coordinator | needs a person: dirty tree, bad `Repo`, or the agent held it |
 | `Failed` | coordinator | gate red, or the worker reported failure |
 | `Done` | human only | you closed it |
+
+`Waiting` and `Blocked` are deliberately different. `Blocked` is your inbox: the
+loop will not touch that card again until a person does something. `Waiting` is
+the loop's own business: it chose to defer, it said why in `Waiting on`, and it
+will reconsider next tick. Collapsing the two would mean either your inbox fills
+with cards that just needed capacity, or cards that genuinely need you sit in a
+queue nobody reads.
 
 The coordinator's own bookkeeping goes in an HTML comment on the issue, which is
 mechanical to parse and invisible in the UI:
@@ -162,16 +212,90 @@ dollars aegis measured itself, so it holds even if the subscription endpoint
 reports nonsense. `BudgetExceeded` on enqueue returns the card to `Todo`
 untouched.
 
-### 4. Rank
+### 4. Decide
 
-If there is capacity, one agent call reads the eligible `Todo` cards — id,
-title, body, `Priority`, `Deadline` — and returns an ordered list with one line
-of reasoning per pick. It selects and orders; it cannot create, edit or reject
-cards, and anything it returns that was not in the input is dropped.
+The workflow assembles a briefing and hands it to the coordinator agent in one
+turn. The briefing carries:
 
-Capacity is `min(max_in_flight, queue headroom)` minus the count of cards
-already `Running`, and no two in-flight cards may name the same `Repo`. Two
-agents in one checkout produce a diff neither of them meant.
+- every card: number, title, body, `Repo`, `Priority`, `Deadline`, `Status`, and
+  the coordinator's own notes from previous ticks;
+- everything in flight: which card, how long, and its plan roll-up, so the agent
+  can see that card 12 has been on "run the gate" for 25 minutes;
+- what finished since the last tick and how it ended;
+- the quota reading and the remaining capacity;
+- the repo whitelist with each repo's isolation mode.
+
+The board is the agent's memory. Its own prior notes come back to it every tick,
+which is what lets a decision made at 02:10 still make sense at 02:20 without
+any state the workflow has to keep.
+
+It returns exactly one fenced `aegis-dispatch` block:
+
+````
+```aegis-dispatch
+start:
+  - card: 12
+    reason: nothing else touches the parser and the deadline is tomorrow
+    brief: |
+      task-specific context the worker should have before it reads AGENTS.md
+    review: auto | force
+wait:
+  - card: 14
+    reason: needs the schema card 12 is writing right now
+    waiting_on: "#12"
+  - card: 19
+    reason: no capacity this tick; next after 14
+    waiting_on: capacity
+hold:
+  - card: 17
+    reason: the body asks for a decision I am not authorised to make
+notes: |
+  one paragraph on the shape of this tick
+```
+````
+
+`start` is a proposal. `wait` is the agent deferring something it could have
+started, which is always permitted. `hold` sends a card to `Blocked` for you.
+
+Then the rails run, in code, over that block:
+
+- a card that was not in the briefing, or is not in `Todo`, is dropped;
+- `start` is truncated to `min(max_in_flight, queue headroom)` minus what is
+  already `Running`;
+- two starts naming the same `Repo` are refused unless that repo's isolation is
+  `worktree` (below); the later one is demoted to `wait`;
+- `review: force` is honoured; `review: auto` still gets a review if the
+  mechanical triggers fire. The agent can add caution, not remove it;
+- `brief` is wrapped, never trusted as the whole payload: the workflow composes
+  `fixed preamble + agent brief + fixed contract`, so the report format, the
+  task-list requirement and the gate command cannot be dropped by an agent
+  having an off night.
+
+Every drop is recorded on the affected card with the rail that refused it.
+
+### 4b. Same-repo parallelism, and what it unlocks
+
+"Does card B block card A" is only a real question if two cards in one repo
+could ever run together. In a shared checkout they cannot — two agents in one
+working tree produce a diff neither meant — so the rule would be mechanical and
+the agent would have nothing to decide.
+
+So isolation becomes a per-repo setting:
+
+```yaml
+repos:
+  aegis:      checkout     # default: one card at a time, in the checkout
+  enciclopedia: worktree   # each card gets its own git worktree
+```
+
+Under `worktree` the workflow creates `<worktree_root>/<repo>-card-<n>` off the
+default branch before dispatch and removes it after the card reaches a terminal
+state, leaving it in place when the card ends `Failed` so there is something to
+look at. Under `checkout`, unchanged: one card at a time, in the tree.
+
+Default is `checkout` for every repo, so v1 behaves exactly as designed before
+this and the knob is opt-in per repo. It is in the spec because without it, half
+of what the agent was asked to reason about is decided by physics.
 
 ### 5. Preflight the card
 
@@ -260,8 +384,9 @@ the exit code with what the worker claimed.
 the mechanical check first is the whole reason it is first: a broken build never
 costs an agent.
 
-**Green → the coordinator decides whether to spend a reviewer.** It launches one
-when `judgement` is non-empty, when `changed` exceeds `review_changed_files`
+**Green → a reviewer runs if anything asks for one.** The dispatching agent may
+have marked the card `review: force`, in which case it runs regardless. Failing
+that, the mechanical triggers decide: `judgement` non-empty, when `changed` exceeds `review_changed_files`
 (default 5), or when the card states no acceptance criteria — no task-list item
 and no line matching `acceptance_markers` (default `["done when", "acceptance"]`)
 — and its body is shorter than `vague_body_chars` (default 400).
@@ -283,6 +408,45 @@ finish must not strand a card.
 Either way the card lands in `Needs review` with one comment carrying the
 summary, the gate result as the coordinator measured it, the artifact links, the
 judgement calls, and the reviewer's verdict when there is one.
+
+## What the coordinator says on a card
+
+The pinned comment is the coordinator's voice, rewritten in place each tick
+rather than appended, so a card carries one current statement instead of forty
+stale ones. It has three sections, each owned by a different part of the system:
+
+```markdown
+### Coordinator
+Deferred this tick. The schema this card imports is being rewritten by #12,
+which is 6/9 through and has been running 14 minutes. Next tick unless #12
+lands in `Failed`, in which case this goes to `Waiting on: #12 (failed)`.
+
+_Refused by a rail this tick: proposed starting alongside #12 in the same
+checkout; `aegis` is `isolation: checkout`, so it was demoted to `wait`._
+
+### Plan
+- [x] read AGENTS.md and the know-how menu — 1m12s
+- [x] write the failing test — 4m03s
+- [ ] make it pass  ← running, 11m
+- [ ] run the gate
+
+### Result
+_(written once, when the card reaches a terminal state)_
+```
+
+`Coordinator` is the agent's own reasoning, and the rail-refusal line is written
+by the workflow rather than the agent — an agent that keeps proposing something
+illegal should not be the one narrating that it did.
+
+`Plan` is the mirror of the worker's task list, maintained by the progress
+schedule below.
+
+`Result` is the verified outcome: the summary, the gate as the coordinator
+measured it, the artifact links, the judgement calls, the reviewer's verdict.
+
+The dependency picture comes out of this for free. A card saying "waiting on
+#12" produces a GitHub cross-reference, so #12 shows a backlink and you can walk
+the chain from either end without the coordinator maintaining a graph.
 
 ## Progress: a second, cheaper schedule
 
@@ -367,6 +531,10 @@ schedules:
       vague_body_chars: 400
       acceptance_markers: ["done when", "acceptance"]
       gate_commands: ["make check", "make test"]
+      coordinator_queue: afk-coordinator   # read-only profile; writes nothing
+      worktree_root: /home/apiad/.cache/aegis-afk-worktrees
+      repos:                 # isolation per repo; absent means `checkout`
+        enciclopedia: worktree
       allow_auto_done: false
       notify_cmd: ""         # e.g. bin/notify-telegram.sh; empty disables
       field_names:           # for boards that are not in English
@@ -405,14 +573,17 @@ parser, a decision table and an API client and those want separate tests.
 | `__init__.py` | the `@workflow` entry point — the tick, in the six steps above |
 | `board.py` | the GitHub Projects client: read items, set a field, comment, parse and write the marker |
 | `report.py` | the `aegis-report` parser and its failure modes |
-| `decide.py` | pure decision functions: quota gate, eligibility, capacity, whether to review |
+| `decide.py` | the rails: pure functions that validate a dispatch proposal, plus the quota gate and the review triggers |
+| `dispatch.py` | the `aegis-dispatch` parser, and building the coordinator agent's briefing |
 | `payload.py` | building the worker and reviewer prompts |
 | `preflight.py` | git fetch / pull / dirty check, gate-command resolution |
 | `progress.py` | the `afk_progress` workflow: plan roll-up to `Progress` field and pinned comment, plus stall detection |
 
-`decide.py` is where the design's judgement lives and it imports nothing that
-touches the network, so every policy question in this spec is answerable by a
-table test.
+`decide.py` no longer holds the judgement — the agent does — and that changes
+what it is for rather than making it smaller. It now answers "is this proposal
+allowed", which is the question you *can* put in a table test, where "is this
+the right card to run next" never was. Every rail in the split table above is one
+pure function here, and its test is an illegal proposal that must be refused.
 
 ## Changes outside the package
 
@@ -446,7 +617,32 @@ Pure, table-driven, no network:
   unreadable case — which must return "start nothing", not "start everything".
 - capacity and eligibility: two cards naming one repo, a card whose `Repo` is
   not in `repo_root`, a `Running` card with no marker.
-- the review decision: each trigger in isolation and none of them.
+- the review decision: each trigger in isolation, none of them, and
+  `review: force` with none of them firing.
+
+**The rails, tested adversarially.** These are the tests that carry the design,
+because the agent is now the part nobody can unit-test, and the rails are the
+reason that is acceptable. Each one is a dispatch proposal written to break a
+specific rail, asserted to be refused *and* to leave the rest of the proposal
+intact:
+
+- a card number that was in no briefing;
+- a card already `Running`, proposed again;
+- `start` longer than capacity, and longer than queue headroom;
+- two starts in one `checkout` repo — the second must be demoted to `wait`, not
+  dropped, because dropping it loses the reason;
+- two starts in one `worktree` repo — must be allowed, which is the test that
+  proves the isolation setting is read at all;
+- a `Repo` that resolves outside `repo_root`, including via `..`;
+- a `brief` that tries to countermand the fixed contract ("ignore any earlier
+  instruction about a report block") — the composed payload must still end with
+  the contract, and this is asserted on the composed string, not on the
+  intention;
+- a proposal with no `aegis-dispatch` block at all, and one with two.
+
+Every refusal is asserted to land on the card. A rail that refuses silently is
+the same as no rail, because the next morning you cannot tell a coordinator that
+chose well from one that kept being stopped.
 - the progress formatter: a roll-up with no current task, a task that never
   entered `in_progress` (`working_s is None`, which must not render as `0m`),
   an absent plan, and a roll-up identical to what the card shows — which must
@@ -469,6 +665,9 @@ Against a throwaway project in a scratch org, one end-to-end per path:
   two distinct values, and a worker that keeps none leaves `no plan reported`
   on the card. Asserting only the first would pass against a coordinator that
   writes any text at all.
+- two cards in one `worktree` repo run together, land in separate worktrees, and
+  produce two independent branches; the worktrees are gone afterwards except the
+  one whose card ended `Failed`.
 
 ## Delivery, in vertical slices
 
@@ -481,8 +680,18 @@ Against a throwaway project in a scratch org, one end-to-end per path:
    the two-minute schedule. Placed here rather than last because it is the
    slice that makes the loop legible: until the board shows a plan advancing,
    a run you slept through is indistinguishable from a run that hung.
-4. `decide.py`'s quota gate and the ranking call.
-5. The reviewer stage, stall detection, `notify_cmd`, `docs/afk.md` in the
+4. **The rails, before the agent that needs them.** `decide.py` and
+   `dispatch.py`: the quota gate, the proposal validators, the parser, and the
+   composed-payload contract — all driven by hand-written proposals in tests,
+   with selection still done by a trivial deterministic stand-in. At the end of
+   this slice every adversarial test above passes and no agent has been asked
+   anything.
+5. Swap the stand-in for the coordinator agent: the briefing, the read-only
+   profile, the `Coordinator` narration, `Waiting` and `Waiting on`. The rails
+   are already proven, so this slice can be judged on whether the decisions are
+   *good* rather than whether they are *safe*.
+6. Per-repo `worktree` isolation.
+7. The reviewer stage, stall detection, `notify_cmd`, `docs/afk.md` in the
    mkdocs nav, the CHANGELOG entry.
 
 ## Known limits, stated rather than hidden
@@ -494,6 +703,20 @@ tree check exists in step 5 — the next card in that repo will refuse to start
 until someone cleans up. That is the intended behaviour and not a bug: an
 unattended coordinator should stop touching a repo it has left in an unknown
 state.
+
+### The agent is the part that cannot be tested
+
+Every previous version of this design could be judged by reading its rules. This
+one cannot: two ticks over identical boards may dispatch differently, and
+neither is wrong. That is the point of the change and it is also its cost.
+
+What the design does about it is refuse to let the untestable part be the part
+that can hurt you. The rails are deterministic, adversarially tested, and sit
+between every agent decision and every write. The agent's discretion is
+monotone toward caution. Its reasoning is on the card, in its own words, next to
+any rail that refused it — so the way you evaluate this coordinator is by
+reading a morning's worth of cards and judging the decisions, which is the only
+honest way to evaluate judgement.
 
 ## Out of scope for the first version
 
