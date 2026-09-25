@@ -5,7 +5,68 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+### Changed
+
+- **An ephemeral agent whose turn ends badly is no longer destroyed.** A queue
+  worker used to be closed the moment a turn ended in anything but `ready`, and
+  closing is irreversible: the session left the roster, its MCP token was
+  revoked, its pane was dropped, and its conversation stopped being reachable by
+  any path aegis offers. A dropped SSH link to an execution host arrives as
+  `Result(is_error=True)`, so a tunnel blip destroyed an hour of context. The
+  worker now **stalls and rebuilds** — the harness under the session is replaced,
+  the conversation resumes from the id the harness reported, and the worker is
+  told it was interrupted and is still on the same task, so from inside the turn
+  simply never ended. The task keeps its slot for the rebuild window and no
+  longer; `max_attempts` (default 2) bounds it.
+
+  When the attempts run out the worker is **parked** rather than closed. Parking
+  is one mechanism — its `Origin.kind` leaves `EPHEMERAL_KINDS` — and it buys two
+  behaviours: the ghost book stops reading the session as a departure and fading
+  it, and `close_guard` starts protecting it like any other non-disposable
+  session. The task goes to `recoverable`, a third status beside `completed` and
+  `failed` rather than a flavour of failure, and `aegis_delegate`/`run()` report
+  it as itself with the worker's handle, so a delegating caller is not told
+  "failed" about work that is one call from continuing. The `max_parallel` slot is
+  freed immediately, so parking never blocks the queue, and the producer's
+  callback says where the conversation is and carries whatever the worker had
+  already said.
+
+  On restart, a task that was in flight replays into a resume or a park, **never
+  a re-run**: a worker that got halfway may already have committed, pushed,
+  deployed or sent mail. It used to be declared `failed: interrupted` while its
+  tab came back from `plan_resume` with the whole conversation in it and nobody
+  ever looked at it again. Parked tasks rehydrate too, and stay quiet — their
+  producer was told once already.
+
+  A parked session is a real session, and the idle reaper will not reap a daemon
+  while one stands, so `recoverable_ttl_s` (default a day, `0` disables) closes
+  one nobody acted on and fails its task. What that costs is a conversation, and
+  it says so — a bounded, announced loss after a full day in which anyone could
+  have read or resumed it, which is a different thing from the silent loss four
+  seconds after a dropped link.
+
 ### Added
+
+- **`aegis_task_resume` and `aegis_task_retry`, `/queue` and `/resume`, and a
+  read-only `aegis queue ls|show`** — the surfaces for acting on a parked worker.
+  `aegis_task_resume(task_id)` rebuilds the harness under the same session and
+  tells it to continue, with the retry budget reset: an operator who looked at
+  the worker and said go is new information, and charging the new run for the old
+  run's failures would park it again on the first stall. `aegis_task_retry` is
+  the separate, explicit door — it re-runs the original payload as a NEW task and
+  closes the parked session — and resume never falls back to it, because
+  re-running a half-finished worker's prompt is a second execution rather than a
+  recovery. `/queue [<queue>]` lists tasks with their full ids (that is what
+  `/resume` takes) and `/resume <task_id>` is the same door from the TUI; `/queue`
+  is back under a different meaning than the one it was retired with, `/queues`
+  being the configured queues and `/queue` the tasks on them. The CLI is
+  deliberately read-only: the daemon socket is a view-attachment stream rather
+  than request/response RPC, so a standalone process cannot ask a live brain to
+  rebuild anything, and a `resume` subcommand could only edit the log and lie
+  about a worker it never touched.
+- **Standalone TUI mode can rebuild a stalled worker.** Its session-manager
+  adapter grew `get`, `reconnect` and `resume_from`, without which stall-and-
+  rebuild was a silent no-op there and a cold restore could only ever park.
 
 - **`aegis usage repo <path>` and `aegis usage repos <dir>` measure what a
   repository cost to build.** Token counts priced against the model registry

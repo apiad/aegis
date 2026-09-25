@@ -147,6 +147,11 @@ Ranking is fuzzy-match score with builtins first; there is no history/AI ranking
 `status`, `dissolve`, …) to act
 (detail: [2B](superpowers/specs/2026-07-17-aegis-slash-commands-2b-builtin-coverage-design.md)).
 
+The singular names the *contents*, not the collection: `/queues` lists the
+queues you configured, `/queue` lists the tasks on them. The pair is worth
+keeping straight — `/queue` was the old name for `/queues` and was retired
+once already.
+
 ## Component interfaces
 
 **`dispatch(text, ctx) -> CommandResult`** — strips the leading `/`, splits
@@ -220,6 +225,8 @@ import — one module per family, protected from being shadowed. The shipped set
 | `/loop [--max N] <instruction>` \| `/loop` \| `/loop stop` | Re-deliver an instruction at every turn boundary where the session would otherwise settle idle — until the agent reaps it with `aegis_loop_stop`, the iteration cap runs out, or you stop it. Bare `/loop` reports the armed instruction and its `iteration/max`; arming over a live loop replaces it. `stop` is matched **exactly**, so `/loop stop the dev server` still arms a loop rather than reaping one. |
 | `/queues [new <name> [agent] [--ephemeral]]` | List / create queues (persisted, or ephemeral in the live manager only). |
 | `/enqueue <queue> <payload>` | Drop a task on a queue. |
+| `/queue [<queue>]` | List queue **tasks** and their states — parked, in flight, waiting, then recent history. Full task ids, because that is what `/resume` takes. See [Queues](queues.md#when-a-worker-stalls). |
+| `/resume <task_id>` | Put a **parked** queue worker back to work: its harness is rebuilt under the same session, with the conversation intact, and its retry budget starts over. Refused when the task is not parked, its session is gone, or its queue has no free slot. Never re-runs a payload — that is `aegis_task_retry`. |
 | `/groups [status \| dissolve <name>]` | List / inspect / dissolve agent groups. |
 | `/schedules [show \| enable \| disable \| remove \| logs <name>]` | List / inspect scheduled workflows. |
 | `/terminals [new \| run \| close <name> [cmd]]` | List / spawn / run / close shared terminals. |

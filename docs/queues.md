@@ -92,6 +92,79 @@ A task is **never re-run from its payload**. A worker that got halfway
 may already have committed, pushed or deployed, so replaying its prompt
 would be a second execution rather than a recovery.
 
+## When a worker stalls
+
+A turn that ends in anything but `ready` — a dropped SSH link to an
+execution host, a harness exception, a stream that stops with no result
+— used to close the worker, and closing is irreversible. The session
+left the roster, its MCP token was revoked, its pane was dropped, and
+an hour of context went with it.
+
+It now **stalls and rebuilds**: the harness under the session is
+replaced, the conversation is resumed from the id the harness reported,
+and the worker is told it was interrupted and is still on the same
+task. The task stays `dispatched` and keeps its slot for the rebuild
+window and no longer — `max_attempts` is what bounds that.
+
+When the attempts run out the worker is **parked**, not closed:
+
+- its task goes to `recoverable`, which is a third status beside
+  `completed` and `failed`, not a flavour of failure;
+- its session stays **alive** holding the whole conversation, and stops
+  being disposable — the ghost book no longer fades it and `aegis_close`
+  protects it like any other session;
+- its `max_parallel` slot is freed immediately, so parking never blocks
+  the queue;
+- the producer's callback says where the conversation is, and carries
+  whatever the worker had already said.
+
+Parked tasks survive a restart: the replay rehydrates them so they can
+still be resumed or reaped, and says nothing to the producer, which was
+told once already. A parked session that nobody acts on is closed after
+its queue's `recoverable_ttl_s` (a day by default) and its task failed —
+a bounded, announced loss, because a parked session is a real session
+and one forgotten worker pins the daemon open forever.
+
+### Putting a parked worker back to work
+
+Read it first — `aegis_read_peer(<worker_handle>)`, or just switch to its
+tab — and then pick one of two doors:
+
+| | What it does |
+|---|---|
+| `aegis_task_resume(task_id)` | Rebuilds the harness under the **same session** and tells it to continue. Nothing it had worked out is lost, and its retry budget starts over: you looked at it and said go, which is new information. |
+| `aegis_task_retry(task_id)` | Re-runs the **original payload** as a new task, closing the parked session. |
+
+They are deliberately separate, and resume never falls back to retry. A
+worker that got halfway may already have committed, pushed, deployed or
+sent mail, so re-running its prompt is a second execution rather than a
+recovery — something only a caller who has decided the conversation is
+not worth continuing should ask for.
+
+In the TUI, `/queue` lists tasks with their full ids and `/resume
+<task_id>` is the same door as `aegis_task_resume`. Resume is refused —
+with a reason, never a traceback — when the task is not parked, when its
+session is gone (the tab was closed, or the TTL reaper got there first),
+or when the queue has no free slot to take back.
+
+### `aegis queue` — reading the log from a shell
+
+```bash
+aegis queue ls                # unfinished tasks across every queue
+aegis queue ls impl --all     # one queue, history included
+aegis queue show <task_id>    # the folded state plus every record
+```
+
+`aegis queue` is **read-only, and stays that way.** The daemon's socket
+is a view-attachment stream, not request/response RPC, so a standalone
+CLI process has no verb it can send to ask a live brain to rebuild a
+harness; a `resume` subcommand here could only edit the JSONL log and
+lie about a worker it never touched. The two surfaces that can act are
+the two already bound to a brain — the MCP tools and the slash commands
+above. Reading is a different matter: `ls` and `show` fold the same log
+the manager replays at boot, so they answer with no daemon running at
+all.
+
 ## Why callbacks, not polling
 
 The producer doesn't have to know how long the worker will take, doesn't
