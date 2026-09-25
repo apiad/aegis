@@ -434,14 +434,21 @@ class SessionManager:
         child.origin = Origin(kind="fork", by=forked_by or "")
         return child.handle
 
-    async def reconnect(self, handle: str) -> str:
-        """Rebuild a remote session's harness in place, resuming its
-        conversation.
+    async def reconnect(self, handle: str, *, allow_local: bool = False) -> str:
+        """Rebuild a session's harness in place, resuming its conversation.
 
-        The remote harness keeps its own conversation store, so a dropped
-        link costs only the in-flight turn: this re-runs the harness on
-        the same host and resumes the same conversation id, in the same
-        tab, under the same handle.
+        The harness keeps its own conversation store, so a dropped link
+        costs only the in-flight turn: this re-runs the harness on the
+        same host and resumes the same conversation id, in the same tab,
+        under the same handle.
+
+        `allow_local` is for the recovery plane. The local refusal below
+        belongs to the manual /reconnect command, which is documented as a
+        remote-link repair; the mechanism underneath is provider-level
+        resume_from, which is how every boot resume works, locally
+        included. Rebuilding is also the ONLY safe way to put a worker
+        back: spawning onto its handle races an async pane drop and mounts
+        a second `#pane-<handle>`, which is DuplicateIds and the app.
 
         Raises ValueError listing every refusal reason at once.
         """
@@ -451,7 +458,7 @@ class SessionManager:
         if s is None:
             raise ValueError(f"unknown session {handle!r}")
         reasons: list[str] = []
-        if s.place.is_local:
+        if s.place.is_local and not allow_local:
             reasons.append(f"{handle} runs local — reconnect is for remote sessions")
         sid = s.session_id
         if not sid:
