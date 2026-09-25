@@ -102,7 +102,8 @@ queues:
     agent: opus
     max_parallel: 5
     budgets:
-      - {window: 1d, max_usd: 20}
+      - usd: 20.00
+        window: 24h
 
 schedules:
   afk:

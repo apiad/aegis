@@ -2671,7 +2671,7 @@ class AegisApp(App):
         from aegis.config import yaml_loader
 
         cfg = yaml_loader.load_config(self.state_root)
-        yaml_loader.import_plugins(cfg)
+        yaml_loader.load_workflow_registry(cfg)
 
     async def handoff(self, from_handle: str, target_handle: str, context: str) -> str:
         # Legacy AppBridge entry point — kept for back-compat with any

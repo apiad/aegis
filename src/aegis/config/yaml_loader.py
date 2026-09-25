@@ -487,6 +487,20 @@ def register_builtins(cfg: AegisConfig) -> None:
             ) from e
 
 
+def load_workflow_registry(cfg: AegisConfig) -> None:
+    """Populate the @workflow registry from config: both plugin dirs and the
+    ``workflows:`` list of built-ins.
+
+    One entry point on purpose. These two have to happen together — the
+    scheduler dispatches by name, so a schedule firing into a half-populated
+    registry raises ``unknown workflow`` — and when they were two calls, every
+    boot path called ``import_plugins`` and none called ``register_builtins``.
+    The ``workflows:`` key was documented and dead. Call this instead of either.
+    """
+    import_plugins(cfg)
+    register_builtins(cfg)
+
+
 def find_yaml_root(start: Path | None = None) -> Path | None:
     """Closest ancestor of `start` (default cwd) containing
     `.aegis.yaml`."""

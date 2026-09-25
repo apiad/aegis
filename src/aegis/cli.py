@@ -129,17 +129,17 @@ def load_boot_config(roots: AegisRoots) -> BootConfig:
     """
     from aegis.commands.prompt_loader import load_prompt_commands
     from aegis.config.yaml_loader import (
-        import_plugins,
+        load_workflow_registry,
         load_config as _load_yaml,
     )
 
     root = roots.config_root
     agents, default_agent = load_config(root)
     yaml_cfg = _load_yaml(root)
-    # The scheduler dispatches @workflow functions by name, so the plugin
-    # dirs have to be imported before it starts — otherwise a schedule
-    # fires into an empty registry.
-    import_plugins(yaml_cfg)
+    # The scheduler dispatches @workflow functions by name, so the registry
+    # has to be populated before it starts — plugin dirs AND the `workflows:`
+    # built-ins list — otherwise a schedule fires into an empty registry.
+    load_workflow_registry(yaml_cfg)
     load_prompt_commands(root)
     return BootConfig(
         agents=agents,
@@ -808,12 +808,12 @@ async def _serve(
 
         def _on_reload() -> None:
             from aegis.config.yaml_loader import (
-                import_plugins,
+                load_workflow_registry,
                 load_config as _load_yaml,
             )
 
             cfg = _load_yaml(root)
-            import_plugins(cfg)
+            load_workflow_registry(cfg)
             scheduler.replace_schedules(cfg.schedules)
 
         events_log = roots.state_dir / "aegis_events.jsonl"
@@ -1324,11 +1324,11 @@ def workflow_list_cmd() -> None:
     root = find_project_root() or Path.cwd()
     try:
         from aegis.config.yaml_loader import (
-            import_plugins,
+            load_workflow_registry,
             load_config as _load_yaml,
         )
 
-        import_plugins(_load_yaml(root))
+        load_workflow_registry(_load_yaml(root))
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -1362,12 +1362,12 @@ def workflow_run_cmd(
     try:
         queues = load_queues(root)
         from aegis.config.yaml_loader import (
-            import_plugins,
+            load_workflow_registry,
             load_config as _load_yaml,
         )
 
         yaml_cfg = _load_yaml(root)
-        import_plugins(yaml_cfg)
+        load_workflow_registry(yaml_cfg)
     except ConfigError as e:
         _console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
