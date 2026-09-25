@@ -326,6 +326,10 @@ class AgentSession:
         # Captured by _run_turn's except clause for postmortem inspection.
         # None until a harness error occurs; replaced on each new error.
         self.last_error: Exception | None = None
+        #: stop_reason of the most recent Result, or None. Diagnostic only:
+        #: the recovery plane records it and does not branch on it, because
+        #: the four drivers share no vocabulary for why a turn ended.
+        self.last_stop_reason: str | None = None
         # session_start hooks fire exactly once at the top of the first
         # _run_turn (before pre_turn). Flag is independent of _started
         # (which tracks harness-subprocess lifecycle) so the hook fires
@@ -860,6 +864,7 @@ class AgentSession:
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True
+                    self.last_stop_reason = ev.stop_reason
                     turn_errored = bool(ev.is_error)
                     # The hard category before the turn-end state, so the
                     # tab bar never repaints with the previous turn's; the
@@ -1671,6 +1676,7 @@ class AgentSession:
                 if isinstance(ev, Result):
                     self.metrics.commit(ev.usage, self._now())
                     saw_result = True
+                    self.last_stop_reason = ev.stop_reason
                     self._emit_state(
                         AgentState.error if ev.is_error else AgentState.ready,
                         finished=True,

@@ -73,3 +73,27 @@ def classify(
     if attempts >= max_attempts:
         return Outcome.terminal
     return Outcome.transient
+
+
+def resumable_from(session) -> Resumable | None:
+    """The rebuild record for a live session, or None when the harness has
+    not reported a conversation id yet.
+
+    Read defensively: this runs against real AgentSessions and against
+    every test double that stands in for one, and a probe that raises
+    here would strand the task it was trying to save. `session_id` is a
+    property that delegates to the driver, so `getattr` covers both a
+    driver that reports None and a stand-in with no such attribute.
+    """
+    sid = getattr(session, "session_id", None)
+    if not sid:
+        return None
+    place = getattr(session, "place", None)
+    agent = getattr(session, "agent", None)
+    return Resumable(
+        session_id=sid,
+        agent_profile=getattr(session, "agent_slug", "") or "",
+        provider=getattr(agent, "harness", "") or "",
+        cwd=getattr(place, "cwd", "") or "",
+        host=getattr(place, "host", "") or "local",
+    )
