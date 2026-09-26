@@ -291,6 +291,11 @@ async def test_a_recoverable_task_stays_put_and_says_nothing(
 
     assert qm.status(TID)["status"] == "recoverable"
     assert not sm.inbox_for(PRODUCER)
+    # "Boot does not rebuild parked sessions" is the stated rule, and the
+    # only thing enforcing it is one branch in replay.py. Rebuilding here
+    # would cost a subprocess per parked task at startup, unbounded by
+    # `max_parallel` — resuming lazily, when somebody asks, is the point.
+    assert sm.spawned == [], "a parked session was rebuilt at boot"
 
 
 async def test_a_parked_task_keeps_its_parked_at_across_a_restart(

@@ -653,3 +653,47 @@ async def test_a_worker_parked_through_replay_can_finish_after_a_resume(tmp_path
     # The consequence the status hides: a slot that is never given back.
     nxt, _ = qm.enqueue("impl", "next", enqueued_by="agent:producer")
     assert qm.status(nxt)["status"] == "dispatched"
+
+
+async def test_a_worker_resumed_onto_a_cold_branch_can_finish(parked_rig):
+    """The same path as the test above, down the OTHER branch of
+    `resume_task`, and untested until now.
+
+    The warm branch re-attaches the queue's observers before it re-origins
+    the live session; the cold branch has to do it AFTER `restore`, onto
+    whatever new session stands under the handle. Nothing drove a finish
+    through a cold resume, so deleting that second call left every test
+    green — while producing exactly the failure the warm branch was fixed
+    for: the worker runs, says it is done, the queue never hears it, the
+    task stays `dispatched` forever and the single `max_parallel` slot is
+    held for the life of the process.
+
+    Cold is reached here the way a restart reaches it — nothing standing
+    under the handle — so `restore` cold-spawns against the recorded
+    conversation and the session that finishes is one the queue has never
+    observed.
+    """
+    qm, sm, tid, handle, _ = parked_rig
+    await sm.close(handle)                      # the restart, in one line
+    assert sm.get(handle) is None, "not the cold branch"
+    spawned_before = list(sm.spawned)           # dispatch's own, in this rig
+
+    assert (await qm.resume_task(tid))["ok"] is True, "the resume itself failed"
+    assert sm.spawned == [*spawned_before, handle], "restore did not cold-spawn"
+    assert sm.resumed_from == "sess-1", "spawned without resuming the talk"
+
+    await sm.finish(handle, text="finished after the restart")
+
+    assert qm.status(tid)["status"] == "completed", (
+        "the worker ended its turn and the queue never saw it"
+    )
+    assert qm.status(tid)["result"] == "finished after the restart"
+
+    # The producer has been blocked on this since before the restart.
+    bodies = [m.body for m in sm.inbox_for("producer")]
+    assert bodies, "the producer's callback never fired"
+    assert "finished after the restart" in bodies[-1]
+
+    # And the consequence the status hides: a slot never given back.
+    nxt, _ = qm.enqueue("impl", "next", enqueued_by="agent:producer")
+    assert qm.status(nxt)["status"] == "dispatched"
