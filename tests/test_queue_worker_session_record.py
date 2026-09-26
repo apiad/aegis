@@ -75,7 +75,15 @@ async def test_a_late_record_does_not_resurrect_a_terminal_task(
     queue_rig, tmp_path,
 ):
     """Review Focus 3. The observer fires off a session the manager has
-    already finalized and popped; it must find nothing and do nothing."""
+    already finalized and popped; it must find nothing and do nothing.
+
+    Called DIRECTLY, not through `sm.emit_system_init`. Going through
+    `AgentSession._fire_event` puts the guard behind a bare `except`: delete
+    the `if handle not in self._workers: return` line and the body raises
+    `KeyError`, `_fire_event` swallows it, and both assertions below still
+    pass — so the test could not fail. The swallow has to be out of the path
+    for the guard to be what is under test.
+    """
     qm, sm = queue_rig
     tid, _ = qm.enqueue("impl", "go", enqueued_by="agent:producer",
                         callback=True)
@@ -83,7 +91,9 @@ async def test_a_late_record_does_not_resurrect_a_terminal_task(
     await sm.finish(h, text="DONE")
     assert qm.status(tid)["status"] == "completed"
 
-    sm.emit_system_init(h, session_id="sess-late")
+    session = sm._session_for(h)
+    session._session.session_id = "sess-late"
+    qm._record_worker_session(h, session)
 
     assert qm.status(tid)["status"] == "completed"
     assert not [r for r in _worker_sessions(tmp_path)

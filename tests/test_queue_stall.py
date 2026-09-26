@@ -38,14 +38,22 @@ async def test_a_bad_turn_end_stalls_instead_of_closing(queue_rig, tmp_path):
     assert sm.reconnected == [h], "the harness under the handle is replaced"
 
 
-async def test_a_stall_says_nothing_to_the_producer(queue_rig):
+async def test_a_stall_says_nothing_to_the_producer(queue_rig, tmp_path):
     """A blip that recovers in four seconds is not news, and waking a
-    producer agent for it costs it a turn."""
+    producer agent for it costs it a turn.
+
+    The negative assertion needs a positive one from the SAME run beside
+    it. On its own an empty producer inbox is also what you get from a
+    `_finalize` that never ran at all, or a fixture whose worker never
+    dispatched — so it would pass with the whole stall arm deleted.
+    """
     qm, sm = queue_rig
     _tid, h = _start(qm, sm)
 
     await sm.fail(h, text="halfway")
 
+    assert _log(tmp_path, "stalled"), "the stall arm did not run"
+    assert sm.reconnected == [h], "the harness was not rebuilt"
     assert not sm.inbox_for("producer")
 
 
