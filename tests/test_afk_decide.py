@@ -370,3 +370,53 @@ def test_a_long_body_is_not_vague_even_without_markers() -> None:
         )
         == []
     )
+
+
+@pytest.mark.asyncio
+async def test_read_quota_does_not_force_the_endpoint() -> None:
+    """QuotaService declines to fetch inside its POLL_S floor and for
+    BACKOFF_S after a 429, and `force` skips the floor but not the cooldown.
+    Forcing therefore buys nothing and spends a request against an endpoint
+    that has asked us to stop — on an account whose status bar already polls
+    it every 60 seconds.
+    """
+    from aegis.workflows.builtins.afk import tick as tick_mod
+
+    calls: list[dict] = []
+    sentinel = object()
+
+    class FakeService:
+        async def refresh(self, **kw):
+            calls.append(kw)
+
+        def current(self):
+            return sentinel
+
+    tick_mod._QUOTA_SERVICES = {"claude": FakeService()}
+    try:
+        got = await tick_mod.read_quota(None)
+    finally:
+        tick_mod._QUOTA_SERVICES = None
+
+    assert got is sentinel
+    assert calls == [{}], f"refresh was called with {calls}, expected no kwargs"
+
+
+@pytest.mark.asyncio
+async def test_read_quota_survives_a_provider_that_raises() -> None:
+    """An exception here would read as a crashed tick when the honest answer
+    is "I could not ask"."""
+    from aegis.workflows.builtins.afk import tick as tick_mod
+
+    class Boom:
+        async def refresh(self, **kw):
+            raise RuntimeError("network gone")
+
+        def current(self):  # pragma: no cover - never reached
+            raise AssertionError
+
+    tick_mod._QUOTA_SERVICES = {"claude": Boom()}
+    try:
+        assert await tick_mod.read_quota(None) is None
+    finally:
+        tick_mod._QUOTA_SERVICES = None

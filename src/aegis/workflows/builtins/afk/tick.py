@@ -71,17 +71,23 @@ async def read_quota(_engine):
     """
     global _QUOTA_SERVICES
     try:
-        from aegis.usage.quota_providers import build_services, read_all
+        from aegis.usage.quota_providers import build_services
 
         if _QUOTA_SERVICES is None:
             _QUOTA_SERVICES = build_services()
-        readings = await read_all(_QUOTA_SERVICES)
-        for provider, state in readings:
-            if provider.name == "claude":
-                return state
+        svc = _QUOTA_SERVICES.get("claude")
+        if svc is None:
+            return None
+        # Plain refresh, never force. QuotaService already declines to fetch
+        # inside its POLL_S floor and for BACKOFF_S after a 429, and forcing
+        # cannot beat the backoff anyway — `force` skips the floor and not the
+        # cooldown. So a forced call during a cooldown is a wasted request
+        # against an endpoint that has already asked us to stop, and the
+        # cached reading it would have returned is the same one.
+        await svc.refresh()
+        return svc.current()
     except Exception:  # noqa: BLE001
         return None
-    return None
 
 
 def _statuses(cfg: dict) -> dict[str, str]:
