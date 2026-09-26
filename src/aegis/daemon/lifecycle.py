@@ -167,12 +167,15 @@ def idle_timeout_s() -> float:
 
 
 class IdleReaper:
-    """Sets ``stop`` after ``timeout_s`` of zero views AND zero sessions.
+    """Sets ``stop`` after ``timeout_s`` of zero views AND zero sessions
+    AND no armed schedule.
 
-    Both conditions, deliberately. Zero views alone would reap the VPS
+    All three, deliberately. Zero views alone would reap the VPS
     daemon every night -- it runs agents nobody is watching, which is the
     entire point of it. Zero sessions alone would never fire on a laptop
-    with a stale tab open.
+    with a stale tab open. And ignoring schedules reaps exactly the daemon
+    whose job never finishes: an unattended coordinator that correctly
+    starts nothing looks idle, is reaped, and never fires again.
 
     Idleness is a contiguous run, not a total: any view or session resets
     the clock, so a daemon touched every 20 minutes all day is never reaped
@@ -197,10 +200,37 @@ class IdleReaper:
     def _idle(self) -> bool:
         if self._registry.list():
             return False
+        if self._has_armed_schedule():
+            return False
         try:
             return not self._manager.list_sessions()
         except Exception:  # noqa: BLE001
             return False  # cannot tell => not idle; never reap on a guess
+
+    def _has_armed_schedule(self) -> bool:
+        """True while any schedule is enabled.
+
+        A daemon that exists to fire schedules has pending work by
+        definition, even with nobody attached and no session open. Without
+        this, an unattended coordinator that correctly starts nothing -- no
+        eligible cards, or a quota gate holding it back -- looks idle, gets
+        reaped after the timeout, and stops firing for good. Nothing reports
+        it: the schedule log simply ends.
+
+        Reads the scheduler's own table rather than the config, so a
+        schedule an agent pushed at runtime or parked with `enabled: false`
+        is counted exactly as the scheduler sees it.
+        """
+        sched = getattr(self._manager, "scheduler", None)
+        if sched is None:
+            return False
+        try:
+            return any(
+                (entry or {}).get("enabled", True)
+                for entry in (sched.schedules or {}).values()
+            )
+        except Exception:  # noqa: BLE001
+            return False
 
     async def run(self) -> None:
         if self._timeout <= 0:

@@ -1,4 +1,5 @@
 """Socket paths, the idle reaper, and autostart."""
+
 import asyncio
 
 import pytest
@@ -46,8 +47,8 @@ def test_a_garbage_idle_timeout_falls_back_to_the_default(monkeypatch):
 async def test_an_idle_daemon_is_reaped():
     stop = asyncio.Event()
     reaper = lifecycle.IdleReaper(
-        _Registry([]), _Manager([]), timeout_s=0.05, stop=stop,
-        interval_s=0.01)
+        _Registry([]), _Manager([]), timeout_s=0.05, stop=stop, interval_s=0.01
+    )
     await asyncio.wait_for(reaper.run(), timeout=5)
     assert stop.is_set()
 
@@ -55,8 +56,8 @@ async def test_an_idle_daemon_is_reaped():
 async def test_a_daemon_with_a_view_is_not_reaped():
     stop = asyncio.Event()
     reaper = lifecycle.IdleReaper(
-        _Registry(["term-a"]), _Manager([]), timeout_s=0.05, stop=stop,
-        interval_s=0.01)
+        _Registry(["term-a"]), _Manager([]), timeout_s=0.05, stop=stop, interval_s=0.01
+    )
     task = asyncio.create_task(reaper.run())
     await asyncio.sleep(0.3)
     assert not stop.is_set()
@@ -68,8 +69,8 @@ async def test_a_daemon_with_a_live_session_is_not_reaped():
     timer never arms and the daemon never dies."""
     stop = asyncio.Event()
     reaper = lifecycle.IdleReaper(
-        _Registry([]), _Manager(["agent-1"]), timeout_s=0.05, stop=stop,
-        interval_s=0.01)
+        _Registry([]), _Manager(["agent-1"]), timeout_s=0.05, stop=stop, interval_s=0.01
+    )
     task = asyncio.create_task(reaper.run())
     await asyncio.sleep(0.3)
     assert not stop.is_set()
@@ -82,12 +83,13 @@ async def test_the_idle_clock_restarts_when_a_view_attaches():
     stop = asyncio.Event()
     registry = _Registry([])
     reaper = lifecycle.IdleReaper(
-        registry, _Manager([]), timeout_s=0.3, stop=stop, interval_s=0.01)
+        registry, _Manager([]), timeout_s=0.3, stop=stop, interval_s=0.01
+    )
     task = asyncio.create_task(reaper.run())
     await asyncio.sleep(0.2)
-    registry._views.append("term-a")       # someone attached
+    registry._views.append("term-a")  # someone attached
     await asyncio.sleep(0.2)
-    registry._views.clear()                # and left again
+    registry._views.clear()  # and left again
     await asyncio.sleep(0.15)
     assert not stop.is_set(), "the clock did not restart on attach"
     task.cancel()
@@ -96,8 +98,8 @@ async def test_the_idle_clock_restarts_when_a_view_attaches():
 async def test_a_zero_timeout_never_reaps():
     stop = asyncio.Event()
     reaper = lifecycle.IdleReaper(
-        _Registry([]), _Manager([]), timeout_s=0.0, stop=stop,
-        interval_s=0.01)
+        _Registry([]), _Manager([]), timeout_s=0.0, stop=stop, interval_s=0.01
+    )
     task = asyncio.create_task(reaper.run())
     await asyncio.sleep(0.2)
     assert not stop.is_set()
@@ -107,14 +109,15 @@ async def test_a_zero_timeout_never_reaps():
 async def test_a_manager_that_cannot_be_asked_is_never_reaped():
     """Never reap on a guess: if we cannot tell whether sessions are live,
     the answer is 'not idle'."""
+
     class _Broken:
         def list_sessions(self):
             raise RuntimeError("mid-teardown")
 
     stop = asyncio.Event()
     reaper = lifecycle.IdleReaper(
-        _Registry([]), _Broken(), timeout_s=0.05, stop=stop,
-        interval_s=0.01)
+        _Registry([]), _Broken(), timeout_s=0.05, stop=stop, interval_s=0.01
+    )
     task = asyncio.create_task(reaper.run())
     await asyncio.sleep(0.3)
     assert not stop.is_set()
@@ -122,7 +125,8 @@ async def test_a_manager_that_cannot_be_asked_is_never_reaped():
 
 
 async def test_ensure_daemon_returns_the_existing_socket_without_spawning(
-        tmp_path, monkeypatch):
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("AEGIS_DAEMON_DIR", str(tmp_path / "daemons"))
     roots = AegisRoots.for_project(tmp_path)
     sock = lifecycle.socket_path(roots)
@@ -133,8 +137,7 @@ async def test_ensure_daemon_returns_the_existing_socket_without_spawning(
 
     server = await asyncio.start_unix_server(handle, path=str(sock))
     spawned = []
-    monkeypatch.setattr(lifecycle, "_spawn_detached",
-                        lambda root: spawned.append(root))
+    monkeypatch.setattr(lifecycle, "_spawn_detached", lambda root: spawned.append(root))
     try:
         got = await lifecycle.ensure_daemon(tmp_path, timeout_s=5)
         assert got == sock
@@ -144,7 +147,8 @@ async def test_ensure_daemon_returns_the_existing_socket_without_spawning(
 
 
 async def test_a_stale_socket_file_does_not_count_as_a_live_daemon(
-        tmp_path, monkeypatch):
+    tmp_path, monkeypatch
+):
     """A SIGKILLed daemon leaves the file behind. Liveness is 'it accepts a
     connection', never 'the file exists' — trusting the file would hang
     every `aegis` against a dead socket."""
@@ -158,8 +162,7 @@ async def test_a_stale_socket_file_does_not_count_as_a_live_daemon(
         await lifecycle.ensure_daemon(tmp_path, timeout_s=0.5)
 
 
-async def test_ensure_daemon_raises_when_the_spawn_never_listens(
-        tmp_path, monkeypatch):
+async def test_ensure_daemon_raises_when_the_spawn_never_listens(tmp_path, monkeypatch):
     """A daemon that dies during boot must fail the attach with a real
     error, not hang the terminal forever."""
     monkeypatch.setenv("AEGIS_DAEMON_DIR", str(tmp_path / "daemons"))
@@ -177,7 +180,78 @@ def test_python_dash_m_aegis_is_runnable():
     which is to say silently. Assert the module, not the message."""
     import subprocess
     import sys
-    r = subprocess.run([sys.executable, "-m", "aegis", "--version"],
-                       capture_output=True, text=True, timeout=180)
+
+    r = subprocess.run(
+        [sys.executable, "-m", "aegis", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
     assert r.returncode == 0, r.stderr
     assert "aegis" in (r.stdout + r.stderr).lower()
+
+
+class _Scheduler:
+    def __init__(self, schedules):
+        self.schedules = dict(schedules)
+
+
+class _ManagerWithSchedules(_Manager):
+    def __init__(self, sessions, schedules=None):
+        super().__init__(sessions)
+        self.scheduler = _Scheduler(schedules or {}) if schedules is not None else None
+
+
+async def test_a_daemon_with_an_armed_schedule_is_not_reaped():
+    """The AFK case, and the one that cost a live run its whole night.
+
+    A coordinator that correctly starts nothing — no eligible cards, or a
+    quota gate holding it back — holds no session and has nobody attached.
+    Judged on views and sessions alone it looks idle, gets reaped after the
+    timeout, and never fires again. Nothing reports it: the schedule log
+    simply ends.
+    """
+    stop = asyncio.Event()
+    mgr = _ManagerWithSchedules([], {"afk": {"workflow": "afk", "cron": "*/3 * * * *"}})
+    reaper = lifecycle.IdleReaper(
+        _Registry([]), mgr, timeout_s=0.05, stop=stop, interval_s=0.01
+    )
+    task = asyncio.create_task(reaper.run())
+    await asyncio.sleep(0.3)
+    assert not stop.is_set()
+    task.cancel()
+
+
+async def test_a_daemon_whose_schedules_are_all_parked_is_still_reaped():
+    """The fix must not disable reaping outright. A schedule parked with
+    `enabled: false` is not pending work, so a laptop still self-cleans."""
+    stop = asyncio.Event()
+    mgr = _ManagerWithSchedules([], {"afk": {"workflow": "afk", "enabled": False}})
+    reaper = lifecycle.IdleReaper(
+        _Registry([]), mgr, timeout_s=0.05, stop=stop, interval_s=0.01
+    )
+    await asyncio.wait_for(reaper.run(), timeout=5)
+    assert stop.is_set()
+
+
+async def test_a_daemon_with_an_empty_schedule_table_is_still_reaped():
+    stop = asyncio.Event()
+    reaper = lifecycle.IdleReaper(
+        _Registry([]),
+        _ManagerWithSchedules([], {}),
+        timeout_s=0.05,
+        stop=stop,
+        interval_s=0.01,
+    )
+    await asyncio.wait_for(reaper.run(), timeout=5)
+    assert stop.is_set()
+
+
+async def test_a_manager_with_no_scheduler_at_all_is_still_reaped():
+    """Back-compat: the TUI's own brain attaches no scheduler."""
+    stop = asyncio.Event()
+    reaper = lifecycle.IdleReaper(
+        _Registry([]), _Manager([]), timeout_s=0.05, stop=stop, interval_s=0.01
+    )
+    await asyncio.wait_for(reaper.run(), timeout=5)
+    assert stop.is_set()
