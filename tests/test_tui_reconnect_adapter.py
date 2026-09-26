@@ -25,7 +25,10 @@ from __future__ import annotations
 import ast
 import inspect
 
+import pytest
+
 from aegis.core import recovery
+from aegis.core.manager import SessionManager
 from aegis.tui.app import _SessionManagerAdapter
 
 
@@ -177,26 +180,37 @@ def test_the_adapter_exposes_what_restore_calls():
     )
 
 
-def test_the_adapter_satisfies_the_restore_spawn_seam():
+@pytest.mark.parametrize("cls", [_SessionManagerAdapter, SessionManager])
+def test_the_restore_spawn_seam_is_satisfied_by_both_session_managers(cls):
     """Whichever of the two names `restore` resolves has to take every
-    keyword it passes.
+    keyword it passes — on BOTH classes that can be the session manager.
 
-    Derived from the call node, so a fourth keyword added to `restore`
+    Derived from the call node, so a fifth keyword added to `restore`
     tomorrow fails here rather than in a daemon: a spawn seam that is
     missing one raises TypeError inside `restore`'s own `except`, which
     parks the task and says nothing about why.
+
+    Parametrised because checking the adapter alone checked the branch
+    production never takes. The adapter has no `_sync_spawn`, so
+    `getattr(sm, "_sync_spawn", sm.spawn)` falls back to `spawn` and this
+    read the facade. Under `aegis serve` — every production daemon — it
+    resolves to the real `SessionManager._sync_spawn`, which was never
+    looked at: rename `cwd` to `workdir` there and every in-flight task
+    parks with "could not rebuild after the restart" while the suite stays
+    green.
     """
     seam, fallback, passed = _restore_seam()
-    resolved = getattr(_SessionManagerAdapter, seam, None)
+    resolved = getattr(cls, seam, None)
     used = seam
     if resolved is None:
-        resolved, used = getattr(_SessionManagerAdapter, fallback, None), fallback
+        resolved, used = getattr(cls, fallback, None), fallback
     assert resolved is not None, (
-        f"_SessionManagerAdapter has neither {seam!r} nor {fallback!r}"
+        f"{cls.__name__} has neither {seam!r} nor {fallback!r}"
     )
     params = inspect.signature(resolved).parameters
     missing = sorted(k for k in passed if k not in params)
     assert not missing, (
-        f"recovery.restore passes {missing} to sm.{used}, which does not "
-        "take them — the cold rebuild is a TypeError, swallowed into a park"
+        f"recovery.restore passes {missing} to {cls.__name__}.{used}, which "
+        "does not take them — the cold rebuild is a TypeError, swallowed "
+        "into a park"
     )
