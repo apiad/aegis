@@ -20,12 +20,13 @@ from aegis.events import AssistantText, Result
 
 
 def _session(session_id, *, slug="impl", harness="claude-code",
-             cwd="/srv/app", host="local"):
+             cwd="/srv/app", host="local", log_id="log-1"):
     return SimpleNamespace(
         session_id=session_id,
         agent_slug=slug,
         agent=SimpleNamespace(harness=harness),
         place=SimpleNamespace(cwd=cwd, host=host),
+        log_id=log_id,
     )
 
 
@@ -47,7 +48,17 @@ def test_captures_everything_the_rebuild_needs():
         provider="claude-code",
         cwd="/srv/app",
         host="local",
+        log_id="log-1",
     )
+
+
+def test_a_double_with_no_log_id_records_none_rather_than_a_default():
+    """`AgentSession.__init__` is `log_id or new_log_id(handle)`, so an
+    empty string here would be minted over anyway — but None is what says
+    "this record does not know", and a restore has to be able to tell."""
+    s = _session("sess-abc")
+    del s.log_id
+    assert resumable_from(s).log_id is None
 
 
 def test_missing_place_falls_back_to_local():
@@ -141,6 +152,10 @@ def test_reads_the_field_names_a_real_session_actually_has():
     assert r.provider == "claude-code"
     assert r.host == "local"
     assert r.cwd == str(Path.cwd())
+    # The TRANSCRIPT id, not the conversation id. `read_peer` windows the
+    # on-disk log by this, so a restore that loses it shows a producer
+    # nothing from before the restart.
+    assert r.log_id == s.log_id
 
 
 def test_a_real_session_with_no_harness_id_is_not_resumable():

@@ -203,12 +203,14 @@ def _task_from_record(queue: str, tid: str, r: dict, now) -> Task:
 
 
 def _resumable_from_record(r: dict) -> Resumable | None:
-    """The rebuild record, read back off the FIVE FLAT KEYS
+    """The rebuild record, read back off the SIX FLAT KEYS
     `_record_worker_session` writes — `session_id`, `agent_profile`,
-    `provider`, `cwd`, `host` — not a nested object under some key.
+    `provider`, `cwd`, `host`, `log_id` — not a nested object under some key.
 
     None when the harness never reported a conversation id, which is the
-    one case there is genuinely nothing to resume.
+    one case there is genuinely nothing to resume. `log_id` stays None for a
+    record written before that key existed; a restore then mints a fresh
+    transcript, which is what used to happen for every restore.
     """
     sid = r.get("session_id")
     if not sid:
@@ -219,4 +221,5 @@ def _resumable_from_record(r: dict) -> Resumable | None:
         provider=r.get("provider") or "",
         cwd=r.get("cwd") or "",
         host=r.get("host") or "local",
+        log_id=r.get("log_id") or None,
     )

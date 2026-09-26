@@ -30,6 +30,28 @@ async def test_worker_session_is_recorded_when_the_id_first_appears(
     assert ws[0]["agent_profile"] == "claude-impl"
 
 
+async def test_the_record_latches_the_log_id_beside_the_session_id(
+    queue_rig, tmp_path,
+):
+    """Six keys, not five. `log_id` is the TRANSCRIPT, where `session_id` is
+    the conversation, and a cold restore needs both: `AgentSession.__init__`
+    is `log_id or new_log_id(handle)`, so a restore without it starts a fresh
+    transcript while `read_peer` still windows the on-disk log by `log_id`.
+    The producer a park notice sends to `aegis_read_peer(<handle>)` would
+    then see only turns since the restart."""
+    qm, sm = queue_rig
+    tid, _ = qm.enqueue("impl", "go", enqueued_by="agent:producer",
+                        callback=True)
+    h = worker_handle(qm, tid)
+    expected = sm.get(h).log_id
+    assert expected, "the session minted no transcript id to record"
+
+    sm.emit_system_init(h, session_id="sess-1")
+
+    assert _worker_sessions(tmp_path)[0]["log_id"] == expected
+    assert qm._all[tid].resumable.log_id == expected
+
+
 async def test_worker_session_is_recorded_once(queue_rig, tmp_path):
     """A second SystemInit (a rebuild reports one too) must not append a
     duplicate that replay would have to de-duplicate."""

@@ -32,6 +32,17 @@ class Resumable:
     resume, which is why it is recorded the moment it appears rather
     than at the end of a turn: a worker whose harness dies before any
     turn boundary is exactly the case the record exists for.
+
+    `log_id` is the other half, and it is about the TRANSCRIPT rather than
+    the conversation. `AgentSession.__init__` does
+    `self.log_id = log_id or new_log_id(handle)`, so a cold restore that
+    does not pass it starts a brand-new transcript — and `read_peer`
+    windows the on-disk log by `log_id`. A worker restored cold after a
+    headless restart would then park, the park notice would tell its
+    producer to `aegis_read_peer(<handle>)`, and the producer would see
+    only turns since the restart; the pre-crash hour would sit on disk
+    under a log id nothing references. Optional because records written
+    before this field existed do not carry one.
     """
 
     session_id: str
@@ -39,6 +50,7 @@ class Resumable:
     provider: str
     cwd: str
     host: str
+    log_id: str | None = None
 
 
 class Outcome(StrEnum):
@@ -100,6 +112,7 @@ def resumable_from(session) -> Resumable | None:
         provider=getattr(agent, "harness", "") or "",
         cwd=getattr(place, "cwd", "") or "",
         host=getattr(place, "host", "") or "local",
+        log_id=getattr(session, "log_id", None) or None,
     )
 
 
@@ -221,6 +234,11 @@ async def restore(sm, task, *, nudge: str) -> str | None:
             r.agent_profile,
             handle=handle,
             resume_from=r.session_id,
+            # The transcript, not the conversation. Without it the restored
+            # worker mints a fresh log id and `read_peer` — which windows the
+            # on-disk log by exactly this — shows a producer only what
+            # happened after the restart.
+            log_id=r.log_id,
             host=None if r.host == "local" else r.host,
             cwd=r.cwd,
             origin=Origin(

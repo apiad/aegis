@@ -63,13 +63,14 @@ DISPATCHED = {"event": "dispatched", "task_id": TID, "worker_handle": WORKER}
 
 
 def _worker_session(cwd):
-    """What `_record_worker_session` writes: FIVE FLAT KEYS, not a nested
+    """What `_record_worker_session` writes: SIX FLAT KEYS, not a nested
     object. A reader that looks for `resumable` finds nothing and parks
     every recoverable task."""
     return {
         "event": "worker_session", "task_id": TID, "worker_handle": WORKER,
         "session_id": "sess-1", "agent_profile": "claude-impl",
         "provider": "claude-code", "cwd": str(cwd), "host": "local",
+        "log_id": "log-before-the-crash",
         "at": "2026-05-20T07:15:00Z",
     }
 
@@ -177,6 +178,42 @@ async def test_restart_rebuilds_when_the_handle_is_free(replay_rig):
     assert sm.spawned == [WORKER]
     assert sm.resumed_from == "sess-1", "rebuilt without resuming the talk"
     assert qm.status(TID)["status"] == "dispatched"
+
+
+async def test_a_cold_restore_keeps_the_worker_s_transcript(replay_rig):
+    """The spec: "Only when the handle is unoccupied does it spawn with
+    `resume_from` and the recorded `log_id`."
+
+    `AgentSession.__init__` is `log_id or new_log_id(handle)`, so a restore
+    that drops it starts a BRAND-NEW transcript — and `read_peer` windows
+    the on-disk log by `log_id`. This is the normal headless path, so the
+    consequence was routine: restart, cold restore, the worker later parks,
+    the park notice tells the producer to `aegis_read_peer(<handle>)`, and
+    the producer sees only turns since the restart. Everything from before
+    is on disk under an orphaned log id nothing references.
+    """
+    qm, sm, tmp_path = replay_rig
+
+    await qm.start()
+
+    assert sm.spawned == [WORKER], "the cold branch, not the adopt branch"
+    assert sm.spawned_log_id == "log-before-the-crash"
+
+
+async def test_the_resumable_read_back_off_the_log_carries_the_log_id(tmp_path):
+    """The record on disk is the only thing a restart has. A `Resumable`
+    rebuilt without `log_id` makes the test above unfalsifiable from the
+    replay side."""
+    from aegis.queue.replay import _resumable_from_record
+
+    r = _resumable_from_record(_worker_session(tmp_path))
+    assert r is not None
+    assert r.log_id == "log-before-the-crash"
+    # And None, not "", for a record written before the key existed: an
+    # empty string is a log id `AgentSession` would take at face value.
+    old = _worker_session(tmp_path)
+    del old["log_id"]
+    assert _resumable_from_record(old).log_id is None
 
 
 async def test_a_rebuilt_worker_is_told_its_conversation_survived(replay_rig):

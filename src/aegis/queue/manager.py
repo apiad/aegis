@@ -1118,6 +1118,13 @@ class QueueManager:
                 "provider": r.provider,
                 "cwd": r.cwd,
                 "host": r.host,
+                # Latched here with the other five, and for the same reason:
+                # a cold restore that does not pass it mints a fresh
+                # transcript, and `read_peer` windows the on-disk log by
+                # `log_id`. Without it a producer sent to
+                # `aegis_read_peer(<handle>)` after a restart sees only what
+                # happened since.
+                "log_id": r.log_id,
                 "at": self._now(),
             },
         )

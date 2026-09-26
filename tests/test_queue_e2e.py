@@ -131,15 +131,20 @@ class StubSM:
         self._scripts[handle] = events
 
     def spawn(self, slug, *, opening_prompt=None, handle=None, origin=None,
-              resume_from=None, host=None, cwd=None):
-        """``resume_from``/``host``/``cwd`` are what ``recovery.restore``
-        passes when it rebuilds a worker from its recorded Resumable. The
-        real seam is ``SessionManager._sync_spawn``, which takes all three;
-        the async ``spawn`` takes neither ``resume_from`` nor a return
-        value a caller can observe, which is why both go through the sync
-        one."""
+              resume_from=None, host=None, cwd=None, log_id=None):
+        """``resume_from``/``log_id``/``host``/``cwd`` are what
+        ``recovery.restore`` passes when it rebuilds a worker from its
+        recorded Resumable. The real seam is
+        ``SessionManager._sync_spawn``, which takes all four; the async
+        ``spawn`` takes neither ``resume_from`` nor a return value a caller
+        can observe, which is why both go through the sync one.
+
+        A keyword missing here is not a signature nit: `restore` wraps the
+        call, so a TypeError becomes None, becomes a park, and says nothing
+        about why."""
         self.spawned.append(handle)
         self.resumed_from = resume_from
+        self.spawned_log_id = log_id
         self.spawned_cwd = cwd
         # The real `_sync_spawn` stamps this onto the session; this stub
         # builds a bare AgentSession, so a caller's origin is only

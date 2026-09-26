@@ -3507,6 +3507,7 @@ class _SessionManagerAdapter:
         cwd: str | None = None,
         origin: "Origin | None" = None,
         resume_from: str | None = None,
+        log_id: str | None = None,
     ):
         _refuse_when_bridged(self._app)
         from aegis.core.manager import _overlay_agent
@@ -3533,6 +3534,12 @@ class _SessionManagerAdapter:
             slug,
             h,
             self._app._palette,
+            # `restore`'s other half: the TRANSCRIPT the worker was writing.
+            # `AgentSession` mints a fresh one when this is None, and
+            # `read_peer` windows the on-disk log by it — so a restored
+            # worker whose log id was dropped shows its producer nothing
+            # from before the restart.
+            log_id=log_id,
             digest=self._app.queue_digest,
             monitor_manager=self._app.monitor_manager,
             state_dir_path=self._app._state_dir,
