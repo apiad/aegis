@@ -1,0 +1,2040 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A multi-agent meta-harness for coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://apiad.github.io/aegis/afk/">
+      
+      
+        <link rel="prev" href="../workflows/">
+      
+      
+        <link rel="next" href="../groups/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>AFK coordinator - Aegis</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/aegis.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#afk-coordinator" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Aegis" class="md-header__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Aegis
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              AFK coordinator
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../install/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../drivers/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Aegis" class="md-nav__button md-logo" aria-label="Aegis" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Aegis
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/apiad/aegis" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    apiad/aegis
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slash commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AFK coordinator
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AFK coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-one-tick-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What one tick does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The board
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The board">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-each-status-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each status means
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-a-card" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting a card
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-worker-is-told" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a worker is told
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-quota-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The quota gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-and-stalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress and stalls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-run-is-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a run is lost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-talks-to-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it talks to GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-implemented-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not implemented yet
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-one-tick-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What one tick does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The board
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The board">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-each-status-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each status means
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-a-card" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting a card
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-worker-is-told" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a worker is told
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-quota-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The quota gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-and-stalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress and stalls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-run-is-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a run is lost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-talks-to-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it talks to GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-implemented-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not implemented yet
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="afk-coordinator">AFK coordinator<a class="headerlink" href="#afk-coordinator" title="Permanent link">&para;</a></h1>
+<p>A board of prompt cards, emptied while you sleep.</p>
+<p><code>afk</code> is a built-in workflow that reads a GitHub Project of issues — each
+issue body being a self-contained prompt — hands each one to a queue worker,
+re-runs the repo's own gate itself, and moves the card. A companion workflow,
+<code>afk_progress</code>, mirrors each worker's task list onto its card so you can see
+what is happening without attaching to a session.</p>
+<p>Both run inside <code>aegis serve</code>, fired by the scheduler. The board is the only
+state either of them keeps: nothing is remembered between runs, so a crash
+costs one tick.</p>
+<h2 id="what-one-tick-does">What one tick does<a class="headerlink" href="#what-one-tick-does" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Check that <code>gh</code> can write the board. If it cannot, the tick touches
+   nothing and says so. Starting workers you then cannot record would run the
+   expensive half and lose the half you wanted.</li>
+<li>Read every card on the project, paginated, with its field values.</li>
+<li>Reap: for each card in <code>Running</code>, look up the task the marker names and
+   see whether it finished.</li>
+<li>Ask the quota gate whether there is subscription room to start anything.</li>
+<li>Start: rank the eligible cards, run preflight on each repo, enqueue a
+   worker, and move the card to <code>Running</code>.</li>
+</ol>
+<p>Reaping happens before the quota gate, so a closed window still lets finished
+work land on the board. The gate only stops new starts.</p>
+<p>The workflow returns a line like <code>reaped 2, started 1 (weekly 41%, five-hour
+12%)</code>.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>gh</code> authenticated with the <code>project</code> scope. The tick runs <code>gh auth status</code>
+  and aborts unless the output mentions <code>project</code>.</li>
+<li>A GitHub Project whose items are real issues, not draft issues. Draft
+  issues are skipped: they have no comment thread, and the pinned comment is
+  where the report goes.</li>
+<li>Every repo you want worked on, checked out under one root directory.</li>
+</ul>
+<h2 id="the-board">The board<a class="headerlink" href="#the-board" title="Permanent link">&para;</a></h2>
+<p>The coordinator writes two fields and reads the rest.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Who writes it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Status</code></td>
+<td>single-select</td>
+<td>you set <code>Todo</code>; the coordinator moves it after that</td>
+</tr>
+<tr>
+<td><code>Target repo</code></td>
+<td>single-select</td>
+<td>you — its options are the whitelist</td>
+</tr>
+<tr>
+<td><code>Priority</code></td>
+<td>single-select</td>
+<td>you</td>
+</tr>
+<tr>
+<td><code>Deadline</code></td>
+<td>date</td>
+<td>you, optionally</td>
+</tr>
+<tr>
+<td><code>Progress</code></td>
+<td>text</td>
+<td><code>afk_progress</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Why not just call it <code>Repo</code>?</p>
+<p>GitHub Projects rejects both <code>Repo</code> and <code>Repository</code> as reserved
+field names, so a board using the obvious name cannot be created
+at all. If you prefer another name, set <code>field_names.repo</code>.</p>
+</div>
+<p><code>Status</code> must carry every option the coordinator writes, or the write fails
+and the card stays where it was: <code>Todo</code>, <code>Running</code>, <code>Needs review</code>, <code>Blocked</code>
+and <code>Failed</code>. Add <code>Done</code> as well — the coordinator never sets it, but you
+will want somewhere to put a card you have reviewed.</p>
+<p><code>Target repo</code> is a single-select rather than free text on purpose. A card can only
+name a repo you put on the list, and the path it resolves to is checked
+against the root a second time before any worker is dispatched, so a card
+cannot point a worker at a tree you never opted in to.</p>
+<p><code>Priority</code> is ranked by the <code>priority_order</code> list. A card whose priority is
+empty, or is a name not on that list, sorts last. Ties break by nearest
+<code>Deadline</code>, then by issue number, so the ordering is the same every tick.</p>
+<p>If your board is not in English, rename any of this with <code>status_names</code> and
+<code>field_names</code> (see below) rather than renaming the options.</p>
+<h3 id="what-each-status-means">What each status means<a class="headerlink" href="#what-each-status-means" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Set by</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Todo</code></td>
+<td>you, or the coordinator after a lost run</td>
+<td>ready to start</td>
+</tr>
+<tr>
+<td><code>Running</code></td>
+<td>the coordinator</td>
+<td>a worker holds this card</td>
+</tr>
+<tr>
+<td><code>Needs review</code></td>
+<td>the coordinator</td>
+<td>the gate was green; a person should look</td>
+</tr>
+<tr>
+<td><code>Blocked</code></td>
+<td>the coordinator</td>
+<td>the worker said it was blocked, or preflight refused, or the run was lost too many times</td>
+</tr>
+<tr>
+<td><code>Failed</code></td>
+<td>the coordinator</td>
+<td>the gate was red, or the worker's report could not be read</td>
+</tr>
+<tr>
+<td><code>Done</code></td>
+<td>you</td>
+<td>nothing in the code writes this</td>
+</tr>
+</tbody>
+</table>
+<p>There is no path to <code>Done</code>. The furthest a worker may claim is
+<code>needs-review</code>, and the coordinator will not promote it past that.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>Name the built-in in <code>workflows:</code> to register it. That one entry registers
+both <code>afk</code> and <code>afk_progress</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">workflows</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">afk</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">queues</span><span class="p">:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">afk</span><span class="p">:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">opus</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">max_parallel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">budgets</span><span class="p">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">usd</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20.00</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">        </span><span class="nt">window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">24h</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="nt">schedules</span><span class="p">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">afk</span><span class="p">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">workflow</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">afk</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">cron</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/10</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="nt">timezone</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">America/Havana</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="nt">on_overlap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">skip</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">args</span><span class="p">:</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="nt">owner</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-org</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">      </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">      </span><span class="nt">repo_root</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/me/repos</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">  </span><span class="nt">afk-progress</span><span class="p">:</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">workflow</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">afk_progress</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nt">cron</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*/2</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="nt">on_overlap</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">skip</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="nt">args</span><span class="p">:</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">      </span><span class="nt">owner</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-org</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">      </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+</code></pre></div>
+<p><code>owner</code>, <code>project</code> and <code>repo_root</code> have no defaults and the workflow raises if
+they are missing, so a misconfigured schedule fails at its first fire instead
+of doing nothing every ten minutes forever. <code>afk_progress</code> needs <code>owner</code> and
+<code>project</code> only. Everything else has a default:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>owner_type</code></td>
+<td><code>org</code></td>
+<td><code>org</code> or <code>user</code>; picks which GraphQL root the board hangs off</td>
+</tr>
+<tr>
+<td><code>worker_queue</code></td>
+<td><code>afk</code></td>
+<td>the queue workers are enqueued on</td>
+</tr>
+<tr>
+<td><code>max_in_flight</code></td>
+<td><code>5</code></td>
+<td>cards in <code>Running</code> at once, counted after reaping</td>
+</tr>
+<tr>
+<td><code>weekly_stop_at</code></td>
+<td><code>60</code></td>
+<td>start nothing above this percent of the weekly window</td>
+</tr>
+<tr>
+<td><code>session_stop_at</code></td>
+<td><code>70</code></td>
+<td>start nothing above this percent of the five-hour window</td>
+</tr>
+<tr>
+<td><code>max_attempts</code></td>
+<td><code>2</code></td>
+<td>how often a card may lose its worker before it is parked in <code>Blocked</code></td>
+</tr>
+<tr>
+<td><code>review_changed_files</code></td>
+<td><code>5</code></td>
+<td>a report claiming more changed files than this is flagged</td>
+</tr>
+<tr>
+<td><code>vague_body_chars</code></td>
+<td><code>400</code></td>
+<td>a card body shorter than this, with no checklist and no acceptance marker, is flagged</td>
+</tr>
+<tr>
+<td><code>acceptance_markers</code></td>
+<td><code>["done when", "acceptance"]</code></td>
+<td>phrases that count as a card saying how you would know it worked</td>
+</tr>
+<tr>
+<td><code>gate_commands</code></td>
+<td><code>["make check", "make test"]</code></td>
+<td>tried in order against the repo's Makefile; the first target that exists is the gate</td>
+</tr>
+<tr>
+<td><code>priority_order</code></td>
+<td><code>["Urgent", "Important", "Normal"]</code></td>
+<td>ranking order for the <code>Priority</code> field</td>
+</tr>
+<tr>
+<td><code>stall_after_s</code></td>
+<td><code>1800</code></td>
+<td>a plan untouched for this long is reported as stalled</td>
+</tr>
+</tbody>
+</table>
+<p>Two more keys take mappings and default to empty, for a board in another
+language:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">args</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">status_names</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">todo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Pendiente</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">running</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">En curso</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">field_names</span><span class="p">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Estado</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Repositorio</span>
+</code></pre></div>
+<p><code>status_names</code> accepts <code>todo</code>, <code>waiting</code>, <code>running</code>, <code>needs_review</code>,
+<code>blocked</code>, <code>failed</code> and <code>done</code>. <code>field_names</code> accepts <code>status</code>, <code>repo</code>,
+<code>priority</code>, <code>deadline</code>, <code>progress</code> and <code>waiting_on</code>. Whatever you leave out
+keeps its English name.</p>
+<p>Put the schedules in <code>.aegis/schedules/afk.yaml</code> rather than <code>.aegis.yaml</code> if
+your config is shared between machines. <code>.aegis/</code> is per-host, and two
+coordinators working one board will fight over it.</p>
+<h2 id="starting-a-card">Starting a card<a class="headerlink" href="#starting-a-card" title="Permanent link">&para;</a></h2>
+<p>A card is eligible when the issue is open, its <code>Status</code> is <code>Todo</code> or
+<code>Waiting</code>, its <code>Target repo</code> resolves to a directory under <code>repo_root</code>, and no other
+card in that repo is already running. One worker per repo at a time: two
+agents in one checkout would stage each other's half-written files.</p>
+<p>Before anything is enqueued, preflight runs in the repo and refuses on
+anything it does not like:</p>
+<ul>
+<li><code>git fetch --prune</code> must succeed.</li>
+<li><code>git pull --ff-only</code> must succeed — a repo that needs a merge needs a
+  person.</li>
+<li><code>git status --porcelain</code> must be empty, checked after the pull rather than
+  before, because a pull can leave conflict markers in a tree that read clean
+  ten seconds earlier.</li>
+</ul>
+<p>A refusal moves the card to <code>Blocked</code> and puts the reason on it.</p>
+<p>The gate command is then resolved from the repo's own Makefile — the first of
+<code>gate_commands</code> whose target the Makefile actually declares, ignoring
+comments and <code>.PHONY</code> lines. A repo with neither target gets <code>none</code>, and the
+card is still worked; the result section then says plainly that nothing was
+verified. The gate comes from the repo rather than from config because the
+repo is the thing that knows, and a gate named in config drifts away from the
+gate that exists.</p>
+<h2 id="what-a-worker-is-told">What a worker is told<a class="headerlink" href="#what-a-worker-is-told" title="Permanent link">&para;</a></h2>
+<p>The payload is three parts in a fixed order: a preamble the code owns, the
+card body, and a reporting contract the code owns. The contract goes last so
+that nothing the card says can come after it.</p>
+<p>The preamble tells the worker to read the repo's <code>AGENTS.md</code> and its
+<code>know-how/</code> docs and follow them. What a task should produce — a branch and a
+pull request, a commit, a document — is the repo's call, not the
+coordinator's, and is not stated in the payload. The coordinator requires
+only two things: keep a harness task list from the first turn, and end with
+exactly one fenced <code>aegis-report</code> block.</p>
+<p>Fenced blocks inside the card body are neutralised before the body is
+pasted in, using a zero-width space inside the backticks. A card that
+documents this feature quotes the report format, and passed through verbatim
+it would hand the worker two templates and the parser two blocks.</p>
+<p>The report is YAML:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>status: needs-review | blocked | failed
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>summary: one line, imperative, what changed
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>gate: &lt;the command you ran&gt; -&gt; &lt;its exit code&gt;
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>artifacts:
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  - a pull request URL, a commit sha, or a path
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>changed: &lt;number of files&gt;
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>judgement:
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  - each call you made where the card did not say what to do
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>notes: |
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  anything else worth knowing
+</code></pre></div>
+<p><code>status</code>, <code>summary</code> and <code>gate</code> are required, and <code>status</code> must be one of the
+three named. Anything else — no block, two blocks, invalid YAML, a status the
+parser does not know — moves the card to <code>Failed</code> with the worker's raw final
+message quoted underneath. A run nobody can read is a run that did not
+demonstrably happen.</p>
+<h2 id="what-gets-verified">What gets verified<a class="headerlink" href="#what-gets-verified" title="Permanent link">&para;</a></h2>
+<p>The coordinator re-runs the gate itself, in the repo, and puts both numbers
+on the card: the exit code it measured and the exit code the worker claimed.
+When they disagree the card says so, and the coordinator's run is the one
+that counts.</p>
+<p>A red gate is <code>Failed</code> whatever the worker reported, and the first 2000
+characters of the gate output go on the card. A green gate is <code>Needs review</code>,
+never <code>Done</code>.</p>
+<p>Three things flag a green card as wanting a closer look. They are named in
+the card's coordinator note; they do not change its status, because
+everything green lands in <code>Needs review</code> anyway:</p>
+<ul>
+<li><code>judgement</code> — the worker recorded a call the card did not make for it.</li>
+<li><code>changed</code> — the report claims more than <code>review_changed_files</code> files
+  changed.</li>
+<li><code>vague</code> — the card body has no <code>- [ ]</code> checklist, contains none of
+  <code>acceptance_markers</code>, and is shorter than <code>vague_body_chars</code>. "The prose
+  was vague" is the real reason you want a reviewer and is not computable, so
+  it is stood in for by two things that are: a card that neither enumerates
+  what to do nor says how you would know it worked.</li>
+</ul>
+<h2 id="the-quota-gate">The quota gate<a class="headerlink" href="#the-quota-gate" title="Permanent link">&para;</a></h2>
+<p>Before starting anything, the coordinator reads the live Claude subscription
+windows and refuses to start new work in three cases: the weekly window is at
+or above <code>weekly_stop_at</code>, the five-hour window is at or above
+<code>session_stop_at</code>, or there is no usable reading at all.</p>
+<p>The third case is the one that matters. A reading that could not be taken —
+the endpoint rate-limits, and it does — is never read as permission. The
+reason lands in the tick's return line and in the log, so a night where
+nothing started says why.</p>
+<p>Work already in flight always finishes. The gate stops starts, not workers.</p>
+<h2 id="progress-and-stalls">Progress and stalls<a class="headerlink" href="#progress-and-stalls" title="Permanent link">&para;</a></h2>
+<p><code>afk_progress</code> costs no agent calls: it reads the queue and the session
+roster and writes the board. That is why it can run every two minutes while
+the reconciler runs every ten. It never writes <code>Status</code>, never starts
+anything and never reaps anything, so the two schedules are safe to run
+alongside each other — they write disjoint fields.</p>
+<p>For each card in <code>Running</code> it finds the worker's handle through the task the
+marker names, takes that session's plan roll-up, and writes one line into
+<code>Progress</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>2/5 · wire the parser into the CLI · 3m40s
+</code></pre></div>
+<p>A worker that reported no plan gets <code>no plan reported</code>, which is a reading
+rather than a blank: a worker ignoring the task-list instruction is something
+you want to see.</p>
+<p>When the roll-up's own timestamp is older than <code>stall_after_s</code>, the line
+becomes <code>stalled 31m on 2/5 · …</code>. The age is taken from the snapshot's
+<code>updated_at</code> rather than computed here, because a snapshot assembled at read
+time is never stale by construction and the check would be a branch that can
+never be taken. A timestamp that cannot be parsed reads as fresh: calling a
+plan stalled because its clock was unreadable would put a false alarm on the
+board.</p>
+<p>Nothing notifies you about a stall. It appears on the card and waits to be
+noticed.</p>
+<p>If the computed line matches what the field already says, the tick skips the
+card entirely and writes nothing. The full checklist goes into the pinned
+comment's <code>Plan</code> section, replaced in place so the <code>Coordinator</code> and <code>Result</code>
+sections survive — the progress schedule has no way to reconstruct those.</p>
+<h2 id="when-a-run-is-lost">When a run is lost<a class="headerlink" href="#when-a-run-is-lost" title="Permanent link">&para;</a></h2>
+<p>If the marker names a task the queue no longer knows about — usually the
+daemon restarted — the card goes back to <code>Todo</code> with its attempt counter
+raised, and the next tick starts it again. Once the counter reaches
+<code>max_attempts</code> the card goes to <code>Blocked</code> instead. A card that keeps losing
+its worker is not something an unattended loop should keep retrying.</p>
+<h2 id="how-it-talks-to-github">How it talks to GitHub<a class="headerlink" href="#how-it-talks-to-github" title="Permanent link">&para;</a></h2>
+<p>Two choices here are worth the sentence they cost.</p>
+<p>Reads go through the GraphQL API rather than <code>gh project item-list --format
+json</code>. That command lowercases custom field names into its JSON keys, turning
+<code>Categoria</code> into <code>categoria</code> and mangling any field whose name contains a
+space. Field names are part of this package's contract with your board, so
+they are read verbatim.</p>
+<p>The pinned comment is found by a marker — an HTML comment carrying the task
+id, the tick timestamp, the attempt number and the gate command — rather than
+with <code>gh issue comment --edit-last</code>. That flag targets the authenticated
+user's most recent comment, and the coordinator authenticates as you. The
+first time you reply to a card, <code>--edit-last</code> would overwrite your own reply.
+Marker values are shell-quoted, so <code>gate=make check</code> survives the round trip;
+without that it would parse back as <code>gate=make</code>, and the coordinator would
+re-run a different command from the one it gave the worker.</p>
+<p>Markers inside fenced blocks are ignored when reading, so a card that
+documents this feature cannot point the reaper at a task id that never
+existed.</p>
+<p>Comment bodies are cut at GitHub's 65536-character limit, with a line saying
+they were cut. A silently rejected comment would leave the card updating with
+nothing to read.</p>
+<h2 id="not-implemented-yet">Not implemented yet<a class="headerlink" href="#not-implemented-yet" title="Permanent link">&para;</a></h2>
+<p>The design goes further than the code does. These are the gaps, so you do not
+configure around something that is not there:</p>
+<ul>
+<li><strong>Notification.</strong> Nothing tells you when a card lands in <code>Needs review</code>,
+  <code>Failed</code> or <code>Blocked</code>, and nothing tells you when a worker stalls. There is
+  deliberately no <code>notify_cmd</code> key: a config key that is read, documented and
+  does nothing is worse than an absent one, because the first person to set
+  it concludes the loop is broken.</li>
+<li><strong><code>Waiting</code>.</strong> The status is treated as startable alongside <code>Todo</code>, but
+  nothing in the code ever sets it. If you set it by hand expecting a card to
+  be held back, the next tick will start it.</li>
+<li><strong><code>Waiting on</code>.</strong> The field name is reserved in the code and is neither
+  read nor written. Your board does not need it.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tabs", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
