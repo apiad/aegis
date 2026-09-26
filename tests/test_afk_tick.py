@@ -74,21 +74,21 @@ class FakeEngine:
 
 
 def _cfg(tmp_path, **over):
+    """The config a scheduled tick actually receives.
+
+    Built from DEFAULTS rather than repeated here, so adding a knob the tick
+    reads cannot break every test in this file with a KeyError — which is what
+    a hand-copied dict did the first time a knob was added.
+    """
+    from aegis.workflows.builtins.afk import DEFAULTS
+
     cfg = {
+        **DEFAULTS,
         "owner": "o",
         "owner_type": "org",
         "project": 3,
         "repo_root": str(tmp_path),
-        "worker_queue": "afk",
         "max_in_flight": 5,
-        "weekly_stop_at": 60,
-        "session_stop_at": 70,
-        "max_attempts": 2,
-        "review_changed_files": 5,
-        "vague_body_chars": 400,
-        "acceptance_markers": ("done when",),
-        "gate_commands": ("make check", "make test"),
-        "priority_order": ("Urgent", "Important", "Normal"),
     }
     cfg.update(over)
     return cfg

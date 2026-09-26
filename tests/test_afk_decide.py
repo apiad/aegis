@@ -40,7 +40,9 @@ STATUSES = {
 }
 
 
-def _state(*, weekly: float, session: float, failure: str = "") -> QuotaState:
+def _state(
+    *, weekly: float, session: float, failure: str = "", age_s: float = 0.0
+) -> QuotaState:
     return QuotaState(
         snapshot=QuotaSnapshot(
             windows=(
@@ -49,6 +51,7 @@ def _state(*, weekly: float, session: float, failure: str = "") -> QuotaState:
             ),
             fetched_at=0.0,
         ),
+        age_s=age_s,
         failure=failure,
     )
 
@@ -99,15 +102,44 @@ def test_quota_gate_refuses_when_the_read_failed() -> None:
     assert g.may_start is False and "unread" in g.reason
 
 
-def test_quota_gate_refuses_a_stale_reading() -> None:
-    """A snapshot with a live failure is the last good reading, not a current
-    one. Spending against it is spending blind."""
+def test_quota_gate_uses_a_recent_reading_whose_refetch_is_failing() -> None:
+    """The Anthropic usage endpoint returns 429 readily — it did so three
+    times while this feature was being built. Refusing on any failure meant
+    one sulk from the endpoint stalled the loop for as long as it lasted,
+    while a two-minute-old number was sitting right there."""
     g = quota_gate(
-        _state(weekly=1, session=1, failure="rate_limited"),
+        _state(weekly=1, session=1, failure="rate_limited", age_s=120),
         weekly_stop_at=60,
         session_stop_at=70,
+        max_age_s=900,
+    )
+    assert g.may_start is True
+
+
+def test_quota_gate_refuses_a_reading_too_old_to_mean_anything() -> None:
+    """Past the window an old number is a guess about the present, and a
+    guess is not permission to spend."""
+    g = quota_gate(
+        _state(weekly=1, session=1, failure="rate_limited", age_s=1200),
+        weekly_stop_at=60,
+        session_stop_at=70,
+        max_age_s=900,
     )
     assert g.may_start is False
+    assert "20m old" in g.reason
+
+
+def test_a_stale_reading_over_threshold_still_refuses() -> None:
+    """Tolerating an old reading must not tolerate an old reading that says
+    stop. The thresholds are checked either way."""
+    g = quota_gate(
+        _state(weekly=95, session=1, failure="rate_limited", age_s=60),
+        weekly_stop_at=60,
+        session_stop_at=70,
+        max_age_s=900,
+    )
+    assert g.may_start is False
+    assert "weekly" in g.reason
 
 
 def test_quota_gate_refuses_when_a_window_is_missing() -> None:

@@ -20,6 +20,9 @@ DEFAULTS = {
     "max_in_flight": 5,
     "weekly_stop_at": 60,
     "session_stop_at": 70,
+    # How old a quota reading may be and still be spent against, when
+    # refetching is failing. The usage endpoint 429s readily.
+    "quota_max_age_s": 900,
     "max_attempts": 2,
     "review_changed_files": 5,
     "vague_body_chars": 400,

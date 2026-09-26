@@ -24,17 +24,29 @@ class Gate:
     reason: str
 
 
-def quota_gate(state, *, weekly_stop_at: float, session_stop_at: float) -> Gate:
+def quota_gate(
+    state,
+    *,
+    weekly_stop_at: float,
+    session_stop_at: float,
+    max_age_s: float = 900.0,
+) -> Gate:
     """Whether there is subscription room to start new work.
 
-    Three ways to say no, and the third is the one that matters: a reading we
-    could not take, or one taken while fetches are failing, is never read as
-    permission.
+    No reading at all is never permission. A reading taken while the latest
+    fetch is failing is usable while it is recent: the Anthropic usage
+    endpoint returns 429 readily, and refusing outright meant one sulk from
+    the endpoint stalled the loop indefinitely. `max_age_s` is where "recent"
+    stops -- past it, an old number is a guess about the present.
     """
     if state is None or state.snapshot is None:
         return Gate(False, "quota unread; not starting new work")
-    if state.failure:
-        return Gate(False, f"quota reading is stale ({state.failure})")
+    if state.failure and state.age_s > max_age_s:
+        return Gate(
+            False,
+            f"quota reading is {state.age_s / 60:.0f}m old and fetches are "
+            f"failing ({state.failure})",
+        )
     weekly = state.snapshot.window("weekly_all")
     session = state.snapshot.window("session")
     if weekly is None or session is None:

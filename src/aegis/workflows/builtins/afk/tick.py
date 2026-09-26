@@ -54,6 +54,14 @@ FIELDS = {
 }
 
 
+# Built once and kept, because QuotaService caches its last good snapshot and
+# reports how old it is. Rebuilding per tick threw that away, so a transient
+# 429 -- which the Anthropic usage endpoint returns readily -- came back as "no
+# reading at all" instead of "last good reading, three minutes old", and the
+# gate stalled the loop for as long as the endpoint sulked.
+_QUOTA_SERVICES: dict | None = None
+
+
 async def read_quota(_engine):
     """The live Claude window reading, or None.
 
@@ -61,10 +69,13 @@ async def read_quota(_engine):
     place. Never raises: an exception here would read as a crashed tick when
     the honest answer is "I could not ask".
     """
+    global _QUOTA_SERVICES
     try:
         from aegis.usage.quota_providers import build_services, read_all
 
-        readings = await read_all(build_services())
+        if _QUOTA_SERVICES is None:
+            _QUOTA_SERVICES = build_services()
+        readings = await read_all(_QUOTA_SERVICES)
         for provider, state in readings:
             if provider.name == "claude":
                 return state
@@ -176,6 +187,7 @@ async def run_tick(engine, cfg: dict, *, now: str) -> str:
         await read_quota(engine),
         weekly_stop_at=float(cfg["weekly_stop_at"]),
         session_stop_at=float(cfg["session_stop_at"]),
+        max_age_s=float(cfg["quota_max_age_s"]),
     )
     if not gate.may_start:
         engine.log(f"afk: starting nothing — {gate.reason}")
