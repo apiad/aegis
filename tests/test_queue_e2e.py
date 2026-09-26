@@ -187,12 +187,21 @@ class StubSM:
     def list_sessions(self):
         """The roster plane, which `close_guard.gather_facts` reads first.
 
-        Without it every fact came back empty and `_still_working` returned
-        "not waiting" for every worker — so a test claiming to prove the
-        deferral takes precedence over the stall arm would have passed with
-        the precedence check deleted. `state` is deliberately not the
-        terminal state: the finalizer passes that in itself, because by the
-        time it looks the roster may already disagree.
+        It does not decide anything here. The two fields it fills that
+        nothing else does — `exists` and `spawned_by` — are read only by
+        `refuse_reasons`; `still_working_reasons` ignores both. And `state`
+        is deliberately not the terminal state, because the finalizer passes
+        that in itself: by the time it looks the roster may already disagree.
+        The plane that makes the deferral reachable at all is
+        `monitor_manager`, through `facts.monitors`.
+
+        This is here because `gather_facts` once read `list_sessions` bare:
+        a double without it raised AttributeError, `_still_working`
+        swallowed that, and every worker read as "not waiting" — so a test
+        claiming to prove the deferral takes precedence over the stall arm
+        passed with the precedence check deleted. That read is defended now,
+        so the double keeps this method to stay roster-accurate, not to
+        unblock the assertion.
         """
         return [
             SimpleNamespace(

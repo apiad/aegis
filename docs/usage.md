@@ -81,7 +81,9 @@ with `/`.
 | `/sessions` | List live agent tabs (`handle · agent · state`) |
 | `/agents` | List configured agent profiles (`name · harness · model · permission`) |
 | `/spawn <agent> [prompt]` | Start a new top-level agent, from where you're standing |
-| `/queue new <name> [agent]` | Create a queue |
+| `/queues new <name> [agent] [--ephemeral]` | Create a queue (bare `/queues` lists them) |
+| `/queues tasks [<queue>]` | List a queue's tasks with their states, parked ones included |
+| `/resume <task_id>` | Put a parked queue worker back to work |
 | `/enqueue <queue> <payload>` | Drop a task on a queue |
 | `/fork [prompt]` | Branch this conversation into a new tab |
 | `/btw <question>` | Answer a side question from the recent window |
@@ -89,6 +91,12 @@ with `/`.
 
 Precedence: `!` shell escape > `/` slash command > a plain message to the
 agent. An unknown command shows an error block pointing at `/help`.
+
+The same task log reads from a shell, with no daemon running, through
+`aegis queue ls` and `aegis queue show <task_id>` — see
+[Queues → `aegis queue`](queues.md#aegis-queue-reading-the-log-from-a-shell).
+That side is read-only: resuming a parked worker needs the live brain, so it
+happens through `/resume` or the `aegis_task_resume` MCP tool.
 
 ### Asking without spending the conversation
 

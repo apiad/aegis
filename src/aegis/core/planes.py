@@ -66,6 +66,13 @@ NOT_VIEW_FACING: dict[str, str] = {
 #: from the day persistence landed, so the queue never wrote a record and
 #: its replay never ran. Nothing said so, because every test that
 #: covered the replay constructed the manager itself.
+#:
+#: `ParkReaper` has the same two-brain-path exposure and is not caught by
+#: anything here: `cli.py` arms it, `tui/app.py`'s `_build_planes` does not,
+#: and it is unreachable today only because both non-bridged `AegisApp`
+#: constructions pass `queues={}`. Nothing structural catches "this plane
+#: needs a driver on a clock in every brain path" — this list catches the
+#: `state_dir` half of the same class of bug and no more.
 STATEFUL_PLANES: tuple[tuple[str, str], ...] = (
     ("QueueManager", "cli.py"),
     ("InboxRouter", "cli.py"),

@@ -1114,9 +1114,11 @@ class QueueManager:
         non-disposable session. Surviving a daemon restart is not one of
         them — workspace persistence has no ephemeral filter, so an unparked
         queue worker was already snapshotted and already restored by
-        `plan_resume`. The origin keeps `by` and `detail`, so
-        the parked session still names the queue and the task it was working
-        — which is what `aegis_task_resume` looks it up by.
+        `plan_resume`. The origin keeps `by` and `detail`, so the parked
+        session's card still names the queue and the task it was working.
+        That is for a reader, and only for a reader: nothing resolves a task
+        through `Origin.detail`, and `aegis_task_resume` does not — it looks
+        the task up in `self._all[task_id]` and reads `worker_handle` off it.
 
         `session` is None when the restart replay parks a task whose worker
         died with the process: there is no live session to re-origin, and
@@ -1134,6 +1136,17 @@ class QueueManager:
         # log kept of it. A producer handed only the outcome cannot tell
         # that twenty minutes of work happened at all.
         _, said = self._workers.pop(handle, (None, ""))
+        # The `task.result` arm has one blind spot, and it is deliberate.
+        # `resume_task` nulls `result` on the way out, so a resumed run that
+        # dies before emitting any text lands here with both arms empty: the
+        # second `recoverable` callback says what parked it but not "its last
+        # message was …". The trade is bounded on both sides. Keeping
+        # `result` populated while the worker runs again would let a producer
+        # polling `status` mid-run read the words that got it parked as the
+        # answer, which is a silent wrong conclusion rather than a missing
+        # line; and the conversation itself is still there to read, which is
+        # the whole point of parking — `aegis_read_peer(<handle>)`, or the
+        # worker's tab.
         said = (said or task.result or "").strip()
         self._chunk_run.pop(handle, None)
         parked = replace(

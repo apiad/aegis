@@ -204,7 +204,11 @@ async def test_a_double_finalize_spends_one_attempt(tmp_path):
     return. It does not: the stall arm deliberately puts the worker BACK, so
     the duplicate read as a second bad turn end, spent a second attempt, and
     on the default budget of 2 parked the worker after exactly one rebuild —
-    a single blip using the whole budget. Hence `_stalling`.
+    a single blip using the whole budget. What de-duplicates it is the
+    session's own state: `_finalize` returns early on a callback whose
+    session has already moved back to `working`, which the rebuild put it
+    in. Hence the three assertions below — one `stalled` record, one
+    rebuild, one attempt.
     """
     qm, sm = make_queue_rig(tmp_path)
     tid, h = _start(qm, sm)
