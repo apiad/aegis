@@ -22,6 +22,14 @@ prose would have reproduced:
   card.
 - **Archived items come back from `items()`.** A card archived to get it off
   the board was read back as work to do.
+- **`Repo` is a reserved field name** in Projects v2, and so is
+  `Repository`. The default is `Target repo`.
+- **Blocking is a native GitHub dependency**, not the text field this spec
+  originally described. Approved 2026-09-25.
+- **A daemon firing schedules is not idle.** `aegis serve` reaped itself out
+  from under the loop after 30 minutes; fixed in `daemon/lifecycle.py`.
+- **The quota endpoint is effectively single-consumer** and 429s readily, so
+  the gate spends against a cached reading while it is recent.
 **Scope:** one new built-in workflow package
 (`src/aegis/workflows/builtins/afk/`) registering two workflows, two new methods
 on `WorkflowEngine` (`task_status`, `plan_state`), one new field on the dict
@@ -158,7 +166,7 @@ One more field, written only by the coordinator:
 | Field | Type | Means |
 |---|---|---|
 | `Progress` | text | the running plan roll-up, e.g. `4/9 · running the gate · 12m` |
-| `Waiting on` | text | why a deferred card is not running: `#12 (schema)`, `capacity`, `quota` |
+| `Waiting on` | text | why a deferred card is not running, when the reason is **not** another card: `capacity`, `quota`, `dirty tree` |
 
 `Target repo` is a single-select rather than free text on purpose: **its option list is
 the whitelist.** A card naming a repo that is not an option cannot be created,
@@ -180,10 +188,39 @@ rather than guessing from the prose.
 
 `Waiting` and `Blocked` are deliberately different. `Blocked` is your inbox: the
 loop will not touch that card again until a person does something. `Waiting` is
-the loop's own business: it chose to defer, it said why in `Waiting on`, and it
+the loop's own business: it chose to defer, it said why, and it
 will reconsider next tick. Collapsing the two would mean either your inbox fills
 with cards that just needed capacity, or cards that genuinely need you sit in a
 queue nobody reads.
+
+### Blocking is a GitHub dependency, not a text field
+
+When the coordinator defers card B because card A must land first, it writes
+that as a **native issue dependency** rather than prose in a field:
+
+```
+POST repos/{owner}/{repo}/issues/{B}/dependencies/blocked_by   # body: {issue_id: A}
+GraphQL read: issue.blockedBy, issue.blocking, issue.issueDependenciesSummary
+```
+
+Verified against the live API 2026-09-25: the REST endpoint answers 200 and the
+GraphQL connections resolve. Writes are REST only; GraphQL exposes reads.
+
+Three reasons this beats the text field it replaces. GitHub renders the graph on
+the issue itself and it is navigable from both ends, so you can walk a chain
+without the coordinator maintaining one. The coordinator can **read** the graph
+before deciding, including edges a human added, so a dependency you know about
+and it does not is still respected. And a dependency survives the card's text
+being rewritten by either schedule, which the marker incident showed is not a
+theoretical concern.
+
+`Waiting on` stays, narrowed: it carries the reasons that are not another card —
+`capacity`, `quota`, `dirty tree`. A deferral caused by a sibling card is an
+edge, not a sentence.
+
+The coordinator only ever adds edges it is the author of, and removes them when
+the blocking card reaches a terminal state. It never removes an edge a human
+added — it has no way to tell whether that dependency is still true.
 
 The coordinator's own bookkeeping goes in an HTML comment on the issue, which is
 mechanical to parse and invisible in the UI:
@@ -241,8 +278,8 @@ The workflow assembles a briefing and hands it to the coordinator agent in one
 turn. The briefing carries:
 
 - every card in `Todo` and `Waiting`: number, title, body, `Repo`, `Priority`,
-  `Deadline`, `Status`, `Waiting on`, and the coordinator's own notes from
-  previous ticks;
+  `Deadline`, `Status`, `Waiting on`, the cards it is blocked by and
+  blocking, and the coordinator's own notes from previous ticks;
 - everything in flight: which card, how long, and its plan roll-up, so the agent
   can see that card 12 has been on "run the gate" for 25 minutes;
 - what finished since the last tick and how it ended;
@@ -281,8 +318,9 @@ notes: |
 ````
 
 `start` is a proposal. `wait` moves the card to `Waiting` and writes its reason
-into `Waiting on`; deferring is always permitted, and a `Waiting` card is
-reconsidered on every later tick. `hold` sends the card to `Blocked`, which is
+to `Waiting`. When the reason is another card the coordinator writes a real
+GitHub dependency (below); otherwise the reason goes in `Waiting on`. Deferring
+is always permitted, and a `Waiting` card is reconsidered on every later tick. `hold` sends the card to `Blocked`, which is
 your inbox. A card the agent mentions in none of the three keeps its current
 status untouched.
 
@@ -449,7 +487,8 @@ stale ones. It has three sections, each owned by a different part of the system:
 ### Coordinator
 Deferred this tick. The schema this card imports is being rewritten by #12,
 which is 6/9 through and has been running 14 minutes. Next tick unless #12
-lands in `Failed`, in which case this goes to `Waiting on: #12 (failed)`.
+lands in `Failed`, in which case the dependency stays and this card waits for
+a person.
 
 _Refused by a rail this tick: proposed starting alongside #12 in the same
 checkout; `aegis` is `isolation: checkout`, so it was demoted to `wait`._
@@ -716,7 +755,8 @@ Against a throwaway project in a scratch org, one end-to-end per path:
    this slice every adversarial test above passes and no agent has been asked
    anything.
 5. Swap the stand-in for the coordinator agent: the briefing, the read-only
-   profile, the `Coordinator` narration, `Waiting` and `Waiting on`. The rails
+   profile, the `Coordinator` narration, `Waiting`, `Waiting on`, and reading
+   and writing native issue dependencies. The rails
    are already proven, so this slice can be judged on whether the decisions are
    *good* rather than whether they are *safe*.
 6. Per-repo `worktree` isolation.
