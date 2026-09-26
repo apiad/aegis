@@ -264,12 +264,27 @@ def load_config(root: Path) -> AegisConfig:
                 f"{base}: queues[{qname!r}].max_parallel must be an int "
                 f">= 1 (got {qspec.max_parallel!r})."
             )
-        if not isinstance(qspec.max_attempts, int) or qspec.max_attempts < 1:
+        # `bool` is rejected BEFORE the int check, because `bool` IS an
+        # `int` in Python and both of these knobs have a meaningful value
+        # at the integer a bool would become. `max_attempts: true` would
+        # pass as 1 — park on the first stall — and
+        # `recoverable_ttl_s: false` as 0, which means "keep parked
+        # sessions forever". A YAML author who typed `true` for either
+        # meant "on", and silently getting the opposite of the default is
+        # worse than an error. `max_parallel` above has the same hole and
+        # is deliberately left alone: it predates this feature and
+        # harmonising it is a separate change.
+        if isinstance(qspec.max_attempts, bool) or (
+            not isinstance(qspec.max_attempts, int) or qspec.max_attempts < 1
+        ):
             raise ConfigError(
                 f"{base}: queues[{qname!r}].max_attempts must be an int "
                 f">= 1 (got {qspec.max_attempts!r})."
             )
-        if not isinstance(qspec.recoverable_ttl_s, int) or qspec.recoverable_ttl_s < 0:
+        if isinstance(qspec.recoverable_ttl_s, bool) or (
+            not isinstance(qspec.recoverable_ttl_s, int)
+            or qspec.recoverable_ttl_s < 0
+        ):
             raise ConfigError(
                 f"{base}: queues[{qname!r}].recoverable_ttl_s must be an int "
                 f">= 0 (got {qspec.recoverable_ttl_s!r})."

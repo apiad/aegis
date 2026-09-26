@@ -207,3 +207,37 @@ queues:
     with pytest.raises(ConfigError) as ei:
         load_queues(root)
     assert "recoverable_ttl_s" in str(ei.value) and ">= 0" in str(ei.value)
+
+
+@pytest.mark.parametrize(
+    "key, value, bound",
+    [
+        ("max_attempts", "true", ">= 1"),
+        ("max_attempts", "false", ">= 1"),
+        ("recoverable_ttl_s", "false", ">= 0"),
+        ("recoverable_ttl_s", "true", ">= 0"),
+    ],
+)
+def test_a_bool_is_rejected_for_the_recovery_knobs(tmp_path, key, value, bound):
+    """`bool` IS an `int` in Python, and both knobs mean something at the
+    integer a bool becomes: `max_attempts: true` would pass as 1 (park on
+    the first stall) and `recoverable_ttl_s: false` as 0 (keep parked
+    sessions forever). Both are the silent inverse of the default, from a
+    plausible YAML typo, so the loader has to refuse rather than coerce."""
+    root = _write(tmp_path, f"""
+default_agent: x
+agents:
+  x:
+    provider: claude-code
+    model: opus
+    effort: high
+    permission: auto
+queues:
+  impl:
+    agent: x
+    max_parallel: 1
+    {key}: {value}
+""")
+    with pytest.raises(ConfigError) as ei:
+        load_queues(root)
+    assert key in str(ei.value) and bound in str(ei.value)

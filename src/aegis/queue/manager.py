@@ -1176,8 +1176,13 @@ class QueueManager:
             # ephemeral means the GhostBook fades the session the operator was
             # just handed, which is the whole bug being fixed. The guard above
             # is what handles "no live session", not an exception handler.
+            # `task.id[-4:]`, the same short form dispatch and `resume_task`
+            # write. `Origin.detail` is rendered as `#{detail}` on the fleet
+            # card and read by nothing else, so a full 26-char ULID here grew
+            # a parked worker's card by 22 characters against every other
+            # worker's and bought nothing.
             session.origin = Origin(
-                kind="parked", by=task.queue, detail=task.id
+                kind="parked", by=task.queue, detail=task.id[-4:]
             )
         self._log(
             task.queue,
@@ -1316,8 +1321,21 @@ class QueueManager:
                     ),
                 )
             if t.worker_handle:
-                with contextlib.suppress(Exception):
+                try:
                     await self._sm.close(t.worker_handle)
+                except Exception as e:  # noqa: BLE001 — the task is already failed
+                    # Logged, not suppressed. The task went `failed` and is
+                    # in `reaped` above, so the reaper never looks at it
+                    # again: a close that failed here leaves a session
+                    # standing for the life of the process, and `IdleReaper`
+                    # will not reap the daemon while any session stands.
+                    # That is the exact bug this deadline exists to remove,
+                    # made permanent — and silent, if nothing says so.
+                    logging.getLogger(__name__).warning(
+                        "could not close the parked session %r for task %s: "
+                        "%s: %s — the session stands and pins the daemon open",
+                        t.worker_handle, tid, type(e).__name__, e,
+                    )
             reaped.append(tid)
         return reaped
 
@@ -1553,19 +1571,26 @@ class ParkReaper:
         self._interval = interval_s
 
     async def run(self) -> None:
+        # Sweep FIRST, sleep after. A task parked before the last shutdown
+        # comes back through the replay already past its deadline, and a
+        # daemon that boots, replays it and dies inside the interval never
+        # looks — on every boot, which is how a short-lived daemon keeps a
+        # parked session forever.
         while not self._stop.is_set():
-            await asyncio.sleep(self._interval)
             try:
                 reaped = await self._qm.reap_parked(time.time())
             except Exception:  # noqa: BLE001
                 # One malformed task must not stop the reaper for the rest
                 # of the process's life — that is the forgotten-worker bug
-                # back, with a traceback nobody reads.
+                # back, with a traceback nobody reads. The sleep below is
+                # outside this handler on purpose: a sweep that keeps
+                # raising must not become a tight loop.
                 logging.getLogger(__name__).exception("reaping parked sessions")
-                continue
-            if reaped:
-                logging.getLogger(__name__).info(
-                    "discarded %d parked session(s) past their ttl: %s",
-                    len(reaped),
-                    ", ".join(reaped),
-                )
+            else:
+                if reaped:
+                    logging.getLogger(__name__).info(
+                        "discarded %d parked session(s) past their ttl: %s",
+                        len(reaped),
+                        ", ".join(reaped),
+                    )
+            await asyncio.sleep(self._interval)

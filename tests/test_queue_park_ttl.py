@@ -7,7 +7,9 @@ queue work from becoming a row of dead tabs.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
+import logging
 import time
 
 from aegis import cli
@@ -60,6 +62,46 @@ async def test_reaping_twice_reaps_nothing_the_second_time(parked_rig):
     assert await qm.reap_parked(parked_at + 86402) == []
     assert sm.closed.count(handle) == 1
     assert len(sm.inbox_for("producer")) == before
+
+
+async def test_a_close_that_fails_is_logged_not_swallowed(parked_rig):
+    """The reaper never revisits this task — it is `failed` and in `reaped` —
+    so a close that failed leaves a session standing for the life of the
+    process, and `IdleReaper` will not reap a daemon while any session
+    stands. That is the exact bug the deadline exists to remove, made
+    permanent. Suppressed, it is also invisible.
+
+    The handler goes on the manager's own logger rather than through caplog,
+    for the reason `test_session_generation_config` writes down:
+    `aegis_log.open()` sets `propagate = False` on the "aegis" logger and
+    never restores it, so after any earlier test has opened the log nothing
+    from here reaches the root handler caplog listens on.
+    """
+    qm, sm, tid, handle, parked_at = parked_rig
+    records: list[logging.LogRecord] = []
+
+    class _Keep(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    async def boom(_h):
+        raise RuntimeError("the socket went away")
+
+    sm.close = boom
+    log = logging.getLogger("aegis.queue.manager")
+    keep = _Keep(level=logging.WARNING)
+    log.addHandler(keep)
+    try:
+        assert await qm.reap_parked(parked_at + 86401) == [tid]
+    finally:
+        log.removeHandler(keep)
+
+    assert qm.status(tid)["status"] == "failed", "the task still goes terminal"
+    assert any(
+        handle in r.getMessage() and tid in r.getMessage()
+        for r in records
+        if r.levelno >= logging.WARNING
+    ), "nothing said the session is still standing"
 
 
 async def test_the_discard_is_on_disk(parked_rig, tmp_path):
@@ -131,3 +173,33 @@ def test_serve_arms_the_reaper():
     green and the deadline never checked on any real host."""
     src = inspect.getsource(cli._serve)
     assert "ParkReaper(qm, stop=stop)" in src
+
+
+async def test_the_reaper_sweeps_before_its_first_sleep(parked_rig):
+    """A daemon that boots, replays a long-parked task and dies inside the
+    interval must still have looked.
+
+    With the sleep first, the only sweep a five-minute interval ever gets is
+    five minutes in — so on every boot of a daemon that does not live that
+    long, `recoverable_ttl_s` is a deadline nothing checks. `interval_s` here
+    is longer than the test could ever wait, which is the point: the call has
+    to arrive without it elapsing.
+    """
+    qm, sm, tid, handle, parked_at = parked_rig
+    stop = asyncio.Event()
+    swept = asyncio.Event()
+    real = qm.reap_parked
+
+    async def spy(now):
+        swept.set()
+        return await real(now)
+
+    qm.reap_parked = spy
+    task = asyncio.create_task(ParkReaper(qm, stop=stop, interval_s=3600).run())
+    try:
+        await asyncio.wait_for(swept.wait(), 1)
+    finally:
+        stop.set()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

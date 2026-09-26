@@ -47,8 +47,13 @@ async def test_exhausting_attempts_parks_the_worker(queue_rig_max_attempts_1):
 
 
 async def test_parking_keeps_the_provenance(queue_rig_max_attempts_1):
-    """aegis_task_resume looks the session up by this, and the tab label
-    shows it."""
+    """The fleet card still says which queue and which task, in the same
+    short form dispatch writes.
+
+    Nothing resolves a task through `Origin.detail` — `resume_task` reads
+    `_all[task_id]` — so this is a label, and it renders as `#{detail}`
+    beside every other worker's four characters.
+    """
     qm, sm = queue_rig_max_attempts_1
     tid, h = _start(qm, sm)
 
@@ -56,7 +61,7 @@ async def test_parking_keeps_the_provenance(queue_rig_max_attempts_1):
 
     origin = sm.get(h).origin
     assert origin.by == "impl"
-    assert origin.detail == tid
+    assert origin.detail == tid[-4:]
 
 
 async def test_parking_frees_the_slot(queue_rig_max_attempts_1):

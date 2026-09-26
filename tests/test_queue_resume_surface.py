@@ -344,9 +344,10 @@ async def _call(server, name, **kwargs):
 
 
 async def test_aegis_task_resume_looks_the_task_up_by_its_full_id(parked_rig):
-    """`_park` writes the FULL task id into `Origin.detail`, unlike dispatch
-    which writes `task.id[-4:]`, and `_all` is keyed by the full id either
-    way. A tool that truncated would never find the task it was handed."""
+    """`_all` is keyed by the full task id, which is what the tool takes and
+    what `/queues tasks` prints. `Origin.detail` carries a four-character
+    label for the fleet card and is read by no lookup, so a tool that
+    truncated its argument would never find the task it was handed."""
     qm, sm, tid, handle, _ = parked_rig
     out = await _call(_server(qm, sm), "aegis_task_resume", task_id=tid)
     assert out["ok"] is True
