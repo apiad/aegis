@@ -10,6 +10,8 @@ the JSONL log, so it can only READ.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from aegis.commands import CommandContext, dispatch
@@ -43,14 +45,89 @@ async def test_resume_on_an_unknown_task_returns_an_error(parked_rig):
     assert (await qm.resume_task("nope"))["ok"] is False
 
 
-async def test_resume_on_a_closed_parked_session_fails_gracefully(parked_rig):
-    """The operator closed the tab; the task still points at a dead handle.
-    That is an error dict, not a traceback out of an MCP tool."""
+async def test_resume_with_no_recorded_conversation_fails_gracefully(parked_rig):
+    """The one genuine dead end: nothing under the handle AND no recorded
+    conversation id, so there is nothing to spawn `--resume` against. That
+    is an error dict, not a traceback out of an MCP tool.
+
+    A closed tab on its own is NOT this case any more — see
+    `test_resume_respawns_the_recorded_conversation_after_a_restart`."""
     qm, sm, tid, handle, _ = parked_rig
     await sm.close(handle)
+    qm._all[tid] = replace(qm._all[tid], resumable=None)
     res = await qm.resume_task(tid)
     assert res["ok"] is False
     assert "no longer live" in res["error"]
+
+
+async def test_resume_respawns_a_parked_session_whose_id_is_none(tmp_path):
+    """The flagship failure, on default config.
+
+    A worker stalls, `rebuild` succeeds, and the nudge turn dies at
+    `start()` — a 403, a TLS blip, a dropped tunnel. `attempts` hits
+    `max_attempts` and the task parks, but `AgentSession.adopt` installed a
+    fresh driver and both drivers start `session_id` at `None`, so the
+    parked session cannot say what conversation it is. `rebuild` reads the
+    id LIVE off the session, so a resume called `reconnect`, `reconnect`
+    raised "has no session id to resume from", `recovery.rebuild` swallowed
+    it, and the operator got "could not rebuild the harness" against a
+    conversation that was sitting on the record the whole time.
+    """
+    qm, sm = make_queue_rig(tmp_path, max_attempts=2)
+    tid, _ = qm.enqueue("impl", "go", enqueued_by="agent:producer",
+                        callback=True)
+    handle = worker_handle(qm, tid)
+    sm.emit_system_init(handle, session_id="sess-1")
+    await sm.fail(handle, text="halfway")      # stalls; adopt() nulls the id
+    await sm.fail(handle, text="halfway")      # budget spent; parks
+    assert qm.status(tid)["status"] == "recoverable"
+    assert sm.get(handle) is not None, "parking keeps the session"
+    assert sm.get(handle).session_id is None, "the rebuilt driver never ran"
+
+    res = await qm.resume_task(tid)
+
+    assert res["ok"] is True, res.get("error")
+    assert qm.status(tid)["status"] == "dispatched"
+    # From the RECORD, not from the session that could not supply it.
+    assert sm.resumed_from == "sess-1"
+    # The empty session had to go first, or `restore` takes its own warm
+    # branch and fails on the same missing id.
+    assert handle in sm.closed
+    assert sm.get(handle) is not None, "and a new one stands under the handle"
+
+
+async def test_resume_respawns_the_recorded_conversation_after_a_restart(
+    parked_rig,
+):
+    """The headless-restart deviation, closed by the same fallback.
+
+    A parked session does not survive a headless restart, and
+    `recoverable_ttl_s` defaults to a day — so a restart inside the window
+    the deadline was built for (idle reap, an upgrade, a reboot) is routine.
+    Refusing there meant the outcome of parking was usually decided by a
+    restart rather than by the deadline. Nothing under the handle is not a
+    dead end while the record holds a conversation id.
+    """
+    qm, sm, tid, handle, _ = parked_rig
+    await sm.close(handle)                      # the restart, in one line
+    assert sm.get(handle) is None
+
+    res = await qm.resume_task(tid)
+
+    assert res["ok"] is True, res.get("error")
+    assert res["worker_handle"] == handle
+    assert qm.status(tid)["status"] == "dispatched"
+    assert sm.resumed_from == "sess-1"
+    # Re-origined back to `queue` so the finalizer owns it again, and
+    # observed, or the resumed worker would run and never be heard. The
+    # origin is read off the spawn call rather than off the session: the
+    # stub builds a bare AgentSession and never applies it, where
+    # `SessionManager._sync_spawn` stamps it.
+    assert sm.spawned_origin.kind == "queue"
+    assert sm.spawned_origin.by == "impl"
+    assert qm._workers[handle][0].id == tid
+    bodies = [m.body for m in sm.inbox_for(handle)]
+    assert any("operator has put you back to work" in b for b in bodies)
 
 
 async def test_resume_on_a_completed_task_is_refused(tmp_path):
@@ -148,12 +225,35 @@ async def test_retry_on_an_unknown_task_returns_an_error(parked_rig):
 
 async def test_resume_never_falls_back_to_re_running(parked_rig):
     """A worker that got halfway may already have committed, pushed,
-    deployed or sent mail. Resume with no session to resume is an error,
-    never a quiet re-dispatch of the payload."""
+    deployed or sent mail, so resume never re-dispatches the payload.
+
+    With nothing under the handle it respawns the RECORDED CONVERSATION —
+    `resume_from` carries the session id, and the payload is not sent as an
+    opening prompt. Same task id either way: a new one in `_all` would be
+    `retry_task`, which a caller asks for by name."""
     qm, sm, tid, handle, _ = parked_rig
     await sm.close(handle)
     before = set(qm._all)
+
+    assert (await qm.resume_task(tid))["ok"] is True
+
+    assert set(qm._all) == before, "a resume never creates a second task"
+    assert sm.resumed_from == "sess-1", "spawned against the conversation"
+    assert qm._all[tid].payload not in [
+        m.body for m in sm.inbox_for(handle)
+    ], "the payload was not re-sent"
+
+
+async def test_resume_with_no_conversation_recorded_never_re_runs(parked_rig):
+    """And when there is no conversation to respawn either, it refuses
+    rather than spawning a fresh agent on the payload."""
+    qm, sm, tid, handle, _ = parked_rig
+    await sm.close(handle)
+    qm._all[tid] = replace(qm._all[tid], resumable=None)
+    before = set(qm._all)
+
     assert (await qm.resume_task(tid))["ok"] is False
+
     assert set(qm._all) == before
     assert sm.spawned == [handle]  # the original dispatch, and nothing since
 
@@ -416,9 +516,20 @@ async def test_slash_resume_puts_the_worker_back(parked_rig):
 async def test_slash_resume_reports_a_refusal_as_an_error(parked_rig):
     qm, sm, tid, handle, _ = parked_rig
     await sm.close(handle)
+    qm._all[tid] = replace(qm._all[tid], resumable=None)
     res = await dispatch(f"/resume {tid}", _ctx(qm))
     assert not res.ok
     assert "no longer live" in res.body
+
+
+async def test_slash_resume_works_across_a_restart(parked_rig):
+    """`/resume` is the TUI half of the same fallback: a parked session the
+    restart did not bring back still resumes, from the record."""
+    qm, sm, tid, handle, _ = parked_rig
+    await sm.close(handle)
+    res = await dispatch(f"/resume {tid}", _ctx(qm))
+    assert res.ok
+    assert qm.status(tid)["status"] == "dispatched"
 
 
 # --------------------------------------------------------------------------

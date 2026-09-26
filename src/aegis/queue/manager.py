@@ -528,23 +528,61 @@ class QueueManager:
         """Put a parked worker back to work on its task.
 
         The operator (or an agent acting for one) has read the parked
-        conversation and decided it is worth continuing. The session is
-        still standing with everything in it, so this rebuilds the harness
-        under the SAME handle, re-origins it back to `queue` so the
-        finalizer owns it again, and nudges it to carry on.
+        conversation and decided it is worth continuing. The warm path
+        rebuilds the harness under the SAME handle, re-origins it back to
+        `queue` so the finalizer owns it again, and nudges it to carry on.
 
         `attempts` goes back to 0, deliberately. A resume is new
         information — somebody looked at the worker and said go — and
         charging the new run for the old run's failures parks it again on
         its first stall, which is a resume that does nothing.
 
-        Never falls back to re-running the payload when the session is
-        gone: a worker that got halfway may already have committed,
-        pushed, deployed or sent mail, so that would be a second
-        execution rather than a recovery. `retry_task` is that, said out
-        loud, by a caller who meant it.
+        **The warm path is not the only path, and on shipped defaults it is
+        not even the usual one.** `rebuild` reaches the conversation id only
+        through `SessionManager.reconnect`, which reads it LIVE off the
+        session — and both drivers start `session_id` at `None`
+        (`drivers/claude.py` latches it inside `events()`,
+        `drivers/acp.py` in `start()`). So there are two shapes of "the live
+        session cannot supply a conversation id", and each of them used to
+        end in a refusal or a swallowed error:
+
+        - A worker stalls, `rebuild` succeeds, and the nudge turn dies at
+          `start()` — a 403, a TLS error, a network blip. `attempts` hits
+          `max_attempts`, the task parks, and the parked session's
+          `session_id` is `None` because the rebuilt driver never reached a
+          turn. A resume then found a live session, called `rebuild`,
+          `reconnect` raised "has no session id to resume from",
+          `recovery.rebuild` swallowed it, and the operator read
+          "could not rebuild the harness".
+        - A parked session does not survive a headless restart, so a resume
+          refused with "no longer live". `recoverable_ttl_s` defaults to a
+          day, and a restart inside that day is routine (idle reap,
+          upgrades, reboots), so on defaults the outcome of parking was
+          usually decided by a restart rather than by the deadline built
+          for it.
+
+        Both are the same missing fallback. `task.resumable.session_id` is
+        on the record, written at first sight precisely so this would work,
+        write-once, and claude returns the same id across `--resume`. So
+        when the live session has no usable id, or there is no live session
+        at all, this goes through `recovery.restore`, which does the cold
+        spawn with `resume_from`, re-origins, guards the empty-`cwd` case
+        and nudges. An empty session under the handle is closed first,
+        because `restore` would otherwise take its own warm branch and fail
+        exactly the same way.
+
+        Parked sessions are NOT rebuilt at boot. That would cost one
+        subprocess per parked task at startup, unbounded by `max_parallel`;
+        lazily, when somebody asks, is the whole point.
+
+        Never falls back to re-running the payload: a worker that got
+        halfway may already have committed, pushed, deployed or sent mail,
+        so that would be a second execution rather than a recovery.
+        `retry_task` is that, said out loud, by a caller who meant it. The
+        only remaining refusal is a task with no `resumable` at all, which
+        is the one case where there is genuinely no conversation.
         """
-        from aegis.core.recovery import NUDGE_OPERATOR, rebuild
+        from aegis.core.recovery import NUDGE_OPERATOR, rebuild, restore
 
         t = self._all.get(task_id)
         if t is None:
@@ -556,15 +594,22 @@ class QueueManager:
             }
         handle = t.worker_handle
         s = self._session_under(handle)
-        if s is None:
-            # The operator closed the tab, or the TTL reaper took it. The
-            # task still names a handle; there is simply nothing under it.
+        # `cold` means the conversation cannot be reached through whatever is
+        # standing under the handle: either nothing is (a restart, a closed
+        # tab), or something is but has never reported a conversation id. The
+        # recorded `Resumable` is what covers both.
+        cold = s is None or not getattr(s, "session_id", None)
+        if cold and t.resumable is None:
+            # The one genuine dead end: the harness never reported a
+            # conversation id, so there is nothing to resume from and a cold
+            # spawn would start a fresh agent with none of the work in it.
             # An error dict, not a traceback out of an MCP tool.
             return {
                 "ok": False,
                 "error": (
-                    f"the parked session {handle!r} is no longer live; "
-                    f"use aegis_task_retry to re-run the task from its payload"
+                    f"the parked session {handle!r} is no longer live and the "
+                    f"task has no recorded conversation to resume from; use "
+                    f"aegis_task_retry to re-run the task from its payload"
                 ),
             }
         q = self._queues[t.queue]
@@ -595,23 +640,27 @@ class QueueManager:
         self._all[task_id] = resumed
         self._inflight[t.queue].append(resumed)
         self._workers[handle] = (resumed, "")
-        # A task parked by the restart replay has no observers on its
-        # session: `_park` popped `_workers` and the replay never put the
-        # pair back. Without this the resumed worker runs, finishes, and is
-        # never heard — the task stays `dispatched`, the producer's callback
-        # never fires, and its `max_parallel` slot is held forever. Safe to
-        # call for an in-process park too, because `_attach_observers` is
-        # idempotent per session.
-        self._attach_observers(s, resumed)
-        # Back to `queue`, which puts the session back inside
-        # `EPHEMERAL_KINDS`: it is disposable again while it works, and
-        # `_park` is what promotes it back out if this run stalls too.
-        s.origin = Origin(
-            kind="queue",
-            by=t.queue,
-            detail=task_id[-4:],
-            returns_to=local_waiter(resumed) or resumed.callback_to or "",
-        )
+        if not cold:
+            # A task parked by the restart replay has no observers on its
+            # session: `_park` popped `_workers` and the replay never put the
+            # pair back. Without this the resumed worker runs, finishes, and
+            # is never heard — the task stays `dispatched`, the producer's
+            # callback never fires, and its `max_parallel` slot is held
+            # forever. Safe to call for an in-process park too, because
+            # `_attach_observers` is idempotent per session.
+            self._attach_observers(s, resumed)
+            # Back to `queue`, which puts the session back inside
+            # `EPHEMERAL_KINDS`: it is disposable again while it works, and
+            # `_park` is what promotes it back out if this run stalls too.
+            s.origin = Origin(
+                kind="queue",
+                by=t.queue,
+                detail=task_id[-4:],
+                returns_to=local_waiter(resumed) or resumed.callback_to or "",
+            )
+        # The cold path does both of these AFTER the spawn, below: there is
+        # no session to observe or re-origin until `restore` has made one,
+        # and `restore` writes the same origin itself.
         self._log(
             t.queue,
             {
@@ -629,11 +678,59 @@ class QueueManager:
                 agent_slug=q.agent_profile,
             )
         )
-        if not await rebuild(self._sm, handle, nudge=NUDGE_OPERATOR):
+        if cold:
+            if s is not None:
+                # An empty session under the handle is what makes `restore`
+                # take its own warm branch — and fail there the same way
+                # `rebuild` just would have. Close it first so `restore`
+                # sees an unoccupied handle and cold-spawns with
+                # `resume_from`. Suppressed because the task is already
+                # `dispatched` here and a close that failed must not strand
+                # it; the spawn below is what decides the outcome.
+                with contextlib.suppress(Exception):
+                    await self._sm.close(handle)
+            try:
+                ok = await restore(
+                    self._sm, resumed, nudge=NUDGE_OPERATOR
+                ) is not None
+            except Exception:  # noqa: BLE001 — this is an MCP tool's body
+                # `restore` guards its spawn and returns None, but its nudge
+                # delivery is bare. A raise here would cost the calling agent
+                # a turn and tell it nothing; the park below is the answer.
+                logging.getLogger(__name__).exception(
+                    "respawning the recorded conversation for task %s", task_id
+                )
+                ok = False
+            if ok:
+                back = self._session_under(handle)
+                ok = back is not None
+                if ok:
+                    self._attach_observers(back, resumed)
+        else:
+            ok = await rebuild(self._sm, handle, nudge=NUDGE_OPERATOR)
+        if not ok:
             # Straight back where it came from, rather than left dispatched
-            # holding a slot no worker is standing in.
-            await self._park(s, resumed, reason="rebuild failed on resume")
-            return {"ok": False, "error": "could not rebuild the harness"}
+            # holding a slot no worker is standing in. The session handed to
+            # `_park` is whatever actually stands under the handle now — on
+            # the cold path `s` was closed above, and re-origining a closed
+            # session would leave the live one reading as ephemeral.
+            await self._park(
+                self._session_under(handle) if cold else s,
+                resumed,
+                reason=(
+                    "could not respawn the recorded conversation on resume"
+                    if cold
+                    else "rebuild failed on resume"
+                ),
+            )
+            return {
+                "ok": False,
+                "error": (
+                    "could not respawn the recorded conversation"
+                    if cold
+                    else "could not rebuild the harness"
+                ),
+            }
         return {"ok": True, "status": "dispatched", "worker_handle": handle}
 
     async def retry_task(self, task_id: str) -> dict:

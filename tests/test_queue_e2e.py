@@ -141,6 +141,10 @@ class StubSM:
         self.spawned.append(handle)
         self.resumed_from = resume_from
         self.spawned_cwd = cwd
+        # The real `_sync_spawn` stamps this onto the session; this stub
+        # builds a bare AgentSession, so a caller's origin is only
+        # observable if it is recorded here.
+        self.spawned_origin = origin
         script = self._scripts.get(
             handle,
             [AssistantText(text="ok"),
