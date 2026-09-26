@@ -38,9 +38,16 @@ rule that needs tuning is how one of them ends up wrong and nothing says so. Thi
 mirrors `core/close_guard.py`, which is shared between `aegis_close` and the
 queue's `_still_working` for the same reason.
 
-This spec implements the queue caller fully and defines the plane's interface so
-the workflow and group callers are a later, smaller change. It does not implement
-them.
+This spec implements the queue caller fully. The *intention* is that the workflow
+and group callers follow, and the plane is shaped with them in mind — but the
+interface as built does not yet support them, and calling that a later, smaller
+change would be claiming a property it does not have. `rebuild` takes no
+`Resumable`, so a caller with a record and no live session cannot use it;
+`restore` duck-types four fields off "a task" (handle, rebuild record, queue, id)
+that a workflow node does not have; and `classify`'s `attempts` convention reads
+correctly under either counting convention from inside `recovery.py`, so the
+second caller has to establish which one it means rather than inherit it. Those
+are three real pieces of design work, not plumbing.
 
 ## The shared plane: `core/recovery.py`
 
@@ -224,11 +231,20 @@ for free rather than adding a session state:
   session, so `aegis_close` refuses to reap it while it holds claims or has
   undelivered inbox items.
 - `plan_resume` restores it across a daemon restart with no special case, because
-  it is an ordinary tab in `workspace.json` with a `session_id`.
+  it is an ordinary tab in `workspace.json` with a `session_id`. **Only where a
+  view is attached.** Under a headless `aegis serve` nothing runs `plan_resume`,
+  so the task record comes back and the session does not. The replay
+  deliberately leaves it that way — rebuilding every parked session at boot is
+  one subprocess per parked task, unbounded by `max_parallel` — and
+  `aegis_task_resume` rebuilds the conversation on demand instead, from the
+  recorded `Resumable`. So a parked worker is resumable after a headless
+  restart, which it has to be: `recoverable_ttl_s` defaults to a day, and a
+  restart inside that day is routine.
 
-The origin keeps `by` and `detail`, so the parked session still names the queue
-and task it came from. That is what `aegis_task_resume` looks up, and what the
-tab label shows.
+The origin keeps `by` and `detail`, so the parked session's card still names the
+queue and task it came from. That is a label for a reader and nothing more:
+`aegis_task_resume` looks the task up in `_all` by its full id, and nothing
+resolves a task through `Origin.detail`.
 
 The task moves to `recoverable`, the slot frees, and `_try_dispatch` runs. The
 queue moves on.

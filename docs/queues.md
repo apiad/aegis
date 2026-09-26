@@ -118,9 +118,15 @@ When the attempts run out the worker is **parked**, not closed:
 - the producer's callback says where the conversation is, and carries
   whatever the worker had already said.
 
-Parked tasks survive a restart: the replay rehydrates them so they can
-still be resumed or reaped, and says nothing to the producer, which was
-told once already. A parked session that nobody acts on is closed after
+Parked tasks survive a restart, and so does the conversation, but not in
+the same way. The replay rehydrates the task record — status, `parked_at`,
+the worker's last words — and says nothing to the producer, which was told
+once already. It deliberately does not rebuild the session: that would be
+one subprocess per parked task at boot, unbounded by `max_parallel`.
+Instead the conversation is rebuilt **on demand**, when somebody resumes
+it. A resume spawns the recorded conversation back onto the handle with
+`--resume`, so a parked worker is resumable after a headless restart, not
+only before one. A parked session that nobody acts on is closed after
 its queue's `recoverable_ttl_s` (a day by default) and its task failed —
 a bounded, announced loss, because a parked session is a real session
 and one forgotten worker pins the daemon open forever.
@@ -132,7 +138,7 @@ tab — and then pick one of two doors:
 
 | | What it does |
 |---|---|
-| `aegis_task_resume(task_id)` | Rebuilds the harness under the **same session** and tells it to continue. Nothing it had worked out is lost, and its retry budget starts over: you looked at it and said go, which is new information. |
+| `aegis_task_resume(task_id)` | Puts the **same conversation** back to work and tells it to continue. Under a live parked session it rebuilds the harness in place; when the session is gone or has never reported a conversation id, it spawns the recorded one back onto the handle with `--resume`. Nothing it had worked out is lost either way, and its retry budget starts over: you looked at it and said go, which is new information. |
 | `aegis_task_retry(task_id)` | Re-runs the **original payload** as a new task, closing the parked session. |
 
 They are deliberately separate, and resume never falls back to retry. A
@@ -143,9 +149,11 @@ not worth continuing should ask for.
 
 In the TUI, `/queues tasks` lists tasks with their full ids and `/resume
 <task_id>` is the same door as `aegis_task_resume`. Resume is refused —
-with a reason, never a traceback — when the task is not parked, when its
-session is gone (the tab was closed, or the TTL reaper got there first),
-or when the queue has no free slot to take back.
+with a reason, never a traceback — when the task is not parked, when the
+queue has no free slot to take back, or when the worker's harness never
+reported a conversation id at all. That last one is the only dead end: a
+closed tab or a restarted daemon is not, because the recorded conversation
+is what a resume spawns against.
 
 ### `aegis queue` — reading the log from a shell
 

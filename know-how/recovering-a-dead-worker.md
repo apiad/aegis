@@ -59,9 +59,11 @@ thinking.
 ## Resume or retry
 
 - **`aegis_task_resume(task_id)`** (MCP), or **`/resume <task_id>`** (TUI).
-  Rebuilds the harness under the same session, keeps handle, transcript and
-  observers, resets `attempts` to 0 and nudges it to continue. It needs the
-  parked session to still be live and the queue to have a free slot; it
+  Puts the same conversation back to work: with a live parked session it
+  rebuilds the harness in place, keeping handle, transcript and observers;
+  otherwise it spawns the recorded conversation back onto the handle.
+  Either way `attempts` resets to 0 and the worker is nudged to continue.
+  It needs a free slot in the queue and a recorded conversation id; it
   refuses, with a reason, otherwise.
 - **`aegis_task_retry(task_id)`** enqueues the payload again as a NEW task,
   closes the parked session and fails the old one. This is a second
@@ -78,15 +80,31 @@ A task that was `dispatched` when the process died is restored, headless
 included: the replay spawns the harness again with the recorded
 conversation id and nudges it, and the worker picks up where it was.
 
-A **parked** session is a different story, and it is worth knowing before
-you promise one to someone. The replay deliberately does not rebuild it —
-it adopts one only if something else already restored the tab, which is the
-TUI's `plan_resume`. Under a headless `aegis serve` with no view attached,
-nothing does, so after a restart `aegis_task_resume` answers *"the parked
-session is no longer live; use aegis_task_retry to re-run the task from its
-payload"*. The record survives (status, `parked_at`, the worker's last
-words), the conversation does not. If a parked worker matters, resume it
-before restarting the daemon.
+A **parked** session is rebuilt LATER rather than at boot. The replay
+deliberately does not spawn it — that would be one subprocess per parked
+task at startup, unbounded by `max_parallel` — and it adopts one only if
+something else already restored the tab, which is the TUI's `plan_resume`.
+Under a headless `aegis serve` with no view attached, nothing does.
+
+That is not the end of the conversation any more. `aegis_task_resume`
+falls back to the recorded `Resumable`: with nothing standing under the
+handle it spawns the harness again with `--resume <session_id>` and the
+recorded `log_id`, re-origins it to `queue`, attaches the queue's
+observers and nudges it. So a parked worker is resumable after a restart,
+which matters because `recoverable_ttl_s` defaults to a day and a restart
+inside that day is routine — an idle reap, an upgrade, a reboot.
+
+The same fallback covers a second case that has nothing to do with
+restarts. A worker that stalled, got rebuilt, and then died at `start()`
+parks holding a session whose `session_id` is `None`: `AgentSession.adopt`
+installed a fresh driver, and both drivers latch the id on their first
+turn. A resume there closes the empty session and spawns the recorded
+conversation instead.
+
+One dead end remains: a task whose harness never reported a conversation
+id at all. `aegis queue show <task_id>` is where you check — no
+`session_id` means `aegis_task_resume` will refuse and `aegis_task_retry`
+is the only door.
 
 ## The deadline
 
