@@ -203,3 +203,28 @@ async def test_the_reaper_sweeps_before_its_first_sleep(parked_rig):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+async def test_the_standalone_tui_arms_the_reaper_too(pane_app):
+    """`_serve` is not the only brain. An unbridged `AegisApp` builds its
+    own `QueueManager`, and `/queues new` hot-registers a queue into that
+    live manager — so a worker parks in a standalone TUI, and with no
+    reaper on a clock `recoverable_ttl_s` is a deadline nothing ever
+    checks. The parked session then stands for the life of the process,
+    which is the forgotten-worker bug the deadline exists to stop.
+    """
+    async with pane_app() as (_pane, pilot):
+        app = pilot.app
+        assert "park-reaper" in {w.group for w in app.workers}, (
+            "the standalone TUI booted with no reaper on its own queue manager"
+        )
+
+
+async def test_the_tui_reaper_is_told_to_stop_when_the_app_exits(pane_app):
+    """Its loop sleeps five minutes between sweeps, so an app that exits by
+    any path other than `action_quit` would leave it sleeping on a manager
+    nothing else holds. `on_unmount` is the path every shutdown takes."""
+    async with pane_app() as (_pane, pilot):
+        app = pilot.app
+        assert not app._park_reaper_stop.is_set()
+    assert app._park_reaper_stop.is_set()

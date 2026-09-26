@@ -68,11 +68,16 @@ NOT_VIEW_FACING: dict[str, str] = {
 #: covered the replay constructed the manager itself.
 #:
 #: `ParkReaper` has the same two-brain-path exposure and is not caught by
-#: anything here: `cli.py` arms it, `tui/app.py`'s `_build_planes` does not,
-#: and it is unreachable today only because both non-bridged `AegisApp`
-#: constructions pass `queues={}`. Nothing structural catches "this plane
-#: needs a driver on a clock in every brain path" — this list catches the
-#: `state_dir` half of the same class of bug and no more.
+#: anything here. It was REACHABLE, not theoretical: `cli.py` armed it and
+#: `tui/app.py` did not, and a standalone TUI does not need to be launched
+#: with queues to have one — `/queues new` hot-registers a queue into the
+#: running app's `QueueManager` through `AegisApp.register_queue`. So a
+#: worker could park in a standalone TUI and `recoverable_ttl_s` would
+#: never be checked: the parked session stood for the life of the process.
+#: `AegisApp.on_mount` arms the reaper on the unbridged path now, but
+#: nothing structural catches "this plane needs a driver on a clock in
+#: every brain path" — this list catches the `state_dir` half of the same
+#: class of bug and no more.
 STATEFUL_PLANES: tuple[tuple[str, str], ...] = (
     ("QueueManager", "cli.py"),
     ("InboxRouter", "cli.py"),

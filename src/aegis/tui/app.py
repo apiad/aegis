@@ -18,7 +18,13 @@ from aegis.core.handles import HandleRegistry
 from aegis.drivers.base import HarnessSession
 from aegis.mcp.bridge import SessionInfo
 from aegis.monitor import MonitorManager
-from aegis.queue import InboxRouter, LoopService, QueueDigest, QueueManager
+from aegis.queue import (
+    InboxRouter,
+    LoopService,
+    ParkReaper,
+    QueueDigest,
+    QueueManager,
+)
 from aegis.state import aegis_log
 from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.pane import ConversationPane, PaneStateChanged
@@ -621,6 +627,12 @@ class AegisApp(App):
         # is correct; two managers is the bug above.
         self.queue_digest = QueueDigest(self.queue_manager)
         self.queue_digest.start()
+        # Stops the ParkReaper `on_mount` arms on the unbridged path. Built
+        # here rather than there so `on_unmount` can set it unconditionally,
+        # including on the shutdown paths that never reached the arming.
+        import asyncio
+
+        self._park_reaper_stop = asyncio.Event()
         # Quota plane — live subscription utilisation for the status bar, one
         # poller per provider. Quota is an account property, so all of them run
         # regardless of which agents are open: the number is what tells you
@@ -830,6 +842,20 @@ class AegisApp(App):
         # already started it; replaying its state a second time re-queues.
         if self.manager is None:
             await self.queue_manager.start()
+            # And the deadline on a parked conversation, which `_serve`
+            # arms for the daemon. Unbridged, this app IS the brain, so
+            # without this `recoverable_ttl_s` is a rule nothing checks
+            # and a forgotten parked worker stands for the life of the
+            # process. Launching with no queues does not spare it:
+            # `/queues new` hot-registers one into this very manager.
+            # Through `run_worker` so Textual cancels it on shutdown, and
+            # `on_unmount` sets the event so the sleep is not merely
+            # cancelled mid-sweep.
+            self.run_worker(
+                ParkReaper(self.queue_manager, stop=self._park_reaper_stop).run(),
+                group="park-reaper",
+                exclusive=False,
+            )
 
         # Load user-authored prompt commands (.aegis/commands/*.md) for this
         # project so they are dispatchable from the input box.
@@ -2631,6 +2657,13 @@ class AegisApp(App):
         # releasing it in action_quit alone leaks one per app that exits any
         # other way. stop() is idempotent.
         self._file_indexer.stop()
+        # Same reasoning for the park reaper: its loop sleeps five minutes
+        # between sweeps, so an app that exits by any path other than
+        # action_quit would otherwise leave it sleeping on a manager
+        # nothing else holds. Textual cancels the worker too; setting the
+        # event is what makes the loop exit at a sweep boundary rather
+        # than mid-`reap_parked`.
+        self._park_reaper_stop.set()
 
     # --- AppBridge --------------------------------------------------------
     def list_sessions(self) -> list[SessionInfo]:
