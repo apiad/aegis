@@ -12,10 +12,14 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import time
 from dataclasses import dataclass, field as dc_field
 from typing import Awaitable, Callable
 
 Runner = Callable[[list[str]], Awaitable[str]]
+
+# Injected in tests so the TTL is exercised without sleeping through it.
+now: Callable[[], float] = time.monotonic
 
 ITEMS_QUERY = """
 query($owner:String!,$num:Int!,$cursor:String){
@@ -176,6 +180,11 @@ async def fetch_board(
             break
         cursor = info["endCursor"]
 
+    cache_key = (owner, int(project))
+    cached = _SCHEMA_CACHE.get(cache_key)
+    if cached is not None and (now() - cached[0]) < SCHEMA_TTL_S:
+        return cached[1], cards
+
     fields_raw = json.loads(
         await run(
             [
@@ -192,10 +201,30 @@ async def fetch_board(
             ]
         )
     )
-    return parse_schema(project_id, fields_raw), cards
+    schema = parse_schema(project_id, fields_raw)
+    _SCHEMA_CACHE[cache_key] = (now(), schema)
+    return schema, cards
 
 
 COMMENT_LIMIT = 65536
+
+# Field and option ids per (owner, project), with the time they were read.
+# A board's schema changes when a human edits the board, which is rare, while
+# `gh project field-list` is a GitHub API call on every tick — half of this
+# package's idle API cost, against a 5000/hour limit shared with every other
+# tool on the machine. A TTL rather than invalidation on error because the
+# consequence of being briefly stale is one refused write with a clear reason,
+# and the next read past the TTL fixes it.
+SCHEMA_TTL_S = 600.0
+_SCHEMA_CACHE: dict[tuple[str, int], tuple[float, "Schema"]] = {}
+
+
+def clear_schema_cache() -> None:
+    """Forget every cached board schema. For tests and for a caller that has
+    just been told a field it wrote does not exist."""
+    _SCHEMA_CACHE.clear()
+
+
 MARKER_RE = re.compile(r"<!--\s*aegis-afk\s+(?P<kv>[^>]*?)\s*-->")
 _FENCE_RE = re.compile(r"```.*?```", re.S)
 
