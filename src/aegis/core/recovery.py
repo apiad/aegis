@@ -64,14 +64,25 @@ def classify(
     *,
     attempts: int,
     max_attempts: int,
-    cancelled: bool = False,
-    over_budget: bool = False,
 ) -> Outcome:
     """What a turn ending means for the task behind it.
 
     `attempts` is the number of bad turn ends this task's worker has had
     INCLUDING the one being classified, so a caller increments its
     counter BEFORE calling: `max_attempts=1` means one try and no retry.
+
+    **The retry budget is the only source of `terminal`.** There were
+    `cancelled=` and `over_budget=` keywords here and neither ever had a
+    caller, so they were a contract the next two callers would have read
+    and wired themselves to. Both are handled elsewhere and better:
+
+    - Cancelling never reaches here. `QueueManager.cancel` pops `_workers`
+      *before* closing the worker, so the finalize the close triggers
+      early-returns. That ordering is what stops a finalizer overwriting
+      the `cancelled` status, and routing cancellation back through the
+      finalizer to make the intent local would undo it.
+    - Budgets are evaluated at enqueue, so no mid-flight over-budget path
+      exists to report one.
 
     `transient` is the DEFAULT arm, deliberately. The tempting version
     enumerates the recoverable reasons — link_lost, a harness exception,
@@ -84,8 +95,6 @@ def classify(
     """
     if state is AgentState.ready:
         return Outcome.done
-    if cancelled or over_budget:
-        return Outcome.terminal
     if attempts >= max_attempts:
         return Outcome.terminal
     return Outcome.transient

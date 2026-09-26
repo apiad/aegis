@@ -9,6 +9,8 @@ is transient until the budget runs out.
 """
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from aegis.core.recovery import Outcome, classify
@@ -38,17 +40,24 @@ def test_max_attempts_of_one_is_terminal_on_the_first_bad_end():
     assert classify(AgentState.error, attempts=1, max_attempts=1) is Outcome.terminal
 
 
-def test_cancelled_is_terminal_with_budget_left():
-    """Cancelling is a decision, not a failure to retry around."""
-    assert classify(
-        AgentState.error, attempts=0, max_attempts=5, cancelled=True
-    ) is Outcome.terminal
+def test_the_budget_is_the_only_source_of_terminal():
+    """`classify` used to take `cancelled=` and `over_budget=`, and two rows
+    here pinned them — an API contract with no reachable caller, on the one
+    function the workflow and group callers will read before wiring
+    themselves to it.
 
-
-def test_over_budget_is_terminal_with_attempts_left():
-    assert classify(
-        AgentState.error, attempts=0, max_attempts=5, over_budget=True
-    ) is Outcome.terminal
+    Cancelling never reaches `classify`: `QueueManager.cancel` pops
+    `_workers` before closing the worker, so the finalize the close triggers
+    early-returns (`tests/test_queue_manager.py` covers that path). Budgets
+    are evaluated at enqueue, so there is no mid-flight over-budget path.
+    Read off the signature so a knob cannot come back dead.
+    """
+    params = set(inspect.signature(classify).parameters) - {"state"}
+    assert params == {"attempts", "max_attempts"}, (
+        f"classify grew {sorted(params - {'attempts', 'max_attempts'})}. "
+        "If it has a caller, say so here; if it does not, it is a contract "
+        "the next caller will wire itself to for nothing."
+    )
 
 
 @pytest.mark.parametrize("state", [AgentState.working, AgentState.error])
