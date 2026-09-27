@@ -194,9 +194,15 @@ async def _agents_remove(ctx: CommandContext, args) -> CommandResult:
     )
 
 
-async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
-    """The new agent's first turn: the operator's words, plus where they
-    were standing when they typed them.
+async def _spawn_opening(ctx: CommandContext, prompt: str) -> tuple[str, str]:
+    """The new agent's first turn, and why it has no provenance if it has none.
+
+    Returns ``(opening, reason)``. ``reason`` is empty when the tail rode
+    along, and otherwise names which fall-back fired, so ``_spawn`` can say so
+    on the confirmation line.
+
+    The opening's own words, plus where the operator was standing when they
+    typed them.
 
     `/spawn opus please verify this test` used to hand a fresh agent three
     words and no referent — the one row of the context-carrying table
@@ -215,6 +221,13 @@ async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
     ``read_peer``, a damaged log — because provenance pointing at a
     transcript nobody can read buys the new agent a failed tool call and
     a paragraph of confusion.
+
+    Failing is fine; failing *quietly* was not. These paths returned the bare
+    prompt with no trace, and ``Origin`` never reaches the session log, so
+    afterwards nothing distinguishes a spawn that carried its tail from one
+    that did not — the degrade rate was unmeasurable across 341 real logs. The
+    reason travels back so the operator learns it while they can still act on
+    it, which for a blind agent means right now.
     """
     from aegis.peer import (
         TEASER_BUDGET_TOKENS,
@@ -224,8 +237,10 @@ async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
     )
 
     read = getattr(ctx.bridge, "read_peer", None)
-    if read is None or not ctx.handle:
-        return prompt
+    if read is None:
+        return prompt, "this frontend cannot read a transcript"
+    if not ctx.handle:
+        return prompt, "no source pane"
     try:
         # The TEASER pair, not `read_peer`'s own READ defaults: this is a
         # push, and the READ budget measured 95,346 chars of preamble on
@@ -239,10 +254,15 @@ async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
             budget_tokens=TEASER_BUDGET_TOKENS,
             item_chars=TEASER_ITEM_CHARS,
         )
-    except Exception:  # noqa: BLE001
-        return prompt
-    if not window.get("ok") or not window.get("text"):
-        return prompt
+    except Exception as e:  # noqa: BLE001
+        return prompt, f"{ctx.handle}'s transcript is unreadable ({e})"
+    if not window.get("ok"):
+        return prompt, (
+            f"{ctx.handle}'s transcript is unreadable "
+            f"({window.get('error') or 'no reason given'})"
+        )
+    if not window.get("text"):
+        return prompt, f"{ctx.handle}'s transcript is empty so far"
     slug = next(
         (s.agent_slug for s in ctx.bridge.list_sessions() if s.handle == ctx.handle), ""
     )
@@ -252,7 +272,7 @@ async def _spawn_opening(ctx: CommandContext, prompt: str) -> str:
         prompt=prompt,
         tail=window["text"],
         header=window.get("header", ""),
-    )
+    ), ""
 
 
 async def _spawn(ctx: CommandContext, args) -> CommandResult:
@@ -273,7 +293,7 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
     # The confirmation line below echoes `prompt`, not this — printing the
     # whole composed preamble back into the source pane would bury the
     # three words the operator actually typed.
-    opening = await _spawn_opening(ctx, prompt) if prompt else None
+    opening, blind = (await _spawn_opening(ctx, prompt)) if prompt else (None, "")
     try:
         handle = await ctx.bridge.spawn(
             agent,
@@ -299,6 +319,10 @@ async def _spawn(ctx: CommandContext, args) -> CommandResult:
         detail += f" · host: {host}"
     if cwd:
         detail += f" · cwd: {cwd}"
+    if blind:
+        # Said here rather than logged: the operator can still paste the
+        # context in, and only for the next few seconds.
+        detail += f" · no tail: {blind}"
     return CommandResult(True, f"spawned {handle}", detail)
 
 

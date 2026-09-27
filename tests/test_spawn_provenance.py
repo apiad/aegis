@@ -54,6 +54,51 @@ def test_compose_spawn_carries_the_tail_and_its_honest_header():
                             "NOT seeing")
 
 
+def test_the_pushed_tail_survives_the_transcript_renderer():
+    """The tail is one transcript item per line, and the operator has to be
+    able to read it back in the pane.
+
+    `--- tail of X ---` markers left the tail as an ordinary Markdown
+    paragraph, so Rich folded every newline and the whole window rendered as
+    one run-on line with the speaker labels glued together. A fenced block
+    keeps the lines, and keeps a `<tag>` in the tail from opening an HTML
+    block on top of that.
+    """
+    from rich.console import Console
+
+    from aegis.render import render_user_block
+    from aegis.tui.themes import INK, aegis_colors
+
+    tail = ("user: the round-trip test keeps failing\n"
+            "<system-reminder>never stage broadly</system-reminder>\n"
+            "assistant: because assemble() fills backwards")
+    body = compose_spawn(source="alpha", slug="opus", prompt="verify it",
+                         tail=tail, header=HEADER)
+    con = Console(record=True, width=100)
+    con.print(render_user_block(body, aegis_colors(INK), 100))
+    out = con.export_text()
+
+    for line in tail.splitlines():
+        assert line in out, f"the renderer dropped or reflowed: {line!r}"
+    glued = [ln for ln in out.splitlines()
+             if "keeps failing" in ln and "fills backwards" in ln]
+    assert not glued, "the tail folded into one line"
+
+
+def test_compose_spawn_marks_where_the_tail_stops():
+    """The agent has to be able to tell the pushed window from the task.
+    Whatever the delimiter is, opening and closing it must not be the same
+    ambiguous run of hyphens the task line could also contain."""
+    body = compose_spawn(source="alpha", slug="opus",
+                         prompt="verify this test", tail=TAIL, header=HEADER)
+    lines = body.splitlines()
+    fences = [i for i, ln in enumerate(lines) if ln.startswith("```")]
+    assert len(fences) == 2, "the tail needs exactly one opening and one close"
+    inside = "\n".join(lines[fences[0] + 1:fences[1]])
+    assert inside == TAIL
+    assert "The operator's task" not in inside
+
+
 def test_compose_spawn_points_at_the_pull():
     body = _composed()
     assert 'aegis_read_peer("alpha")' in body
@@ -193,6 +238,43 @@ async def test_spawn_falls_back_to_the_bare_prompt_with_no_tail(kw):
     res = await dispatch("/spawn opus verify this", _ctx(bridge))
     assert res.ok
     assert bridge.spawned == [("opus", "verify this", "alpha")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kw,why", [
+    ({"ok": False}, "unreadable"),
+    ({"text": ""}, "empty"),
+    ({"boom": True}, "unreadable"),
+])
+async def test_spawn_says_when_the_new_agent_arrived_blind(kw, why):
+    """A degraded spawn has to be visible at the moment it happens.
+
+    All five fall-back paths returned the bare prompt with no trace, and
+    `Origin` is not in the session log, so afterwards there is no way to tell
+    a spawn that carried its tail from one that did not — the rate was not
+    measurable even across 341 real logs.
+    """
+    bridge = ReadableBridge(**kw)
+    res = await dispatch("/spawn opus verify this", _ctx(bridge))
+    assert res.ok, "a missing tail costs the preamble, never the spawn"
+    assert "no tail" in res.body
+    assert why in res.body
+
+
+@pytest.mark.asyncio
+async def test_spawn_says_nothing_about_the_tail_when_it_carried_one():
+    """The note is a warning, not a field. A healthy spawn stays quiet."""
+    bridge = ReadableBridge()
+    res = await dispatch("/spawn opus verify this", _ctx(bridge))
+    assert "no tail" not in res.body
+
+
+@pytest.mark.asyncio
+async def test_spawn_without_a_prompt_is_not_reported_as_blind():
+    """Nothing was asked, so there is no referent to be missing."""
+    bridge = ReadableBridge()
+    res = await dispatch("/spawn opus", _ctx(bridge))
+    assert "no tail" not in res.body
 
 
 @pytest.mark.asyncio
