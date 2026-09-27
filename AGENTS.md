@@ -20,7 +20,7 @@ A change is done when:
 2. it has been exercised the way a user reaches it: in the TUI, or in a browser
    through `aegis web`, attached to a daemon started after the change, or with
    `aegis bench` for any claim about speed;
-3. a user-visible change has a CHANGELOG entry, and a new command, driver, tool or
+3. a user-visible change has a `changelog.d/` fragment, and a new command, driver, tool or
    config key is documented under `docs/`;
 4. a change to how the pieces fit has its spec under `docs/superpowers/specs/`,
    with a status that matches the code.
@@ -40,7 +40,8 @@ would make it false.
 | module docstrings | the rules of one module, with their reasons | that module changes |
 | `docs/` | the user-facing reference published with mkdocs | a user-visible surface changes |
 | `docs/superpowers/` | why each feature is shaped the way it is | a feature is designed |
-| `CHANGELOG.md` | what shipped | a release |
+| `changelog.d/*.md` | one release note per change, awaiting the next release | any user-visible change |
+| `CHANGELOG.md` | what shipped | a release collates the fragments |
 | `know-how/` | how to do one job | a procedure changes |
 | `Makefile`, `.rift.yaml`, tests | every mechanical check | a gate is added or dropped |
 | the code | everything else | constantly |
@@ -95,9 +96,16 @@ Two gates are not what they look like:
 - **`lint-docs` is the one gate CI cannot run.** `rift` is private and not on
   PyPI, so a runner cannot install it. Run it locally before opening the PR.
 
-CI runs `format-check`, `lint`, the suite, and `typecheck` non-blocking. It does
-not run `make check` itself: that target's `format` stage rewrites files, and a
-runner has to fail on drift rather than fix it.
+Release notes are **fragments**, not edits to `CHANGELOG.md`: drop a file in
+`changelog.d/` named `<slug>.<category>.md` and a release collates them. That
+file was the only one in the repo that conflicted on a merge, and it conflicted
+on every one. `changelog.d/README.md` has the format; `make changelog-check`
+blocks, because it is a filename parse with no backlog rather than a 235-item
+one. Issue #10.
+
+CI runs `format-check`, `lint`, `changelog-check`, the suite, and `typecheck`
+non-blocking. It does not run `make check` itself: that target's `format` stage
+rewrites files, and a runner has to fail on drift rather than fix it.
 
 Commits follow the workspace convention: conventional commits, English, one logical
 change. This is a shared checkout, so stage and commit named paths only

@@ -119,9 +119,21 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
 ## Release checklist
 
 1. Clean tree, on `main`, not behind origin.
-2. Move the CHANGELOG `## [Unreleased]` block to `## [vX.Y.Z] - YYYY-MM-DD`,
-   add a fresh empty `## [Unreleased]` above it — **after** running the
-   coverage diff above, and after closing any doc gaps it exposes.
+2. Collate the changelog fragments into a release section — **after** running
+   the coverage diff above, and after closing any doc gaps it exposes:
+
+   ```bash
+   uv run python -m aegis.changelog apply --version X.Y.Z   # --date defaults to today, UTC
+   git add CHANGELOG.md changelog.d
+   ```
+
+   This writes the new `## [X.Y.Z] - YYYY-MM-DD` section below `## [Unreleased]`
+   and deletes the fragments it consumed, so the deletions are part of the
+   release commit. Preview first with `make changelog` — it writes nothing.
+
+   Anything still sitting under `## [Unreleased]` by hand (entries written
+   before fragments landed, #10) is not moved; fold it into the release section
+   yourself if it belongs there.
 3. Bump `version` in `pyproject.toml`.
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then verify with
