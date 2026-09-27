@@ -329,20 +329,20 @@ def load_config(root: Path) -> AegisConfig:
     )
 
 
-def _build_web(raw: dict[str, Any] | None) -> WebConfig | None:
+def _build_web(block: dict[str, Any] | None) -> WebConfig | None:
     """Build a WebConfig from a `web:` YAML block, or None when absent.
 
     Token resolution: `AEGIS_WEB_TOKEN` env var wins, else the YAML
     `token:` field. `bind` defaults to localhost; `port` None means
     auto-pick a free port at serve time.
     """
-    if raw is None:
+    if block is None:
         return None
-    if not isinstance(raw, dict):
+    if not isinstance(block, dict):
         raise ConfigError("web: must be a mapping")
-    token = os.environ.get("AEGIS_WEB_TOKEN") or raw.get("token") or None
-    bind = str(raw.get("bind", "127.0.0.1"))
-    port = raw.get("port")
+    token = os.environ.get("AEGIS_WEB_TOKEN") or block.get("token") or None
+    bind = str(block.get("bind", "127.0.0.1"))
+    port = block.get("port")
     return WebConfig(
         token=token,
         bind=bind,
@@ -350,57 +350,57 @@ def _build_web(raw: dict[str, Any] | None) -> WebConfig | None:
     )
 
 
-def _build_voice(raw: Any) -> VoiceConfig:
+def _build_voice(block: Any) -> VoiceConfig:
     """Build a VoiceConfig from a `voice:` YAML block. Absent -> disabled."""
-    if not raw:
+    if not block:
         return VoiceConfig()
-    if not isinstance(raw, dict):
+    if not isinstance(block, dict):
         raise ConfigError("voice: must be a mapping")
     defaults = VoiceConfig()
     return VoiceConfig(
-        enabled=bool(raw.get("enabled", defaults.enabled)),
-        model=str(raw.get("model", defaults.model)),
-        key=str(raw.get("key", defaults.key)),
-        preview=bool(raw.get("preview", defaults.preview)),
-        language=raw.get("language", defaults.language),
+        enabled=bool(block.get("enabled", defaults.enabled)),
+        model=str(block.get("model", defaults.model)),
+        key=str(block.get("key", defaults.key)),
+        preview=bool(block.get("preview", defaults.preview)),
+        language=block.get("language", defaults.language),
     )
 
 
 _FLEET_RECAP_MODES = ("watched", "off")
 
 
-def _flag(raw: dict, key: str, default: bool) -> bool:
+def _flag(block: dict, key: str, default: bool) -> bool:
     """A real YAML bool, or a ConfigError naming the key.
 
     ``bool(value)`` turned the quoted string "false" into True. That was
     harmless while nothing read these flags; since sessions obey them, a
     quoted false would silently leave a paid call switched on.
     """
-    value = raw.get(key, default)
+    value = block.get(key, default)
     if not isinstance(value, bool):
         raise ConfigError(f"{key}: must be true or false (got {value!r})")
     return value
 
 
-def _build_fleet(raw: Any) -> FleetConfig:
+def _build_fleet(block: Any) -> FleetConfig:
     """Build a FleetConfig from a `fleet:` YAML block. Absent -> defaults.
 
     An unknown `recap:` mode fails loud: a typo that silently meant "off"
     would be a dashboard with no lines and no explanation.
     """
-    if raw is None:
+    if block is None:
         return FleetConfig()
-    if not isinstance(raw, dict):
+    if not isinstance(block, dict):
         raise ConfigError("fleet: must be a mapping")
     defaults = FleetConfig()
-    recap = raw.get("recap", defaults.recap)
+    recap = block.get("recap", defaults.recap)
     if recap not in _FLEET_RECAP_MODES:
         raise ConfigError(f"fleet.recap: must be one of watched|off (got {recap!r})")
     return FleetConfig(
         recap=recap,
-        recap_after_s=_fleet_seconds(raw, "recap_after_s", defaults.recap_after_s, 0),
+        recap_after_s=_fleet_seconds(block, "recap_after_s", defaults.recap_after_s, 0),
         recap_interval_s=_fleet_seconds(
-            raw, "recap_interval_s", defaults.recap_interval_s, _FLEET_MIN_INTERVAL_S
+            block, "recap_interval_s", defaults.recap_interval_s, _FLEET_MIN_INTERVAL_S
         ),
     )
 
@@ -411,12 +411,12 @@ def _build_fleet(raw: Any) -> FleetConfig:
 _FLEET_MIN_INTERVAL_S = 30
 
 
-def _fleet_seconds(raw: dict, key: str, default: int, floor: int) -> int:
+def _fleet_seconds(block: dict, key: str, default: int, floor: int) -> int:
     """A whole number of seconds at or above ``floor``, or a ConfigError
     naming the key. Every boot path catches only ConfigError, so a bare
     ValueError from ``int()`` reached the operator as a traceback; and
     ``int()`` silently turned 0.5 into 0 and ``true`` into 1."""
-    value = raw.get(key, default)
+    value = block.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(
             f"fleet.{key}: must be a whole number of seconds (got {value!r})"
