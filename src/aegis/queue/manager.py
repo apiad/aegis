@@ -370,8 +370,12 @@ class QueueManager:
             # early-returns and can't overwrite the cancelled status —
             # but read its last text on the way out. Cancelling is not a
             # reason to throw away everything the worker had already said.
-            _, last_text = self._workers.pop(worker_handle, (None, ""))
-            self._chunk_run.pop(worker_handle, None)
+            # A dispatched task always carries its handle; if it somehow
+            # does not, there is nothing under it to pop.
+            if worker_handle is not None:
+                pair = self._workers.pop(worker_handle, None)
+                last_text = pair[1] if pair is not None else ""
+                self._chunk_run.pop(worker_handle, None)
             self._inflight[t.queue] = [
                 x for x in self._inflight[t.queue] if x.id != task_id
             ]
@@ -385,13 +389,11 @@ class QueueManager:
                 else "the worker had not said anything yet"
             ),
         )
-        cancelled = Task(
-            **{
-                **t.__dict__,
-                "status": "cancelled",
-                "result": last_text or None,
-                "completed_at": self._now(),
-            }
+        cancelled = replace(
+            t,
+            status="cancelled",
+            result=last_text or None,
+            completed_at=self._now(),
         )
         self._all[task_id] = cancelled
         self._log(
@@ -464,13 +466,7 @@ class QueueManager:
         the worker, dropped the task from `_inflight` and re-dispatched, so
         there is no worker to interrupt and no slot to free.
         """
-        cancelled = Task(
-            **{
-                **t.__dict__,
-                "status": "cancelled",
-                "completed_at": self._now(),
-            }
-        )
+        cancelled = replace(t, status="cancelled", completed_at=self._now())
         self._all[t.id] = cancelled
         self._log(
             t.queue,
@@ -593,6 +589,16 @@ class QueueManager:
                 "error": f"task {task_id} is {t.status}, not recoverable",
             }
         handle = t.worker_handle
+        if handle is None:
+            # A task only reaches `recoverable` through dispatch, which sets
+            # the handle — but nothing enforces that, and `self._workers[None]`
+            # would insert a key no handle lookup can ever match, leaving the
+            # resumed worker unreachable and its slot held. An error dict, like
+            # every other refusal in this method.
+            return {
+                "ok": False,
+                "error": f"task {task_id} has no recorded worker to resume",
+            }
         s = self._session_under(handle)
         # `cold` means the conversation cannot be reached through whatever is
         # standing under the handle: either nothing is (a restart, a closed
@@ -952,13 +958,7 @@ class QueueManager:
                 s.handle for s in getattr(self._sm, "_sessions", [])
             }
             worker_handle = self._handle_factory(used)
-            dispatched = Task(
-                **{
-                    **task.__dict__,
-                    "status": "dispatched",
-                    "worker_handle": worker_handle,
-                }
-            )
+            dispatched = replace(task, status="dispatched", worker_handle=worker_handle)
             self._all[task.id] = dispatched
             self._inflight[queue].append(dispatched)
             self._workers[worker_handle] = (dispatched, "")
@@ -1236,7 +1236,8 @@ class QueueManager:
         # after a restart, where there is no accumulator — from what the
         # log kept of it. A producer handed only the outcome cannot tell
         # that twenty minutes of work happened at all.
-        _, said = self._workers.pop(handle, (None, ""))
+        pair = self._workers.pop(handle, None) if handle is not None else None
+        said = pair[1] if pair is not None else ""
         # The `task.result` arm has one blind spot, and it is deliberate.
         # `resume_task` nulls `result` on the way out, so a resumed run that
         # dies before emitting any text lands here with both arms empty: the
@@ -1249,7 +1250,8 @@ class QueueManager:
         # the whole point of parking — `aegis_read_peer(<handle>)`, or the
         # worker's tab.
         said = (said or task.result or "").strip()
-        self._chunk_run.pop(handle, None)
+        if handle is not None:
+            self._chunk_run.pop(handle, None)
         parked = replace(
             task,
             status="recoverable",
@@ -1571,14 +1573,12 @@ class QueueManager:
         status = "completed" if ok else "failed"
         result = last_text if ok else None
         error = None if ok else (last_text or "worker exited with error")
-        completed = Task(
-            **{
-                **task.__dict__,
-                "status": status,
-                "result": result,
-                "error": error,
-                "completed_at": self._now(),
-            }
+        completed = replace(
+            task,
+            status=status,
+            result=result,
+            error=error,
+            completed_at=self._now(),
         )
         self._all[task.id] = completed
         self._inflight[task.queue] = [
