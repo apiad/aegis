@@ -28,6 +28,10 @@ DEFAULTS = {
     "vague_body_chars": 400,
     "acceptance_markers": ("done when", "acceptance"),
     "gate_commands": ("make check", "make test"),
+    # Run the gate once before dispatching. A repo whose gate is already
+    # red cannot produce a card that passes, and without this every card
+    # in it burns a worker and then lands in Failed blaming it.
+    "baseline_gate": True,
     "priority_order": ("Urgent", "Important", "Normal"),
     "stall_after_s": 1800,
 }

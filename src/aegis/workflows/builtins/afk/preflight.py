@@ -47,7 +47,11 @@ def resolve_gate(makefile_text: str, gate_commands: tuple[str, ...]) -> str:
 
 
 async def preflight(
-    bash: Bash, repo_path: Path, *, gate_commands: tuple[str, ...]
+    bash: Bash,
+    repo_path: Path,
+    *,
+    gate_commands: tuple[str, ...],
+    baseline_gate: bool = True,
 ) -> Preflight:
     cwd = str(repo_path)
 
@@ -86,6 +90,25 @@ async def preflight(
         if makefile.is_file()
         else ""
     )
-    return Preflight(
-        True, "ready", gate_cmd=resolve_gate(text, gate_commands), branch=branch
-    )
+    gate_cmd = resolve_gate(text, gate_commands)
+
+    # Run the gate before dispatching, not only after. A repo whose gate is
+    # already red cannot produce a card that passes, so without this every
+    # card in it burns a worker and then lands in `Failed` blaming that worker
+    # for a failure it inherited. Observed: a card was filed `Failed` on
+    # `make check` exiting 2, where the 356 type errors behind that exit were
+    # present before the worker touched anything and its own change was nine
+    # lines of prose.
+    if baseline_gate and gate_cmd != NO_GATE:
+        res = await bash(gate_cmd, cwd)
+        if res["exit"] != 0:
+            return Preflight(
+                False,
+                f"the gate is already red before any change: `{gate_cmd}` "
+                f"exited {res['exit']}. Fix the repo, or point gate_commands "
+                f"at a target that passes.",
+                gate_cmd=gate_cmd,
+                branch=branch,
+            )
+
+    return Preflight(True, "ready", gate_cmd=gate_cmd, branch=branch)

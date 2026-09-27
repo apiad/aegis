@@ -1,4 +1,5 @@
 """Refusing to dispatch into a checkout that is not ready."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,10 +62,12 @@ class FakeBash:
 @pytest.mark.asyncio
 async def test_preflight_passes_on_a_clean_tree(tmp_path) -> None:
     (tmp_path / "Makefile").write_text(MAKEFILE)
-    bash = FakeBash({
-        "status --porcelain": {"exit": 0, "stdout": ""},
-        "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
-    })
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+        }
+    )
     out = await preflight(bash, tmp_path, gate_commands=("make check", "make test"))
     assert out.ok is True
     assert out.gate_cmd == "make check"
@@ -77,10 +80,15 @@ async def test_preflight_refuses_a_dirty_tree_and_names_the_paths(tmp_path) -> N
     diff nobody can review, and on a shared checkout that somebody is often
     the operator."""
     (tmp_path / "Makefile").write_text(MAKEFILE)
-    bash = FakeBash({
-        "status --porcelain": {"exit": 0, "stdout": " M src/a.py\n?? scratch.txt\n"},
-        "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
-    })
+    bash = FakeBash(
+        {
+            "status --porcelain": {
+                "exit": 0,
+                "stdout": " M src/a.py\n?? scratch.txt\n",
+            },
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+        }
+    )
     out = await preflight(bash, tmp_path, gate_commands=("make check",))
     assert out.ok is False
     assert "src/a.py" in out.reason
@@ -100,11 +108,13 @@ async def test_preflight_refuses_when_pull_is_not_fast_forward(tmp_path) -> None
     """A non-fast-forward means local commits nobody has looked at. Merging
     them is not the coordinator's call."""
     (tmp_path / "Makefile").write_text(MAKEFILE)
-    bash = FakeBash({
-        "status --porcelain": {"exit": 0, "stdout": ""},
-        "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
-        "pull --ff-only": {"exit": 1, "stdout": "not possible to fast-forward"},
-    })
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+            "pull --ff-only": {"exit": 1, "stdout": "not possible to fast-forward"},
+        }
+    )
     out = await preflight(bash, tmp_path, gate_commands=("make check",))
     assert out.ok is False
     assert "fast-forward" in out.reason
@@ -115,11 +125,84 @@ async def test_preflight_checks_the_tree_after_pulling(tmp_path) -> None:
     """Order matters: a pull can leave conflict markers, so the dirty check
     has to come after it, not before."""
     (tmp_path / "Makefile").write_text(MAKEFILE)
-    bash = FakeBash({
-        "status --porcelain": {"exit": 0, "stdout": ""},
-        "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
-    })
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+        }
+    )
     await preflight(bash, tmp_path, gate_commands=("make check",))
     pull_at = next(i for i, c in enumerate(bash.calls) if "pull --ff-only" in c)
     status_at = next(i for i, c in enumerate(bash.calls) if "status --porcelain" in c)
     assert pull_at < status_at
+
+
+@pytest.mark.asyncio
+async def test_preflight_refuses_a_repo_whose_gate_is_already_red(tmp_path) -> None:
+    """A repo whose gate is red cannot produce a card that passes, so every
+    card in it would burn a worker and then land in `Failed` blaming that
+    worker for a failure it inherited. Observed live: a card was filed Failed
+    on `make check` exiting 2, where the type errors behind that exit predated
+    the worker and its own change was nine lines of prose."""
+    (tmp_path / "Makefile").write_text(MAKEFILE)
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+            "make check": {"exit": 2, "stdout": "356 diagnostics"},
+        }
+    )
+    out = await preflight(bash, tmp_path, gate_commands=("make check",))
+    assert out.ok is False
+    assert "already red" in out.reason
+    assert "exited 2" in out.reason
+    assert out.gate_cmd == "make check"
+
+
+@pytest.mark.asyncio
+async def test_preflight_passes_when_the_baseline_gate_is_green(tmp_path) -> None:
+    (tmp_path / "Makefile").write_text(MAKEFILE)
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+            "make check": {"exit": 0, "stdout": "ok"},
+        }
+    )
+    out = await preflight(bash, tmp_path, gate_commands=("make check",))
+    assert out.ok is True
+    assert out.gate_cmd == "make check"
+
+
+@pytest.mark.asyncio
+async def test_the_baseline_gate_can_be_turned_off(tmp_path) -> None:
+    """It costs a full gate run per card start. A slow gate is a reason to
+    opt out, not a reason to remove the check."""
+    (tmp_path / "Makefile").write_text(MAKEFILE)
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+            "make check": {"exit": 2, "stdout": "red"},
+        }
+    )
+    out = await preflight(
+        bash, tmp_path, gate_commands=("make check",), baseline_gate=False
+    )
+    assert out.ok is True
+    assert not any("make check" in c for c in bash.calls)
+
+
+@pytest.mark.asyncio
+async def test_a_repo_with_no_gate_is_not_baselined(tmp_path) -> None:
+    """Nothing to run, and `gate: none` is already reported honestly."""
+    (tmp_path / "Makefile").write_text("build:\n\tcc x.c\n")
+    bash = FakeBash(
+        {
+            "status --porcelain": {"exit": 0, "stdout": ""},
+            "rev-parse --abbrev-ref": {"exit": 0, "stdout": "main\n"},
+        }
+    )
+    out = await preflight(bash, tmp_path, gate_commands=("make check",))
+    assert out.ok is True
+    assert out.gate_cmd == "none"

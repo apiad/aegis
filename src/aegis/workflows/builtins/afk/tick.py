@@ -371,6 +371,7 @@ async def _start_one(
         lambda cmd, cwd: engine.bash(cmd, cwd=cwd),
         repo_path,
         gate_commands=tuple(cfg["gate_commands"]),
+        baseline_gate=bool(cfg["baseline_gate"]),
     )
     if not pre.ok:
         await _write_card(
