@@ -282,8 +282,7 @@ def load_config(root: Path) -> AegisConfig:
                 f">= 1 (got {qspec.max_attempts!r})."
             )
         if isinstance(qspec.recoverable_ttl_s, bool) or (
-            not isinstance(qspec.recoverable_ttl_s, int)
-            or qspec.recoverable_ttl_s < 0
+            not isinstance(qspec.recoverable_ttl_s, int) or qspec.recoverable_ttl_s < 0
         ):
             raise ConfigError(
                 f"{base}: queues[{qname!r}].recoverable_ttl_s must be an int "
@@ -492,14 +491,37 @@ def _iter_plugin_files(root: Path):
 
 
 def register_builtins(cfg: AegisConfig) -> None:
-    """Import each name in cfg.workflows from aegis.workflows.builtins."""
+    """Import each name in cfg.workflows from aegis.workflows.builtins.
+
+    Registration is an import *side effect* — the module body runs
+    ``@workflow`` — so ``import_module`` on an already-cached module registers
+    nothing and this function used to return having populated nothing. The
+    caller's docstring is explicit that a half-populated registry is the thing
+    to avoid, because the scheduler dispatches by name; leaving it silent made
+    that promise unverifiable.
+
+    So the postcondition is checked, and a cached module is reloaded to run its
+    decorators again. ``_register`` treats a same-file, same-line function as
+    the same workflow, which is what makes the reload safe rather than a
+    collision. A name still missing afterwards is a broken built-in, and it
+    fails here rather than at the first schedule that fires into it.
+    """
+    from aegis.workflow.decorator import _REGISTRY
+
     for name in cfg.workflows:
         try:
-            importlib.import_module(f"aegis.workflows.builtins.{name}")
+            mod = importlib.import_module(f"aegis.workflows.builtins.{name}")
         except ModuleNotFoundError as e:
             raise ConfigError(
                 f"workflows list references unknown built-in: {name!r}"
             ) from e
+        if name not in _REGISTRY:
+            importlib.reload(mod)
+        if name not in _REGISTRY:
+            raise ConfigError(
+                f"built-in {name!r} imported but registered no workflow called "
+                f"{name!r} — its @workflow name and module name must match"
+            )
 
 
 def load_workflow_registry(cfg: AegisConfig) -> None:
