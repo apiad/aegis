@@ -570,8 +570,8 @@ async def _serve(
     from aegis.canvas.manager import CanvasManager
     from aegis.canvas.notify import make_canvas_notifier
 
-    # Persist every serve-spawned session to JSONL (same state_dir the
-    # WebFrontend reads from), so seq is a real disk line index in web mode.
+    # Persist every serve-spawned session to JSONL, so seq is a real disk line
+    # index rather than a per-process counter.
     mgr.attach_persistence(roots.state_dir)
     # Persist the claims registry to the same state_dir the TUI uses, so
     # aegis_claim survives a serve restart and both frontends share one store.

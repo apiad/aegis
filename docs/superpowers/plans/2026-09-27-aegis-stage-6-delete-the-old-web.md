@@ -467,6 +467,28 @@ split three ways:
   A hit in `tests/test_mcp_config_tools.py` means the behaviour is covered and the web test is plumbing. **A miss means port the assertions to a non-web test before deleting the file**, and say so in the commit message.
 - **Port the premise.** `tests/test_comms_web_wire.py` imports `aegis.web.compact.compact_encoded` and reads `web/static/js/renderEvent.js` to assert one glyph table across the TUI and the browser. The browser half is gone, but the glyph table is not. Fold whatever it asserts about the table itself into `tests/test_comms_render.py` or `tests/test_render_event.py`, then delete it.
 
+**Step 1 audit result (recorded 2026-09-27, before any deletion).**
+
+The plan's three-way split covers 17 of the 18 `test_web_*.py` files. The
+missing one is `tests/test_web_config.py`, added to the "keep" class below.
+
+| File | Tests | Behaviour it asserts | Sibling coverage | Verdict |
+|---|---|---|---|---|
+| `test_web_protocol.py`, `test_web_server.py`, `test_web_static_routes.py`, `test_web_pwa.py`, `test_web_compact.py`, `test_web_history.py`, `test_web_subscriptions.py`, `test_web_session_list.py`, `test_web_slash.py`, `test_web_complete.py`, `test_wssession_handoff_rename.py`, `test_wssession_tail.py` | — | the WS protocol, routes, static files, PWA, compact encoding, session list | n/a — these test the deleted layer itself | **delete** |
+| `test_web_cli.py` | 2 | `aegis.cli._ensure_web_token` — token generation and idempotency | none; it *is* the only coverage | **keep**, renamed `test_web_token.py` |
+| `test_web_config.py` | 4 | `WebConfig` + `load_config`'s `web:` block parsing | none; it is the only coverage | **keep unchanged** — `WebConfig` lives in `src/aegis/config/` and `cli.py:1021,1030,1127` still reads it for the `aegis web` token. Named `test_web_*`, not about the old web. |
+| `test_web_config_edit.py` | 4 | `config_add_agent` etc. through `SubscriptionRegistry` | `tests/test_mcp_config_tools.py` | **delete** |
+| `test_web_config_show.py` | 2 | config_show listing agents/queues/schedules | `test_mcp_config_tools.py`, `test_comms_descriptors.py`, `test_mcp_server.py` | **delete** |
+| `test_web_files.py` | 8 | file search/read + traversal guard via the web RPC | `FileIndexer` itself is covered by `test_file_index.py`, `test_file_picker.py`, `test_file_browser_tab.py`, `test_file_index_perf.py`. The traversal guard lives at `web/subscriptions.py:133` — inside the deleted package, guarding a browser-file-read RPC that webterm does not have. The attack surface is **removed, not left uncovered**. `test_file_search` only asserted the registry delegating to a pre-stuffed `_paths`. | **delete** |
+| `test_web_group_status.py` | 2 | group status | `test_mcp_server.py`, `test_groups_mcp_maintenance.py` | **delete** |
+| `test_web_queue_digest.py` | 4 | queue digest | `tests/test_queue_digest.py` (dedicated) | **delete** |
+| `test_web_download.py` | 4 | `/download` route: 401, traversal 403, 404 | none — and none needed: `grep -rn download src/aegis/webterm/` is empty, so the route is deleted with the server rather than left untested | **delete** |
+| `test_comms_web_wire.py` | 4 | one glyph table across TUI and browser | Two tests assert `aegis.web.compact.compact_encoded`, deleted. Two assert `renderEvent.js`, deleted. What survives — the table — is already asserted with the *same inputs*: `test_render_shared.py:85` (`KIND_ICON["read"] == "📖"`), `test_comms_render.py:64` (`render_tool_use` on `Read`/`kind=read` → `📖`), `test_comms_descriptors.py:33,35` (`aegis_glyph("aegis_handoff") == "⇄"` and the desc format). | **delete; the fold is a no-op** |
+
+Nothing required porting. The one assertion unique to `test_comms_web_wire.py`
+— that `compact_encoded` strips `raw_input` and sets a `comms` boolean on the
+wire frame — describes a function this task deletes.
+
 - [ ] **Step 2: Write the failing test**
 
 `tests/test_no_old_web_layer.py`:
