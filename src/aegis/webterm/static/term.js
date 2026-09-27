@@ -58,7 +58,18 @@ function send(bytes) {
 
 ws.onopen = () => send(hello(viewId, term.cols, term.rows));
 ws.onmessage = (event) => {
-  if (typeof event.data === "string") return;
+  if (typeof event.data === "string") {
+    const { type } = JSON.parse(event.data);
+    if (type === "reconnecting") say("aegis is restarting — reconnecting…");
+    if (type === "attached") {
+      // A new view is about to draw from scratch. Anything half-received
+      // from the old one would corrupt it.
+      decoder.reset();
+      term.reset();
+      say("");
+    }
+    return;
+  }
   for (const [type, payload] of decoder.feed(new Uint8Array(event.data))) {
     if (type === "D") term.write(payload);
   }

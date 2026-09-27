@@ -6,8 +6,15 @@ import asyncio
 
 import pytest
 
-from aegis.daemon.protocol import encode_data, encode_meta, hello, resize
-from aegis.webterm.relay import relay
+from aegis.daemon.protocol import (
+    FrameDecoder,
+    encode_data,
+    encode_meta,
+    hello,
+    parse_hello,
+    resize,
+)
+from aegis.webterm.relay import ATTACHED, RECONNECTING, relay
 
 from tests.webterm.fakes import FakeBrowser, FakeDaemon, until
 
@@ -83,3 +90,123 @@ async def test_the_browser_leaving_closes_the_daemon_connection(daemon):
     b.leave()
     await asyncio.wait_for(task, 5)
     await asyncio.wait_for(daemon.eof[0].wait(), 5)
+
+
+FAST = (0.01, 0.02, 0.05)
+
+
+def _first_frame(data: bytes):
+    kind, payload = next(iter(FrameDecoder().feed(bytes(data))))
+    return kind, payload
+
+
+async def test_a_dropped_daemon_is_reconnected_with_the_same_view_at_the_latest_size(
+    daemon,
+):
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, daemon.connect, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: len(daemon.received) == 1)
+    b.push(resize(70, 20))
+    await until(lambda: resize(70, 20) in bytes(daemon.received[0]))
+    await daemon.hang_up(0)
+
+    await until(lambda: RECONNECTING in b.texts)
+    await until(lambda: len(daemon.received) == 2 and daemon.received[1])
+    kind, payload = _first_frame(daemon.received[1])
+    assert kind == "M" and parse_hello(payload) == ("web-1", 70, 20, None)
+
+    await daemon.say(1, encode_data(b"fresh view"))
+    await until(lambda: ATTACHED in b.texts)
+    kinds = [
+        k
+        for k, p in b.events
+        if (k, p) in (("text", ATTACHED), ("bytes", encode_data(b"fresh view")))
+    ]
+    assert kinds == ["text", "bytes"], "the page must reset before the new view's bytes"
+    assert not task.done(), "the browser was dropped"
+    b.leave()
+    await asyncio.wait_for(task, 5)
+
+
+async def test_keys_typed_while_the_daemon_was_gone_are_not_replayed(daemon):
+    attempts = []
+    typed = asyncio.Event()
+
+    async def flaky():
+        attempts.append(1)
+        if len(attempts) == 2:
+            await typed.wait()  # fail only once the key is queued
+            raise ConnectionRefusedError
+        return await daemon.connect()
+
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, flaky, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: len(daemon.received) == 1)
+    await daemon.hang_up(0)
+    await until(lambda: RECONNECTING in b.texts)
+    b.push(encode_data(b"rm -rf typed into the void"))
+    await asyncio.sleep(0.05)  # the relay's browser reader queues it
+    typed.set()
+    await until(lambda: len(daemon.received) == 2 and daemon.received[1])
+    await asyncio.sleep(0.1)
+    assert b"rm -rf" not in bytes(daemon.received[1])
+    b.leave()
+    await asyncio.wait_for(task, 5)
+
+
+async def test_keys_typed_while_the_daemon_is_being_started_are_not_replayed(daemon):
+    """The real reconnect spends its gap inside connect(): ensure_daemon
+    spawning a daemon can take seconds, and the connect then succeeds.
+    Dropping stale input only before connect() let these keys through
+    (seen in review)."""
+    attempts = []
+    typed = asyncio.Event()
+
+    async def spawning():
+        attempts.append(1)
+        if len(attempts) == 2:
+            await typed.wait()  # still spawning when the key is typed
+        return await daemon.connect()
+
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, spawning, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: len(daemon.received) == 1)
+    await daemon.hang_up(0)
+    await until(lambda: RECONNECTING in b.texts)
+    b.push(encode_data(b"rm -rf typed into the void"))
+    await asyncio.sleep(0.05)
+    typed.set()
+    await until(lambda: len(daemon.received) == 2 and daemon.received[1])
+    await asyncio.sleep(0.1)
+    assert b"rm -rf" not in bytes(daemon.received[1])
+    b.leave()
+    await asyncio.wait_for(task, 5)
+
+
+async def test_a_refusal_is_not_announced_as_attached(daemon):
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, daemon.connect, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: len(daemon.received) == 1)
+    await daemon.hang_up(0)
+    await until(lambda: len(daemon.received) >= 2)
+    await daemon.hang_up(1)  # the daemon refuses: no bytes, just EOF
+    await until(lambda: len(daemon.received) >= 3)
+    assert ATTACHED not in b.texts
+    b.leave()
+    await asyncio.wait_for(task, 5)
+
+
+async def test_a_browser_leaving_during_the_backoff_ends_the_relay():
+    async def never():
+        raise ConnectionRefusedError
+
+    b = FakeBrowser()
+    b.push(hello("web-1", 100, 30))
+    task = asyncio.create_task(relay(b, never, delays=(0.05,)))
+    await asyncio.sleep(0.2)
+    b.leave()
+    await asyncio.wait_for(task, 2)

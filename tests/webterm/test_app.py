@@ -7,6 +7,8 @@ nothing.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -111,8 +113,12 @@ def test_an_authenticated_socket_reaches_the_daemon_only_after_hello(world):
         with pytest.raises(WebSocketDisconnect):
             ws.receive_bytes()
     assert calls == []
+    # connect() raising no longer ends the socket: since Task 6 the relay
+    # retries behind a browser that stays put. So watch for the call rather
+    # than for a disconnect, and close the client to end the relay.
     with client.websocket_connect("/term") as ws:
         ws.send_bytes(hello("web-1", 80, 24))
-        with pytest.raises(WebSocketDisconnect):
-            ws.receive_bytes()
-    assert calls == [1]
+        deadline = time.monotonic() + 5
+        while not calls and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert calls, "a hello never reached the daemon"
