@@ -2570,6 +2570,45 @@ this plan, verbatim, the result of each:
 7. `AEGIS_DAEMON_DIR="$R/.daemons" aegis kill --cwd "$R"`: the page shows "reconnecting", then returns with its tabs.
 8. The browser's "Duplicate tab" on the first tab opens a working view of its own within a second, not a permanent "reconnecting".
 
+**Recorded 2026-09-27** (`cf00b54`), Chromium via saidkick, throwaway root
+`/tmp/aegis-web-e2e` on port 8977. Six of the eight were driven in the
+browser; two could not be, and are recorded as unverified rather than
+inferred.
+
+1. **Pass.** `saidkick tabs` reports `http://127.0.0.1:8977/` after the
+   login redirect, with no `?t=`.
+2. **Pass.** The screenshot shows the tab bar (`● 1 brisk-blum ·main·`), the
+   status bar, and the `type a message…` input.
+3. **Not verified in the browser.** saidkick 2.x cannot deliver keystrokes
+   into a canvas terminal: `type` against xterm's hidden textarea leaves the
+   screenshot byte-identical, and `press --mod ctrl` returns HTTP 500. The
+   behaviour was proved instead over the real front door — a WebSocket
+   client presenting the `aegis_web` cookie to `ws://127.0.0.1:8977/term`,
+   sending `hello` then one `encode_data` frame per character, and the view
+   echoed `hola desde el navegador` back into the rendered screen. That
+   exercises auth, the relay and the view; what stays unverified is only
+   xterm.js's own key handling.
+4. **Not verified**, same instrument limitation (Ctrl+T needs a modifier).
+5. **Pass.** A reload returns to the same view: the same session
+   (`brisk-blum`) redraws, and `.aegis/state/views/` holds two files for two
+   tabs, so the reloaded tab reused its id rather than taking a third.
+6. **Pass.** A second tab gets its own view — the two view files above.
+7. **Pass, with a correction to the step.** `aegis kill` alone does not
+   reproduce it: `registry.kill` sends SIGTERM and `kill_cmd` prints
+   `stopped <pid>` without waiting, and this daemon was still alive 35s
+   later with `aegis web` holding a view open. Unlinking the socket path
+   does not close established connections, so the page correctly showed no
+   change — there was nothing to reconnect to. `kill -9` on the daemon gives
+   the intended condition: within 3s the page was back with a full TUI under
+   a new session (`elite-engelbart`, the old brain having died with the
+   daemon), and `aegis web` had autostarted a fresh daemon (pid 2932149)
+   through `connect_for`'s `ensure_daemon`. `aegis kill` not waiting for
+   the exit it reports is pre-existing (`registry.kill` is untouched by this
+   plan) and belongs in TASKS.md, not here.
+8. **Not verified.** saidkick has no "Duplicate tab", which is the only way
+   to copy `sessionStorage` and exercise the `BroadcastChannel` claim.
+   Check 6 covers the adjacent case (a fresh tab at the same URL) and passes.
+
 Stop `aegis web` and the daemon by PID afterwards.
 
 - [ ] **Step 6: Commit and push**
