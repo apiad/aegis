@@ -4,7 +4,7 @@
 Issues [#13](https://github.com/apiad/aegis/issues/13) (the network block) and
 [#12](https://github.com/apiad/aegis/issues/12) (the tok/s regression). Both
 land in `src/aegis/tui/sidebar.py`, so they ship in one cycle rather than two.
-The plan is `docs/superpowers/plans/2026-09-27-f3-network-and-tps.md`.
+The plan is `docs/superpowers/plans/2026-09-27-f3-network-and-tps.md` (6 tasks, 59 steps).
 
 F3's SYSTEM block samples CPU, RAM and disk every second and says nothing about
 the network. The two questions it cannot answer are the two that decide what an
