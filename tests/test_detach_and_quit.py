@@ -73,6 +73,8 @@ def test_the_autostart_spawn_marks_the_daemon(monkeypatch):
     assert "--autostarted" in seen["argv"], (
         "a daemon spawned by a client cannot be told apart from one a "
         f"person started: {seen['argv']}")
+    assert seen["argv"][3] == "server", (
+        f"autostart still runs the old command name: {seen['argv']}")
 
 
 # --- the keys ------------------------------------------------------------

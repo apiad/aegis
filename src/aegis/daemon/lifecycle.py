@@ -83,7 +83,7 @@ def socket_path(roots: AegisRoots) -> Path:
 
 
 class DaemonAlreadyRunning(Exception):
-    """`aegis serve` found another daemon holding this root's lock."""
+    """`aegis server` found another daemon holding this root's lock."""
 
 
 def lock_path(roots: AegisRoots) -> Path:
@@ -249,7 +249,7 @@ class IdleReaper:
 
 
 def _spawn_detached(root: Path) -> None:
-    """Fork `aegis serve` into its own session, detached from this tty.
+    """Fork `aegis server` into its own session, detached from this tty.
 
     ``start_new_session`` is what makes it survive the terminal that
     started it: without it the daemon is in the attaching shell's process
@@ -261,7 +261,7 @@ def _spawn_detached(root: Path) -> None:
     # it. A daemon a person or systemd starts carries no such mark and is
     # therefore unstoppable from any TUI.
     subprocess.Popen(
-        [sys.executable, "-m", "aegis", "serve", "--cwd", str(root), "--autostarted"],
+        [sys.executable, "-m", "aegis", "server", "--cwd", str(root), "--autostarted"],
         cwd=str(root),
         start_new_session=True,
         stdin=subprocess.DEVNULL,
@@ -324,5 +324,5 @@ async def ensure_daemon(root: Path, *, timeout_s: float = 20.0, preflight=None) 
             return path
     raise SpawnFailed(
         f"daemon for {root} did not come up within {timeout_s:.0f}s; "
-        f"try `aegis serve --cwd {root}` in a terminal to see why"
+        f"try `aegis server --cwd {root}` in a terminal to see why"
     )

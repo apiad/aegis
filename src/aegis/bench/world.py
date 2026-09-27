@@ -127,7 +127,11 @@ def start_daemon(
 ) -> float:
     """Start ``aegis serve`` with the probe; returns boot time in ms."""
     argv = aegis_argv(
-        world.target, ["serve", "--cwd", str(world.root)], probe_dir=world.probe_dir
+        # `serve`, not `server`: --target runs releases that predate the rename,
+        # and the hidden alias keeps the current one answering to it.
+        world.target,
+        ["serve", "--cwd", str(world.root)],
+        probe_dir=world.probe_dir,
     )
     log_path = world.run_dir / "serve.log"
     t0 = time.monotonic_ns()

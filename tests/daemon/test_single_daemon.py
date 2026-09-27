@@ -115,7 +115,7 @@ def _world(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
 def _serve(root: Path, env: dict[str, str], log: Path) -> subprocess.Popen:
     with log.open("wb") as fh:
         return subprocess.Popen(
-            [sys.executable, "-m", "aegis", "serve", "--cwd", str(root),
+            [sys.executable, "-m", "aegis", "server", "--cwd", str(root),
              "--autostarted"],
             cwd=root, env=env, start_new_session=True,
             stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT)

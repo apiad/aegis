@@ -169,7 +169,7 @@ def test_serve_routes_the_boot_through_serve(monkeypatch, tmp_path):
         "aegis.tui.app.AegisApp.run",
         lambda self: (_ for _ in ()).throw(
             AssertionError("the TUI was launched outside _serve")))
-    r = CliRunner().invoke(cli_app, ["serve"])
+    r = CliRunner().invoke(cli_app, ["server"])
     assert r.exit_code == 0, r.output
     assert seen, "`aegis serve` did not route through _serve"
     assert seen["views"], "`aegis serve` did not publish a view socket"

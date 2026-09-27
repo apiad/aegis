@@ -909,7 +909,7 @@ async def _serve(
 
 
 @app.command()
-def serve(
+def server(
     cwd: str = typer.Option(".", "--cwd"),
     autostarted: bool = typer.Option(
         False,
@@ -919,8 +919,14 @@ def serve(
         "client may later stop; a daemon you start yourself is not.",
     ),
 ) -> None:
-    """Run the daemon in the foreground (brain + views + MCP plane)."""
+    """Run the daemon in the foreground: brain, views and MCP plane, on a unix socket."""
     _run_serve(cwd, autostarted=autostarted)
+
+
+# The old name, hidden. `aegis bench --target X.Y.Z` starts releases that
+# only know `serve`, and a systemd unit written for it keeps working until
+# stage 6 deploys the new units.
+app.command("serve", hidden=True)(server)
 
 
 @app.command()
