@@ -50,6 +50,47 @@ def test_resolve_boot_registers_a_builtin_named_in_workflows(tmp_path) -> None:
     assert get_workflow("afk_progress") is not None
 
 
+def test_register_builtins_repopulates_an_emptied_registry(tmp_path) -> None:
+    """Registration is an import side effect, so `import_module` on an
+    already-cached module registers nothing.
+
+    That makes the promise in `load_workflow_registry`'s docstring — that the
+    scheduler can dispatch every configured name — unverified: the call
+    succeeds and leaves the registry dead. Reproduced in 0.65s by three test
+    files in a row, where one imports `builtins.afk` (registering it), the next
+    clears the registry in its teardown, and the third boots into nothing.
+    """
+    from aegis.config.yaml_loader import load_config, load_workflow_registry
+    from aegis.workflow import get_workflow
+    from aegis.workflow.decorator import _REGISTRY
+
+    root = _write_root(
+        tmp_path,
+        """
+        agents:
+          opus:
+            provider: claude-code
+            model: opus
+        default_agent: opus
+        workflows:
+          - afk
+        """,
+    )
+    # The poisoning state, reached exactly as the suite reaches it: the module
+    # is imported (so `import_module` will no-op) and the registry is empty.
+    import aegis.workflows.builtins.afk  # noqa: F401
+
+    saved = dict(_REGISTRY)
+    _REGISTRY.clear()
+    try:
+        load_workflow_registry(load_config(root))
+        assert get_workflow("afk") is not None
+        assert get_workflow("afk_progress") is not None
+    finally:
+        _REGISTRY.clear()
+        _REGISTRY.update(saved)
+
+
 def test_an_unknown_builtin_name_fails_loud(tmp_path) -> None:
     from aegis.config import ConfigError
     from aegis.config.yaml_loader import load_workflow_registry, load_config
