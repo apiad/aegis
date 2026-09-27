@@ -6,7 +6,21 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from aegis.plan import PlanSnapshot
 
 if TYPE_CHECKING:  # annotation only — keeps this module import-light
+    from pathlib import Path
+
+    from aegis.canvas.manager import CanvasManager
+    from aegis.config.roots import AegisRoots
     from aegis.fleet.models import Origin
+    from aegis.locks.bridge import _LocksBridge
+    from aegis.monitor.manager import MonitorManager
+    from aegis.queue.inbox import InboxRouter
+    from aegis.queue.loop import LoopService
+    from aegis.queue.manager import QueueManager
+    from aegis.queue.reminder import ReminderService
+    from aegis.remote.config import RemoteSpec
+    from aegis.scheduler.scheduler import Scheduler
+    from aegis.terminal.manager import TerminalManager
+    from aegis.workflow.decorator import WorkflowFn
 
 
 @dataclass(frozen=True)
@@ -33,6 +47,17 @@ class SessionInfo:
     # Human-readable label beside the handle — what the session is *about*,
     # where the handle is only who it is. "" when nobody has set one.
     title: str = ""
+
+
+class WorkflowRegistry(Protocol):
+    """Name → workflow lookup, as the MCP tools use it.
+
+    A Protocol rather than the concrete registry because implementors differ:
+    the module-level ``@workflow`` registry, and a per-instance dict the
+    embedded API hands in. Both only ever get ``.get`` called on them.
+    """
+
+    def get(self, name: str, /) -> "WorkflowFn | None": ...
 
 
 class GroupsBridge(Protocol):
@@ -74,30 +99,33 @@ class AppBridge(Protocol):
     expose ``queue_manager`` and ``inbox_router`` so the queue MCP tools
     can reach the substrate.
 
-    The two attribute annotations are ``object`` rather than the concrete
-    ``QueueManager`` / ``InboxRouter`` types to avoid an import cycle
-    (``aegis.queue`` may later need bridge types); the runtime isinstance
-    check is structural — the attributes just need to exist.
+    These were annotated ``object`` to avoid an import cycle
+    (``aegis.queue`` may later need bridge types). The cycle is real, but
+    ``object`` paid for it with every attribute on every one of them: a typo
+    in ``bridge.queue_manager.resume_tsak`` was invisible until it raised.
+    ``TYPE_CHECKING`` buys the names back at zero runtime cost, so the imports
+    below never execute and the annotations stay strings. The runtime
+    isinstance check is still structural — the attributes just need to exist.
     """
 
-    queue_manager: object  # QueueManager
-    inbox_router: object  # InboxRouter
-    monitor_manager: object  # MonitorManager
-    reminder_service: object  # ReminderService
-    loop_service: object  # LoopService
-    canvas_manager: object  # CanvasManager
-    terminal_manager: object  # TerminalManager
-    groups: object  # GroupsBridge
-    locks: object  # _LocksBridge
-    remotes: object  # dict[str, RemoteSpec]; empty when none configured
-    scheduler: object  # Scheduler | None
-    state_root: object  # Path — workspace root
-    # AegisRoots — where this instance resolves .aegis.yaml, state and the
-    # harness cwd. The config MCP tools bind it once in build_server rather
-    # than walking up from the process cwd at call time, so an implementor
-    # without it breaks every config tool on that bridge.
-    roots: object  # AegisRoots
-    workflow_registry: object  # has .get(name) -> WorkflowFn | None
+    queue_manager: "QueueManager"
+    inbox_router: "InboxRouter"
+    monitor_manager: "MonitorManager"
+    reminder_service: "ReminderService"
+    loop_service: "LoopService"
+    canvas_manager: "CanvasManager"
+    terminal_manager: "TerminalManager"
+    groups: "GroupsBridge"
+    locks: "_LocksBridge"
+    remotes: "dict[str, RemoteSpec]"  # empty when none configured
+    scheduler: "Scheduler | None"
+    state_root: "Path"  # workspace root
+    # Where this instance resolves .aegis.yaml, state and the harness cwd. The
+    # config MCP tools bind it once in build_server rather than walking up from
+    # the process cwd at call time, so an implementor without it breaks every
+    # config tool on that bridge.
+    roots: "AegisRoots"
+    workflow_registry: "WorkflowRegistry"
 
     def inline_schedule_names(self) -> set[str]: ...
 
