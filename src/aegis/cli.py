@@ -6,7 +6,7 @@ import signal
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 import typer
 from rich.console import Console
@@ -24,8 +24,6 @@ from aegis.mcp import AegisMCP
 from aegis.state.workspace import state_dir
 from aegis.tui import AegisApp
 
-if TYPE_CHECKING:
-    from aegis.tui.remote_manager import RemoteSessionManager
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 _console = Console()
@@ -190,61 +188,11 @@ def run(
     clean: bool = typer.Option(
         False, "--clean", help="Ignore prior workspace state; start fresh"
     ),
-    remote: str = typer.Option(
-        None,
-        "--remote",
-        help="Run against a remote aegis serve. "
-        "ws://host:port or wss://host:port. "
-        "Empty value = ws://localhost:8080.",
-    ),
-    token: str = typer.Option(
-        None,
-        "--token",
-        help="Web token for --remote ws://. Required for ws:// remotes.",
-    ),
-    tail: int = typer.Option(
-        10, "--tail", help="On subscribe/resume, replay last N coalesced blocks."
-    ),
 ) -> None:
     """Run the interactive aegis session (default when no subcommand)."""
     if ctx.invoked_subcommand is not None:
         return
 
-    if remote is not None:
-        url = remote or "ws://localhost:8080"
-        from urllib.parse import urlparse as _urlparse
-
-        parsed = _urlparse(url)
-        if parsed.scheme == "ssh":
-            host = parsed.hostname
-            port = parsed.port or 8080
-            fetched_token = _ssh_fetch_token(host)
-            from aegis.remote.ssh_tunnel import SSHTunnel
-
-            tunnel = SSHTunnel(host, port)
-
-            async def _boot():
-                await tunnel.__aenter__()
-                try:
-                    mgr = await _build_remote_manager(
-                        url=f"ws://localhost:{tunnel.local_port}",
-                        token=fetched_token,
-                        tail=tail,
-                    )
-                    mgr._tunnel = tunnel  # keep alive for TUI lifetime
-                    return mgr
-                except Exception:
-                    await tunnel.__aexit__(None, None, None)
-                    raise
-
-            mgr = asyncio.run(_boot())
-        elif parsed.scheme == "ws":
-            _maybe_autolaunch_serve(url)
-            mgr = asyncio.run(_build_remote_manager(url=url, token=token, tail=tail))
-        else:
-            raise typer.BadParameter(f"--remote: unsupported scheme {parsed.scheme!r}")
-        _run_tui_with_manager(mgr, cwd=cwd, clean=clean, agent=agent)
-        return
     root = find_project_root() or Path.cwd()
     if not (root / ".aegis.yaml").is_file():
         # Bootstrap mode: no .aegis.yaml anywhere → drop straight into the
@@ -503,100 +451,6 @@ def _attach_to_daemon(root: Path, view_id: str, *, open: str | None = None) -> N
 
 def _root_for(cwd: str) -> Path:
     return Path(cwd).resolve() if cwd != "." else (find_project_root() or Path.cwd())
-
-
-async def _build_remote_manager(
-    *, url: str, token: str | None, tail: int
-) -> "RemoteSessionManager":
-    """Build and start a RemoteSessionManager over a WsClient connection."""
-    from aegis.tui.remote_manager import RemoteSessionManager
-    from aegis.tui.ws_client import WsClient
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url)
-    if parsed.scheme != "ws":
-        raise typer.BadParameter(f"unsupported scheme {parsed.scheme!r}; use ws://")
-    if not token:
-        raise typer.BadParameter(
-            "--token is required for --remote ws://; "
-            "obtain it with `aegis token` on the remote host."
-        )
-    ws = WsClient(url, token, default_tail=tail)
-    await ws.connect()
-    mgr = RemoteSessionManager(ws)
-    await mgr.start()
-    return mgr
-
-
-def _ssh_fetch_token(host: str) -> str:
-    """Shell out to `ssh <host> aegis token` and return the printed token."""
-    import subprocess
-
-    r = subprocess.run(
-        ["ssh", host, "aegis", "token"], capture_output=True, text=True, check=True
-    )
-    return r.stdout.strip()
-
-
-def _maybe_autolaunch_serve(url: str) -> None:
-    """If URL points at localhost and nothing is listening on the port,
-    spawn a background `aegis serve` subprocess and wait until the WS port
-    accepts connections (5 s cap)."""
-    import socket
-    import subprocess
-    import sys
-    import time
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url)
-    if parsed.hostname not in ("localhost", "127.0.0.1"):
-        return
-    port = parsed.port or 8080
-    with socket.socket() as probe:
-        probe.settimeout(0.1)
-        try:
-            probe.connect(("127.0.0.1", port))
-            return  # already listening
-        except OSError:
-            pass
-    subprocess.Popen(
-        [sys.executable, "-m", "aegis", "serve"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline:
-        with socket.socket() as probe:
-            probe.settimeout(0.1)
-            try:
-                probe.connect(("127.0.0.1", port))
-                return
-            except OSError:
-                time.sleep(0.1)
-    raise typer.Exit(f"aegis serve failed to start on port {port}")
-
-
-def _run_tui_with_manager(mgr, *, cwd: str, clean: bool, agent: str | None) -> None:
-    """Launch AegisApp with an externally-built manager (--remote path)."""
-    root = find_project_root() or Path.cwd()
-    effective_cwd = str(root) if cwd == "." else cwd
-    from aegis.drivers import DRIVERS
-
-    drivers = {slug: cls() for slug, cls in DRIVERS.items()}
-    agents = {slug: None for slug in mgr.list_agents()}
-    AegisApp(
-        agents=agents,
-        default_agent=agent or "",
-        make_session=None,
-        mcp=None,
-        queues={},
-        clean=clean,
-        drivers=drivers,
-        cwd=effective_cwd,
-        voice=None,
-        manager=mgr,
-    ).run()
 
 
 @dataclass
