@@ -23,6 +23,7 @@ Spec: ``docs/superpowers/specs/2026-07-31-aegis-at-mention-peer-ask-design.md``
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # How long the source pane waits. On overrun the peer's turn keeps going
@@ -45,6 +46,24 @@ TEASER_ITEM_CHARS = 200
 # than the teaser by design — that gap is the entire push-vs-pull split.
 READ_BUDGET_TOKENS = 24_000
 READ_ITEM_CHARS = 500
+
+
+def _fence(window_text: str) -> str:
+    """Wrap a pushed transcript window in a fenced block.
+
+    The window is one transcript item per line, and it used to ride between
+    ``--- tail of X ---`` markers. That is an ordinary Markdown paragraph, so
+    the pane's ``render_user_block`` folded every newline and the whole window
+    rendered as one run-on line with the speaker labels glued together — the
+    operator could not read back what the agent was sent. A fence keeps the
+    lines, and stops a ``<tag>`` inside the window from opening an HTML block.
+
+    The fence length adapts, because a window carrying a fenced code block of
+    its own would otherwise close this one early.
+    """
+    longest = max((len(r) for r in re.findall(r"`+", window_text)), default=0)
+    bars = "`" * max(3, longest + 1)
+    return f"{bars}text\n{window_text}\n{bars}"
 
 
 class PeerBusy(Exception):
@@ -286,7 +305,7 @@ def compose(*, source: str, slug: str, prompt: str, window=None) -> str:
         slice_ = (
             f"Below is the recent tail of that conversation — "
             f"{window.header}.\n\n"
-            f"--- tail of {source} ---\n{window.text}\n--- end ---\n\n"
+            f"{_fence(window.text)}\n\n"
         )
         pull = (
             f"Read the fuller conversation with "
@@ -340,7 +359,7 @@ def compose_spawn(
         f"The operator started you from inside another conversation — tab "
         f"`{source}` ({slug}) — and this probably refers to what is "
         f"happening there. Below is the recent tail of it — {header}.\n\n"
-        f"--- tail of {source} ---\n{tail}\n--- end ---\n\n"
+        f"{_fence(tail)}\n\n"
         f'Read the fuller conversation with aegis_read_peer("{source}") '
         f"before you start, unless the task is plainly self-contained. "
         f"That tail is a snapshot taken when you were spawned; `{source}` "
