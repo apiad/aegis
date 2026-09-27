@@ -24,10 +24,13 @@ from typing import TYPE_CHECKING
 
 from rich.cells import cell_len, set_cell_size
 from rich.text import Text
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
+from textual.message import Message
 from textual.widgets import Static
 
 from aegis.fleet.render import (
+    RESTART,
+    STOP,
     bar,
     ctx_style,
     gauge,
@@ -563,6 +566,37 @@ SIDEBAR_MIN = 26 + 2 * SIDEBAR_PAD_X
 SIDEBAR_MAX = 60 + 2 * SIDEBAR_PAD_X
 
 
+class _Button(Static):
+    """One of the two. A Static, because nothing in this TUI is a Textual
+    ``Button`` and one here would arrive with its own chrome and height."""
+
+    def __init__(self, action: str, label: str) -> None:
+        super().__init__(label)
+        self.action_name = action
+
+    def on_click(self, event) -> None:
+        event.stop()
+        self.post_message(SidebarActions.Pressed(self.action_name))
+
+
+class SidebarActions(Horizontal):
+    """Stop and restart for the tab the column is describing.
+
+    F10 acts on any session; this pair acts only on the one in front of you,
+    which is what makes it one click rather than open-the-fleet-then-find-it.
+    The message bubbles to the pane, which owns the handle.
+    """
+
+    class Pressed(Message):
+        def __init__(self, action: str) -> None:
+            super().__init__()
+            self.action = action
+
+    def compose(self):
+        yield _Button("stop", f"{STOP} stop")
+        yield _Button("restart", f"{RESTART} restart")
+
+
 class Sidebar(VerticalScroll):
     """The F3 column. Scrolls: fully populated it is ~25 rows, and an 80x24
     terminal has about twenty to give."""
@@ -580,6 +614,14 @@ class Sidebar(VerticalScroll):
         color: $foreground;
         scrollbar-size: 0 0;
     }}
+    /* Docked, so the pair stays put when the column scrolls past twenty
+       rows — the one control here that must never be scrolled away from. */
+    SidebarActions {{ dock: top; height: 1; width: 100%; margin-bottom: 1; }}
+    SidebarActions _Button {{
+        width: auto; height: 1; padding: 0 1; margin-right: 1;
+        background: $boost; color: $foreground 70%;
+    }}
+    SidebarActions _Button:hover {{ background: $accent; color: $background; }}
     """
 
     def __init__(self, palette, **kw) -> None:
@@ -592,6 +634,7 @@ class Sidebar(VerticalScroll):
         self.display = False
 
     def compose(self):
+        yield SidebarActions()
         yield self._body
 
     def on_mount(self) -> None:

@@ -23,7 +23,7 @@ from textual.widgets import Static
 
 from aegis.fleet.ghosts import GhostBook
 from aegis.fleet.models import FleetSnapshot
-from aegis.fleet.render import render_band, render_detail, render_item
+from aegis.fleet.render import action_at, render_band, render_detail, render_item
 from aegis.fleet.rotation import Rotator
 
 if TYPE_CHECKING:
@@ -34,7 +34,9 @@ if TYPE_CHECKING:
 COALESCE_S = 0.5
 # Below this many columns the detail stacks under the list.
 NARROW = 110
-_KEYS = "↑↓ select   enter open tab   1-9 tab   esc/F10 close"
+# Compacted when stop and restart joined it: the row also right-aligns the
+# rotator's countdown, and the roomier separators put the pair past 80 cells.
+_KEYS = "↑↓ select  enter open  1-9 tab  s stop  r restart  esc/F10 close"
 
 
 def in_tab_order(snapshot: FleetSnapshot, tabs: dict[str, int]) -> FleetSnapshot:
@@ -58,12 +60,25 @@ class _Item(Static):
         super().__init__("")
         self.handle = handle
         self.drawn: Text | None = None  # the last Text given to update()
+        self.live = True  # a ghost has no session left to act on
 
     def on_click(self, event) -> None:
         event.stop()
         screen = self.screen
-        if isinstance(screen, FleetScreen):
-            screen.click_item(self.handle)
+        if not isinstance(screen, FleetScreen):
+            return
+        # Content coordinates, taken from the widget's own regions rather
+        # than from the border and padding the CSS happens to set: the two
+        # drift apart the moment the CSS changes, and the only symptom is a
+        # click landing on the neighbouring target.
+        content = self.content_region
+        x = event.screen_offset.x - content.x
+        y = event.screen_offset.y - content.y
+        action = action_at(x) if self.live and y == 0 else None
+        if action is not None:
+            screen.act_on(self.handle, action)
+            return
+        screen.click_item(self.handle)
 
 
 class FleetScreen(ModalScreen):
@@ -89,6 +104,8 @@ class FleetScreen(ModalScreen):
         Binding("up", "move(-1)", "Up", priority=True),
         Binding("down", "move(1)", "Down", priority=True),
         Binding("enter", "open", "Open", priority=True),
+        Binding("s", "stop", "Stop", priority=True),
+        Binding("r", "restart", "Restart", priority=True),
         *[Binding(str(n), f"pick({n})", show=False) for n in range(1, 10)],
     ]
 
@@ -169,6 +186,33 @@ class FleetScreen(ModalScreen):
         self.select_handle(handle)
         self._operator_chose()
         self._draw()
+
+    def act_on(self, handle: str, action: str) -> None:
+        """Stop or restart one session, without selecting or opening its card.
+
+        Deliberately no selection move and no ``_operator_chose``: the icons
+        exist so four agents can be stopped in four clicks straight down the
+        list, and a click that moved the selection would scroll the detail
+        under the next one and stop the rotator on the way.
+        """
+        app = cast("AegisApp", self.app)
+        fn = app.restart if action == "restart" else app.interrupt
+        self.app.run_worker(fn(handle), group=f"fleet-{action}")
+
+    def _act_on_selected(self, action: str) -> None:
+        cards = self._view().cards
+        card = cards[self.selected - 1] if 1 <= self.selected <= len(cards) else None
+        if card is None or card.ghost_since is not None:
+            return
+        self.act_on(card.handle, action)
+
+    def action_stop(self) -> None:
+        """``s`` — cut the selected session's turn, like Escape in its tab."""
+        self._act_on_selected("stop")
+
+    def action_restart(self) -> None:
+        """``r`` — cut the selected session's turn and send it `continue`."""
+        self._act_on_selected("restart")
 
     def action_pick(self, n: int) -> None:
         """``n`` is the tab number the item shows. It equals the item's place
@@ -327,7 +371,8 @@ class FleetScreen(ModalScreen):
         chosen = cards[self.selected - 1] if n else None
         for card in cards:
             item = self._items[card.handle]
-            text = render_item(card, pal, self.frame)
+            item.live = card.ghost_since is None
+            text = render_item(card, pal, self.frame, actions=True)
             # Every frame redraws every item; most have not changed, and an
             # update() re-lays the widget out. Text equality compares the
             # plain string and the spans, so the base style is compared too.

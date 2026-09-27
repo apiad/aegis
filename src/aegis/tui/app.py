@@ -3053,6 +3053,24 @@ class AegisApp(App):
             with contextlib.suppress(Exception):
                 await worker.wait()
 
+    async def restart(self, handle: str) -> None:
+        """Cut the named pane's turn and send it straight back to work with
+        `continue`. Unknown handle → no-op.
+
+        The pane owns the sequencing (see `ConversationPane.restart`); this is
+        only the by-handle seam F10 and the F3 sidebar reach it through.
+        """
+        pane = next(
+            (
+                p
+                for p in self._panes
+                if isinstance(p, ConversationPane) and p.handle == handle
+            ),
+            None,
+        )
+        if pane is not None:
+            await pane.restart()
+
     async def _spawn_remote_pane(
         self, info, *, foreground: bool = False
     ) -> "ConversationPane | None":

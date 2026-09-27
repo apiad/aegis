@@ -59,6 +59,17 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Added
 
+- **Stop and restart, on every F10 item and at the top of the F3 column.** `■`
+  cuts a session's turn, exactly as `Escape` does inside its own tab; `↻` cuts
+  the turn and sends it `continue`, which is `Escape` then typing the word, in
+  one click. An idle session has nothing to cut, so `↻` there is only the
+  message. On F10 the pair opens each item's first line rather than sitting in
+  the detail beside it, so the icons stack into a column and four runaway
+  agents are four clicks straight down the list: a click on an icon moves no
+  selection, scrolls no detail and opens no tab. `s` and `r` do the same to the
+  selected item, and a closed session's pair is greyed and inert. The F3 pair
+  acts on the tab in front of you, queue workers included.
+
 - **The `afk` and `afk_progress` built-in workflows** — an unattended coordinator
   that works a GitHub Project of prompt cards. Each issue body is a
   self-contained prompt; `afk` hands one to a queue worker, and on a later tick

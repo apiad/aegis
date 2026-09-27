@@ -50,7 +50,7 @@ from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.plan_strip import PlanStrip
-from aegis.tui.sidebar import Sidebar, SidebarModel
+from aegis.tui.sidebar import Sidebar, SidebarActions, SidebarModel
 from aegis.tui.strip import QueueStrip
 from aegis.tui.sysmeter import current_locale, format_build, format_clock, format_cwd
 from aegis.tui.voice_strip import VoiceStrip
@@ -78,6 +78,13 @@ _SUBAGENT_TOOLS = frozenset({"Task", "Agent"})
 # what actually gates the subprocess; this only decides how often it is
 # asked.
 _REPO_TICK = 5.0
+
+# What a restart says. One word, and the same word every time: an agent that
+# was interrupted mid-thought reads it as "resume", and one that was idle
+# reads it as "carry on with the plan" — both of which are the intent. It is
+# delivered as a plain user turn, so a harness sees no marker it has to know
+# about.
+RESTART_TEXT = "continue"
 
 
 def fold_plan_events(events: list) -> list:
@@ -1880,6 +1887,19 @@ class ConversationPane(Widget):
         except Exception:
             return False
 
+    async def on_sidebar_actions_pressed(self, event: SidebarActions.Pressed) -> None:
+        """The F3 column's stop / restart pair, which acts on this pane only.
+
+        Handled here rather than on the app because the pane is the one thing
+        that already knows which session the column is describing — the
+        by-handle seams exist for F10, which acts on cards it is not inside.
+        """
+        event.stop()
+        if event.action == "restart":
+            await self.restart()
+        else:
+            self.interrupt()
+
     def set_task_dock(self, opened: bool) -> bool:
         """Put this pane in (or out of) dashboard mode."""
         try:
@@ -3218,9 +3238,40 @@ class ConversationPane(Widget):
             self.refresh_metrics()
             inp = self.query_one(GrowingInput)
             inp.disabled = False
-            inp.focus()
+            # Only the visible pane takes focus back. F10's stop icon cuts a
+            # BACKGROUND pane's turn, and an unguarded focus() there pulls
+            # the caret out of whatever tab is actually in front — the same
+            # guard `_on_turn_end` already applies for the same reason.
+            if self.display:
+                inp.focus()
 
         return self.run_worker(_do(), group="turn", exclusive=True)
+
+    async def restart(self) -> None:
+        """Cut the live turn and put the agent straight back to work.
+
+        Exactly what the text box's interrupt-send (alt/ctrl+enter) does, with
+        ``continue`` as the message and no text box involved: ``drain=False``
+        because the deliver below drains the buffer, so the restart and
+        anything already queued behind the cut turn leave as ONE turn. An idle
+        agent has nothing to cut, so it is only the message.
+
+        Deliberately not recorded as the conversation's first user message:
+        ``continue`` is never what a session is about, and the history header
+        would be a worse label than none.
+        """
+        from aegis.queue import InboxMessage, now_iso, sender_user
+
+        if self.state is AgentState.working:
+            worker = self.interrupt(drain=False)
+            if worker is not None:
+                with contextlib.suppress(Exception):
+                    await worker.wait()
+        self._flush_streaming()
+        msg = InboxMessage(sender=sender_user(), timestamp=now_iso(), body=RESTART_TEXT)
+        receipt = await self._core.deliver(msg)
+        if receipt.disposition == "queued":
+            self.query_one(PendingStrip).add(msg)
 
     def show_resume_banner(self, text: str) -> None:
         """Mount a single banner line at the top of this pane's transcript."""
