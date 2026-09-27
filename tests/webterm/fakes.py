@@ -4,6 +4,7 @@ The daemon is a real unix socket: the relay's reads and writes cross a file
 descriptor, and a socket splits and closes the way the real one does. The
 browser is a queue, because the WebSocket layer has its own tests.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +14,7 @@ from pathlib import Path
 class FakeBrowser:
     def __init__(self) -> None:
         self._inbox: asyncio.Queue = asyncio.Queue()
-        self.events: list[tuple[str, bytes | str]] = []   # in arrival order
+        self.events: list[tuple[str, bytes | str]] = []  # in arrival order
 
     async def receive(self):
         return await self._inbox.get()

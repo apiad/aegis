@@ -3,6 +3,7 @@
 Checked on the import graph, because that is where the retired web layer's
 knowledge arrived: it held the manager and called eleven of its methods.
 """
+
 import ast
 from pathlib import Path
 
@@ -26,6 +27,9 @@ def test_aegis_web_knows_no_aegis_concepts():
     files = sorted(PKG.glob("*.py"))
     assert files, "found no modules to check"
     for f in files:
-        bad = sorted(n for n in _imports(f)
-                     if (n + ".").startswith(FORBIDDEN) or n == "aegis.web")
+        bad = sorted(
+            n
+            for n in _imports(f)
+            if (n + ".").startswith(FORBIDDEN) or n == "aegis.web"
+        )
         assert not bad, f"{f.name} imports {bad}"

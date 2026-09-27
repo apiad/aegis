@@ -7,6 +7,7 @@ relay-equivalence gate asserts.
 The relay parses exactly one thing, the first frame, because a client that
 has not said hello must not reach the daemon at all.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,8 +27,7 @@ class BrowserSocket(Protocol):
     async def send_text(self, text: str) -> None: ...
 
 
-Connect = Callable[[], Awaitable[tuple[asyncio.StreamReader,
-                                       asyncio.StreamWriter]]]
+Connect = Callable[[], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]]
 
 
 def _hello_of(message) -> tuple[str, int, int, str | None] | None:
@@ -74,7 +74,7 @@ async def _up(browser: BrowserSocket, writer: asyncio.StreamWriter) -> None:
         if message is None:
             return
         if isinstance(message, str):
-            continue            # the page sends no text today
+            continue  # the page sends no text today
         writer.write(bytes(message))
         await writer.drain()
 

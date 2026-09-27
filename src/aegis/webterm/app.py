@@ -3,6 +3,7 @@
 Static files are public: they are the page's code, and the code holds no
 secret. The page itself, and the socket behind it, need the cookie.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -12,7 +13,11 @@ from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.responses import (
-    FileResponse, JSONResponse, PlainTextResponse, RedirectResponse)
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
@@ -45,8 +50,9 @@ class _StarletteBrowser:
         await self._ws.send_text(text)
 
 
-def build_webterm_app(*, token: str, connect: Connect,
-                      static_dir: Path | None = None) -> Starlette:
+def build_webterm_app(
+    *, token: str, connect: Connect, static_dir: Path | None = None
+) -> Starlette:
     static = Path(static_dir) if static_dir is not None else _PKG_STATIC
 
     async def healthz(request):
@@ -63,15 +69,17 @@ def build_webterm_app(*, token: str, connect: Connect,
             # chat client in a browser), so the first visit would be a 401.
             # Lax already keeps the cookie off a cross-site WebSocket, and the
             # Origin check in `term` covers same-site hosts.
-            response.set_cookie(COOKIE, token, max_age=_YEAR, httponly=True,
-                                secure=True, samesite="lax")
+            response.set_cookie(
+                COOKIE, token, max_age=_YEAR, httponly=True, secure=True, samesite="lax"
+            )
             return response
         if not token_ok(request.cookies.get(COOKIE), token):
             return PlainTextResponse(
-                "unauthorized: open the URL `aegis web` printed",
-                status_code=401)
-        return FileResponse(static / "index.html",
-                            headers={"Cache-Control": "no-cache"})
+                "unauthorized: open the URL `aegis web` printed", status_code=401
+            )
+        return FileResponse(
+            static / "index.html", headers={"Cache-Control": "no-cache"}
+        )
 
     async def term(ws: WebSocket) -> None:
         # Refused before accept(): an unauthenticated client never reaches
@@ -94,9 +102,11 @@ def build_webterm_app(*, token: str, connect: Connect,
             with contextlib.suppress(Exception):
                 await ws.close()
 
-    return Starlette(routes=[
-        Route("/", index),
-        Route("/healthz", healthz),
-        WebSocketRoute("/term", term),
-        Mount("/static", app=StaticFiles(directory=static)),
-    ])
+    return Starlette(
+        routes=[
+            Route("/", index),
+            Route("/healthz", healthz),
+            WebSocketRoute("/term", term),
+            Mount("/static", app=StaticFiles(directory=static)),
+        ]
+    )

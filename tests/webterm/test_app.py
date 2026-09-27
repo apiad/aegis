@@ -4,6 +4,7 @@
 client would never send it back: every cookie test would pass by testing
 nothing.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -95,7 +96,8 @@ def test_a_socket_from_another_origin_is_refused_before_the_daemon(world):
     client, calls = _logged_in(world[0]), world[1]
     with pytest.raises(WebSocketDisconnect) as e:
         with client.websocket_connect(
-                "/term", headers={"origin": "https://other.example"}) as ws:
+            "/term", headers={"origin": "https://other.example"}
+        ) as ws:
             ws.send_bytes(hello("web-1", 80, 24))
             ws.receive_bytes()
     assert e.value.code == 4403

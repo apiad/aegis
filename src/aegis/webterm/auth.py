@@ -1,4 +1,5 @@
 """One secret, presented once in a URL and thereafter as a cookie."""
+
 from __future__ import annotations
 
 import hmac

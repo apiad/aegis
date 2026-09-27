@@ -3,6 +3,7 @@
 Resolved from the files rather than from a list here, so adding an import
 to term.js cannot outrun this test.
 """
+
 from __future__ import annotations
 
 import re
@@ -34,7 +35,9 @@ def test_every_static_path_the_page_names_exists():
 def test_the_vendored_versions_and_licenses_are_recorded():
     vendor = STATIC / "vendor" / "xterm"
     assert (vendor / "VERSIONS").read_text().split("\n")[:2] == [
-        "@xterm/xterm 6.0.0", "@xterm/addon-fit 0.11.0"]
+        "@xterm/xterm 6.0.0",
+        "@xterm/addon-fit 0.11.0",
+    ]
     for name in ("LICENSE-xterm", "LICENSE-addon-fit"):
         assert "MIT" in (vendor / name).read_text()
 
@@ -43,8 +46,9 @@ def test_the_page_and_its_modules_are_served():
     async def connect():
         raise AssertionError("not reached")
 
-    client = TestClient(build_webterm_app(token="t", connect=connect),
-                        base_url="https://testserver")
+    client = TestClient(
+        build_webterm_app(token="t", connect=connect), base_url="https://testserver"
+    )
     client.cookies.set(COOKIE, "t")
     assert 'id="term"' in client.get("/").text
     for ref in _referenced():
@@ -53,13 +57,16 @@ def test_the_page_and_its_modules_are_served():
         if ref.endswith((".js", ".mjs")):
             assert "javascript" in r.headers["content-type"], (
                 f"{ref} served as {r.headers['content-type']}; a browser "
-                "refuses to run a module with a non-JS MIME type")
+                "refuses to run a module with a non-JS MIME type"
+            )
 
 
 def test_one_view_per_tab():
     js = (STATIC / "term.js").read_text()
     assert "sessionStorage" in js and "localStorage" not in js, (
-        "two tabs of one browser must not share a view: a view has one geometry")
+        "two tabs of one browser must not share a view: a view has one geometry"
+    )
     assert "BroadcastChannel" in js, (
         "Duplicate tab copies sessionStorage; without a claim check the copy "
-        "is refused by the daemon and retries forever")
+        "is refused by the daemon and retries forever"
+    )
