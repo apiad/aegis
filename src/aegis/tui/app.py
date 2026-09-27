@@ -129,22 +129,6 @@ def _tab_suffix(pane, qm) -> str | None:
     return " ".join(parts) or None
 
 
-class _DisabledPlaneStub:
-    """Raised on any attribute access when an aux plane is unavailable
-    in --remote mode (mirrors _DisabledPlane in remote_manager.py but lives
-    here to avoid a circular import)."""
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    def __getattr__(self, item: str):
-        from aegis.tui.remote_manager import RemoteUnsupportedError
-
-        raise RemoteUnsupportedError(
-            f"{self._name}.{item}: not available in --remote v1"
-        )
-
-
 def _safe_replay(state_dir_path, log_id):
     """Read a tab's transcript, downgrading any failure to an empty replay.
 
@@ -430,7 +414,6 @@ class AegisApp(App):
         voice: "VoiceConfig | None" = None,
         hosts: "dict | None" = None,
         host_registry: "object | None" = None,
-        manager: "object | None" = None,
         bridge: "object | None" = None,
         driver_class: "type | None" = None,
         view_state: "ViewState | None" = None,
@@ -529,53 +512,9 @@ class AegisApp(App):
 
         self.repo_tracker = RepoTracker()
 
-        if manager is not None:
-            # --remote path: use the externally-built manager as the AppBridge.
-            # Skip all local plane construction; point aux surfaces at the
-            # manager's _DisabledPlane sentinels (or whatever it exposes).
-            self._remote_manager = manager
-            # Expose _ws so tests (and on_mount wiring) can reach the client.
-            self._ws = getattr(manager, "_ws", None)
-            self.inbox_router = getattr(
-                manager, "inbox_router", _DisabledPlaneStub("inbox_router")
-            )
-            self.queue_manager = getattr(
-                manager, "queue_manager", _DisabledPlaneStub("queue_manager")
-            )
-            self.monitor_manager = getattr(
-                manager, "monitor_manager", _DisabledPlaneStub("monitor_manager")
-            )
-            self.reminder_service = getattr(
-                manager, "reminder_service", _DisabledPlaneStub("reminder_service")
-            )
-            self.loop_service = getattr(
-                manager, "loop_service", _DisabledPlaneStub("loop_service")
-            )
-            self.queue_digest = _DisabledPlaneStub("queue_digest")
-            self.canvas_manager = getattr(
-                manager, "canvas_manager", _DisabledPlaneStub("canvas_manager")
-            )
-            self.terminal_manager = getattr(
-                manager, "terminal_manager", _DisabledPlaneStub("terminal_manager")
-            )
-            self.groups = getattr(manager, "groups", _DisabledPlaneStub("groups"))
-            self.locks = getattr(manager, "locks", _DisabledPlaneStub("locks"))
-            self.remotes = getattr(manager, "remotes", {})
-            self.scheduler = getattr(manager, "scheduler", None)
-            self.state_root = getattr(manager, "state_root", Path.cwd())
-            self.workflow_registry = getattr(
-                manager, "workflow_registry", _SN(get=lambda _: None)
-            )
-            # MCP is not used in remote mode; skip binding.
-            return
-
         # Local plane. `bridge` supplies an already-built SessionManager (the
         # embedded / daemon case) for callers that need to hold the manager
         # themselves; without one the app is its own AppBridge, as before.
-        # Either way NO _remote_manager sentinel is set, so every hasattr
-        # guard below stays on its local branch and the whole local plane —
-        # queues, terminals, the hosts axis — is constructed unchanged.
-        # `manager=` is a different thing entirely: it is --remote.
         self.manager = bridge
 
         # An injected manager owns the roots, so the app adopts them rather
@@ -811,27 +750,6 @@ class AegisApp(App):
                 name="voice-prewarm",
                 daemon=True,
             ).start()
-        if hasattr(self, "_remote_manager"):
-            # Remote mode: skip local planes and wire reconnect + reset handlers.
-            self._wire_remote_handlers()
-            # B2: hydrate panes from the pre-existing session list.
-            sessions = self._remote_manager.list_sessions()
-            if sessions:
-                cs = self.query_one(ContentSwitcher)
-                for i, info in enumerate(sessions):
-                    foreground = i == 0
-                    await self._spawn_remote_pane(info, foreground=foreground)
-                if self._panes:
-                    active = self._panes[0]
-                    cs.current = active.id
-                    active.focus_input()
-            elif self._default_agent or self._agents:
-                # No pre-existing sessions — spawn a fresh one.
-                await self._action_new_tab_remote()
-            self._boot_done = True
-            self.set_interval(1.0, self._tick)
-            return
-
         await self._mcp.start()
         # The reverse tunnel forwards THIS port, so the registry can only
         # learn it once the MCP server has actually bound.
@@ -1477,8 +1395,7 @@ class AegisApp(App):
     async def _close_pane(self, pane) -> None:
         """Unified pane teardown — inbox unbind (agent panes only), then
         close, remove, list-pop."""
-        # B1: skip inbox_router in remote mode — it's a _DisabledPlaneStub.
-        if isinstance(pane, ConversationPane) and not hasattr(self, "_remote_manager"):
+        if isinstance(pane, ConversationPane):
             # A bridged view shares the brain's inbox, and the brain binds
             # and unbinds its own sessions: closing a tab here must not cut
             # delivery to a session the brain is still running.
@@ -1530,8 +1447,7 @@ class AegisApp(App):
         cs = self._switcher()
         if cs is None:
             return None
-        # In remote mode queue_manager is a _DisabledPlaneStub — don't call it.
-        qm = None if hasattr(self, "_remote_manager") else self.queue_manager
+        qm = self.queue_manager
         return [
             (
                 i + 1,
@@ -1585,9 +1501,6 @@ class AegisApp(App):
         if not self._boot_done:
             # Pre-resume: persist nothing so the saved workspace.json
             # survives long enough for _maybe_resume_workspace to load it.
-            return
-        # Remote mode has no local workspace to persist.
-        if hasattr(self, "_remote_manager"):
             return
         cs = self._switcher()
         if cs is None:
@@ -1954,61 +1867,7 @@ class AegisApp(App):
         self._refresh_tabbar()
 
     async def action_new_tab(self) -> None:
-        # B2: in remote mode, spawn via the daemon instead of local _spawn().
-        if hasattr(self, "_remote_manager"):
-            await self._action_new_tab_remote()
-            return
         await self._spawn(self._default_agent)
-
-    async def _action_new_tab_remote(self) -> None:
-        """B2: spawn a new session on the remote daemon and mount a pane.
-
-        Resolves _default_agent: if empty, falls back to the first key in
-        _agents (populated from list_agents() RPC in I1 fix). After the
-        daemon spawns the session, the resulting session_list stream event
-        will add it to RemoteSessionManager._sessions; we then create the
-        pane directly from the RPC-returned handle.
-        """
-        slug = self._default_agent
-        if not slug and self._agents:
-            slug = next(iter(self._agents))
-        if not slug:
-            return  # no agent configured on the server
-        handle = await self._remote_manager.spawn(slug)
-        # Force-populate the new session into the manager so make_pane_core works.
-        # (The session_list stream may arrive after this call; _add_session is
-        # idempotent via setdefault, so a second call from the stream is harmless.)
-        if not self._remote_manager.get(handle):
-            # session_list stream hasn't arrived yet; refresh manually.
-            from aegis.mcp.bridge import SessionInfo
-
-            self._remote_manager._add_session(
-                {
-                    "handle": handle,
-                    "agent_slug": slug,
-                    "state": "ready",
-                    "active": True,
-                    "unseen": False,
-                }
-            )
-        from aegis.mcp.bridge import SessionInfo
-
-        info = next(
-            (s for s in self._remote_manager.list_sessions() if s.handle == handle),
-            None,
-        )
-        if info is None:
-            info_obj = SessionInfo(
-                handle=handle,
-                agent_slug=slug,
-                state="ready",
-                active=True,
-                unseen=False,
-                spawned_by=None,
-            )
-        else:
-            info_obj = info
-        await self._spawn_remote_pane(info_obj, foreground=True)
 
     def action_goto(self, n: int) -> None:
         self._activate(n - 1)
@@ -2074,7 +1933,7 @@ class AegisApp(App):
         # Host tier first, and only when there is a choice to make: with no
         # configured hosts an extra "local" modal would be pure friction.
         host: str | None = None
-        if self._hosts and not hasattr(self, "_remote_manager"):
+        if self._hosts:
             host = await self.push_screen_wait(
                 _ChoicePicker(
                     build_host_rows(list(self._hosts), local_label=self._cwd),
@@ -2096,12 +1955,6 @@ class AegisApp(App):
 
         if choice.startswith("harness:"):
             # Custom path: harness → model → (effort) → transient spawn.
-            if hasattr(self, "_remote_manager"):
-                self.notify(
-                    "custom-model spawn isn't supported in remote "
-                    "mode yet — pick a named agent."
-                )
-                return
             name = choice[len("harness:") :]
             reg = harnesses.get(name)
             if reg is None:
@@ -2131,13 +1984,7 @@ class AegisApp(App):
             return
 
         # Named preset.
-        if hasattr(self, "_remote_manager"):
-            old_default = self._default_agent
-            self._default_agent = choice
-            await self._action_new_tab_remote()
-            self._default_agent = old_default
-        else:
-            await self._spawn(choice, host=host)
+        await self._spawn(choice, host=host)
 
     @work
     async def action_new_terminal(self) -> None:
@@ -2349,10 +2196,6 @@ class AegisApp(App):
             # Covered by another screen (F4 over F10). A second one would
             # hang a second observer and watcher on every session, and
             # escape would close only one of the two.
-            return
-        if hasattr(self, "_remote_manager"):
-            # A remote pane core carries no metrics to build a card from.
-            self.notify("The fleet dashboard shows local sessions only")
             return
 
         def opened(handle: str | None) -> None:
@@ -2611,11 +2454,6 @@ class AegisApp(App):
     async def action_quit(self) -> None:
         if self._voice is not None:
             self._stop_voice()
-        # B1: remote mode — delegate teardown to the manager and exit cleanly.
-        if hasattr(self, "_remote_manager"):
-            await self._remote_manager.shutdown()
-            self.exit()
-            return
         if not self._owns_brain:
             # One question, and only when it buys something. Ctrl+Q is an
             # explicit act, so it does not confirm in general; it confirms
@@ -3053,107 +2891,6 @@ class AegisApp(App):
             with contextlib.suppress(Exception):
                 await worker.wait()
 
-    async def _spawn_remote_pane(
-        self, info, *, foreground: bool = False
-    ) -> "ConversationPane | None":
-        """B2: create and mount a ConversationPane backed by a RemotePaneCore.
-
-        ``info`` is a SessionInfo returned by RemoteSessionManager.list_sessions().
-        Returns the created pane, or None if the handle is not known to the manager.
-        """
-        core = self._remote_manager.make_pane_core(info.handle)
-        if core is None:
-            return None
-        # The remote plane names its own sessions; a name already bound here
-        # would mount a second `pane-<handle>`. Skip rather than crash.
-        if self._handles.owner(info.handle) is not None:
-            return None
-        self._handles.reserve(info.handle)
-        pane = ConversationPane(
-            session=None,
-            agent=None,
-            agent_slug=info.agent_slug,
-            handle=info.handle,
-            palette=self._palette,
-            digest=None,
-            core=core,
-            project_root=Path(self._cwd),
-        )
-        self._panes.append(pane)
-        cs = self.query_one(ContentSwitcher)
-        pane.display = not foreground  # hide unless asked to foreground
-        await cs.mount(pane)
-        if foreground:
-            cs.current = pane.id
-            pane.focus_input()
-        self._refresh_tabbar()
-        return pane
-
-    def _wire_remote_handlers(self) -> None:
-        """Register WsClient observers for reconnect banner + window_reset.
-
-        Called once from on_mount when AegisApp runs in remote mode
-        (manager != None). Only wired when _ws is available (it is always
-        set to manager._ws in __init__ when manager is provided).
-
-        Also registers a session_list observer on the manager so that panes
-        are created when new remote sessions appear (e.g. from Ctrl+N spawn
-        or a second TUI window opening a session).
-        """
-        ws = getattr(self, "_ws", None)
-        if ws is None:
-            return
-        if hasattr(ws, "on_connection"):
-            ws.on_connection(self._on_ws_connection)
-        ws.on("window_reset", self._on_window_reset)
-        # B2: wire session_list "added" events → pane creation.
-        ws.on("session_list", self._on_remote_session_list)
-
-    def _on_remote_session_list(self, fr: dict) -> None:
-        """Handle session_list stream frames in remote mode.
-
-        Creates panes for newly-added sessions that don't already have a pane.
-        Removal is handled separately (no pane removal in v1 for simplicity).
-        """
-        added = fr.get("added") or []
-        for si_dict in added:
-            handle = si_dict.get("handle", "")
-            if handle and not self.pane_for(handle):
-                # Session is new and has no pane yet — mount one.
-                # Must run on the Textual event loop.
-                from aegis.mcp.bridge import SessionInfo
-
-                info = SessionInfo(
-                    handle=handle,
-                    agent_slug=si_dict.get("agent_slug", ""),
-                    state=si_dict.get("state", "ready"),
-                    active=si_dict.get("active", False),
-                    unseen=si_dict.get("unseen", False),
-                    spawned_by=si_dict.get("spawned_by"),
-                    title=si_dict.get("title", ""),
-                )
-                # Use run_worker to schedule on the Textual event loop.
-                if self.is_running:
-                    self.run_worker(
-                        self._spawn_remote_pane(info, foreground=False),
-                        group=f"remote-pane-{handle}",
-                        exclusive=False,
-                    )
-
-    def _on_ws_connection(self, up: bool) -> None:
-        """Propagate WS connect/disconnect state to all live panes.
-
-        Routed through the pane rather than straight to its StatusBar: the
-        pane caches the segment for the sidebar, which renders it at the
-        head of SESSION.
-        """
-        for p in self._panes:
-            if isinstance(p, ConversationPane):
-                try:
-                    p.set_connection_state(up)
-                except Exception:  # noqa: BLE001 — pane may not be mounted yet
-                    pass
-
     def pane_for(self, handle: str) -> "ConversationPane | None":
         """Return the ConversationPane for the given handle, or None."""
         for p in self._panes:
@@ -3171,16 +2908,6 @@ class AegisApp(App):
         """
         pane = self.pane_for(handle)
         return pane._core if pane is not None else None
-
-    def _on_window_reset(self, fr: dict) -> None:
-        """Stream handler for ``window_reset`` frames (remote mode only).
-
-        Clears the matching pane's transcript so replayed content does not
-        append to stale blocks.
-        """
-        pane = self.pane_for(fr.get("handle", ""))
-        if pane is not None:
-            pane.clear_transcript()
 
     def _autotitle(self, handle: str, opening: str) -> None:
         """Kick off first-turn auto-titling for ``handle``, off the loop.

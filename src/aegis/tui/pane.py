@@ -649,13 +649,6 @@ class CopyableBlock(Static):
             with contextlib.suppress(Exception):
                 self.app.notify(msg, timeout=2.0)
 
-        if hasattr(self.app, "_remote_manager"):
-            # The TUI is local but the paths are the daemon host's; opening
-            # them here would hit whatever happens to sit at that path
-            # locally, or nothing.
-            _notify("native open is local-only (remote session)")
-            return
-
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
         paths = indexer.paths if (indexer is not None and indexer.ready) else []

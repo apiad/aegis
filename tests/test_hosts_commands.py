@@ -38,10 +38,10 @@ class _StubSession:
 def _manager(tmp_path, session_id="sid-1"):
     built: list[dict] = []
 
-    def make_session(profile, mcp_url, handle, fork_from=None, place=None,
-                     resume_from=None):
-        built.append({"place": place, "resume_from": resume_from,
-                      "handle": handle})
+    def make_session(
+        profile, mcp_url, handle, fork_from=None, place=None, resume_from=None
+    ):
+        built.append({"place": place, "resume_from": resume_from, "handle": handle})
         return _StubSession(session_id)
 
     mgr = SessionManager(
@@ -50,7 +50,8 @@ def _manager(tmp_path, session_id="sid-1"):
         make_session=make_session,
         mcp=None,
         hosts={"vps": HostSpec(name="vps", ssh="vps.apiad.net", cwd="/w")},
-        roots=AegisRoots.for_project(tmp_path))
+        roots=AegisRoots.for_project(tmp_path),
+    )
     return mgr, built
 
 
@@ -109,32 +110,41 @@ def test_reconnect_lists_every_refusal_reason_at_once(tmp_path):
 
 def test_plain_agent_has_no_host():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("claude-code") == ("claude-code", None, None)
 
 
 def test_agent_at_host():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("claude-code@vps") == ("claude-code", "vps", None)
 
 
 def test_agent_at_host_with_cwd():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("claude-code@vps:/srv/app") == (
-        "claude-code", "vps", "/srv/app")
+        "claude-code",
+        "vps",
+        "/srv/app",
+    )
 
 
 def test_cwd_may_contain_colons_after_the_first():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("main@vps:/srv/a:b") == ("main", "vps", "/srv/a:b")
 
 
 def test_empty_host_is_treated_as_absent():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("main@") == ("main", None, None)
 
 
 def test_empty_cwd_is_treated_as_absent():
     from aegis.hosts.resolve import parse_at_host
+
     assert parse_at_host("main@vps:") == ("main", "vps", None)
 
 
@@ -161,19 +171,33 @@ class _SpawnBridge:
     def list_sessions(self):
         return []
 
-    async def spawn(self, profile, *, opening_prompt=None, spawned_by=None,
-                    model=None, effort=None, host=None, cwd=None,
-                    prompt=None, handle=None, origin=None):
+    async def spawn(
+        self,
+        profile,
+        *,
+        opening_prompt=None,
+        spawned_by=None,
+        model=None,
+        effort=None,
+        host=None,
+        cwd=None,
+        prompt=None,
+        handle=None,
+        origin=None,
+    ):
         if self._raise:
             from aegis.hosts.errors import HostError
+
             raise HostError("unknown host 'nowhere'; known: ['vps', 'local']")
-        self.calls.append({"profile": profile, "host": host, "cwd": cwd,
-                           "prompt": opening_prompt})
+        self.calls.append(
+            {"profile": profile, "host": host, "cwd": cwd, "prompt": opening_prompt}
+        )
         return "new-agent"
 
 
 def _ctx(bridge):
     from aegis.commands import CommandContext
+
     return CommandContext(bridge=bridge, handle="me")
 
 
@@ -190,8 +214,7 @@ async def test_spawn_plain_agent_stays_local():
     b = _SpawnBridge()
     res = await dispatch("/spawn main", _ctx(b))
     assert res.ok
-    assert b.calls[-1] == {"profile": "main", "host": None, "cwd": None,
-                           "prompt": None}
+    assert b.calls[-1] == {"profile": "main", "host": None, "cwd": None, "prompt": None}
 
 
 @pytest.mark.asyncio
@@ -263,16 +286,32 @@ async def test_aegis_spawn_forwards_host_and_cwd():
     br = FakeBridge()
     seen: dict = {}
 
-    async def _spawn(agent, *, handle=None, opening_prompt=None,
-                     spawned_by=None, model=None, effort=None, prompt=None,
-                     host=None, cwd=None, origin=None):
+    async def _spawn(
+        agent,
+        *,
+        handle=None,
+        opening_prompt=None,
+        spawned_by=None,
+        model=None,
+        effort=None,
+        prompt=None,
+        host=None,
+        cwd=None,
+        origin=None,
+    ):
         seen.update({"agent": agent, "host": host, "cwd": cwd})
         return "new-agent"
 
     br.spawn = _spawn
-    out = await _call(build_server(br), "aegis_spawn", agent="main",
-                      prompt="go", from_handle="me", host="vps",
-                      cwd="/srv/app")
+    out = await _call(
+        build_server(br),
+        "aegis_spawn",
+        agent="main",
+        prompt="go",
+        from_handle="me",
+        host="vps",
+        cwd="/srv/app",
+    )
     assert out == {"handle": "new-agent"}
     assert seen == {"agent": "main", "host": "vps", "cwd": "/srv/app"}
 
@@ -289,8 +328,14 @@ async def test_aegis_spawn_returns_an_error_for_an_unknown_host():
         raise HostError("unknown host 'nowhere'; known: ['vps', 'local']")
 
     br.spawn = _spawn
-    out = await _call(build_server(br), "aegis_spawn", agent="main",
-                      prompt="go", from_handle="me", host="nowhere")
+    out = await _call(
+        build_server(br),
+        "aegis_spawn",
+        agent="main",
+        prompt="go",
+        from_handle="me",
+        host="nowhere",
+    )
     assert "nowhere" in out["error"]
 
 
@@ -302,21 +347,27 @@ async def test_aegis_list_sessions_reports_each_peers_host():
 
     br = FakeBridge()
     br.list_sessions = lambda: [
-        SessionInfo(handle="here", agent_slug="main", state="ready",
-                    active=True, unseen=False),
-        SessionInfo(handle="there", agent_slug="main", state="ready",
-                    active=False, unseen=False, host="vps"),
+        SessionInfo(
+            handle="here", agent_slug="main", state="ready", active=True, unseen=False
+        ),
+        SessionInfo(
+            handle="there",
+            agent_slug="main",
+            state="ready",
+            active=False,
+            unseen=False,
+            host="vps",
+        ),
     ]
     rows = await _call(build_server(br), "aegis_list_sessions")
-    assert {r["handle"]: r["host"] for r in rows} == {
-        "here": "local", "there": "vps"}
+    assert {r["handle"]: r["host"] for r in rows} == {"here": "local", "there": "vps"}
 
 
 def test_the_briefing_tells_agents_about_hosts():
     from aegis.mcp.server import BRIEFING
 
     assert "EXECUTION HOSTS" in BRIEFING
-    assert "host=\"vps\"" in BRIEFING
+    assert 'host="vps"' in BRIEFING
     # The trap worth naming out loud.
     assert "NOT interchangeable" in BRIEFING
 
@@ -324,8 +375,8 @@ def test_the_briefing_tells_agents_about_hosts():
 def test_every_appbridge_spawn_accepts_host_and_cwd():
     """`host`/`cwd` must reach EVERY AppBridge.spawn implementation.
 
-    There are several — SessionManager, AegisApp, RemoteSessionManager,
-    the adapter the TUI routes through, the Protocol itself — and a slash
+    There are several — SessionManager, AegisApp, the adapter the TUI
+    routes through, the Protocol itself — and a slash
     command or MCP call lands on a different one depending on the
     frontend. Updating some and not others is invisible to a test that
     only exercises one: /spawn opus@vps died with a TypeError on the TUI
@@ -337,14 +388,12 @@ def test_every_appbridge_spawn_accepts_host_and_cwd():
     from aegis.core.manager import SessionManager
     from aegis.mcp.bridge import AppBridge
     from aegis.tui.app import AegisApp, _SessionManagerAdapter
-    from aegis.tui.remote_manager import RemoteSessionManager
     from aegis.workflow.engine import WorkflowEngine
 
     impls = [
         ("AppBridge (protocol)", AppBridge.spawn),
         ("SessionManager", SessionManager.spawn),
         ("AegisApp", AegisApp.spawn),
-        ("RemoteSessionManager", RemoteSessionManager.spawn),
         ("_SessionManagerAdapter", _SessionManagerAdapter.spawn),
         ("WorkflowEngine", WorkflowEngine.spawn),
     ]
@@ -376,12 +425,12 @@ async def test_the_tui_bridge_actually_forwards_host_and_cwd(monkeypatch):
         def spawn(self, profile, **kw):
             seen.update({"profile": profile, **kw})
             from types import SimpleNamespace
+
             return SimpleNamespace(handle="new-agent")
 
     monkeypatch.setattr(app_mod, "_SessionManagerAdapter", _Adapter)
 
-    handle = await app_mod.AegisApp.spawn(
-        object(), "opus", host="vps", cwd="/srv/app")
+    handle = await app_mod.AegisApp.spawn(object(), "opus", host="vps", cwd="/srv/app")
     assert handle == "new-agent"
     assert seen["profile"] == "opus"
     assert seen["host"] == "vps"
@@ -406,12 +455,15 @@ async def test_the_tui_can_reconnect_a_dropped_remote_pane():
             pass
 
     core = SimpleNamespace(
-        place=Place("vps", "/w"), session_id="sid-1",
-        agent=object(), _session=_Session(),
+        place=Place("vps", "/w"),
+        session_id="sid-1",
+        agent=object(),
+        _session=_Session(),
         # No turn in flight. `reconnect` cancels one before adopting, so
         # the double has to carry the slot a real AgentSession has.
         _task=None,
-        adopt=adopted.append)
+        adopt=adopted.append,
+    )
     pane = SimpleNamespace(handle="a-b", _core=core)
 
     def _make_session(agent, url, handle, **kw):
@@ -444,20 +496,6 @@ async def test_the_tui_refuses_to_reconnect_a_local_pane():
 
     with pytest.raises(ValueError, match="local"):
         await AegisApp.reconnect(app, "a-b")
-
-
-@pytest.mark.asyncio
-async def test_remote_mode_refuses_host_placement_legibly():
-    """In --remote mode the harness lives in the serve we attached to, so
-    placing it from here is meaningless — but it must say so, not raise a
-    TypeError."""
-    from aegis.tui.remote_manager import (
-        RemoteSessionManager, RemoteUnsupportedError,
-    )
-
-    mgr = RemoteSessionManager.__new__(RemoteSessionManager)
-    with pytest.raises(RemoteUnsupportedError, match="host/cwd"):
-        await mgr.spawn("opus", host="vps")
 
 
 def test_session_info_reports_the_host(tmp_path):

@@ -500,7 +500,7 @@ class StatusBar(Static):
         """Show/hide a disconnected indicator on the right of the bar.
 
         ``up=False`` renders ``⚠ disconnected — reconnecting…``; ``up=True``
-        clears the indicator.  Suitable for wiring to WsClient.on_connection.
+        clears the indicator.
         """
         self._connection = (
             () if up else ("⚠ disconnected — reconnecting…", "⚠ disconnected")

@@ -1,4 +1,5 @@
 """/recap, and the four-surface rule."""
+
 import inspect
 
 import pytest
@@ -19,8 +20,11 @@ class Bridge:
 
 @pytest.mark.asyncio
 async def test_recap_command_renders_the_block():
-    bridge = Bridge(Recap(task="the judge", line="the spec",
-                          next="the wiring", ok=True, model="haiku"))
+    bridge = Bridge(
+        Recap(
+            task="the judge", line="the spec", next="the wiring", ok=True, model="haiku"
+        )
+    )
     res = await dispatch("/recap", CommandContext(bridge, "agent-1"))
     assert res.ok is True
     assert "the judge" in res.title or "the judge" in res.body
@@ -51,6 +55,7 @@ def test_recap_is_deferred_like_btw():
     the pane's message pump for all of it."""
     from aegis.commands import REGISTRY
     import aegis.commands.builtins  # noqa: F401 — force registration
+
     assert REGISTRY["recap"].deferred is True
 
 
@@ -60,8 +65,7 @@ def test_every_bridge_takes_the_same_recap_signature():
     from aegis.core.manager import SessionManager
     from aegis.mcp.bridge import AppBridge
     from aegis.tui.app import AegisApp
-    from aegis.tui.remote_manager import RemoteSessionManager
 
     want = inspect.signature(AppBridge.recap)
-    for impl in (SessionManager, AegisApp, RemoteSessionManager):
+    for impl in (SessionManager, AegisApp):
         assert inspect.signature(impl.recap) == want, impl.__name__
