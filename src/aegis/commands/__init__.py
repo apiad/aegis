@@ -12,9 +12,16 @@ See ``docs/superpowers/specs/2026-07-16-aegis-slash-commands-design.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from aegis.commands.args import Args, ArgError, ArgSpec, parse
+
+if TYPE_CHECKING:
+    # Type-only: importing the bridge at runtime would be a cycle, since the
+    # MCP surface reaches back into commands. The annotation still has to name
+    # it — `object` hid every one of the ~20 bridge methods a handler calls,
+    # so a typo in one was invisible until it raised.
+    from aegis.mcp.bridge import AppBridge
 
 
 @dataclass(frozen=True)
@@ -31,7 +38,7 @@ class CommandContext:
     (the AegisApp, which implements AppBridge) and the calling pane's
     session handle (recorded as ``spawned_by`` etc.)."""
 
-    bridge: object
+    bridge: "AppBridge"
     handle: str
 
 
@@ -224,7 +231,7 @@ def _norm_choice(ch) -> "tuple[str, str]":
     return ch, ""
 
 
-def complete(text: str, bridge: object) -> Completions:
+def complete(text: str, bridge: "AppBridge") -> Completions:
     """Return completion candidates for the current input. Pure; never raises.
     Empty items when ``text`` is not a slash command."""
     from aegis.commands.fuzzy import fuzzy_rank
