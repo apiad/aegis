@@ -26,6 +26,27 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 - **A quota countdown past a day is counted in days.** `↻ 105h34m` is now
   `↻ 4d09h`. Four cells back on every weekly gauge, which is what lets the
   projection share the tail without squeezing the bar to its three-cell floor.
+- **`make check` runs the tests, and `typecheck` is advisory until its list is
+  empty.** `typecheck` sat ahead of `test` and has never passed — `ty` is 0.0.29,
+  was never configured here, and reports a few hundred diagnostics on working
+  code — so the gate aborted at stage four every time and had never once run the
+  suite, while AGENTS.md defined done as "`make check` passes". The tests now run
+  first and typecheck prints its count without failing the build, the same way
+  this repo already treats `rift`: warning until the list is empty, then promoted
+  to blocking. `make typecheck` stays strict for driving the number down.
+  Tracked in #8.
+- **CI enforces the gates instead of only the tests.** It ran `pytest` and
+  nothing else, so four of five gates were enforced by whoever remembered them,
+  and two had silently drifted. It now runs `format-check`, `lint`, the suite and
+  a non-blocking `typecheck`, each as its own named step. `lint-docs` stays
+  local: `rift` is private and not on PyPI.
+- **A `scheduler:` block is documented, and `voice:`'s sub-keys are no longer
+  read as top-level sections.** The `rift` rule checking that every config
+  section is documented extracted `raw.get(...)` across the whole loader, so
+  `voice:`'s own keys counted as sections; the sub-parsers now take a `block`
+  parameter and the rule sees top-level sections only. `scheduler:` itself parses
+  and is read by nothing, and is now documented as accepted with no effect rather
+  than looking like configuration that works.
 
 - **The old browser client, `RemoteSessionManager` and `aegis --remote` are
   deleted.** The hand-written JS client and its aegis-aware WebSocket protocol
