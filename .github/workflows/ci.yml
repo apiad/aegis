@@ -24,6 +24,11 @@ jobs:
         run: make format-check
       - name: lint
         run: make lint
+      # Blocking, unlike typecheck below: a filename parse over a handful of
+      # files, no backlog, and a fragment that does not parse is a release note
+      # that silently goes missing.
+      - name: changelog fragments
+        run: make changelog-check
       - run: uv run pytest -q -m "not live"
 
       # Advisory, exactly as in `make check`: `ty` is 0.0.29, has never been

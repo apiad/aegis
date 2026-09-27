@@ -1,10 +1,10 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck typecheck-advisory test test-cov test-all test-live coverage know-how
+.PHONY: check lint lint-docs lint-detail format format-check typecheck typecheck-advisory changelog changelog-check test test-cov test-all test-live coverage know-how
 
 # The order is the point: the tests run before the advisory stage, so nothing
 # optional can stop the gate from reaching them. `typecheck` used to sit here
 # and abort `make check` every single time, which meant the gate had never once
 # run the suite it exists to run.
-check: format lint lint-docs test typecheck-advisory
+check: format lint lint-docs changelog-check test typecheck-advisory
 
 # Doc drift (.rift.yaml). Not in CI: rift is private and not on PyPI, so a
 # runner cannot install it. A failure exits 2, not 1, because make adds its own
@@ -25,6 +25,17 @@ format:
 # green and the next person's tree is dirty for reasons they did not cause.
 format-check:
 	uv run ruff format --check src/
+
+# Every fragment in changelog.d/ parses. Blocking, unlike typecheck: it is a
+# filename check over a handful of files, it has never had a backlog, and a
+# fragment that does not parse is a release note that silently goes missing.
+changelog-check:
+	uv run python -m aegis.changelog check
+
+# The collated CHANGELOG, to stdout. Writes nothing; `apply` is the releaser's
+# verb and lives in know-how/releasing.md.
+changelog:
+	@uv run python -m aegis.changelog preview
 
 # Strict. This is the gate we want, and the one to run while driving the number
 # down — see issue #8.
