@@ -1,10 +1,12 @@
 # A board full of prompts should empty itself while you sleep
 
-**Status:** slices 1–3 plus the quota gate **implemented** 2026-09-25
-(`601c605`..`d1daa0c`, 118 tests), from
+**Status:** slices 1–3 plus the quota gate **implemented and exercised against
+a real board** 2026-09-25/27 (`601c605`..`c46ffb4`, 144 tests), from
 `docs/superpowers/plans/2026-09-25-afk-coordinator-slices-1-3.md`. The quota
 gate moved forward from slice 4 so that plan's deliverable was something you
-could switch on. Not yet built: the dispatch rails, the coordinator agent,
+could switch on. Remaining work is tracked in `TASKS.md` under *AFK
+coordinator*, and is blocked on aegis's own `make check` going green. Not yet
+built: the dispatch rails, the coordinator agent,
 `worktree` isolation, the reviewer stage, stall *notification* (stall
 *detection* is in), and `notify_cmd` — slices 4–7, which get their own plan.
 
