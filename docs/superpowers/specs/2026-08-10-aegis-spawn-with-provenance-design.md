@@ -1,6 +1,7 @@
 # `/spawn` carries where you were standing
 
-**Status:** implemented (2026-08-10)
+**Status:** implemented (2026-08-10); tail assembly and framing corrected
+(2026-09-27) — see *What measurement changed* below
 **Spec:** `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`
 
 ## The gap
@@ -41,7 +42,8 @@ words **plus** the same three things `@peer` sends:
    operator. The truthful framing is that the operator typed this while
    standing somewhere else.
 2. **A tail of that conversation** — a bounded window of the source
-   transcript, `TEASER_MAX_TURNS` (3) turns, assembled from the log. A
+   transcript, at most `TEASER_MAX_TURNS` (3) turns and in practice bounded
+   by the byte budget well before that, assembled from the log. A
    disk read and no model call, which is what lets the design push a
    pointer and let the agent pull the rest.
 3. **A pointer to the rest.** `aegis_read_peer("X")` returns a much wider
@@ -72,6 +74,66 @@ the result matters there.
 - **`aegis_spawn` over MCP.** An agent calling it is *told* to write a
   self-contained payload, and it has the context to do so. This is about
   the human typing three words into a box.
+
+## What measurement changed (2026-09-27)
+
+The shape above is right and unchanged. Two of its numbers were wrong, and
+one of its choices was invisible in the pane it renders into. Found by
+replaying the real corpus — 71 `/spawn` preambles and 601 September windows
+under `.aegis/state/sessions/` — after Alex reported that spawned agents
+arrive without context and that the transcript does not show everything the
+agent was sent.
+
+**The window was mostly tool noise, and 42% of the time it held none of the
+operator's words.** `assemble` filled purely backwards from the newest event.
+The newest events in an agent transcript are always tool calls, so the budget
+ran out before reaching the `user:` line that opened the turn: 30 of the 71
+preambles carried not one, `bound_by` came back `budget` in 18 of 20 swept
+configurations, and the 3-turn window was under one turn 42% of the time. One
+real tail was three `Read(*.png)` results and nothing else.
+
+Raising the budget did not change the ratio, only the bill — at
+`READ_BUDGET_TOKENS` a 3-turn window bought 1 `user:` line against 261 tool
+lines and 95,575 characters, the figure `read_window`'s own docstring already
+warned about. So the budget was never the knob. The fill order was.
+
+`assemble` now admits by priority: the operator's words against the whole
+budget, then the agent's prose up to `PROSE_SHARE`, then tool calls, then
+prose again for whatever the tool calls left. The operator's line gets the
+full budget rather than a share because a share is a cap, and a cap loses the
+one item carrying the referent — caught twice in the corpus, once where a
+938-token answer pushed out the 293-token `user:` line behind it with 769
+tokens unspent, and once where a single 1,396-token `user:` message did not
+fit the share at all. At the same budget, windows with no `user:` line fall
+from 415 of 601 to 25, none lose a line they used to have, and the median
+window grows 1%. `/btw` and `@peer` share the assembler and get this too.
+
+An image result is now named (`[image, N chars]`) rather than clipped: 200
+characters of base64 is not a summary, and it still spent a whole slot.
+
+**The preamble was not fully visible in the pane.** `--- tail of X ---`
+markers left the window as an ordinary Markdown paragraph, so
+`render_user_block` folded every newline and the tail rendered as one run-on
+line. Worse, a line in the tail that is nothing but a tag —
+`<system-reminder>`, `<function>` — opens an HTML block that Rich's Markdown
+renderer drops entirely, so those blocks reached the agent and not the
+operator. The window now rides in an adaptive fence, and `render_user_block`
+shows tag-only lines as inline code. The gate for that one is a real pane
+driven through Textual (`tests/test_pane_shows_the_whole_prompt.py`), because
+a Rich-console assertion is one layer short of the screen the bug lived on.
+
+**A degraded spawn was silent.** All five fall-backs returned the bare
+prompt with no trace, and `Origin` never reaches the session log, so the
+degrade rate was not measurable even across 341 logs. The confirmation line
+now names the reason.
+
+**Still open.** The pull rate is 94% (67 of 71 spawned agents went on to call
+`aegis_read_peer`), which by this spec's own criterion for
+`TEASER_BUDGET_TOKENS` — "if the pull rate is high, this is too small" —
+says the push is mis-tuned. That number is confounded: the preamble instructs
+the agent to pull. Re-measure it now that the window carries prose, and if it
+stays near 94%, the choice is to soften the instruction or to drop the push to
+a one-line pointer. Tracked at issue #5.
 
 ## Implementation
 
