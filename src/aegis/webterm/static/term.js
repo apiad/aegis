@@ -1,6 +1,7 @@
 import { Terminal } from "/static/vendor/xterm/xterm.mjs";
 import { FitAddon } from "/static/vendor/xterm/addon-fit.mjs";
 import { FrameDecoder, encodeData, hello, resize } from "/static/frames.js";
+import { KEYS, ctrl } from "/static/keys.js";
 
 // One view per tab. sessionStorage survives a reload of this tab and nothing
 // else, so a reload reopens its view and a second tab gets its own. Except
@@ -76,7 +77,28 @@ ws.onmessage = (event) => {
 };
 ws.onclose = () => say("aegis web is gone — reload to reconnect");
 
-term.onData((data) => send(encodeData(data)));
+let ctrlLatched = false;
+const ctrlButton = document.querySelector("#keys [data-ctrl]");
+function latch(on) {
+  ctrlLatched = on;
+  ctrlButton.setAttribute("aria-pressed", String(on));
+}
+
+term.onData((data) => {
+  send(encodeData(ctrlLatched ? ctrl(data) : data));
+  if (ctrlLatched) latch(false);
+});
+
+// pointerdown, and preventDefault: a click would move focus off xterm's
+// hidden textarea and close the phone keyboard.
+for (const button of document.querySelectorAll("#keys button")) {
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    if (button.hasAttribute("data-ctrl")) latch(!ctrlLatched);
+    else send(encodeData(KEYS[button.dataset.key]));
+    term.focus();
+  });
+}
 term.onBinary((data) => send(encodeData(Uint8Array.from(data, (c) => c.charCodeAt(0)))));
 term.onResize(({ cols, rows }) => send(resize(cols, rows)));
 new ResizeObserver(() => fit.fit()).observe(document.getElementById("term"));

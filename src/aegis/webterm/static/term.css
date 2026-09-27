@@ -5,3 +5,16 @@ html, body { margin: 0; height: 100%; background: #0b0b0c; overflow: hidden; }
   padding: 0.35rem 0.8rem; border-radius: 0.4rem;
   background: #2a2112; color: #f0c674; font: 13px ui-monospace, Menlo, monospace;
 }
+#keys { display: none; }
+@media (pointer: coarse) {
+  #term { bottom: 2.75rem; }
+  #keys {
+    display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 2.75rem;
+    background: #151517; border-top: 1px solid #2a2a2e;
+  }
+  #keys button {
+    flex: 1; border: 0; background: none; color: #d8d8dc;
+    font: 15px ui-monospace, Menlo, monospace;
+  }
+  #keys button[aria-pressed="true"] { color: #0b0b0c; background: #f0c674; }
+}
