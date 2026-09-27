@@ -1616,6 +1616,18 @@ with the `saidkick` skill, open the printed URL and record in this plan:
 the address bar shows `/` without `?t=`, and a screenshot shows the aegis tab
 bar. If either fails, stop and fix it before Task 6.
 
+**Recorded 2026-09-27** (`77c9ad7`), Chromium via saidkick, throwaway root
+`/tmp/aegis-web-smoke-t5` on port 8977:
+
+1. The address bar shows `http://127.0.0.1:8977/` — `saidkick tabs` reports it
+   with no `?t=`, so the `Secure` cookie survived the redirect over loopback.
+2. The screenshot draws the real TUI: the tab bar reads
+   `● 1 knotty-knuth ·main·`, the status bar reads
+   `sonnet high   idle   ↑0 (0% cached) ↓0 · ctx 0 (0%) · 0.0¢`, and the input
+   reads `type a message…`. xterm.js mounted (its ARIA snapshot is
+   `textbox "Terminal input"`) and its render loop ran in a saidkick tab
+   without needing the tab activated.
+
 - [ ] **Step 11: Commit**
 
 ```bash
