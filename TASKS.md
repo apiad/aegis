@@ -25,7 +25,7 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
-| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b shipped 2026-09-27 (`7de5ba5`..`ede3cd5`); 6 **code shipped 2026-09-27** (`089cd30`..`f9bfb97`) — the deletion, `--no-autostart` and the tombstone worker; the VPS redeploy and dropping Caddy's basic auth are the one remaining step |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b shipped 2026-09-27 (`7de5ba5`..`ede3cd5`); 6 **code shipped 2026-09-27** (`089cd30`..`c40f736`) — the deletion, `--no-autostart` and the tombstone worker; the VPS redeploy and dropping Caddy's basic auth are the one remaining step |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
@@ -734,7 +734,7 @@ relay changing no byte, a browser surviving the daemon stopping and starting,
 and an unauthenticated socket refused before the daemon is contacted -- plus
 a hand-drive in Chromium recorded in the plan.
 
-**Stage 6 code shipped 2026-09-27** (`089cd30`..`f9bfb97`): the old browser
+**Stage 6 code shipped 2026-09-27** (`089cd30`..`c40f736`): the old browser
 client, `RemoteSessionManager`, `ws_client`, `ssh_tunnel` and `aegis --remote`
 are deleted -- 21 files in `web/`, two TUI modules, and the twenty
 `hasattr(self, "_remote_manager")` branches collapsed onto their local side.

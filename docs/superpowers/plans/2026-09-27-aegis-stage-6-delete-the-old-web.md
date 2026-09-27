@@ -2,14 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: Tasks 1–5 and 7 shipped 2026-09-27** (`089cd30`..`f9bfb97`, plus the
-docs commit). **Task 6 (the VPS deployment) is not done** — it changes a public
-host and removes an auth layer from it, and the task's own header says to ask
-first. Everything else is local and landed.
+**Status: Tasks 1–5 and 7 shipped 2026-09-27** (`089cd30`..`c40f736`).
+**Task 6 (the VPS deployment) is not done** — only its Step 1, the unit files.
+It changes a public host and removes an auth layer from it, and the task's own
+header says to ask first. Everything else is local and landed. The cutover
+procedure is in `know-how/deploying-web.md`, which carries a not-deployed header
+until it runs.
 
 Written 2026-09-27 against `c4aed3c`, the commit that finished stage 5b.
-Executed inline in a worktree off `435a7e6`; the ledger of rulings is at
-`.superpowers/sdd/2026-09-27-aegis-stage-6-delete-the-old-web/progress.md`.
+Executed inline in a worktree off `435a7e6`, then reviewed whole-branch by a
+fresh agent: no Critical, five Important, all fixed in `c40f736`. Every ruling
+taken against this plan's text is recorded in the commit message of the commit
+that took it — deliberately there rather than in the run's scratch ledger, which
+is gitignored and does not travel between hosts.
+
+**Where this plan was wrong, for the next reader.** Task 1 Step 1's grep does
+print output (`tests/remote/test_ssh_tunnel.py`) and the instruction to stop on
+that is wrong. Task 2's Step 4 table names two methods to delete where five are
+orphaned. Task 3's audit misses `tests/test_web_config.py` and asks for a port of
+`test_comms_web_wire.py` that is a no-op. Task 3 Step 4's grep cannot print
+nothing. `tests/test_quota_visibility.py` is never mentioned and needed editing.
+Neither this plan nor the spec's deletion inventory mentions the seven
+`tests/web/*.test.mjs` files, which the deletion orphaned. And the tests Task 3
+writes for Review Focus 3 and 5 assert `load_boot_config`, which reads no state
+dir, so as written neither could fail.
 
 **Goal:** Remove the aegis-aware web layer, `RemoteSessionManager`, `ws_client`
 and `aegis --remote` from the tree, and deploy the VPS as `aegis-server.service`

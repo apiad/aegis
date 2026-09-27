@@ -1,6 +1,6 @@
 # `aegis web` as a client, not a second daemon
 
-**Status: accepted 2026-09-14; implemented in stage 5b** (`7de5ba5`..`ede3cd5`), with the decisions below; the layer it replaced was deleted in stage 6 (`089cd30`..`f9bfb97`); the daemon spec's
+**Status: accepted 2026-09-14; implemented in stage 5b** (`7de5ba5`..`ede3cd5`), with the decisions below; the layer it replaced was deleted in stage 6 (`089cd30`..`c40f736`); the daemon spec's
 stage 5 is amended to match. Written 2026-09-13 against `f8ab7e5`, after stage 5a
 shipped. Decides where the WebSocket and the token live, which is a
 question stage 5b answers differently and cannot leave open.
