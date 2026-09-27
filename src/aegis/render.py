@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from rich import box
 from rich.console import Group, RenderableType
 from rich.markdown import Markdown
@@ -443,6 +445,26 @@ def render_event(
     return None
 
 
+# A line that is nothing but an open or close tag. Markdown reads one as the
+# start of an HTML block running to the next blank line, and Rich's Markdown
+# renderer has no handler for an html_block, so the whole block renders as
+# nothing. Transcript tails and pasted instructions carry these constantly
+# (`<system-reminder>`, `<task-notification>`, `<function>`), and the agent
+# receives every word the operator then cannot see. Excludes lines that
+# already contain a backtick so an escape is never applied twice.
+_TAG_ONLY_LINE = re.compile(r"^([ \t]*)(</?[A-Za-z][\w:.-]*[^`\n]*>)[ \t]*$", re.M)
+
+
+def _keep_tag_lines_visible(text: str) -> str:
+    """Neutralise a line-leading tag so Markdown cannot open an HTML block.
+
+    Inline code is the right escape rather than an HTML-escape: it keeps the
+    tag readable as the literal thing the agent was sent, which is the whole
+    point of showing the operator their own message back.
+    """
+    return _TAG_ONLY_LINE.sub(lambda m: f"{m.group(1)}`{m.group(2)}`", text)
+
+
 def render_user_block(text: str, colors, width: int | None = None) -> Panel:
     """The operator's own message: an accent `›` header over a Markdown body.
 
@@ -450,6 +472,12 @@ def render_user_block(text: str, colors, width: int | None = None) -> Panel:
     backticks. The cost is that `snake_case` loses its underscores and
     `**/*.py` turns bold — a trade taken deliberately (2026-09-21
     input-suggestion spec), so a mangled glob is a known cost, not a defect.
+
+    What is *not* an acceptable cost is dropping content: a mangled glob is
+    visible and a missing block is not. ``_keep_tag_lines_visible`` buys that
+    back, and ``test_render_user_block_shows_every_line_it_was_given`` is the
+    gate, because the bug it fixes shipped for six weeks under tests that
+    only checked that Markdown worked.
 
     Deliberately not ``_aside``: that surface means "in the transcript but
     not the conversation", and this is the conversation. Same proportions,
@@ -468,7 +496,10 @@ def render_user_block(text: str, colors, width: int | None = None) -> Panel:
     grid = Table.grid(padding=(0, 1))
     grid.add_column(width=1, no_wrap=True)
     grid.add_column(ratio=1, overflow="fold")
-    grid.add_row(Text("›", style=f"bold {colors.user}"), Markdown(text))
+    grid.add_row(
+        Text("›", style=f"bold {colors.user}"),
+        Markdown(_keep_tag_lines_visible(text)),
+    )
     return Panel(
         grid,
         box=_USER_BOX,
