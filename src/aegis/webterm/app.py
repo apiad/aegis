@@ -67,6 +67,15 @@ def build_webterm_app(
     async def healthz(request):
         return JSONResponse({"ok": True})
 
+    async def service_worker(request):
+        # No cookie check: an old worker's update check carries no cookie of
+        # ours, and a 401 would leave it installed and intercepting for ever.
+        return FileResponse(
+            static / "service-worker.js",
+            media_type="text/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     async def index(request):
         presented = request.query_params.get("t")
         if presented is not None:
@@ -126,6 +135,7 @@ def build_webterm_app(
             Route("/", index),
             Route("/healthz", healthz),
             WebSocketRoute("/term", term),
+            Route("/service-worker.js", service_worker),
             Mount("/static", app=StaticFiles(directory=static)),
         ]
     )
