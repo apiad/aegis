@@ -406,6 +406,47 @@ def test_render_user_block_renders_markdown():
     assert "one" in out and "two" in out
 
 
+def test_render_user_block_keeps_a_tag_delimited_block():
+    """Markdown opens an HTML block on a line-leading tag and Rich renders
+    nothing for one, so a `<system-reminder>` block vanished from the
+    transcript while the agent still received every word of it. Prompts and
+    `/spawn` tails carry those tags constantly."""
+    text = (
+        "The operator's task: ship the fix\n\n"
+        "<system-reminder>\n"
+        "RULE ONE: never stage broadly, always name paths\n"
+        "</system-reminder>\n\n"
+        "Final line the operator typed."
+    )
+    out = as_text(render_user_block(text, C))
+    assert "RULE ONE" in out
+    assert "system-reminder" in out
+    assert "Final line" in out
+
+
+def test_render_user_block_shows_every_line_it_was_given():
+    """The gate the tag bug walked through: whatever the agent was sent, the
+    operator can read back. Asserted over the shapes a real prompt mixes —
+    tags, fences, hyphen rules — because any of them can make Markdown drop
+    or swallow a block."""
+    text = (
+        "# heading\n\n"
+        "<important>\n"
+        "ALPHA do not deploy\n"
+        "</important>\n\n"
+        "- BRAVO list item\n"
+        "- CHARLIE list item\n\n"
+        "```python\n"
+        "DELTA = 1\n"
+        "```\n\n"
+        "--- ECHO fenced marker ---\n"
+        "FOXTROT trailing prose\n"
+    )
+    out = as_text(render_user_block(text, C))
+    for word in ("ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT"):
+        assert word in out, f"{word} was dropped from the transcript"
+
+
 def test_render_user_block_is_not_the_aside_surface():
     """An aside means "in the transcript but not the conversation" — a /btw
     note, a peer answer, a recap. The operator's message IS the
