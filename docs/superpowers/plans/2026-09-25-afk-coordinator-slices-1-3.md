@@ -20,10 +20,28 @@ plan replaces it with an agent behind the rails this plan builds.
 
 **Spec:** `docs/superpowers/specs/2026-09-25-afk-coordinator-design.md`
 
-**Status:** Tasks 1–9 landed 2026-09-25 (`601c605`..`d1daa0c`), 118 tests.
-Task 10 in progress; Task 11 (the run against a real board) is outstanding and
-is the one that decides whether this is actually done — everything green so far
-is green against fakes.
+**Status: complete.** Tasks 1–11 landed 2026-09-25/27
+(`601c605`..`c46ffb4`), 144 tests. Task 11 ran against a real board and the
+loop closed end to end: card #4 went Todo → Running → Failed with the
+coordinator's own gate measurement on it, agreeing with the worker's honest
+report. Remaining work is slices 4–7, tracked in `TASKS.md` under *AFK
+coordinator*.
+
+Task 11 found nine defects that no test against fakes could have found. They
+are worth reading before planning slices 4–7, because four of them were in this
+plan's own code and two were in aegis core:
+
+| What | Where it lived |
+|---|---|
+| `Repo` is a reserved Projects v2 field name | this plan's default, and `docs/afk.md` |
+| `workflows:` in `.aegis.yaml` registered nothing | aegis core; `register_builtins` was called by no boot path |
+| the GraphQL query was shell-quoted with `json.dumps`, losing newlines and `$vars` | this plan's gh transport |
+| the progress tick's section rewrite ate the card's marker | this plan's `replace_section` |
+| an armed schedule did not count as work, so the daemon reaped itself | aegis core |
+| one 429 stalled the loop because the quota cache was rebuilt per tick | this plan's `read_quota` |
+| the docs' queue-budget example used `max_usd` and would not boot | `docs/afk.md` |
+| `check_gh` reported "not authenticated" for every non-zero exit | this plan's preflight |
+| a repo whose gate was already red filed `Failed` blaming the worker | the design; fixed with `baseline_gate` |
 
 Four defects were found during the build that this plan's own code contained.
 Each is fixed in the repo; the plan text below is left as written so the
