@@ -91,6 +91,30 @@ Failures seen in the first run, and what each looked like:
 | card back in `Todo` with a live worker still running | the progress tick had eaten the card's marker, so reap could not find the task |
 | `working tree is dirty`, naming files nobody edited | a worker's own `make check` reformats `src/`, caught mid-write |
 | `daemon idle for 1800s; exiting`, then silence | the daemon reaped itself; the schedule log just ends |
+| `gh is not authenticated`, with gh working fine in your shell | the API rate limit was exhausted — `gh auth status` validates the token against the API, so a 429 exits non-zero. The reason now quotes gh, so this reads plainly |
+| every card in one repo lands in `Failed` with an honest gate exit | the repo's gate was already red. `baseline_gate` now refuses the card first — see below |
+
+## A repo whose gate is already red
+
+`baseline_gate` (default on) runs the gate once before dispatch. If it is red
+the card goes to `Blocked` with "the gate is already red before any change",
+naming the exit code, and no worker is spent.
+
+Before that check existed, the first card that ran all the way through was filed
+`Failed` on `make check` exiting 2 — and the 356 `ty` diagnostics behind that
+exit were present at the commit the clone started from. The worker's own change
+was nine lines of prose, it reported its exit code honestly, and the coordinator
+independently measured the same. Every part of the verification contract worked
+and the card still blamed the wrong party.
+
+So: **a repo the coordinator can work is a repo whose gate is green on its
+default branch.** If a gate is red for reasons you are not going to fix today,
+point `gate_commands` at a target that passes rather than turning the baseline
+check off — `["make test"]` instead of the default `["make check", "make test"]`.
+Turning the check off buys you failed cards, not working ones.
+
+The baseline costs one gate run per card start, which is the reason the knob
+exists at all: a gate too slow to run twice per card is a real objection.
 
 ## The quota endpoint is effectively single-consumer
 

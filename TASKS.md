@@ -440,6 +440,59 @@ plan through a real pane and both fixed with mutation-checked tests:
 
 ## Active
 
+### AFK coordinator — slices 4–7 *(slices 1–3 shipped 2026-09-25/27; blocked on a green gate)*
+
+`afk` and `afk_progress` are on main and work end to end against a real board.
+Spec `docs/superpowers/specs/2026-09-25-afk-coordinator-design.md`, plan
+`docs/superpowers/plans/2026-09-25-afk-coordinator-slices-1-3.md`, user docs
+`docs/afk.md`, procedure and traps `know-how/running-the-afk-coordinator.md`.
+Board: **Syalia Agents**, https://github.com/orgs/syalia-srl/projects/5.
+
+**The blocker is aegis's own gate, not the coordinator.** `make check` exits 2
+on main: `ty check src/` reports 356 diagnostics. With `baseline_gate` on (the
+default) the coordinator now *refuses* every aegis card with "the gate is
+already red before any change" instead of burning a worker and filing a
+misleading `Failed` — which is correct, and it also means the loop cannot work
+this repo until the gate is green. Either fix the diagnostics or set
+`gate_commands: ["make test"]` for aegis cards; the first is the real answer.
+
+Not built, in the order the spec slices them:
+
+- [ ] **Slice 4 — the dispatch rails.** `decide.py` validators for an
+      `aegis-dispatch` proposal, `dispatch.py` for the parser and the agent
+      briefing, driven by hand-written proposals with a deterministic stand-in
+      still doing selection. The adversarial tests in the spec's Testing
+      section are the deliverable; no agent is asked anything in this slice.
+- [ ] **Slice 5 — the coordinator agent.** Swap the stand-in: the briefing, a
+      read-only agent profile, the `Coordinator` narration, and `Waiting` /
+      `Waiting on` as states the code actually writes (today `Waiting` is read
+      by `eligible()` and written by nothing, and `Waiting on` is a key in
+      `tick.FIELDS` and nothing else). The agent decides selection, ordering,
+      batch size and blocking; every write still goes through the workflow, and
+      its discretion is monotone toward caution.
+- [ ] **Slice 5b — native issue dependencies.** Approved 2026-09-26. Write
+      blocking as `POST repos/{o}/{r}/issues/{n}/dependencies/blocked_by` and
+      read `issue.blockedBy` / `blocking` before deciding. Remove only edges the
+      coordinator authored. Narrows `Waiting on` to the non-card reasons
+      (`capacity`, `quota`, `dirty tree`).
+- [ ] **Slice 6 — per-repo `worktree` isolation.** What makes "does card B
+      block card A" a real question rather than physics: in a shared checkout
+      two cards in one repo can never run together.
+- [ ] **Slice 7 — the reviewer stage, stall notification, `notify_cmd`.**
+      Stall *detection* is in `progress.py`; nothing notifies. `notify_cmd` is
+      deliberately absent from `DEFAULTS` rather than present and inert.
+
+Two smaller things the first real run left behind:
+
+- [ ] The `afk_progress` tick re-reads the whole board every two minutes to
+      find `Running` cards. The schema is cached now (`SCHEMA_TTL_S`), the items
+      query is not. `ProjectV2Item.updatedAt` and `fieldValueByName` would make
+      it cheaper if the call count ever matters.
+- [ ] `aegis.log` writes local time labelled `Z` — `19:15:44Z` against the
+      scheduler's `23:19:00+00:00`. Unrelated to the coordinator; it cost a few
+      minutes of confusion during the run.
+
+
 ### Queue workers orphaned by a rename *(fixed 2026-09-16; old orphans still alive)*
 
 The rename fix only helps tasks dispatched by a daemon running the new code.
