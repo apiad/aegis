@@ -126,6 +126,62 @@ def test_reset_in_is_empty_for_an_unknown_reset():
     assert reset_in(3840) == "↻ 1h04m"
 
 
+def test_a_countdown_past_a_day_is_counted_in_days():
+    # A weekly window four days out. In hours this is `↻ 105h34m`, nine cells.
+    assert reset_in(380068) == "↻ 4d09h"
+
+
 def test_rows_of_pairs_gauges_two_to_a_line():
     a, b, c = (Text("a"), Text("b"), Text("c"))
     assert rows_of([a, b, c], 2).plain.split("\n") == ["a  b", "c"]
+
+
+# --- pace: the projection earns its cells only when it decides the colour ----
+
+
+def test_a_gauge_past_the_pace_threshold_prints_its_projection():
+    from dataclasses import replace
+
+    band = replace(BAND, gauges=(QuotaGauge("cc 5h", 45, "critical", 12600, 150.0),))
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 160, 0).plain.split("\n")[1]
+    assert "45%" in row and "→150%" in row and "↻ 3h30m" in row
+
+
+def test_a_comfortable_gauge_keeps_its_projection_off_the_screen():
+    from dataclasses import replace
+
+    band = replace(BAND, gauges=(QuotaGauge("cc 5h", 30, "normal", 7200, 50.0),))
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 160, 0).plain.split("\n")[1]
+    assert "30%" in row and "↻ 2h00m" in row and "→" not in row
+
+
+def test_five_gauges_with_projections_still_leave_a_bar_to_read():
+    """Five gauges is a real band: two providers, five bar windows between them.
+    Measured with a *weekly* reset, which is the widest tail one carries."""
+    from dataclasses import replace
+
+    gauges = tuple(
+        QuotaGauge(f"cc w{i}", 45, "critical", 380068, 150.0) for i in range(5)
+    )
+    band = replace(BAND, gauges=gauges)
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 160, 0).plain.split("\n")[1]
+    assert cell_len(row) <= 160
+    assert "→150%" in row and "↻ 4d09h" in row
+    # The property is bar *cells*, not lit ones: on a three-cell floor 45% is a
+    # single lit block, which reads as a glyph rather than a bar. This tail
+    # leaves five cells each, which is two lit at 45%.
+    assert (row.count("█") + row.count("░")) >= 5 * 5
+
+
+def test_the_middle_band_reads_as_yellow_and_not_as_the_error_colour():
+    """`accent` and `warning` are the same amber in ink and slate, so the old
+    mapping only showed up in parchment, where accent is a terracotta next to
+    the error red."""
+    from aegis.fleet.render import severity_style
+    from aegis.tui.themes import PARCHMENT, aegis_colors
+
+    pal = aegis_colors(PARCHMENT)
+    assert pal.accent != pal.working  # or this test proves nothing
+    assert severity_style("warning", pal) == pal.working
+    assert severity_style("critical", pal) == pal.error
+    assert severity_style("normal", pal) == pal.ready

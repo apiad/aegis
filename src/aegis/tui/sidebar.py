@@ -34,7 +34,7 @@ from aegis.fleet.render import (
     bar,
     ctx_style,
     gauge,
-    reset_in,
+    quota_tail,
     rows_of,
     severity_style,
 )
@@ -305,7 +305,7 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
                 min(width, _GAUGE_MAX),
                 palette,
                 value_style=style,
-                tail=reset_in(q.resets_in_s),
+                tail=quota_tail(q),
             )
         )
     # The gauge takes the fraction; the leftover tier takes the rest. T3 is

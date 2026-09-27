@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from aegis.fleet.models import CardView, MonitorRow, QuotaGauge
 from aegis.tui.sysmeter import SystemStats, sample_system
 from aegis.usage.quota import QuotaSnapshot, QuotaState, QuotaWindow, quota_gauges
@@ -28,8 +30,13 @@ def test_quota_gauges_follow_each_providers_bar_windows():
     ]
     got = quota_gauges(readings, now=NOW)
     assert got == (
-        QuotaGauge(label="cc 5h", percent=38.0, severity="normal", resets_in_s=7200.0),
-        QuotaGauge(label="cc wk", percent=81.0, severity="warning", resets_in_s=None),
+        # 38% of a five-hour window with two hours left projects to 63%, which
+        # is comfortable. The weekly window carries no reset time, so it cannot
+        # be projected at all and keeps the severity the payload gave it.
+        QuotaGauge(label="cc 5h", percent=38.0, severity="normal", resets_in_s=7200.0,
+                   projected=pytest.approx(63.33, abs=0.01)),
+        QuotaGauge(label="cc wk", percent=81.0, severity="warning", resets_in_s=None,
+                   projected=None),
     )
 
 

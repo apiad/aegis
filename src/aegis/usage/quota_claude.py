@@ -131,4 +131,16 @@ PROVIDER = QuotaProvider(
     bar_windows=(("session", "5h"), ("weekly_all", "wk")),
     fetch=fetch_quota,
     read_token=read_token,
+    # The five-hour window starts at the first message of a session and the
+    # weekly ones roll on a fixed boundary, so in both cases the start is
+    # `resets_at` minus the span. The payload says neither.
+    window_spans={
+        "session": 5 * 3600,
+        "weekly_all": 7 * 86400,
+        "weekly_opus": 7 * 86400,
+        # Live in the payload as of 2026-09-27, resetting on the same boundary
+        # as weekly_all. A kind we get wrong here loses its projection, it does
+        # not gain a wrong one: an over-long reset trips the skew guard.
+        "weekly_scoped": 7 * 86400,
+    },
 )

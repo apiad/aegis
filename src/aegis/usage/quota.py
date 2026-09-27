@@ -14,9 +14,9 @@ entry, not a change to the service or the renderer.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Mapping
 
 if TYPE_CHECKING:
     from aegis.fleet.models import QuotaGauge
@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 # Used only when the API omits its own `severity` for a window.
 WARNING_AT = 80.0
 CRITICAL_AT = 95.0
+
+# Pace thresholds, on the *projected* spend at reset rather than the spend so
+# far. 80 is "20% of the quota still there when the period ends"; above 100 the
+# quota runs out before the period does.
+PACE_WARN_AT = 80.0
+PACE_CRIT_AT = 100.0
+# No projection is trusted from a thinner slice of the window than this. Without
+# it, one turn six minutes into a five-hour window projects to 250% and every
+# window opens red. It is a clamp on the denominator, not on the answer: red
+# still needs more than 15% of the quota spent, whenever it is spent.
+PACE_FLOOR = 0.15
+# A reset time further out than the span means the clock is off or our span for
+# that kind is wrong. This much is ordinary clock skew; past it we stop
+# projecting rather than invent a number from a bad span.
+PACE_SKEW_GRACE_S = 60.0
 
 
 class QuotaError(Exception):
@@ -75,6 +90,12 @@ class QuotaProvider:
     bar_windows: tuple[tuple[str, str], ...]  # (kind, label), display order
     fetch: Callable[..., "QuotaSnapshot"]
     read_token: Callable[..., str | None]
+    # How long each window lasts, in seconds, keyed by kind. Neither payload
+    # carries a window length or a start time, only `resets_at`, so this is the
+    # other half of what pace needs. A kind that is absent here gets no
+    # projection and keeps its level-only colour, which is what makes a new
+    # vendor window safe to meet.
+    window_spans: Mapping[str, float] = field(default_factory=dict)
 
 
 def _severity(percent: float, given) -> str:
@@ -85,6 +106,54 @@ def _severity(percent: float, given) -> str:
     if percent >= WARNING_AT:
         return "warning"
     return "normal"
+
+
+_ORDER = {"normal": 0, "warning": 1, "critical": 2}
+
+
+def _worse(a: str, b: str) -> str:
+    return a if _ORDER.get(a, 0) >= _ORDER.get(b, 0) else b
+
+
+def window_pace(window: QuotaWindow, span_s, *, now: datetime) -> float | None:
+    """Where this window's spend lands at reset, as a percent of the quota.
+
+    The average rate across the window is ``percent / elapsed_fraction``, which
+    is the right rate for "will what is left survive the period": it answers the
+    question with the whole window's evidence rather than the last few turns'.
+
+    ``None`` means we decline to answer, and every caller then falls back to the
+    level verdict. That happens when the window carries no reset time, when we
+    hold no span for its kind, and when the reset time is further out than the
+    span says it can be.
+    """
+    if window.resets_at is None or not span_s or span_s <= 0:
+        return None
+    remaining = (window.resets_at - now).total_seconds()
+    if remaining > span_s + PACE_SKEW_GRACE_S:
+        return None
+    elapsed = span_s - max(0.0, min(remaining, span_s))
+    return window.percent / max(elapsed / span_s, PACE_FLOOR)
+
+
+def pace_severity(window: QuotaWindow, span_s, *, now: datetime) -> str:
+    """The window's colour: the worse of its level and its pace.
+
+    Level can only escalate pace. A window at 97% with five minutes left
+    projects to 97% and would read as a warning on pace alone, while the 3% you
+    have left is the number that matters. The vendor's own ``severity`` rides
+    along inside the level verdict, so we never paint green over its alarm.
+    """
+    projected = window_pace(window, span_s, now=now)
+    if projected is None:
+        return window.severity
+    if projected > PACE_CRIT_AT:
+        pace = "critical"
+    elif projected >= PACE_WARN_AT:
+        pace = "warning"
+    else:
+        pace = "normal"
+    return _worse(window.severity, pace)
 
 
 def _timestamp(raw) -> datetime | None:
@@ -291,17 +360,21 @@ def _provider_tiers(
     parts: list[str] = []
     shorts: list[str] = []
     worst: QuotaWindow | None = None
+    worst_severity = "normal"
     for kind, name in provider.bar_windows:
         window = state.snapshot.window(kind)
         if window is None:
             continue
+        severity = pace_severity(window, provider.window_spans.get(kind), now=moment)
         if worst is None or window.percent > worst.percent:
-            worst = window
-        value = _paint(f"{window.percent:.0f}%", window.severity, colors, stale)
+            worst, worst_severity = window, severity
+        value = _paint(f"{window.percent:.0f}%", severity, colors, stale)
         shorts.append(f"{window.percent:.0f}")
         chunk = f"{name} {value}"
-        # The reset time is only a question once the number is high.
-        if window.severity != "normal" and window.resets_at is not None:
+        # The reset time is only a question once the number is high. Pace brings
+        # the countdown with it, which is right: if the spend is on track to run
+        # the window dry, when it refills is the next thing you need.
+        if severity != "normal" and window.resets_at is not None:
             chunk += f" ⟶{_countdown(window.resets_at, moment)}"
         parts.append(chunk)
 
@@ -312,7 +385,7 @@ def _provider_tiers(
     mid = prefix + "/".join(shorts) + "%"
     least = _paint(
         f"{label}{worst.percent:.0f}" if label else f"{worst.percent:.0f}%",
-        worst.severity,
+        worst_severity,
         colors,
         stale,
     )
@@ -358,14 +431,22 @@ def format_quota_bar(
     )
 
 
-def quota_lines(state: QuotaState, *, now: datetime | None = None) -> list[str]:
+def quota_lines(
+    state: QuotaState, *, spans: Mapping[str, float] | None = None, now=None
+) -> list[str]:
     """Full breakdown for ``/usage quota`` — every window, not just the pair
-    the status bar has room for."""
+    the status bar has room for.
+
+    ``spans`` is the provider's ``window_spans``. Without it every window
+    reports ``—`` for its projection and keeps its level-only severity, which
+    is what a caller that has no provider in hand should see.
+    """
     moment = now or datetime.now(timezone.utc)
     if state.snapshot is None:
         text = _FAILURE_TEXT.get(state.failure or "unreachable", "unreachable")
         return [f"quota unavailable — {text}"]
 
+    spans = spans or {}
     lines: list[str] = []
     for window in state.snapshot.windows:
         resets = "—"
@@ -373,9 +454,13 @@ def quota_lines(state: QuotaState, *, now: datetime | None = None) -> list[str]:
             stamp = window.resets_at.astimezone().strftime("%Y-%m-%d %H:%M")
             resets = f"{stamp} ({_countdown(window.resets_at, moment)})"
         active = "active" if window.is_active else "idle"
+        span = spans.get(window.kind)
+        projected = window_pace(window, span, now=moment)
+        proj = "—" if projected is None else f"{projected:.0f}%"
         lines.append(
-            f"{window.kind:<14} {window.percent:>5.0f}%  "
-            f"{window.severity:<8} {active:<6} resets {resets}"
+            f"{window.kind:<14} {window.percent:>5.0f}%  ⟶{proj:<6} "
+            f"{pace_severity(window, span, now=moment):<8} "
+            f"{active:<6} resets {resets}"
         )
 
     footer = f"read {_age(state.age_s)} ago"
@@ -401,14 +486,15 @@ def quota_report(readings, *, now: datetime | None = None) -> list[str]:
     if not live:
         return ["quota unavailable — no credentials"]
     if len(live) == 1:
-        return quota_lines(live[0][1], now=now)
+        provider, state = live[0]
+        return quota_lines(state, spans=provider.window_spans, now=now)
 
     lines: list[str] = []
     for provider, state in live:
         if lines:
             lines.append("")
         lines.append(provider.name)
-        lines.extend(quota_lines(state, now=now))
+        lines.extend(quota_lines(state, spans=provider.window_spans, now=now))
     return lines
 
 
@@ -423,17 +509,24 @@ def quota_gauges(readings, *, now: datetime) -> tuple[QuotaGauge, ...]:
         snap = state.snapshot
         if snap is None:
             continue
+        # A stale reading does not get to speak about pace. The percent is
+        # frozen while the clock runs on, so the projection falls on its own and
+        # would read as the spend slowing down when nothing is known about it.
+        # `_paint` refuses to colour a stale reading for the same reason.
+        stale = bool(state.failure)
         for kind, short in provider.bar_windows:
             w = snap.window(kind)
             if w is None:
                 continue
             resets = (w.resets_at - now).total_seconds() if w.resets_at else None
+            span = None if stale else provider.window_spans.get(kind)
             out.append(
                 QuotaGauge(
                     label=f"{provider.label} {short}",
                     percent=w.percent,
-                    severity=w.severity,
+                    severity=pace_severity(w, span, now=now),
                     resets_in_s=resets,
+                    projected=window_pace(w, span, now=now),
                 )
             )
     return tuple(out)

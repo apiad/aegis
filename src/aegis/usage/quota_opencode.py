@@ -151,4 +151,14 @@ PROVIDER = QuotaProvider(
     bar_windows=(("rolling", "5h"), ("weekly", "wk"), ("monthly", "mo")),
     fetch=fetch_usage,
     read_token=read_key,
+    # `monthly` is a calendar month, so 30 days is an approximation: on a
+    # 31-day month it overstates the elapsed fraction by 3.3% and understates
+    # the projection by about the same, which can only change a colour within
+    # three points of a threshold. Calendar arithmetic for one window of one
+    # provider is not worth the union type in `window_spans`.
+    window_spans={
+        "rolling": 5 * 3600,
+        "weekly": 7 * 86400,
+        "monthly": 30 * 86400,
+    },
 )

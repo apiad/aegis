@@ -54,6 +54,10 @@ class QuotaGauge:
     percent: float
     severity: str  # normal | warning | critical
     resets_in_s: float | None
+    # Projected spend at reset, as a percent of the quota, or None when the
+    # window carries no reset time or no known span. Carried even when it is
+    # comfortable; `quota_tail` decides when it is worth a reader's cells.
+    projected: float | None = None
 
 
 @dataclass(frozen=True)

@@ -550,6 +550,19 @@ def test_quota_draws_one_bar_per_window_with_its_reset():
     assert "cc 5h" in out and "47%" in out and "↻ 3h04m" in out
 
 
+def test_a_quota_bar_past_the_pace_threshold_carries_its_projection():
+    m = SidebarModel(
+        quota_gauges=(
+            QuotaGauge(
+                label="cc 5h", percent=45.0, severity="critical",
+                resets_in_s=12600, projected=150.0
+            ),
+        )
+    )
+    out = as_text(render_sidebar(m, C, 56))
+    assert "45%" in out and "→150%" in out and "↻ 3h30m" in out
+
+
 def test_no_quota_reading_falls_back_to_the_tier_not_to_a_zero_bar():
     """No credentials configured. A 0% bar would claim a reading of zero
     rather than no reading at all."""

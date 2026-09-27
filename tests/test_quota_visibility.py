@@ -226,6 +226,10 @@ def test_a_moving_reset_reaches_the_sidebar_even_when_the_tier_text_does_not():
     prints no countdown at normal severity. So the tier text sits still for
     minutes on a busy session and forever on an idle one, and the sidebar
     kept painting a countdown that had stopped counting.
+
+    The reading has to stay comfortable on *pace* as well as on level, or the
+    tier text grows the countdown itself and the premise is gone: 10% of a
+    five-hour window with three hours left projects to 25%.
     """
 
     def _state(hours):
@@ -233,8 +237,8 @@ def test_a_moving_reset_reaches_the_sidebar_even_when_the_tier_text_does_not():
         return QuotaState(
             snapshot=QuotaSnapshot(
                 windows=(
-                    QuotaWindow("session", 64.0, "normal", at, True),
-                    QuotaWindow("rolling", 64.0, "normal", at, True),
+                    QuotaWindow("session", 10.0, "normal", at, True),
+                    QuotaWindow("rolling", 10.0, "normal", at, True),
                 ),
                 fetched_at=0.0,
             )

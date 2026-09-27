@@ -7,6 +7,26 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Changed
 
+- **Quota bars are coloured by pace, not by level alone.** A window now also
+  reports where its spend lands at reset: `percent / elapsed_fraction`, green
+  under 80%, yellow from 80 to 100, red above it. The colour is the worse of
+  that and the old spent-so-far verdict, so level and the vendor's own alarm can
+  still escalate a comfortable projection but never relax a real one. The
+  projection prints beside the percent (`45% →150% ↻ 3h30m`) once it is what
+  decided the colour. Windows spend most of their life in the same colour as
+  before; what changes is that a burst reads red while there is still time to
+  slow down, and relaxes on its own as the window measures it.
+
+  A five-hour window opens against a 15% floor on the elapsed fraction, because
+  one turn six minutes in would otherwise project to 250% and every window would
+  open red. Consequence worth knowing: red always needs more than 15% of the
+  quota spent. A window with no reset time, no known span, or a stale reading
+  keeps its level-only colour rather than guessing.
+
+- **A quota countdown past a day is counted in days.** `↻ 105h34m` is now
+  `↻ 4d09h`. Four cells back on every weekly gauge, which is what lets the
+  projection share the tail without squeezing the bar to its three-cell floor.
+
 - **The old browser client, `RemoteSessionManager` and `aegis --remote` are
   deleted.** The hand-written JS client and its aegis-aware WebSocket protocol
   are gone, along with the `--remote` TUI that spoke the same protocol and the

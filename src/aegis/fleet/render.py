@@ -57,7 +57,10 @@ def blink(text: str, frame: int) -> str:
 
 
 def severity_style(severity: str, pal) -> str:
-    return {"warning": pal.accent, "critical": pal.error}.get(severity, pal.ready)
+    # `working`, not `accent`: the middle band has to read as yellow against
+    # green and red. In ink and slate the two are the same amber, but parchment's
+    # accent is a terracotta that sits next to its error colour.
+    return {"warning": pal.working, "critical": pal.error}.get(severity, pal.ready)
 
 
 def ctx_style(pct: float, pal) -> str:
@@ -172,14 +175,39 @@ def rows_of(gauges: list[Text], per_row: int) -> Text:
 
 
 def reset_in(seconds: float | None) -> str:
+    """``↻ 4d09h`` / ``↻ 3h30m`` / ``↻ 12m`` / ``↻ 8s``.
+
+    The day unit is not cosmetic: a weekly window four days out used to read
+    ``↻ 105h34m``, nine cells on a gauge that has thirty for everything, and on
+    a five-gauge band that left the bar itself at its three-cell floor.
+    """
     if seconds is None:
         return ""
     s = max(0, int(seconds))
+    if s >= 86400:
+        return f"↻ {s // 86400}d{(s % 86400) // 3600:02d}h"
     if s >= 3600:
         return f"↻ {s // 3600}h{(s % 3600) // 60:02d}m"
     if s >= 60:
         return f"↻ {s // 60}m"
     return f"↻ {s}s"
+
+
+def quota_tail(g) -> str:
+    """``→150% ↻ 3h30m``: what a quota gauge says to the right of its percent.
+
+    The projection prints only once it is the thing deciding the colour. Under
+    80% it explains nothing a green bar had not already said, and printing it on
+    every gauge would put a number that moves with the clock on bars nobody is
+    worried about, which the sidebar pays for in repaints.
+    """
+    from aegis.usage.quota import PACE_WARN_AT
+
+    reset = reset_in(g.resets_in_s)
+    if g.projected is None or g.projected < PACE_WARN_AT:
+        return reset
+    proj = f"→{g.projected:.0f}%"
+    return f"{proj} {reset}" if reset else proj
 
 
 def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
@@ -244,7 +272,7 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
                     qcells,
                     pal,
                     value_style=style,
-                    tail=reset_in(g.resets_in_s),
+                    tail=quota_tail(g),
                 )
             )
         t.append_text(rows_of(quota, per_q))

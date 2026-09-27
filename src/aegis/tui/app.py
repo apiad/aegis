@@ -64,6 +64,20 @@ def _reset_bucket(gauge) -> int | None:
     return None if secs is None else int(secs) // 60
 
 
+def _proj_bucket(gauge) -> int | None:
+    """A quota window's projected spend, at the precision it renders as.
+
+    None while the projection is below the threshold that prints it, so a
+    comfortable window does not repaint for a number nobody is shown. Once it
+    prints, it moves about a point per 100 seconds on a five-hour window, which
+    is the rate the countdown bucket above already pays for.
+    """
+    from aegis.usage.quota import PACE_WARN_AT
+
+    proj = gauge.projected
+    return None if proj is None or proj < PACE_WARN_AT else int(proj)
+
+
 def _plan_roll_up(core):
     """A session's plan roll-up, or None when it has no plan.
 
@@ -1617,7 +1631,17 @@ class AegisApp(App):
         # `_quota_last` stays the tiers: the fleet band reads it as the held
         # value when no pane is in front. Change detection gets its own
         # field rather than overloading that one.
-        stamp = (tiers, tuple((g.label, g.percent, _reset_bucket(g)) for g in gauges))
+        # Severity is named rather than inferred. It used to be a pure function
+        # of the percent beside it, so the percent stood in for it; pace moves it
+        # with the clock, and the key should say what the gauge draws instead of
+        # relying on the tier text to move at the same moment.
+        stamp = (
+            tiers,
+            tuple(
+                (g.label, g.percent, g.severity, _reset_bucket(g), _proj_bucket(g))
+                for g in gauges
+            ),
+        )
         if self._quota_pane is not active or self._quota_stamp != stamp:
             self._quota_pane, self._quota_last = active, tiers
             self._quota_stamp = stamp
