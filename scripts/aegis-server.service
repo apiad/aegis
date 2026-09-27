@@ -1,0 +1,18 @@
+[Unit]
+Description=aegis daemon (brain, views, MCP plane) on a unix socket
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace
+ExecStart=/usr/bin/env uv run --directory %h/Workspace/repos/aegis aegis server
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+# The daemon reaps itself after 30 idle minutes, which is right for a laptop
+# and wrong for a unit that is meant to stay up.
+Environment=AEGIS_IDLE_TIMEOUT=0
+
+[Install]
+WantedBy=default.target

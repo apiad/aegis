@@ -1,0 +1,19 @@
+[Unit]
+Description=aegis web (browsers as clients of the daemon's socket)
+After=network-online.target aegis-server.service
+# Wants, NOT Requires: with Requires, `systemctl restart aegis-server`
+# restarts this unit too and drops every browser — the opposite of the
+# reconnect the relay exists to provide.
+Wants=network-online.target aegis-server.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspace
+ExecStart=/usr/bin/env uv run --directory %h/Workspace/repos/aegis aegis web --no-browser --no-autostart
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/aegis-web.env
+
+[Install]
+WantedBy=default.target
