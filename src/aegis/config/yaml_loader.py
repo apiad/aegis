@@ -26,6 +26,7 @@ from aegis.config import (
     Agent,
     ConfigError,
     FleetConfig,
+    NetworkConfig,
     Permission,
     VoiceConfig,
     WebConfig,
@@ -77,6 +78,7 @@ class AegisConfig:
     remote_plane: RemotePlaneSpec | None = None
     web: WebConfig | None = None
     voice: VoiceConfig = field(default_factory=VoiceConfig)
+    network: NetworkConfig = field(default_factory=NetworkConfig)
     fleet: FleetConfig = field(default_factory=FleetConfig)
     root: Path | None = None
     # Agent profile used for one-shot generation (`/btw` side notes,
@@ -300,6 +302,7 @@ def load_config(root: Path) -> AegisConfig:
 
     web = _build_web(raw.get("web"))
     voice = _build_voice(raw.get("voice"))
+    network = _build_network(raw.get("network"))
     fleet = _build_fleet(raw.get("fleet"))
 
     return AegisConfig(
@@ -320,6 +323,7 @@ def load_config(root: Path) -> AegisConfig:
         remote_plane=remote_plane,
         web=web,
         voice=voice,
+        network=network,
         fleet=fleet,
         root=root,
         inline_schedule_names=set(inline["schedules"].keys()),
@@ -363,6 +367,45 @@ def _build_voice(block: Any) -> VoiceConfig:
         key=str(block.get("key", defaults.key)),
         preview=bool(block.get("preview", defaults.preview)),
         language=block.get("language", defaults.language),
+    )
+
+
+def _build_network(block: Any) -> NetworkConfig:
+    """Build a NetworkConfig from a `network:` YAML block. Absent -> defaults."""
+    from aegis.net.probe import parse_anchor
+
+    defaults = NetworkConfig()
+    if block is None:
+        return defaults
+    if not isinstance(block, dict):
+        raise ConfigError("network: must be a mapping")
+
+    raw_anchors = block.get("anchors")
+    if raw_anchors is None:
+        anchors = defaults.anchors
+    else:
+        if not isinstance(raw_anchors, list) or not raw_anchors:
+            raise ConfigError(
+                "network.anchors: must be a non-empty list of host:port — "
+                "an empty list leaves every probe failing with nothing to say"
+            )
+        try:
+            anchors = tuple(parse_anchor(str(a)) for a in raw_anchors)
+        except ValueError as exc:
+            raise ConfigError(f"network.anchors: {exc}") from exc
+
+    speed_bytes = int(block.get("speed_bytes", defaults.speed_bytes))
+    if speed_bytes <= 0:
+        raise ConfigError("network.speed_bytes: must be a positive byte count")
+
+    return NetworkConfig(
+        enabled=bool(block.get("enabled", defaults.enabled)),
+        interval=float(block.get("interval", defaults.interval)),
+        trace_interval=float(block.get("trace_interval", defaults.trace_interval)),
+        speed_interval=float(block.get("speed_interval", defaults.speed_interval)),
+        speed_bytes=speed_bytes,
+        timeout=float(block.get("timeout", defaults.timeout)),
+        anchors=anchors,
     )
 
 
