@@ -1,3 +1,5 @@
+import pytest
+
 import json
 
 from aegis.bench.launcher import resolve_target
@@ -5,6 +7,11 @@ from aegis.bench.world import build_world, teardown
 from aegis.usage import quota_claude, quota_opencode
 
 
+# ~3s even on an idle machine (it boots a real daemon / builds a real
+# world), so it sat within 1% of the fast lane's 3s budget and flipped
+# `make test` red or green with ambient load. CI runs `-m "not live"`,
+# which includes slow, so nothing stops being checked there.
+@pytest.mark.slow
 def test_a_world_never_reads_the_operators_quota_credentials(tmp_path, monkeypatch):
     """The TUI polls quota with whatever credentials it finds. A world
     inherits HOME, so without its own override it spends real accounts."""
