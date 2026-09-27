@@ -70,3 +70,16 @@ def test_one_view_per_tab():
         "Duplicate tab copies sessionStorage; without a claim check the copy "
         "is refused by the daemon and retries forever"
     )
+
+
+def test_the_page_acts_on_a_taken_view_instead_of_reconnecting_for_ever():
+    """`relay` gives up on a view another tab holds and sends `view_taken`;
+    a page that ignored it would sit in "reconnecting" until closed."""
+    from aegis.webterm.relay import VIEW_TAKEN
+
+    js = (STATIC / "term.js").read_text()
+    assert "view_taken" in js, "the page ignores the frame relay.py sends"
+    assert 'sessionStorage.removeItem("aegis-view")' in js, (
+        "the page kept the id the daemon refuses, so the reload loops"
+    )
+    assert '"view_taken"' in VIEW_TAKEN

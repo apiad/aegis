@@ -45,6 +45,12 @@ def _hello_of(message) -> tuple[str, int, int, str | None] | None:
 
 RECONNECTING = json.dumps({"type": "reconnecting"})
 ATTACHED = json.dumps({"type": "attached"})
+VIEW_TAKEN = json.dumps({"type": "view_taken"})
+# How many times the daemon may accept and then hang up without a byte
+# before the page is told to take a fresh view id. A daemon that is down
+# does not count: only a daemon that is up and will not hand this view
+# over, which is what a copied sessionStorage id looks like.
+_MAX_REFUSALS = 3
 _DELAYS = (0.25, 0.5, 1.0, 2.0, 5.0)
 
 
@@ -72,6 +78,7 @@ async def relay(
     reader_task = asyncio.create_task(_read_browser(browser, inbox))
     opening: bytes | None = bytes(first)
     failures = 0
+    refusals = 0
     try:
         while True:
             if opening is None and failures:
@@ -83,6 +90,7 @@ async def relay(
             except Exception as e:  # noqa: BLE001 — the daemon may be down
                 log.info("daemon unreachable (%s); retrying", e)
                 failures += 1
+                refusals = 0  # the daemon is down, not refusing this view
                 opening = None
                 continue
             try:
@@ -108,6 +116,18 @@ async def relay(
             if outcome == "browser":
                 return
             failures = 0 if got_bytes else failures + 1
+            refusals = 0 if got_bytes else refusals + 1
+            if refusals >= _MAX_REFUSALS:
+                # The daemon is up and keeps closing this view without a
+                # byte, which is what it does for an id another client still
+                # holds. Retrying cannot win, so say so rather than leave the
+                # tab in "reconnecting" for ever.
+                log.info(
+                    "view %s refused %d times; asking for a fresh id", view_id, refusals
+                )
+                with contextlib.suppress(Exception):
+                    await browser.send_text(VIEW_TAKEN)
+                return
             with contextlib.suppress(Exception):
                 await browser.send_text(RECONNECTING)
     finally:

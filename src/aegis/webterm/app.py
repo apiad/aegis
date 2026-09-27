@@ -29,6 +29,15 @@ log = logging.getLogger(__name__)
 
 _PKG_STATIC = Path(__file__).resolve().parent / "static"
 _YEAR = 60 * 60 * 24 * 365
+# Where a browser keeps a `Secure` cookie over plain http. Anywhere else it
+# drops it silently, so the login redirect lands back on a 401.
+_SECURE_OVER_HTTP = ("localhost", "127.0.0.1", "::1", "[::1]")
+
+
+def _cookie_would_be_dropped(request) -> bool:
+    return (
+        request.url.scheme != "https" and request.url.hostname not in _SECURE_OVER_HTTP
+    )
 
 
 class _StarletteBrowser:
@@ -74,9 +83,19 @@ def build_webterm_app(
             )
             return response
         if not token_ok(request.cookies.get(COOKIE), token):
-            return PlainTextResponse(
-                "unauthorized: open the URL `aegis web` printed", status_code=401
-            )
+            why = "unauthorized: open the URL `aegis web` printed"
+            if _cookie_would_be_dropped(request):
+                # Saying "open the URL you just opened" is the unhelpful
+                # answer here: the URL worked and the browser threw the
+                # cookie away, which only https or localhost prevents.
+                why = (
+                    "unauthorized: this login sets a Secure cookie, which "
+                    f"your browser keeps over plain http only for "
+                    f"{', '.join(_SECURE_OVER_HTTP[:2])}. Reach "
+                    f"{request.url.hostname} over https (a reverse proxy in "
+                    "front of `aegis web`), or open it on the machine itself."
+                )
+            return PlainTextResponse(why, status_code=401)
         return FileResponse(
             static / "index.html", headers={"Cache-Control": "no-cache"}
         )

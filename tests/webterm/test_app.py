@@ -122,3 +122,23 @@ def test_an_authenticated_socket_reaches_the_daemon_only_after_hello(world):
         while not calls and time.monotonic() < deadline:
             time.sleep(0.01)
     assert calls, "a hello never reached the daemon"
+
+
+def test_plain_http_off_localhost_says_why_the_cookie_did_not_stick(tmp_path):
+    """A `Secure` cookie is dropped by the browser over plain http unless the
+    host is localhost, so `aegis web` bound to 0.0.0.0 and opened from a phone
+    401s on the very URL it just printed. Say what is wrong instead of
+    repeating the instruction the user just followed."""
+    (tmp_path / "index.html").write_text('<div id="term"></div>')
+
+    async def connect():
+        raise AssertionError("not reached")
+
+    app = build_webterm_app(token=TOKEN, connect=connect, static_dir=tmp_path)
+    client = TestClient(app, base_url="http://192.168.1.50:8899")
+    r = client.get("/")
+    assert r.status_code == 401
+    assert "https" in r.text.lower(), r.text
+    # ...and the diagnosis must not fire where the cookie does stick.
+    local = TestClient(app, base_url="http://127.0.0.1:8899")
+    assert "https" not in local.get("/").text.lower()

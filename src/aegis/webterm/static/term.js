@@ -62,6 +62,15 @@ ws.onmessage = (event) => {
   if (typeof event.data === "string") {
     const { type } = JSON.parse(event.data);
     if (type === "reconnecting") say("aegis is restarting — reconnecting…");
+    if (type === "view_taken") {
+      // Another tab still holds this id — a duplicated tab copies
+      // sessionStorage, and the claim handshake can miss a busy holder.
+      // Drop the id and reload, which takes a fresh one.
+      sessionStorage.removeItem("aegis-view");
+      say("this view belongs to another tab — opening a new one…");
+      location.reload();
+      return;
+    }
     if (type === "attached") {
       // A new view is about to draw from scratch. Anything half-received
       // from the old one would corrupt it.

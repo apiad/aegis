@@ -210,3 +210,50 @@ async def test_a_browser_leaving_during_the_backoff_ends_the_relay():
     await asyncio.sleep(0.2)
     b.leave()
     await asyncio.wait_for(task, 2)
+
+
+async def test_a_view_the_daemon_keeps_refusing_stops_retrying_forever(daemon):
+    """A tab whose view id another tab still holds must not sit in
+    "reconnecting" for ever. The daemon accepts and hangs up without a byte
+    for a live id, so an unbounded retry is a permanently dead tab; the page
+    is told to take a fresh id instead. The page's BroadcastChannel claim is
+    the first guard and it can miss a busy holder within its 200ms window.
+    """
+    from aegis.webterm.relay import VIEW_TAKEN
+
+    refused = []
+
+    async def accept_then_hang_up():
+        reader, writer = await daemon.connect()
+        refused.append(1)
+        await until(lambda: len(daemon.writers) >= len(refused))
+        await daemon.hang_up(len(refused) - 1)
+        return reader, writer
+
+    b = FakeBrowser()
+    b.push(hello("web-dup", 100, 30))
+    await asyncio.wait_for(relay(b, accept_then_hang_up, delays=FAST), 10)
+    assert VIEW_TAKEN in b.texts, "the page was never told its view id was taken"
+    assert len(refused) <= 5, f"retried {len(refused)} times before giving up"
+
+
+async def test_a_daemon_that_is_merely_down_never_costs_the_tab_its_view(daemon):
+    """The counter above must not fire for an outage: a daemon being
+    restarted is exactly when a tab must keep its view id."""
+    from aegis.webterm.relay import VIEW_TAKEN
+
+    attempts = []
+
+    async def down_for_a_while():
+        attempts.append(1)
+        if len(attempts) <= 6:
+            raise ConnectionRefusedError
+        return await daemon.connect()
+
+    b = FakeBrowser()
+    task = asyncio.create_task(relay(b, down_for_a_while, delays=FAST))
+    b.push(hello("web-1", 100, 30))
+    await until(lambda: daemon.received and daemon.received[0], 10)
+    assert VIEW_TAKEN not in b.texts, "an outage cost the tab its view id"
+    b.leave()
+    await asyncio.wait_for(task, 5)
