@@ -809,6 +809,18 @@ class PaneStateChanged(Message):
         super().__init__()
 
 
+def _share(part: int, whole: int) -> int | None:
+    """``part`` as a whole-number percentage of ``whole``, or None.
+
+    None rather than 0 when there is no denominator: a zero share claims a
+    measured ratio of nothing, which is the same mistake `_context` avoids by
+    falling back to a tier instead of drawing a 0% bar.
+    """
+    if whole <= 0 or part <= 0:
+        return None
+    return round(100 * part / whole)
+
+
 class ConversationPane(Widget):
     # Class-level defaults for the streaming-repaint state: unit tests build
     # a pane with __new__ (no __init__, no Textual boot) and still reach the
@@ -3141,6 +3153,18 @@ class ConversationPane(Widget):
             quota=self._quota_tiers,
             ctx=core.metrics.gauge(),
             quota_gauges=self._quota_gauges,
+            tps=core.metrics.recent_tps(),
+            cached_pct=_share(
+                core.metrics.c_cached + core.metrics.p_cached,
+                core.metrics.c_in + core.metrics.p_in,
+            ),
+            think_pct=_share(
+                core.metrics.c_think, core.metrics.c_out + core.metrics.p_out
+            ),
+            tools=(core.metrics.tool_calls, core.metrics.tool_errors)
+            if core.metrics.tool_calls
+            else None,
+            compactions=core.metrics.compaction_count,
             loop_status=self._loop_status,
             plan=core.plan_state(),
             subplans=core.subplan_states(),
