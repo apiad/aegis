@@ -113,6 +113,7 @@ class BootConfig:
     remote_plane: object | None
     hosts: dict
     voice: object | None
+    network: object | None
     inline_schedule_names: set[str]
 
 
@@ -147,6 +148,7 @@ def load_boot_config(roots: AegisRoots) -> BootConfig:
         remote_plane=yaml_cfg.remote_plane,
         hosts=yaml_cfg.hosts,
         voice=yaml_cfg.voice,
+        network=yaml_cfg.network,
         inline_schedule_names=yaml_cfg.inline_schedule_names,
     )
 
@@ -238,6 +240,7 @@ def _run_bootstrap_tui(root: Path, *, cwd: str, clean: bool) -> None:
         drivers=drivers,
         cwd=effective_cwd,
         voice=None,
+        network=None,
         hosts={},
         host_registry=host_registry,
     ).run()
@@ -300,6 +303,7 @@ class ResolvedBoot:
             "remotes": b.remotes,
             "remote_plane": b.remote_plane,
             "hosts": b.hosts,
+            "network": b.network,
             "host_registry": self.host_registry,
             "inline_schedule_names": b.inline_schedule_names,
         }
@@ -533,6 +537,7 @@ async def _serve(
     remotes: dict | None = None,
     remote_plane=None,
     hosts: dict | None = None,
+    network=None,
     host_registry=None,
     inline_schedule_names: set[str] | None = None,
     ui: "UIAttachment | None" = None,
@@ -714,6 +719,7 @@ async def _serve(
             host_registry=host_registry,
             drivers={slug: cls() for slug, cls in DRIVERS.items()},
             cwd=str(roots.harness_cwd),
+            network=network,
         )
         socket_server = UnixSocketServer(socket_path(roots), view_registry)
         await socket_server.start()
