@@ -40,20 +40,15 @@ def test_unknown_default_agent_raises(tmp_path):
         load_boot_config(AegisRoots.for_project(tmp_path))
 
 
-def test_boot_config_carries_web_and_is_token_gated(tmp_path):
-    """BootConfig must carry `web`, or this task silently kills the web
-    frontend in a plan whose contract is "the web client is untouched"."""
+def test_boot_config_carries_no_web(tmp_path):
+    """The daemon must not see the `web:` block. `aegis web` owns it, and a
+    daemon that read it bound the port on every terminal autostart."""
     from aegis.cli import load_boot_config
 
     (tmp_path / ".aegis.yaml").write_text(
         _GOOD + "web:\n  bind: 127.0.0.1\n  port: 8899\n  token: secret\n",
         encoding="utf-8")
-    assert load_boot_config(AegisRoots.for_project(tmp_path)).web is not None
-
-    # A token-less block must stay None, or serve exposes an unauthed UI.
-    (tmp_path / ".aegis.yaml").write_text(
-        _GOOD + "web:\n  bind: 127.0.0.1\n  port: 8899\n", encoding="utf-8")
-    assert load_boot_config(AegisRoots.for_project(tmp_path)).web is None
+    assert not hasattr(load_boot_config(AegisRoots.for_project(tmp_path)), "web")
 
 
 def test_boot_config_carries_the_rest_of_the_boot_surface(tmp_path):

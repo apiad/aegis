@@ -115,7 +115,6 @@ class BootConfig:
     remote_plane: object | None
     hosts: dict
     voice: object | None
-    web: object | None
     inline_schedule_names: set[str]
 
 
@@ -150,9 +149,6 @@ def load_boot_config(roots: AegisRoots) -> BootConfig:
         remote_plane=yaml_cfg.remote_plane,
         hosts=yaml_cfg.hosts,
         voice=yaml_cfg.voice,
-        # Only a token-bearing block counts, or serve starts a web frontend
-        # with no auth.
-        web=(yaml_cfg.web if (yaml_cfg.web and yaml_cfg.web.token) else None),
         inline_schedule_names=yaml_cfg.inline_schedule_names,
     )
 
@@ -682,7 +678,6 @@ async def _serve(
     schedules: dict | None = None,
     remotes: dict | None = None,
     remote_plane=None,
-    web=None,
     hosts: dict | None = None,
     host_registry=None,
     inline_schedule_names: set[str] | None = None,
@@ -885,14 +880,6 @@ async def _serve(
                 ).run()
             )
         )
-    if web is not None:
-        from aegis.web.frontend import WebFrontend
-
-        web_fe = WebFrontend(
-            mgr, web, state_dir=roots.state_dir, server_version=_aegis_version()
-        )
-        tasks.append(asyncio.create_task(web_fe.run()))
-        _console.print(f"[green]web UI on {web_fe.url}[/green]")
     try:
         if ui is not None:
             # The front end owns the lifetime: when it exits, the brain
@@ -1160,28 +1147,51 @@ def web(
     cwd: str = typer.Option(".", "--cwd"),
     no_browser: bool = typer.Option(False, "--no-browser"),
 ) -> None:
-    """Launch the web client: ensure a token, open the browser, then serve."""
-    root = find_project_root() or Path.cwd()
+    """Serve aegis to browsers: a client of this root's daemon, one view per tab."""
+    root = _root_for(cwd)
     if not (root / ".aegis.yaml").is_file():
         _console.print("[red]No .aegis.yaml found.[/red]")
         raise typer.Exit(1)
+    try:
+        _daemon_preflight(root)
+    except ConfigError as e:
+        _print_error(e)
+        raise typer.Exit(1) from e
     token = _ensure_web_token(root)
-    from aegis.config import edit as _edit
+    from aegis.config import WebConfig
     from aegis.config.yaml_loader import load_config as _load_yaml
+    from aegis.daemon.lifecycle import SpawnFailed
     from aegis.state.workspace import state_dir as _sd
-    from aegis.web.frontend import _resolve_port
+    from aegis.webterm import server as _webserver
+    from aegis.webterm.app import build_webterm_app
 
-    web_cfg = _load_yaml(root).web
-    port = _resolve_port(web_cfg, _sd(root))
-    _edit.set_web(root, port=port)
+    # A token from AEGIS_WEB_TOKEN writes no `web:` block, so there may be
+    # none to read; the defaults are the block's own.
+    web_cfg = _load_yaml(root).web or WebConfig(token=token)
+    port = _webserver.resolve_port(web_cfg, _sd(root))
     url = f"http://{web_cfg.bind}:{port}/?t={token}"
-    _console.print(f"[green]aegis web → {url}[/green]")
-    if not no_browser:
-        import threading
-        import webbrowser
+    app_ = build_webterm_app(
+        token=token,
+        connect=_webserver.connect_for(root, preflight=lambda: _daemon_preflight(root)),
+    )
 
-        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    _run_serve(cwd)
+    async def _main():
+        # Up front, so a daemon that cannot start is reported here rather
+        # than as a browser that never draws.
+        await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
+        _console.print(f"[green]aegis web → {url}[/green]", soft_wrap=True)
+        if not no_browser:
+            import threading
+            import webbrowser
+
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        await _webserver.run_web(app_, bind=web_cfg.bind, port=port)
+
+    try:
+        asyncio.run(_main())
+    except SpawnFailed as e:
+        _print_error(e)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -1302,7 +1312,6 @@ def _run_serve(cwd: str, *, autostarted: bool = False) -> None:
             **resolved.serve_kwargs,
             mcp=AegisMCP(),
             stop=stop,
-            web=resolved.boot.web,
             views=True,
             autostarted=autostarted,
         )
