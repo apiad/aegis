@@ -316,7 +316,8 @@ aegis serve
 See [Telegram](telegram.md) for the full command surface, setup,
 output examples, `@<peer>` cross-host syntax, and FAQ.
 
-A systemd unit template lives at `scripts/aegis-serve.service`.
+systemd unit templates live at `scripts/aegis-server.service` (the daemon)
+and `scripts/aegis-web.service` (browsers).
 
 ## Groups
 

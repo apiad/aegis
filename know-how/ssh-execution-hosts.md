@@ -15,14 +15,15 @@ aegis has three things with "remote" in the name. They are different.
 
 | | who owns the session | what moves |
 |---|---|---|
-| `aegis --remote ws://\|ssh://` | a remote `aegis server` | the **UI** attaches remotely |
+| `aegis web` / `aegis attach` | a remote `aegis server` | the **UI** connects remotely |
 | `remotes:` / `remote_plane` | two peer aegis serves | **callbacks** federate between aegises |
 | **`hosts:` (this doc)** | the **local** aegis | the **harness process** runs elsewhere |
 
 **Durability is out of scope by design.** When the link drops the remote
 harness dies with it; `/reconnect` gets the tab back. If you want work to
 continue while your laptop is closed, run `aegis server` on the VPS and
-attach with `aegis --remote ssh://vps:8080`, or just run `aegis` there.
+connect to it — `aegis web` for a browser, `aegis attach` over ssh for a
+terminal — or just run `aegis` there.
 
 ## Configuring a host
 

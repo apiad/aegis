@@ -414,7 +414,8 @@ hosts. If the link drops, the pane says so instead of looking idle, and
 `/reconnect` rebuilds the harness in the same tab with its history.
 
 Not durable by design — for "keep working while the laptop sleeps", run
-`aegis server` on the box and attach with `aegis --remote`.
+`aegis server` on the box and reach it with `aegis web` in a browser, or
+`ssh` in and `aegis attach`.
 
 → **[Execution hosts](https://apiad.github.io/aegis/hosts/)**
 

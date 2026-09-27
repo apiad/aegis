@@ -5,8 +5,8 @@ OpenCode) and its own native lovelaice agent as subprocesses, and adds a control
 plane above them: multiplexed sessions, inboxes, queues, workflows, schedules,
 groups, file claims, execution hosts, and an MCP server every spawned agent talks
 to. It is published on PyPI as `aegis-harness`, and it is the harness Alex and his
-agents use for multi-agent work in this workspace, from a TUI locally and from an
-installable web client over a flaky remote link.
+agents use for multi-agent work in this workspace, from a TUI locally and from a
+browser over a remote link.
 
 **Read this file, then DESIGN.md, then the know-how doc for the job in front of
 you.** This file changes when aegis's goals change. Nothing in it should be made
@@ -17,9 +17,9 @@ false by a commit that adds a module, a tool or a test.
 A change is done when:
 
 1. `make check` passes;
-2. it has been exercised the way a user reaches it: in the TUI or the web client,
-   attached to a daemon started after the change, or with `aegis bench` for any
-   claim about speed;
+2. it has been exercised the way a user reaches it: in the TUI, or in a browser
+   through `aegis web`, attached to a daemon started after the change, or with
+   `aegis bench` for any claim about speed;
 3. a user-visible change has a CHANGELOG entry, and a new command, driver, tool or
    config key is documented under `docs/`;
 4. a change to how the pieces fit has its spec under `docs/superpowers/specs/`,

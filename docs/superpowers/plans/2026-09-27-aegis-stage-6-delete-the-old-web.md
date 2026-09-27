@@ -2,8 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: not started.** Written 2026-09-27 against `c4aed3c`, the commit that
-finished stage 5b.
+**Status: Tasks 1–5 and 7 shipped 2026-09-27** (`089cd30`..`f9bfb97`, plus the
+docs commit). **Task 6 (the VPS deployment) is not done** — it changes a public
+host and removes an auth layer from it, and the task's own header says to ask
+first. Everything else is local and landed.
+
+Written 2026-09-27 against `c4aed3c`, the commit that finished stage 5b.
+Executed inline in a worktree off `435a7e6`; the ledger of rulings is at
+`.superpowers/sdd/2026-09-27-aegis-stage-6-delete-the-old-web/progress.md`.
 
 **Goal:** Remove the aegis-aware web layer, `RemoteSessionManager`, `ws_client`
 and `aegis --remote` from the tree, and deploy the VPS as `aegis-server.service`
@@ -88,7 +94,7 @@ first means Task 2 de-branches code nothing can reach, which is the safer order.
 - Consumes: nothing from a previous task.
 - Produces: `aegis --help` carries no `--remote`, `--token` or `--tail`. `aegis server` and `aegis serve` are untouched.
 
-- [ ] **Step 1: Verify `ssh_tunnel` has no other importer**
+- [x] **Step 1: Verify `ssh_tunnel` has no other importer**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -100,7 +106,7 @@ its own ControlMaster code, not this class. **If this prints anything, stop:**
 `ssh_tunnel.py` has another owner, so leave the file and delete only the
 `--remote` call site.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `tests/cli/test_remote_flag_is_gone.py`:
 
@@ -146,12 +152,12 @@ def test_the_daemon_commands_survive():
     )
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/cli/test_remote_flag_is_gone.py -q -p no:cacheprovider`
 Expected: FAIL — `--remote is still offered`. `test_the_daemon_commands_survive` passes already; that is the point of including it, it must never go red.
 
-- [ ] **Step 4: Remove the options from `run()`**
+- [x] **Step 4: Remove the options from `run()`**
 
 In `src/aegis/cli.py`, delete these three parameters from `run()`'s signature
 (they sit between `clean` and the closing `) -> None:`):
@@ -174,7 +180,7 @@ In `src/aegis/cli.py`, delete these three parameters from `run()`'s signature
     ),
 ```
 
-- [ ] **Step 5: Remove the dispatch block**
+- [x] **Step 5: Remove the dispatch block**
 
 Delete the whole `if remote is not None:` block — from that line through the
 `return` that ends it, i.e. everything between
@@ -189,7 +195,7 @@ and the line immediately before
     root = find_project_root() or Path.cwd()
 ```
 
-- [ ] **Step 6: Remove the four helpers and the import**
+- [x] **Step 6: Remove the four helpers and the import**
 
 Delete these whole functions from `src/aegis/cli.py`: `_build_remote_manager`,
 `_ssh_fetch_token`, `_maybe_autolaunch_serve`, `_run_tui_with_manager`. Delete
@@ -207,7 +213,7 @@ git rm -q src/aegis/remote/ssh_tunnel.py tests/cli/test_remote_flag.py \
   tests/test_remote_fork_unsupported.py tests/live/test_remote_tui_live.py
 ```
 
-- [ ] **Step 7: Confirm nothing still references them**
+- [x] **Step 7: Confirm nothing still references them**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -216,12 +222,12 @@ grep -nE '_build_remote_manager|_ssh_fetch_token|_maybe_autolaunch_serve|_run_tu
 
 Expected: no output.
 
-- [ ] **Step 8: Run the tests**
+- [x] **Step 8: Run the tests**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/cli tests/test_detach_and_quit.py -q -n auto -p no:cacheprovider`
 Expected: PASS, including all three tests from Step 2.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -250,7 +256,7 @@ time and read each; two of them are not simple deletions.
 - Consumes: Task 1's removal of the only caller that passed `manager=`.
 - Produces: `AegisApp.__init__` no longer accepts `manager=`. `aegis.tui.remote_manager` and `aegis.tui.ws_client` no longer import.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/tui/test_no_remote_branches.py`:
 
@@ -301,12 +307,12 @@ def test_the_tui_module_still_parses_and_carries_its_bindings():
     assert {"ctrl+t", "ctrl+q"} <= keys, keys
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/tui/test_no_remote_branches.py -q -p no:cacheprovider`
 Expected: FAIL on all of the first three; the fourth passes and must keep passing.
 
-- [ ] **Step 3: Collapse `__init__`**
+- [x] **Step 3: Collapse `__init__`**
 
 In `src/aegis/tui/app.py`, delete the `_DisabledPlaneStub` class (`app.py:132`,
 through the end of its `__getattr__`). Then in `__init__`, delete the whole
@@ -317,7 +323,7 @@ constructs the local planes. Remove `manager` from `__init__`'s signature and
 from its docstring. Leave every mention of `bridge` alone: that is the embedded
 seam and a different thing.
 
-- [ ] **Step 4: Collapse the eleven guards in `app.py`**
+- [x] **Step 4: Collapse the eleven guards in `app.py`**
 
 Each of these becomes its local side. Work top-down so the line numbers below
 stay usable, re-reading each site before editing:
@@ -339,7 +345,7 @@ stay usable, re-reading each site before editing:
 Then `src/aegis/tui/pane.py:652`: read the guard and collapse it onto the
 branch taken when `self.app` has no `_remote_manager`.
 
-- [ ] **Step 5: Delete the modules and their tests**
+- [x] **Step 5: Delete the modules and their tests**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -351,7 +357,7 @@ git rm -q src/aegis/tui/remote_manager.py src/aegis/tui/ws_client.py \
   tests/tui/test_ws_client_streams.py
 ```
 
-- [ ] **Step 6: Narrow the three parity tests rather than deleting them**
+- [x] **Step 6: Narrow the three parity tests rather than deleting them**
 
 These assert that `RemoteSessionManager` mirrors `SessionManager` and
 `AegisApp`. **The mirror is gone; the thing it mirrored is not.** Drop only the
@@ -371,12 +377,12 @@ grep -rn 'fake_ws_client\|FakeWsClient' tests/
 
 Expected: no output.
 
-- [ ] **Step 7: Run the TUI suites**
+- [x] **Step 7: Run the TUI suites**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/tui tests/test_hosts_commands.py tests/test_recap_command.py tests/test_detach_and_quit.py -q -n auto -p no:cacheprovider`
 Expected: PASS. A failure here is a branch collapsed onto the wrong side — read the test, not the diff.
 
-- [ ] **Step 8: Prove the TUI still runs, not just that it imports**
+- [x] **Step 8: Prove the TUI still runs, not just that it imports**
 
 A green unit suite does not mean the app mounts. Drive the real one:
 
@@ -416,7 +422,7 @@ Expected: `the TUI mounted and drew its input: True` and `rc=0`. Stop the
 `aegis web` and daemon processes by PID afterwards. **Read the rc directly as
 printed — do not pipe this into anything.**
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -444,7 +450,7 @@ live feature. Step 1 is the audit that decides.
 - Consumes: Task 2's removal of `ws_client`, the other speaker of this protocol.
 - Produces: `aegis.web` no longer imports.
 
-- [ ] **Step 1: Audit every web test before deleting one**
+- [x] **Step 1: Audit every web test before deleting one**
 
 For each file below, open it, name the behaviour it asserts, and search for
 another test covering that same behaviour. Record the verdict in this plan as a
@@ -489,7 +495,7 @@ Nothing required porting. The one assertion unique to `test_comms_web_wire.py`
 — that `compact_encoded` strips `raw_input` and sets a `comms` boolean on the
 wire frame — describes a function this task deletes.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `tests/test_no_old_web_layer.py`:
 
@@ -544,12 +550,12 @@ def test_a_state_dir_from_the_old_version_is_not_rejected(tmp_path):
     assert load_boot_config(AegisRoots.for_project(tmp_path)).default_agent == "main"
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/test_no_old_web_layer.py -q -p no:cacheprovider`
 Expected: FAIL on `test_the_web_package_is_gone`; the other two pass and must keep passing.
 
-- [ ] **Step 4: Delete**
+- [x] **Step 4: Delete**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -580,7 +586,7 @@ grep -rn 'aegis\.web\b\|from aegis import web\|WebFrontend\|WSSession\|Subscript
 
 Expected: no output. `src/aegis/webterm/` is a different package and must not appear.
 
-- [ ] **Step 5: Run the whole gate**
+- [x] **Step 5: Run the whole gate**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && make test`
 Expected: the Global Constraints baseline — 1 failed (the known pre-existing
@@ -589,7 +595,7 @@ workflow-registry test), nothing else. The passing count drops by roughly the
 second failure means Step 1's audit missed a behaviour: port it, do not delete
 the assertion.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -611,7 +617,7 @@ git commit -m "refactor(web): delete the aegis-aware web layer and its client" -
 - Consumes: `aegis.webterm.server.connect_for(root, *, preflight=None) -> Connect`; `aegis.daemon.lifecycle.socket_path(roots) -> Path`.
 - Produces: `connect_for(root, *, preflight=None, autostart: bool = True) -> Connect` and `aegis web --no-autostart`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/webterm/test_no_autostart.py`:
 
@@ -677,12 +683,12 @@ async def test_autostart_is_still_the_default(tmp_path, monkeypatch):
     assert called == [tmp_path]
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/webterm/test_no_autostart.py -q -p no:cacheprovider`
 Expected: FAIL — `connect_for() got an unexpected keyword argument 'autostart'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/aegis/webterm/server.py`, replace `connect_for` with:
 
@@ -756,12 +762,12 @@ and guard the up-front `ensure_daemon` inside `_main`:
             await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/webterm tests/cli/test_web_command.py -q -p no:cacheprovider`
 Expected: PASS, including the three new tests.
 
-- [ ] **Step 5: Prove it on the real command**
+- [x] **Step 5: Prove it on the real command**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -778,7 +784,7 @@ Expected: `healthz 200` (the web process serves), **no** `daemon.sock`, and
 **no** daemon process — `aegis web` came up without spawning one. Stop it by
 PID afterwards.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -800,7 +806,7 @@ git commit -m "feat(web): --no-autostart, so systemd owns the daemon" -- src/aeg
 - Consumes: `build_webterm_app(*, token, connect, static_dir=None) -> Starlette`.
 - Produces: `GET /service-worker.js` returns an unregistering worker, with no token required.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/webterm/test_tombstone_sw.py`:
 
@@ -850,12 +856,12 @@ def test_it_is_not_cached_by_the_browser():
     assert "no-cache" in r.headers.get("cache-control", "").lower(), r.headers
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/webterm/test_tombstone_sw.py -q -p no:cacheprovider`
 Expected: FAIL — 404 on `/service-worker.js`.
 
-- [ ] **Step 3: Write the worker**
+- [x] **Step 3: Write the worker**
 
 `src/aegis/webterm/static/service-worker.js`:
 
@@ -886,7 +892,7 @@ self.addEventListener("activate", (event) => {
 });
 ```
 
-- [ ] **Step 4: Serve it**
+- [x] **Step 4: Serve it**
 
 In `src/aegis/webterm/app.py`, add the route handler inside
 `build_webterm_app`, beside `healthz`:
@@ -908,14 +914,14 @@ and register it in the `routes=[...]` list, before the `/static` mount:
             Route("/service-worker.js", service_worker),
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd /home/apiad/Workspace/repos/aegis && .venv/bin/python -m pytest tests/webterm -m "not slow" -q -p no:cacheprovider`
 Expected: PASS. `test_every_static_path_the_page_names_exists` still passes —
 the page does not reference the worker, and nothing registers it; it exists to
 be fetched by a worker that already exists.
 
-- [ ] **Step 6: Mutation-check it**
+- [x] **Step 6: Mutation-check it**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -928,7 +934,7 @@ cp /tmp/sw.bak $f
 
 Expected: `test_the_worker_unregisters_itself_and_drops_its_caches` FAILS, then restored.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -956,7 +962,7 @@ git commit -m "fix(webterm): serve a tombstone worker so the retired PWA unregis
 - Consumes: Task 4's `--no-autostart`; Task 5's tombstone.
 - Produces: two units, and `dev.apiad.net` served by `aegis web`.
 
-- [ ] **Step 1: Write the unit files**
+- [x] **Step 1: Write the unit files**
 
 `scripts/aegis-server.service`:
 
@@ -1109,7 +1115,7 @@ git push origin main
 - Modify: `know-how/deploying-web.md`, `README.md`, `DESIGN.md`, `AGENTS.md`, `docs/configuration.md`, `docs/hosts.md`, `docs/budget.md`, `CHANGELOG.md`, `TASKS.md`
 - Modify: the status headers of both specs and of this plan
 
-- [ ] **Step 1: Find every surviving mention**
+- [x] **Step 1: Find every surviving mention**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -1121,7 +1127,7 @@ Rewrite each hit. `docs/remote.md` is the **MCP remote plane** and its `--remote
 hits (if any) are about a different feature — read before editing. Delete
 `know-how/remote-tui.md` with `git rm`.
 
-- [ ] **Step 2: Rewrite `know-how/deploying-web.md`**
+- [x] **Step 2: Rewrite `know-how/deploying-web.md`**
 
 Replace its frontmatter `when:` with:
 
@@ -1153,7 +1159,7 @@ ssh vps 'cd ~/Workspace/repos/aegis && git pull --ff-only origin main'
 ssh vps 'sudo systemctl restart aegis-server aegis-web'
 ```
 
-- [ ] **Step 3: CHANGELOG, TASKS, statuses**
+- [x] **Step 3: CHANGELOG, TASKS, statuses**
 
 Add under `## [Unreleased]` in `CHANGELOG.md`, inside the existing `### Changed`:
 
@@ -1174,7 +1180,7 @@ box. Set `2026-09-07-retire-web-ui-tui-over-web-design.md`'s status line —
 which currently reads `stage 5b and stage 6 not planned` — to name both as
 shipped.
 
-- [ ] **Step 4: Run every gate**
+- [x] **Step 4: Run every gate**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis
@@ -1186,7 +1192,7 @@ uv run ty check src/
 Expected: rift 0 errors; the suite at the Global Constraints baseline minus the
 deleted tests; `ty` at 350 or below. Read each rc directly.
 
-- [ ] **Step 5: Commit and push**
+- [x] **Step 5: Commit and push**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis

@@ -25,11 +25,11 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
-| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b shipped 2026-09-27 (`7de5ba5`..`ede3cd5`); 6 not planned |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b shipped 2026-09-27 (`7de5ba5`..`ede3cd5`); 6 **code shipped 2026-09-27** (`089cd30`..`f9bfb97`) — the deletion, `--no-autostart` and the tombstone worker; the VPS redeploy and dropping Caddy's basic auth are the one remaining step |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
-| 6 | **Doc truth** — this file, `AGENTS.md`, `know-how/remote-tui.md` | drift confirmed across all three |
+| 6 | **Doc truth** — this file and `AGENTS.md` | drift confirmed in both; the third, the remote-tui know-how doc, was deleted with `--remote` in stage 6 |
 
 Rationale, and what is deliberately *not* in v1.0, under **v1.0 scope** below.
 
@@ -290,7 +290,8 @@ host-scoped claims and file affordances, `aegis config host …`. Live
 tests run against `ssh localhost`, including a real `claude` over the
 link and a mutation-checked reverse-tunnel test.
 
-Not durable by design — that stays `aegis --remote ssh://vps:8080`.
+Not durable by design — for that, run `aegis server` on the box and reach
+it with `aegis web`, or `ssh` in and `aegis attach`.
 
 Follow-ups worth considering, none blocking:
 
@@ -732,6 +733,23 @@ a real `aegis web` while the daemon holds no listener on the web port, the
 relay changing no byte, a browser surviving the daemon stopping and starting,
 and an unauthenticated socket refused before the daemon is contacted -- plus
 a hand-drive in Chromium recorded in the plan.
+
+**Stage 6 code shipped 2026-09-27** (`089cd30`..`f9bfb97`): the old browser
+client, `RemoteSessionManager`, `ws_client`, `ssh_tunnel` and `aegis --remote`
+are deleted -- 21 files in `web/`, two TUI modules, and the twenty
+`hasattr(self, "_remote_manager")` branches collapsed onto their local side.
+`aegis web` gains `--no-autostart` so systemd's `aegis-server.service` is the
+only thing that spawns a daemon, and serves a tombstone service worker that
+unregisters the retired PWA, which stays registered at scope `/` in every
+browser that ever loaded dev.apiad.net. Verified by driving a real TUI through
+a real `aegis web` after the de-branching, a cookie-less HTTP fetch of the
+worker, and two mutation checks. `scripts/aegis-serve.service` is replaced by
+`aegis-server.service` + `aegis-web.service`.
+
+**Still open: the VPS.** dev.apiad.net runs the old single unit with Caddy
+basic auth in front. Installing the unit pair and dropping `basicauth` is a
+public-host change that removes an auth layer, so it waits for a go-ahead
+rather than riding along with the code. Procedure: `know-how/deploying-web.md`.
 
 **`aegis kill` reports an exit it never waits for.** `registry.kill` sends
 SIGTERM and `kill_cmd` prints `stopped <pid>` immediately. Seen 2026-09-27
@@ -1376,8 +1394,8 @@ Deferred: **S9.3 (aux-surface RPCs)** — queue / canvas / terminal / group
 dashboards raise `RemoteUnsupportedError` in remote mode; follow-up slice needed
 to expose them over the WS protocol. **S10 (default flip)** — flip `--remote`
 to the default and add `--classic` fallback; needs ≥1 week of daily remote use
-before committing. See `know-how/remote-tui.md` for operational details and
-known limitations.
+before committing. Operational details lived in the remote-tui know-how doc,
+deleted with `--remote` itself in stage 6.
 
 - Spec: `docs/superpowers/specs/2026-07-01-aegis-tui-ws-client-design.md`
 - Live smoke (loopback + zion→vps): **not yet done** — Steps 1–2 of Task 12
@@ -1760,8 +1778,8 @@ opencode and lovelaice have neither. TASKS.md files this under *both* session
 titles (`:713`) and driver visibility parity — it is one job, not two.
 
 **6. Doc truth.** `AGENTS.md` still claims "two co-equal first-class UIs …
-the same fidelity" — false before this work started. `know-how/remote-tui.md`
-documents a `--remote` invocation that 403s. This file claimed v0.32.0 at
+the same fidelity" — false before this work started. The remote-tui know-how
+doc documented a `--remote` invocation that 403s. This file claimed v0.32.0 at
 v0.37.0, cited two SHAs that no longer resolve (`f141b51`, `de1fd68` — the
 code is real, landed as `ccd719d`), and mis-filed shipped work under "Ideas".
 Most of this is `rift`-assertable; a 1.0 whose docs lie is worse than a 0.x
@@ -1795,8 +1813,8 @@ Fix those and the rows clear themselves; then promote the rule to `error`.
 
 Three things rift deliberately does **not** cover, still owed to a reader: the
 "two co-equal first-class UIs" claim (a sentence's meaning, not a noun that
-resolves); the `--remote` invocation in `know-how/remote-tui.md` that 403s (the
-path exists, the *behaviour* is stale); and the `telegram.md` link in
+resolves); the `--remote` invocation in the remote-tui know-how doc that 403s
+(the path existed, the *behaviour* was stale — both gone in stage 6); and the `telegram.md` link in
 `docs/configuration.md` pointing at a page that was never written — mkdocs
 warns about that one on every build, and `mkdocs build --strict` is the gate
 for it if we want one.

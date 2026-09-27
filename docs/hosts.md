@@ -27,23 +27,24 @@ Both tabs are peers. `lucid-knuth` can `aegis_handoff` to `bold-blum`,
 share a canvas with it, and see it in `aegis_list_sessions` — the only
 difference is which filesystem `bold-blum` is standing on.
 
-## This is not `--remote`, and not the remote plane
+## This is not the remote plane, and not a remote daemon
 
 Three things in aegis have "remote" in the name. They solve different
 problems and compose fine, but confusing them will waste an afternoon.
 
 | | who owns the session | what moves |
 |---|---|---|
-| `aegis --remote ws://…` | a **remote** `aegis serve` | the **UI** attaches remotely |
-| [Remote plane](remote.md) (`remotes:`) | two peer serves | **callbacks** federate between aegises |
+| `aegis web` / `aegis attach` | a **remote** `aegis server` | the **UI** connects remotely |
+| [Remote plane](remote.md) (`remotes:`) | two peer daemons | **callbacks** federate between aegises |
 | **Execution hosts** (`hosts:`) | the **local** aegis | the **harness process** runs elsewhere |
 
 Here there is exactly one aegis, running locally, owning every session.
 
 **Not durable, by design.** When the link drops the remote harness dies
 with it; [`/reconnect`](#when-the-link-drops) gets the tab back. If you
-want work to continue while your laptop is closed, that is the
-`--remote` case: run `aegis serve` on the box and attach to it.
+want work to continue while your laptop is closed, run `aegis server` on
+the box and connect to it — a browser via `aegis web`, or a terminal via
+`aegis attach`.
 
 ## Configuring a host
 

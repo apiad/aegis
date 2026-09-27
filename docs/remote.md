@@ -3,15 +3,19 @@
 !!! info "Three things named 'remote' — which one do you want?"
     - **Remote plane** (this page, `remotes:`) — one `aegis server`
       enqueues work into *another* `aegis server`. Two aegises, federated.
-    - **`aegis --remote ws://…`** — your local TUI attaches to a remote
-      `aegis server`. One aegis, remote; the UI is what moved.
+    - **`aegis web` / `aegis attach`** — a browser or a terminal connects to
+      a remote `aegis server`. One aegis, remote; the UI is what moved.
     - **[Execution hosts](hosts.md)** (`hosts:`) — one *local* aegis runs
       an agent's harness on another machine over SSH. The session stays
       here; only the subprocess is elsewhere.
 
     Rule of thumb: use **execution hosts** for "run this agent over
-    there", `--remote` for "keep working while my laptop sleeps", and the
-    **remote plane** to let two aegises delegate to each other.
+    there", a remote daemon for "keep working while my laptop sleeps", and
+    the **remote plane** to let two aegises delegate to each other.
+
+    The `--remote <peer>` option on `aegis schedule` and `aegis budget` is
+    this page's plane — a peer name, not a URL, and unrelated to the
+    retired global `aegis --remote` flag.
 
 A **remote plane** lets one `aegis server` enqueue work into another
 `aegis server` over HTTP. One agent on one machine can hand a task off

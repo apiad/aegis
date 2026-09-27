@@ -7,6 +7,12 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Changed
 
+- **The old browser client, `RemoteSessionManager` and `aegis --remote` are
+  deleted.** The hand-written JS client and its aegis-aware WebSocket protocol
+  are gone, along with the `--remote` TUI that spoke the same protocol and the
+  twenty branches it threaded through the TUI. `aegis web` serves browsers and
+  ssh serves remote terminals. `aegis web` gains `--no-autostart` for systemd,
+  and serves a service worker that unregisters the retired PWA.
 - **`aegis web` is a client of the daemon, and the daemon no longer serves
   the web.** `aegis web` runs as its own process: it ensures a token and a
   daemon, serves the same TUI to each browser tab through xterm.js, and

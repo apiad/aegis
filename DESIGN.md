@@ -97,8 +97,9 @@ instead of an error. Claims, the repos board and file targets all carry the host
 per spawn. Per-session overrides (model, effort, prompt, host) are never persisted
 to config.
 
-**One table per fact that crosses the wire.** Tool glyphs are resolved server-side
-and sent to the web client, so the browser keeps no second copy to drift.
+**One table per fact that crosses the wire.** Tool glyphs are resolved once, in
+Python, and reach every frontend already rendered. The retired browser client
+kept a second copy and it drifted the first time a glyph was added on one side.
 
 **Extension without forking.** Users extend aegis through three shapes: `@workflow`
 (orchestration invoked by a user, an agent or the scheduler), `@hook` (harness
