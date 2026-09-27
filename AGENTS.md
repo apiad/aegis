@@ -84,8 +84,20 @@ eliminated are worth writing down — they stop the next agent repeating them.
 `make know-how` prints the procedure docs, one `when:` line each; read the ones
 that match the task. Use `uv`, never pip. Python 3.13 or newer.
 
-`lint-docs` is the one gate CI cannot run: `rift` is private and not on PyPI, so
-a runner cannot install it. Run it locally before opening the PR.
+Two gates are not what they look like:
+
+- **`typecheck` is advisory.** `ty` is 0.0.29, has never been configured here,
+  and reports a few hundred diagnostics on code that works. It runs, its count
+  is printed, and it does not fail `make check` — because a stage that always
+  fails gates nothing, and this one used to abort the run *before the tests*,
+  so the gate had never once executed the suite. Drive the number down with
+  `make typecheck` and promote it to blocking when the list is empty. Issue #8.
+- **`lint-docs` is the one gate CI cannot run.** `rift` is private and not on
+  PyPI, so a runner cannot install it. Run it locally before opening the PR.
+
+CI runs `format-check`, `lint`, the suite, and `typecheck` non-blocking. It does
+not run `make check` itself: that target's `format` stage rewrites files, and a
+runner has to fail on drift rather than fix it.
 
 Commits follow the workspace convention: conventional commits, English, one logical
 change. This is a shared checkout, so stage and commit named paths only
