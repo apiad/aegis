@@ -431,6 +431,21 @@ workflow may not set `callback: true`. The scheduler has no inbox for the
 reply to land in, so aegis refuses the spec rather than dropping the
 result silently.
 
+### `scheduler` (accepted, no effect yet)
+
+A top-level `scheduler:` mapping parses without error and is currently read
+by nothing:
+
+```yaml
+scheduler:            # parsed into AegisConfig.scheduler; no consumer
+  anything: here
+```
+
+Documented because it is accepted silently, and a key that looks like
+configuration but changes nothing is worse undocumented than absent. Per-schedule
+settings go on the schedule itself, under `schedules:` above. Whether this
+becomes real tuning or gets removed is open — see issue #8.
+
 ## Web UI
 
 Optional. Configures `aegis web`, the process that serves browsers. The
