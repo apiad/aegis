@@ -131,6 +131,12 @@ the first browser finds a socket:
 
 ```bash
 ssh vps 'cd ~/Workspace/repos/aegis && git pull --ff-only origin main && git log --oneline -1'
+# `src/aegis/web/__pycache__` is gitignored, so the pull that deletes the
+# package leaves the directory behind — and a bare directory is a namespace
+# package, so `import aegis.web` still succeeds on a tree that no longer has
+# it. Harmless at runtime (nothing imports it) but it makes the deployed tree
+# differ from the tested one. Seen on zion merging stage 6, 2026-09-27.
+ssh vps 'rm -rf ~/Workspace/repos/aegis/src/aegis/web'
 ssh vps 'sudo systemctl stop aegis-web && sudo systemctl disable aegis-web'
 ssh vps 'sudo cp ~/Workspace/repos/aegis/scripts/aegis-server.service /etc/systemd/system/aegis-server.service'
 ssh vps 'sudo cp ~/Workspace/repos/aegis/scripts/aegis-web.service /etc/systemd/system/aegis-web.service'
