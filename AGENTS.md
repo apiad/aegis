@@ -49,11 +49,43 @@ Nothing derivable is written down: module tours, command lists and counts are on
 `aegis --help` or one file away. Nothing mechanical is restated: the Makefile and
 `.rift.yaml` carry each check and its reason.
 
+## How work lands here
+
+**Issue, then worktree, then PR that CI passes before it merges.** Every
+non-trivial change, by every agent. Not a suggestion — this is the default, and
+an agent that commits straight to `main` has skipped the only step that catches
+what a local run cannot.
+
+1. **File the issue first.** State what is wrong with evidence, not a plan: the
+   reproduction, the numbers, the file and line. An issue whose claims were never
+   measured is a guess with a URL. It is also where the analysis lives after the
+   branch is deleted.
+2. **Work in a worktree**, not in the shared checkout. Other agents and Alex are
+   editing the same tree at the same time; `.claude/worktrees/` keeps your edits,
+   your index and your branch to yourself. Branch from `origin/main`, never from
+   another PR's branch — a stacked PR is closed automatically when its base merges.
+3. **Open a PR and let CI judge it.** A green local `make test` is not a green
+   run: the runner differs, and it has already caught what no laptop did (Typer
+   colours `--help` only when `GITHUB_ACTIONS` is set, see #7). If CI is red,
+   find out whether `main` is red the same way *before* concluding it is yours —
+   `gh run view <id> --log-failed` on both, and diff the failure lists.
+4. **Merge only on green**, and check the merge landed. `gh pr merge` run from
+   inside a worktree prints `fatal: 'main' is already used by worktree` after
+   the merge has already succeeded on GitHub; read `gh pr view <n> --json state`
+   rather than believing the error.
+
+The PR body carries what the reviewer cannot re-derive: what was measured, what
+was tried and rejected, and what was deliberately left out. Wrong guesses you
+eliminated are worth writing down — they stop the next agent repeating them.
+
 ## Working here
 
 `make check` runs every gate; `make test` is the fast lane to iterate on.
 `make know-how` prints the procedure docs, one `when:` line each; read the ones
 that match the task. Use `uv`, never pip. Python 3.13 or newer.
+
+`lint-docs` is the one gate CI cannot run: `rift` is private and not on PyPI, so
+a runner cannot install it. Run it locally before opening the PR.
 
 Commits follow the workspace convention: conventional commits, English, one logical
 change. This is a shared checkout, so stage and commit named paths only
