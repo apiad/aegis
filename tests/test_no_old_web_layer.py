@@ -5,6 +5,8 @@ message per feature until it fell behind the TUI. `aegis web` replaced it
 with a relay that knows no aegis concept.
 """
 
+import pytest
+
 import contextlib
 import importlib.util
 import os
@@ -81,6 +83,11 @@ def test_a_config_with_a_web_block_still_resolves_a_boot(tmp_path):
     assert resolved.roots.state_dir.exists(), "the legacy state dir was not adopted"
 
 
+# ~3s even on an idle machine (it boots a real daemon / builds a real
+# world), so it sat within 1% of the fast lane's 3s budget and flipped
+# `make test` red or green with ambient load. CI runs `-m "not live"`,
+# which includes slow, so nothing stops being checked there.
+@pytest.mark.slow
 async def test_a_daemon_really_boots_on_a_root_from_the_old_version(
     tmp_path, monkeypatch
 ):
