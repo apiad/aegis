@@ -147,6 +147,21 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Fixed
 
+- **A configured built-in workflow is registered even when its module is already
+  imported.** Registration is an import side effect — the module body runs
+  `@workflow` — so `register_builtins` calling `import_module` on a cached module
+  registered nothing and returned as if it had succeeded. The scheduler
+  dispatches by name, so that left a boot able to complete with a dead registry
+  and fail later at the first schedule that fired into it. A cached module is now
+  reloaded, and a name still missing afterwards raises `ConfigError` at boot
+  instead.
+- **The `ci` workflow is green again.** Typer renders `--help` through Rich and
+  forces a terminal when `GITHUB_ACTIONS` is set, so on CI — and nowhere else —
+  help output carried ANSI escapes and two assertions matching a plain
+  `│ server` command row failed. The test suite now sets Typer's own
+  `_TYPER_FORCE_DISABLE_TERMINAL` opt-out, so `--help` assertions read the same
+  on a runner as on a laptop.
+
 - **A rebuilt harness now actually starts.** `AgentSession.adopt` swaps the
   process under a live session, and `_run_turn` calls `start()` only while
   `_started` is False — a flag `adopt` left set from the dead process's life.
