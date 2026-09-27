@@ -20,7 +20,7 @@
 | `Ctrl+D` | Detach: leave the daemon and its agents running |
 | `Ctrl+Q` | Quit: detach, and stop the daemon if no other client is attached and a client started it |
 | `F3` | Open / close the dashboard sidebar — every tab at once, since it's a reading mode, not a per-tab widget (`/tasks` does the same) |
-| `F10` | Open / close the [fleet dashboard](#the-fleet-dashboard-f10-and-aegis-dash): gauges, every session, and one in detail |
+| `F10` | Open / close the [fleet dashboard](#the-fleet-dashboard-f10-and-aegis-dash): gauges, every session, and one in detail; `■` / `↻` on each item stop or restart it |
 | `Ctrl+R` | Session history — reopen a prior session (jump / resume / fresh) |
 | `Ctrl+O` | New file browser tab — files newest-first, filter, `F3` tree sidebar; pick one and the tab becomes the editor (`b` / `Escape` go back) |
 | `Escape` | Interrupt the active turn (or dismiss the dashboard / agent picker) |
@@ -528,6 +528,13 @@ Press **`F3`** (or type `/tasks`) for the **sidebar** beside the
 transcript. It is a mode, and the mode is app-wide — every tab opens it
 together, and a tab you open later comes up already in it.
 
+At the top of the column sit **`■ stop`** and **`↻ restart`**, which act on
+the tab in front of you: `stop` cuts its turn like `Escape`, and `restart`
+cuts the turn and sends it `continue`. They work on any tab a session has,
+queue workers included, and they stay put when the column scrolls. To reach
+a session whose tab you are not in, use the same pair on
+[`F10`](#the-fleet-dashboard-f10-and-aegis-dash).
+
 Every section is headed by a rule, and every proportion the column knows
 is drawn as a bar rather than spelled out:
 
@@ -628,9 +635,28 @@ covers the tabs; `F10` again or `Escape` closes it.
 |---|---|
 | `↑` `↓` | Move the selection; the detail follows (it stops at the ends) |
 | click an item | Select it; a second click on the selected item opens its tab |
+| click `■` / `↻` | Stop or restart **that** session, without selecting or opening it |
+| `s` / `r` | Stop or restart the selected session |
 | `Enter` | Close the dashboard and switch to the selected session's tab |
 | `1`..`9` | Open the session whose item shows that tab number |
 | `Escape` / `F10` | Close the dashboard |
+
+**Stop and restart.** Every live item opens with a pair of icons: `■` cuts
+that session's turn, exactly as `Escape` does inside its own tab, and `↻`
+cuts the turn and sends it `continue` — the same thing as pressing `Escape`
+and typing `continue`, in one click. An idle session has no turn to cut, so
+`↻` there is only the message.
+
+They sit at the head of the line rather than the end of it so that they
+stack into one column: stopping four runaway agents is four clicks straight
+down the list, with no select-then-act in between. A click on an icon
+deliberately does not move the selection, does not scroll the detail and
+does not open the tab. An item for a session that has already closed draws
+them greyed and ignores both.
+
+The same pair is at the top of the `F3` column, where it acts on the tab in
+front of you — including a queue worker's tab, which is the usual reason to
+want it.
 
 **The band** is three rows:
 

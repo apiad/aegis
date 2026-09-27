@@ -331,13 +331,61 @@ def _where(card: CardView) -> str:
     )
 
 
-def render_item(card: CardView, pal, frame: int) -> Text:
+STOP = "■"
+RESTART = "↻"
+# Where the two targets sit on a card's first line, in content cells. Leading,
+# never trailing: a first line ends wherever its state label does, so a
+# right-aligned pair would sit at a different column on every card and could
+# not be clicked straight down the list — which is the whole point of putting
+# them on the item rather than on the detail. At the head they stack into one
+# column. Each glyph owns the gap after it, so a click one cell wide of the
+# mark still lands.
+ACTION_W = 2
+ACTIONS_W = 2 * ACTION_W
+
+
+def actions_prefix(pal, *, live: bool) -> Text:
+    """The stop / restart pair that opens a card's first line.
+
+    A ghost's session is already gone, so both are drawn in the rule colour
+    and ``action_at`` is never consulted for that card.
+    """
+    t = Text(STOP, style=pal.err if live else pal.rule)
+    t.append(" ")
+    t.append(RESTART, style=pal.accent if live else pal.rule)
+    t.append(" ")
+    return t
+
+
+def action_at(x: int) -> str | None:
+    """Which target content column ``x`` of a card's first line hits."""
+    if 0 <= x < ACTION_W:
+        return "stop"
+    if ACTION_W <= x < ACTIONS_W:
+        return "restart"
+    return None
+
+
+def render_item(card: CardView, pal, frame: int, *, actions: bool = False) -> Text:
     """One list item, at least three lines. Line 1 and the where line are one
     line each; ``did`` and ``now`` keep every word and line, and the widget
-    wraps them."""
+    wraps them.
+
+    ``actions`` opens line 1 with the stop / restart pair, whose hit boxes
+    are ``action_at``'s. Off by default so every caller that only wants to
+    read a card is unchanged.
+    """
     from aegis.attention import LABELS, style_for
 
-    t = _lead(card, pal, frame)
+    lead = _lead(card, pal, frame)
+    if actions:
+        # The prefix carries the base style, so the lead's own becomes a span
+        # over its one glyph. Without `actions` the Text is built exactly as
+        # it was before the pair existed.
+        t = actions_prefix(pal, live=card.ghost_since is None)
+        t.append_text(lead)
+    else:
+        t = lead
     num = "⏱" if card.origin.ephemeral else str(card.tab_index or "")
     t.append(f" {num} ", style=pal.muted)
     t.append(_one_line(card.handle), style=f"bold {pal.ink}")
