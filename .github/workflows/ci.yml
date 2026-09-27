@@ -13,4 +13,23 @@ jobs:
       - name: Install uv
         run: pip install uv
       - run: uv sync --locked
+
+      # Each gate is its own step so a red run names which one failed in the
+      # job list, without anyone opening the log.
+      #
+      # `make check` is deliberately not used here: it runs `format`, which
+      # rewrites files (a runner has to fail instead), and `lint-docs`, which
+      # needs `rift` — private and not on PyPI, so it stays a local gate.
+      - name: format
+        run: make format-check
+      - name: lint
+        run: make lint
       - run: uv run pytest -q -m "not live"
+
+      # Advisory, exactly as in `make check`: `ty` is 0.0.29, has never been
+      # configured here, and reports ~235 diagnostics on working code. Run so
+      # the number is visible on every PR and can be driven down; not blocking
+      # until the list is empty. Issue #8.
+      - name: typecheck (advisory)
+        run: make typecheck
+        continue-on-error: true
