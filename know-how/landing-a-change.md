@@ -52,7 +52,28 @@ Two things a fresh worktree does not give you:
   directory is a package, so `test_no_old_web_layer.py` fails until you
   `rm -rf src/aegis/web`.
 
-## 3. Run the gates before pushing
+## 3. Write the release note as a fragment, not an edit
+
+A user-visible change adds a file, never a line to `CHANGELOG.md`:
+
+```bash
+cat > changelog.d/42-the-thing.fixed.md <<'EOF'
+- **The thing no longer does the wrong thing.** What was wrong, and what it cost.
+EOF
+make changelog-check    # the filename parses
+make changelog          # preview the collated result; writes nothing
+```
+
+`CHANGELOG.md` was the only file in this repo that conflicted on a merge, and it
+conflicted on every one — three PRs in one afternoon, three conflicts, nothing
+else in the tree colliding once. A fragment is its own file, so two PRs never
+touch the same bytes. Categories and house style are in
+`changelog.d/README.md`; an unknown category is refused by name rather than
+skipped, because a dropped fragment is a missing release note.
+
+Do not edit `CHANGELOG.md` directly. The releaser collates.
+
+## 4. Run the gates before pushing
 
 ```bash
 make test          # the fast lane
@@ -75,7 +96,7 @@ application's own Rich consoles, and it breaks nine tests instead of two.
 Never read a gate's exit code through a pipe. `make test | tail` gives you
 `tail`'s status, which turns a red gate green.
 
-## 4. A red CI run is not automatically yours
+## 5. A red CI run is not automatically yours
 
 Check whether `main` fails the same way before you believe it:
 
@@ -102,7 +123,7 @@ def count(mod, name):
 Zero calls means the failure is not yours, and that is worth a line in the
 PR so nobody re-investigates it.
 
-## 5. Merge, then confirm it merged
+## 6. Merge, then confirm it merged
 
 ```bash
 gh pr merge <n> --rebase --delete-branch
