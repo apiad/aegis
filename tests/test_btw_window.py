@@ -159,6 +159,43 @@ def test_a_huge_tool_use_summary_is_truncated():
     assert w.truncated == 1
 
 
+IMAGE_RESULT = (
+    '[{"type": "image", "source": {"type": "base64", "data": "iVBORw0KGgoAAAANSUhEUg'
+    + "A" * 4000 + '"}}]'
+)
+
+
+def test_an_image_result_is_summarised_not_prefixed():
+    """A 200-char prefix of base64 is not a summary, it is a wasted slot.
+
+    Measured on a real `/spawn` tail: three `Read(*.png)` results, each
+    clipped to 200 chars of `iVBORw0KGgo...`, spent the whole window and left
+    the operator's own words outside it.
+    """
+    w = assemble(replay(ToolResult(text=IMAGE_RESULT, is_error=False)))
+    assert "iVBORw0KGgo" not in w.text
+    assert "base64" not in w.text
+    assert "image" in w.text
+
+
+def test_an_image_result_still_says_it_happened():
+    """Dropping the line entirely would read as a call that returned
+    nothing. The agent has to know an image came back, and roughly how big."""
+    w = assemble(replay(ToolResult(text=IMAGE_RESULT, is_error=False)))
+    assert w.text.startswith("result:")
+    assert len(w.text) < 120
+
+
+def test_an_image_result_leaves_room_for_the_prose_around_it():
+    """The regression this guards: the window is spent on image payloads and
+    the turn's own user line never gets in."""
+    events = [UserMessage(text="the referent lives here")]
+    for _ in range(40):
+        events.append(ToolResult(text=IMAGE_RESULT, is_error=False))
+    w = assemble(replay(*events), max_turns=3, budget_tokens=2_000, item_chars=200)
+    assert "the referent lives here" in w.text
+
+
 def test_an_error_result_is_marked_as_one():
     w = assemble(replay(
         ToolUse(name="Bash", summary="false"),
@@ -178,6 +215,114 @@ def test_a_single_item_larger_than_the_budget_still_produces_something():
 
 
 # ---------- the honest header -------------------------------------------
+
+# ---------- prose keeps its seat ---------------------------------------
+
+def _tool_heavy_turn(user: str, assistant: str, calls: int = 40) -> list:
+    """The shape every real agent turn has: the operator speaks once, then
+    dozens of tool calls, then a little prose."""
+    events: list = [UserMessage(text=user)]
+    for i in range(calls):
+        events.append(ToolUse(name="Bash", summary=f"grep -rn thing{i} src/ " + "x" * 300))
+        events.append(ToolResult(text=f"hit {i}: " + "y" * 400, is_error=False))
+    events.append(AssistantText(text=assistant))
+    events.append(Result(duration_ms=100, is_error=False))
+    return events
+
+
+def test_the_operators_words_outrank_the_newest_tool_calls():
+    """Filling purely backwards spends the budget on the last dozen tool
+    calls, and the `user:` line that opened the turn is never reached.
+
+    Measured over 71 real `/spawn` preambles: 30 of them (42%) carried not one
+    `user:` line. The referent for "verify this test" lives in the prose.
+    """
+    w = assemble(
+        replay(*_tool_heavy_turn("verify the resume path, not the retry path", "done")),
+        max_turns=3, budget_tokens=2_000, item_chars=200,
+    )
+    assert "verify the resume path" in w.text
+
+
+def test_the_agents_prose_outranks_the_newest_tool_calls():
+    w = assemble(
+        replay(*_tool_heavy_turn("go", "I found it: assemble fills backwards")),
+        max_turns=3, budget_tokens=2_000, item_chars=200,
+    )
+    assert "assemble fills backwards" in w.text
+
+
+def test_a_long_agent_answer_does_not_starve_the_operators_line():
+    """The operator's words outrank the agent's own, and a reserved share
+    spent newest-first does not deliver that on its own.
+
+    Found by replaying 601 real September windows: a ~900-token closing
+    `assistant:` block filled the prose share and the 293-token `user:` line
+    behind it was rejected at 1231 of a 1200 ceiling — with 769 tokens of the
+    2000 budget still unspent. Seven logs lost their `user:` line that way.
+    """
+    # The real proportions: a 293-token user line behind a 938-token answer,
+    # 1,231 against a 1,200 ceiling, inside a 2,000 budget.
+    events = [
+        UserMessage(text="You are reviewing Task 2 of the recap schema. " + "ctx " * 285),
+        AssistantText(text="### Spec Compliance\n\n" + "verdict prose. " * 250),
+        Result(duration_ms=100, is_error=False),
+    ]
+    for i in range(30):
+        events.append(ToolResult(text=f"hit {i}: " + "y" * 400, is_error=False))
+    w = assemble(replay(*events), max_turns=3, budget_tokens=2_000, item_chars=200)
+    assert "You are reviewing Task 2" in w.text
+
+
+def test_the_operators_line_wins_even_when_it_alone_exceeds_the_prose_share():
+    """One real case had a single 1,396-token `user:` message against a
+    1,200-token prose share. Capping prose there loses the only thing in the
+    window that carries the referent."""
+    events = [
+        UserMessage(text="the whole brief, verbatim. " + "detail " * 900),
+        AssistantText(text="on it"),
+        Result(duration_ms=100, is_error=False),
+    ]
+    for i in range(30):
+        events.append(ToolResult(text=f"hit {i}: " + "y" * 400, is_error=False))
+    w = assemble(replay(*events), max_turns=3, budget_tokens=2_000, item_chars=200)
+    assert "the whole brief, verbatim" in w.text
+
+
+def test_prose_does_not_evict_the_tool_calls_entirely():
+    """Prose gets a reserved share, not the whole window. A turn is mostly
+    tool calls and they are how the agent shows what it actually did."""
+    w = assemble(
+        replay(*_tool_heavy_turn("go", "done")),
+        max_turns=3, budget_tokens=2_000, item_chars=200,
+    )
+    assert any(ln.startswith(("tool:", "result")) for ln in w.text.splitlines())
+
+
+def test_prose_first_does_not_widen_the_window():
+    """The fix is a fill order, not a budget increase. It must cost the same."""
+    events = _tool_heavy_turn("go", "done")
+    w = assemble(replay(*events), max_turns=3, budget_tokens=2_000, item_chars=200)
+    assert w.approx_tokens <= 2_000
+
+
+def test_reordering_the_fill_keeps_chronological_order():
+    """Prose may jump the queue for a *seat*, never for a position: a window
+    that reads out of order is a window that invents a causality."""
+    events = _tool_heavy_turn("the first thing said", "the last thing said")
+    w = assemble(replay(*events), max_turns=3, budget_tokens=2_000, item_chars=200)
+    assert w.text.index("the first thing said") < w.text.index("the last thing said")
+
+
+def test_a_window_with_room_for_everything_is_unchanged_by_the_reorder():
+    """The common small-transcript case must not move at all."""
+    events = [*turn("ask one", "answer one"), *turn("ask two", "answer two")]
+    w = assemble(replay(*events))
+    assert w.text.splitlines() == [
+        "user: ask one", "assistant: answer one",
+        "user: ask two", "assistant: answer two",
+    ]
+
 
 def test_header_reports_the_turns_it_dropped():
     evs = []
