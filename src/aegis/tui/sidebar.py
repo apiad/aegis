@@ -111,6 +111,12 @@ class SidebarModel:
     # SYSTEM
     system: tuple[str, ...] = ()
     stats: SystemStats | None = None
+    # Pre-rendered like `system` / `clock` / `cwd` / `build` rather than
+    # carried as a `NetState`: the rate needs its age, ageing needs a clock,
+    # and `pane._sidebar_model` is where a live clock is already read. Keeps
+    # this renderer pure.
+    net: tuple[str, ...] = ()
+    exit_ip: tuple[str, ...] = ()
     clock: tuple[str, ...] = ()
     cwd: tuple[str, ...] = ()
     build: tuple[str, ...] = ()
@@ -557,6 +563,15 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
         rows += list(rows_of(meters, per).split("\n", allow_blank=False))
     else:
         rows += _rows([Segment("system", m.system, 0)], palette, width)
+    # Above the clock: the reading moves every 20 seconds, the clock every
+    # minute. Two segments rather than one so a narrow column can keep the
+    # reading and drop the address — see `format_exit_ip` on why the address
+    # must never be truncated.
+    rows += _rows(
+        [Segment("net", m.net, 0), Segment("exit_ip", m.exit_ip, 0)],
+        palette,
+        width,
+    )
     rows += _rows([Segment("clock", m.clock, 0)], palette, width)
     # Kept, and kept on separate rows. They never change, but they are the
     # two questions a stale checkout makes you ask — which directory this

@@ -49,6 +49,7 @@ from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
+from aegis.tui.netmeter import format_exit_ip, format_net_tiers
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.sidebar import Sidebar, SidebarActions, SidebarModel
 from aegis.tui.strip import QueueStrip
@@ -1114,6 +1115,7 @@ class ConversationPane(Widget):
         # write-only, and the sidebar rebuilds its whole model on refresh.
         self._system_tiers: tuple[str, ...] = ()
         self._system_stats = None
+        self._net_state = None
         self._quota_tiers: tuple[str, ...] = ()
         self._quota_gauges: tuple = ()
         self._loop_status: dict | None = None
@@ -1527,6 +1529,16 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_system(text)
+        self._refresh_sidebar()
+
+    def set_net(self, state) -> None:
+        """Push the cached network readings (sampled app-side) to the sidebar.
+
+        A sibling of `set_system` rather than a parameter on it: that method's
+        contract is the status bar's system segment, and the network rows are
+        the sidebar's alone.
+        """
+        self._net_state = state
         self._refresh_sidebar()
 
     def set_quota(self, tiers, gauges=()) -> None:
@@ -3179,6 +3191,8 @@ class ConversationPane(Widget):
             now_line=getattr(getattr(core, "fleet_recap", None), "line", "") or "",
             system=self._system_tiers,
             stats=self._system_stats,
+            net=format_net_tiers(self._net_state, self._palette, time.monotonic()),
+            exit_ip=format_exit_ip(self._net_state, self._palette),
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
             # and `metrics` above already reads a live clock at this exact
