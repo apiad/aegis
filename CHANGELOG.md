@@ -161,6 +161,43 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   `│ server` command row failed. The test suite now sets Typer's own
   `_TYPER_FORCE_DISABLE_TERMINAL` opt-out, so `--help` assertions read the same
   on a runner as on a laptop.
+- **The transcript no longer hides part of what the agent was sent.** The pane
+  renders the operator's own message as Markdown, and a line that is nothing but
+  an open tag starts an HTML block that Rich's Markdown renderer has no handler
+  for — so a `<system-reminder>` block rendered as blank rows while the agent
+  received every word of it. Every path through `render_user_block` was
+  affected: typed prompts, `/spawn` openings, handoff bodies and queue payloads.
+  Tag-only lines are now shown as inline code, and the gate is that every
+  non-blank line of a user block appears on screen, driven through a real pane
+  rather than a Rich console.
+- **A pushed transcript window keeps its lines.** `/spawn`'s composed opening
+  and `@peer`'s ask carried their window between `--- tail of X ---` markers,
+  which is an ordinary Markdown paragraph — the pane folded every newline and
+  the window rendered as one run-on line with the speaker labels glued together.
+  The window now rides in a fenced block whose length adapts to any fence inside
+  it.
+- **A `/spawn` tail carries what was said, not just the last few tool calls.**
+  `assemble` filled purely backwards from the newest event, and the newest
+  events in an agent transcript are always tool calls, so the byte budget ran
+  out before reaching the `user:` line that opened the turn. Measured over 71
+  real `/spawn` preambles, 30 of them (42%) carried not one `user:` line, and
+  raising the budget only raised the bill — at 24k it bought 1 user line against
+  261 tool lines. The fill now admits by priority (the operator's words, then
+  the agent's prose up to a reserved share, then tool calls, then prose again
+  for what is left). Replayed over 601 real windows at the same budget, windows
+  with no `user:` line fall from 415 to 25, with no window losing one it used to
+  have and no growth in size. `/btw` and `@peer` share the assembler and get the
+  same change.
+- **An image result no longer spends a window slot on base64.** A `Read` of a
+  PNG comes back as a content block carrying the whole file encoded, and
+  clipping it to the per-item cap kept 200 characters of `iVBORw0KGgo…` — no
+  information, a full slot. One real `/spawn` tail was three of those and
+  nothing else. Such a result now renders as `[image, N chars]`.
+- **A `/spawn` that arrives blind says so.** All five fall-backs in
+  `_spawn_opening` returned the bare prompt with no trace, and `Origin` never
+  reaches the session log, so afterwards nothing distinguished a spawn that
+  carried its tail from one that did not. The confirmation line now names the
+  reason, while the operator can still paste the context in themselves.
 
 - **A rebuilt harness now actually starts.** `AgentSession.adopt` swaps the
   process under a live session, and `_run_turn` calls `start()` only while
