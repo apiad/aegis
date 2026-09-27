@@ -803,10 +803,10 @@ class PaneStateChanged(Message):
 
 
 class ConversationPane(Widget):
-    # Class-level defaults for the streaming-repaint state: unit tests
-    # build a pane with __new__ (no __init__, no Textual boot) and still
-    # reach _flush_streaming through clear_transcript. Same exposure the
-    # tick path had in 0.28.0.
+    # Class-level defaults for the streaming-repaint state: unit tests build
+    # a pane with __new__ (no __init__, no Textual boot) and still reach the
+    # repaint path, which would AttributeError on instance-only attributes.
+    # Same exposure the tick path had in 0.28.0.
     _repaint_pending = False
     _window_end = 0
     _restoring_tail = False
@@ -3247,8 +3247,10 @@ class ConversationPane(Widget):
     def clear_transcript(self) -> None:
         """Clear _history and remove all mounted transcript blocks.
 
-        Called on ``window_reset`` stream events so stale content is wiped
-        before the server replays fresh events for this session.
+        No caller since stage 6: the only one was `AegisApp._on_window_reset`,
+        deleted with `--remote`. Kept as pane API because a view that has to
+        re-seed a transcript needs exactly this, and reconstructing it later
+        would be guesswork about which mounted children to remove.
         """
         import contextlib
 

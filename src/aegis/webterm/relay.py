@@ -88,7 +88,19 @@ async def relay(
             try:
                 reader, writer = await connect()
             except Exception as e:  # noqa: BLE001 — the daemon may be down
-                log.info("daemon unreachable (%s); retrying", e)
+                # The first failure of a view is news; the retries after it are
+                # not. A reconnect across a daemon restart is the normal case
+                # and would drown a real outage in identical lines. But this is
+                # also the ONLY report of the state `--no-autostart` makes
+                # reachable — web process up, no daemon, nothing about to start
+                # one — where the browser holds an accepted socket that simply
+                # draws nothing. `aegis web` runs uvicorn at log_level=warning,
+                # so an info line there reaches nobody at either end.
+                log.log(
+                    logging.WARNING if not failures else logging.INFO,
+                    "daemon unreachable (%s); retrying",
+                    e,
+                )
                 failures += 1
                 refusals = 0  # the daemon is down, not refusing this view
                 opening = None

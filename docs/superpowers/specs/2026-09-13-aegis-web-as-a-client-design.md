@@ -246,6 +246,22 @@ These were the open questions. Each is settled.
    else running. On the VPS, `aegis-web.service` carries `After=` and
    `Requires=aegis-server.service`, so the server is already up. A race
    between them is harmless since the single-daemon lock (`3498235`).
+
+   **Amended in stage 6 (2026-09-27), on both halves.** Autostart stays the
+   default, so the laptop case is unchanged, but `aegis web` gains
+   `--no-autostart` and the unit passes it. The race argument above is right
+   and was never the reason: what `--no-autostart` avoids is the *kind* of
+   daemon `ensure_daemon` makes. It spawns `aegis server --autostarted`, and
+   that mark is exactly what permits a client to stop it — so a browser's
+   Ctrl+Q could stop the host's daemon. Such a daemon also inherits
+   `aegis-web.service`'s environment, not `aegis-server.service`'s, so it
+   carries no `AEGIS_IDLE_TIMEOUT=0` and reaps itself after 30 idle minutes,
+   with no `Restart=always` to bring it back. And the unit says `Wants=`
+   rather than `Requires=`, because `Requires` makes `systemctl restart
+   aegis-server` restart the web process too and drop every browser, which
+   contradicts decision 3 below. The cost of `Wants=` is that a daemon which
+   never comes up leaves the web process serving tabs that draw nothing, so
+   the relay logs the first connect failure of a view at `warning`.
 3. **`aegis web` survives a daemon restart.** Its socket connection
    retries with backoff, each browser shows a reconnecting overlay, and
    each view reopens under its own id, which restores focus, scroll and

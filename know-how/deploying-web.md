@@ -4,6 +4,17 @@ when: standing up, redeploying or debugging aegis on the VPS (dev.apiad.net) —
 
 # Deploying aegis on the VPS (dev.apiad.net)
 
+> **Not deployed yet, as of 2026-09-27.** Everything below describes the
+> topology stage 6 *installs*. The running host is still the previous one: a
+> single `aegis-web.service` running `aegis serve`, with Caddy `basicauth` in
+> front. So on today's host: `systemctl restart aegis-server` fails because
+> that unit does not exist; the redeploy block below is the procedure for
+> cutting over, not for restarting what is there; there are no
+> `/etc/caddy/Caddyfile.pre-*` backups from stage 6 yet; and the 401 check
+> below passes for the wrong reason, because `basicauth` returns 401 too.
+> Cut over with *Installing the unit pair* at the end of this doc, then
+> delete this note.
+
 aegis runs as two persistent services on the main VPS (`vps.apiad.net`,
 `95.217.238.34`), rooted at `~/Workspace`, exposed at **https://dev.apiad.net**
 behind Caddy. It serves the **opus / `permission: full`** default agent, so
@@ -37,13 +48,19 @@ all**: `aegis web` is an ordinary client of its unix socket, the same way
 - **`aegis-server.service`**: the daemon. `AEGIS_IDLE_TIMEOUT=0`, because it
   reaps itself after 30 idle minutes otherwise — right for a laptop, wrong for
   a unit meant to stay up.
-- **`aegis-web.service`**: the web process, with two flags that matter.
-  `--no-autostart` so it never spawns a daemon of its own: systemd owns that,
-  and a web process that also called `ensure_daemon` would race the unit for
-  the root's lock on boot. And `Wants=aegis-server.service`, **not
-  `Requires=`** — with `Requires`, `systemctl restart aegis-server` restarts
-  the web process too and drops every browser, which is the opposite of the
-  reconnect the relay exists to provide.
+- **`aegis-web.service`**: the web process, with two choices that matter.
+  `--no-autostart`, so it never spawns a daemon of its own. Not because two
+  daemons could hold the root — `DaemonLock` prevents that — but because
+  `ensure_daemon` spawns `aegis server --autostarted`, and that mark is what
+  lets a client stop it, so a browser's Ctrl+Q could take down the host's
+  daemon. Such a daemon would also inherit this unit's environment rather than
+  `aegis-server.service`'s, so no `AEGIS_IDLE_TIMEOUT=0` and no
+  `Restart=always`: it would reap itself after 30 idle minutes and stay down.
+  And `Wants=aegis-server.service`, **not `Requires=`** — with `Requires`,
+  `systemctl restart aegis-server` restarts the web process too and drops every
+  browser, the opposite of the reconnect the relay provides. The cost of
+  `Wants=` is that a daemon which never starts leaves this unit serving tabs
+  that draw nothing, so the relay logs that first failure at warning.
 - **Config**: `~/Workspace/.aegis.yaml` carries a token-less
   `web: {bind: 127.0.0.1, port: 8899}` block; the token resolves from
   `AEGIS_WEB_TOKEN` (env wins over YAML — `config/yaml_loader.py::_build_web`).
@@ -106,6 +123,52 @@ ssh vps 'openssl rand -hex 24 > ~/.aegis-web-token \
 ```
 
 Only `aegis-web` needs the restart: the daemon never reads the token.
+
+## Installing the unit pair (the one-time cutover)
+
+Push to `main` first. Then, in order — the daemon before the web process, so
+the first browser finds a socket:
+
+```bash
+ssh vps 'cd ~/Workspace/repos/aegis && git pull --ff-only origin main && git log --oneline -1'
+ssh vps 'sudo systemctl stop aegis-web && sudo systemctl disable aegis-web'
+ssh vps 'sudo cp ~/Workspace/repos/aegis/scripts/aegis-server.service /etc/systemd/system/aegis-server.service'
+ssh vps 'sudo cp ~/Workspace/repos/aegis/scripts/aegis-web.service /etc/systemd/system/aegis-web.service'
+ssh vps 'sudo sed -i "s|%h|/home/apiad|g" /etc/systemd/system/aegis-server.service /etc/systemd/system/aegis-web.service'
+ssh vps 'sudo systemctl daemon-reload && sudo systemctl enable --now aegis-server'
+ssh vps 'sleep 5 && sudo systemctl enable --now aegis-web'
+ssh vps 'systemctl is-active aegis-server aegis-web'
+```
+
+`%h` does not expand in a system unit, which is why the `sed` is there.
+
+Then confirm the daemon holds no TCP listener and `aegis web` owns 8899:
+
+```bash
+ssh vps 'sudo ss -lntp | grep 8899'
+ssh vps 'systemctl show -p MainPID aegis-web aegis-server'
+```
+
+Only then remove `basicauth` from the `dev.apiad.net` site block, leaving
+`reverse_proxy 127.0.0.1:8899`. Back up first, and validate before reloading —
+Caddy also fronts headscale on `vps.apiad.net`, so a bad config takes that down
+too:
+
+```bash
+ssh vps 'sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-stage6'
+ssh vps 'sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+ssh vps 'sudo systemctl reload caddy && systemctl is-active caddy'
+```
+
+**The 401 check only means something after this point.** Before basic auth is
+removed, a 401 is Caddy's and tells you nothing about the token. After, it is
+the token's. Verify in that order, and confirm a restart of the daemon does not
+take the web process with it:
+
+```bash
+ssh vps 'sudo systemctl restart aegis-server'
+ssh vps 'systemctl is-active aegis-web'    # still active — this is what Wants= buys
+```
 
 ## Debug
 

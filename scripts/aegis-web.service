@@ -3,7 +3,10 @@ Description=aegis web (browsers as clients of the daemon's socket)
 After=network-online.target aegis-server.service
 # Wants, NOT Requires: with Requires, `systemctl restart aegis-server`
 # restarts this unit too and drops every browser — the opposite of the
-# reconnect the relay exists to provide.
+# reconnect the relay exists to provide. The cost is that a daemon which
+# never comes up leaves this unit serving browsers that draw nothing; the
+# relay logs the first such failure at warning, naming the socket, so
+# `journalctl -u aegis-web` says why.
 Wants=network-online.target aegis-server.service
 
 [Service]

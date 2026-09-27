@@ -317,7 +317,13 @@ See [Telegram](telegram.md) for the full command surface, setup,
 output examples, `@<peer>` cross-host syntax, and FAQ.
 
 systemd unit templates live at `scripts/aegis-server.service` (the daemon)
-and `scripts/aegis-web.service` (browsers).
+and `scripts/aegis-web.service` (browsers). The web unit passes
+`aegis web --no-autostart`, which connects to an existing daemon and never
+starts one, so the daemon is always the unit's: a daemon `aegis web` spawned
+would be marked `--autostarted` (stoppable from a browser) and would inherit
+neither `AEGIS_IDLE_TIMEOUT=0` nor `Restart=always`. Outside systemd, leave
+the flag off — autostart is the default and is what makes `aegis web` work on
+a laptop with nothing else running.
 
 ## Groups
 

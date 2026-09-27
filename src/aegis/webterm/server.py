@@ -44,9 +44,18 @@ def connect_for(root: Path, *, preflight=None, autostart: bool = True) -> Connec
     """Each connection finds (or starts) the daemon the way a terminal does,
     so a restarted daemon is found again and a stopped one is started.
 
-    With ``autostart=False`` it only ever connects. systemd owns the daemon
-    under `aegis-server.service`, and a web process that spawned its own
-    would race that unit for the root's lock on boot.
+    With ``autostart=False`` it only ever connects, which is for systemd.
+
+    NOT because two daemons could end up holding the root: `DaemonLock` already
+    makes that impossible, `ensure_daemon` will not spawn while
+    `daemon_lock_held`, and a rival that loses the flock exits before touching
+    the socket. The reason is what an autostarted daemon *is*. `ensure_daemon`
+    spawns `aegis server --autostarted`, and that mark is precisely what lets a
+    client stop it later, so a browser's Ctrl+Q could take down the host's
+    daemon. It also inherits `aegis-web.service`'s environment rather than
+    `aegis-server.service`'s, so it carries no `AEGIS_IDLE_TIMEOUT=0` and would
+    reap itself after 30 idle minutes, and no `Restart=always` to bring it
+    back. Under systemd the daemon must be the unit's, not a client's.
     """
 
     async def connect():
