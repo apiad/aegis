@@ -690,9 +690,7 @@ class QueueManager:
                 with contextlib.suppress(Exception):
                     await self._sm.close(handle)
             try:
-                ok = await restore(
-                    self._sm, resumed, nudge=NUDGE_OPERATOR
-                ) is not None
+                ok = await restore(self._sm, resumed, nudge=NUDGE_OPERATOR) is not None
             except Exception:  # noqa: BLE001 — this is an MCP tool's body
                 # `restore` guards its spawn and returns None, but its nudge
                 # delivery is bare. A raise here would cost the calling agent
@@ -874,9 +872,7 @@ class QueueManager:
             # caller told "failed" would give up on work that is one
             # `aegis_task_resume` from continuing.
             status = (
-                ev.outcome
-                if ev.outcome in ("completed", "recoverable")
-                else "failed"
+                ev.outcome if ev.outcome in ("completed", "recoverable") else "failed"
             )
             out = {
                 "task_id": tid,
@@ -1013,6 +1009,7 @@ class QueueManager:
         if session in self._observed:
             return
         self._observed.add(session)
+
         # add_event_observer / add_state_observer (not the primary on_event /
         # on_state slots) so the substrate composes cleanly with a frontend
         # that already claimed the primary hooks for its renderer — notably
@@ -1285,9 +1282,7 @@ class QueueManager:
             # card and read by nothing else, so a full 26-char ULID here grew
             # a parked worker's card by 22 characters against every other
             # worker's and bought nothing.
-            session.origin = Origin(
-                kind="parked", by=task.queue, detail=task.id[-4:]
-            )
+            session.origin = Origin(kind="parked", by=task.queue, detail=task.id[-4:])
         self._log(
             task.queue,
             {
@@ -1438,7 +1433,10 @@ class QueueManager:
                     logging.getLogger(__name__).warning(
                         "could not close the parked session %r for task %s: "
                         "%s: %s — the session stands and pins the daemon open",
-                        t.worker_handle, tid, type(e).__name__, e,
+                        t.worker_handle,
+                        tid,
+                        type(e).__name__,
+                        e,
                     )
             reaped.append(tid)
         return reaped
@@ -1497,8 +1495,7 @@ class QueueManager:
         # parking on the first stall, the opposite of what the config
         # documents it to mean.
         bumped = replace(task, attempts=task.attempts + 1)
-        outcome = classify(st, attempts=bumped.attempts,
-                           max_attempts=q.max_attempts)
+        outcome = classify(st, attempts=bumped.attempts, max_attempts=q.max_attempts)
         if outcome is Outcome.transient and task.resumable is None:
             # No session id was ever reported, so there is no conversation to
             # resume and the retry budget is irrelevant — rebuilding would
@@ -1508,16 +1505,17 @@ class QueueManager:
             await self._park(
                 session,
                 task,
-                reason=("the worker never reached a turn boundary; "
-                        "no conversation to resume"),
+                reason=(
+                    "the worker never reached a turn boundary; "
+                    "no conversation to resume"
+                ),
             )
             return
         if outcome is Outcome.transient:
             self._workers[session.handle] = (bumped, said)
             self._all[task.id] = bumped
             self._inflight[task.queue] = [
-                (bumped if x.id == task.id else x)
-                for x in self._inflight[task.queue]
+                (bumped if x.id == task.id else x) for x in self._inflight[task.queue]
             ]
             stop_reason = getattr(session, "last_stop_reason", None)
             exc = getattr(session, "last_error", None)
@@ -1563,8 +1561,7 @@ class QueueManager:
             await self._park(
                 session,
                 bumped,
-                reason=(f"stalled {bumped.attempts} time(s); "
-                        f"attempts exhausted"),
+                reason=(f"stalled {bumped.attempts} time(s); attempts exhausted"),
             )
             return
         # Outcome.done falls through to the completion path below.
