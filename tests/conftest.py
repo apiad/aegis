@@ -1,11 +1,28 @@
 """Shared test fixtures and configuration."""
 
+# Typer renders `--help` through Rich, and `typer.rich_utils` forces a terminal
+# when GITHUB_ACTIONS is set — so on CI, and only there, help output carries
+# ANSI escapes. A row that reads `│ server` locally arrives as
+# `│\x1b[0m \x1b[1;36mserver`, and any assertion matching the plain text fails
+# on CI while passing on every developer machine. That is what kept the `ci`
+# workflow red while `make test` was green.
+#
+# `_TYPER_FORCE_DISABLE_TERMINAL` is Typer's own opt-out. It has to be set
+# before `typer.rich_utils` is imported, because FORCE_TERMINAL is computed at
+# import time — hence here, at the top of the root conftest, ahead of every
+# other import. `setdefault`, so a developer can still force colour on.
+#
+# Tests assert on what a command *says*, not on how Rich paints it; nothing in
+# the suite asserts on an escape sequence.
+import os  # noqa: E402
+
+os.environ.setdefault("_TYPER_FORCE_DISABLE_TERMINAL", "1")
+
 # Wire in workflow fixtures (fake_bridge*, workflow_test_harness).
 from tests.conftest_workflows import *  # noqa: F401,F403,E402
 
 import asyncio
 import itertools
-import os
 import shutil
 
 import pytest
