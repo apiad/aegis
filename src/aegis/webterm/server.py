@@ -8,7 +8,8 @@ from pathlib import Path
 
 import uvicorn
 
-from aegis.daemon.lifecycle import ensure_daemon
+from aegis.config.roots import AegisRoots
+from aegis.daemon.lifecycle import ensure_daemon, socket_path
 from aegis.webterm.relay import Connect
 
 
@@ -39,12 +40,25 @@ def uvicorn_config(app, *, bind: str, port: int) -> uvicorn.Config:
     )
 
 
-def connect_for(root: Path, *, preflight=None) -> Connect:
+def connect_for(root: Path, *, preflight=None, autostart: bool = True) -> Connect:
     """Each connection finds (or starts) the daemon the way a terminal does,
-    so a restarted daemon is found again and a stopped one is started."""
+    so a restarted daemon is found again and a stopped one is started.
+
+    With ``autostart=False`` it only ever connects. systemd owns the daemon
+    under `aegis-server.service`, and a web process that spawned its own
+    would race that unit for the root's lock on boot.
+    """
 
     async def connect():
-        path = await ensure_daemon(Path(root), preflight=preflight)
+        if autostart:
+            path = await ensure_daemon(Path(root), preflight=preflight)
+        else:
+            path = socket_path(AegisRoots.for_project(Path(root)))
+            if not path.exists():
+                raise ConnectionError(
+                    f"no daemon socket at {path} and --no-autostart is set; "
+                    "start aegis-server.service first"
+                )
         return await asyncio.open_unix_connection(str(path))
 
     return connect

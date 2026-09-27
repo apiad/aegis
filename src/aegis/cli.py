@@ -1006,6 +1006,12 @@ def doctor(
 def web(
     cwd: str = typer.Option(".", "--cwd"),
     no_browser: bool = typer.Option(False, "--no-browser"),
+    no_autostart: bool = typer.Option(
+        False,
+        "--no-autostart",
+        help="Never start a daemon; connect to one that is already running. "
+        "For systemd, where aegis-server.service owns the daemon.",
+    ),
 ) -> None:
     """Serve aegis to browsers: a client of this root's daemon, one view per tab."""
     root = _root_for(cwd)
@@ -1032,13 +1038,20 @@ def web(
     url = f"http://{web_cfg.bind}:{port}/?t={token}"
     app_ = build_webterm_app(
         token=token,
-        connect=_webserver.connect_for(root, preflight=lambda: _daemon_preflight(root)),
+        connect=_webserver.connect_for(
+            root,
+            preflight=lambda: _daemon_preflight(root),
+            autostart=not no_autostart,
+        ),
     )
 
     async def _main():
         # Up front, so a daemon that cannot start is reported here rather
-        # than as a browser that never draws.
-        await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
+        # than as a browser that never draws. With --no-autostart there is
+        # nothing to start: systemd's unit is already up, or it is not, and
+        # the first browser gets a refusal naming the socket.
+        if not no_autostart:
+            await _ensure_daemon(root, preflight=lambda: _daemon_preflight(root))
         _console.print(f"[green]aegis web → {url}[/green]", soft_wrap=True)
         if not no_browser:
             import threading
