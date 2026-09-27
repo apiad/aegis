@@ -25,7 +25,7 @@ Plan (stages 1–3): `docs/superpowers/plans/2026-09-09-aegis-roots-and-embed.md
 
 | 1 | **Daemon stages 1–3** — roots, boot unification, `aegis.embed()` | ✅ **shipped 2026-09-11** — `a256cd0`..`9c903ca`, suite 3592/rc=0, gate mutation-checked |
 | 2 | **Daemon stage 4** — the view seam | ✅ **shipped 2026-09-11** — `9207664`..`5259bb3`, suite 3629/rc=0, gate mutation-checked; one property `xfail(strict)` for stage 5 |
-| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b decided 2026-09-14 (`aegis web` as a socket client), not yet planned; 6 not planned |
+| 2b | **Daemon stages 5–6** — transports + `aegis attach`, deletion | 5a (local daemon) **shipped 2026-09-12/13** — `3f3d46a`..`9171f2b`, plan Task 12 hand-drive still open; *one plane per brain* shipped 2026-09-14 (`7deb8a0`..`f1822bb`); single-daemon lock shipped 2026-09-14 (`3498235`); 5b shipped 2026-09-27 (`7de5ba5`..`ede3cd5`); 6 not planned |
 | 3 | **Terminals — `Ctrl+Q` hang** | **no longer reproduces 2026-09-11** — Alex ran `aegis` in a console after stages 1–3; it runs and `Ctrl+Q` exits. See the entry below before closing it outright. |
 | 4 | **Mandatory file claims** — locks are advisory | verified not started; plan needs re-grounding |
 | 5 | **Live-exercise the unverified paths** — fork, `/title`, quit-with-terminal | never driven through a running aegis |
@@ -723,13 +723,15 @@ view per browser tab, and survives a daemon restart. `aegis attach wss://…`
 is dropped: remote terminals go over ssh. The daemon spec's stage 5 is
 amended to match.
 
-**Stage 5b is what remains of the spec's stage 5**: `aegis serve` becomes
-`aegis server` with no port, and `aegis web` becomes a socket client with
-the token handshake, a browser terminal view on xterm.js, reconnect across
-a daemon restart, and the relay-equivalence gate. Its risk is different in
-kind: today Caddy rejects unauthenticated traffic before it reaches our
-code, and once stage 6 drops `basicauth`, `aegis web`'s handshake is the only
-thing between the internet and the daemon's socket on the VPS.
+**Stage 5b shipped 2026-09-27** (`7de5ba5`..`ede3cd5`): `aegis serve` is
+`aegis server` and binds no web port, and `aegis web` is a separate process
+that owns the token, serves xterm.js one view per browser tab, and reconnects
+each tab to its view across a daemon restart. Verified by four
+mutation-checked gates -- a real browser client reaching a real view through
+a real `aegis web` while the daemon holds no listener on the web port, the
+relay changing no byte, a browser surviving the daemon stopping and starting,
+and an unauthenticated socket refused before the daemon is contacted -- plus
+a hand-drive in Chromium recorded in the plan.
 
 **Stage 5 is unblocked.** The one gap stage 4 left -- a tab opened in one
 view not appearing in the other -- was closed the same day by

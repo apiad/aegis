@@ -2,8 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: not started.** Written 2026-09-14 against `0eac50d`; revised the
-same day after a review that ran Tasks 1–8 in a throwaway worktree.
+**Status: shipped 2026-09-27** (`7de5ba5`..`ede3cd5`). Written 2026-09-14
+against `0eac50d`; revised the same day after a review that ran Tasks 1–8 in a
+throwaway worktree; executed against `14fea7c`.
 
 **Goal:** `aegis web` becomes its own process, a client of the daemon's unix
 socket that serves one view per browser tab to xterm.js; the daemon stops

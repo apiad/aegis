@@ -426,8 +426,8 @@ result silently.
 
 ## Web UI
 
-Optional. `aegis web` and `aegis serve` both serve the installable PWA;
-this block configures it.
+Optional. Configures `aegis web`, the process that serves browsers. The
+daemon does not read this block and never binds this port.
 
 ```yaml
 web:
@@ -442,10 +442,13 @@ web:
 | `bind` | interface to listen on. Defaults to `127.0.0.1` — loopback only. |
 | `port` | fixed port. Omitted, aegis reuses the port recorded in `.aegis/state/web.port`, and failing that asks the OS for a free one and records it. |
 
-**`aegis serve` starts the web frontend only when a token is set.** A
-`web:` block without `token` is treated as absent, because binding an
-unauthenticated agent-control surface is never what someone meant. The
-same token is what `--remote ws://…` needs — see [Remote plane](remote.md).
+`aegis web` creates a token on first run when none is set and writes it
+here, and `aegis token` prints it (creating one the same way) when you need
+the login URL again; `port` is never written back. The login URL it prints carries the
+token once, and the page exchanges it for an `HttpOnly`, `Secure`,
+`SameSite=Lax` cookie. Browsers keep a `Secure` cookie over plain http only
+for localhost, so to reach `aegis web` from another machine (a phone on
+the LAN included) put it behind https.
 
 ## Execution hosts
 

@@ -1,10 +1,10 @@
 # Remote plane
 
 !!! info "Three things named 'remote' — which one do you want?"
-    - **Remote plane** (this page, `remotes:`) — one `aegis serve`
-      enqueues work into *another* `aegis serve`. Two aegises, federated.
+    - **Remote plane** (this page, `remotes:`) — one `aegis server`
+      enqueues work into *another* `aegis server`. Two aegises, federated.
     - **`aegis --remote ws://…`** — your local TUI attaches to a remote
-      `aegis serve`. One aegis, remote; the UI is what moved.
+      `aegis server`. One aegis, remote; the UI is what moved.
     - **[Execution hosts](hosts.md)** (`hosts:`) — one *local* aegis runs
       an agent's harness on another machine over SSH. The session stays
       here; only the subprocess is elsewhere.
@@ -13,8 +13,8 @@
     there", `--remote` for "keep working while my laptop sleeps", and the
     **remote plane** to let two aegises delegate to each other.
 
-A **remote plane** lets one `aegis serve` enqueue work into another
-`aegis serve` over HTTP. One agent on one machine can hand a task off
+A **remote plane** lets one `aegis server` enqueue work into another
+`aegis server` over HTTP. One agent on one machine can hand a task off
 to another machine — typically because the work is long-running, needs
 different hardware, or should run under a different agent profile —
 while the calling agent keeps moving.
@@ -28,14 +28,14 @@ originating agent's inbox once the remote task terminates. See
 
 ## The two HTTP planes
 
-Both ends run `aegis serve`. Each `aegis serve` already exposes one
+Both ends run `aegis server`. Each `aegis server` already exposes one
 HTTP plane — the **MCP plane**, loopback-bound, consumed by the
-workers this serve spawned. The remote plane is a **second, distinct**
-plane, bound to a tailnet IP, consumed by *other* aegis serves.
+workers this server spawned. The remote plane is a **second, distinct**
+plane, bound to a tailnet IP, consumed by *other* aegis servers.
 
 ```
    ┌──────────────────────┐                ┌────────────────────────┐
-   │ zion: aegis serve    │                │ vps: aegis serve       │
+   │ zion: aegis server   │                │ vps: aegis server      │
    │                      │                │                        │
    │  MCP plane (loop.)   │                │  MCP plane (loop.)     │
    │                      │   HTTP POST    │                        │
@@ -349,7 +349,7 @@ shared, or load them from env at startup.
 ### Local brainstorm → remote implementation
 
 A long research / implementation task gets handed from an interactive
-session on one machine to an `aegis serve` on another, where it can
+session on one machine to an `aegis server` on another, where it can
 run for hours under whatever profile and quota live there.
 
 ```python
@@ -401,7 +401,7 @@ remotes:
 ### Several machines on one overlay
 
 A handful of machines on the same overlay network — laptop, desktop,
-a beefy box — each running `aegis serve`. Any agent can hand off to
+a beefy box — each running `aegis server`. Any agent can hand off to
 any other peer it has declared as a remote.
 
 ```yaml

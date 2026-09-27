@@ -4,7 +4,7 @@ when: running, debugging or reasoning about the local daemon, such as why aegis 
 
 # The daemon: `aegis` is a client
 
-`aegis` boots no brain. A detached `aegis serve` holds the brain and every
+`aegis` boots no brain. A detached `aegis server` holds the brain and every
 view; your terminal connects to a unix socket under the project root and
 pipes bytes both ways. Sessions outlive the terminal, several terminals can
 watch one brain, and `Ctrl+Q` detaches rather than shutting anything down.
@@ -14,7 +14,7 @@ aegis                    attach this terminal (starting a daemon if none)
 aegis attach --view ID   attach under an explicit view id
 aegis ls                 daemons across every project root
 aegis kill [--all]       stop this root's daemon, or all of them
-aegis serve --cwd DIR    run the daemon in this terminal, where you can read it
+aegis server --cwd DIR    run the daemon in this terminal, where you can read it
 ```
 
 ## Where things live
@@ -75,7 +75,7 @@ The daemon's stderr goes to `/dev/null`, so it dies silently. Run it where
 you can read it:
 
 ```
-aegis serve --cwd <root>
+aegis server --cwd <root>
 ```
 
 The client parses the config before spawning, so a broken `.aegis.yaml` is
@@ -86,17 +86,30 @@ and the TUI says where it went.
 Crashes the daemon recorded on its way down are in
 `<root>/.aegis/state/aegis.log`, and `aegis logs -c` prints only those.
 
+## `aegis web`
+
+A separate process and a client of the socket, like a terminal. It starts
+a daemon if none is running, and each browser tab gets its own view, keyed
+by an id in that tab's `sessionStorage`. When the daemon goes away the
+tabs show "reconnecting" and return to the same views once it is back; a
+view file is written when its connection closes, so nothing is lost but
+keys typed during the gap, which are dropped on purpose.
+
+`aegis web` restarts a daemon that is gone, the same way a terminal does.
+So `aegis kill` does not stay killed while a browser tab is open: stop
+`aegis web` first.
+
 ## One daemon per root
 
 A daemon holds an flock on `<root>/.aegis/state/daemon.lock` for as long as
 it runs, and takes it before it binds a port or touches the socket. A
-second `aegis serve` for the same root prints "a daemon is already running"
+second `aegis server` for the same root prints "a daemon is already running"
 and exits 1, so clients racing to autostart leave exactly one daemon. The
 kernel drops the lock when its holder dies, SIGKILL included. Deleting the
 lock file never unsticks anything: a held lock only ever means a live
 process.
 
-If `aegis serve` refuses with that message while `aegis ls` lists nothing,
+If `aegis server` refuses with that message while `aegis ls` lists nothing,
 a daemon is alive but unregistered. `fuser <root>/.aegis/state/daemon.lock`
 names its pid; stop it by that pid.
 

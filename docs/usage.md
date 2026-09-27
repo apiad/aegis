@@ -800,7 +800,7 @@ resumable, so this is a disk-space move rather than a retirement.
 
 ## Benchmarks (`aegis bench`)
 
-`aegis bench` drives a real `aegis serve` and a real client in a pty and
+`aegis bench` drives a real `aegis server` and a real client in a pty and
 measures what actually reaches the terminal: frame latency, loop lag, CPU and
 memory. It is the only honest way to claim anything here got faster, because
 the cost that matters is the one paid between a token arriving and a cell
@@ -844,7 +844,7 @@ aegis logs --path       # print the file's path and exit
 ```
 
 The file lives at `.aegis/state/aegis.log`, is plain text, and rotates at
-5 MB (3 backups). Both `aegis` and `aegis serve` write to it.
+5 MB (3 backups). Both `aegis` and `aegis server` write to it.
 
 Four ways an exception can escape are wired to it — an uncaught error on
 the main thread, one on a worker thread, an orphaned asyncio task, and
@@ -874,5 +874,5 @@ frames.
 ## Headless mode
 
 If you want the routing plane (sessions, queues, MCP) without the TUI,
-run `aegis serve`. See [Configuration](configuration.md#headless-telegram)
+run `aegis server`. See [Configuration](configuration.md#headless-telegram)
 for the Telegram bridge.

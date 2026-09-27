@@ -11,16 +11,18 @@ under `docs/`, and the reasoning behind each feature is in `docs/superpowers/spe
 
 ## The process model
 
-**`aegis` boots no brain.** A detached `aegis serve` holds the sessions, the queues
+**`aegis` boots no brain.** A detached `aegis server` holds the sessions, the queues
 and every view; a terminal connects over a unix socket and pipes bytes. Sessions
 outlive the terminal, several terminals can watch one daemon, and `Ctrl+Q` detaches
 rather than shutting anything down. The daemon keeps whatever code it booted with,
 which is the first thing to suspect when an edit does not appear.
 
-**Two co-equal front ends over one backend.** The Textual TUI and the web/PWA client
-render the same transcripts with the same fidelity, and both call the same seams:
-`SessionManager` for sessions and `commands.dispatch()` for slash commands. A
-feature that exists in one front end and not the other is unfinished.
+**A browser is a view, like a terminal.** `aegis web` is a separate process
+that serves each browser tab one view over the daemon's unix socket and
+relays its frames unchanged. It checks the token and knows nothing else:
+no session, agent or queue crosses into it, and `tests/webterm/test_imports.py`
+fails if one does. The daemon binds no web port, so the process facing a
+network is never the one running the agents.
 
 **One boot path.** Every entry point goes through `_serve` in `src/aegis/cli.py`,
 which takes an `AegisRoots` and an optional UI attachment. With no attachment it

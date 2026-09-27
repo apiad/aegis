@@ -290,11 +290,11 @@ plan → dispatch implementer per task with durable resume),
   explicit `checkpoint` + durable resume, `bash_predicate` retry
   loops, and `parallel` fan-out.
 - **A daemon, and clients.** `aegis` boots no brain: a detached
-  `aegis serve` holds it and every view, and a terminal attaches over a
+  `aegis server` holds it and every view, and a terminal attaches over a
   unix socket. Sessions outlive the terminal, several terminals can watch
   one brain, and `Ctrl+Q` detaches. `aegis ls` and `aegis kill` manage
   daemons across roots. Add a `web:` token to drive the same backend from
-  an installable, mobile-first web/PWA client (`aegis web`).
+  the same TUI in any browser, one view per tab (`aegis web`).
 - **MCP plane.** Every spawned agent is injected with the aegis MCP
   server: orientation (`aegis_meta`), session listing, handoff, queue
   dispatch, canvas ops, terminal ops, group broadcast/gather, workflow
@@ -414,15 +414,15 @@ hosts. If the link drops, the pane says so instead of looking idle, and
 `/reconnect` rebuilds the harness in the same tab with its history.
 
 Not durable by design — for "keep working while the laptop sleeps", run
-`aegis serve` on the box and attach with `aegis --remote`.
+`aegis server` on the box and attach with `aegis --remote`.
 
 → **[Execution hosts](https://apiad.github.io/aegis/hosts/)**
 
 ## Remote plane — cross-machine handoff
 
-`aegis serve` can expose a second HTTP plane — distinct from the
+`aegis server` can expose a second HTTP plane — distinct from the
 loopback MCP plane, bound wherever you want it reachable — that other
-`aegis serve` instances POST into. One agent on one machine can hand
+`aegis server` instances POST into. One agent on one machine can hand
 a long task off to another without leaving the substrate:
 
 ```python
@@ -579,16 +579,14 @@ Requires Python 3.13+ and at least one of: `claude`, `gemini`, or
 
 ```bash
 aegis          # full-screen TUI — first-class UI for local dev
-aegis web      # installable PWA — first-class UI for remote (and local) dev
+aegis web      # the same TUI in a browser, one view per tab
 ```
 
-aegis has **two co-equal first-class UIs** over one backend: the
-full-screen **TUI** for local development, and an installable, mobile-first
-**web/PWA** client for remote development over a flaky link (and locally
-too). Both render the same transcripts with identical fidelity; sessions
-are shared across them. `aegis web` ensures a token, opens your browser,
-and serves the client; `aegis token` prints that token (creating one on
-first use) for a client you are pointing at the server by hand.
+`aegis` in a terminal and `aegis web` in a browser are two screens on the
+same daemon. `aegis web` is its own process: it ensures a token and a
+daemon, prints a login URL, and serves each browser tab its own view of the
+same TUI, rendered by xterm.js. Sessions, queues and monitors live in the
+daemon, so every screen shows the same ones.
 
 With no `.aegis.yaml` in the directory, `aegis` drops you straight
 into the TUI ConfigPanel — press `a` to add your first agent and
@@ -680,7 +678,7 @@ Full reference: [Configuration](https://apiad.github.io/aegis/configuration/).
 
 ## The daemon, headless and web
 
-`aegis` is a client. `aegis serve` is the daemon it attaches to, and
+`aegis` is a client. `aegis server` is the daemon it attaches to, and
 running it in a terminal yourself is how you read its output when it will
 not start. `aegis attach [--view N]` attaches this terminal to a root's
 daemon, and `aegis dash` does the same with the `F10` fleet dashboard
@@ -689,22 +687,21 @@ and `aegis kill` stops one. A daemon keeps the code it booted with, and reaps it
 minutes with no views and no sessions; `know-how/the-daemon.md` covers
 both.
 
-`aegis serve` runs the SessionManager and MCP plane without the TUI; add
-a `web:` block to serve the installable, mobile-first web/PWA client and
-drive the team from any browser:
+`aegis server` binds no web port. Browsers reach the daemon through
+`aegis web`, a separate process that holds the port and the token:
 
 ```yaml
 # .aegis.yaml
 web:
   bind: 127.0.0.1          # front with a reverse proxy for remote access
-  port: 8899               # omit to auto-pick
+  port: 8899               # omit to reuse the last port, else pick a free one
   # token: "…"             # or set AEGIS_WEB_TOKEN (env wins) — keeps it out of git
 ```
 
-`aegis web` ensures a token, opens your browser, and serves. The TUI, the
-web client, and (eventually) a remote TUI all speak the same WebSocket
-protocol over one backend, so sessions are shared across them. A systemd
-unit template lives at `scripts/aegis-serve.service`.
+`aegis web` prints `http://127.0.0.1:8899/?t=<token>` once. Opening it
+trades the token for a cookie, so the token does not stay in the address
+bar. If the daemon restarts, open tabs say so and reconnect to their views.
+Remote terminals use ssh: `ssh host` and then `aegis`.
 
 ## Embed aegis in your own program
 

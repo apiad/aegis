@@ -7,6 +7,18 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ### Changed
 
+- **`aegis web` is a client of the daemon, and the daemon no longer serves
+  the web.** `aegis web` runs as its own process: it ensures a token and a
+  daemon, serves the same TUI to each browser tab through xterm.js, and
+  relays each tab's frames to the daemon's unix socket unchanged. A tab
+  whose daemon restarts reconnects to its view. The daemon binds no web port
+  even with a `web:` block configured, so a terminal `aegis` never starts a
+  web server, and `aegis web` no longer writes its port into `.aegis.yaml`.
+  The previous browser client is unwired and will be deleted; dev.apiad.net
+  runs the old version until it is redeployed.
+- **`aegis serve` is now `aegis server`.** `serve` still works and is hidden
+  from `--help`.
+
 - **An ephemeral agent whose turn ends badly is no longer destroyed.** A queue
   worker used to be closed the moment a turn ended in anything but `ready`, and
   closing is irreversible: the session left the roster, its MCP token was
