@@ -733,6 +733,15 @@ relay changing no byte, a browser surviving the daemon stopping and starting,
 and an unauthenticated socket refused before the daemon is contacted -- plus
 a hand-drive in Chromium recorded in the plan.
 
+**`aegis kill` reports an exit it never waits for.** `registry.kill` sends
+SIGTERM and `kill_cmd` prints `stopped <pid>` immediately. Seen 2026-09-27
+driving the stage 5b browser checks: a daemon with `aegis web` holding a view
+open was still alive 35 seconds after `aegis kill` said it had stopped, and
+because unlinking a unix socket path does not close established connections,
+the browser saw no interruption at all. `kill -9` behaves as intended. Either
+`kill_cmd` waits and reports what happened, or it says it signalled rather
+than stopped. Predates stage 5b.
+
 **Stage 5 is unblocked.** The one gap stage 4 left -- a tab opened in one
 view not appearing in the other -- was closed the same day by
 `docs/superpowers/plans/2026-09-11-aegis-session-propagation.md`
