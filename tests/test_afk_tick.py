@@ -446,3 +446,46 @@ async def test_fetch_comment_reads_the_marked_comment_over_gh(tmp_path) -> None:
         bash_results={"issues/7/comments": {"exit": 0, "stdout": payload}}
     )
     assert await tick_mod.fetch_comment(engine, card) == body
+
+
+@pytest.mark.asyncio
+async def test_check_gh_quotes_what_gh_actually_said() -> None:
+    """A bare "gh is not authenticated" cost fifty minutes of hunting the
+    keyring, the PATH and the daemon's frozen environment, when the real
+    cause was an exhausted API rate limit — `gh auth status` validates the
+    token against the API, so a 429 exits non-zero. The reason a tick writes
+    has to carry the evidence."""
+
+    class E:
+        async def bash(self, cmd, **kw):
+            return {
+                "exit": 1,
+                "stdout": "",
+                "stderr": "error: API rate limit exceeded for user ID 1778204.",
+            }
+
+    reason = await tick_mod.check_gh(E())
+    assert "exited 1" in reason
+    assert "rate limit exceeded" in reason
+
+
+@pytest.mark.asyncio
+async def test_check_gh_still_names_a_missing_scope() -> None:
+    class E:
+        async def bash(self, cmd, **kw):
+            return {"exit": 0, "stdout": "Token scopes: 'repo', 'gist'", "stderr": ""}
+
+    assert "project" in await tick_mod.check_gh(E())
+
+
+@pytest.mark.asyncio
+async def test_check_gh_passes_a_healthy_token() -> None:
+    class E:
+        async def bash(self, cmd, **kw):
+            return {
+                "exit": 0,
+                "stdout": "Token scopes: 'repo', 'project'",
+                "stderr": "",
+            }
+
+    assert await tick_mod.check_gh(E()) == ""

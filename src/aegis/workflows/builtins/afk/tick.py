@@ -149,7 +149,14 @@ async def check_gh(engine) -> str:
     """
     res = await engine.bash("gh auth status")
     if res.get("exit") != 0:
-        return "gh is not authenticated"
+        # Quote what gh said. A bare "not authenticated" cost fifty minutes
+        # once: the real cause was an exhausted API rate limit — `gh auth
+        # status` validates the token against the API, so a 429 exits
+        # non-zero — and the message sent the search to the keyring, the
+        # PATH and the daemon's frozen environment instead.
+        detail = (str(res.get("stderr") or "") + str(res.get("stdout") or "")).strip()
+        suffix = f": {detail[:200]}" if detail else ""
+        return f"`gh auth status` exited {res.get('exit')}{suffix}"
     if "project" not in (res.get("stdout") or ""):
         return "gh token is missing the 'project' scope"
     return ""
