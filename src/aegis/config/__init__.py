@@ -28,6 +28,30 @@ class VoiceConfig:
 
 
 @dataclass(frozen=True)
+class NetworkConfig:
+    """What the F3 NETWORK rows probe, and how often.
+
+    Three cadences because the readings differ by a factor of three thousand
+    in cost. `enabled` ships true: a handshake and a 300-byte lookup are
+    invisible. `speed_interval` ships 0 — a repeating megabyte download from
+    a speed-test host is the part that needs consent, and `/net` takes that
+    reading on demand anyway.
+
+    `anchors` is parsed at load rather than at probe time. A malformed entry
+    found by the prober is a row that reads "not sampled yet" forever without
+    saying why.
+    """
+
+    enabled: bool = True
+    interval: float = 20.0
+    trace_interval: float = 300.0
+    speed_interval: float = 0.0  # 0 = off
+    speed_bytes: int = 1_000_000
+    timeout: float = 3.0
+    anchors: tuple[tuple[str, int], ...] = (("1.1.1.1", 443), ("8.8.8.8", 443))
+
+
+@dataclass(frozen=True)
 class FleetConfig:
     """The F10 dashboard's paid call.
 

@@ -298,6 +298,53 @@ anchored to the input it started on even if you switch tabs. Transcription is
 fully on-device (via [harp](https://github.com/apiad/harp)). If the extra isn't
 installed, the key shows an install hint instead of recording.
 
+## Network
+
+What the F3 sidebar's `NET` rows probe, and how often. Three readings on
+three cadences, because they differ by a factor of three thousand in cost.
+
+```yaml
+network:
+  enabled: true            # false = no probes and no rows
+  interval: 20             # seconds between egress/RTT checks
+  trace_interval: 300      # seconds between exit-IP lookups
+  speed_interval: 0        # 0 = off; seconds between throughput probes
+  speed_bytes: 1000000     # bytes per throughput probe
+  timeout: 3               # seconds before a probe gives up
+  anchors:                 # host:port, tried concurrently
+    - "1.1.1.1:443"
+    - "8.8.8.8:443"
+```
+
+| key | default | what it does |
+|---|---|---|
+| `enabled` | `true` | Whether to probe at all. `false` removes the rows. |
+| `interval` | `20` | Egress liveness and handshake RTT. One TCP handshake, no payload. |
+| `trace_interval` | `300` | Exit IP, Cloudflare colo and country. About 300 bytes. Also re-read the moment egress comes back, because that is when the address has had a chance to change. |
+| `speed_interval` | `0` | Seconds between throughput probes. `0` turns the timer off; `/net` still takes a reading on demand. |
+| `speed_bytes` | `1000000` | Size of each throughput probe. Must be positive. |
+| `timeout` | `3` | Per-probe timeout in seconds. |
+| `anchors` | Cloudflare and Google resolvers on 443 | TCP targets for the liveness check. Two different operators, so one having a bad day does not read as "no egress". IPv6 literals are fine, bracketed or not. |
+
+**Why TCP and not `ping`.** ICMP needs `CAP_NET_RAW` or a subprocess for
+every sample, and a captive portal — the failure these rows exist to catch —
+answers ICMP while refusing the connection. A completed handshake on 443
+tests what actually breaks.
+
+**Why the throughput timer ships off.** A liveness handshake and a 300-byte
+lookup are invisible on any network. A repeating megabyte download from a
+speed-test host is not, and on a restricted network it is the shape that gets
+noticed. Turn it on where you own the link:
+
+```yaml
+network:
+  speed_interval: 300
+```
+
+An empty `anchors` list and a `speed_bytes` of `0` are both refused at load
+rather than accepted. Either one leaves every probe failing, and a row that
+reads `· ⋯` forever looks like a defect in aegis rather than a setting.
+
 ## Headless / Telegram
 
 ```yaml
