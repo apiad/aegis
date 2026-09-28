@@ -3192,7 +3192,7 @@ class ConversationPane(Widget):
             system=self._system_tiers,
             stats=self._system_stats,
             net=format_net_tiers(self._net_state, self._palette, time.monotonic()),
-            exit_ip=format_exit_ip(self._net_state, self._palette),
+            exit_ip=format_exit_ip(self._net_state, self._palette, time.monotonic()),
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
             # and `metrics` above already reads a live clock at this exact

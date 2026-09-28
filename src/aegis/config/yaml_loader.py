@@ -402,13 +402,35 @@ def _build_network(block: Any) -> NetworkConfig:
     if speed_timeout <= 0:
         raise ConfigError("network.speed_timeout: must be a positive number of seconds")
 
+    # Every cadence and budget must be strictly positive. `interval: 0` turns
+    # `_loop` — refresh() then sleep(interval) — into a hot loop issuing tens of
+    # thousands of real handshakes a second at 1.1.1.1 and 8.8.8.8, which pins a
+    # core and reads as abuse from the operator's own address. The mistake is
+    # invited: `speed_interval: 0` IS documented as "off", so reading the others
+    # the same way is the obvious thing to try. `trace_interval: -5` makes the
+    # lookup due on every refresh; `timeout: 0` fails every handshake, so a
+    # healthy link reads `✗ no egress` forever.
+    positives = {}
+    for key in ("interval", "trace_interval", "timeout"):
+        value = float(block.get(key, getattr(defaults, key)))
+        if value <= 0:
+            raise ConfigError(f"network.{key}: must be a positive number of seconds")
+        positives[key] = value
+
+    # The one that may be zero, because that is how it is switched off.
+    speed_interval = float(block.get("speed_interval", defaults.speed_interval))
+    if speed_interval < 0:
+        raise ConfigError(
+            "network.speed_interval: must be 0 (off) or a positive number of seconds"
+        )
+
     return NetworkConfig(
         enabled=bool(block.get("enabled", defaults.enabled)),
-        interval=float(block.get("interval", defaults.interval)),
-        trace_interval=float(block.get("trace_interval", defaults.trace_interval)),
-        speed_interval=float(block.get("speed_interval", defaults.speed_interval)),
+        interval=positives["interval"],
+        trace_interval=positives["trace_interval"],
+        speed_interval=speed_interval,
         speed_bytes=speed_bytes,
-        timeout=float(block.get("timeout", defaults.timeout)),
+        timeout=positives["timeout"],
         speed_timeout=speed_timeout,
         anchors=anchors,
     )
