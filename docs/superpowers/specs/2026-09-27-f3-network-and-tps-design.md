@@ -1,10 +1,35 @@
 # A panel that knows the disk is 71% full should know the network is dead
 
-**Status:** designed 2026-09-27, approved in conversation, **no code yet**.
-Issues [#13](https://github.com/apiad/aegis/issues/13) (the network block) and
-[#12](https://github.com/apiad/aegis/issues/12) (the tok/s regression). Both
-land in `src/aegis/tui/sidebar.py`, so they ship in one cycle rather than two.
-The plan is `docs/superpowers/plans/2026-09-27-f3-network-and-tps.md` (6 tasks, 59 steps).
+**Status:** **implemented and exercised in a real TUI** 2026-09-27/28
+(`b971741`..`d299914`, 11 commits, suite 4794 passed / rc=0, CI green on
+36427277345). Closes [#12](https://github.com/apiad/aegis/issues/12) (tok/s) and
+[#13](https://github.com/apiad/aegis/issues/13) (the network block). Plan:
+`docs/superpowers/plans/2026-09-27-f3-network-and-tps.md` (6 tasks, 59 steps).
+
+Three things the build corrected in this design, recorded here because each was
+a defect the spec's own prose would otherwise reproduce:
+
+- **`speed_timeout` is a separate key, and it has to bound the whole transfer.**
+  The spec listed one `timeout`. A live `/net` run printed
+  `unmeasured — ConnectTimeout (0 of 1000000 bytes in 3.16s)`: the megabyte had
+  inherited the handshake's 3s. Worse, the first fix set an httpx per-operation
+  timeout, which caps the gap between chunks rather than the transfer, so a
+  trickling link was never cut off. It is now `asyncio.wait_for` around the
+  whole download.
+- **An IPv6 anchor must be bracketed.** The spec's `anchors` are `host:port`
+  strings, and `2606:4700:4700::1111:443` is simultaneously a valid address and
+  a plausible `host:port`. No parse is safe; guessing "port" produced a host
+  that never connects, i.e. a permanent false `✗ no egress`. RFC 3986 settles
+  it and so does the loader.
+- **The figures go on rows, plural.** All five of tok/s, the cached and thinking
+  shares, the tool count and the compaction counter measure ~41 cells on one
+  row; the column is routinely 36. One segment silently dropped the last three,
+  which is the bug this fixes, one level down.
+
+Two knobs the spec did not think to constrain, both refused at load now:
+`interval: 0` (which made the poller a hot loop, measured at 16,778 handshakes
+in 0.25s) and a negative cadence. Only `speed_interval` may be `0`, because
+that is its off switch.
 
 F3's SYSTEM block samples CPU, RAM and disk every second and says nothing about
 the network. The two questions it cannot answer are the two that decide what an
