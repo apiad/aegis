@@ -290,3 +290,47 @@ async def test_the_speed_probe_is_given_the_speed_timeout():
     await svc.refresh()
 
     assert seen == [cfg.speed_timeout]
+
+
+@pytest.mark.asyncio
+async def test_a_hermetic_test_never_reaches_the_real_probes(monkeypatch):
+    """The suite must not open sockets to 1.1.1.1 or speed.cloudflare.com.
+
+    Every AegisApp builds a NetService and `_tick` starts it, so without a
+    guard every TUI test probes the real network on every tick. This is worse
+    than the quota poller `no_real_provider_accounts` already covers: that one
+    is disarmed by removing credentials, and these probes need none, so they
+    would reach out on CI too.
+
+    Spies on the probe module rather than comparing identities — `default_probes`
+    wraps each call in a lambda, so `is not probe.reach` is true whether or not
+    a guard exists, and an earlier version of this test passed for that reason
+    and checked nothing. With the conftest fixture removed, the lambda calls
+    `probe.reach` and the spy records it.
+    """
+    import aegis.net.probe as probe
+    from aegis.net.service import NetService
+
+    called: list[str] = []
+
+    async def spy_reach(*a, **kw):
+        called.append("reach")
+        return Reach(ok=False, error="spy")
+
+    async def spy_trace(*a, **kw):
+        called.append("trace")
+        return Trace(ok=False, error="spy")
+
+    async def spy_speed(*a, **kw):
+        called.append("throughput")
+        return Throughput(ok=False, error="spy")
+
+    monkeypatch.setattr(probe, "reach", spy_reach)
+    monkeypatch.setattr(probe, "trace", spy_trace)
+    monkeypatch.setattr(probe, "throughput", spy_speed)
+
+    # No `probes=`: exactly how AegisApp builds it.
+    svc = NetService(Cfg(speed_interval=1.0))
+    await svc.refresh(force_speed=True)
+
+    assert not called, f"the service reached the real probe module: {called}"
