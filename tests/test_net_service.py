@@ -36,6 +36,7 @@ class Cfg:
     speed_interval: float = 0.0
     speed_bytes: int = 1_000_000
     timeout: float = 3.0
+    speed_timeout: float = 30.0
     anchors: tuple[tuple[str, int], ...] = (("1.1.1.1", 443),)
 
 
@@ -269,3 +270,23 @@ async def test_a_probe_that_raises_does_not_escape_refresh():
     await svc.refresh()
     assert not svc.state.reach.ok
     assert svc.state.reach.error
+
+
+@pytest.mark.asyncio
+async def test_the_speed_probe_is_given_the_speed_timeout():
+    """Not `timeout`, which is the handshake's. See the config test for the
+    live reading that found this."""
+    clock, spy = Clock(), Spy()
+    seen: list[float] = []
+
+    async def throughput(nbytes, timeout):
+        seen.append(timeout)
+        return Throughput(ok=True, bytes_per_s=1e5, received=nbytes,
+                          asked=nbytes, elapsed_s=10.0)
+
+    cfg = Cfg(speed_interval=60.0, timeout=3.0, speed_timeout=30.0)
+    probes = spy.probes()._replace(throughput=throughput)
+    svc = NetService(cfg, probes=probes, clock=clock)
+    await svc.refresh()
+
+    assert seen == [cfg.speed_timeout]

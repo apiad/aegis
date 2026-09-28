@@ -48,6 +48,12 @@ class NetworkConfig:
     speed_interval: float = 0.0  # 0 = off
     speed_bytes: int = 1_000_000
     timeout: float = 3.0
+    # The megabyte download needs its own budget. A handshake that has not
+    # answered in 3s is a dead anchor; a 1 MB body that has not arrived in
+    # 3s is an ordinary slow link — and the slow link is the one the probe
+    # exists to measure, so sharing `timeout` made it fail exactly where
+    # the answer mattered and succeed where it did not.
+    speed_timeout: float = 30.0
     anchors: tuple[tuple[str, int], ...] = (("1.1.1.1", 443), ("8.8.8.8", 443))
 
 
