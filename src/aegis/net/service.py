@@ -156,7 +156,7 @@ class NetService:
     async def _speed(self) -> Throughput:
         try:
             return await self._probes.throughput(
-                self._cfg.speed_bytes, self._cfg.timeout
+                self._cfg.speed_bytes, self._cfg.speed_timeout
             )
         except Exception as exc:  # noqa: BLE001
             return Throughput(

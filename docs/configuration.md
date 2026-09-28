@@ -310,7 +310,8 @@ network:
   trace_interval: 300      # seconds between exit-IP lookups
   speed_interval: 0        # 0 = off; seconds between throughput probes
   speed_bytes: 1000000     # bytes per throughput probe
-  timeout: 3               # seconds before a probe gives up
+  timeout: 3               # seconds before a handshake gives up
+  speed_timeout: 30        # seconds before a throughput probe gives up
   anchors:                 # host:port, tried concurrently
     - "1.1.1.1:443"
     - "8.8.8.8:443"
@@ -323,7 +324,8 @@ network:
 | `trace_interval` | `300` | Exit IP, Cloudflare colo and country. About 300 bytes. Also re-read the moment egress comes back, because that is when the address has had a chance to change. |
 | `speed_interval` | `0` | Seconds between throughput probes. `0` turns the timer off; `/net` still takes a reading on demand. |
 | `speed_bytes` | `1000000` | Size of each throughput probe. Must be positive. |
-| `timeout` | `3` | Per-probe timeout in seconds. |
+| `timeout` | `3` | Handshake and lookup timeout in seconds. |
+| `speed_timeout` | `30` | Throughput-probe timeout in seconds. Separate from `timeout` on purpose: a handshake that has not answered in 3s is a dead anchor, but a megabyte that has not arrived in 3s is an ordinary slow link — and the slow link is the one worth measuring. Sharing one value made the probe fail wherever the answer mattered. |
 | `anchors` | Cloudflare and Google resolvers on 443 | TCP targets for the liveness check. Two different operators, so one having a bad day does not read as "no egress". IPv6 literals are fine, bracketed or not. |
 
 **Why TCP and not `ping`.** ICMP needs `CAP_NET_RAW` or a subprocess for

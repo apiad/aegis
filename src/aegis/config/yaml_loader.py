@@ -398,6 +398,10 @@ def _build_network(block: Any) -> NetworkConfig:
     if speed_bytes <= 0:
         raise ConfigError("network.speed_bytes: must be a positive byte count")
 
+    speed_timeout = float(block.get("speed_timeout", defaults.speed_timeout))
+    if speed_timeout <= 0:
+        raise ConfigError("network.speed_timeout: must be a positive number of seconds")
+
     return NetworkConfig(
         enabled=bool(block.get("enabled", defaults.enabled)),
         interval=float(block.get("interval", defaults.interval)),
@@ -405,6 +409,7 @@ def _build_network(block: Any) -> NetworkConfig:
         speed_interval=float(block.get("speed_interval", defaults.speed_interval)),
         speed_bytes=speed_bytes,
         timeout=float(block.get("timeout", defaults.timeout)),
+        speed_timeout=speed_timeout,
         anchors=anchors,
     )
 

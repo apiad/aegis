@@ -100,3 +100,23 @@ def test_the_service_reads_every_attribute_the_config_supplies():
         assert f"_cfg.{name}" in source, (
             f"NetworkConfig.{name} is not read by NetService"
         )
+
+
+def test_the_megabyte_probe_gets_its_own_timeout_not_the_handshakes():
+    """A 3s budget is right for a TCP handshake and wrong for a 1 MB body.
+
+    Found by running `/net` on zion: `unmeasured — ConnectTimeout (0 of
+    1000000 bytes in 3.16s)`, while a curl of the same URL needed 7.16s. One
+    shared `timeout` meant the throughput probe failed on exactly the slow
+    links it exists to measure and succeeded only where the answer did not
+    matter.
+    """
+    default = NetworkConfig()
+    assert default.speed_timeout > default.timeout
+    got = _build_network({"speed_timeout": 45})
+    assert got.speed_timeout == 45.0
+
+
+def test_a_non_positive_speed_timeout_is_refused():
+    with pytest.raises(ConfigError):
+        _build_network({"speed_timeout": 0})
