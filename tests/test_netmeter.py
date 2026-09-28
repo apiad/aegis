@@ -120,13 +120,13 @@ def test_the_exit_ip_is_one_row_with_one_tier():
     """One tier deliberately: `fit_rows` drops a segment whose narrowest
     still overflows, and a truncated address reads as a different address."""
     state = NetState(trace=Trace(ok=True, ip="2a0d:5600:6:202::15"), trace_at=NOW)
-    tiers = format_exit_ip(state, PAL)
+    tiers = format_exit_ip(state, PAL, NOW)
     assert len(tiers) == 1
     assert "2a0d:5600:6:202::15" in strip_markup(tiers[0])
 
 
 def test_no_exit_ip_means_no_row():
-    assert format_exit_ip(NetState(), PAL) == ()
+    assert format_exit_ip(NetState(), PAL, NOW) == ()
 
 
 def test_no_service_at_all_paints_nothing():
@@ -134,7 +134,7 @@ def test_no_service_at_all_paints_nothing():
     and SYSTEM must be exactly what it was before this feature existed. This
     is the case that must NOT show the `⋯` placeholder."""
     assert format_net_tiers(None, PAL, NOW) == ()
-    assert format_exit_ip(None, PAL) == ()
+    assert format_exit_ip(None, PAL, NOW) == ()
 
 
 def test_a_captive_portal_reads_as_reachable_with_no_address():
@@ -148,4 +148,26 @@ def test_a_captive_portal_reads_as_reachable_with_no_address():
     widest = strip_markup(format_net_tiers(state, PAL, NOW)[0])
     assert "✓ 4ms" in widest
     assert "MIA" not in widest
-    assert format_exit_ip(state, PAL) == ()
+    assert format_exit_ip(state, PAL, NOW) == ()
+
+
+def test_an_address_that_could_not_be_re_confirmed_is_dated():
+    """C2. The service keeps the last address when a lookup fails, which is
+    right — but undated it reads as current, so you see your previous network's
+    IP beside a green tick."""
+    state = NetState(
+        reach=Reach(ok=True, rtt_ms=4.0), reach_at=NOW,
+        trace=Trace(ok=True, ip="1.2.3.4"), trace_at=NOW - 600.0,
+        trace_error="no exit ip",
+    )
+    row = strip_markup(format_exit_ip(state, PAL, NOW)[0])
+    assert "1.2.3.4" in row
+    assert "ago" in row, "a stale address was presented as current"
+
+
+def test_a_confirmed_address_carries_no_age():
+    """No clutter on the ordinary case: a fresh lookup needs no qualifier."""
+    state = NetState(
+        trace=Trace(ok=True, ip="1.2.3.4"), trace_at=NOW, trace_error="",
+    )
+    assert "ago" not in strip_markup(format_exit_ip(state, PAL, NOW)[0])

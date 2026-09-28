@@ -31,12 +31,22 @@ def test_parse_anchor_reads_host_and_port():
     assert parse_anchor("1.1.1.1:443") == ("1.1.1.1", 443)
 
 
-def test_parse_anchor_survives_an_ipv6_literal():
-    """Review Focus 1. Splitting on ':' left-to-right gives a host of '2606'
-    and a probe that reports a healthy anchor somewhere else entirely."""
-    assert parse_anchor("2606:4700:4700::1111:443") == (
-        "2606:4700:4700::1111", 443,
-    )
+def test_parse_anchor_refuses_an_unbracketed_ipv6_anchor_as_ambiguous():
+    """Review Focus 1, corrected after review.
+
+    An earlier version of this test asserted that
+    `"2606:4700:4700::1111:443"` parses as host + port. It cannot safely:
+    that string is ALSO a valid IPv6 address, so either reading is wrong half
+    the time, and guessing "port" mangles a bare address into a host that
+    never connects. Brackets are the only unambiguous form, and the error says
+    so.
+    """
+    import ipaddress
+
+    ambiguous = "2606:4700:4700::1111:443"
+    ipaddress.ip_address(ambiguous)  # it really is a valid address
+    with pytest.raises(ValueError, match="bracket"):
+        parse_anchor(ambiguous)
 
 
 def test_parse_anchor_strips_the_brackets_an_ipv6_literal_may_carry():
@@ -232,7 +242,7 @@ async def test_throughput_refuses_a_transfer_too_fast_to_measure(
     got = await probe.throughput(nbytes=asked)
     assert not got.ok
     # Floor read off the module, never restated as a literal here.
-    assert got.elapsed_s < MIN_ELAPSED_S
+    assert got.elapsed_s <= MIN_ELAPSED_S
     assert "too fast" in got.error
     assert got.bytes_per_s == 0.0
     # The counts survive a refusal — `/net` prints them to explain itself.
@@ -254,3 +264,145 @@ async def test_throughput_reports_a_dead_host_without_raising(httpx_mock):
     got = await throughput(nbytes=asked)
     assert not got.ok
     assert got.error
+
+
+def test_parse_anchor_refuses_a_port_less_ipv6_literal():
+    """I7. `rpartition` on a bare literal takes the last hextet for a port:
+    "2606:4700:4700::1111" became ("2606:4700:4700:", 1111), a host that never
+    connects — so a working network reads as a permanent `✗ no egress` with
+    nothing pointing at the config. A bare IPv4 is already refused, which is
+    what makes accepting the IPv6 form surprising.
+    """
+    for text in ("2606:4700:4700::1111", "::1", "fe80::1"):
+        with pytest.raises(ValueError):
+            parse_anchor(text)
+
+
+def test_parse_anchor_takes_the_bracketed_v6_form():
+    assert parse_anchor("[2606:4700:4700::1111]:443") == (
+        "2606:4700:4700::1111", 443,
+    )
+    assert parse_anchor("[::1]:8080") == ("::1", 8080)
+
+
+def test_parse_anchor_refuses_a_bracketed_host_with_no_port():
+    with pytest.raises(ValueError):
+        parse_anchor("[::1]")
+
+
+@pytest.mark.asyncio
+async def test_throughput_reports_a_complete_transfer_however_fast_it_was():
+    """M13, re-graded. The floor exists to stop a division by a hair, but it was
+    discarding transfers that DELIVERED — 1 MB under 10ms is above 800 Mbps,
+    which a datacentre link does, so the row vanished exactly where the link was
+    good. A complete transfer is a reading.
+    """
+    from types import SimpleNamespace
+
+    import aegis.net.probe as probe
+
+    asked = 1_000_000
+    ticks = iter([100.0, 100.0 + 0.002])  # a 2 ms transfer
+    monkeypatched = SimpleNamespace(monotonic=lambda: next(ticks))
+
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(probe, "time", monkeypatched)
+        mp.setattr("httpx.AsyncClient", _instant_client(asked))
+        got = await probe.throughput(nbytes=asked)
+
+    assert got.ok, f"a complete transfer was discarded: {got.error}"
+    assert got.complete
+    assert got.bytes_per_s > 0
+
+
+@pytest.mark.asyncio
+async def test_throughput_gives_up_on_a_link_that_only_dribbles():
+    """I5. httpx's read timeout caps the GAP between chunks, not the transfer,
+    so a link that keeps trickling is never cut off — and because `_loop` awaits
+    refresh, the whole NET row freezes for as long as it trickles.
+    """
+    import aegis.net.probe as probe
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("httpx.AsyncClient", _dribbling_client())
+        # Outer bound so the missing budget FAILS rather than hanging the suite:
+        # the whole point of the defect is that nothing stops the transfer.
+        try:
+            got = await asyncio.wait_for(
+                probe.throughput(nbytes=1_000_000, timeout=0.05), 5.0
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            pytest.fail(
+                "throughput never gave up: a 0.05s timeout ran past 5s, because "
+                "httpx's read timeout caps the gap between chunks, not the transfer"
+            )
+
+    assert not got.ok
+    assert "timeout" in got.error.lower()
+    assert got.received > 0, "the bytes that did arrive were not counted"
+
+
+def _instant_client(total: int):
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        async def aiter_bytes(self):
+            yield b"x" * total
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Resp()
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Client:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def stream(self, method, url):
+            return _Stream()
+
+    return _Client
+
+
+def _dribbling_client():
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        async def aiter_bytes(self):
+            while True:
+                await asyncio.sleep(0.005)
+                yield b"x" * 8
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Resp()
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Client:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def stream(self, method, url):
+            return _Stream()
+
+    return _Client

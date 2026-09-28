@@ -47,8 +47,14 @@ def _lines(state) -> list[str]:
     for label, rtt in found.per_anchor:
         out.append(f"  {label:<26}{'—' if rtt is None else f'{rtt:.0f}ms'}")
     trace = state.trace
-    if trace is not None and trace.ok:
+    if trace is not None and trace.ip:
         out.append(f"exit ip   {trace.ip}")
+        # Say so when this is a kept address rather than a fresh one, for the
+        # same reason the sidebar dates it: a captive portal completes the
+        # handshake and blocks the lookup, so the address on screen can be the
+        # previous network's.
+        if state.trace_error:
+            out.append(f"          not re-confirmed: {state.trace_error}")
         if trace.colo:
             where = f"{trace.colo} ({trace.loc})" if trace.loc else trace.colo
             out.append(f"colo      {where}")

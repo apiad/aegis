@@ -2534,6 +2534,11 @@ class AegisApp(App):
         self.exit()
 
     def on_unmount(self) -> None:
+        # Textual dispatches Unmount on every shutdown path; `action_quit`
+        # covers only one, so the probe loop is released here too. Sync, hence
+        # `cancel()` rather than `await stop()`.
+        if getattr(self, "net_service", None) is not None:
+            self.net_service.cancel()
         # Textual dispatches Unmount on every shutdown path, not just the
         # one action_quit takes. The file indexer's watchdog observer holds
         # an inotify instance and the kernel hands out 128 per user, so

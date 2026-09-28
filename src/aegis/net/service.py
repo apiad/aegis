@@ -52,6 +52,10 @@ class NetState:
     trace_at: float = 0.0
     speed: Throughput | None = None
     speed_at: float = 0.0
+    # Non-empty when the LAST lookup attempt failed while an earlier address
+    # was kept. The address is still the best guess and stays on screen; this
+    # is what lets the renderer date it instead of presenting it as current.
+    trace_error: str = ""
 
     @property
     def sampled(self) -> bool:
@@ -74,6 +78,12 @@ class NetService:
         # mistaken for egress "coming back" and does not force a second trace
         # on top of the one the first refresh already takes.
         self._was_ok: bool | None = None
+        # `/net` awaits refresh(force_speed=True) for up to speed_timeout while
+        # `_loop` keeps sampling on its own cadence. refresh() reads _state,
+        # awaits, then writes, so unserialised the slow caller stamps its
+        # pre-outage snapshot over the reading that saw the outage — and the
+        # sidebar goes green on a dead link.
+        self._lock = asyncio.Lock()
 
     @property
     def state(self) -> NetState:
@@ -89,6 +99,18 @@ class NetService:
             return
         self._task = asyncio.create_task(self._loop())
 
+    def cancel(self) -> None:
+        """Stop the loop without awaiting, for a synchronous teardown.
+
+        `on_unmount` is not a coroutine, and Textual dispatches Unmount on
+        every shutdown path where `action_quit` covers only one — so a service
+        released only in `action_quit` leaks a probe loop per app that exits
+        any other way, and the loop's bound method keeps the whole app alive.
+        """
+        task, self._task = self._task, None
+        if task is not None:
+            task.cancel()
+
     async def stop(self) -> None:
         task, self._task = self._task, None
         if task is None:
@@ -103,7 +125,15 @@ class NetService:
             await asyncio.sleep(self._cfg.interval)
 
     async def refresh(self, *, force_speed: bool = False) -> None:
-        """Take the readings that are due. Never raises."""
+        """Take the readings that are due. Never raises.
+
+        Serialised: see `self._lock`. `/net` and the background loop both call
+        this, and a read-await-write body cannot be interleaved safely.
+        """
+        async with self._lock:
+            await self._refresh(force_speed=force_speed)
+
+    async def _refresh(self, *, force_speed: bool) -> None:
         now = self._clock()
         try:
             found = await self._probes.reach(self._cfg.anchors, self._cfg.timeout)
@@ -143,9 +173,13 @@ class NetService:
         would blank is the one that tells you which network you fell onto. A
         failure is recorded only when there is nothing to lose.
         """
-        if found.ok or state.trace is None:
-            return replace(state, trace=found, trace_at=now)
-        return state
+        if found.ok:
+            return replace(state, trace=found, trace_at=now, trace_error="")
+        if state.trace is None:
+            return replace(state, trace=found, trace_at=now, trace_error=found.error)
+        # Keep the address and record that it was not re-confirmed, so the row
+        # can show its age rather than pass a stale address off as current.
+        return replace(state, trace_error=found.error or "lookup failed")
 
     async def _trace(self) -> Trace:
         try:

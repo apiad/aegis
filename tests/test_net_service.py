@@ -7,6 +7,7 @@ back, and what survives a failure.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 import pytest
@@ -334,3 +335,77 @@ async def test_a_hermetic_test_never_reaches_the_real_probes(monkeypatch):
     await svc.refresh(force_speed=True)
 
     assert not called, f"the service reached the real probe module: {called}"
+
+
+@pytest.mark.asyncio
+async def test_a_slow_refresh_does_not_clobber_a_newer_reading():
+    """C1. `/net` awaits refresh(force_speed=True) for up to speed_timeout while
+    `_loop` keeps refreshing on its own cadence, and refresh() reads _state,
+    awaits, then blind-writes. Unserialised, the slow caller stamps its
+    pre-outage snapshot over the live one and the sidebar goes green on a dead
+    link.
+    """
+    clock = Clock()
+    release = asyncio.Event()
+    seen = {"n": 0}
+
+    async def reach(anchors, timeout):
+        seen["n"] += 1
+        # First sample is healthy; every later one sees the link gone.
+        return Reach(ok=True, rtt_ms=10.0) if seen["n"] == 1 else Reach(
+            ok=False, error="unreachable"
+        )
+
+    async def trace(timeout):
+        return Trace(ok=True, ip="1.2.3.4")
+
+    async def slow_speed(nbytes, timeout):
+        await release.wait()
+        return Throughput(ok=True, bytes_per_s=1e5, received=nbytes,
+                          asked=nbytes, elapsed_s=1.0)
+
+    svc = NetService(
+        Cfg(speed_interval=0.0),
+        probes=Probes(reach=reach, trace=trace, throughput=slow_speed),
+        clock=clock,
+    )
+
+    slow = asyncio.create_task(svc.refresh(force_speed=True))
+    await asyncio.sleep(0)            # let it reach the blocked speed probe
+    second = asyncio.create_task(svc.refresh())
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(slow, second)
+
+    assert not svc.state.reach.ok, (
+        "a refresh that started before the outage overwrote the reading that saw it"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_failed_lookup_is_recorded_so_the_row_can_age_itself():
+    """C2's data half: keeping the old address is right, but something has to
+    mark it as not re-confirmed, or the renderer cannot say so."""
+    clock, spy = Clock(), Spy()
+    cfg = Cfg()
+    spy.traces = [Trace(ok=True, ip="1.2.3.4"), Trace(ok=False, error="no exit ip")]
+    svc = _service(clock, spy, cfg)
+    await svc.refresh()
+    assert svc.state.trace_error == ""
+    clock.advance(cfg.trace_interval)
+    await svc.refresh()
+
+    assert svc.state.trace.ip == "1.2.3.4"
+    assert svc.state.trace_error, "a failed lookup left no trace of itself"
+
+
+@pytest.mark.asyncio
+async def test_cancel_stops_the_loop_without_awaiting():
+    """I4. `on_unmount` is not a coroutine, so the teardown it needs cannot be
+    `await stop()`."""
+    clock, spy = Clock(), Spy()
+    svc = _service(clock, spy)
+    svc.start()
+    assert svc.started
+    svc.cancel()
+    assert not svc.started

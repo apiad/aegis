@@ -120,3 +120,23 @@ def test_the_megabyte_probe_gets_its_own_timeout_not_the_handshakes():
 def test_a_non_positive_speed_timeout_is_refused():
     with pytest.raises(ConfigError):
         _build_network({"speed_timeout": 0})
+
+
+def test_every_interval_and_timeout_must_be_positive():
+    """C3. `interval: 0` makes `_loop` a hot loop: refresh() then sleep(0), i.e.
+    tens of thousands of real handshakes a second against 1.1.1.1 and 8.8.8.8.
+    The docs teach `speed_interval: 0` as "off", so reading `interval: 0` the
+    same way is the obvious mistake to make.
+    """
+    for key in ("interval", "trace_interval", "timeout"):
+        with pytest.raises(ConfigError) as caught:
+            _build_network({key: 0})
+        assert key in str(caught.value)
+        with pytest.raises(ConfigError):
+            _build_network({key: -5})
+
+
+def test_speed_interval_may_be_zero_because_that_is_how_it_is_switched_off():
+    assert _build_network({"speed_interval": 0}).speed_interval == 0.0
+    with pytest.raises(ConfigError):
+        _build_network({"speed_interval": -1})

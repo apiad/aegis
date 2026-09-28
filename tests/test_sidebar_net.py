@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from aegis.config import Agent
+from aegis.config import Agent, NetworkConfig
 from aegis.events import Result
 from aegis.net.probe import Reach, Trace
 from aegis.net.service import NetState
@@ -46,10 +46,12 @@ class FakeMCP:
     async def stop(self): pass
 
 
-def _app():
+def _app(network=None):
     def make(agent, mcp_url, handle, **kw):
         return FakeSession()
-    return AegisApp({"default": _agent()}, "default", make, FakeMCP())
+    return AegisApp(
+        {"default": _agent()}, "default", make, FakeMCP(), network=network
+    )
 
 
 def _painted(pane) -> str:
@@ -135,14 +137,35 @@ async def test_a_narrow_column_keeps_the_reading_and_drops_the_address():
 
 
 @pytest.mark.asyncio
-async def test_no_network_state_means_no_network_rows():
-    """`network.enabled: false` never builds a service, so nothing is pushed
-    and the block is exactly what it was before this feature."""
-    app = _app()
+async def test_disabled_probing_builds_no_service_and_paints_no_rows():
+    """I6, rewritten after review.
+
+    The earlier version passed `network=None`, which becomes
+    `NetworkConfig(enabled=True)` — so it never exercised the disabled branch
+    at all, and what it actually asserted was that the 1s `_tick` had not
+    fired yet. It went red under a 1.2s pause. This drives the tick on purpose
+    and names the config it is testing.
+    """
+    app = _app(network=NetworkConfig(enabled=False))
     async with app.run_test(size=(120, 40)) as pilot:
         pane = app._panes[0]
         pane.toggle_task_dock()
+        app._tick()
         await pilot.pause()
+
+        assert app.net_service is None, "a disabled config still built a service"
         painted = _painted(pane)
         assert "SYSTEM" in painted
         assert "NET" not in painted
+
+
+@pytest.mark.asyncio
+async def test_the_probe_loop_does_not_outlive_the_app():
+    """I4. The teardown lived only in `action_quit`; Textual unmounts on every
+    shutdown path, and a leaked loop holds the whole app alive through its
+    bound method."""
+    app = _app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._tick()
+        assert app.net_service.started, "the tick did not start the service"
+    assert not app.net_service.started, "the probe loop outlived the app"

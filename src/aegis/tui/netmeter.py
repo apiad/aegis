@@ -77,7 +77,7 @@ def format_net_tiers(state, colors, now: float) -> tuple[str, ...]:
     return tuple(f"{head}{tier}" for tier in dict.fromkeys(tiers))
 
 
-def format_exit_ip(state, colors) -> tuple[str, ...]:
+def format_exit_ip(state, colors, now: float) -> tuple[str, ...]:
     """The exit-IP row. One tier, deliberately.
 
     `fit_rows` drops a segment whose narrowest tier still overflows rather
@@ -88,6 +88,14 @@ def format_exit_ip(state, colors) -> tuple[str, ...]:
     tier would recreate it.
     """
     trace = getattr(state, "trace", None)
-    if trace is None or not trace.ok or not trace.ip:
+    if trace is None or not trace.ip:
         return ()
-    return (f"{_INDENT}[{colors.muted}]{trace.ip}[/]",)
+    row = f"{_INDENT}[{colors.muted}]{trace.ip}[/]"
+    # An address that could not be re-confirmed is dated rather than shown as
+    # current. Move from home to a café whose portal completes the 443
+    # handshake but blocks the lookup hosts: reach succeeds, both lookups fail,
+    # the service rightly keeps the last address — and without this the panel
+    # shows your HOME address beside a green tick with nothing marking it old.
+    if getattr(state, "trace_error", ""):
+        row += f" [{colors.muted}]{format_age(max(0.0, now - state.trace_at))}[/]"
+    return (row,)

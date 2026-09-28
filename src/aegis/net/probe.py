@@ -28,10 +28,12 @@ TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
 TRACE_FALLBACK_URL = "https://ifconfig.me/ip"
 SPEED_URL = "https://speed.cloudflare.com/__down?bytes={bytes}"
 
-# Below this, a transfer has not been measured: dividing by it yields a
-# number with no upper bound, which renders as a triumphant meaningless
-# figure rather than as the absence of a reading.
-MIN_ELAPSED_S = 0.01
+# A transfer has to have taken measurable time; below this the division has
+# no meaning. Zero rather than a tenth of a second on purpose: a COMPLETE
+# megabyte that arrived in 2 ms is a real reading (about 4 Gbps), and the
+# earlier 10 ms floor discarded it — hiding the throughput row on exactly the
+# links that are fast enough for the answer to be good news.
+MIN_ELAPSED_S = 0.0
 
 
 @dataclass(frozen=True)
@@ -79,21 +81,39 @@ class Throughput:
 def parse_anchor(text: str) -> tuple[str, int]:
     """`"1.1.1.1:443"` or `"[2606:4700::1111]:443"` -> `(host, port)`.
 
-    Partitioned from the RIGHT, and brackets stripped. A left-to-right split
-    of `"2606:4700:4700::1111:443"` yields six fields and a host of `"2606"`,
-    which connects somewhere else or nowhere and reports it as a healthy
-    anchor — a probe lying in the one direction that matters.
+    An IPv6 anchor must be bracketed, and this is not pedantry: unbracketed,
+    the text is genuinely ambiguous. `"2606:4700:4700::1111:443"` is BOTH a
+    valid address and a plausible host:port, and either guess is wrong half the
+    time. Guessing "port" mangles a bare address into
+    `("2606:4700:4700:", 1111)`, a host that never connects — so a working link
+    reads as a permanent `✗ no egress` with nothing pointing at the config.
+    RFC 3986 settles it with brackets; so does this.
     """
-    host, sep, port = text.rpartition(":")
-    if not sep or not host:
-        raise ValueError(f"anchor must be host:port, got {text!r}")
+    raw = text.strip()
+    if raw.startswith("["):
+        host, sep, rest = raw.partition("]")
+        host = host[1:]
+        if not sep or not rest.startswith(":"):
+            raise ValueError(f"bracketed anchor must be [host]:port, got {text!r}")
+        port = rest[1:]
+    elif _is_address(raw):
+        raise ValueError(
+            f"anchor needs a port, and an IPv6 address must be bracketed "
+            f"as [host]:port: {text!r}"
+        )
+    else:
+        host, sep, port = raw.rpartition(":")
+        if not sep or not host:
+            raise ValueError(f"anchor must be host:port, got {text!r}")
+        if ":" in host:
+            raise ValueError(f"bracket an IPv6 anchor as [host]:port: {text!r}")
     try:
         number = int(port)
     except ValueError:
         raise ValueError(f"anchor port must be a number, got {port!r}") from None
     if not 0 < number < 65536:
         raise ValueError(f"anchor port out of range: {number}")
-    return host.strip("[]"), number
+    return host, number
 
 
 def parse_trace(text: str) -> dict[str, str]:
@@ -210,35 +230,54 @@ async def throughput(
     if nbytes <= 0:
         return Throughput(ok=False, asked=nbytes, error="byte count must be positive")
     target = url.format(bytes=nbytes)
-    received = 0
-    started = time.monotonic()
-    try:
+    # Counted outside the coroutine so a timeout still reports what arrived —
+    # `/net` prints those bytes to explain why it has no rate.
+    counted = [0]
+
+    async def _pump() -> None:
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("GET", target) as response:
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
-                    received += len(chunk)
+                    counted[0] += len(chunk)
+
+    started = time.monotonic()
+    try:
+        # A budget for the whole transfer, which is what the config key
+        # promises. httpx has no total-request timeout: its read timeout caps
+        # the GAP between chunks, so a link that keeps trickling is never cut
+        # off — and because the service awaits this, the whole NET row freezes
+        # for as long as the trickle lasts.
+        await asyncio.wait_for(_pump(), timeout)
+    except (asyncio.TimeoutError, TimeoutError):
+        return Throughput(
+            ok=False,
+            received=counted[0],
+            asked=nbytes,
+            elapsed_s=time.monotonic() - started,
+            error="timeout",
+        )
     except Exception as exc:  # noqa: BLE001
         return Throughput(
             ok=False,
-            received=received,
+            received=counted[0],
             asked=nbytes,
             elapsed_s=time.monotonic() - started,
             error=type(exc).__name__,
         )
     elapsed = time.monotonic() - started
-    if elapsed < MIN_ELAPSED_S:
+    if elapsed <= MIN_ELAPSED_S:
         return Throughput(
             ok=False,
-            received=received,
+            received=counted[0],
             asked=nbytes,
             elapsed_s=elapsed,
             error="too fast to measure",
         )
     return Throughput(
         ok=True,
-        bytes_per_s=received / elapsed,
-        received=received,
+        bytes_per_s=counted[0] / elapsed,
+        received=counted[0],
         asked=nbytes,
         elapsed_s=elapsed,
     )
