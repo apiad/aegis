@@ -507,7 +507,9 @@ class _IndexHandler(FileSystemEventHandler):
             event.event_type == "modified" and not event.is_directory
         ):
             touched = (event.src_path, getattr(event, "dest_path", "") or "")
-            if any(p and self._idx._rules_touched(p, event.is_directory) for p in touched):
+            if any(
+                p and self._idx._rules_touched(p, event.is_directory) for p in touched
+            ):
                 self._idx._rules_changed()
         super().dispatch(event)
 
