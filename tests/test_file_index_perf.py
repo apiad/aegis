@@ -100,3 +100,68 @@ def test_ignored_directories_stay_out_of_the_index(tmp_path):
         assert idx.paths == ["src/app.py"]
     finally:
         idx.stop()
+
+
+def _indexer_over(paths: list[str], cwd="/ws") -> FileIndexer:
+    """An indexer holding ``paths`` as if a walk of ``cwd`` had found them."""
+    idx = FileIndexer()
+    idx._cwd = __import__("pathlib").Path(cwd)
+    idx._publish(paths)
+    return idx
+
+
+def test_a_delete_outside_the_index_does_not_scan_the_index():
+    """Every delete and every rename called ``list.remove`` over the whole
+    index, even for a path that was never in it. On the operator's 61k-path
+    Workspace that was 3.6ms per event with the GIL held; py-spy found the
+    daemon's watchdog thread in that one line on 6 of 6 samples, pinning a
+    core while test runs and git in other worktrees churned files."""
+    paths = [f"repos/proj{d:03d}/src/module_{f:05d}.py"
+             for d in range(60) for f in range(1000)]
+    idx = _indexer_over(paths)
+    misses = [f"/ws/repos/proj{d:03d}/src/module_{f:05d}.pyi"
+              for d in range(60) for f in range(0, 1000, 120)]
+
+    t = time.perf_counter()
+    for p in misses:
+        idx._remove(p)
+    elapsed = time.perf_counter() - t
+
+    assert len(idx.paths) == len(paths)
+    assert elapsed < 0.05, (
+        f"{1e3 * elapsed / len(misses):.2f}ms per miss — the index is "
+        f"being scanned linearly")
+
+
+def test_removing_a_path_keeps_the_index_sorted():
+    idx = _indexer_over(["a.py", "b.py", "c.py"])
+    idx._remove("/ws/b.py")
+    idx._remove("/ws/b.py")
+    idx._remove("/ws/zz.py")
+    assert idx.paths == ["a.py", "c.py"]
+
+
+def test_events_under_ignored_paths_touch_no_file(monkeypatch):
+    """Most of the events a busy tree fires are in .git, .venv and
+    __pycache__. The ignore rules are pure string checks, so such an event
+    must be dropped before it costs a stat."""
+    from pathlib import Path
+
+    stats: list[str] = []
+    real_stat = Path.stat
+
+    def counting_stat(self, *a, **k):
+        stats.append(str(self))
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
+    idx = _indexer_over(["src/app.py"])
+    for p in ("/ws/repo/.git/index.lock",
+              "/ws/repo/.venv/lib/site.py",
+              "/ws/src/__pycache__/app.cpython-313.pyc.4242",
+              "/ws/src/app.cpython-313.pyc",
+              "/ws/node_modules/x/index.js"):
+        idx._add(p)
+        idx._remove(p)
+    assert stats == []
+    assert idx.paths == ["src/app.py"]
