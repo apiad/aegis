@@ -79,3 +79,27 @@ async def test_the_replay_does_not_discard_what_arrived_while_it_waited():
             f"history is {payloads}")
         assert len(pane._history) > 1, \
             "the prior conversation was not replayed at all"
+
+
+@pytest.mark.asyncio
+async def test_a_pane_mounted_over_a_working_session_says_it_is_working():
+    """`on_mount` stamped the status bar `ready` whatever the session was
+    doing, so a pane built over a busy session read idle until the next
+    state change. A queue worker resumed on its own handle is mounted just
+    after its nudge turn starts, and sat there reading idle. Issue #27."""
+    from aegis.tui.state import AgentState
+    from aegis.tui.widgets import StatusBar
+
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        core = app._active._core
+        core.state = AgentState.working
+        pane = ConversationPane(None, _agent(), "default", "busy-brain3",
+                                app._palette, core=core,
+                                replay=_replay(), project_root=Path.cwd())
+        await app.query_one("ContentSwitcher").mount(pane)
+        await pilot.pause()
+
+        assert pane.query_one(StatusBar)._state is AgentState.working
+        assert pane.has_class("working")
