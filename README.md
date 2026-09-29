@@ -750,9 +750,11 @@ exceptions that arrive inside a Textual `WorkerFailed`. Details in
 If the cursor, the working spinner, and scrolling all **flicker or stutter as
 if two frame rates are fighting** — and it starts or stops when you **plug in a
 monitor, close the laptop lid, or wake from sleep** — this is **not an aegis
-bug**. aegis sets no custom render options, and Textual already negotiates the
-terminal's synchronized-output (DEC mode 2026) protocol so frames are emitted
-atomically. The flicker is one layer
+bug**. aegis sets no custom render options, and Textual wraps each frame in the
+synchronized-output (DEC mode 2026) protocol, which makes it atomic on terminals
+that implement the protocol. VTE terminals do not; rows that duplicate for a frame
+while scrolling are a different problem, covered in
+[Known issues](docs/known-issues.md). The flicker is one layer
 lower: your **terminal emulator's GPU renderer pacing against a display whose
 refresh rate just changed**. It affects every TUI (btop, htop, …), not just
 aegis, and the fix is a terminal/GPU setting.

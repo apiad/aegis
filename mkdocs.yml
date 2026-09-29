@@ -96,3 +96,4 @@ nav:
       - Architecture: architecture.md
       - API: api.md
       - Roadmap: roadmap.md
+      - Known issues: known-issues.md
