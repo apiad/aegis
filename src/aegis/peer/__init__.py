@@ -44,7 +44,14 @@ TEASER_ITEM_CHARS = 200
 
 # What ``aegis_read_peer`` returns when the teaser was not enough. Wider
 # than the teaser by design — that gap is the entire push-vs-pull split.
-READ_BUDGET_TOKENS = 24_000
+#
+# The tool collapses tool calls by default (``tools=False``), so this budget
+# buys conversation, not command output. Measured 2026-09-29 over 569 real
+# September logs: the old 12 turns / 24k window ran 33.5k chars at the median
+# and 95.5k (the cap) at p90; 4 turns / 10k with tools collapsed runs 8.5k and
+# 16.2k, and the budget binds in only 4% of windows. Issue #24.
+READ_MAX_TURNS = 4
+READ_BUDGET_TOKENS = 10_000
 READ_ITEM_CHARS = 500
 
 
@@ -192,9 +199,10 @@ async def teaser(state_dir, log_id):
 async def read_window(
     state_dir,
     log_id,
-    turns: int = 12,
+    turns: int | None = None,
     budget_tokens: int | None = None,
     item_chars: int | None = None,
+    tools: bool = True,
 ) -> dict:
     """Window a peer's transcript for ``aegis_read_peer``.
 
@@ -227,9 +235,10 @@ async def read_window(
         replay = await asyncio.to_thread(session_log.replay_events, state_dir, log_id)
         w = assemble(
             replay,
-            max_turns=turns,
+            max_turns=turns or READ_MAX_TURNS,
             budget_tokens=budget_tokens or READ_BUDGET_TOKENS,
             item_chars=item_chars or READ_ITEM_CHARS,
+            tools=tools,
         )
     except Exception as e:  # noqa: BLE001
         return {
@@ -356,8 +365,7 @@ def compose_spawn(
     Spec: ``docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md``
     """
     return (
-        f"The operator started you from inside another conversation — tab "
-        f"`{source}` ({slug}) — and this probably refers to what is "
+        f"{_SPAWN_HEAD}`{source}` ({slug}) — and this probably refers to what is "
         f"happening there. Below is the recent tail of it — {header}.\n\n"
         f"{_fence(tail)}\n\n"
         f'Read the fuller conversation with aegis_read_peer("{source}") '
@@ -367,7 +375,48 @@ def compose_spawn(
         f"Then do the work — you are a real agent with your own tab, not "
         f"a question being answered. When you are done, hand the result "
         f'back with aegis_handoff to "{source}" if it matters there.\n\n'
-        f"The operator's task: {prompt}"
+        f"{_SPAWN_TASK}{prompt}"
+    )
+
+
+# The two fixed strings ``split_spawn`` reads back. Shared with
+# ``compose_spawn`` so a rewording cannot silently stop the pane from
+# recognising the opening it composed.
+_SPAWN_HEAD = "The operator started you from inside another conversation — tab "
+_SPAWN_TASK = "The operator's task: "
+_SPAWN_SHAPE = re.compile(
+    re.escape(_SPAWN_HEAD)
+    + r"`(?P<source>[^`]+)`.*?Below is the recent tail of it — (?P<header>.*?)\.\n\n"
+    + r"(?P<bars>`{3,})text\n(?P<tail>.*?)\n(?P=bars)\n\n.*\n\n"
+    + re.escape(_SPAWN_TASK)
+    + r"(?P<task>.*)\Z",
+    re.S,
+)
+
+
+@dataclass(frozen=True)
+class SpawnOpening:
+    """A ``compose_spawn`` opening taken apart for display."""
+
+    source: str
+    header: str
+    tail: str
+    task: str
+
+
+def split_spawn(text: str) -> SpawnOpening | None:
+    """The parts of a ``/spawn`` opening, or None for any other message.
+
+    The agent reads the opening in the order ``compose_spawn`` wrote it, task
+    last. The operator reads it in the new tab, where that order buries the
+    one line they typed under a few dozen lines of someone else's transcript,
+    so the pane redraws it task first. Issue #24.
+    """
+    m = _SPAWN_SHAPE.match(text.strip())
+    if m is None:
+        return None
+    return SpawnOpening(
+        source=m["source"], header=m["header"], tail=m["tail"], task=m["task"]
     )
 
 

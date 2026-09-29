@@ -1057,6 +1057,12 @@ class ConversationPane(Widget):
         self._on_first_result = on_first_result
         self._first_result_fired = False
         self._opening_text = ""
+        # True between this pane putting a turn's text on screen and claude
+        # echoing it back as a UserMessage. Only that one echo is dropped: a
+        # turn started elsewhere (the brain's opening prompt for /spawn,
+        # aegis_spawn, a queue worker) arrives with nothing mounted, and its
+        # echo is the only way its text reaches this pane. Issue #24.
+        self._echo_expected = False
         # Streaming aggregation state: while inside a run of
         # AssistantText (or AssistantThinking) events we accumulate
         # into one CopyableBlock and update it in place.
@@ -2396,6 +2402,7 @@ class ConversationPane(Widget):
         self._flush_streaming()
         width = self._transcript().size.width or 80
         self._mount_block(render_user_block(text, self._palette, width), text)
+        self._echo_expected = True
         self._start_indicator()
         self.run_worker(self._core.send(text), group="turn", exclusive=True)
 
@@ -2517,6 +2524,9 @@ class ConversationPane(Widget):
             # dispatch, so the failure lands as a logged ERROR rather than
             # anywhere useful — and there is nothing left to render into.
             return
+        # Every dispatched batch is already on screen: user lines just
+        # below, anything else as an inbox block when it arrived.
+        self._echo_expected = True
         width = self._transcript().size.width or 80
         for msg in batch:
             if msg.sender == "user":
@@ -2671,14 +2681,25 @@ class ConversationPane(Widget):
             self._tools[ev.tool_call_id] = track
             self._ensure_tool_timer()
         elif isinstance(ev, UserMessage):
-            # Already on screen: the pane mounts the user's line at send
-            # time. This is claude's --replay-user-messages echo, which the
-            # log keeps so replay can rebuild the dialogue — but rendering
-            # it here would print the message a second time.
-            pass
+            # claude's --replay-user-messages echo. When this pane mounted
+            # the turn's text itself, drawing the echo would print it twice.
+            # Otherwise the echo is the only copy that reaches the screen,
+            # exactly as replay draws it.
+            if self._echo_expected:
+                self._echo_expected = False
+            elif ev.text.strip():
+                self._flush_streaming()
+                width = self._transcript().size.width or 80
+                self._mount_block(
+                    render_user_block(ev.text.strip(), self._palette, width),
+                    ev.text.strip(),
+                )
         elif isinstance(ev, AgentPlan) and self._replace_plan_block(ev):
             pass  # the plan mutated in place; no new block
         else:
+            if isinstance(ev, Result):
+                # A turn whose echo never came must not eat the next one's.
+                self._echo_expected = False
             self._flush_streaming()
             renderable = render_event(ev, self._palette)
             if renderable is not None:
