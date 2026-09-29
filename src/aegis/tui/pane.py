@@ -201,6 +201,7 @@ class _ResultBlock:
     idx: int  # history index of its record
     ended_at: float  # time.time() when it landed
     shown: str = ""  # last age string rendered
+    warned: bool = False  # the cold-cache warning for this turn is up
 
 
 def replay_blocks(replay: EventReplay, colors=None) -> list[RenderableType]:
@@ -2724,11 +2725,35 @@ class ConversationPane(Widget):
         if r is None:
             return
         age = time.time() - r.ended_at
+        if not r.warned:
+            self._warn_if_cache_cold(r, age)
         shown = format_age(age)
         if shown == r.shown:
             return
         r.shown = shown
         self._paint_result(r, age_s=age)
+
+    def _warn_if_cache_cold(self, r: _ResultBlock, idle_s: float) -> None:
+        """Say so once the next message would re-read this context uncached.
+
+        Rides the result-age tick, which runs for the tab on screen and on
+        show, so the warning lands when the operator comes back to the tab,
+        which is when they are about to send. Once per turn: ``r`` is
+        replaced when the next turn ends. Issue #25.
+        """
+        from aegis.cold_cache import cold_cache_warning
+
+        text = cold_cache_warning(
+            harness=getattr(self._agent, "harness", ""),
+            idle_s=idle_s,
+            context_tokens=self._core.metrics.last_true_input,
+            agent_slug=self.agent_slug,
+        )
+        if text is None:
+            return
+        r.warned = True
+        self._flush_streaming()
+        self._mount_block(Text(f"⚠ {text}", style=self._palette.working), text)
 
     def _fold_tool_result(self, ev: ToolResult) -> bool:
         """Render a ToolResult *inside* its matching ToolUse block. Returns
