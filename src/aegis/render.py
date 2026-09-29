@@ -496,10 +496,24 @@ def render_user_block(text: str, colors, width: int | None = None) -> Panel:
     grid = Table.grid(padding=(0, 1))
     grid.add_column(width=1, no_wrap=True)
     grid.add_column(ratio=1, overflow="fold")
-    grid.add_row(
-        Text("›", style=f"bold {colors.user}"),
-        Markdown(_keep_tag_lines_visible(text)),
-    )
+    from aegis.peer import _fence, split_spawn
+
+    spawn = split_spawn(text)
+    if spawn is None:
+        body: RenderableType = Markdown(_keep_tag_lines_visible(text))
+    else:
+        # A /spawn opening: the operator's words first, then where they
+        # came from, then the tail the agent was handed. The agent reads
+        # it the other way round; see ``split_spawn``.
+        body = Group(
+            Markdown(_keep_tag_lines_visible(spawn.task)),
+            Text(
+                f"spawned from {spawn.source} · carried {spawn.header}",
+                style=f"italic {colors.muted}",
+            ),
+            Markdown(_fence(spawn.tail)),
+        )
+    grid.add_row(Text("›", style=f"bold {colors.user}"), body)
     return Panel(
         grid,
         box=_USER_BOX,
