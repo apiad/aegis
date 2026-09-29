@@ -1473,25 +1473,69 @@ class ConversationPane(Widget):
         # exactly len(records); then the replay's own map goes in. One map
         # for both paths — a second, divergent one is how the replayed half
         # of a transcript ends up behaving differently from the live half.
-        self._tool_use_idx = {
-            tid: idx + len(records) for tid, idx in self._tool_use_idx.items()
-        }
+        n = len(records)
+        self._tool_use_idx = {tid: idx + n for tid, idx in self._tool_use_idx.items()}
         self._tool_use_idx.update(use_idx)
+        # Every other index into `_history` moves down with it.
+        for track in self._tools.values():
+            track.idx += n
+        if self._streaming_history_idx is not None:
+            self._streaming_history_idx += n
+        self._plan_blocks = {k: (b, i + n) for k, (b, i) in self._plan_blocks.items()}
+        if self._last_result is not None:
+            self._last_result.idx += n
         self._history = records + self._history
-        self._window_start = max(0, len(records) - REPLAY_TAIL)
-        self._window_end = len(records)
+        # The window runs to the end of the history, live records included.
+        # It stopped at the replay, so what arrived before the first show was
+        # never drawn, and `_window_end` lagging the history made
+        # `_mount_block` treat every later block as a truncated tail and
+        # leave it undrawn too: the tab froze until it was reopened. #16.
+        self._window_start = max(0, len(self._history) - REPLAY_TAIL)
+        self._window_end = len(self._history)
         t = self._transcript()
-        for rec in records[self._window_start :]:
-            block = CopyableBlock(
+        # Whatever the live half already drew goes too: it is re-drawn below
+        # in its place after the replay, not left above it and repeated.
+        if self._mounted_blocks:
+            with contextlib.suppress(Exception):
+                t.remove_children(list(self._mounted_blocks))
+            self._mounted_blocks.clear()
+        blocks = [
+            CopyableBlock(
                 rec.materialize(self._palette),
                 rec.payload,
                 tight=rec.tight,
                 tool_call_id=rec.tool_call_id,
                 file_target=rec.file_target,
             )
-            t.mount(block)
-            self._mounted_blocks.append(block)
+            for rec in self._history[self._window_start :]
+        ]
+        if blocks:
+            ind = self._working_indicator()
+            if ind is not None and ind.parent is t:
+                t.mount(*blocks, before=ind)
+            else:
+                t.mount(*blocks)
+        self._mounted_blocks.extend(blocks)
+        # Live records built their widgets before there was a tree to put them
+        # in; point what holds one at the widget that is actually mounted.
+        self._streaming_block = self._block_at(self._streaming_history_idx)
+        self._plan_blocks = {
+            k: (self._block_at(i) or b, i) for k, (b, i) in self._plan_blocks.items()
+        }
+        if self._last_result is not None:
+            self._last_result.block = (
+                self._block_at(self._last_result.idx) or self._last_result.block
+            )
         t.scroll_end(animate=False)
+
+    def _block_at(self, idx: int | None) -> "CopyableBlock | None":
+        """The mounted widget for history record ``idx``, or None."""
+        if idx is None:
+            return None
+        pos = idx - self._window_start
+        if 0 <= pos < len(self._mounted_blocks):
+            return self._mounted_blocks[pos]
+        return None
 
     def _bar(self) -> "StatusBar | None":
         """The pane's StatusBar, cached — or None before it mounts.
