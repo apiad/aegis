@@ -200,3 +200,20 @@ def test_peer_is_deferred_with_an_honest_cancel_note():
     assert "cancelled" not in note.lower(), (
         "the peer's turn is real and completes regardless — nothing was "
         "cancelled, the operator stopped waiting")
+
+
+@pytest.mark.asyncio
+async def test_read_window_can_collapse_tool_calls(monkeypatch):
+    from aegis.events import ToolResult, ToolUse
+
+    monkeypatch.setattr(
+        "aegis.state.session_log.replay_events",
+        lambda *a, **k: EventReplay(events=[
+            UserMessage(text="check it"),
+            ToolUse(name="Bash", summary="make test"),
+            ToolResult(text="SECRET-OUTPUT", is_error=False),
+            AssistantText(text="green"),
+            Result(duration_ms=1, is_error=False)], interrupted=False))
+    got = await read_window("/state", "log-1", tools=False)
+    assert "tools: Bash" in got["text"]
+    assert "SECRET-OUTPUT" not in got["text"]

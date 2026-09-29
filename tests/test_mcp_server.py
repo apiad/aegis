@@ -559,3 +559,30 @@ async def test_aegis_rename_can_carry_a_title():
                       new_handle="fix-eviction", title="eviction race")
     assert out["ok"] is True
     assert br._titles["fix-eviction"] == ("eviction race", "agent")
+
+
+# ---------- aegis_read_peer: small by default, tools on request (#24) -------
+
+class _ReadingBridge(FakeBridge):
+    def __init__(self):
+        super().__init__()
+        self.reads = []
+
+    async def read_peer(self, handle, turns=12, budget_tokens=None,
+                        item_chars=None, tools=True):
+        self.reads.append({"handle": handle, "turns": turns, "tools": tools})
+        return {"ok": True, "text": "", "header": "", "error": ""}
+
+
+@pytest.mark.asyncio
+async def test_read_peer_collapses_tool_calls_unless_asked():
+    from aegis.peer import READ_MAX_TURNS
+
+    br = _ReadingBridge()
+    srv = build_server(br)
+    await _call(srv, "aegis_read_peer", handle="alpha")
+    await _call(srv, "aegis_read_peer", handle="alpha", tools=True)
+    assert br.reads == [
+        {"handle": "alpha", "turns": READ_MAX_TURNS, "tools": False},
+        {"handle": "alpha", "turns": READ_MAX_TURNS, "tools": True},
+    ]

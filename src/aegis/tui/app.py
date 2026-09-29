@@ -2871,9 +2871,10 @@ class AegisApp(App):
     async def read_peer(
         self,
         handle: str,
-        turns: int = 12,
+        turns: int | None = None,
         budget_tokens: int | None = None,
         item_chars: int | None = None,
+        tools: bool = True,
     ) -> dict:
         """AppBridge-shaped: window a live peer's transcript.
 
@@ -2902,7 +2903,7 @@ class AegisApp(App):
                 "error": f"unknown session: {handle}",
             }
         return await read_window(
-            self._state_dir, pane.log_id, turns, budget_tokens, item_chars
+            self._state_dir, pane.log_id, turns, budget_tokens, item_chars, tools
         )
 
     async def close(self, handle: str) -> None:

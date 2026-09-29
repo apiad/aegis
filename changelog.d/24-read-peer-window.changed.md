@@ -1,0 +1,1 @@
+- **`aegis_read_peer` returns the conversation, not the command output.** The default window is 4 turns and 10k tokens instead of 12 and 24k, and each run of tool calls collapses to one `tools: Bash×3, Read` line; `tools=True` brings the calls and their results back. Over 569 real logs the median window fell from 33.5k to 8.5k characters and p90 from 95.5k to 16.2k.

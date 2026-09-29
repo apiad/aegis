@@ -83,7 +83,7 @@ PROSE_SHARE = 0.6
 _TIERS: tuple[tuple[tuple[str, ...], float], ...] = (
     (("user:",), 1.0),
     (("assistant:", "plan:"), PROSE_SHARE),
-    (("tool:", "result"), 1.0),
+    (("tool:", "tools:", "result"), 1.0),
     (("assistant:", "plan:"), 1.0),
 )
 
@@ -194,6 +194,7 @@ def assemble(
     max_turns: int = MAX_TURNS,
     budget_tokens: int = BUDGET_TOKENS,
     item_chars: int = ITEM_CHARS,
+    tools: bool = True,
 ) -> Window:
     """Fill a window backwards from the newest event until a bound trips.
 
@@ -221,9 +222,33 @@ def assemble(
     bound = "all"
     saw_result = trailing = False
 
+    # tools=False: a run of consecutive tool calls becomes one line, and
+    # their results are dropped. Done here rather than after admission, so
+    # the room the calls no longer take goes to the conversation.
+    run: list[str] = []  # tool names, newest first
+    run_pos = 0
+
+    def flush_run() -> None:
+        if not run:
+            return
+        counts: dict[str, int] = {}
+        for name in reversed(run):
+            counts[name] = counts.get(name, 0) + 1
+        names = ", ".join(f"{n}×{c}" if c > 1 else n for n, c in counts.items())
+        candidates.append((run_pos, f"tools: {names}", False))
+        run.clear()
+
     for pos in range(len(events) - 1, -1, -1):
         ev = events[pos]
+        if not tools and isinstance(ev, (ToolUse, ToolResult)):
+            if not saw_result:
+                trailing = True
+            if isinstance(ev, ToolUse):
+                run.append(ev.name)
+                run_pos = pos
+            continue
         if isinstance(ev, Result):
+            flush_run()
             saw_result = True
             if crossed >= max_turns:
                 bound = "turns"
@@ -236,7 +261,9 @@ def assemble(
         line, clipped = rendered
         if not saw_result:
             trailing = True
+        flush_run()
         candidates.append((pos, line, clipped))
+    flush_run()
 
     # Pass 2: admit by tier, each tier newest-first and bounded by its own
     # ceiling. This reorders which items get a seat and never the order they
