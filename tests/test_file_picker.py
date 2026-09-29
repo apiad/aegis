@@ -121,6 +121,38 @@ async def test_file_picker_uses_indexer(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_opening_the_picker_starts_an_idle_indexer(tmp_path: Path):
+    """The app only names the root at mount; the index is built when a
+    picker first asks for it (#21)."""
+    from aegis.tui.file_index import FileIndexer
+
+    (tmp_path / "late.py").write_text("x")
+
+    class _AppWithIdleIndexer(App):
+        def __init__(self) -> None:
+            super().__init__()
+            self._file_indexer = FileIndexer()
+            self._file_indexer.set_root(tmp_path)
+
+        def compose(self) -> ComposeResult:
+            yield FilePickerModal()
+
+    app = _AppWithIdleIndexer()
+    async with app.run_test() as pilot:
+        from textual.widgets import OptionList
+
+        ol = app.query_one("#fp-list", OptionList)
+        for _ in range(100):
+            await pilot.pause(0.05)
+            ids = [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+            if any("late.py" in (oid or "") for oid in ids):
+                break
+        else:
+            raise AssertionError(f"picker never listed late.py: {ids}")
+        app._file_indexer.stop()
+
+
+@pytest.mark.asyncio
 async def test_file_picker_top_match_highlighted(tmp_path: Path):
     """After filtering, the first match is always highlighted so Enter
     opens it without arrow-key navigation."""

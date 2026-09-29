@@ -1,8 +1,12 @@
 """Background file indexer with watchdog live updates.
 
-Walks ``cwd`` in a daemon thread on ``start()``, then registers a
-watchdog ``Observer`` to keep the list current as files are created,
-deleted, or moved.
+Nothing runs until the first query: ``use()`` walks ``cwd`` in a daemon
+thread, then registers a watchdog ``Observer`` to keep the list current
+as files are created, deleted, or moved. After ``IDLE_STOP_S`` without a
+query the observer stops; the index stays, stale, and the next ``use()``
+answers from it at once while a re-walk refreshes it. The observer puts a
+watch on every directory under cwd, 100,953 on the Workspace, and its
+event processing runs in the daemon's process whether anyone looks or not.
 
 Two layers of ignore rules. A fixed list (``.git``, ``.venv``,
 ``node_modules``, ``*.pyc``…) holds everywhere, as plain string checks.
@@ -189,21 +193,55 @@ class FileIndexer:
         self._observer: Observer | None = None
         self._ready = threading.Event()
         self._lock = threading.Lock()
+        #: guards the lifecycle: whether a walk or watcher is live, and when
+        #: the index was last asked for
+        self._life = threading.Lock()
+        self._running = False
+        self._last_use = 0.0
+        self._halt = threading.Event()
 
     # --- public API -------------------------------------------------
 
-    def start(self, cwd: Path) -> None:
-        """Start background walk + watchdog. Returns immediately."""
+    #: seconds without a query before the observer stops
+    IDLE_STOP_S = 600.0
+
+    def set_root(self, cwd: Path) -> None:
+        """Say what to index, without indexing it yet."""
         self._cwd = cwd.resolve()
         self._root = str(self._cwd)
-        threading.Thread(target=self._walk_then_watch, daemon=True).start()
+
+    def start(self, cwd: Path) -> None:
+        """Start background walk + watchdog now. Returns immediately."""
+        self.set_root(cwd)
+        self.use()
+
+    def use(self) -> None:
+        """A query is about to read the index: keep it awake, and start it,
+        or refresh it after an idle stop, when nothing is watching."""
+        if self._cwd is None:
+            return
+        with self._life:
+            self._last_use = time.monotonic()
+            if self._running:
+                return
+            self._running = True
+            self._halt.clear()
+        first = not self._ready.is_set()
+        threading.Thread(target=self._run, args=(first,), daemon=True).start()
 
     def stop(self) -> None:
-        if self._observer is not None:
-            self._observer.stop()
-            if self._observer.is_alive():
-                self._observer.join(timeout=2.0)
-            self._observer = None
+        self._halt.set()
+        with self._life:
+            observer, self._observer = self._observer, None
+            self._running = False
+        self._stop_observer(observer)
+
+    @staticmethod
+    def _stop_observer(observer: Observer | None) -> None:
+        if observer is not None:
+            observer.stop()
+            if observer.is_alive():
+                observer.join(timeout=2.0)
 
     @property
     def ready(self) -> bool:
@@ -246,10 +284,27 @@ class FileIndexer:
             if mtimes is not None:
                 self._mtimes.update(mtimes)
 
-    def _walk_then_watch(self) -> None:
-        self._walk()
-        self._start_observer()
+    def _run(self, first: bool) -> None:
+        """Walk, watch, and stop watching once nobody has asked for a while.
+
+        A first walk publishes as it goes. A refresh after an idle stop does
+        not: the stale index it replaces is still a good answer.
+        """
+        self._walk(partial=first)
+        with self._life:
+            if self._halt.is_set():
+                return  # stop() came during the walk
+            self._start_observer()
         self._ready.set()  # signal after observer is watching
+        interval = min(60.0, self.IDLE_STOP_S / 4)
+        while not self._halt.wait(interval):
+            with self._life:
+                if time.monotonic() - self._last_use < self.IDLE_STOP_S:
+                    continue
+                observer, self._observer = self._observer, None
+                self._running = False
+            self._stop_observer(observer)
+            return
 
     def _walk(self, partial: bool = True) -> None:
         """Walk cwd and publish what the rules keep.
