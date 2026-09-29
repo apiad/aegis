@@ -609,6 +609,8 @@ class CopyableBlock(Static):
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None:
+            indexer.use()
         paths = indexer.paths if (indexer is not None and indexer.ready) else []
         tokens = filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
@@ -659,6 +661,8 @@ class CopyableBlock(Static):
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None:
+            indexer.use()
         paths = indexer.paths if (indexer is not None and indexer.ready) else []
         urls = [t for t in self.backtick_tokens if is_url(t)]
         tokens = urls + filter_path_tokens(self.backtick_tokens, cwd, paths)

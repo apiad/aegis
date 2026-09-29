@@ -122,6 +122,9 @@ class FileBrowserTab(Widget, can_focus=True):
 
     async def on_mount(self) -> None:
         self.set_task_dock(self._sidebar_open)
+        # The poll below re-reads the index but is not a use: an open tab
+        # would otherwise keep the watcher awake for good.
+        self._indexer.use()
         self._refresh_list()
         self.set_interval(_POLL_S, self._refresh_list)
         # If prefill is an existing file path, open it directly in view mode.
@@ -138,6 +141,7 @@ class FileBrowserTab(Widget, can_focus=True):
         import contextlib
         from textual.widgets import TextArea
 
+        self._indexer.use()
         if self._current_file is not None:
             with contextlib.suppress(Exception):
                 self.query_one(TextArea).focus()
@@ -161,6 +165,7 @@ class FileBrowserTab(Widget, can_focus=True):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "fb-filter":
+            self._indexer.use()
             self._filter_text = event.value
             self._refresh_list()
 

@@ -781,7 +781,8 @@ class AegisApp(App):
         # learn it once the MCP server has actually bound.
         if self._host_registry is not None:
             self._host_registry.set_mcp_port(self._mcp.port)
-        self._file_indexer.start(Path.cwd())
+        # Indexed on first use, not here: see file_index.py.
+        self._file_indexer.set_root(Path.cwd())
         # A bridged app adopted the brain's queue manager, and the brain
         # already started it; replaying its state a second time re-queues.
         if self.manager is None:
