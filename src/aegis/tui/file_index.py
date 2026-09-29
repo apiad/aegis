@@ -199,20 +199,31 @@ class FileIndexer:
 
     # --- incremental updates (called from watchdog thread) ----------
 
-    def _add(self, abs_path: str) -> None:
+    def _indexable(self, abs_path: str) -> str | None:
+        """The index key for ``abs_path``, or None when the ignore rules drop it.
+
+        String ops only, no stat: the observer watches every directory under
+        cwd, ignored ones included, and most of a busy tree's events land in
+        .git, .venv and __pycache__. Those must cost nothing.
+        """
         cwd = self._cwd
         if cwd is None:
+            return None
+        root = str(cwd) + os.sep
+        if not abs_path.startswith(root):
+            return None
+        rel = abs_path[len(root) :]
+        parts = rel.split(os.sep)
+        if any(_ignore_dir(p) for p in parts[:-1]) or _ignore_file(Path(parts[-1])):
+            return None
+        return rel
+
+    def _add(self, abs_path: str) -> None:
+        rel = self._indexable(abs_path)
+        if rel is None:
             return
         fp = Path(abs_path)
-        if not fp.is_file() or _ignore_file(fp):
-            return
-        try:
-            rel = str(fp.relative_to(cwd))
-        except ValueError:
-            return
-        # Skip if any parent component is an ignored dir.
-        parts = Path(rel).parts
-        if any(_ignore_dir(p) for p in parts[:-1]):
+        if not fp.is_file():
             return
         try:
             mtime = fp.stat().st_mtime
@@ -228,18 +239,15 @@ class FileIndexer:
             self._mtimes[rel] = mtime
 
     def _remove(self, abs_path: str) -> None:
-        cwd = self._cwd
-        if cwd is None:
-            return
-        try:
-            rel = str(Path(abs_path).relative_to(cwd))
-        except ValueError:
+        rel = self._indexable(abs_path)
+        if rel is None:
             return
         with self._lock:
-            try:
-                self._paths.remove(rel)
-            except ValueError:
-                pass
+            # bisect, not list.remove: a miss scanned all 61k paths, 3.6ms
+            # with the GIL held, and every rename (each .pyc write) is one.
+            i = bisect.bisect_left(self._paths, rel)
+            if i < len(self._paths) and self._paths[i] == rel:
+                del self._paths[i]
             self._mtimes.pop(rel, None)
 
 
