@@ -106,6 +106,7 @@ def _indexer_over(paths: list[str], cwd="/ws") -> FileIndexer:
     """An indexer holding ``paths`` as if a walk of ``cwd`` had found them."""
     idx = FileIndexer()
     idx._cwd = __import__("pathlib").Path(cwd)
+    idx._root = cwd
     idx._publish(paths)
     return idx
 
