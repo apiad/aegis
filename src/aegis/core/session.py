@@ -585,6 +585,10 @@ class AgentSession:
         finally:
             self._extra_event_observers.remove(_capture)
 
+    def pending_inbox(self) -> list[InboxMessage]:
+        """Messages delivered mid-turn, waiting for the turn to end."""
+        return list(self._inbox_buffer)
+
     async def deliver(self, msg: InboxMessage) -> Delivery:
         """Push an inbox message at this session. Wake if idle (the message
         lands into a turn now); buffer if mid-turn (queued — the turn-end

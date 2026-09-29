@@ -66,4 +66,18 @@ class InboxRouter:
         return self._pending.pop(handle, [])
 
     def pending(self, handle: str) -> list[InboxMessage]:
-        return list(self._pending.get(handle, []))
+        """Every message delivered to ``handle`` and not yet consumed.
+
+        Two places hold one: this router, for a handle with no session
+        bound, and the bound session's own buffer, where a message waits
+        for the turn in progress to end. Counting only the first let the
+        queue close a worker whose monitor wake had landed during its last
+        turn: the wake sat in the session, the guard read zero, and the
+        session was closed with it inside. Issue #17.
+        """
+        held = list(self._pending.get(handle, []))
+        session = self._sessions.get(handle)
+        buffered = getattr(session, "pending_inbox", None)
+        if callable(buffered):
+            held.extend(buffered())
+        return held
