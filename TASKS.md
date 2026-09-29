@@ -494,6 +494,32 @@ Two smaller things the first real run left behind:
       minutes of confusion during the run.
 
 
+### F3 network block — five deferred minors *(shipped 2026-09-28)*
+
+Spec and plan `docs/superpowers/{specs,plans}/2026-09-27-f3-network-and-tps.*`,
+`b971741`..`d299914`. The feature is on the branch with CI green; a whole-branch
+review's Minor findings were deliberately not fixed in that pass:
+
+- [ ] `NetService.stop()` suppresses a `CancelledError` aimed at its *caller*,
+      so a `wait_for` around app shutdown reports a timeout as a clean stop.
+      Copied verbatim from `QuotaService.stop` (`usage/quota.py:226`), so fixing
+      it means fixing both.
+- [ ] The `_SERVICE` fallback in `commands/builtins/net.py` is unreachable —
+      both `CommandContext` sites pass `bridge=self.app` — and its docstring
+      claims a headless case that does not exist. If it ever became reachable it
+      would build from hardcoded defaults and ignore `enabled: false`.
+- [ ] A failing exit-IP lookup retries at `interval` rather than
+      `trace_interval`, because `_with_trace` leaves `trace_at` untouched. Two
+      HTTP GETs every 20s on exactly the captive network where both fail.
+- [ ] The five per-turn figures may render twice when `MetricsModel.gauge()`
+      returns None (a model absent from `models.yaml`). Reachability unconfirmed
+      — check whether `context_window_for` can actually return 0.
+- [ ] `tests/test_sidebar_metrics.py` renders at 18 cells; the product minimum
+      is 26 (`sidebar.py:639`), where the shares still fit, so the shedding the
+      test names never happens. Derive the width from the rendered tier the way
+      `test_sidebar_net.py:133` does.
+
+
 ### Queue workers orphaned by a rename *(fixed 2026-09-16; old orphans still alive)*
 
 The rename fix only helps tasks dispatched by a daemon running the new code.

@@ -289,6 +289,8 @@ class FilePickerModal(ModalScreen):
 
     def on_mount(self) -> None:
         indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None:
+            indexer.use()
         if indexer is not None and indexer.ready:
             self._all_paths = indexer.paths
             self._boot_input()

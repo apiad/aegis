@@ -363,6 +363,10 @@ async def test_app_releases_its_file_watcher_on_shutdown():
     before = _inotify_instances()
     app = _app()
     async with app.run_test():
+        # Mounting only names the root: the index starts on first use (#21).
+        await asyncio.sleep(0.2)
+        assert _inotify_instances() == before, "the app started watching at mount"
+        app._file_indexer.use()  # what opening the picker does
         for _ in range(250):
             if app._file_indexer.ready:
                 break

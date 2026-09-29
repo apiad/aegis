@@ -298,6 +298,62 @@ anchored to the input it started on even if you switch tabs. Transcription is
 fully on-device (via [harp](https://github.com/apiad/harp)). If the extra isn't
 installed, the key shows an install hint instead of recording.
 
+## Network
+
+What the F3 sidebar's `NET` rows probe, and how often. Three readings on
+three cadences, because they differ by a factor of three thousand in cost.
+
+```yaml
+network:
+  enabled: true            # false = no probes and no rows
+  interval: 20             # seconds between egress/RTT checks
+  trace_interval: 300      # seconds between exit-IP lookups
+  speed_interval: 0        # 0 = off; seconds between throughput probes
+  speed_bytes: 1000000     # bytes per throughput probe
+  timeout: 3               # seconds before a handshake gives up
+  speed_timeout: 30        # seconds before a throughput probe gives up
+  anchors:                 # host:port, tried concurrently
+    - "1.1.1.1:443"
+    - "8.8.8.8:443"
+```
+
+| key | default | what it does |
+|---|---|---|
+| `enabled` | `true` | Whether to probe at all. `false` removes the rows. |
+| `interval` | `20` | Egress liveness and handshake RTT. One TCP handshake, no payload. |
+| `trace_interval` | `300` | Exit IP, Cloudflare colo and country. About 300 bytes. Also re-read the moment egress comes back, because that is when the address has had a chance to change. |
+| `speed_interval` | `0` | Seconds between throughput probes. `0` turns the timer off; `/net` still takes a reading on demand. |
+| `speed_bytes` | `1000000` | Size of each throughput probe. Must be positive. |
+| `timeout` | `3` | Handshake and lookup timeout in seconds. |
+| `speed_timeout` | `30` | Throughput-probe timeout in seconds. Separate from `timeout` on purpose: a handshake that has not answered in 3s is a dead anchor, but a megabyte that has not arrived in 3s is an ordinary slow link — and the slow link is the one worth measuring. Sharing one value made the probe fail wherever the answer mattered. |
+| `anchors` | Cloudflare and Google resolvers on 443 | TCP targets for the liveness check. Two different operators, so one having a bad day does not read as "no egress". **An IPv6 anchor must be bracketed** — `"[2606:4700:4700::1111]:443"`. Unbracketed it is ambiguous: `2606:4700:4700::1111:443` is itself a valid address, so there is no way to tell the last group from a port, and either guess is wrong half the time. |
+
+**Why TCP and not `ping`.** ICMP needs `CAP_NET_RAW` or a subprocess for
+every sample, and a captive portal — the failure these rows exist to catch —
+answers ICMP while refusing the connection. A completed handshake on 443
+tests what actually breaks.
+
+**Why the throughput timer ships off.** A liveness handshake and a 300-byte
+lookup are invisible on any network. A repeating megabyte download from a
+speed-test host is not, and on a restricted network it is the shape that gets
+noticed. Turn it on where you own the link:
+
+```yaml
+network:
+  speed_interval: 300
+```
+
+An empty `anchors` list and a `speed_bytes` of `0` are both refused at load
+rather than accepted. Either one leaves every probe failing, and a row that
+reads `· ⋯` forever looks like a defect in aegis rather than a setting.
+
+`interval`, `trace_interval`, `timeout` and `speed_timeout` must all be
+positive, and are refused otherwise. **`speed_interval` is the only one where
+`0` means "off"** — the others have no off switch, and `interval: 0` in
+particular would turn the poller into a hot loop issuing tens of thousands of
+handshakes a second at the anchors. Use `enabled: false` to switch the whole
+thing off.
+
 ## Headless / Telegram
 
 ```yaml

@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult, ScreenStackError
 from textual.binding import Binding
 from textual.widgets import ContentSwitcher
 
-from aegis.config import Agent, VoiceConfig
+from aegis.config import Agent, NetworkConfig, VoiceConfig
 from aegis.config.roots import AegisRoots
 from aegis.core.handles import HandleRegistry
 from aegis.drivers.base import HarnessSession
@@ -426,6 +426,7 @@ class AegisApp(App):
         drivers: "dict | None" = None,
         cwd: "str | None" = None,
         voice: "VoiceConfig | None" = None,
+        network: "NetworkConfig | None" = None,
         hosts: "dict | None" = None,
         host_registry: "object | None" = None,
         bridge: "object | None" = None,
@@ -504,6 +505,17 @@ class AegisApp(App):
         # F3 dashboard mode — app-wide, not per-pane (see set_sidebar_mode).
         self._sidebar_mode = False
         self._voice_cfg = voice or VoiceConfig()
+        # Same shape as `_voice_cfg`: a config block arrives as a kwarg, and
+        # `or NetworkConfig()` means every boot path that has not been taught
+        # to pass one still gets the defaults — which are enabled with the
+        # megabyte timer off, so the rows work everywhere from day one.
+        self._net_cfg = network or NetworkConfig()
+        from aegis.net.service import NetService
+
+        # Public like `quota_services`, because `/net` reaches it off the
+        # bridge. None when configured off: the pane is then never pushed a
+        # state, so SYSTEM is byte-for-byte what it was before.
+        self.net_service = NetService(self._net_cfg) if self._net_cfg.enabled else None
         self._voice: VoiceSession | None = None
         self._voice_pane: ConversationPane | None = None
         # True from _stop_voice until the transcript lands. _voice is
@@ -769,7 +781,8 @@ class AegisApp(App):
         # learn it once the MCP server has actually bound.
         if self._host_registry is not None:
             self._host_registry.set_mcp_port(self._mcp.port)
-        self._file_indexer.start(Path.cwd())
+        # Indexed on first use, not here: see file_index.py.
+        self._file_indexer.set_root(Path.cwd())
         # A bridged app adopted the brain's queue manager, and the brain
         # already started it; replaying its state a second time re-queues.
         if self.manager is None:
@@ -1676,6 +1689,11 @@ class AegisApp(App):
                 active.set_system(self._system_last, stats)
         with contextlib.suppress(Exception):
             self._quota_tick(active)
+        if self.net_service is not None:
+            with contextlib.suppress(Exception):
+                self.net_service.start()  # idempotent
+                if active is not None and hasattr(active, "set_net"):
+                    active.set_net(self.net_service.state)
 
     def on_tab_bar_selected(self, event: TabBar.Selected) -> None:
         event.stop()
@@ -2507,12 +2525,21 @@ class AegisApp(App):
         self.queue_digest.stop()
         for _service in self.quota_services.values():
             await _service.stop()
+        # Built in __init__, so it is closed here. A service created at boot
+        # and never torn down on quit is the shape of the Ctrl+Q terminal hang.
+        if self.net_service is not None:
+            await self.net_service.stop()
         await self.queue_manager.stop()
         await self._mcp.stop()
         self._file_indexer.stop()
         self.exit()
 
     def on_unmount(self) -> None:
+        # Textual dispatches Unmount on every shutdown path; `action_quit`
+        # covers only one, so the probe loop is released here too. Sync, hence
+        # `cancel()` rather than `await stop()`.
+        if getattr(self, "net_service", None) is not None:
+            self.net_service.cancel()
         # Textual dispatches Unmount on every shutdown path, not just the
         # one action_quit takes. The file indexer's watchdog observer holds
         # an inotify instance and the kernel hands out 128 per user, so

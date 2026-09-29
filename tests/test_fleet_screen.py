@@ -345,6 +345,10 @@ async def test_a_burst_of_events_redraws_once_and_late(tmp_path):
         await pilot.press("f10")
         await pilot.pause()
         scr = app.screen
+        # The once-a-second redraw goes through the method the ticker bound
+        # at mount, not the wrapper below: a tick inside the window cancelled
+        # the pending redraw unseen, and the test failed on ~1 CI run in 6.
+        scr._ticker.pause()
         calls = []
         draw = scr.refresh_fleet
         scr.refresh_fleet = lambda: (calls.append(1), draw())

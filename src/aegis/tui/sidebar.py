@@ -86,6 +86,17 @@ class SidebarModel:
     # tier row when it does not.
     ctx: ContextGauge | None = None
     quota_gauges: tuple[QuotaGauge, ...] = ()
+    # The per-turn figures tier 3 throws away. Carried as numbers rather than
+    # scavenged out of the rendered tier string: `_context` draws its own CTX
+    # gauge and so selects the narrowest tier, which drops all five of these
+    # even on an 80-cell column (#12). The `metrics` tuple above stays — a
+    # remote pane is handed rendered strings and no numbers, and it remains
+    # the fallback for exactly that case.
+    tps: float | None = None
+    cached_pct: int | None = None
+    think_pct: int | None = None
+    tools: tuple[int, int] | None = None  # (calls, errors)
+    compactions: int = 0
     # PLAN
     plan: PlanState | None = None
     subplans: dict = field(default_factory=dict)
@@ -100,6 +111,12 @@ class SidebarModel:
     # SYSTEM
     system: tuple[str, ...] = ()
     stats: SystemStats | None = None
+    # Pre-rendered like `system` / `clock` / `cwd` / `build` rather than
+    # carried as a `NetState`: the rate needs its age, ageing needs a clock,
+    # and `pane._sidebar_model` is where a live clock is already read. Keeps
+    # this renderer pure.
+    net: tuple[str, ...] = ()
+    exit_ip: tuple[str, ...] = ()
     clock: tuple[str, ...] = ()
     cwd: tuple[str, ...] = ()
     build: tuple[str, ...] = ()
@@ -175,6 +192,18 @@ def _block(head: Text, rows: list[Text]) -> Text:
 
 
 _RECAP_LABEL = "now   "
+
+
+def _shrinking(parts: list[str]) -> tuple[str, ...]:
+    """Tiers for one row of dot-joined parts, widest first.
+
+    Sheds one part at a time from the right, so the FIRST part survives into
+    the narrowest tier. Callers order `parts` by what must not be lost.
+    Deduplicated, because a one-part row would otherwise report three
+    identical tiers and misstate how far it can narrow.
+    """
+    tiers = (" · ".join(parts[: n + 1]) for n in reversed(range(len(parts))))
+    return tuple(dict.fromkeys(tiers))
 
 
 def _recap_rows(line: str, palette, width: int) -> list[Text]:
@@ -308,6 +337,42 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
                 tail=quota_tail(q),
             )
         )
+    # Everything the CTX gauge does not draw, on rows of their own. Two
+    # segments rather than one: all five on one row measures ~41 cells and
+    # this column is routinely 36, so a single segment degrades and silently
+    # drops the last three — which is the shape of the bug this fixes (#12),
+    # reintroduced one level down. Split by what they are: `speed` holds the
+    # per-turn measurements, `counters` the accumulators.
+    speed: list[str] = []
+    if m.tps is not None:
+        speed.append(f"[{palette.accent}]⚡ {round(m.tps)} tok/s[/]")
+    if m.cached_pct is not None:
+        speed.append(f"[{palette.muted}]{m.cached_pct}% cached[/]")
+    if m.think_pct is not None:
+        speed.append(f"[{palette.muted}]{m.think_pct}% think[/]")
+    counters: list[str] = []
+    if m.tools is not None:
+        calls, errors = m.tools
+        tool = f"⚒ {calls}"
+        if errors:
+            tool = f"{tool} [{palette.error}]({errors} err)[/]"
+        counters.append(tool)
+    if m.compactions:
+        cut_style = palette.error if m.compactions >= 2 else palette.working
+        counters.append(f"[{cut_style}]✂{m.compactions}[/]")
+    # Tiers widest first, shedding one item at a time from the right. The
+    # first element survives to the narrowest tier, so the generation speed —
+    # the figure with no other surface in this column — is never the one that
+    # goes.
+    rows += _rows(
+        [
+            Segment(key, _shrinking(parts), 0)
+            for key, parts in (("turn_speed", speed), ("turn_counters", counters))
+            if parts
+        ],
+        palette,
+        width,
+    )
     # The gauge takes the fraction; the leftover tier takes the rest. T3 is
     # the narrowest form `render_tiers` returns and is what is left once the
     # context percentage has its own row above. A pane with no gauge falls
@@ -498,6 +563,15 @@ def _system(m: SidebarModel, palette, width: int) -> Text | None:
         rows += list(rows_of(meters, per).split("\n", allow_blank=False))
     else:
         rows += _rows([Segment("system", m.system, 0)], palette, width)
+    # Above the clock: the reading moves every 20 seconds, the clock every
+    # minute. Two segments rather than one so a narrow column can keep the
+    # reading and drop the address — see `format_exit_ip` on why the address
+    # must never be truncated.
+    rows += _rows(
+        [Segment("net", m.net, 0), Segment("exit_ip", m.exit_ip, 0)],
+        palette,
+        width,
+    )
     rows += _rows([Segment("clock", m.clock, 0)], palette, width)
     # Kept, and kept on separate rows. They never change, but they are the
     # two questions a stale checkout makes you ask — which directory this

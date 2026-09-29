@@ -49,6 +49,7 @@ from aegis.tui.state import AgentState
 from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
+from aegis.tui.netmeter import format_exit_ip, format_net_tiers
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.sidebar import Sidebar, SidebarActions, SidebarModel
 from aegis.tui.strip import QueueStrip
@@ -608,6 +609,8 @@ class CopyableBlock(Static):
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None:
+            indexer.use()
         paths = indexer.paths if (indexer is not None and indexer.ready) else []
         tokens = filter_path_tokens(self.backtick_tokens, cwd, paths)
         if not tokens:
@@ -658,6 +661,8 @@ class CopyableBlock(Static):
 
         cwd = Path.cwd()
         indexer = getattr(self.app, "_file_indexer", None)
+        if indexer is not None:
+            indexer.use()
         paths = indexer.paths if (indexer is not None and indexer.ready) else []
         urls = [t for t in self.backtick_tokens if is_url(t)]
         tokens = urls + filter_path_tokens(self.backtick_tokens, cwd, paths)
@@ -807,6 +812,18 @@ class PaneStateChanged(Message):
         self.pane = pane
         self.finished = finished
         super().__init__()
+
+
+def _share(part: int, whole: int) -> int | None:
+    """``part`` as a whole-number percentage of ``whole``, or None.
+
+    None rather than 0 when there is no denominator: a zero share claims a
+    measured ratio of nothing, which is the same mistake `_context` avoids by
+    falling back to a tier instead of drawing a 0% bar.
+    """
+    if whole <= 0 or part <= 0:
+        return None
+    return round(100 * part / whole)
 
 
 class ConversationPane(Widget):
@@ -1108,6 +1125,7 @@ class ConversationPane(Widget):
         # write-only, and the sidebar rebuilds its whole model on refresh.
         self._system_tiers: tuple[str, ...] = ()
         self._system_stats = None
+        self._net_state = None
         self._quota_tiers: tuple[str, ...] = ()
         self._quota_gauges: tuple = ()
         self._loop_status: dict | None = None
@@ -1521,6 +1539,16 @@ class ConversationPane(Widget):
         bar = self._bar()
         if bar is not None:
             bar.set_system(text)
+        self._refresh_sidebar()
+
+    def set_net(self, state) -> None:
+        """Push the cached network readings (sampled app-side) to the sidebar.
+
+        A sibling of `set_system` rather than a parameter on it: that method's
+        contract is the status bar's system segment, and the network rows are
+        the sidebar's alone.
+        """
+        self._net_state = state
         self._refresh_sidebar()
 
     def set_quota(self, tiers, gauges=()) -> None:
@@ -3162,6 +3190,18 @@ class ConversationPane(Widget):
             quota=self._quota_tiers,
             ctx=core.metrics.gauge(),
             quota_gauges=self._quota_gauges,
+            tps=core.metrics.recent_tps(),
+            cached_pct=_share(
+                core.metrics.c_cached + core.metrics.p_cached,
+                core.metrics.c_in + core.metrics.p_in,
+            ),
+            think_pct=_share(
+                core.metrics.c_think, core.metrics.c_out + core.metrics.p_out
+            ),
+            tools=(core.metrics.tool_calls, core.metrics.tool_errors)
+            if core.metrics.tool_calls
+            else None,
+            compactions=core.metrics.compaction_count,
             loop_status=self._loop_status,
             plan=core.plan_state(),
             subplans=core.subplan_states(),
@@ -3176,6 +3216,8 @@ class ConversationPane(Widget):
             now_line=getattr(getattr(core, "fleet_recap", None), "line", "") or "",
             system=self._system_tiers,
             stats=self._system_stats,
+            net=format_net_tiers(self._net_state, self._palette, time.monotonic()),
+            exit_ip=format_exit_ip(self._net_state, self._palette, time.monotonic()),
             # Read off the process here rather than pushed from the app
             # tick like the meters: these cost a `strftime` and a `Path`,
             # and `metrics` above already reads a live clock at this exact

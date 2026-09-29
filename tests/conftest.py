@@ -125,6 +125,43 @@ def no_real_provider_accounts(request, tmp_path, monkeypatch):
     _refuse_real_oneshot(monkeypatch)
 
 
+@pytest.fixture(autouse=True)
+def no_real_network_probes(request, monkeypatch):
+    """Keep hermetic tests off the network.
+
+    Every AegisApp builds a NetService and `_tick` starts it, so without this
+    every TUI test opens TCP connections to the configured anchors and, with a
+    speed interval set, downloads a megabyte. Sibling of
+    `no_real_provider_accounts` and strictly worse than the case that one
+    covers: the quota poller is disarmed by taking its credentials away, and
+    these probes need none, so they reach out on CI too.
+
+    Patched at `default_probes` rather than on the probe functions or on
+    `NetService.start`. The service's own tests inject their own `Probes` and
+    so are untouched; `test_net_probe.py` holds direct references to the real
+    functions and still tests them; and start/refresh/the asyncio task all
+    still run for real, against probes that answer instantly offline.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+    from aegis.net.probe import Reach, Throughput, Trace
+    from aegis.net.service import Probes
+
+    async def _reach(anchors, timeout):
+        return Reach(ok=False, error="offline in tests")
+
+    async def _trace(timeout):
+        return Trace(ok=False, error="offline in tests")
+
+    async def _throughput(nbytes, timeout):
+        return Throughput(ok=False, asked=nbytes, error="offline in tests")
+
+    monkeypatch.setattr(
+        "aegis.net.service.default_probes",
+        lambda: Probes(reach=_reach, trace=_trace, throughput=_throughput),
+    )
+
+
 # Resolved once, before any test prepends a fake `claude` to PATH.
 _REAL_CLAUDE = shutil.which("claude")
 

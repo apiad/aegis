@@ -217,6 +217,7 @@ import — one module per family, protected from being shadowed. The shipped set
 |---|---|
 | `/help` | List every command (`usage — summary`), grouped by source. |
 | `/sessions` | List live agent sessions; mark the active one. |
+| `/net` | Exit IP, egress liveness with RTT per anchor, and a throughput reading. Forces the throughput probe regardless of `network.speed_interval`, and prints the byte count and elapsed time the rate was computed from. Read-only. |
 | `/agents [add … \| remove <slug>]` | List / add / remove agent profiles. |
 | `/spawn <agent>[@host[:cwd]] [prompt]` | Start a new top-level agent, **from where you're standing**: with a prompt, the new agent also gets where it was spawned from, a bounded tail of this pane's transcript, and `aegis_read_peer` to pull the rest — so `/spawn opus please verify this test` knows which test. `@host` runs its harness on another machine — see [Execution hosts](hosts.md); `:cwd` overrides that host's default working tree. |
 | `/fork [prompt] [--slug S] [--model M] [--effort E]` | Branch this conversation into a new tab — a worker that already knows. Refused mid-turn; the parent is left untouched. ~$1 a fork. |
