@@ -1200,7 +1200,14 @@ class ConversationPane(Widget):
             yield Sidebar(self._palette, id="sidebar")
 
     async def on_mount(self) -> None:
-        self.query_one(StatusBar).set_state(AgentState.ready)
+        # The session's own state, not `ready`: a pane can be built over a
+        # session that is already mid-turn (a view attaching to a busy
+        # daemon, a queue worker resumed on its handle), and it would read
+        # idle until the next state change. Issue #27.
+        if self._core.state is AgentState.working:
+            self._on_core_state(self._core, self._core.state, False)
+        else:
+            self.query_one(StatusBar).set_state(self._core.state)
         # The strips subscribe to these themselves; the sidebar rides the
         # same sources rather than a second observer chain. Both managers
         # outlive any one pane, so the handles MUST be released on unmount

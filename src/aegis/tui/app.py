@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import time
 from collections.abc import Callable
@@ -494,6 +495,12 @@ class AegisApp(App):
         # Pending debounced roster write (see _schedule_snapshot).
         self._snapshot_timer = None
         self._panes: list[ConversationPane] = []
+        # One lock per handle, held by every brain-pane mount and drop. A
+        # drop that is still awaiting its widget's removal leaves
+        # `#pane-<handle>` in the DOM, and a mount for a new session on the
+        # same handle would hit DuplicateIds, which the mount treats as a
+        # detached view and gives up. Issue #27.
+        self._pane_locks: dict[str, asyncio.Lock] = {}
         # Every handle bound in this process, live or retired. A pane's DOM
         # id is `pane-<birth handle>` and Textual ids are immutable, so a
         # name freed by a rename or a close is NOT free to mint again — see
@@ -1246,7 +1253,14 @@ class AegisApp(App):
     # view. Focus, scroll and drafts stay per-view -- that is the stage-4
     # split. Only which tabs EXIST crosses.
 
-    async def _mount_brain_pane(
+    def _pane_lock(self, handle: str) -> asyncio.Lock:
+        return self._pane_locks.setdefault(handle, asyncio.Lock())
+
+    async def _mount_brain_pane(self, session, **kw) -> None:
+        async with self._pane_lock(session.handle):
+            await self._mount_brain_pane_locked(session, **kw)
+
+    async def _mount_brain_pane_locked(
         self,
         session,
         *,
@@ -1356,11 +1370,24 @@ class AegisApp(App):
         if foreground:
             pane.focus_input()
 
-    async def _drop_brain_pane(self, handle: str) -> None:
-        """A session closed on the brain is gone from every view."""
-        pane = self.pane_for(handle)
-        if pane is None:
-            return
+    async def _drop_brain_pane(self, session) -> None:
+        """A session closed on the brain is gone from every view.
+
+        Found by identity, not by handle: a handle can already name the
+        next session by the time this runs (``resume_task`` respawns a
+        parked worker on its own handle), and that session's pane is not
+        this one to drop.
+        """
+        async with self._pane_lock(session.handle):
+            pane = next(
+                (p for p in self._panes if getattr(p, "_core", None) is session),
+                None,
+            )
+            if pane is None:
+                return
+            await self._drop_pane(pane)
+
+    async def _drop_pane(self, pane) -> None:
         await pane.close()
         if pane in self._panes:
             self._panes.remove(pane)
@@ -1401,7 +1428,7 @@ class AegisApp(App):
                     break
         elif kind == "removed":
             self.run_worker(
-                self._drop_brain_pane(session.handle),
+                self._drop_brain_pane(session),
                 group=f"brain-drop-{session.handle}",
                 exclusive=False,
             )
