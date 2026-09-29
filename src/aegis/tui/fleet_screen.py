@@ -256,7 +256,7 @@ class FleetScreen(ModalScreen):
         yield self._footer
 
     def on_mount(self) -> None:
-        self.set_interval(1.0, self.refresh_fleet)
+        self._ticker = self.set_interval(1.0, self.refresh_fleet)
         self.set_interval(0.5, self.advance_frame)
         self.call_after_refresh(self.refresh_fleet)
 
