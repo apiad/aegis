@@ -287,3 +287,44 @@ async def test_spawn_survives_a_bridge_with_no_read_peer():
     res = await dispatch("/spawn opus verify this", _ctx(bridge))
     assert res.ok
     assert bridge.spawned == [("opus", "verify this", "alpha")]
+
+
+# ---------- the operator's words lead the block in the new tab (#24) --------
+
+def test_split_spawn_recovers_what_compose_spawn_put_in():
+    from aegis.peer import split_spawn
+
+    got = split_spawn(_composed("please verify this test"))
+    assert got is not None
+    assert got.source == "alpha"
+    assert got.header == HEADER
+    assert got.tail == TAIL
+    assert got.task == "please verify this test"
+
+
+def test_split_spawn_leaves_ordinary_messages_alone():
+    from aegis.peer import split_spawn
+
+    assert split_spawn("work on aegis") is None
+    assert split_spawn("quote: The operator's task: do it") is None
+
+
+def test_the_spawned_tab_shows_the_operators_words_before_the_tail():
+    """The composed opening ends with the operator's task, after a tail of
+    a few dozen lines. Drawn in that order, the one line the operator typed
+    sits at the bottom of a block they did not write."""
+    from rich.console import Console
+
+    from aegis.render import render_user_block
+    from aegis.tui.themes import INK, aegis_colors
+
+    con = Console(record=True, width=100)
+    con.print(render_user_block(_composed("please verify this test"),
+                                aegis_colors(INK), 100))
+    lines = con.export_text().splitlines()
+
+    def first(needle):
+        return next(i for i, ln in enumerate(lines) if needle in ln)
+
+    assert first("please verify this test") < first("round-trip test keeps")
+    assert first("alpha") < first("round-trip test keeps")
