@@ -392,3 +392,48 @@ def test_a_log_of_pure_noise_yields_an_empty_window():
     w = assemble(replay(SystemInit(session_id="s"),
                         AssistantThinking(text="redacted anyway")))
     assert w.text == ""
+
+
+# ---------- tools=False: the aegis_read_peer default (#24) ------------------
+
+def test_collapsed_tool_calls_become_one_line_per_run():
+    w = assemble(replay(
+        UserMessage(text="fix the test"),
+        ToolUse(name="Bash", summary="make test"),
+        ToolResult(text="1 failed", is_error=False),
+        ToolUse(name="Read", summary="src/a.py"),
+        ToolResult(text="def a(): ...", is_error=False),
+        ToolUse(name="Bash", summary="make test"),
+        ToolResult(text="all green", is_error=False),
+        AssistantText(text="fixed"),
+        Result(duration_ms=1, is_error=False),
+    ), tools=False)
+    lines = w.text.splitlines()
+    assert lines == ["user: fix the test", "tools: Bash×2, Read", "assistant: fixed"]
+
+
+def test_prose_between_tool_calls_splits_the_runs():
+    w = assemble(replay(
+        ToolUse(name="Read", summary="a.py"),
+        AssistantText(text="now the other file"),
+        ToolUse(name="Edit", summary="b.py"),
+        Result(duration_ms=1, is_error=False),
+    ), tools=False)
+    assert w.text.splitlines() == [
+        "tools: Read", "assistant: now the other file", "tools: Edit"]
+
+
+def test_collapsing_happens_before_the_budget_is_spent():
+    """Collapsing after admission would only shorten a window the tool calls
+    had already filled. Collapsed first, the room they no longer take goes
+    to the conversation."""
+    events = [UserMessage(text="the question that opened the turn " * 20)]
+    for i in range(40):
+        events += [ToolUse(name="Read", summary=f"file{i}.py " * 20),
+                   ToolResult(text="x" * 400, is_error=False)]
+    events += [AssistantText(text="done"), Result(duration_ms=1, is_error=False)]
+    budget = 400
+    assert "file0.py" not in assemble(replay(*events), budget_tokens=budget).text
+    w = assemble(replay(*events), budget_tokens=budget, tools=False)
+    assert "tools: Read×40" in w.text
+    assert "the question that opened the turn" in w.text

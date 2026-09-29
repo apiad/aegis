@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from aegis.fleet.models import Origin
 from aegis.mcp.bridge import AppBridge
 from aegis.mcp.identity import HEADER_NAME
+from aegis.peer import READ_MAX_TURNS
 from aegis.remote.client import (
     remote_schedule_list,
     remote_schedule_logs,
@@ -1068,7 +1069,9 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
         return await open_file(path)
 
     @server.tool
-    async def aegis_read_peer(handle: str, turns: int = 12) -> dict:
+    async def aegis_read_peer(
+        handle: str, turns: int = READ_MAX_TURNS, tools: bool = False
+    ) -> dict:
         """Read a bounded window of another live session's conversation.
 
         Use this when a message reaches you tagged `operator@<handle>` —
@@ -1085,8 +1088,13 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
 
         handle: the peer's current handle (this resolves the rename — the
                 on-disk log carries the session's *birth* handle).
-        turns:  how many turns back to window. Returns {ok, text, header,
-                error}; `header` states honestly what it left out.
+        turns:  how many turns back to window; raise it when the answer
+                is further back. Returns {ok, text, header, error};
+                `header` states honestly what it left out.
+        tools:  False (the default) collapses each run of tool calls into
+                one `tools: Bash×3, Read` line and drops their output, so
+                the window is the conversation. Pass True when you need
+                the commands and what they returned.
         """
         read = getattr(bridge, "read_peer", None)
         if read is None:
@@ -1096,7 +1104,7 @@ def build_server(bridge: AppBridge, tokens=None) -> FastMCP:
                 "header": "",
                 "error": "this aegis frontend cannot read peer transcripts",
             }
-        return await read(handle, turns)
+        return await read(handle, turns, tools=tools)
 
     server.tool(make_handoff(bridge))
 

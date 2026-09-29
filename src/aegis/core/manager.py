@@ -606,9 +606,10 @@ class SessionManager:
     async def read_peer(
         self,
         handle: str,
-        turns: int = 12,
+        turns: int | None = None,
         budget_tokens: int | None = None,
         item_chars: int | None = None,
+        tools: bool = True,
     ) -> dict:
         """AppBridge-shaped: window a live peer's transcript."""
         from aegis.peer import read_window
@@ -627,6 +628,7 @@ class SessionManager:
             turns,
             budget_tokens,
             item_chars,
+            tools,
         )
 
     def _touch(self, handle: str) -> None:
