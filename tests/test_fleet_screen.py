@@ -363,7 +363,14 @@ async def test_a_burst_of_events_redraws_once_and_late(tmp_path):
             )
         assert calls == [], "an event inside the window must wait for it to close"
         assert scr._pending is not None, "the session's event must reach the screen"
-        await pilot.pause(0.7)
+        # The real timer, on purpose: this is the one test that proves the
+        # coalescer fires. Waited for rather than slept past, because a fixed
+        # 0.7 s against a 0.5 s window left the runner 200 ms of slack, and a
+        # busy runner is late by more than that. Issue #15.
+        for _ in range(60):
+            if calls:
+                break
+            await pilot.pause(0.05)
         assert calls == [1]
 
 
